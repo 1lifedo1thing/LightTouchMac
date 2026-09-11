@@ -398,16 +398,19 @@ final class EmulatorController {
         logEvent("nand: first launch — unpacking the device image")
         let fm = FileManager.default
         let tmp = dest + ".partial"
-        try? fm.removeItem(atPath: tmp)
         // The helper creates cs0…cs3 INSIDE the directory it is given; the
         // directory itself must already exist. Its absence was an instant
         // "The emulator stopped" on every first packaged boot.
         do {
+            if fm.fileExists(atPath: tmp) { try fm.removeItem(atPath: tmp) }
             try fm.createDirectory(atPath: tmp, withIntermediateDirectories: true)
         } catch {
             logEvent("nand: could not create \(tmp): \(error.localizedDescription)")
             return false
         }
+        // A failed spawn, extraction or publish must not retain a second,
+        // incomplete device image until the user happens to launch again.
+        defer { try? fm.removeItem(atPath: tmp) }
         let task = Process()
         task.executableURL = URL(fileURLWithPath: helper)
         task.arguments = ["nand-unpack", packed, tmp]
