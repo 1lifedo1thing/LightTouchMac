@@ -30,15 +30,50 @@ final class AppMetadataCache {
     private let iconMemo = NSCache<NSString, NSImage>()
     
     private init() {
-        dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("LightTouchMac/AppCache", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        dir = Self.prepareDirectory(
+            state: Bundled.stateDirectory,
+            caches: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0],
+            isolated: ProcessInfo.processInfo.environment["LTM_STATE_DIR"] != nil)
         if let data = try? Data(contentsOf: indexURL) {
             entries = (try? JSONDecoder().decode([String: Entry].self, from: data)) ?? [:]
         }
         #if DEBUG
         Self.selfCheck()
         #endif
+    }
+
+    /// Icons and names are disposable metadata, not device storage. An isolated
+    /// run keeps even its cache under LTM_STATE_DIR. Move only the old cache when
+    /// the new location is absent; an existing current cache always wins.
+    nonisolated static func prepareDirectory(state: URL, caches: URL, isolated: Bool) -> URL {
+        let fm = FileManager.default
+        let root = isolated ? state.appendingPathComponent("Caches", isDirectory: true)
+            : caches.appendingPathComponent("gold.samhenri.LightTouchMac", isDirectory: true)
+        let directory = root.appendingPathComponent("AppMetadata", isDirectory: true)
+        let legacy = state.appendingPathComponent("AppCache", isDirectory: true)
+        if !fm.fileExists(atPath: directory.path) {
+            try? fm.createDirectory(at: root, withIntermediateDirectories: true)
+            if fm.fileExists(atPath: legacy.path) {
+                // These locations normally share a volume. An atomic move
+                // leaves no duplicate and preserves the original on failure.
+                // Do not fall back to copying/deleting across volumes.
+                guard rename(legacy.path, directory.path) == 0 else {
+                    logEvent("metadata: cache migration failed; retaining %@: %@",
+                             legacy.path, String(cString: strerror(errno)))
+                    return legacy
+                }
+            }
+        }
+        try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    /// macOS can remove disposable cache files while the app is running.
+    /// Recreate the parent for each write, then publish complete bytes together.
+    nonisolated static func writeCacheData(_ data: Data, to url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try data.write(to: url, options: .atomic)
     }
 
     #if DEBUG
@@ -141,7 +176,7 @@ final class AppMetadataCache {
         var hasIcon = false
         if let member = Self.iconMember(members, root: root, info: info),
            let data = try? await Self.unzip(ipa, member: member) {
-            hasIcon = (try? data.write(to: iconURL(bundleID))) != nil
+            hasIcon = (try? Self.writeCacheData(data, to: iconURL(bundleID))) != nil
             // A reinstall may ship a new icon; drop any decoded copy of the old.
             iconMemo.removeObject(forKey: bundleID as NSString)
         }
@@ -201,7 +236,7 @@ final class AppMetadataCache {
 
     private func save() {
         guard let data = try? JSONEncoder().encode(entries) else { return }
-        try? data.write(to: indexURL, options: .atomic)
+        try? Self.writeCacheData(data, to: indexURL)
     }
     
     // MARK: - .ipa reading (Payload/<something>.app is the app bundle)
