@@ -24,7 +24,7 @@ import QuartzCore
  let emulator: Emulator? = nil
  var appliedScale = 1.0, restAngle = 0.0, tiltAngle = 0.0, scrollTilt = 0.0
  var tilting = false, scrollTilting = false
- class Emulator { func setTilt(angle: Double) {} }
+ class Emulator { enum Pose { case upright, flat }; var motionPose = Pose.upright; func setTilt(angle: Double) {} }
 ''' + methods + '''
  func run() {
   for rest in [0.0, Double.pi / 2, Double.pi, -Double.pi / 2] {

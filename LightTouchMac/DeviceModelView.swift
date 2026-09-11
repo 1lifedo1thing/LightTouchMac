@@ -132,13 +132,13 @@ final class DeviceModelView: NSView {
       2 * atan(Double(max(renderer.bounds.height, 1)) / 6000) * 180 / .pi)
   }
 
-  func pose(scale: CGFloat, rotation: Int, roll: CGFloat, pitch: CGFloat, yaw: CGFloat = 0, animated: Bool, spring: Bool = false) {
+  func pose(scale: CGFloat, rotation: Int, roll: CGFloat, pitch: CGFloat, yaw: CGFloat = 0, flat: Bool = false, animated: Bool, spring: Bool = false) {
     self.rotation = rotation
     let rest = Float(rotation == 270 ? -90 : rotation) * .pi / 180
     let units = Float(scale * 594 / 10000) / displayBounds.extents.x
     let pose = Transform(
       scale: SIMD3(repeating: units),
-      rotation: Self.orientation(rest: rest, roll: Float(roll), pitch: Float(pitch), yaw: Float(yaw)), translation: .zero)
+      rotation: Self.orientation(rest: rest, roll: Float(roll), pitch: Float(pitch), yaw: Float(yaw), flat: flat), translation: .zero)
     // Layout may repeat while a transition is running; only a new target replaces it.
     if targetPose != pose {
       if animated && targetPose != nil && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
@@ -165,20 +165,51 @@ final class DeviceModelView: NSView {
     updateScreenMaterial()
     advanceAnimations()
   }
-  /// Pitch and yaw are about the camera's fixed axes. A diagonal drag turns
-  /// the face toward the pointer; only an explicit roll spins it in the plane.
-  static func orientation(rest: Float, roll: Float, pitch: Float, yaw: Float) -> simd_quatf {
-    simd_quatf(angle: yaw, axis: [0, 1, 0])
-      * simd_quatf(angle: pitch, axis: [1, 0, 0])
-      * simd_quatf(angle: -roll-rest, axis: [0, 0, 1])
+  /// Match the accelerometer's gravity vector: upright games steer by roll,
+  /// while flat games tilt the LCD about its horizontal and vertical axes.
+  static func orientation(rest: Float, roll: Float, pitch: Float, yaw: Float = 0, flat: Bool = false) -> simd_quatf {
+    let tilt = flat
+      ? simd_quatf(angle: roll, axis: [0, 1, 0]) * simd_quatf(angle: -rest, axis: [0, 0, 1])
+      : simd_quatf(angle: -roll-rest, axis: [0, 0, 1])
+    return simd_quatf(angle: yaw, axis: [0, 1, 0])
+      * simd_quatf(angle: -pitch, axis: [1, 0, 0]) * tilt
   }
   /// A snapshot is a rendering fence: asset loading alone does not mean
   /// RealityKit has prepared a drawable, lighting, and the first LCD texture.
   func prepareFirstFrame() async -> Bool {
-    await withCheckedContinuation { continuation in
-      renderer.snapshot(saveToHDR: false) { image in
-        continuation.resume(returning: image != nil)
+    while !Task.isCancelled {
+      // A view can finish loading before its window is attached or while the
+      // window is minimized. Neither case means that the model failed.
+      if window != nil, bounds.width > 0, bounds.height > 0,
+        await requestFirstFrame() { return true }
+      do { try await Task.sleep(for: .milliseconds(50)) } catch { return false }
+    }
+    return false
+  }
+
+  private final class FirstFrameRequest {
+    var continuation: CheckedContinuation<Bool, Never>?
+    func finish(_ ready: Bool) {
+      let waiting = continuation
+      continuation = nil
+      waiting?.resume(returning: ready)
+    }
+  }
+
+  private func requestFirstFrame() async -> Bool {
+    let request = FirstFrameRequest()
+    return await withTaskCancellationHandler {
+      await withCheckedContinuation { continuation in
+        request.continuation = continuation
+        guard !Task.isCancelled else { request.finish(false); return }
+        renderer.snapshot(saveToHDR: false) { image in
+          request.finish(image != nil)
+        }
       }
+    } onCancel: {
+      // ARView has no snapshot cancellation API. Release our waiter when its
+      // window closes; a later renderer callback becomes a harmless no-op.
+      Task { @MainActor in request.finish(false) }
     }
   }
   func updateFrame(_ image: CGImage) {
