@@ -66,13 +66,13 @@ final class Gesture: NSEvent {
  }
  func run() async throws {
   grabPoint = CGPoint(x:10,y:20)
-  drag(35,70);precondition(abs(yawAngle - 0.1)<1e-10 && abs(pitchAngle - 0.2)<1e-10 && tiltAngle == 0)
-  drag(-15,-30);precondition(abs(yawAngle + 0.1)<1e-10 && abs(pitchAngle + 0.2)<1e-10 && tiltAngle == 0)
-  drag(10000,-10000);precondition(yawAngle == .pi/4 && pitchAngle == -.pi/4)
+  drag(35,70);precondition(abs(tiltAngle - 0.1)<1e-10 && abs(pitchAngle + 0.2)<1e-10 && yawAngle == 0)
+  drag(-15,-30);precondition(abs(tiltAngle + 0.1)<1e-10 && abs(pitchAngle - 0.2)<1e-10 && yawAngle == 0)
+  drag(10000,-10000);precondition(tiltAngle == .pi/4 && pitchAngle == .pi/4)
   for rest in [0.0,Double.pi/2,Double.pi,-Double.pi/2] {
-   restAngle = rest;drag(35,70);precondition(abs(shellAngle-rest)<1e-10 && yawAngle>0 && pitchAngle>0)
+   restAngle = rest;drag(35,70);precondition(abs(shellAngle-rest-tiltAngle)<1e-10 && tiltAngle>0 && pitchAngle<0)
   }
-  modelView=nil;drag(-15,-30);precondition(yawAngle<0 && pitchAngle<0 && tiltAngle==0)
+  modelView=nil;drag(-15,-30);precondition(tiltAngle<0 && pitchAngle>0 && yawAngle==0)
   precondition(guestUpdates == 0)
   let count=attitudes;tilting=false;drag(1,1)
   precondition(guestUpdates == 1 && attitudes == count)
@@ -81,30 +81,30 @@ final class Gesture: NSEvent {
   for precise in [false,true] {
    endTilt();event.precise=precise;event.dx=precise ? 10:1;event.dy=precise ? -20:-2
    event.eventPhase = .began;scrollWheel(with:event)
-   precondition(abs(yawAngle-0.015)<1e-10 && abs(pitchAngle+0.03)<1e-10 && tiltAngle==0)
+   precondition(abs(tiltAngle-0.015)<1e-10 && abs(pitchAngle+0.03)<1e-10 && yawAngle==0)
    event.eventPhase = .ended;scrollWheel(with:event)
-   precondition(yawAngle==0 && pitchAngle==0 && !scrollTilting)
+   precondition(tiltAngle==0 && pitchAngle==0 && !scrollTilting)
   }
   // The same physical swipe is represented with opposite deltas under the
   // other system preference. Do not reverse those already-adjusted values.
   for inverted in [false,true] {
    endTilt();event.precise=true;event.inverted=inverted;event.dx=inverted ? -10:10;event.dy=0
    event.eventPhase = .began;scrollWheel(with:event)
-   precondition(abs(yawAngle-(inverted ? -0.015:0.015))<1e-10)
+   precondition(abs(tiltAngle-(inverted ? -0.015:0.015))<1e-10)
   }
   endTilt();event.momentum = .changed;event.eventPhase=[];scrollWheel(with:event)
-  precondition(yawAngle==0 && !scrollTilting && guestScrolls==0)
+  precondition(tiltAngle==0 && !scrollTilting && guestScrolls==0)
   event.momentum=[];event.precise=false;event.dx=1;event.dy=0;scrollWheel(with:event)
-  precondition(yawAngle>0 && scrollTilting)
+  precondition(tiltAngle>0 && scrollTilting)
   try await Task.sleep(for:.milliseconds(250))
-  precondition(yawAngle==0 && !scrollTilting,"A conventional wheel must return to rest after its burst")
+  precondition(tiltAngle==0 && !scrollTilting,"A conventional wheel must return to rest after its burst")
   event.eventPhase = .began;event.degrees=30;rotate(with:event)
   precondition(abs(tiltAngle + .pi/6)<1e-10 && yawAngle==0)
   event.eventPhase = .cancelled;rotate(with:event);precondition(tiltAngle==0)
   onPanel=true;event.eventPhase = .began;rotate(with:event);precondition(!rotatingChassis)
   event.option=true;rotate(with:event);precondition(rotatingChassis && tiltAngle<0)
   event.eventPhase = .ended;rotate(with:event);precondition(tiltAngle==0)
-  print("PASS: screen-axis direct drag, no diagonal roll, wheel/precise scaling, Natural Scrolling, momentum, wheel timeout and explicit trackpad twist")
+  print("PASS: linear roll/pitch drag for tilt games, wheel/precise scaling, Natural Scrolling, momentum, wheel timeout and explicit trackpad twist")
  }
 }
 @main struct Main { @MainActor static func main() async throws { let check = Check(); try await check.run() } }

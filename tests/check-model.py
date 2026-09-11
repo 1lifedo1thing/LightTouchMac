@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Native N72 rendering and production DisplayView input. Uses a disposable app, no QEMU."""
 from pathlib import Path
-import subprocess, tempfile
+import os, subprocess, tempfile
 root=Path(__file__).resolve().parents[1]
 model_source = r'''import AppKit
 import RealityKit
@@ -26,13 +26,30 @@ func - (a:CGPoint,b:CGPoint)->CGPoint { CGPoint(x:a.x-b.x,y:a.y-b.y) }
       "LCD stretched during resize to \(size)")
     precondition(abs(hypot(horizontal.x,horizontal.y)-0.3*594)<0.1, "Display scale changed with viewport aspect")
   }
-  for rest: Float in [0, .pi/2, .pi, -.pi/2] {
-    let q = DeviceModelView.orientation(rest: rest, roll:0,pitch:-0.3,yaw:-0.3)
-    let normal = q.act(SIMD3<Float>(0,0,1))
-    precondition(normal.x<0 && normal.y>0 && normal.z>0, "Up-left drag must face up-left in all orientations")
-    let horizontal = DeviceModelView.orientation(rest: 0, roll:0,pitch:0,yaw:-0.3)
-    let top = horizontal.act(SIMD3<Float>(0,1,0))
-    precondition(abs(top.x)<0.0001 && abs(top.z)<0.0001, "Horizontal turning must not roll")
+  // Transform world gravity into the actual model's axes and compare with
+  // the production QEMU LIS302DL conversion, including compound landscape tilt.
+  for flat in [false,true] {
+   for rest: Float in [0, .pi/2, .pi, -.pi/2] {
+    for roll: Float in [-0.6, 0, 0.4] {
+     for pitch: Float in [-0.5, 0, 0.3] {
+      let orientation = DeviceModelView.orientation(rest:rest,roll:roll,pitch:pitch,flat:flat)
+      let visual = orientation.inverse.act(flat ? SIMD3<Float>(0,0,-1):SIMD3<Float>(0,-1,0))
+      var sensorRoll = rest + roll, sensorPitch = pitch
+      if flat {
+       let x=sin(roll)*cos(pitch), y=sin(pitch), z = -cos(roll)*cos(pitch)
+       let sx=cos(rest)*x-sin(rest)*y, sy=sin(rest)*x+cos(rest)*y
+       sensorRoll=atan2(sx,-z);sensorPitch=atan2(sy,hypot(sx,z))
+      }
+      // EmulatorController reverses mounted roll and normalizes the seam.
+      let degrees = -atan2(sin(sensorRoll),cos(sensorRoll))*180 / .pi
+      var sensor=[Int8](repeating:0,count:3)
+      precondition(ipod_attitude_vector(Double(sensorPitch*180 / .pi),Double(degrees),flat,&sensor))
+      let backend=SIMD3<Float>(Float(sensor[0]),Float(sensor[1]),Float(sensor[2]))/64
+      precondition(simd_length(visual-backend)<0.014,
+        "Rendered tilt contradicts guest gravity flat=\(flat) rest=\(rest) roll=\(roll) pitch=\(pitch): \(visual) vs \(backend)")
+     }
+    }
+   }
   }
   let colors: [NSColor] = [.red, .green, .blue, .yellow]
   let points = [CGPoint(x: 0.25,y: 0.25), CGPoint(x: 0.75,y: 0.25), CGPoint(x: 0.25,y: 0.75), CGPoint(x: 0.75,y: 0.75)]
@@ -151,7 +168,8 @@ enum PreparedMedia { static let extensions: Set<String> = [] }
  var preparingMedia=false
  var shakeGeneration: UInt64=0, homeCount=0, lockCount=0
  func pollStorageFailure() {} ;func noteFrameAdvanced() {};func pressLock() { lockCount += 1 };func powerOn() {}
- func shake() { shakeGeneration &+= 1 };func setTilt(angle:CGFloat,pitch:CGFloat) {}
+ var attitude = (angle: CGFloat.zero, pitch: CGFloat.zero)
+ func shake() { shakeGeneration &+= 1 };func setTilt(angle:CGFloat,pitch:CGFloat) { attitude = (angle, pitch) }
  func pressHome() {homeCount += 1};func sendKey(macKeyCode:UInt16,down:Bool) {}
 }
 @main struct Check {
@@ -163,8 +181,9 @@ enum PreparedMedia { static let extensions: Set<String> = [] }
   window.contentView=display;window.makeKeyAndOrderFront(nil)
   func settle() async throws {display.needsLayout=true;display.layoutSubtreeIfNeeded();try await Task.sleep(for: .seconds(0.5))}
   try await settle()
-  for _ in 0..<20 where !display.subviews.contains(where: { $0 is DeviceModelView }) { try await settle() }
+  for _ in 0..<20 where !display.subviews.contains(where: { ($0 as? DeviceModelView).map { !$0.isHidden && $0.alphaValue > 0.99 } ?? false }) { try await settle() }
   let model=display.subviews.compactMap{$0 as? DeviceModelView}.first!
+  precondition(!model.isHidden && model.alphaValue > 0.99, "The live model must actually be visible")
   for rotation in [0,90,180,270] {
    e.rotationDegrees=rotation; frameWidth=rotation%180==0 ? 320:480;frameHeight=rotation%180==0 ? 480:320;try await settle()
    for p in [CGPoint(x:0.2,y:0.3),CGPoint(x:0.8,y:0.7)] {
@@ -188,7 +207,8 @@ enum PreparedMedia { static let extensions: Set<String> = [] }
   let tilted = model.projectedPoint(CGPoint(x: 0.5, y: 0))
   let top = model.projectedPoint(CGPoint(x: 0.5, y: 0.1))
   let bottom = model.projectedPoint(CGPoint(x: 0.5, y: 0.9))
-  precondition(abs(top.x-bottom.x)<0.1, "Horizontal drag must turn, without rolling like a steering wheel")
+  precondition(top.x-bottom.x > 10, "Upright horizontal drag must visibly roll for accelerometer steering")
+  precondition(abs(e.attitude.angle - 0.4) < 0.0001 && abs(e.attitude.pitch) < 0.0001, "Visible steering must reach the accelerometer")
   precondition(abs(tilted.x-rest.x)>1)
   display.mouseUp(with: dragEvent(.leftMouseUp, grab))
   try await Task.sleep(for: .seconds(1.2))
@@ -231,11 +251,16 @@ with tempfile.TemporaryDirectory(prefix="ltm-model-") as tmp:
     (app/"Resources/N72.usdz").symlink_to(asset)
     (app/"Resources/N72Studio.realityenv").symlink_to(root/"LightTouchMac/N72Studio.realityenv")
     sources=root/"LightTouchMac"
+    qemu=Path(os.environ.get("QEMU_SRC", str(root.parent/"qemu-ios")))
+    attitude_header=qemu/"include/hw/arm/ipod-attitude.h"
+    if not attitude_header.is_file():
+        raise SystemExit("Set QEMU_SRC to the QEMU source tree for the production accelerometer comparison")
     for name,source,extra in [
         ("model",model_source,[]),
         ("display",display_source,["DisplayView", "GameControllerInput", "AttitudeIndicatorButton", "InlineLiveTextView"])
     ]:
         swift=work/(name+".swift");swift.write_text(source)
         exe=app/"MacOS"/name
-        subprocess.run(["swiftc","-module-cache-path",str(work/"modules"),"-default-isolation","MainActor",str(sources/"DeviceModelView.swift"),*[str(sources/(x+".swift")) for x in extra],str(swift),"-o",str(exe)],check=True)
+        bridge=["-import-objc-header",str(attitude_header)] if name == "model" else []
+        subprocess.run(["swiftc","-module-cache-path",str(work/"modules"),"-default-isolation","MainActor",*bridge,str(sources/"DeviceModelView.swift"),*[str(sources/(x+".swift")) for x in extra],str(swift),"-o",str(exe)],check=True)
         subprocess.run([str(exe),str(asset),str(work)],check=True,timeout=45)
