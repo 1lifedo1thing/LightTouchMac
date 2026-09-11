@@ -13,10 +13,12 @@ def run(*args):
     return subprocess.run(list(map(str, args)), check=True, capture_output=True, text=True)
 
 
-def verify(*paths, bundle=None, error=None):
+def verify(*paths, bundle=None, error=None, no_weak_imports=False):
     cmd = [sys.executable, CHECK, '--minos', '14.0']
     if bundle:
         cmd += ['--bundle', bundle]
+    if no_weak_imports:
+        cmd += ['--no-weak-imports']
     result = subprocess.run(list(map(str, cmd + list(paths))), capture_output=True, text=True)
     if error:
         assert result.returncode != 0 and error in result.stderr, result
@@ -62,4 +64,13 @@ with tempfile.TemporaryDirectory() as directory:
     verify(executable, bundle=app, error='unresolved dependency')
     libs[0].unlink()
     verify(root / 'exe14.0', error='unresolved dependency')
-print('PASS: compatible closure, newer transitive library, external path, bundle relocation, missing dependency')
+    weaksrc = root / 'weak.c'
+    weaksrc.write_text('extern int optional_api(void) __attribute__((weak_import));\n'
+                       'int value(void) { return optional_api ? optional_api() : 0; }\n')
+    weaklib = root / 'weak.dylib'
+    run('cc', '-arch', 'arm64', '-mmacosx-version-min=14.0', '-dynamiclib',
+        '-undefined', 'dynamic_lookup', weaksrc, '-o', weaklib)
+    verify(weaklib)  # A low LC_BUILD_VERSION alone cannot establish runtime compatibility.
+    verify(weaklib, no_weak_imports=True, error='unexpected weak imports')
+    verify(root / 'lib26.0.dylib', no_weak_imports=True, error='requires macOS 26.0')
+print('PASS: compatible closure, newer transitive library, external path, bundle relocation, missing dependency, weak imports')

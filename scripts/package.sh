@@ -49,7 +49,7 @@ fi
 
 MINOS="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")"
 # Check the emulator closure before modifying the app. The app is checked after embedding.
-python3 "$CHECK" --minos "$MINOS" "$DYLIB"
+python3 "$CHECK" --no-weak-imports --minos "$MINOS" "$DYLIB"
 
 FRAMEWORKS="$APP/Contents/Frameworks"
 mkdir -p "$FRAMEWORKS"
@@ -67,7 +67,7 @@ copy_with_deps() {
     case "$COPIED" in *" $base "*) return ;; esac
     COPIED="$COPIED$base "
 
-    python3 "$CHECK" --minos "$MINOS" "$src"
+    python3 "$CHECK" --no-weak-imports --minos "$MINOS" "$src"
     local dst="$FRAMEWORKS/$base"
     if [ "$src" != "$dst" ]; then cp -f "$src" "$dst"; chmod u+w "$dst"; fi
     install_name_tool -id "@rpath/$base" "$dst"
@@ -115,7 +115,7 @@ copy_tool() {
     [ -f "$src" ] || { echo "missing required tool: $src" >&2; exit 1; }
     dst="$TOOLS/$base"
     if [ "${2:-host}" = host ] && file "$src" | grep -q Mach-O; then
-        python3 "$CHECK" --minos "$MINOS" "$src"
+        python3 "$CHECK" --no-weak-imports --minos "$MINOS" "$src"
         dst="$APP/Contents/MacOS/$base"
         HOST_TOOLS+=("$dst")
         # Remove the previous packaging layout's copy on incremental runs.
@@ -143,7 +143,7 @@ for tool in ideviceinstaller ideviceinfo idevicesyslog idevice_id iproxy idevice
 done
 # Explicitly ship dlopen libraries even when the command-line tools are static.
 for stem in libimobiledevice-1.0 libplist-2.0; do
-    python3 "$CHECK" --minos "$MINOS" "$DEPS/lib/$stem.dylib"
+    python3 "$CHECK" --no-weak-imports --minos "$MINOS" "$DEPS/lib/$stem.dylib"
     copy_with_deps "$DEPS/lib/$stem.dylib"
     canonical="$(python3 -c 'import os,sys; print(os.path.basename(os.path.realpath(sys.argv[1])))' "$DEPS/lib/$stem.dylib")"
     if [ "$canonical" != "$stem.dylib" ]; then
@@ -267,13 +267,23 @@ echo "sealing…"
 python3 "$CHECK" --minos "$MINOS" --bundle "$APP" \
     "$APP_BIN" "$FRAMEWORKS"/*.dylib "${HOST_TOOLS[@]}"
 
+# Ad-hoc signatures have no Team ID, so hardened library validation cannot
+# establish shared identity between a helper and its bundled dylibs. Use plain
+# ad-hoc signing for local builds. Identity-signed helpers retain the hardened
+# runtime and its same-Team-ID library validation without entitlement exceptions.
+sign_nested_code() {
+    local options=runtime
+    [ "$SIGN_ID" != "-" ] || options=0
+    codesign -f -o "$options" -s "$SIGN_ID" "$1"
+}
+
 # Sign inside-out: frameworks first, then the app with entitlements.
 echo "signing (id: $SIGN_ID)…"
 for f in "$FRAMEWORKS"/*.dylib "${HOST_TOOLS[@]}"; do
     [ -L "$f" ] && continue
     # Scripts are not signable and do not need to be; the app's signature covers
     # them as resources.
-    [ -f "$f" ] && file "$f" | grep -q Mach-O && codesign -f -o runtime -s "$SIGN_ID" "$f"
+    [ -f "$f" ] && file "$f" | grep -q Mach-O && sign_nested_code "$f"
 done
 codesign -f -o runtime --entitlements "$ENTITLEMENTS" -s "$SIGN_ID" "$APP"
 codesign --verify --deep --strict "$APP"

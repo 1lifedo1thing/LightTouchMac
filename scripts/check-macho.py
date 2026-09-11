@@ -65,12 +65,17 @@ def dependencies(path, inherited=(), executable=None):
     return resolved, search, minimum
 
 
-def check(path, target, bundle=None, inherited=(), executable=None, seen=None):
+def check(path, target, bundle=None, inherited=(), executable=None, seen=None, no_weak_imports=False):
     seen = set() if seen is None else seen
     path = path.resolve()
     if path in seen:
         return
     seen.add(path)
+    if no_weak_imports:
+        imports = run('nm', '-arch', 'arm64', '-m', str(path))
+        weak = re.findall(r'\(undefined\)\s+weak external (\S+)', imports)
+        if weak:
+            raise ValueError(f'{path}: unexpected weak imports in native code: {", ".join(sorted(weak))}')
     deps, search, minimum = dependencies(path, inherited, executable)
     if version(minimum) > version(target):
         raise ValueError(f'{path}: requires macOS {minimum}, app supports {target}')
@@ -78,7 +83,7 @@ def check(path, target, bundle=None, inherited=(), executable=None, seen=None):
     for name, dep in deps:
         if bundle and (name.startswith('/') or not dep.is_relative_to(bundle.resolve())):
             raise ValueError(f'{path}: dependency escapes relocatable bundle: {name}')
-        check(dep, target, bundle, search, executable, seen)
+        check(dep, target, bundle, search, executable, seen, no_weak_imports)
 
 
 def main():
@@ -87,6 +92,8 @@ def main():
     parser.add_argument('--bundle', type=pathlib.Path)
     parser.add_argument('--deps', action='store_true')
     parser.add_argument('--rpaths', action='store_true')
+    parser.add_argument('--no-weak-imports', action='store_true',
+                        help='Reject optional imports in native code; omit for availability-guarded Swift app code')
     parser.add_argument('paths', type=pathlib.Path, nargs='+')
     args = parser.parse_args()
     try:
@@ -100,7 +107,8 @@ def main():
                 executable = path.resolve().parent
                 if args.bundle and path.suffix == '.dylib':
                     executable = args.bundle / 'Contents/MacOS'
-                check(path, args.minos, args.bundle, executable=executable)
+                check(path, args.minos, args.bundle, executable=executable,
+                      no_weak_imports=args.no_weak_imports)
     except (ValueError, subprocess.CalledProcessError) as error:
         sys.exit(str(error))
 

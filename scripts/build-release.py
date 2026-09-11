@@ -20,7 +20,9 @@ GUEST_COMPONENTS = ('armv6-toolchain', 'it-gles', 'it-instprogress', 'it-halt', 
                     'it-status', 'it-media', 'it-proxy', 'it-orientation')
 SOURCE_EXCLUSIONS = {'.git', '.build', 'dist', '__pycache__', 'xcuserdata', '.DS_Store'}
 NATIVE_RECIPES = frozenset(('scripts/build-package-native.sh', 'scripts/build-static-deps.sh',
-                           'scripts/dependency-sources.py', 'build-support/dependencies.json'))
+                           'scripts/dependency-sources.py', 'build-support/dependencies.json',
+                           'build-support/patches/glib-pipe2-availability.patch',
+                           'scripts/test-glib-compat.py', 'scripts/check-macho.py'))
 FFMPEG_PATCHES = ('h264-chunk-er.patch', 'h264-cavlc-pcm-offset.patch')
 
 
