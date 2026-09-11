@@ -152,7 +152,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         // it styles and truncates itself to match the title. A custom titlebar
         // accessory was carrying this before — more code, its own constraints,
         // and it competed with the toolbar for space.
-        window?.subtitle = emulator.isRunning && !emulator.isSleeping
+        window?.subtitle = emulator.isRunning && !emulator.shuttingDown && !emulator.isSleeping
             ? (emulator.foregroundAppName ?? emulator.statusLine) : emulator.statusLine
         if emulator.isPoweredOff || emulator.isDead { deviceVC.screen.endLiveText() }
         deviceVC.screen.updatePowerPresentation()
@@ -234,7 +234,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
         task.arguments = ["-c", "sleep 1; open -n \"$1\"", "sh", Bundle.main.bundleURL.path]
         try? task.run()
-        NSApp.terminate(nil)
+        AppDelegate.requestTermination()
     }
     
     /// ⌘F / Edit ▸ Find: focus the Legacy Store search field in the toolbar.
@@ -790,7 +790,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
                 window?.toolbar?.validateVisibleItems()
                 if quitAfterRecording {
                     quitAfterRecording = false
-                    NSApp.terminate(nil)
+                    AppDelegate.requestTermination()
                 }
             }
             do {
@@ -836,12 +836,10 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     /// one click to collect means the next report arrives with its evidence.
     private var logWindow: LogWindowController?
     private var diagnosticLogs: [URL] {
-        [Bundled.stateDirectory.appendingPathComponent("app.log"),
-         Bundled.stateDirectory.appendingPathComponent("app.log.1"),
-         Bundled.stateDirectory.appendingPathComponent("serial.log"),
-         Bundled.stateDirectory.appendingPathComponent("serial.log.1"),
-         Bundled.workDirectory.appendingPathComponent("usbmuxd.log"),
-         Bundled.workDirectory.appendingPathComponent("usbmuxd.log.1")]
+        ["app.log", "serial.log", "usbmuxd.log", "native.log"].flatMap { name in
+            [Bundled.logsDirectory.appendingPathComponent(name),
+             Bundled.logsDirectory.appendingPathComponent(name + ".1")]
+        }
     }
 
     @objc func showDeviceLogs(_ sender: Any?) {
@@ -861,6 +859,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
     private func writeDiagnostics(to dest: URL) async {
         await AppEventLog.shared.flush()
+        NativeLogging.flush()
         let logs = diagnosticLogs + [Bundled.workDirectory.appendingPathComponent("session.env")]
         let info = """
         LightTouchMac diagnostics

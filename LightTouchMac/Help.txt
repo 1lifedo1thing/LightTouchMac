@@ -9,7 +9,7 @@ Keyboard access
 Turn off Device → Send Keyboard Input to Device, then choose View → Focus Device Screen. Arrow keys move a visible pointer. Hold Space to touch and use arrows to drag; release Space to lift the finger. Shift-arrow also drags until you release the arrow keys or Shift. The pointer stops interacting when the device sleeps or loses focus. Turn keyboard input back on to type into guest apps. Mac Command and Control shortcuts, including VoiceOver, stay with macOS.
 
 Motion and controllers
-Drag beside the device to roll it. Two-finger scrolling beside it controls roll and pitch. Hold Option and use the arrow keys to tilt; Option–Space shakes. The Motion toolbar menu selects Upright or Flat and keyboard tilt speed. The small horizon appears while tilted; click it to level the device.
+Drag the frame to turn the iPod left/right or tip it forward/back. Two-finger scrolling outside the screen does the same and follows Natural Scrolling. Rotate with two fingers outside the screen (or hold Option anywhere) to roll the iPod for tilt games. Releasing a gesture returns it to rest. Hold Option and use the arrow keys to tilt; Option–Space shakes. The Motion toolbar menu selects Upright or Flat and keyboard tilt speed. The small horizon appears while tilted; click it to level the device.
 
 A connected game controller uses the left stick for tilt, A to hold a screen point, Menu for Home, and Options to shake. Settings selects the stick response and A-button point, expressed as percentages from the screen’s top-left corner. Input works while the device screen has keyboard focus and the device is awake. Controller release, disconnection, and switching to mouse input release its touch.
 

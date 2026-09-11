@@ -55,7 +55,7 @@ enum MainMenuBuilder {
         menu.addItem(item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.option, .command]))
         menu.addItem(item("Show All", #selector(NSApplication.unhideAllApplications(_:))))
         menu.addItem(.separator())
-        menu.addItem(item("Quit \(appName)", #selector(NSApplication.terminate(_:)), "q"))
+        menu.addItem(item("Quit \(appName)", #selector(AppDelegate.quit(_:)), "q"))
         return menu
     }
     

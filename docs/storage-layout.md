@@ -12,10 +12,12 @@ schedule. See [Using the file system effectively](https://developer.apple.com/do
 
 ## Current locations and ownership
 
-`State` below means `~/Library/Application Support/LightTouchMac`. An explicit
-`LTM_STATE_DIR` replaces that root for development and verification. Existing
-durable state stays at this established location; this cleanup does not rename
-the whole directory to the bundle identifier.
+`State` below means `~/Library/Application Support/gold.samhenri.LightTouchMac`.
+`Logs` means `~/Library/Logs/gold.samhenri.LightTouchMac`. An explicit
+`LTM_STATE_DIR` replaces the state root and places logs in `State/Logs`, keeping
+verification runs completely separate from normal user data. The first launch
+of this build atomically renames the legacy `Application Support/LightTouchMac`
+directory. See migration behavior below.
 
 | Location | Contents and purpose | Lifetime and cleanup |
 | --- | --- | --- |
@@ -28,9 +30,10 @@ the whole directory to the bundle identifier.
 | `~/Library/Caches/gold.samhenri.LightTouchMac/AppMetadata` | Installed-app display names, icons, and `index.json` | Disposable metadata. An isolated run uses `State/Caches/AppMetadata`. Missing metadata falls back to the device-reported name; installs populate the cache again. |
 | `State/AppCache` | Legacy metadata location | Moved atomically to the new cache when no destination exists. See migration exceptions below. |
 | `State/work/usbmuxd-conf` | System configuration and device pairing records | Durable daemon state, copied from bundled seed once. Keep across launches; never include in a generic scratch-directory deletion. |
-| `State/work/session.env`, `usbmuxd.pid` | Helper connection information and owned daemon PID | Rewritten for a new session. Stop removes the PID; stale-daemon recovery uses it after an interrupted app run. `session.env` remains until overwritten. |
-| `State/app.log`, `.1` | App events | Current plus previous generation; each is approximately 1 MB, with bounded individual messages. |
-| `State/serial.log`, `.1`; `State/work/usbmuxd.log`, `.1` | QEMU serial and USB daemon output | One previous generation, rotated before the writer opens the new log. Each running session can still grow without a byte limit. |
+| `State/work/session.env`, `usbmuxd.pid` | Helper connection information and owned daemon PID | Rewritten for a new session. Normal stop removes both files; verified stale-daemon recovery uses the PID after an interrupted app run. Session connection files are private (0600). |
+| `Logs/app.log`, `.1` | App events | Each generation is at most 1,000,000 bytes. App events also use unified logging under the bundle-ID subsystem, with dynamic text private in the unified log. |
+| `Logs/serial.log`, `.1`; `Logs/usbmuxd.log`, `.1`; `Logs/native.log`, `.1` | Guest serial, USB daemon stdout/stderr, and the app process's native stdout/stderr (including linked QEMU and libraries) | Each stream has current plus previous generation, each at most 1,000,000 bytes. Pipe readers drain into a rotating app-owned writer, so long sessions remain bounded without truncating live child descriptors. The four streams total at most 8 MB. |
+| System temporary directory: `LightTouch-serial-<UUID>/serial.in`, `.out` | Private FIFO endpoints for QEMU serial capture | Removed synchronously on normal app stop while open descriptors stay usable; full reader teardown occurs after QEMU returns. |
 | `State/web-proxy.json`, `web-proxy.conf` | UI preferences and the helper's plain-text routing representation | Two intentional representations of the same setting, written atomically. |
 | `State/web-proxy.conf.ca.pem`, `.ca.der`, `.ca.lock` | Proxy CA identity, exported certificate, and lock | Persistent identity reused across launches; guest trust refers to this certificate. Do not treat as cache or change its lifetime casually. |
 | `State/web-proxy.conf.archive-gate`, `.archive-cache-XX` | Request cooldown and archived-response cache | 64 slots, each capped near 2 MiB, roughly 128 MiB total. Responses expire logically after a day; slot files remain until replaced. |
@@ -50,6 +53,24 @@ commands belong to the emulated device, not the Mac's `/tmp` directory.
 
 ## Changes made in this cleanup
 
+- Durable state moves as a complete directory to the bundle-ID location,
+  preserving base/overlay/NOR pairs, IPA archives, pairing records, proxy CA,
+  file identities and recovery state. Legacy absolute active-image pointers
+  become relative paths before the move, so they remain valid on either side
+  of an interrupted migration. If both roots contain data, or a move/pointer
+  validation fails, startup stops and preserves the existing data; it does not
+  merge roots or create a replacement device. A live older app must stop first.
+  A verified orphan usbmuxd from a previous crash is stopped before migration;
+  PID identity, executable bundle, owner and parent are checked before signaling.
+- Ordinary logs use the standard Logs directory with private directory/file
+  permissions and bounded generations. Migration keeps the newest two distinct
+  bounded tails of each owned old log, stages both before publication, and
+  removes legacy sources only after successful publication. Unrelated files,
+  pairing records and CA material are never part of log cleanup. Failed log
+  migration preserves the old sources for a later retry. Native logging uses
+  a pipe, so disk-write failure still drains output instead of wedging a helper.
+  App events use `Logger` rather than `NSLog`, avoiding duplicate events in the
+  native stream. Diagnostics and the log viewer use the same locations.
 - Metadata uses the standard Caches location and respects `LTM_STATE_DIR`.
   Migration moves only the owned legacy `AppCache`, with no duplicate on normal
   success. If migration fails, the original remains usable. If both locations
@@ -105,13 +126,11 @@ download size through user-supplied firmware is a separate effort.
 
 ## Remaining focused follow-ups
 
-1. **Separate mixed-lifetime work and logs.** `work` currently contains pairing
-   records, per-run connection files, and disposable downloads. Move only
-   short-lived jobs to owned temporary directories. Give logs a dedicated
-   `~/Library/Logs/gold.samhenri.LightTouchMac` location with compatible diagnostic
-   and helper references, and bound long-running serial/usbmuxd output. Apple
-   identifies Logs as the conventional log location in
-   [macOS Library Directory Details](https://developer.apple.com/library/archive/documentation/FileManagement/Conceptual/FileSystemProgrammingGuide/MacOSXDirectories/MacOSXDirectories.html).
+1. **Separate remaining mixed-lifetime work.** `work` no longer holds logs,
+   but still contains durable pairing records, per-session control files and
+   disposable catalog downloads. Its name is historical, not a promise that
+   the entire directory can be deleted. Move only short-lived download jobs
+   to owned temporary directories; never sweep the pairing subtree.
 2. **Move only proxy response cache data to Caches.** The helper currently
    derives cache, certificate, and cooldown paths from one config filename.
    Splitting these needs explicit helper path inputs and migration; moving the
@@ -137,9 +156,34 @@ download size through user-supplied firmware is a separate effort.
    dependency patch should atomically replace these files inside its configured
    app-owned directory. It does not use the Mac's shared pairing directory.
 
+## Logging boundaries
+
+The Mac's ordinary logs belong in `Library/Logs`, while Application Support
+contains durable app-managed data under the bundle identifier. These follow
+[Apple's macOS Library directory conventions](https://developer.apple.com/library/archive/documentation/FileManagement/Conceptual/FileSystemProgrammingGuide/MacOSXDirectories/MacOSXDirectories.html).
+The app event stream also participates in [unified logging](https://developer.apple.com/documentation/os/logging).
+
+Host device operations generally report failures through app events and the UI;
+short-lived tools capture bounded error output for their operation. Metadata
+probing intentionally discards expected `unzip` failures and falls back to
+reported names/icons. The Terminal window owns its interactive SSH output.
+The HTTP proxy deliberately suppresses stderr in guest-forwarding mode because
+libslirp mixes it into the guest's network connection; redirecting that stream
+into native logging would corrupt the protocol. Its configuration errors reach
+the app where the helper's exit status is available. This change does not add a
+second proxy log channel.
+
+Guest helper logs and `/var/log` paths belong to the emulated iPod filesystem,
+not the Mac's Library. QEMU's explicit developer trace/dump environment options
+can still write to the paths the developer requests; the app does not enable
+those options or sweep arbitrary developer-selected files. Ordinary QEMU
+stdout/stderr tracing is bounded by `native.log`.
+
 ## Source references and validation
 
-- [Path ownership](../LightTouchMac/Bundled.swift),
+- [State/log migration](../LightTouchMac/StorageLocations.swift),
+  [bounded native pipe capture](../LightTouchMac/NativeLogging.swift),
+  [path ownership](../LightTouchMac/Bundled.swift),
   [metadata migration](../LightTouchMac/AppMetadataCache.swift),
   [device-state persistence](../LightTouchMac/DeviceStateStorage.swift),
   [controller extraction and lifecycle](../LightTouchMac/EmulatorController.swift).
@@ -157,3 +201,13 @@ download size through user-supplied firmware is a separate effort.
   cleanup, real ZIP contents, concurrent exports, cancellation and child teardown, preservation of existing
   destinations, and cleanup of owned staging. It creates only isolated fixtures
   and does not launch QEMU or inspect private user state.
+
+- [Storage-location regression check](../tests/check-storage-locations.py)
+  exercises the production migration with isolated Library fixtures, including
+  preserved inode/base/overlay/identity data, absolute pointers, conflicting
+  roots, rename failure and retry, override isolation, log collisions and
+  symlinks, real active and orphan helper processes, sustained log volume,
+  EOF teardown, safe FIFO unlink with an open writer and immediate cleanup.
+  [App-event tests](../tests/check-app-events.py) cover concurrent formatting,
+  permissions, rotation, bounded messages and file-write failure. No validation
+  invokes migration on the user's actual Application Support directory.

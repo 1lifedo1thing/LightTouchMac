@@ -66,14 +66,14 @@ final class DisplayView: NSView {
     /// orientation didn't change — mirrors how orientationChanged drives it.
     private var pendingAnimatedLayout = false
 
-    private enum PowerPresentation: Equatable { case awake, preparing, sleeping, poweredOff, shuttingDown }
+    private enum PowerPresentation: Equatable { case awake, sleeping, poweredOff, shuttingDown }
     private var powerPresentation: PowerPresentation = .awake
     private var powerBadge: NSStackView?
 
     func updatePowerPresentation() {
         guard let emulator else { return }
         let next: PowerPresentation = emulator.isPoweredOff ? .poweredOff
-            : emulator.shuttingDown ? .shuttingDown : emulator.preparingMedia ? .preparing : (emulator.isSleeping && !isShowingLiveText) ? .sleeping : .awake
+            : emulator.shuttingDown ? .shuttingDown : (emulator.isSleeping && !emulator.preparingMedia && !isShowingLiveText) ? .sleeping : .awake
         guard next != powerPresentation else { return }
         powerPresentation = next
         powerBadge?.removeFromSuperview()
@@ -81,7 +81,7 @@ final class DisplayView: NSView {
         CATransaction.begin()
         CATransaction.setAnimationDuration(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.3)
         shellLayer.opacity = next == .awake ? 1 : next == .sleeping ? 0.45 : 0.25
-        contentLayer.isHidden = next == .poweredOff || next == .preparing
+        contentLayer.isHidden = next == .poweredOff
         modelView?.alphaValue = CGFloat(shellLayer.opacity)
         modelView?.setScreenOff(next != .awake)
         CATransaction.commit()
@@ -90,13 +90,7 @@ final class DisplayView: NSView {
             return
         }
         let symbol: NSView
-        if next == .preparing {
-            let spinner = NSProgressIndicator()
-            spinner.style = .spinning
-            spinner.controlSize = .regular
-            spinner.startAnimation(nil)
-            symbol = spinner
-        } else if next == .sleeping {
+        if next == .sleeping {
             let container = NSView(frame: CGRect(x: 0, y: 0, width: 160, height: 128))
             let sleeping = SleepingAnimationView()
             sleeping.frame = container.bounds
@@ -114,15 +108,18 @@ final class DisplayView: NSView {
             power.textColor = .white
             symbol = power
         }
-        let title = next == .preparing ? "Finishing device setup…" : next == .sleeping ? "Sleeping" : next == .poweredOff ? "Powered Off" : "Powering off…"
-        let label = NSTextField(labelWithString: title)
-        label.font = .systemFont(ofSize: 15, weight: .medium)
-        label.textColor = .white
-        let stack = NSStackView(views: [symbol, label])
+        let title = next == .sleeping ? "Sleeping" : next == .poweredOff ? "Powered Off" : "Powering off…"
+        let stack = NSStackView(views: [symbol])
+        if next == .shuttingDown {
+            let label = NSTextField(labelWithString: title)
+            label.font = .systemFont(ofSize: 15, weight: .medium)
+            label.textColor = .white
+            stack.addArrangedSubview(label)
+        }
         stack.appearance = NSAppearance(named: .darkAqua)
         stack.orientation = .vertical
         stack.spacing = 10
-        if next != .shuttingDown && next != .preparing {
+        if next != .shuttingDown {
             let button = NSButton(title: next == .poweredOff ? "Power On" : "Wake Up", target: self, action: #selector(wakeDevice(_:)))
             button.bezelStyle = .rounded
             stack.addArrangedSubview(button)
@@ -143,7 +140,10 @@ final class DisplayView: NSView {
     }
 
     private var modelView: DeviceModelView?
+    private var pendingModelView: DeviceModelView?
     private var modelLoadTask: Task<Void, Never>?
+    private var modelFallbackTask: Task<Void, Never>?
+    private var modelPresentationFinished = false
     private var lastShakeGeneration: UInt64 = 0
     private let contentLayer = CALayer()
     private let shellLayer = CALayer()
@@ -223,23 +223,39 @@ final class DisplayView: NSView {
         addSubview(homeButton)
         // macOS 14 keeps the photo shell; RealityKit texture rotation requires 15.
         if #available(macOS 15, *), let url = Bundle.main.url(forResource: "N72", withExtension: "usdz") {
+            // Give RealityKit one second to present the device itself. If it
+            // cannot, keep the photo for this window instead of swapping two
+            // different silhouettes after the user has already started looking.
+            shellLayer.isHidden = true
+            homeButton.isHidden = true
+            modelFallbackTask = Task { [weak self] in
+                do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                self?.showStaticDevice()
+            }
             modelLoadTask = Task { [weak self] in
                 do {
                     let model = try await DeviceModelView(url: url)
                     try Task.checkCancellation()
-                    guard let self else { return }
-                    addSubview(model, positioned: .below, relativeTo: homeButton)
+                    guard self?.stageModelForPresentation(model) == true else { return }
+                    let frameReady = await model.prepareFirstFrame()
+                    try Task.checkCancellation()
+                    // Do not retain the display across a renderer callback. A
+                    // stalled snapshot must not keep a closed window alive.
+                    guard let self, !modelPresentationFinished else { return }
+                    guard frameReady else { showStaticDevice(); return }
+                    modelPresentationFinished = true
+                    modelFallbackTask?.cancel()
+                    pendingModelView = nil
                     modelView = model
-                    shellLayer.isHidden = true
                     model.alphaValue = CGFloat(shellLayer.opacity)
                     model.setScreenOff(powerPresentation != .awake)
-                    if let image = captureFrame(includeTouches: false) { model.updateFrame(image) }
                     needsLayout = true
                 } catch is CancellationError {} catch {
                     NSLog("N72 model could not load: %@", error.localizedDescription)
+                    self?.showStaticDevice()
                 }
             }
-        }
+        } else { modelPresentationFinished = true }
         attitudeIndicator.target = self
         attitudeIndicator.action = #selector(levelAttitude(_:))
         attitudeIndicator.isHidden = true
@@ -260,6 +276,29 @@ final class DisplayView: NSView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    private func stageModelForPresentation(_ model: DeviceModelView) -> Bool {
+        guard !modelPresentationFinished else { return false }
+        addSubview(model, positioned: .below, relativeTo: homeButton)
+        pendingModelView = model
+        model.alphaValue = 0
+        model.setScreenOff(powerPresentation != .awake)
+        if let image = captureFrame(includeTouches: false) { model.updateFrame(image) }
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+        return true
+    }
+
+    private func showStaticDevice() {
+        guard !modelPresentationFinished else { return }
+        modelPresentationFinished = true
+        modelLoadTask?.cancel()
+        modelFallbackTask?.cancel()
+        pendingModelView?.removeFromSuperview()
+        pendingModelView = nil
+        shellLayer.isHidden = false
+        needsLayout = true
+    }
+
     override var isFlipped: Bool { true }          // y-down, matching the guest
     override var acceptsFirstResponder: Bool { true }
 
@@ -271,6 +310,8 @@ final class DisplayView: NSView {
         // masked because closing the window usually quits the app.
         if window == nil {
             modelLoadTask?.cancel()
+            modelFallbackTask?.cancel()
+            wheelTiltResetTask?.cancel()
             displayLink?.invalidate()
             displayLink = nil
             NotificationCenter.default.removeObserver(
@@ -391,10 +432,11 @@ final class DisplayView: NSView {
         }
         shellLayer.position = viewCenter
         shellLayer.transform = motionTransform(angle: angle, scale: scale)
-        homeButton.isHidden = modelView == nil && (tiltAngle != 0 || pitchAngle != 0)
+        homeButton.isHidden = !modelPresentationFinished || (modelView == nil && (tiltAngle != 0 || pitchAngle != 0 || yawAngle != 0))
         CATransaction.commit()
 
         modelView?.frame = usable
+        pendingModelView?.frame = usable
         updateModelPose(animated: animate)
         if let modelView, let rect = modelView.homeButtonRect {
             homeButton.frame = convert(rect, from: modelView)
@@ -488,7 +530,7 @@ final class DisplayView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         contentLayer.contents = image
-        modelView?.updateFrame(image)
+        (modelView ?? pendingModelView)?.updateFrame(image)
         CATransaction.commit()
     }
 
@@ -706,6 +748,9 @@ final class DisplayView: NSView {
     /// Tilt driven by a two-finger scroll off the panel.
     private var scrollPitch = 0.0
     private var pitchAngle: CGFloat = 0
+    private var yawAngle: CGFloat = 0
+    private var rotatingChassis = false
+    private var wheelTiltResetTask: Task<Void, Never>?
     private var motionRestAngle: CGFloat?
     private var tiltKeys = Set<UInt16>()
     private var consumedTiltKeys = Set<UInt16>()
@@ -802,16 +847,19 @@ final class DisplayView: NSView {
     /// over naturally. A two-finger swipe is the same stream at speed, so it
     /// needs no separate case.
     ///
-    /// Off the panel the gesture tilts the device instead: side-to-side runs
-    /// the accelerometer, and letting go springs it back upright.
+    /// Off the panel, scrolls turn and tip the device. A two-finger twist
+    /// controls roll; letting go springs either gesture back to rest.
     override func scrollWheel(with event: NSEvent) {
+        guard !rotatingChassis && !tilting else { return }
+        // Host tilt ends with the fingers. Momentum belongs to content
+        // scrolling, and must not start a second model gesture at the cursor.
+        if !scrollTilting && scrollPoint == nil && !event.momentumPhase.isEmpty { return }
         if scrollPoint == nil && !scrollTilting && (event.phase == .began || (event.phase.isEmpty && event.momentumPhase.isEmpty))
             && (!cursorOverPanel(event) || event.modifierFlags.contains(.option)) {
             beginScrollTilt()
         }
         if scrollTilting {
             scrollTiltChanged(event)
-            if event.phase.isEmpty && event.momentumPhase.isEmpty { scrollTilting = false }
             return
         }
         guestScrollDrag(event)
@@ -875,9 +923,8 @@ final class DisplayView: NSView {
     private func wheelFlick(_ event: NSEvent) {
         let b = contentLayer.bounds
         guard b.width > 0, b.height > 0, var p = clampedPanelPoint(event) else { return }
-        // scrollingDelta* is 0 for a legacy wheel; deltaY carries the clicks.
-        let dx = event.scrollingDeltaX != 0 ? event.scrollingDeltaX : event.deltaX * 10
-        let dy = event.scrollingDeltaY != 0 ? event.scrollingDeltaY : event.deltaY * 10
+        let delta = Self.scrollMovement(event)
+        let dx = delta.dx, dy = delta.dy
         let d = rotatedPanelDelta(dx, dy)
         sendVisualTouch(0, Int32(QEMU_IOS_TOUCH_BEGIN), Double(p.x), Double(p.y))
         p.x = min(max(p.x + d.dx / b.width, 0), 1)
@@ -905,23 +952,37 @@ final class DisplayView: NSView {
 
     private func beginScrollTilt() {
         guard touchInteractionEnabled else { return }
+        wheelTiltResetTask?.cancel()
         motionRestAngle = Self.layerAngle(emulator?.rotationDegrees ?? 0)
+        scrollTilt = yawAngle
+        scrollPitch = pitchAngle
         scrollTilting = true
         shellLayer.removeAnimation(forKey: "tiltSnap")
     }
 
     private func scrollTiltChanged(_ event: NSEvent) {
+        guard event.momentumPhase.isEmpty else { return }
         switch event.phase {
         case .began, .changed, []:
-            // Sideways fingers roll the device. A full trackpad sweep is about
-            // a quarter turn, which is as far as any tilt game needs.
-            scrollTilt = min(max(scrollTilt + event.scrollingDeltaX * Self.scrollTiltGain,
+            // AppKit already applied Natural Scrolling. Use the same content
+            // movement convention as the LCD, without inverting it again.
+            let delta = Self.scrollMovement(event)
+            scrollTilt = min(max(scrollTilt + delta.dx * Self.scrollTiltGain,
                                  -.pi / 3), .pi / 3)
-            scrollPitch = min(max(scrollPitch + event.scrollingDeltaY * Self.scrollTiltGain, -.pi / 3), .pi / 3)
-            tiltAngle = scrollTilt
+            scrollPitch = min(max(scrollPitch + delta.dy * Self.scrollTiltGain, -.pi / 3), .pi / 3)
+            yawAngle = scrollTilt
             pitchAngle = scrollPitch
             setShellAngle(restAngle + tiltAngle)
             sendAttitude()
+            // Wheel mice have no ended event. End a burst after a short idle
+            // interval so they cannot leave the device tilted indefinitely.
+            if event.phase.isEmpty {
+                wheelTiltResetTask?.cancel()
+                wheelTiltResetTask = Task { [weak self] in
+                    do { try await Task.sleep(for: .milliseconds(180)) } catch { return }
+                    self?.endTilt()
+                }
+            }
         case .ended, .cancelled:
             scrollTilt = 0
             endTilt()          // springs the shell back and restores gravity
@@ -930,14 +991,39 @@ final class DisplayView: NSView {
         }
     }
 
+    /// Precise deltas are points; conventional wheels report lines. Preserve
+    /// both signs because NSEvent has already honored the system preference.
+    private static func scrollMovement(_ event: NSEvent) -> CGVector {
+        let pointsPerUnit: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 10
+        return CGVector(dx: event.scrollingDeltaX * pointsPerUnit,
+                        dy: event.scrollingDeltaY * pointsPerUnit)
+    }
+
+    override func rotate(with event: NSEvent) {
+        guard touchInteractionEnabled && !tilting && scrollPoint == nil && !pinchingGuest else { return }
+        if event.phase == .began && (!cursorOverPanel(event) || event.modifierFlags.contains(.option)) {
+            endTilt()
+            motionRestAngle = Self.layerAngle(emulator?.rotationDegrees ?? 0)
+            rotatingChassis = true
+        }
+        guard rotatingChassis else { return }
+        if event.phase == .ended || event.phase == .cancelled { endTilt(); return }
+        // NSEvent rotation is incremental counterclockwise degrees; this
+        // flipped view's roll is clockwise radians. Scrolling preferences do
+        // not affect a physical two-finger twist.
+        tiltAngle = min(max(tiltAngle - CGFloat(event.rotation) * .pi / 180, -.pi / 3), .pi / 3)
+        setShellAngle(restAngle + tiltAngle)
+        sendAttitude()
+    }
+
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         guard touchInteractionEnabled else { return }
-        if let grab = chassisGrabAngle(event) {
+        if isChassisEvent(event) {
+            endTilt()
             motionRestAngle = Self.layerAngle(emulator?.rotationDegrees ?? 0)
             shellLayer.removeAnimation(forKey: "tiltSnap")
             tilting = true
-            grabAngle = grab
             grabPoint = convert(event.locationInWindow, from: nil)
             return
         }
@@ -947,16 +1033,12 @@ final class DisplayView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         if tilting {
-            // Direct grabs rotate against the pointer; trackpad tilt keeps its
-            // independent scrolling convention.
-            if modelView != nil {
-                let point = convert(event.locationInWindow, from: nil)
-                tiltAngle = min(max((grabPoint.x - point.x) * 0.004, -.pi / 4), .pi / 4)
-                pitchAngle = min(max((grabPoint.y - point.y) * 0.004, -.pi / 4), .pi / 4)
-            } else {
-                let delta = grabAngle - mouseAngle(event)
-                tiltAngle = atan2(sin(delta), cos(delta)) * Self.rotationGain
-            }
+            // Turn the face toward the pointer about fixed view axes. Avoid
+            // polar/roll math here: diagonals should not spin the Home button
+            // around the screen, regardless of where the chassis was grabbed.
+            let point = convert(event.locationInWindow, from: nil)
+            yawAngle = min(max((point.x - grabPoint.x) * 0.004, -.pi / 4), .pi / 4)
+            pitchAngle = min(max((point.y - grabPoint.y) * 0.004, -.pi / 4), .pi / 4)
             setShellAngle(restAngle + tiltAngle)
             sendAttitude()
             return
@@ -973,14 +1055,9 @@ final class DisplayView: NSView {
     // MARK: - Tilt (drag the chassis to rotate; the accelerometer follows)
     //
     // Grabbing the shell anywhere outside the screen — bezel or corners — and
-    // dragging tilts the 3D device along the screen axes. The photo fallback
-    // retains its polar rotation gesture. Both feed gravity to tilt games.
+    // dragging turns the device about the screen's vertical/horizontal axes.
+    // Two-finger rotation explicitly rolls it, including for tilt games.
     // Release springs the shell back to rest and restores resting gravity.
-
-    /// Degrees of device rotation per degree of drag around the shell's centre.
-    /// The calibration knob for how fine the tilt is: 1.0 tracks the cursor
-    /// exactly, lower trades that for precision. Tune here, not at the call site.
-    private static let rotationGain: CGFloat = 0.4
 
     /// Radians of device tilt per point of two-finger swipe, when the cursor is
     /// off the panel. Much gentler than a drag: a swipe has no anchor to hold
@@ -990,7 +1067,6 @@ final class DisplayView: NSView {
 
     private var tilting = false
     private var grabPoint = CGPoint.zero
-    private var grabAngle: CGFloat = 0   // mouse polar angle at grab
     private var tiltAngle: CGFloat = 0   // current drag delta from rest
 
     /// The shell layer's rest rotation for a guest orientation, signed so 270°
@@ -1005,29 +1081,15 @@ final class DisplayView: NSView {
     /// the same angle layout() starts from.
     private var restAngle: CGFloat { motionRestAngle ?? Self.layerAngle(emulator?.rotationDegrees ?? 0) }
 
-    /// If the press is on the chassis (inside the shell artwork, outside the
-    /// screen cutout), the mouse's polar angle around the shell centre; nil
-    /// otherwise, in which case the press is a guest touch. Converting through
-    /// the layer accounts for the current scale and rotation.
-    private func chassisGrabAngle(_ event: NSEvent) -> CGFloat? {
+    /// Keep direct manipulation on the chassis and guest touches on the LCD.
+    private func isChassisEvent(_ event: NSEvent) -> Bool {
         if let modelView {
-            return modelView.isChassis(modelView.convert(event.locationInWindow, from: nil)) ? mouseAngle(event) : nil
+            return modelView.isChassis(modelView.convert(event.locationInWindow, from: nil))
         }
-        guard let rootLayer = layer else { return nil }
+        guard modelPresentationFinished, let rootLayer = layer else { return false }
         let p = convert(event.locationInWindow, from: nil)
         let sp = shellLayer.convert(p, from: rootLayer)
-        guard shellLayer.bounds.contains(sp), !Self.screenCutout.contains(sp)
-        else { return nil }
-        return mouseAngle(event)
-    }
-
-    /// Polar angle of the mouse around the shell centre in view space. The
-    /// view is flipped (y-down), so a positive angle is visually clockwise —
-    /// the same handedness as a positive layer-transform rotation here, which
-    /// is what lets the drag delta feed the transform unconverted.
-    private func mouseAngle(_ event: NSEvent) -> CGFloat {
-        let p = convert(event.locationInWindow, from: nil)
-        return atan2(p.y - shellLayer.position.y, p.x - shellLayer.position.x)
+        return shellLayer.bounds.contains(sp) && !Self.screenCutout.contains(sp)
     }
 
     /// The same transform layout() computes, at an arbitrary angle, applied
@@ -1037,12 +1099,13 @@ final class DisplayView: NSView {
         transform.m34 = -1 / 1400
         transform = CATransform3DRotate(transform, angle, 0, 0, 1)
         transform = CATransform3DRotate(transform, -pitchAngle, 1, 0, 0)
+        transform = CATransform3DRotate(transform, yawAngle, 0, 1, 0)
         return CATransform3DScale(transform, scale, scale, 1)
     }
 
     private func updateModelPose(animated: Bool = false, spring: Bool = false) {
-        modelView?.pose(scale: appliedScale, rotation: emulator?.rotationDegrees ?? 0,
-                        roll: tiltAngle, pitch: pitchAngle, animated: animated, spring: spring)
+        (modelView ?? pendingModelView)?.pose(scale: appliedScale, rotation: emulator?.rotationDegrees ?? 0,
+                        roll: tiltAngle, pitch: pitchAngle, yaw: yawAngle, animated: animated, spring: spring)
     }
 
     private func projectedPanelPoint(_ point: CGPoint) -> CGPoint {
@@ -1054,7 +1117,7 @@ final class DisplayView: NSView {
     @objc private func levelAttitude(_ sender: Any?) { resetMotion() }
     private func sendAttitude() {
         attitudeIndicator.update(pitch: pitchAngle, roll: tiltAngle)
-        attitudeIndicator.isHidden = !touchInteractionEnabled || (abs(pitchAngle) < 0.001 && abs(tiltAngle) < 0.001)
+        attitudeIndicator.isHidden = !touchInteractionEnabled || (abs(pitchAngle) < 0.001 && abs(tiltAngle) < 0.001 && abs(yawAngle) < 0.001)
         let roll = emulator?.motionPose == .flat ? tiltAngle : restAngle + tiltAngle
         emulator?.setTilt(angle: roll, pitch: pitchAngle)
     }
@@ -1126,16 +1189,19 @@ final class DisplayView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         shellLayer.transform = motionTransform(angle: angle, scale: appliedScale)
-        homeButton.isHidden = modelView == nil && (tiltAngle != 0 || pitchAngle != 0)
+        homeButton.isHidden = !modelPresentationFinished || (modelView == nil && (tiltAngle != 0 || pitchAngle != 0 || yawAngle != 0))
         CATransaction.commit()
     }
 
     private func endTilt() {
+        wheelTiltResetTask?.cancel()
+        rotatingChassis = false
         tilting = false
         scrollTilting = false
         scrollTilt = 0
         scrollPitch = 0
         pitchAngle = 0
+        yawAngle = 0
         motionRestAngle = nil
         let from = shellLayer.presentation()?.transform ?? shellLayer.transform
         tiltAngle = 0

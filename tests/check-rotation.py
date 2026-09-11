@@ -14,7 +14,11 @@ import QuartzCore
 @MainActor final class Check {
  let shellLayer = CALayer(), contentLayer = CALayer()
  let homeButton = NSButton()
- var pitchAngle = 0.0, scrollPitch = 0.0
+ var pitchAngle = 0.0, scrollPitch = 0.0, yawAngle = 0.0
+ var wheelTiltResetTask: Task<Void, Never>?
+ var rotatingChassis = false, modelPresentationFinished = true
+ var modelView: NSObject?
+ func updateModelPose(animated: Bool = false, spring: Bool = false) {}
  var motionRestAngle: CGFloat?
  func sendAttitude() {}
  let emulator: Emulator? = nil

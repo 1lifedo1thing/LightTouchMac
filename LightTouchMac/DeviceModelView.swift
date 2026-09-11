@@ -44,7 +44,6 @@ final class DeviceModelView: NSView {
     self.home = home
     displayBounds = display.visualBounds(relativeTo: display)
     super.init(frame: .zero)
-    renderer.autoresizingMask = [.width, .height]
     addSubview(renderer)
     renderer.environment.background = .color(.clear)
     let anchor = AnchorEntity(world: .zero)
@@ -56,6 +55,7 @@ final class DeviceModelView: NSView {
     renderer.scene.addAnchor(anchor)
     camera.camera.near = 0.001
     camera.camera.far = 10
+    camera.camera.fieldOfViewOrientation = .vertical
     // A black seat closes the asset's gap, which otherwise exposes steel around Home.
     var rim = MeshDescriptor(name: "Home black gasket")
     var vertices: [SIMD3<Float>] = []
@@ -117,19 +117,28 @@ final class DeviceModelView: NSView {
   override func hitTest(_ point: NSPoint) -> NSView? { nil }
   override func layout() {
     super.layout()
+    updateViewport()
+  }
+  override func setFrameSize(_ newSize: NSSize) {
+    super.setFrameSize(newSize)
+    // AppKit can resize the backing view before its next layout pass. Update
+    // the drawable and its projection together, including during live resize.
+    updateViewport()
+  }
+  private func updateViewport() {
     renderer.frame = bounds
     chassisShadow.frame = bounds
+    camera.camera.fieldOfViewInDegrees = Float(
+      2 * atan(Double(max(renderer.bounds.height, 1)) / 6000) * 180 / .pi)
   }
 
-  func pose(scale: CGFloat, rotation: Int, roll: CGFloat, pitch: CGFloat, animated: Bool, spring: Bool = false) {
+  func pose(scale: CGFloat, rotation: Int, roll: CGFloat, pitch: CGFloat, yaw: CGFloat = 0, animated: Bool, spring: Bool = false) {
     self.rotation = rotation
     let rest = Float(rotation == 270 ? -90 : rotation) * .pi / 180
-    let units = Float(scale * 594 / 0.0499 / 10000)
+    let units = Float(scale * 594 / 10000) / displayBounds.extents.x
     let pose = Transform(
       scale: SIMD3(repeating: units),
-      rotation: simd_quatf(angle: Float(pitch), axis: [1, 0, 0])
-        * simd_quatf(angle: -Float(roll), axis: [0, 0, 1])
-        * simd_quatf(angle: -rest, axis: [0, 0, 1]), translation: .zero)
+      rotation: Self.orientation(rest: rest, roll: Float(roll), pitch: Float(pitch), yaw: Float(yaw)), translation: .zero)
     // Layout may repeat while a transition is running; only a new target replaces it.
     if targetPose != pose {
       if animated && targetPose != nil && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
@@ -142,8 +151,7 @@ final class DeviceModelView: NSView {
     }
     homeLighting.orientation = simd_quatf(angle: -rest, axis: [0, 0, 1])
     camera.position = [0, 0, 0.3 + units * displayBounds.max.z]
-    camera.camera.fieldOfViewInDegrees = Float(
-      2 * atan(Double(max(bounds.height, 1)) / 6000) * 180 / .pi)
+    updateViewport()
     let offset: SIMD2<Float>
     switch rotation {
     case 90: offset = [1, 0]
@@ -156,6 +164,22 @@ final class DeviceModelView: NSView {
     }
     updateScreenMaterial()
     advanceAnimations()
+  }
+  /// Pitch and yaw are about the camera's fixed axes. A diagonal drag turns
+  /// the face toward the pointer; only an explicit roll spins it in the plane.
+  static func orientation(rest: Float, roll: Float, pitch: Float, yaw: Float) -> simd_quatf {
+    simd_quatf(angle: yaw, axis: [0, 1, 0])
+      * simd_quatf(angle: pitch, axis: [1, 0, 0])
+      * simd_quatf(angle: -roll-rest, axis: [0, 0, 1])
+  }
+  /// A snapshot is a rendering fence: asset loading alone does not mean
+  /// RealityKit has prepared a drawable, lighting, and the first LCD texture.
+  func prepareFirstFrame() async -> Bool {
+    await withCheckedContinuation { continuation in
+      renderer.snapshot(saveToHDR: false) { image in
+        continuation.resume(returning: image != nil)
+      }
+    }
   }
   func updateFrame(_ image: CGImage) {
     do {

@@ -213,8 +213,14 @@ The emulator boots real iPod touch 2G firmware (bootrom, iBoot, NOR) and a
 prepared iOS 3.1.3 NAND image. These are Apple-copyrighted and are not in any
 of the three repos; a packaged app embeds your local copies from the selected
 `qemu-ios-files` input directory. The app never writes to the base image — per-user
-state (NAND overlay, snapshots, logs) lives in
-`~/Library/Application Support/LightTouchMac`.
+state (NAND overlay and snapshots) lives in
+`~/Library/Application Support/gold.samhenri.LightTouchMac`. The previous
+`LightTouchMac` directory migrates on launch; conflicting directories stop startup
+with an error so neither device is silently replaced. App, serial, usbmuxd and
+native diagnostics live in `~/Library/Logs/gold.samhenri.LightTouchMac`, with a
+bounded current and previous file for each stream. Device Logs and Export
+Diagnostics use those locations. `LTM_STATE_DIR` keeps both state and logs inside
+the supplied directory for isolated development and tests.
 
 
 ### Catalog and installation reliability (2026-09-04)

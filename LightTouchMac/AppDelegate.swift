@@ -8,6 +8,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var emulator: EmulatorController?
     private var settingsController: SettingsWindowController?
     private var helpController: NSWindowController?
+    private var awaitingTermination = false
+    private var terminationBackstop: Task<Void, Never>?
+
+    /// NSApplication's deferred quit runs a nested modal loop. Invoking it
+    /// inside a main-queue callback occupies that serial queue until quit
+    /// finishes, starving the Swift main-actor tasks needed to finish it.
+    /// A run-loop timer invokes AppKit without holding the dispatch queue.
+    /// System logout still uses applicationShouldTerminate's native reply.
+    static func requestTermination() {
+        guard (NSApp.delegate as? AppDelegate)?.awaitingTermination != true else { return }
+        let timer = Timer(timeInterval: 0, repeats: false) { _ in
+            MainActor.assumeIsolated {
+                guard (NSApp.delegate as? AppDelegate)?.awaitingTermination != true else { return }
+                NSApp.terminate(nil)
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    @objc func quit(_ sender: Any?) { Self.requestTermination() }
 
     @objc func showSettings(_ sender: Any?) {
         guard let emulator else { return }
@@ -79,11 +99,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MainMenuBuilder.install()
         #if DEBUG
         SpringBoardIcons.selfCheck()
-        Task { await abandonedWorkSelfCheck() }
         #endif
     }
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        do { try Bundled.requireStorage() }
+        catch {
+            let alert = NSAlert()
+            alert.alertStyle = .critical
+            alert.messageText = "Couldn’t open device storage"
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+            Self.requestTermination()
+            return
+        }
+        do { try NativeLogging.start() }
+        catch { logEvent("logging: native output capture unavailable: \(error.localizedDescription)") }
         let options = LaunchOptions.resolved()
 
         // Report missing device files up front. Booting without them dies deep
@@ -102,7 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             qemu-ios-files directory.
             """
             alert.runModal()
-            NSApp.terminate(nil)
+            Self.requestTermination()
             return
         }
 
@@ -119,6 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        terminationBackstop?.cancel()
         emulator?.stop()
     }
 
@@ -126,6 +158,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// unmounts. beginCleanShutdown requires explicit guest confirmation;
     /// native halt without PMU power-off remains a known limitation.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if awaitingTermination { return .terminateLater }
         if windowController?.finishRecordingBeforeQuit() == true { return .terminateCancel }
         guard let emulator else { return .terminateNow }
 
@@ -155,26 +188,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         guard !emulator.isDead, !emulator.isPoweredOff else { return .terminateNow }
 
-        // Quit must ALWAYS complete. .terminateLater hands AppKit an IOU, and
-        // if the completion never runs the app just sits there — ⌘Q appears to
-        // do nothing and the only way out is force-quit. Nothing below may hold
-        // the app hostage. Whichever finishes first wins, and replying twice is
-        // not allowed, hence the latch.
-        var replied = false
-        let reply = {
-            guard !replied else { return }
-            replied = true
-            NSApp.reply(toApplicationShouldTerminate: true)
+        awaitingTermination = true
+        let reply = { [weak self] in
+            // A guard can complete synchronously. Reply only after this
+            // delegate invocation has returned terminateLater to AppKit.
+            DispatchQueue.main.async {
+                guard let self, self.awaitingTermination else { return }
+                self.awaitingTermination = false
+                self.terminationBackstop?.cancel()
+                self.terminationBackstop = nil
+                NSApp.reply(toApplicationShouldTerminate: true)
+            }
         }
-        // DERIVED, not restated. This used to carry hand-written numbers that
-        // had drifted below the real ones, so ⌘Q could fire the backstop 25s
-        // into a 40s powerdown wait and kill QEMU mid-shutdown — the backstop
-        // causing the data loss it exists to bound. Typical quit is a few
-        // seconds; this is only the ceiling.
         let backstop = EmulatorController.cleanShutdownBudget
             + (EmulatorController.resumeOnLaunch ? EmulatorController.quitSnapshotBudget : 0)
-        DispatchQueue.main.asyncAfter(deadline: .now() + backstop) {
-            if !replied { logEvent("quit: shutdown did not finish in time — quitting anyway") }
+        terminationBackstop = Task {
+            do { try await Task.sleep(for: .seconds(backstop)) } catch { return }
+            logEvent("quit: shutdown did not finish in time — quitting anyway")
             reply()
         }
 

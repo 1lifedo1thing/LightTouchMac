@@ -553,27 +553,36 @@ struct DeviceServices: Sendable {
 /// Resume-once + a detached worker is what genuinely leaves the thread behind.
 func withDeadline<T: Sendable>(_ seconds: Double, _ operation: String,
                                _ work: @escaping @Sendable () throws -> T) async throws -> T {
+    try Task.checkCancellation()
     let once = ResumeOnce<T>()
     let worker = Task.detached {
         let result: Result<T, Error>
-        do { result = .success(try work()) } catch { result = .failure(error) }
-        // Losing the race means the deadline already fired and this thread was
-        // written off. It is alive again now, so give the budget its slot back.
+        do {
+            try Task.checkCancellation()
+            result = .success(try work())
+        } catch { result = .failure(error) }
+        // Timeout and cancellation count the abandoned worker while holding
+        // the resume-once lock. Only a losing worker returns that exact slot.
         if !once.resume(result) { AbandonedWork.returned() }
     }
-    Task.detached {
-        try? await Task.sleep(for: .seconds(seconds))
+    let watchdog = Task.detached {
+        do { try await Task.sleep(for: .seconds(seconds)) } catch { return }
         once.resume(.failure(DeviceError.timedOut(operation: operation)), onWin: {
             AbandonedWork.abandoned(operation)
             worker.cancel()
         })
     }
+    defer { watchdog.cancel() }
     return try await withTaskCancellationHandler {
         try await withCheckedThrowingContinuation { once.attach($0) }
     } onCancel: {
-        // Do not free C handles or release the gate until the worker returns
-        // (or its watchdog fires). Cooperative loops stop between C calls.
-        worker.cancel()
+        // C handles remain owned by the worker. Stop waiting promptly, count
+        // the still-live session against the cap, and let cooperative upload
+        // loops unwind between C calls. A blocked call is never freed under it.
+        once.resume(.failure(CancellationError()), onWin: {
+            AbandonedWork.abandoned(operation)
+            worker.cancel()
+        })
     }
 }
 
@@ -608,24 +617,6 @@ nonisolated enum AbandonedWork {
     }
 }
 
-#if DEBUG
-/// The accounting has to balance both ways. Counting an abandoned thread and
-/// never giving the slot back closes the gate permanently — every device
-/// operation for the rest of the run fails with "still waiting for earlier
-/// requests" and nothing ever clears it — which is a worse failure than the
-/// leak it exists to bound.
-func abandonedWorkSelfCheck() async {
-    let before = AbandonedWork.count
-    do {
-        _ = try await withDeadline(0.05, "self-check") { Thread.sleep(forTimeInterval: 0.5) }
-        assertionFailure("withDeadline did not time out")
-    } catch {}
-    assert(AbandonedWork.count == before + 1, "a timeout did not count its abandoned thread")
-    try? await Task.sleep(for: .seconds(1))   // past the work's own 0.5s
-    assert(AbandonedWork.count == before, "an abandoned thread never gave its slot back")
-}
-#endif
-
 /// Wait for `work`, but not forever — and let it finish on its own if we stop
 /// waiting. The gate's own `acquire()` has no deadline: `withDeadline` bounds
 /// the WORK, not the queueing in front of it, so a device operation that is
@@ -634,13 +625,19 @@ func abandonedWorkSelfCheck() async {
 /// terminated the app before the guest was ever asked to power down.
 func withSoftDeadline<T: Sendable>(_ seconds: Double,
                                    _ work: @escaping @Sendable () async -> T) async -> T? {
+    guard !Task.isCancelled else { return nil }
     let once = ResumeOnce<T?>()
-    Task { once.resume(.success(await work())) }
-    Task {
-        try? await Task.sleep(for: .seconds(seconds))
-        once.resume(.success(nil))
+    let worker = Task { once.resume(.success(await work())) }
+    let watchdog = Task.detached {
+        do { try await Task.sleep(for: .seconds(seconds)) } catch { return }
+        if once.resume(.success(nil)) { worker.cancel() }
     }
-    return try? await withCheckedThrowingContinuation { once.attach($0) }
+    defer { watchdog.cancel() }
+    return try? await withTaskCancellationHandler {
+        try await withCheckedThrowingContinuation { once.attach($0) }
+    } onCancel: {
+        if once.resume(.success(nil)) { worker.cancel() }
+    }
 }
 
 /// First result wins; the rest are dropped. Handles the result landing before
@@ -714,14 +711,28 @@ nonisolated final class SyncBox: @unchecked Sendable {
 actor DeviceGate {
     static let shared = DeviceGate()
     private var busy = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var waiters: [(id: UUID, continuation: CheckedContinuation<Void, Error>)] = []
 
-    private func acquire() async {
+    private func acquire() async throws {
+        try Task.checkCancellation()
         if !busy { busy = true; return }
-        await withCheckedContinuation { waiters.append($0) }
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                waiters.append((id, continuation))
+            }
+        } onCancel: {
+            Task { await self.cancelWaiter(id) }
+        }
     }
+
+    private func cancelWaiter(_ id: UUID) {
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        waiters.remove(at: index).continuation.resume(throwing: CancellationError())
+    }
+
     private func release() {
-        if waiters.isEmpty { busy = false } else { waiters.removeFirst().resume() }
+        if waiters.isEmpty { busy = false } else { waiters.removeFirst().continuation.resume() }
     }
 
     func serialized<T: Sendable>(_ body: @Sendable () async throws -> T) async throws -> T {
@@ -729,7 +740,7 @@ actor DeviceGate {
         // still holding a lockdown session against a guest that serves about
         // one, so starting another is what keeps it from recovering.
         guard AbandonedWork.count < AbandonedWork.cap else { throw DeviceError.recovering }
-        await acquire()
+        try await acquire()
         do {
             try Task.checkCancellation()
             guard AbandonedWork.count < AbandonedWork.cap else { throw DeviceError.recovering }

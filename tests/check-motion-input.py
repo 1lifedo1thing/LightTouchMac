@@ -24,7 +24,9 @@ source = r'''import Cocoa
  enum Pose { case upright, flat }
  final class Emulator {
   var motionPose = Pose.upright, rotationDegrees = 0
-  var keyboardTiltRate = 90.0
+  var keyboardTiltRate = 90.0, lockCount = 0.0
+  var isSleeping = false, acceptsInput = true
+  func pressLock() { lockCount += 1 }
   var sent: [(UInt16, Bool)] = [], attitudes: [(CGFloat, CGFloat)] = []
   var shakes = 0
   func shake() { shakes += 1 }
@@ -34,12 +36,12 @@ source = r'''import Cocoa
  struct Window { var isKeyWindow = true }
  let emulator: Emulator? = Emulator()
  var window: Window? = Window()
- var touchInteractionEnabled = true, isShowingLiveText = false
+ var touchInteractionEnabled = true, isShowingLiveText = false, consumedWakeSpace = false
  var keyboardTouchKeys=Set<UInt16>()
  func endKeyboardTouch() {}
  func keyboardPointerKey(_ event:NSEvent,down:Bool)->Bool {false}
  var tiltKeys: Set<UInt16> = [], consumedTiltKeys: Set<UInt16> = []
- var tiltAngle = 0.0, pitchAngle = 0.0, lastTiltTick = 0.0, now = 0.0
+ var tiltAngle = 0.0, pitchAngle = 0.0, yawAngle = 0.0, lastTiltTick = 0.0, now = 0.0
  var restAngle = Double.pi / 2, motionRestAngle: CGFloat?
  class Indicator { var isHidden=false; func update(pitch:Double,roll:Double) {} }
  let attitudeIndicator=Indicator()

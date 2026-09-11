@@ -35,5 +35,5 @@ print("PASS: native helper precedence and legacy fallback; non-executable guest 
     executable = work / 'Check.app/Contents/MacOS/check'
     executable.parent.mkdir(parents=True)
     (executable.parent.parent / 'Resources').mkdir()
-    subprocess.run(['swiftc', '-module-cache-path', str(work/'modules'), str(root/'LightTouchMac/Bundled.swift'), str(source), '-o', str(executable)], check=True)
+    subprocess.run(['swiftc', '-module-cache-path', str(work/'modules'), str(root/'LightTouchMac/Bundled.swift'), str(root/'LightTouchMac/StorageLocations.swift'), str(root/'LightTouchMac/NativeLogging.swift'), str(source), '-o', str(executable)], check=True)
     subprocess.run([str(executable), str(work)], check=True)
