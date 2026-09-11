@@ -1,0 +1,15 @@
+// Shared by Debug and Release. Keep the app and packaged native libraries on
+// the same minimum macOS version.
+MACOSX_DEPLOYMENT_TARGET = 14.0
+
+// A sibling QEMU checkout is the default development layout. Override either
+// setting in Xcode or on the xcodebuild command line for another checkout/build.
+QEMU_IOS_DIR = $(SRCROOT)/../qemu-ios
+QEMU_BUILD_DIR = $(QEMU_IOS_DIR)/build-native14/qemu-build
+
+HEADER_SEARCH_PATHS = $(inherited) "$(QEMU_IOS_DIR)/contrib/ios-app" "$(QEMU_IOS_DIR)/contrib/macos-app"
+OTHER_LDFLAGS = $(inherited) "$(QEMU_BUILD_DIR)/libqemu-arm.dylib"
+
+// Development builds load QEMU from its build directory. package.sh copies the
+// release libraries into Frameworks and rewrites their install names/rpaths.
+LD_RUNPATH_SEARCH_PATHS = $(inherited) "@executable_path/../Frameworks" "$(QEMU_BUILD_DIR)"
