@@ -176,6 +176,14 @@ keychain profile. No credentials are stored in the scripts. Packaging validates
 host architecture, minimum macOS version and the relocated dependency closure
 before signing, including the libraries opened dynamically by the app.
 
+Ad-hoc helper signatures use ordinary code signing because they have no Team
+ID. Developer ID builds enable the hardened runtime for helpers and sign their
+bundled libraries with the same identity; helper library validation stays
+enabled. Apple documents the [same-Team-ID library validation rule](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.cs.disable-library-validation).
+The signing test launches a relocated helper linked to a bundled test library.
+It can also exercise your real identity with
+`python3 scripts/test-signing.py --sign-id "Developer ID Application: …"`.
+
 Run the focused build/package checks:
 
 ```sh
@@ -183,9 +191,17 @@ python3 scripts/test-dependency-sources.py
 python3 scripts/test-guest-build.py
 python3 scripts/test-release.py
 python3 scripts/test-package.py
+python3 scripts/test-signing.py
+python3 scripts/test-glib-compat.py
 python3 tests/check-package-layout.py
 python3 tests/check-storage-lifecycle.py
 ```
+
+Native builds also exercise GLib’s pipe fallback and reject unexpected weak
+imports in C helpers/libraries. A small GLib probe patch preserves SDK API
+availability annotations so a newer SDK cannot silently select `pipe2` for
+the macOS 14 deployment target. `test-glib-compat.py --native-build PATH`
+checks the resulting native artifacts as well as the compiler probe.
 
 The driver always includes firmware. Direct `package.sh` retains
 `LTM_ASSETS=none` solely for development and clears any previous device payload

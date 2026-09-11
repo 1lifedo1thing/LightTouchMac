@@ -42,7 +42,7 @@ export PKG_CONFIG_LIBDIR="$P/lib/pkgconfig" PKG_CONFIG_PATH=
 export lt_cv_sys_max_cmd_len=131072
 unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH
 for tool in ideviceinstaller ideviceinfo idevicesyslog iproxy idevicepair idevice_id; do
-    python3 "$SRC/scripts/check-macho.py" "$STATIC/bin/$tool"
+    python3 "$SRC/scripts/check-macho.py" --no-weak-imports "$STATIC/bin/$tool"
 done
 [ -f "$STATIC/lib/libcrypto.a" ] || { echo "missing static prefix: $STATIC" >&2; exit 1; }
 SOURCE_ARGS=(fetch --group native --destination "$ROOT/src")
@@ -55,6 +55,9 @@ for archive in glib-2.88.3.tar.xz pcre2-10.48.tar.bz2 pixman-0.46.4.tar.gz libsl
     tar -xf "$ROOT/src/$archive"
 done
 tar -xf "$ROOT/src/proxy-libintl-0.5.tar.gz" -C glib-2.88.3/subprojects
+# Keep SDK feature detection tied to the deployment target. A headerless
+# pipe2 probe incorrectly accepts the macOS 27 symbol for a macOS 14 build.
+(cd glib-2.88.3 && patch -p1 < "$SRC/build-support/patches/glib-pipe2-availability.patch")
 (cd pcre2-10.48 && ./configure --prefix="$P" --disable-shared --enable-static --disable-pcre2grep-libz --disable-pcre2grep-libbz2 && make -j"$JOBS" && make install)
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
 cat > "$P/lib/pkgconfig/libffi.pc" <<EOF
@@ -66,6 +69,8 @@ Cflags: -I$SDK/usr/include/ffi
 EOF
 "$MESON" setup glib-out glib-2.88.3 --prefix="$P" --buildtype=release -Ddefault_library=static -Dnls=disabled -Dtests=false -Dintrospection=disabled -Dman-pages=disabled -Dlibmount=disabled -Dselinux=disabled -Dsysprof=disabled --wrap-mode=nodownload
 ninja -C glib-out -j"$JOBS" && ninja -C glib-out install
+mkdir -p "$P/share/licenses/glib"
+cp glib-2.88.3/COPYING "$SRC/build-support/patches/glib-pipe2-availability.patch" "$P/share/licenses/glib/"
 "$MESON" setup pixman-out pixman-0.46.4 --prefix="$P" --buildtype=release -Ddefault_library=static -Dtests=disabled -Ddemos=disabled --wrap-mode=nofallback
 ninja -C pixman-out -j"$JOBS" && ninja -C pixman-out install
 "$MESON" setup slirp-out libslirp-v4.9.4 --prefix="$P" --buildtype=release -Ddefault_library=static --wrap-mode=nofallback
@@ -107,7 +112,8 @@ cd "$ROOT/qemu-build"
     --extra-ldflags="-L$STATIC/lib -lcrypto -mmacosx-version-min=14.0"
 ninja -j"$JOBS" qemu-system-arm
 bash "$QEMU/contrib/macos-app/make-dylib-macos.sh" "$ROOT/qemu-build"
-python3 "$SRC/scripts/check-macho.py" "$ROOT/qemu-build/libqemu-arm.dylib" "$P/lib/libimobiledevice-1.0.dylib" "$P/lib/libplist-2.0.dylib" "$ROOT/build/usbmuxd/src/usbmuxd"
+python3 "$SRC/scripts/check-macho.py" --no-weak-imports "$ROOT/qemu-build/libqemu-arm.dylib" "$P/lib/libimobiledevice-1.0.dylib" "$P/lib/libplist-2.0.dylib" "$ROOT/build/usbmuxd/src/usbmuxd"
+python3 "$SRC/scripts/test-glib-compat.py" --native-build "$ROOT"
 python3 - "$SRC" "$ROOT" "$STATIC" "$QEMU" "$USB" <<'PY'
 import hashlib, json, pathlib, subprocess, sys
 source, root, static, qemu, usb = map(pathlib.Path, sys.argv[1:])
@@ -130,7 +136,9 @@ record = {
     'qemu_tracked_diff_sha256': hashlib.sha256(git('diff', '--binary', 'HEAD')).hexdigest(),
     'recipes': {str(path.relative_to(source)): digest(path) for path in (
         source / 'scripts/build-package-native.sh', source / 'scripts/build-static-deps.sh',
-        source / 'scripts/dependency-sources.py', source / 'build-support/dependencies.json')},
+        source / 'scripts/dependency-sources.py', source / 'build-support/dependencies.json',
+        source / 'build-support/patches/glib-pipe2-availability.patch',
+        source / 'scripts/test-glib-compat.py', source / 'scripts/check-macho.py')},
     'static_inputs': [{'path': str(path.relative_to(static)), 'sha256': digest(path)}
                       for path in sorted(static.rglob('*')) if path.is_file()],
     'xcode': subprocess.check_output(['xcodebuild', '-version'], text=True).strip(),
