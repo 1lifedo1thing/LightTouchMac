@@ -1,17 +1,37 @@
 #!/bin/bash
 # Build the macOS 14 closure in a disposable directory; never rewrite Homebrew.
-# Requires the existing qemu-ios-deps12 static prefix, Xcode, meson, ninja,
-# pkg-config and autotools. Usage: build-package-native.sh NEW-WORK-DIRECTORY
-# qemu-ios-deps12/build-deps12.sh records how that reusable static prefix was built.
+# Requires Xcode, meson, ninja, pkg-config, cmake and autotools.
+# Usage: build-package-native.sh NEW-WORK-DIRECTORY
+# Builds static dependencies from pinned sources unless LTM_STATIC_DEPS is explicit.
 set -euo pipefail
 ROOT="${1:?usage: build-package-native.sh new-work-directory}"
 [ ! -e "$ROOT" ] || { echo "use a new build directory: $ROOT" >&2; exit 1; }
+SRC="$(cd "$(dirname "$0")/.." && pwd)"
+QEMU="${QEMU_IOS_DIR:-$SRC/../qemu-ios}"
+USB="${USBMUXD_SOURCE_DIR:-${USBMUXD_QEMU:-$SRC/../usbmuxd-qemu}/usbmuxd}"
+MESON="${MESON:-meson}"
+JOBS="${LTM_JOBS:-$(sysctl -n hw.ncpu)}"
+[[ "$JOBS" =~ ^[1-9][0-9]*$ ]] || { echo 'LTM_JOBS must be a positive integer' >&2; exit 1; }
+[[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]] || { echo 'requires an Apple Silicon Mac' >&2; exit 1; }
+for tool in python3 curl make ninja pkg-config glibtoolize autoreconf "$MESON"; do
+    command -v "$tool" >/dev/null || { echo "missing build tool: $tool" >&2; exit 1; }
+done
+[ -f "$QEMU/configure" ] || { echo "missing QEMU source: $QEMU" >&2; exit 1; }
+[ -f "$USB/configure.ac" ] || { echo "missing usbmuxd fork source: $USB" >&2; exit 1; }
+QEMU="$(cd "$QEMU" && pwd)"
+USB="$(cd "$USB" && pwd)"
 mkdir -p "$ROOT/src" "$ROOT/build" "$ROOT/prefix"
 ROOT="$(cd "$ROOT" && pwd)"
-SRC="$(cd "$(dirname "$0")/.." && pwd)"
-QEMU="${QEMU_IOS_DIR:-$HOME/Developer/qemu-ios}"
-STATIC="${LTM_STATIC_DEPS:-$HOME/Developer/qemu-ios-deps12}"
-USB="${USBMUXD_QEMU:-$HOME/Developer/usbmuxd-qemu}"
+python3 "$SRC/scripts/dependency-sources.py" stage-git --source "$USB" \
+    --destination "$ROOT/build/usbmuxd" --record "$ROOT/usbmuxd-source.json"
+# Autotools requires a source version even though the staged tree omits .git.
+git -C "$USB" describe --tags --always --dirty > "$ROOT/build/usbmuxd/.tarball-version"
+if [ -n "${LTM_STATIC_DEPS:-}" ]; then
+    STATIC="$(cd "$LTM_STATIC_DEPS" && pwd)"
+else
+    bash "$SRC/scripts/build-static-deps.sh" "$ROOT/static"
+    STATIC="$ROOT/static/prefix"
+fi
 P="$ROOT/prefix"
 export MACOSX_DEPLOYMENT_TARGET=14.0
 export CFLAGS='-O2 -mmacosx-version-min=14.0' CXXFLAGS='-O2 -mmacosx-version-min=14.0'
@@ -20,30 +40,22 @@ export PKG_CONFIG_LIBDIR="$P/lib/pkgconfig" PKG_CONFIG_PATH=
 # Some Darwin libtool configure probes return an empty ARG_MAX. Avoid its
 # broken partial-link fallback (which loses private symbols).
 export lt_cv_sys_max_cmd_len=131072
-MESON="${MESON:-meson}"
-for tool in ideviceinstaller ideviceinfo idevicesyslog iproxy idevicepair; do
+unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH
+for tool in ideviceinstaller ideviceinfo idevicesyslog iproxy idevicepair idevice_id; do
     python3 "$SRC/scripts/check-macho.py" "$STATIC/bin/$tool"
 done
 [ -f "$STATIC/lib/libcrypto.a" ] || { echo "missing static prefix: $STATIC" >&2; exit 1; }
-fetch() {
-    curl -fL "$2" -o "$ROOT/src/$1"
-    printf '%s  %s\n' "$3" "$ROOT/src/$1" | shasum -a 256 -c -
-}
-fetch glib.tar.xz https://download.gnome.org/sources/glib/2.88/glib-2.88.3.tar.xz ab24d24e698dfa1e408b7bcdb508f4aafc906185a8b8ce72fdf79bbbdc9b383b
-fetch pcre2.tar.bz2 https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.48/pcre2-10.48.tar.bz2 b6c68fdf6f3ac31388b50aa89ff0fc49c00c987c16e7b5146491d12003f2c8ed
-fetch pixman.tar.gz https://cairographics.org/releases/pixman-0.46.4.tar.gz d09c44ebc3bd5bee7021c79f922fe8fb2fb57f7320f55e97ff9914d2346a591c
-fetch slirp.tar.gz https://gitlab.freedesktop.org/slirp/libslirp/-/archive/v4.9.4/libslirp-v4.9.4.tar.gz 3998863b020aeda34bddc567097c6efba55a78cdf6eeee6bcd42c11ef23967da
-fetch libusb.tar.bz2 https://github.com/libusb/libusb/releases/download/v1.0.30/libusb-1.0.30.tar.bz2 fea36f34f9156400209595e300840767ab1a385ede1dc7ee893015aea9c6dbaf
-fetch proxy-libintl.tar.gz https://github.com/frida/proxy-libintl/archive/refs/tags/0.5.tar.gz f7a1cbd7579baaf575c66f9d99fb6295e9b0684a28b095967cfda17857595303
-fetch libplist.tar.bz2 https://github.com/libimobiledevice/libplist/releases/download/2.7.0/libplist-2.7.0.tar.bz2 7ac42301e896b1ebe3c654634780c82baa7cb70df8554e683ff89f7c2643eb8b
-fetch libimobiledevice.tar.bz2 https://github.com/libimobiledevice/libimobiledevice/releases/download/1.4.0/libimobiledevice-1.4.0.tar.bz2 23cc0077e221c7d991bd0eb02150a0d49199bcca1ddf059edccee9ffd914939d
-fetch ffmpeg.tar.xz https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz cf38e0e28c7e5605942c4a77755349b0145804a397af37eb1fb4c77cb237f635
+SOURCE_ARGS=(fetch --group native --destination "$ROOT/src")
+if [ -n "${LTM_SOURCE_CACHE:-}" ]; then SOURCE_ARGS+=(--cache "$LTM_SOURCE_CACHE"); fi
+if [ -d "$ROOT/static/src" ]; then SOURCE_ARGS+=(--cache "$ROOT/static/src"); fi
+if [ "${LTM_OFFLINE:-0}" = 1 ]; then SOURCE_ARGS+=(--offline); fi
+python3 "$SRC/scripts/dependency-sources.py" "${SOURCE_ARGS[@]}"
 cd "$ROOT/build"
-for archive in glib.tar.xz pcre2.tar.bz2 pixman.tar.gz slirp.tar.gz libusb.tar.bz2 libplist.tar.bz2 libimobiledevice.tar.bz2 ffmpeg.tar.xz; do
+for archive in glib-2.88.3.tar.xz pcre2-10.48.tar.bz2 pixman-0.46.4.tar.gz libslirp-v4.9.4.tar.gz libusb-1.0.30.tar.bz2 libplist-2.7.0.tar.bz2 libimobiledevice-1.4.0.tar.bz2 ffmpeg-9.0.1.tar.xz; do
     tar -xf "$ROOT/src/$archive"
 done
-tar -xf "$ROOT/src/proxy-libintl.tar.gz" -C glib-2.88.3/subprojects
-(cd pcre2-10.48 && ./configure --prefix="$P" --disable-shared --enable-static --disable-pcre2grep-libz --disable-pcre2grep-libbz2 && make -j8 && make install)
+tar -xf "$ROOT/src/proxy-libintl-0.5.tar.gz" -C glib-2.88.3/subprojects
+(cd pcre2-10.48 && ./configure --prefix="$P" --disable-shared --enable-static --disable-pcre2grep-libz --disable-pcre2grep-libbz2 && make -j"$JOBS" && make install)
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
 cat > "$P/lib/pkgconfig/libffi.pc" <<EOF
 Name: libffi
@@ -53,23 +65,20 @@ Libs: -lffi
 Cflags: -I$SDK/usr/include/ffi
 EOF
 "$MESON" setup glib-out glib-2.88.3 --prefix="$P" --buildtype=release -Ddefault_library=static -Dnls=disabled -Dtests=false -Dintrospection=disabled -Dman-pages=disabled -Dlibmount=disabled -Dselinux=disabled -Dsysprof=disabled --wrap-mode=nodownload
-ninja -C glib-out -j8 && ninja -C glib-out install
+ninja -C glib-out -j"$JOBS" && ninja -C glib-out install
 "$MESON" setup pixman-out pixman-0.46.4 --prefix="$P" --buildtype=release -Ddefault_library=static -Dtests=disabled -Ddemos=disabled --wrap-mode=nofallback
-ninja -C pixman-out -j8 && ninja -C pixman-out install
+ninja -C pixman-out -j"$JOBS" && ninja -C pixman-out install
 "$MESON" setup slirp-out libslirp-v4.9.4 --prefix="$P" --buildtype=release -Ddefault_library=static --wrap-mode=nofallback
-ninja -C slirp-out -j8 && ninja -C slirp-out install
-(cd libusb-1.0.30 && ./configure --prefix="$P" --disable-shared --enable-static && make -j8 && make install)
+ninja -C slirp-out -j"$JOBS" && ninja -C slirp-out install
+(cd libusb-1.0.30 && ./configure --prefix="$P" --disable-shared --enable-static && make -j"$JOBS" && make install)
 # Shared exports are required by IMobileDevice.swift's dlopen/dlsym API; the
-# corresponding deps12 archives intentionally hide these public symbols.
+# corresponding static archives intentionally hide these public symbols.
 export PKG_CONFIG_LIBDIR="$P/lib/pkgconfig:$STATIC/lib/pkgconfig"
-(cd libplist-2.7.0 && ./configure --prefix="$P" --enable-shared --disable-static --without-cython && make -j8 && make install)
-LDFLAGS="$LDFLAGS -framework SystemConfiguration -framework CoreFoundation" bash -c 'cd "$1" && ./configure --prefix="$2" --enable-shared --disable-static --without-cython && make -j8 && make install' _ libimobiledevice-1.4.0 "$P"
-for tool in ideviceinstaller ideviceinfo idevicesyslog iproxy idevicepair; do cp "$STATIC/bin/$tool" "$P/bin/"; done
-cp -R "$USB/usbmuxd" usbmuxd
+(cd libplist-2.7.0 && ./configure --prefix="$P" --enable-shared --disable-static --without-cython && make -j"$JOBS" && make install)
+(cd libimobiledevice-1.4.0 && LDFLAGS="$LDFLAGS -framework SystemConfiguration -framework CoreFoundation" ./configure --prefix="$P" --enable-shared --disable-static --without-cython && make -j"$JOBS" && make install)
+for tool in ideviceinstaller ideviceinfo idevicesyslog iproxy idevicepair idevice_id; do cp "$STATIC/bin/$tool" "$P/bin/"; done
 (cd usbmuxd && glibtoolize --copy --force && autoreconf -fi)
-find usbmuxd -name '*.o' -delete
-find usbmuxd -name '*.lo' -delete
-(cd usbmuxd && LDFLAGS="$LDFLAGS -framework IOKit -framework CoreFoundation -framework Security" ./configure --prefix="$P" --without-systemd && make -j8)
+(cd usbmuxd && LDFLAGS="$LDFLAGS -framework IOKit -framework CoreFoundation -framework Security" ./configure --prefix="$P" --without-systemd && make -j"$JOBS")
 # AMC audio and incremental H.264 slices use libavcodec/libavutil. Keep the closure native
 # to macOS 14, with no automatically discovered Homebrew codec dependencies.
 (cd ffmpeg-9.0.1 && patch -p1 < "$QEMU/contrib/ffmpeg/h264-chunk-er.patch" && patch -p1 < "$QEMU/contrib/ffmpeg/h264-cavlc-pcm-offset.patch")
@@ -79,7 +88,7 @@ find usbmuxd -name '*.lo' -delete
     --enable-decoder=aac,mp3,alac,h264 --enable-shared --disable-static --install-name-dir=@rpath \
     --extra-cflags=-mmacosx-version-min=14.0 \
     --extra-ldflags='-mmacosx-version-min=14.0 -Wl,-rpath,@loader_path' \
-    && make -j8 && make install)
+    && make -j"$JOBS" && make install)
 mkdir -p "$P/share/licenses/ffmpeg"
 cp ffmpeg-9.0.1/COPYING.LGPLv2.1 "$P/share/licenses/ffmpeg/"
 printf '%s\n' 'FFmpeg 9.0.1: https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz' \
@@ -88,7 +97,7 @@ printf '%s\n' 'FFmpeg 9.0.1: https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz' \
     > "$P/share/licenses/ffmpeg/SOURCE.txt"
 cp "$SRC/scripts/build-package-native.sh" "$QEMU/contrib/ffmpeg/h264-chunk-er.patch" "$QEMU/contrib/ffmpeg/h264-cavlc-pcm-offset.patch" "$P/share/licenses/ffmpeg/"
 # Retain the native UI, CGL renderer, CoreAudio and Wi-Fi/slirp; avoid accidental optional
-# Homebrew dependencies. Board AES/SHA use the existing static libcrypto.
+# Homebrew dependencies. Board AES/SHA use the declared static libcrypto.
 export PKG_CONFIG_LIBDIR="$P/lib/pkgconfig"
 mkdir "$ROOT/qemu-build"
 cd "$ROOT/qemu-build"
@@ -96,7 +105,44 @@ cd "$ROOT/qemu-build"
     --python="${QEMU_PYTHON:-python3.12}" \
     --extra-cflags="-I$STATIC/include -mmacosx-version-min=14.0" \
     --extra-ldflags="-L$STATIC/lib -lcrypto -mmacosx-version-min=14.0"
-ninja -j8 qemu-system-arm
+ninja -j"$JOBS" qemu-system-arm
 bash "$QEMU/contrib/macos-app/make-dylib-macos.sh" "$ROOT/qemu-build"
 python3 "$SRC/scripts/check-macho.py" "$ROOT/qemu-build/libqemu-arm.dylib" "$P/lib/libimobiledevice-1.0.dylib" "$P/lib/libplist-2.0.dylib" "$ROOT/build/usbmuxd/src/usbmuxd"
-printf '\nPackage with:\nQEMU_BUILD_DIR=%q LTM_DEPS_PREFIX=%q USBMUXD_BIN=%q bash %q /path/to/LightTouchMac.app\n' "$ROOT/qemu-build" "$P" "$ROOT/build/usbmuxd/src/usbmuxd" "$SRC/scripts/package.sh"
+python3 - "$SRC" "$ROOT" "$STATIC" "$QEMU" "$USB" <<'PY'
+import hashlib, json, pathlib, subprocess, sys
+source, root, static, qemu, usb = map(pathlib.Path, sys.argv[1:])
+def digest(path):
+    result = hashlib.sha256()
+    with path.open('rb') as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            result.update(block)
+    return result.hexdigest()
+def git(*args):
+    return subprocess.check_output(['git', '-C', str(qemu), *args])
+record = {
+    'schema_version': 1, 'static_deps': str(static), 'qemu_source': str(qemu),
+    'usbmuxd_source': str(usb), 'qemu_build': str(root / 'qemu-build'),
+    'deps_prefix': str(root / 'prefix'), 'usbmuxd_binary': str(root / 'build/usbmuxd/src/usbmuxd'),
+    'deployment_target': '14.0', 'architecture': 'arm64',
+    'sources': json.loads((root / 'src/native-sources.json').read_text()),
+    'usbmuxd': json.loads((root / 'usbmuxd-source.json').read_text()),
+    'qemu_commit': git('rev-parse', 'HEAD').decode().strip(),
+    'qemu_tracked_diff_sha256': hashlib.sha256(git('diff', '--binary', 'HEAD')).hexdigest(),
+    'recipes': {str(path.relative_to(source)): digest(path) for path in (
+        source / 'scripts/build-package-native.sh', source / 'scripts/build-static-deps.sh',
+        source / 'scripts/dependency-sources.py', source / 'build-support/dependencies.json')},
+    'static_inputs': [{'path': str(path.relative_to(static)), 'sha256': digest(path)}
+                      for path in sorted(static.rglob('*')) if path.is_file()],
+    'xcode': subprocess.check_output(['xcodebuild', '-version'], text=True).strip(),
+    'sdk': subprocess.check_output(['xcrun', '--sdk', 'macosx', '--show-sdk-version'], text=True).strip(),
+}
+if (root / 'static/static-build.json').is_file():
+    record['static_build'] = json.loads((root / 'static/static-build.json').read_text())
+elif (static.parent / 'static-build.json').is_file():
+    record['static_build'] = json.loads((static.parent / 'static-build.json').read_text())
+    record['static_build']['origin'] = 'explicit LTM_STATIC_DEPS override'
+else:
+    record['static_build'] = {'origin': 'explicit LTM_STATIC_DEPS override'}
+(root / 'native-build.json').write_text(json.dumps(record, indent=2) + '\n')
+PY
+printf '\nPackage with:\nQEMU_BUILD_DIR=%q LTM_DEPS_PREFIX=%q LTM_STATIC_DEPS=%q USBMUXD_BIN=%q bash %q /path/to/LightTouchMac.app\n' "$ROOT/qemu-build" "$P" "$STATIC" "$ROOT/build/usbmuxd/src/usbmuxd" "$SRC/scripts/package.sh"

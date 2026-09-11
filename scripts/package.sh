@@ -5,7 +5,8 @@
 # @rpath, then re-sign. After this the app runs on a Mac that has neither the
 # qemu-ios build tree nor Homebrew.
 #
-#     scripts/package.sh [path/to/LightTouchMac.app]
+#     scripts/package.sh path/to/Light\ Touch.app
+# Prefer scripts/build-release.py for a fresh, complete product build.
 #
 # Signing:
 #   ad-hoc by default. Set SIGN_ID to a "Developer ID Application: …" identity
@@ -17,25 +18,20 @@
 # Device assets are embedded below unless LTM_ASSETS=none (development only).
 set -euo pipefail
 
-APP="${1:-}"
+APP="${1:?usage: package.sh path/to/Light Touch.app (or use scripts/build-release.py)}"
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
-QEMU="${QEMU_IOS_DIR:-$HOME/Developer/qemu-ios}"
+QEMU="${QEMU_IOS_DIR:-$SRC/../qemu-ios}"
 BUILD="${QEMU_BUILD_DIR:-$QEMU/build-native14/qemu-build}"
 DYLIB="$BUILD/libqemu-arm.dylib"
 ENTITLEMENTS="$QEMU/contrib/macos-app/entitlements.plist"
 DEPS="${LTM_DEPS_PREFIX:-$QEMU/build-native14/prefix}"
+STATIC="${LTM_STATIC_DEPS:-$SRC/../qemu-ios-deps12}"
+GUEST="${LTM_GUEST_TOOLS_DIR:-}"
 CHECK="$SRC/scripts/check-macho.py"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 SIGN_ID="${SIGN_ID:--}"          # '-' == ad-hoc
 
-if [ -z "$APP" ]; then
-    # Not Index.noindex — Xcode's index-build app there is not a signable bundle.
-    APP="$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d \
-        \( -path "*LightTouchMac*/Build/Products/Release/Light Touch.app" \
-           -o -path "*LightTouchMac*/Build/Products/Release/LightTouchMac.app" \) \
-        -not -path "*/Index.noindex/*" 2>/dev/null | head -1)"
-fi
 [ -d "$APP" ] || { echo "no LightTouchMac.app found; build it first or pass a path" >&2; exit 1; }
 [ -f "$DYLIB" ] || { echo "no $DYLIB; run contrib/macos-app/make-dylib-macos.sh" >&2; exit 1; }
 
@@ -126,7 +122,11 @@ copy_tool() {
         rm -f "$TOOLS/$base"
     fi
     cp -f "$src" "$dst"
-    chmod u+wx "$dst"
+    chmod u+rw "$dst"
+    case "$base" in
+        *.plist) chmod a-x "$dst" ;;
+        *) chmod u+x "$dst" ;;
+    esac
     [ "${2:-host}" = guest ] && return
     file "$src" | grep -q Mach-O || return 0
     local dep resolved
@@ -138,7 +138,7 @@ copy_tool() {
 }
 
 echo "embedding compatible tools…"
-for tool in ideviceinstaller ideviceinfo idevicesyslog iproxy idevicepair; do
+for tool in ideviceinstaller ideviceinfo idevicesyslog idevice_id iproxy idevicepair; do
     copy_tool "$DEPS/bin/$tool"
 done
 # Explicitly ship dlopen libraries even when the command-line tools are static.
@@ -154,8 +154,13 @@ TZ_BIN="$WORK/lockdown-tz"
 cc -O2 -mmacosx-version-min="$MINOS" -o "$TZ_BIN" "$SRC/scripts/lockdown-tz.c" \
    -I"$DEPS/include" -L"$DEPS/lib" -limobiledevice-1.0 -lplist-2.0
 copy_tool "$TZ_BIN"
-CFLAGS="-mmacosx-version-min=$MINOS" bash "$QEMU/contrib/it-webproxy/build.sh"
-copy_tool "$QEMU/contrib/it-webproxy/itwebproxy"
+mkdir -p "$WORK/it-webproxy"
+for source in build.sh itwebproxy.c tls-bridge.h weather.m; do
+    cp "$QEMU/contrib/it-webproxy/$source" "$WORK/it-webproxy/"
+done
+OPENSSL_PREFIX="$STATIC" CFLAGS="-mmacosx-version-min=$MINOS" \
+    bash "$WORK/it-webproxy/build.sh"
+copy_tool "$WORK/it-webproxy/itwebproxy"
 copy_tool "${USBMUXD_BIN:-$QEMU/build-native14/build/usbmuxd/src/usbmuxd}"
 
 # NOTE: usbmuxd's -C directory is writable state (it stores SystemConfiguration
@@ -166,74 +171,65 @@ copy_tool "$QEMU/imgtools/install-ipa.sh"
 copy_tool "$QEMU/contrib/it-ssh-terminal.sh"
 # Guest-side binaries install-ipa.sh copies onto the device, and the helper that
 # stands in for the python3 a clean Mac does not have.
-copy_tool "$QEMU/contrib/it-gles/MBXGLEngine" guest
-copy_tool "$QEMU/contrib/it-instprogress/sbdlicon" guest
+copy_guest() {
+    if [ -n "$GUEST" ]; then
+        copy_tool "$GUEST/$(basename "$1")" guest
+    else
+        # Compatibility for explicitly packaging an existing developer build.
+        copy_tool "$QEMU/contrib/$1" guest
+    fi
+}
+copy_guest it-gles/MBXGLEngine
+copy_guest it-instprogress/sbdlicon
 # The quit-time helper asks launchd to shut down through reboot2(RB_HALT);
 # the host still waits for an actual guest PMU power-off event.
-copy_tool "$QEMU/contrib/it-halt/ithalt" guest
-copy_tool "$QEMU/contrib/it-agent/it_agent" guest
-copy_tool "$QEMU/contrib/it-agent/it_typein.dylib" guest
-copy_tool "$QEMU/contrib/it-agent/com.qemu.it-agent.plist" guest
-copy_tool "$QEMU/contrib/it-status/itstatus" guest
-copy_tool "$QEMU/contrib/it-media/itmedia" guest
-copy_tool "$QEMU/contrib/it-media/itphoto" guest
-copy_tool "$QEMU/contrib/it-proxy/itproxy" guest
-copy_tool "$QEMU/contrib/it-proxy/ittrust" guest
+copy_guest it-halt/ithalt
+copy_guest it-agent/it_agent
+copy_guest it-agent/it_typein.dylib
+copy_guest it-agent/com.qemu.it-agent.plist
+copy_guest it-status/itstatus
+copy_guest it-media/itmedia
+copy_guest it-media/itphoto
+copy_guest it-proxy/itproxy
+copy_guest it-proxy/ittrust
 # Auto-rotation's guest-side reporter. Without it the feature is silently absent
 # from every packaged build — the app resolves it bundle-first and then falls
 # back to a checkout path a user's Mac does not have.
-copy_tool "$QEMU/contrib/it-orientation/itorient" guest
-# ipod-helper is built, not committed (contrib/macos-app/ipod-helper.c), and the
-# qemu-ios app pipeline is what compiles it — take its copy.
-copy_tool "${IT_HELPER_BIN:-$QEMU/build/iPod touch.app/Contents/Resources/tools/ipod-helper}"
+copy_guest it-orientation/itorient
+# Build directly from source; the old launcher app is no longer a dependency.
+cc -O2 -Wall -mmacosx-version-min="$MINOS" \
+    "$QEMU/contrib/macos-app/ipod-helper.c" -lz -o "$WORK/ipod-helper"
+copy_tool "$WORK/ipod-helper"
 
 # The usbmuxd config dir. USBMux.swift passes this as `-C`; without a bundle
 # copy a packaged app pointed at a nonexistent path (Bundled.resource returns
 # nil and it fell back to the dev checkout, which a clean Mac does not have).
-CONF_SRC="${USBMUXD_QEMU:-$HOME/Developer/usbmuxd-qemu}/run/conf"
 CONF_DST="$APP/Contents/Resources/usbmuxd-conf"
-if [ -d "$CONF_SRC" ]; then
-    echo "embedding usbmuxd-conf…"
-    rm -rf "$CONF_DST"; mkdir -p "$CONF_DST"
-    [ -f "$CONF_SRC/SystemConfiguration.plist" ] &&
-        cp "$CONF_SRC/SystemConfiguration.plist" "$CONF_DST/"
-    # SystemConfiguration.plist ONLY. The per-device files are PAIRING RECORDS
-    # — copying "*.plist" shipped this developer's own pairing record and host
-    # SystemBUID to every user, and a pairing record is a device credential.
-    # usbmuxd writes its own on first use, into the copy the app makes in
-    # Application Support (the bundle is read-only and signed).
-else
-    echo "missing required usbmuxd configuration: $CONF_SRC" >&2; exit 1
-fi
+echo "embedding empty usbmuxd configuration seed…"
+rm -rf "$CONF_DST"; mkdir -p "$CONF_DST"
+# usbmuxd creates its host identity and pairing records in the writable copy.
+# Never consume developer runtime state as a build input.
+cat > "$CONF_DST/SystemConfiguration.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict/></plist>
+PLIST
 
 # -------------------------------------------------------------- device assets
 #
 # The guest firmware and NAND, read from Resources/device (see
-# LaunchOptions.defaultFilesRoot). Copied raw and uncompressed: the app boots
-# the NAND directory read-only with a per-user overlay in Application Support,
-# so a signed read-only copy works as-is — no first-run unpack step to break.
-# Costs ~1.2 GB of bundle; LTM_ASSETS=none skips it for a dev-machine build
-# that keeps using the checkout's files-root.
-FILES="${LTM_ASSETS:-$HOME/Developer/qemu-ios-files}"
-# Prefer the validated current guest-tool image for new devices. Keep the
-# legacy asset layout usable, and always honor an explicit image selection.
-NAND_NAME="${LTM_NAND:-nand-ultimate}"
-if [ -z "${LTM_NAND:-}" ]; then
-    for candidate in nand-agent-v4 nand-agent-v3; do
-        if [ -d "$FILES/$candidate" ]; then
-            NAND_NAME="$candidate"
-            break
-        fi
-    done
-fi
+# LaunchOptions.defaultFilesRoot). The packed NAND is extracted on first boot;
+# all writable device state stays in Application Support. Import is future work.
+FILES="${LTM_ASSETS:-$SRC/../qemu-ios-files}"
+NAND_NAME="${LTM_NAND:-nand-agent-v4}"
+DEVICE="$APP/Contents/Resources/device"
+rm -rf "$DEVICE"
 if [ "$FILES" != none ]; then
     for f in "$FILES/bootrom_240_4" "$FILES/ios3/iBoot.bin" \
              "$FILES/ios3/nor_7E18.bin" "$FILES/$NAND_NAME"; do
         [ -e "$f" ] || { echo "missing device asset: $f (LTM_ASSETS=none to skip)" >&2; exit 1; }
     done
-    DEVICE="$APP/Contents/Resources/device"
     echo "embedding device assets ($NAND_NAME, packed)…"
-    rm -rf "$DEVICE"
     mkdir -p "$DEVICE/ios3"
     cp "$FILES/bootrom_240_4" "$DEVICE/"
     cp "$FILES/ios3/iBoot.bin" "$FILES/ios3/nor_7E18.bin" "$DEVICE/ios3/"
@@ -244,6 +240,18 @@ if [ "$FILES" != none ]; then
     # The app unpacks it into Application Support on first boot.
     python3 "$QEMU/contrib/macos-app/nandpack.py" pack "$FILES/$NAND_NAME" "$DEVICE/nand.itnand"
     shasum -a 256 "$DEVICE/nand.itnand" | awk '{print $1}' > "$DEVICE/nand.itnand.sha256"
+fi
+
+mkdir -p "$APP/Contents/Resources/licenses/qemu"
+cp "$QEMU/LICENSE" "$QEMU/COPYING" "$QEMU/COPYING.LIB" "$APP/Contents/Resources/licenses/qemu/"
+if [ -d "$DEPS/share/licenses" ]; then
+    cp -R "$DEPS/share/licenses/." "$APP/Contents/Resources/licenses/"
+fi
+if [ -d "$STATIC/share/licenses" ]; then
+    cp -R "$STATIC/share/licenses/." "$APP/Contents/Resources/licenses/"
+fi
+if [ -n "${LTM_BUILD_RECORD:-}" ]; then
+    cp "$LTM_BUILD_RECORD" "$APP/Contents/Resources/build-inputs.json"
 fi
 
 # Drop the build-tree rpath so resolution goes through Contents/Frameworks only.
@@ -273,7 +281,7 @@ codesign -dv "$APP" 2>&1 | grep -E "Identifier|Signature" || true
 
 if [ -n "${NOTARY_PROFILE:-}" ] && [ "$SIGN_ID" != "-" ]; then
     echo "notarizing…"
-    ZIP="$(mktemp -d)/LightTouchMac.zip"
+    ZIP="$WORK/LightTouchMac.zip"
     ditto -c -k --keepParent "$APP" "$ZIP"
     xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
     xcrun stapler staple "$APP"

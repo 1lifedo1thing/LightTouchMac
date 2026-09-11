@@ -11,6 +11,10 @@ It is one of three repos that version together:
 | [qemu-ios](https://github.com/samhenrigold/qemu-ios) | The emulator, loaded as `libqemu-arm.dylib`; also the guest-side helpers the app ships. |
 | [usbmuxd-qemu](https://github.com/samhenrigold/usbmuxd-qemu) | Forked usbmuxd that carries USB between the guest and libimobiledevice. |
 
+See [repository layout](docs/repository-layout.md) for source/input ownership
+and [macOS storage audit](docs/storage-layout.md) for runtime file locations
+and cleanup behavior.
+
 ## Kernel diagnostics
 
 Device > Advanced > Kernel Console enables XNU serial logging on the next boot.
@@ -44,9 +48,7 @@ adds them through its native Saved Photos API, generating its own thumbnails.
 A persistent receipt prevents repeating a completed save or blindly replaying
 an uncertain save. Separate import jobs still create separate photos.
 
-Build the guest helpers before packaging:
-
-    ARMV6_SDK=/path/to/iPhoneOS3.1.3.sdk bash ../qemu-ios/contrib/it-media/build.sh
+The product build below compiles the shipped guest helpers from source before packaging.
 
 Validation: tests/check-media-preflight.py, tests/check-upload.py, and the
 opt-in tests/check-media-native.py. The native check compiles the production
@@ -67,71 +69,134 @@ for normal discharge; iOS can defer voltage measurements while USB is connected
 and charging is forced off. Installation and media sync need USB connected.
 USB reconnects when the device restarts.
 
-## Building (development)
+## Building and packaging
 
-Checkouts are expected as siblings under `~/Developer`: `qemu-ios`,
-`usbmuxd-qemu`, and a `qemu-ios-files` directory holding the device assets
-(bootrom, iBoot, NOR, NAND — not distributed here; see below).
+The product build supports Apple Silicon and macOS 14 or later. Firmware stays
+inside the app in this phase: users do not need to import an IPSW or boot ROM.
 
-1. Build the native emulator and dependencies with
-   `scripts/build-package-native.sh "$HOME/Developer/qemu-ios/build-native14"`.
-   Debug and Release link `build-native14/qemu-build/libqemu-arm.dylib`.
-   After emulator-only changes, run `ninja -C ../qemu-ios/build-native14/qemu-build qemu-system-arm`
-   and `bash ../qemu-ios/contrib/macos-app/make-dylib-macos.sh "$HOME/Developer/qemu-ios/build-native14/qemu-build"`
-   before rebuilding in Xcode; Xcode does not compile the emulator itself.
-2. Build `usbmuxd-qemu/usbmuxd`.
-3. Open `LightTouchMac.xcodeproj` and build. A dev build finds everything in
-   the checkouts; nothing is embedded.
+Install Xcode and the build tools: Python 3.12 (with QEMU's `distlib`
+prerequisite), Meson, Ninja, pkg-config, CMake, autotools/libtool, and `ldid`.
+Guest helpers also require your locally installed iPhoneOS 3.1.3 SDK. The SDK
+and firmware are external inputs; the scripts do not download or redistribute
+an SDK. An old `qemu-ios-deps12` prefix is no longer required.
 
-## Packaging (a self-contained app)
-
-Requires Xcode, Python 3.12 (with QEMU’s `distlib` prerequisite), Meson, Ninja,
-pkg-config, autotools, and the existing macOS 12 static client prefix at `~/Developer/qemu-ios-deps12` (its
-`build-deps12.sh` records its build). Homebrew tools may run the build; Homebrew
-runtime libraries are not bundled.
+With the app, QEMU and usbmuxd-qemu checkouts as siblings, and the existing
+`qemu-ios-files` folder alongside them, build the complete package with:
 
 ```sh
-scripts/build-package-native.sh "$HOME/Developer/qemu-ios/build-native14"
-xcodebuild -scheme LightTouchMac -configuration Release \
-  -derivedDataPath build-package \
-  OTHER_LDFLAGS="$HOME/Developer/qemu-ios/build-native14/qemu-build/libqemu-arm.dylib"
-scripts/package.sh build-package/Build/Products/Release/LightTouchMac.app
-python3 scripts/test-package.py
+python3 scripts/build-release.py \
+  --output .build/releases/local-1 \
+  --sdk /path/to/iPhoneOS3.1.3.sdk
 ```
 
-The native build downloads pinned sources, checks their SHA-256 hashes, and
-builds a macOS 14-compatible emulator and USB dependency closure in the ignored
-`qemu-ios/build-native14` directory. It retains CGL rendering, CoreAudio output, and Wi-Fi/slirp.
-It refuses to reuse a build directory: for a clean rebuild, choose a new one
-and use the `QEMU_BUILD_DIR`, `LTM_DEPS_PREFIX`, and `USBMUXD_BIN` overrides it
-prints. The packaging defaults use `build-native14`; they do not silently
-fall back to Homebrew.
+The output directory must be new. This command builds the pinned native
+libraries/client tools, QEMU, the shipped guest helpers and the Release app,
+then packages and ad-hoc signs a fresh copy. It produces `Light Touch.app`,
+`LightTouchMac.zip`, checksums, a bundle inventory, input/provenance records
+and a build log. Generated sources, intermediate outputs and DerivedData stay
+under the selected output directory. It never searches arbitrary DerivedData
+folders for an app, consumes an older built app, or selects whichever NAND
+happens to exist.
 
-Packaging rejects missing dependencies, newer macOS deployment targets, and
-load paths outside the bundle before signing. It explicitly embeds the two
-libraries the app loads with `dlopen`, even when the client tools are static.
-The packed NAND includes a `nand.itnand.sha256` content identity so installing
-a new app version does not replace an unchanged guest base.
+The selected NAND defaults to `nand-agent-v4`. `--nand NAME` selects another
+existing page directory under `--assets`. The selected firmware is packaged
+without modifying the original files or the user's active device state.
+Use `--plan` to validate and inspect the selected inputs without writing.
 
-Takes the built app and makes it run on a Mac with no Homebrew and no source
-checkouts: embeds `libqemu-arm.dylib` and its dylib closure, the
-libimobiledevice tools, usbmuxd, the guest-side helpers, and the device assets
-(including a packed NAND), then re-signs. `Bundled.swift` makes the app look inside its own
-bundle first, so packaged and dev builds exercise the same code paths.
+All source locations can be supplied explicitly:
 
-- Ad-hoc signed by default (runs on your Mac; other Macs need Gatekeeper
-  override). Set `SIGN_ID` to a "Developer ID Application: …" identity and
-  `NOTARY_PROFILE` to a notarytool keychain profile for a distributable,
-  notarized build.
-- `LTM_ASSETS=none` skips the device assets; `LTM_NAND=<dir>` picks the NAND
-  image (default `nand-ultimate`).
+```sh
+python3 scripts/build-release.py \
+  --output .build/releases/local-2 \
+  --qemu-source /path/to/qemu-ios \
+  --usbmuxd-source /path/to/usbmuxd \
+  --assets /path/to/qemu-ios-files --nand nand-agent-v4 \
+  --sdk /path/to/iPhoneOS3.1.3.sdk
+```
+
+`--usbmuxd-source` points to the actual fork's source directory (the legacy
+layout is `usbmuxd-qemu/usbmuxd`). No files from its runtime `run/conf` directory
+are packaged; the app receives an empty configuration seed and generates its
+own host identity in writable state.
+
+For subsequent builds, `--native-build PATH` reuses a native work directory
+created by the new builder and rebuilds QEMU before packaging. A complete
+`native-build.json` is required so reuse can validate the source/dependency
+inputs. `--guest-tools PATH` similarly reuses the flat `guest-tools` directory
+from the guest builder only when its recorded inputs and outputs still match.
+`--source-packages PATH` can reuse an Xcode SourcePackages cache. Local source
+changes are recorded; these records do not claim an uncommitted tree is a
+published, reproducible release revision.
+
+The lower-level steps remain available:
+
+```sh
+# Fresh dependency/emulator build, with its own recorded inputs.
+scripts/build-package-native.sh .build/native
+# Fresh guest-only build. Payloads appear under .build/guest/guest-tools.
+ARMV6_SDK=/path/to/iPhoneOS3.1.3.sdk scripts/build-guest-tools.sh .build/guest
+# Package an explicitly selected Release app, using declared input overrides.
+QEMU_BUILD_DIR="$PWD/.build/native/qemu-build" \
+LTM_DEPS_PREFIX="$PWD/.build/native/prefix" \
+LTM_STATIC_DEPS="$PWD/.build/native/static/prefix" \
+USBMUXD_BIN="$PWD/.build/native/build/usbmuxd/src/usbmuxd" \
+LTM_GUEST_TOOLS_DIR="$PWD/.build/guest/guest-tools" \
+  scripts/package.sh /path/to/Light\ Touch.app
+```
+
+Dependency archive versions/hashes live in `build-support/dependencies.json`.
+`LTM_SOURCE_CACHE` selects a directory of archives to reuse after checksum
+verification; `LTM_OFFLINE=1` refuses missing archives instead of downloading.
+`LTM_JOBS` limits compiler parallelism. An explicitly supplied `LTM_STATIC_DEPS`
+can reuse a compatible prefix; its contents are recorded, and it is never
+silently selected from a private build job. `CMAKE`, `MESON`, and `QEMU_PYTHON`
+select installed build tools when they are not on the usual PATH.
+
+## Xcode development builds
+
+Debug and Release share `Configuration/Shared.xcconfig`. `QEMU_IOS_DIR` defaults
+to the sibling QEMU checkout and `QEMU_BUILD_DIR` to its existing
+`build-native14/qemu-build` directory. Override either build setting for a
+product-owned `.build/native` directory or a different checkout. Header paths,
+linkage and runtime search paths follow those settings, including paths with
+spaces. The app's macOS deployment floor remains 14.0.
+
+The project has no shell build phases. Ordinary Xcode builds compile the app;
+they do not download dependencies, rebuild the emulator or package firmware.
+Use the explicit product builder for packaging. After emulator-only changes,
+run Ninja and `contrib/macos-app/make-dylib-macos.sh` in the selected native
+build before compiling the app in Xcode.
+
+## Signing and validation
+
+The default package uses ad-hoc signing for local testing. Pass
+`--sign-id "Developer ID Application: …"` for your distribution identity and
+`--notary-profile PROFILE` to submit/staple through your existing notarytool
+keychain profile. No credentials are stored in the scripts. Packaging validates
+host architecture, minimum macOS version and the relocated dependency closure
+before signing, including the libraries opened dynamically by the app.
+
+Run the focused build/package checks:
+
+```sh
+python3 scripts/test-dependency-sources.py
+python3 scripts/test-guest-build.py
+python3 scripts/test-release.py
+python3 scripts/test-package.py
+python3 tests/check-package-layout.py
+python3 tests/check-storage-lifecycle.py
+```
+
+The driver always includes firmware. Direct `package.sh` retains
+`LTM_ASSETS=none` solely for development and clears any previous device payload
+when that option is selected; it does not add a consumer import flow.
 
 ## Device assets
 
 The emulator boots real iPod touch 2G firmware (bootrom, iBoot, NOR) and a
 prepared iOS 3.1.3 NAND image. These are Apple-copyrighted and are not in any
-of the three repos; a packaged app embeds your local copies from
-`~/Developer/qemu-ios-files`. The app never writes to the base image — per-user
+of the three repos; a packaged app embeds your local copies from the selected
+`qemu-ios-files` input directory. The app never writes to the base image — per-user
 state (NAND overlay, snapshots, logs) lives in
 `~/Library/Application Support/LightTouchMac`.
 
