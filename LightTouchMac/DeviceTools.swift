@@ -269,11 +269,12 @@ struct DeviceTools: Sendable {
             .appendingPathExtension("ipa")
         var succeeded = false
         defer { if !succeeded { try? FileManager.default.removeItem(at: out) } }
-        let rc = try await run(
+        let result = try await run(
             .path(FilePath(helper)),
             arguments: ["ipa-chmod", ipa.path, out.path, member],
-            output: .discarded, error: .discarded).terminationStatus
-        guard rc.isSuccess, FileManager.default.fileExists(atPath: out.path) else {
+            output: .discarded, error: .string(limit: 1 << 16))
+        guard result.terminationStatus.isSuccess, FileManager.default.fileExists(atPath: out.path) else {
+            logEvent("install: executable repair failed: \(result.standardError)")
             throw DeviceError.preflight("Could not repair the IPA's executable permissions.")
         }
         succeeded = true
@@ -582,10 +583,11 @@ struct DeviceTools: Sendable {
             guard let host = Bundled.resolve("itwebproxy", fallbacks: [
                 "\(filesRoot)/../qemu-ios/contrib/it-webproxy/itwebproxy"
             ]) else { throw DeviceToolsError.toolMissing("itwebproxy") }
-            let status = try await run(.path(FilePath(host)),
+            let result = try await run(.path(FilePath(host)),
                                        arguments: ["--init-ca", WebProxyConfiguration.file.path],
-                                       output: .discarded, error: .discarded).terminationStatus
-            guard status.isSuccess else {
+                                       output: .discarded, error: .string(limit: 1 << 16))
+            guard result.terminationStatus.isSuccess else {
+                logEvent("proxy: certificate preparation failed: \(result.standardError)")
                 throw DeviceToolsError.failed("Could not prepare this device’s HTTP proxy certificate.")
             }
             try await configureProxyTrust(certificate: certificate, enabled: true)
@@ -622,20 +624,6 @@ struct DeviceTools: Sendable {
         // The filter is what makes the value safe inside the single quotes.
         let id = bundleID.filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == "_" }
         try await guestRun("printf %s '\(id)' > /tmp/sblaunch.id && /usr/local/bin/sblaunch")
-    }
-
-    /// Query SpringBoard rather than infer lock state from a dark framebuffer.
-    func screenIsLocked() async throws -> Bool {
-        let data = try await guestRun("printf %s ':lock-status' > /tmp/sblaunch.id && /usr/local/bin/sblaunch")
-        return try Self.screenIsLocked(response: String(decoding: data, as: UTF8.self))
-    }
-
-    static func screenIsLocked(response: String) throws -> Bool {
-        for line in response.split(separator: "\n") {
-            if line == "sblaunch: locked=1 passcode=0" || line == "sblaunch: locked=1 passcode=1" { return true }
-            if line == "sblaunch: locked=0 passcode=0" || line == "sblaunch: locked=0 passcode=1" { return false }
-        }
-        throw DeviceToolsError.failed("SpringBoard did not report its screen lock state.")
     }
 
     /// Shut the guest's filesystem down through the kernel: sync, unmount

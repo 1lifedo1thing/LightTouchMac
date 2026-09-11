@@ -13,6 +13,9 @@ final class EmulatorController {
     let options: LaunchOptions
     private let usbmux = USBMux()
     private var started = false
+    private var serialCapture: SerialLogCapture?
+    private var cleanShutdownTask: Task<Void, Never>?
+    private var shutdownCompletions: [(Bool) -> Void] = []
     private var poweringOn = false
     private(set) var shuttingDown = false { didSet { onStatusChange?() } }
     private(set) var isSleeping = false { didSet { if oldValue != isSleeping { onStatusChange?() } } }
@@ -118,6 +121,12 @@ final class EmulatorController {
 
     func start() {
         guard !started else { return }
+        do { try Bundled.requireStorage() }
+        catch {
+            logEvent("storage: \(error.localizedDescription)")
+            state = .dead(exitCode: 1)
+            return
+        }
         started = true
         state = .booting
 
@@ -221,8 +230,9 @@ final class EmulatorController {
             machine += ",wifi=on"          // brings up the emulated BCM4325
         }
 
-        let serialLog = stateDir.appendingPathComponent("serial.log")
-        Bundled.rotateLog(at: serialLog)
+        do {
+            serialCapture = try SerialLogCapture(url: Bundled.logsDirectory.appendingPathComponent("serial.log"))
+        } catch { logEvent("logging: serial capture unavailable: \(error.localizedDescription)") }
 
         var argv = [
             "LightTouchMac",
@@ -231,7 +241,7 @@ final class EmulatorController {
             "-display", "none",
             "-no-shutdown",
             "-audio", "driver=coreaudio,out.buffer-count=16",
-            "-serial", "file:\(serialLog.path)",
+            "-serial", serialCapture?.argument ?? "null",
         ]
         if options.network {
             var network = "user,id=wifi0"
@@ -282,7 +292,8 @@ final class EmulatorController {
     /// Existing images need the same media engine/configuration as newly
     /// packaged images before apps can use the native compositor.
     private func startMediaPreparation() {
-        guard options.appsync else { return }
+        guard options.appsync, !shuttingDown else { return }
+        mediaPreparationTask?.cancel()
         preparingMedia = true
         mediaPreparationFailure = nil
         let generation = bootGeneration
@@ -311,31 +322,23 @@ final class EmulatorController {
                 }
                 try Task.checkCancellation()
                 guard generation == bootGeneration else { return }
-                // Setup can outlast the guest's idle timer. Home on a locked
-                // screen wakes it without unlocking; on unlocked Home it would
-                // open Spotlight, so consult SpringBoard before sending input.
-                do {
-                    let locked = try await tools().screenIsLocked()
-                    try Task.checkCancellation()
-                    guard generation == bootGeneration, !isDead, !shuttingDown else { return }
-                    if locked {
-                        pressHome()
-                        try await Task.sleep(for: .milliseconds(150))
-                        for _ in 0..<20 {
-                            try Task.checkCancellation()
-                            guard generation == bootGeneration, !isDead, !shuttingDown else { return }
-                            if !qemu_ios_ui_display_sleeping() { break }
-                            try await Task.sleep(for: .milliseconds(100))
-                        }
+                // Read the emulated backlight, not sblaunch's optional lock
+                // query: older bundled images do not implement that command.
+                // Home is safe while the display is off; an awake Home screen
+                // must not receive it (that would open Spotlight). Do this
+                // once per cold boot, preserving sleep in restored sessions.
+                guard !isDead, !shuttingDown else { return }
+                if !restoringFromSnapshot, qemu_ios_ui_display_sleeping() {
+                    logEvent("boot: waking the display after device preparation")
+                    pressHome()
+                    for _ in 0..<20 {
+                        try await Task.sleep(for: .milliseconds(100))
+                        guard generation == bootGeneration, !isDead, !shuttingDown else { return }
+                        if !qemu_ios_ui_display_sleeping() { break }
                     }
-                } catch {
-                    try Task.checkCancellation()
-                    guard generation == bootGeneration else { return }
-                    logEvent("media: could not refresh the lock screen: \(error.localizedDescription)")
                 }
                 try Task.checkCancellation()
-                guard generation == bootGeneration else { return }
-                isSleeping = qemu_ios_ui_display_sleeping()
+                guard generation == bootGeneration, !isDead, !shuttingDown else { return }
                 resolveDeviceNotice(for: .preparation)
             } catch {
                 if !Task.isCancelled, generation == bootGeneration {
@@ -367,6 +370,7 @@ final class EmulatorController {
     /// overlapping run is harmless.
     private func syncTimeZoneWhenReady() async {
         while !Task.isCancelled {
+            guard !shuttingDown, !isDead, !isPoweredOff else { return }
             if state == .running, !preparingMedia, canManageApps, await deviceReady(),
                (try? await tools().setTimeZone(TimeZone.current.identifier)) != nil {
                 return
@@ -376,6 +380,9 @@ final class EmulatorController {
     }
 
     func stop() {
+        // The VM remains alive under -no-shutdown until process exit. Unlink
+        // owned FIFO paths now, keeping readers alive until QEMU is finished.
+        serialCapture?.removeEndpoints()
         mediaPreparationTask?.cancel()
         foregroundTask?.cancel()
         orientationTask?.cancel()
@@ -421,8 +428,14 @@ final class EmulatorController {
             return false
         }
         // Drain before waiting: a full stderr pipe otherwise deadlocks unpack.
-        let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(),
-                         encoding: .utf8) ?? ""
+        var errorTail = Data()
+        while true {
+            let chunk = errPipe.fileHandleForReading.readData(ofLength: 8192)
+            if chunk.isEmpty { break }
+            errorTail.append(chunk)
+            if errorTail.count > 1 << 16 { errorTail.removeFirst(errorTail.count - (1 << 16)) }
+        }
+        let err = String(decoding: errorTail, as: UTF8.self)
         task.waitUntilExit()
         guard task.terminationStatus == 0 else {
             logEvent("nand: unpack failed (exit \(task.terminationStatus)): \(err)")
@@ -448,6 +461,8 @@ final class EmulatorController {
         orientationTask?.cancel()
         orientationTask = nil
         usbmux.stop()
+        serialCapture?.finish()
+        serialCapture = nil
         state = .dead(exitCode: code)
     }
 
@@ -487,14 +502,16 @@ final class EmulatorController {
             if value != agentStatus { agentStatus = value; onStatusChange?() }
         }
         if !poweringOn, qemu_ios_ui_guest_shutdown_confirmed(), !isDead, !isPoweredOff {
+            // Publish terminal state before observable fields: their callbacks
+            // must never render a stale running/sleeping subtitle mid-shutdown.
+            state = .poweredOff
             foregroundTask?.cancel()
             foregroundAppName = nil
             isSleeping = false
             deviceReachable = false
             discardSavedState()
-            state = .poweredOff
         }
-        if state == .running {
+        if state == .running, !preparingMedia, !shuttingDown {
             isSleeping = qemu_ios_ui_display_sleeping()
         } else if isSleeping {
             isSleeping = false
@@ -522,7 +539,7 @@ final class EmulatorController {
         case .notStarted: return "Starting…"
         case .booting:    return "Booting…"
         case .running:
-            if preparingMedia { return "Finishing device setup…" }
+            if preparingMedia { return "Booting…" }
             if isSleeping { return "Sleeping" }
             if restartingSpringBoard { return "Restarting SpringBoard…" }
             if let mediaPreparationFailure { return "Media update failed — \(mediaPreparationFailure)" }
@@ -924,6 +941,7 @@ final class EmulatorController {
             }
             guard !self.storageFailed, self.state != .snapshotting else { return }
             qemu_ios_ui_reset()
+            self.restoringFromSnapshot = false
             self.rotationDegrees = 0
             self.state = .booting
             self.startMediaPreparation()
@@ -933,12 +951,9 @@ final class EmulatorController {
     /// again without reinitializing QEMU or opening a second NAND writer.
     func powerOff(completion: @escaping (Bool) -> Void) {
         guard isRunning, !isInstalling, !AppInstaller.hasPendingWork else { completion(false); return }
-        shuttingDown = true
-        foregroundTask?.cancel()
         beginCleanShutdown { [weak self] confirmed in
             guard let self else { completion(false); return }
             self.pollStorageFailure()
-            self.shuttingDown = false
             if !confirmed, !self.isDead, !self.isPoweredOff { self.startForegroundWatch() }
             completion(confirmed)
         }
@@ -948,6 +963,7 @@ final class EmulatorController {
         guard isPoweredOff, !storageFailed, !shuttingDown else { return }
         reconnectUSB()
         poweringOn = true
+        restoringFromSnapshot = false
         bootGeneration += 1
         foregroundAppName = nil
         isSleeping = false
@@ -1301,69 +1317,92 @@ final class EmulatorController {
         performSnapshot(completion: completion)
     }
 
-    /// Request kernel unmount via ithalt, then require the guest's final PMU
-    /// power-off write. The helper banner, lost SSH connection, and `sync`
-    /// only prove progress; none establish a completed shutdown.
-    /// The halt command and its confirmation share a 30-second budget, followed
-    /// by a best-effort sync. No guest UI gestures are used on shutdown.
-    static let cleanShutdownBudget: TimeInterval = 30 + 20 + 5
+    /// Request kernel unmount, then require the final PMU power-off write.
+    /// Preparation cancellation, halt retries and best-effort sync each have
+    /// a budget; no boot-time device query can keep Quit pending forever.
+    static let preparationShutdownBudget: TimeInterval = 5
+    static let haltShutdownBudget: TimeInterval = 30
+    static let syncShutdownBudget: TimeInterval = 20
+    static let cleanShutdownBudget: TimeInterval = preparationShutdownBudget + haltShutdownBudget + syncShutdownBudget + 5
 
     func beginCleanShutdown(completion: @escaping (Bool) -> Void) {
         if isPoweredOff { completion(true); return }
         guard !storageFailed, !isDead, state != .notStarted else { completion(false); return }
-        // Never underneath a save. `Save State Now` stops the vCPU and is still
-        // writing; resuming it here produced a snapshot captured across a
-        // running CPU and then promoted it as good, for the NEXT launch to
-        // restore. reset() is guarded for exactly this reason.
+        // Multiple requests join one shutdown; none issue overlapping halt
+        // commands or reset its deadline while the guest is unmounting.
+        if cleanShutdownTask != nil { shutdownCompletions.append(completion); return }
         guard state != .snapshotting else {
             logEvent("quit: a state save is in flight — leaving the guest alone")
             completion(false); return
         }
-        // A stopped vCPU cannot run any of this. Pause, or a save that stopped
-        // it, used to make this give up silently — and giving up here is the one
-        // failure that costs the user data.
-        qemu_ios_snapshot_resume()   // no-op if already running
-        state = .running
-
+        shuttingDown = true
+        foregroundTask?.cancel()
+        qemu_ios_snapshot_resume()   // a paused vCPU cannot unmount
+        if state == .paused { state = .running }
+        shutdownCompletions = [completion]
         let preparation = mediaPreparationTask
         preparation?.cancel()
-        Task { [weak self] in
-            guard let self else { completion(false); return }
-            await preparation?.value
-
+        cleanShutdownTask = Task { [weak self] in
+            guard let self else { return }
+            // Cancellation normally unwinds promptly, including blocked C
+            // queries. Keep an explicit bound for a future uncooperative task.
+            if let preparation {
+                let drained = await withSoftDeadline(Self.preparationShutdownBudget) {
+                    await preparation.value
+                    return true
+                } ?? false
+                if !drained { logEvent("quit: device preparation did not finish cancelling in time") }
+            }
             let confirmed = { !self.storageFailed && qemu_ios_ui_guest_shutdown_confirmed() }
             let stopped = { self.storageFailed || self.isDead }
             if self.canManageApps {
-                let haltDeadline = Date().addingTimeInterval(30)
-                _ = await withSoftDeadline(30) { () -> Bool in
-                    do { try await self.haltFilesystem(); return true }
-                    catch {
-                        logEvent("quit: halt command ended without acknowledgement (\(error.localizedDescription)); waiting for guest power-off")
-                        return false
+                let haltDeadline = Date().addingTimeInterval(Self.haltShutdownBudget)
+                // During boot, USB can exist before sshd answers. Retry within
+                // one shared deadline instead of spending the whole timeout
+                // waiting for a command that never reached the guest.
+                while !confirmed(), !stopped(), Date() < haltDeadline, !Task.isCancelled {
+                    let remaining = haltDeadline.timeIntervalSinceNow
+                    let acknowledged = await withSoftDeadline(min(10, remaining)) {
+                        do { try await self.haltFilesystem(); return true }
+                        catch {
+                            if !Task.isCancelled {
+                                logEvent("quit: halt not acknowledged (\(error.localizedDescription))")
+                            }
+                            return false
+                        }
+                    } ?? false
+                    if acknowledged {
+                        _ = await DeviceStateStorage.waitForShutdown(until: haltDeadline,
+                                                                    confirmed: confirmed, stopped: stopped)
+                        break
                     }
-                } ?? false
-                // sshd can close before its final stdout packet is delivered.
-                // The PMU event is authoritative even if the marker was lost.
-                if await DeviceStateStorage.waitForShutdown(until: haltDeadline,
-                                                            confirmed: confirmed, stopped: stopped) {
-                    logEvent("quit: guest confirmed power-off — volume unmounted")
-                    completion(true); return
+                    if !confirmed(), !stopped(), Date() < haltDeadline {
+                        do { try await Task.sleep(for: .milliseconds(500)) } catch { break }
+                    }
                 }
-                if confirmed() { completion(true); return }
-                if stopped() { completion(false); return }
-                let synced = await withSoftDeadline(20) { () -> Bool in
+                if confirmed() {
+                    logEvent("quit: guest confirmed power-off — volume unmounted")
+                    finishCleanShutdown(true); return
+                }
+                if stopped() { finishCleanShutdown(false); return }
+                let synced = await withSoftDeadline(Self.syncShutdownBudget) {
                     (try? await self.syncFilesystem()) != nil
                 } ?? false
-                if synced {
-                    logEvent("quit: guest synced; unmount still unconfirmed")
-                }
+                if synced { logEvent("quit: guest synced; unmount still unconfirmed") }
             }
-
-            if confirmed() { completion(true); return }
-            if stopped() { completion(false); return }
-            logEvent("quit: guest did not shut down — this session's writes may be lost")
-            completion(false)
+            if confirmed() { finishCleanShutdown(true); return }
+            if !stopped() { logEvent("quit: guest did not shut down — this session's writes may be lost") }
+            finishCleanShutdown(false)
         }
+    }
+
+    private func finishCleanShutdown(_ confirmed: Bool) {
+        pollStorageFailure()
+        cleanShutdownTask = nil
+        shuttingDown = false
+        let completions = shutdownCompletions
+        shutdownCompletions = []
+        for completion in completions { completion(confirmed) }
     }
 
     /// Menu ▸ Save State Now: save, then resume the vCPU (the save stops it).
@@ -1458,7 +1497,7 @@ final class EmulatorController {
     /// ever "quit, then the user reopens".
     private func quitForRelaunch(reason: String) {
         logEvent("relaunch: \(reason) — quitting; reopen the app to continue")
-        NSApp.terminate(nil)
+        AppDelegate.requestTermination()
     }
 
     // MARK: - App management

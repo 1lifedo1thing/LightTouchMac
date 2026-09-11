@@ -52,7 +52,7 @@ final class DeviceViewController: NSViewController {
         guard !UserDefaults.standard.bool(forKey: Self.tiltHintShownKey) else { return }
         UserDefaults.standard.set(true, forKey: Self.tiltHintShownKey)
 
-        let label = NSTextField(labelWithString: "Drag next to the iPod to tilt it side-to-side")
+        let label = NSTextField(labelWithString: "Drag the frame to turn. Twist with two fingers beside it to tilt.")
         label.font = .systemFont(ofSize: 11)
         // The device area is black in both appearances; fixed light text, not a
         // semantic color that would go dark-on-black in light mode.

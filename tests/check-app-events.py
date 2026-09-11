@@ -48,11 +48,11 @@ with tempfile.TemporaryDirectory(prefix='ltm-events-') as temp:
   logEvent("literal 100%")
   logEvent("formatted %@", "value")
   await AppEventLog.shared.flush()
-  let formatted=try String(contentsOf:Bundled.stateDirectory.appendingPathComponent("app.log"),encoding:.utf8)
+  let formatted=try String(contentsOf:Bundled.logsDirectory.appendingPathComponent("app.log"),encoding:.utf8)
   precondition(formatted.contains("literal 100%") && formatted.contains("formatted value"))
   print("PASS: concurrent event logging, literal percent/formatting, private files, bounds/rotation and write failure")
  }
 }
 ''')
- subprocess.run(['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor','-module-cache-path',str(p/'modules'),str(root/'LightTouchMac/AppEventLog.swift'),str(root/'LightTouchMac/Bundled.swift'),str(p/'check.swift'),'-o',str(p/'check')],check=True)
+ subprocess.run(['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor','-module-cache-path',str(p/'modules'),str(root/'LightTouchMac/AppEventLog.swift'),str(root/'LightTouchMac/Bundled.swift'), str(root/'LightTouchMac/StorageLocations.swift'), str(root/'LightTouchMac/NativeLogging.swift'),str(p/'check.swift'),'-o',str(p/'check')],check=True)
  subprocess.run([str(p/'check'),str(p/'events')],env=dict(os.environ,LTM_STATE_DIR=str(p/'state')),check=True)

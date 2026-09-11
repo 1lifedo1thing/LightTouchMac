@@ -5,6 +5,7 @@ import subprocess, tempfile
 root=Path(__file__).resolve().parents[1]
 model_source = r'''import AppKit
 import RealityKit
+func - (a:CGPoint,b:CGPoint)->CGPoint { CGPoint(x:a.x-b.x,y:a.y-b.y) }
 @main struct Check {
  @MainActor static func main() async throws {
   _ = NSApplication.shared
@@ -12,6 +13,27 @@ import RealityKit
   model.frame = NSRect(x: 0, y: 0, width: 800, height: 800)
   let window = NSWindow(contentRect: model.frame, styleMask: [.titled], backing: .buffered, defer: false)
   window.contentView = model; window.orderFront(nil)
+  // Resize the actual ARView synchronously: the projection must preserve the
+  // LCD's physical 2:3 ratio before an asynchronous layout/render catches up.
+  for size in [CGSize(width:400,height:1000), CGSize(width:1200,height:450), CGSize(width:800,height:800)] {
+    model.setFrameSize(size)
+    model.pose(scale: 0.3, rotation: 0, roll: 0, pitch: 0, animated: false)
+    let renderer = model.subviews[0] as! ARView
+    precondition(renderer.bounds.size == size)
+    let horizontal = model.projectedPoint(CGPoint(x:1,y:0.5))-model.projectedPoint(CGPoint(x:0,y:0.5))
+    let vertical = model.projectedPoint(CGPoint(x:0.5,y:1))-model.projectedPoint(CGPoint(x:0.5,y:0))
+    precondition(abs(hypot(horizontal.x,horizontal.y)/hypot(vertical.x,vertical.y)-2.0/3)<0.003,
+      "LCD stretched during resize to \(size)")
+    precondition(abs(hypot(horizontal.x,horizontal.y)-0.3*594)<0.1, "Display scale changed with viewport aspect")
+  }
+  for rest: Float in [0, .pi/2, .pi, -.pi/2] {
+    let q = DeviceModelView.orientation(rest: rest, roll:0,pitch:-0.3,yaw:-0.3)
+    let normal = q.act(SIMD3<Float>(0,0,1))
+    precondition(normal.x<0 && normal.y>0 && normal.z>0, "Up-left drag must face up-left in all orientations")
+    let horizontal = DeviceModelView.orientation(rest: 0, roll:0,pitch:0,yaw:-0.3)
+    let top = horizontal.act(SIMD3<Float>(0,1,0))
+    precondition(abs(top.x)<0.0001 && abs(top.z)<0.0001, "Horizontal turning must not roll")
+  }
   let colors: [NSColor] = [.red, .green, .blue, .yellow]
   let points = [CGPoint(x: 0.25,y: 0.25), CGPoint(x: 0.75,y: 0.25), CGPoint(x: 0.25,y: 0.75), CGPoint(x: 0.75,y: 0.75)]
   var homeLevels: [CGFloat] = []
@@ -41,10 +63,10 @@ import RealityKit
       let color = snapshot.colorAt(x: Int(p.x/800*CGFloat(snapshot.pixelsWide)), y: Int((1-p.y/800)*CGFloat(snapshot.pixelsHigh)))!.usingColorSpace(.sRGB)!
       homeLevels.append(color.redComponent)
       precondition(color.redComponent < 0.35, "Home button washed out: \(rotation) \(color)")
-      try snapshot.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: "/tmp/n72-orientation-\(rotation).png"))
+      try snapshot.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[2]+"/n72-orientation-\(rotation).png"))
     }
     if rotation == 0 && tilt != 0 {
-      try snapshot.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: "/tmp/n72-tilted.png"))
+      try snapshot.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[2]+"/n72-tilted.png"))
     }
    }
   }
@@ -166,13 +188,21 @@ enum PreparedMedia { static let extensions: Set<String> = [] }
   let tilted = model.projectedPoint(CGPoint(x: 0.5, y: 0))
   let top = model.projectedPoint(CGPoint(x: 0.5, y: 0.1))
   let bottom = model.projectedPoint(CGPoint(x: 0.5, y: 0.9))
-  precondition(abs(top.x-bottom.x)>5, "Horizontal drag must roll like a steering wheel")
+  precondition(abs(top.x-bottom.x)<0.1, "Horizontal drag must turn, without rolling like a steering wheel")
   precondition(abs(tilted.x-rest.x)>1)
   display.mouseUp(with: dragEvent(.leftMouseUp, grab))
   try await Task.sleep(for: .seconds(1.2))
   precondition(abs(model.projectedPoint(CGPoint(x: 0.5, y: 0)).x-rest.x)<0.1)
   precondition(model.layer!.sublayers!.contains { $0.shadowPath != nil && $0.shadowOpacity > 0 })
   e.isSleeping=true;display.updatePowerPresentation();touches.removeAll()
+  let sleepBadge = display.subviews.compactMap { $0 as? NSStackView }.first!
+  precondition(sleepBadge.arrangedSubviews.count == 2)
+  precondition((sleepBadge.arrangedSubviews.last as? NSButton)?.title == "Wake Up")
+  e.isPoweredOff=true;display.updatePowerPresentation()
+  let offBadge = display.subviews.compactMap { $0 as? NSStackView }.first!
+  precondition(offBadge.arrangedSubviews.count == 2)
+  precondition((offBadge.arrangedSubviews.last as? NSButton)?.title == "Power On")
+  e.isPoweredOff=false;display.updatePowerPresentation()
   let event=NSEvent.mouseEvent(with:.leftMouseDown,location:model.convert(model.projectedPoint(CGPoint(x:0.5,y:0.5)),to:nil),modifierFlags:[],timestamp:0,windowNumber:window.windowNumber,context:nil,eventNumber:0,clickCount:1,pressure:1)!
   display.mouseDown(with:event);precondition(touches.isEmpty)
   let space=NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
@@ -183,7 +213,8 @@ enum PreparedMedia { static let extensions: Set<String> = [] }
   func labels(_ view: NSView) -> [String] {
     (view as? NSTextField).map { [$0.stringValue] } ?? view.subviews.flatMap { labels($0) }
   }
-  precondition(labels(display).contains("Finishing device setup…"))
+  precondition(!labels(display).contains("Finishing device setup…"))
+  precondition(!display.subviews.contains { $0 is NSStackView }, "Setup must leave the boot screen visible")
   e.preparingMedia=false;e.isSleeping=false;display.updatePowerPresentation()
   precondition(!labels(display).contains("Finishing device setup…"))
   window.orderOut(nil);window.contentView=nil
@@ -207,4 +238,4 @@ with tempfile.TemporaryDirectory(prefix="ltm-model-") as tmp:
         swift=work/(name+".swift");swift.write_text(source)
         exe=app/"MacOS"/name
         subprocess.run(["swiftc","-module-cache-path",str(work/"modules"),"-default-isolation","MainActor",str(sources/"DeviceModelView.swift"),*[str(sources/(x+".swift")) for x in extra],str(swift),"-o",str(exe)],check=True)
-        subprocess.run([str(exe),str(asset)],check=True,timeout=45)
+        subprocess.run([str(exe),str(asset),str(work)],check=True,timeout=45)

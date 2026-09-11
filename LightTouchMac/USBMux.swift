@@ -90,21 +90,32 @@ final class USBMux {
         writeSessionFile(filesRoot: filesRoot, nand: nand, overlay: overlay,
                          session: session)
 
-        Bundled.rotateLog(at: work.appendingPathComponent("usbmuxd.log"))
         let binary = Self.binary, conf = Self.conf
-        // The daemon's log lands where install-ipa.sh's error message has
-        // always claimed it is. It was .discarded before, which made every
-        // "check usbmuxd.log" a dead end.
-        let logPath = FilePath(work.appendingPathComponent("usbmuxd.log").path)
+        let logURL = Bundled.logsDirectory.appendingPathComponent("usbmuxd.log")
         daemonTask = Task.detached {
             do {
-                // The work directory exists — Bundled.workDirectory made it —
-                // so this only fails in circumstances /dev/null also covers.
-                let log = (try? FileDescriptor.open(
-                    logPath, .writeOnly,
-                    options: [.create, .truncate], permissions: .ownerReadWrite))
-                    ?? (try! FileDescriptor.open("/dev/null", .writeOnly))
-                defer { try? log.close() }
+                // The app drains a pipe to a bounded writer. Giving the child
+                // a rotating file descriptor would leave it writing the renamed
+                // generation forever and allow a long session to fill the disk.
+                let capture: ProcessLogCapture?
+                do { capture = try ProcessLogCapture(url: logURL) }
+                catch {
+                    capture = nil
+                    logEvent("usbmux: log capture unavailable: \(error.localizedDescription)")
+                }
+                let log: FileDescriptor
+                let fallback: FileDescriptor?
+                if let capture {
+                    log = FileDescriptor(rawValue: capture.writeDescriptor)
+                    fallback = nil
+                } else {
+                    log = try FileDescriptor.open("/dev/null", .writeOnly)
+                    fallback = log
+                }
+                defer {
+                    capture?.flush()
+                    try? fallback?.close()
+                }
                 _ = try await run(
                     .path(FilePath(binary)),
                     arguments: ["-f", "-v", "-S", clientSocket, "-P", "NONE",
@@ -145,7 +156,7 @@ final class USBMux {
                     }
                 }
             } catch {
-                // Cancelled (normal shutdown) or a spawn failure.
+                if !Task.isCancelled { logEvent("usbmux: could not run daemon: \(error.localizedDescription)") }
             }
             // Distinguish an orderly stop() from an unexpected death: on the
             // latter the task was never cancelled.
@@ -185,6 +196,7 @@ final class USBMux {
         // the task cancellation would otherwise run. Only ever our own child.
         if let pid = daemonPID { kill(pid, SIGTERM) }
         if let pidFile { try? FileManager.default.removeItem(atPath: pidFile) }
+        try? FileManager.default.removeItem(atPath: Self.sessionFile)
         daemonPID = nil
         daemonTask?.cancel()
         daemonTask = nil
@@ -212,6 +224,7 @@ final class USBMux {
         """
         do {
             try contents.write(toFile: Self.sessionFile, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: Self.sessionFile)
         } catch {
             // Not fatal — only the Terminal feature reads this — but no longer
             // silent: a write failure here used to be invisible.

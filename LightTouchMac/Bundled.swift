@@ -32,29 +32,51 @@ nonisolated enum Bundled {
     /// Dylibs shipped with the app, where package.sh repoints @rpath.
     static let frameworksDirectory = Bundle.main.privateFrameworksPath
 
-    /// Per-user machine state: the NAND copy-on-write overlay, snapshots, logs.
-    /// Always writable, in both dev and packaged builds — unlike a files-root
-    /// that may point inside the read-only signed bundle.
-    static let stateDirectory: URL = {
-        // Explicit isolation for development and UI verification; default
-        // launches keep the user's existing Application Support directory.
-        let override = ProcessInfo.processInfo.environment["LTM_STATE_DIR"]
-        let url = override.map { URL(fileURLWithPath: $0, isDirectory: true) }
-            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("LightTouchMac", isDirectory: true)
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
-    }()
+    /// Prepare once before the app constructs controllers or opens any device
+    /// files. On error the caller must stop startup instead of creating a new
+    /// device next to inaccessible or conflicting existing data.
+    private static let layout: Result<StorageLocations.Layout, any Error> = Result {
+        let fm = FileManager.default
+        return try StorageLocations.prepare(
+            applicationSupport: fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0],
+            library: fm.urls(for: .libraryDirectory, in: .userDomainMask)[0],
+            override: ProcessInfo.processInfo.environment["LTM_STATE_DIR"].map {
+                URL(fileURLWithPath: $0, isDirectory: true)
+            })
+    }
 
-    /// Writable scratch the daemon and scripts share: session.env, the usbmuxd
-    /// pid file, per-run logs. Deliberately NOT under files-root — a packaged
-    /// app's files-root is the signed, read-only Resources/device tree, so the
-    /// old `<filesRoot>/apps/work` silently failed every write there.
-    static let workDirectory: URL = {
+    static func requireStorage() throws { _ = try layout.get() }
+
+    /// The fallback is only a path for error reporting, never an alternate
+    /// writable root. App startup requires the successful layout above.
+    static var stateDirectory: URL {
+        if case .success(let value) = layout { return value.state }
+        return ProcessInfo.processInfo.environment["LTM_STATE_DIR"].map {
+            URL(fileURLWithPath: $0, isDirectory: true)
+        } ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(StorageLocations.bundleIdentifier, isDirectory: true)
+    }
+
+    static var preparedLogsDirectory: URL? {
+        if case .success(let value) = layout { return value.logs }
+        return nil
+    }
+
+    static var logsDirectory: URL {
+        if let ready = preparedLogsDirectory { return ready }
+        return ProcessInfo.processInfo.environment["LTM_STATE_DIR"].map {
+            URL(fileURLWithPath: $0, isDirectory: true).appendingPathComponent("Logs", isDirectory: true)
+        } ?? FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Logs/\(StorageLocations.bundleIdentifier)", isDirectory: true)
+    }
+
+    /// Daemon pairing identity and session control files live here. This is
+    /// persistent support data, not a disposable temporary-directory tree.
+    static var workDirectory: URL {
         let url = stateDirectory.appendingPathComponent("work", isDirectory: true)
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        if case .success = layout { try? StorageLocations.privateDirectory(url) }
         return url
-    }()
+    }
 
     /// A non-executable resource shipped alongside the app (a config dir, a
     /// data file), or nil when this build has none.
@@ -62,17 +84,6 @@ nonisolated enum Bundled {
         guard let base = Bundle.main.resourceURL?.appendingPathComponent(relativePath).path,
               FileManager.default.fileExists(atPath: base) else { return nil }
         return base
-    }
-
-    /// Keep one previous generation of a per-launch log. QEMU/usbmuxd hold the
-    /// fd for the whole run, so rotation can only happen at start, before the
-    /// process reopens it.
-    static func rotateLog(at url: URL) {
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: url.path) else { return }
-        let prev = url.appendingPathExtension("1")
-        try? fm.removeItem(at: prev)
-        try? fm.moveItem(at: url, to: prev)
     }
 
     /// A shipped executable or script, or nil when this build has none — in
