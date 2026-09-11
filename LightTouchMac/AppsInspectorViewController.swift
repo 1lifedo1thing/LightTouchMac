@@ -1483,7 +1483,7 @@ extension AppsInspectorViewController: NSTableViewDataSource, NSTableViewDelegat
                     job.bundleID ?? ""
                 Self.setIcon(job.bundleID.flatMap { AppMetadataCache.shared.icon(for: $0) },
                              on: cell.imageView)
-                cell.imageView?.alphaValue = NSApp.isActive ? 1 : 0.5
+                cell.imageView?.layer?.opacity = NSApp.isActive ? 1 : 0.5
                 return cell
             }
             return progressCell(icon: pendingIcon(job), title: job.name,
