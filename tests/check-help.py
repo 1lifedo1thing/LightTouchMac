@@ -17,7 +17,7 @@ source="import Cocoa\n@MainActor final class Check:NSObject { var helpController
   let text=scroll.documentView as! NSTextView
   precondition(!text.isEditable && text.isSelectable && text.usesFindBar)
   precondition(text.string.contains("Recordings include device audio"))
-  precondition(text.string.contains("Controller release"))
+  precondition(!text.string.contains("Controller release") && text.string.contains("Physical Size"))
   precondition(text.string.contains("Natural Scrolling") && text.string.contains("Rotate with two fingers"))
   precondition(scroll.hasVerticalScroller && text.frame.height>scroll.contentSize.height)
   window.setContentSize(NSSize(width:400,height:400));window.contentView!.layoutSubtreeIfNeeded()
@@ -33,5 +33,5 @@ with tempfile.TemporaryDirectory(prefix='ltm-help-') as tmp:
     (app/'Info.plist').write_bytes(plistlib.dumps(dict(CFBundleIdentifier='app.lighttouch.helpcheck',CFBundleExecutable='check',CFBundlePackageType='APPL')))
     shutil.copyfile(root/'Help.txt',app/'Resources/Help.txt')
     (tmp/'check.swift').write_text(source)
-    subprocess.run(['xcrun','swiftc','-swift-version','5','-default-isolation','MainActor',str(tmp/'check.swift'),'-parse-as-library','-o',str(app/'MacOS/check')],check=True)
+    subprocess.run(['xcrun','swiftc','-swift-version','5','-default-isolation','MainActor',str(root/'WindowRestorationPolicy.swift'),str(tmp/'check.swift'),'-parse-as-library','-o',str(app/'MacOS/check')],check=True)
     subprocess.run([str(app/'MacOS/check')],check=True)

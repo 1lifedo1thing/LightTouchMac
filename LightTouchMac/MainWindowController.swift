@@ -1,6 +1,6 @@
 // Created by Sam on 2026-08-05.
 //
-// The single window: device centred in the main column, an app-management
+// The device window: device centred in the main column, an app-management
 // inspector on the trailing edge, and a toolbar whose items mirror the menu bar
 // (same selectors, same validation). Menu actions route here through the
 // responder chain (the window controller is the window's next responder).
@@ -13,6 +13,9 @@ private extension NSToolbarItem.Identifier {
     static let motion = NSToolbarItem.Identifier("motion")
     static let screenshot = NSToolbarItem.Identifier("screenshot")
     static let recording = NSToolbarItem.Identifier("recording")
+    static let saveScreenshotAs = NSToolbarItem.Identifier("saveScreenshotAs")
+    static let openScreenshot = NSToolbarItem.Identifier("openScreenshot")
+    static let captureOptions = NSToolbarItem.Identifier("captureOptions")
     static let liveText = NSToolbarItem.Identifier("liveText")
     static let copyScreen = NSToolbarItem.Identifier("copyScreen")
     static let fingerDots = NSToolbarItem.Identifier("fingerDots")
@@ -21,7 +24,6 @@ private extension NSToolbarItem.Identifier {
     static let rotate       = NSToolbarItem.Identifier("rotate")
     static let zoom         = NSToolbarItem.Identifier("zoom")
     static let installApp   = NSToolbarItem.Identifier("installApp")
-    static let openTerminal = NSToolbarItem.Identifier("openTerminal")
     static let searchCatalog = NSToolbarItem.Identifier("searchCatalog")
 }
 
@@ -32,10 +34,34 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     private let inspectorVC: AppsInspectorViewController
     private let inspectorItem: NSSplitViewItem
     private let zoomControl = NSSegmentedControl()
-    private var rotateItem: NSToolbarItem?
     private(set) var zoom: ZoomMode = .fit
     private var deadOverlay: NSView?
-    private var filesVC: DeviceFilesViewController?
+    private var filesWindow: DeviceFilesWindowController?
+    private weak var proxySettingsEditor: ProxySettingsView?
+    private var filesVC: DeviceFilesViewController? { filesWindow?.browser }
+    private lazy var canvasCapture = CanvasCapture(view: deviceVC.screen)
+    private var screenshotBusy = false
+    private var modifierMonitor: Any?
+    private var captureKeyMonitor: Any?
+    private var consumedCaptureSpace = false
+    private var copyConfirmation: Task<Void, Never>?
+    private var copiedScreenshot = false
+    private let capturePreferences = CapturePreferences.shared
+    private var captureOptionsWindow: NSWindowController?
+    private var canTakeScreenshot: Bool {
+        (emulator.isRunning || emulator.isPaused) && !emulator.isSleeping && !screenshotBusy
+    }
+    private var canStartRecording: Bool {
+        emulator.isRunning && !emulator.isSleeping && !screenshotBusy
+    }
+    private var canToggleRecording: Bool {
+        recording.phase != .saving && (recording.canStop || recording.needsRecovery || canStartRecording)
+    }
+    private let fileStatus = CaptureStatusView()
+    private var captureMode: Int { UserDefaults.standard.integer(forKey: "captureMode") == 1 ? 1 : 0 }
+    var hasFileTransfer: Bool { filesVC?.hasTransfer == true }
+    func cancelFileTransfer() { filesVC?.cancelTransfer() }
+
     
     init(emulator: EmulatorController) {
         self.emulator = emulator
@@ -43,21 +69,16 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         self.inspectorVC = AppsInspectorViewController(emulator: emulator)
         
         let split = NSSplitViewController()
-        // Remember the divider position and inspector-collapsed state across
-        // launches (state restoration is on; this is the missing piece).
-        split.splitView.autosaveName = "MainSplit"
         let deviceItem = NSSplitViewItem(viewController: deviceVC)
-        deviceItem.minimumThickness = 200
+        deviceItem.minimumThickness = 320
         split.addSplitViewItem(deviceItem)
         
         inspectorItem = NSSplitViewItem(inspectorWithViewController: inspectorVC)
         // The widths the sidebar guidelines ask for: enough for an app name at a
         // readable size, not so much that it competes with the device.
-        inspectorItem.minimumThickness = 240
+        inspectorItem.minimumThickness = 280
         inspectorItem.maximumThickness = 400
-        if #available(macOS 26.0, *) {
-            inspectorItem.addBottomAlignedAccessoryViewController(inspectorVC.makeBottomBar())
-        }
+
         split.addSplitViewItem(inspectorItem)
         
         let window = NSWindow(contentViewController: split)
@@ -69,8 +90,10 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         // inspector's material still stops at it, which is the giveaway that the
         // pane is sitting under the titlebar instead of behind it.
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
-        window.setContentSize(NSSize(width: 320 + 260, height: 560))
-        window.setFrameAutosaveName("Main")
+        window.setContentSize(NSSize(width: 720, height: 640))
+        window.contentMinSize = NSSize(width: 360, height: 380)
+        WindowRestorationPolicy.configure(window)
+        window.center()
         super.init(window: window)
         if let appsMenu = NSApp.mainMenu?.item(withTitle: "Apps")?.submenu {
             appsMenu.delegate = inspectorVC
@@ -84,6 +107,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         toolbar.allowsUserCustomization = true
         toolbar.autosavesConfiguration = true
         window.toolbar = toolbar
+        migrateCaptureToolbar(toolbar)
         // Out and in. Momentary, because both are commands rather than states
         // to sit in — which state you are in is the menu's job, where the
         // checkmarks live.
@@ -95,7 +119,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         for (index, (symbol, label)) in symbols.enumerated() {
             zoomControl.setImage(NSImage(systemSymbolName: symbol, accessibilityDescription: label),
                                  forSegment: index)
-            zoomControl.setToolTip(label, forSegment: index)
+            zoomControl.setToolTip(label + (index == 0 ? " (⌘−)" : " (⌘+)"), forSegment: index)
         }
         zoomControl.target = self
         zoomControl.action = #selector(zoomSegmentClicked(_:))
@@ -104,42 +128,83 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
         window.delegate = self
         emulator.onStatusChange = { [weak self] in self?.refreshForState() }
+        installCaptureStatus()
+        installFileStatus()
+        installCaptureKeyboardShortcuts()
+        installCaptureNotifications()
+        recoverUnfinishedRecordings()
+        modifierMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            self?.syncRotationControls(optionPressed: event.modifierFlags.contains(.option))
+            return event
+        }
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshRotationModifiers), name: NSApplication.didBecomeActiveNotification, object: nil)
+        deviceVC.screen.onPhysicalSizeUnavailable = { [weak self] in self?.apply(.fit) }
+        NotificationCenter.default.addObserver(self, selector: #selector(stopHiddenRecording), name: NSApplication.didHideNotification, object: nil)
+        recording.onChange = { [weak self] in self?.refreshRecording() }
+        recording.onBeganRecording = { CaptureSound.recordingStarted.play() }
+        recording.onStoppedRecording = {
+            CaptureSound.recordingStopped.play()
+            CaptureNotifications.shared.cancelReminder()
+        }
+        recording.chooseSaveDestination = { [weak self] _ in
+            guard let self, let window = self.window else { return nil }
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.quickTimeMovie]
+            panel.directoryURL = self.captureFolder
+            panel.nameFieldStringValue = self.captureName("Recording") + ".mov"
+            return await panel.beginSheetModal(for: window) == .OK ? panel.url : nil
+        }
+        recording.onCompleted = { [weak self] result in
+            guard let self else { return }
+            CaptureNotifications.shared.cancelReminder()
+            switch result {
+            case let .saved(url):
+                if capturePreferences.openFinderAfterCapture { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            case let .recovery(url):
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            case .discarded, .failed: break
+            }
+        }
+        recording.onFinished = { [weak self] success in
+            guard let self else { return }
+            if success {
+                if quitAfterRecording { AppDelegate.requestTermination() }
+                else if closeAfterRecording { self.window?.performClose(nil) }
+            } else if recording.phase == .idle, let failure = recording.failure, let window = self.window {
+                NSAlert(error: failure).beginSheetModal(for: window)
+            }
+            quitAfterRecording = false
+            closeAfterRecording = false
+        }
         refreshForState()
     }
 
-    private let movieWriter = ScreenMovieWriter()
-    private var recordingTask: Task<Void, Never>?
-    private var recordingOutput: URL?
-    private var recordingStartedAt: CFTimeInterval = 0
-    private var finishingRecording = false
-    private var recordingFailure: Error?
-    private var recordingStopRequested = false
+    private let recording = ScreenRecordingSession()
+    private let captureStatus = CaptureStatusView()
+    private let startupStatus = CaptureStatusView()
+    private var startupTask: Task<Void, Never>?
+    private var startupBegan = Date()
+    private var wasStarting = false
     private var quitAfterRecording = false
+    private var closeAfterRecording = false
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    override func windowDidLoad() {
-        super.windowDidLoad()
-        reportEraseFailureIfNeeded()
-        // Only center on first run. setFrameAutosaveName already restored a
-        // saved frame; centering unconditionally threw that away every launch.
-        if window?.setFrameUsingName("Main") != true { window?.center() }
-        apply(Self.savedZoom())   // restore the zoom the user left it at
+    deinit {
+        if let modifierMonitor { NSEvent.removeMonitor(modifierMonitor) }
+        if let captureKeyMonitor { NSEvent.removeMonitor(captureKeyMonitor) }
     }
 
-    /// An erase the user confirmed that could not be carried out. Silence here
-    /// meant a destructive action appeared to do nothing, with the request still
-    /// armed to fire at some later launch.
-    private func reportEraseFailureIfNeeded() {
-        guard let reason = emulator.eraseFailure else { return }
-        emulator.clearEraseFailure()
-        logEvent("Erase failed: \(reason)")
-        emulator.reportDeviceNotice("The device could not be erased. It is unchanged; the erase is still pending and will retry when Light Touch opens. Choose Erase All Content and Settings again to cancel it. Open Device Logs for details.", for: .erase)
+    override func windowDidLoad() {
+        super.windowDidLoad()
+        window?.center()
+        apply(Self.savedZoom())   // restore the zoom the user left it at
     }
 
     // MARK: - Health / status surfacing
 
     private func refreshForState() {
+        proxySettingsEditor?.updateStatus(emulator.webProxyStatus)
         if let filesVC {
             let socket = emulator.canReachDevice ? emulator.usbmuxSession : nil
             if filesVC.services?.clientSocket != socket {
@@ -148,6 +213,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
             }
         }
         updateDeviceNotice()
+        updateStartupStatus()
         // The window subtitle is where AppKit puts secondary window state, and
         // it styles and truncates itself to match the title. A custom titlebar
         // accessory was carrying this before — more code, its own constraints,
@@ -159,11 +225,42 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         if let item = window?.toolbar?.items.first(where: { $0.itemIdentifier == .lock }) {
             item.label = emulator.isPoweredOff ? "Power On" : emulator.isSleeping ? "Wake" : "Lock"
             item.image = NSImage(systemSymbolName: emulator.isPoweredOff ? "power" : "lock", accessibilityDescription: item.label)
-            item.toolTip = emulator.isPoweredOff ? "Power on the device" : "Lock or wake the device; open the menu for power options"
+            item.toolTip = item.label + " (⌘L)"
         }
         window?.toolbar?.validateVisibleItems()
-        syncRotateSymbol()      // follows automatic rotations, not just manual ones
+        validateCaptureToolbar()
         updateDeadOverlay()
+        if emulator.isDead || emulator.isPoweredOff { recording.stop() }
+    }
+
+    private func updateStartupStatus() {
+        defer { deviceVC.updateStatusVisibility() }
+        let starting = emulator.isErasing || emulator.state == .booting || emulator.preparingMedia
+        guard starting else {
+            wasStarting = false
+            startupTask?.cancel()
+            startupTask = nil
+            startupStatus.isHidden = true
+            return
+        }
+        if !wasStarting { startupBegan = Date(); wasStarting = true }
+        if startupStatus.superview == nil {
+            deviceVC.addStatus(startupStatus)
+            startupStatus.onPrimary = { [weak self] in self?.showDeviceLogs(nil) }
+        }
+        let elapsed = Int(Date().timeIntervalSince(startupBegan))
+        startupStatus.update(title: emulator.isErasing ? "Erasing iPod…" : emulator.preparationStatus,
+                             detail: elapsed >= 90 ? "Check Device Logs." : "\(elapsed)s",
+                             busy: true, primary: elapsed >= 90 ? "Device Logs" : nil)
+        if startupTask == nil {
+            startupTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                    guard let self else { return }
+                    updateStartupStatus()
+                }
+            }
+        }
     }
 
     private var noticeAccessory: DeviceNoticeViewController?
@@ -190,7 +287,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     /// When the emulator dies (QEMU can't re-init), cover the device with an
     /// unmistakable overlay — the frozen last frame otherwise looks live.
     private func updateDeadOverlay() {
-        guard emulator.isDead else {
+        guard emulator.isDead, !emulator.isErasing else {
             deadOverlay?.removeFromSuperview()
             deadOverlay = nil
             return
@@ -237,10 +334,21 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         AppDelegate.requestTermination()
     }
     
-    /// ⌘F / Edit ▸ Find: focus the Legacy Store search field in the toolbar.
+    /// Search Apps focuses the inspector search field in either mode.
     @objc func findCatalog(_ sender: Any?) {
+        if let toolbar = window?.toolbar {
+            toolbar.isVisible = true
+            if !toolbar.items.contains(where: { $0.itemIdentifier == .searchCatalog }) {
+                let index = toolbar.items.firstIndex { $0.itemIdentifier == .inspectorTrackingSeparator } ?? toolbar.items.count
+                toolbar.insertItem(withItemIdentifier: .searchCatalog, at: min(index + 1, toolbar.items.count))
+            }
+        }
         inspectorVC.focusSearch()
     }
+
+    /// NSTextView handles Find first in Help and logs. In the device window,
+    /// the searchable content is the app inspector.
+    @objc func performFindPanelAction(_ sender: Any?) { findCatalog(sender) }
 
     // MARK: - Toolbar
 
@@ -249,72 +357,48 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
         switch id {
         case .screenshot:
-            return button(id, "Screenshot", "camera", #selector(saveScreenshot(_:)), "Save a screenshot (⇧⌘S)")
+            return button(id, "Save Screenshot", "square.and.arrow.down", #selector(saveScreenshot(_:)), "Save Screenshot (⌘S)")
         case .recording:
-            return button(id, "Record", "record.circle", #selector(toggleRecording(_:)), "Start or stop screen recording (⇧⌘R)")
+            let item = NSToolbarItem(itemIdentifier: id)
+            item.view = RecordingToolbarButton(target: self, action: #selector(toggleRecording(_:)))
+            item.target = self
+            item.action = #selector(toggleRecording(_:))
+            item.label = "Record"
+            item.paletteLabel = "Record"
+            item.visibilityPriority = .high
+            item.isEnabled = validateToolbarItem(item)
+            return item
+        case .saveScreenshotAs:
+            return button(id, "Save Screenshot As…", "square.and.arrow.down.on.square", #selector(saveScreenshotAs(_:)), "Save Screenshot As… (⇧⌘S)")
+        case .openScreenshot:
+            return button(id, "Open Screenshot", "arrow.up.forward.app", #selector(openScreenshot(_:)), "Open Screenshot (⌘O)")
+        case .captureOptions:
+            return button(id, "Capture Options", "slider.horizontal.3", #selector(showCaptureOptions(_:)), "Capture Options")
         case .liveText:
-            return button(id, "Live Text", "text.viewfinder", #selector(showLiveText(_:)), "Select text on the device screen (⇧⌘L)")
+            return button(id, "Select Text on Screen", "text.viewfinder", #selector(showLiveText(_:)), "Select text on the device screen")
         case .copyScreen:
-            return button(id, "Copy Screen", "doc.on.doc", #selector(copyScreen(_:)), "Copy the device screen (⇧⌘C)")
+            return button(id, "Copy Screenshot", "document.on.document", #selector(copyScreen(_:)), "Copy Screenshot (⌘C)")
         case .fingerDots:
-            return button(id, "Finger Dots", "hand.draw", #selector(toggleTouchOverlay(_:)), "Show or hide touches")
+            return button(id, "Show Finger Dots", "hand.draw", #selector(toggleTouchOverlay(_:)), "Show finger dots in the device screen and captures")
         case .motion:
             let item = NSMenuToolbarItem(itemIdentifier: id)
             item.label = "Motion"
             item.paletteLabel = "Motion Controls"
             item.image = NSImage(systemSymbolName: "move.3d", accessibilityDescription: "Motion Controls")
-            item.toolTip = "Choose upright or flat; Option-arrow keys tilt, Option-Space shakes"
+            item.toolTip = "Motion Controls"
             item.showsIndicator = true
             item.isBordered = true
-            let menu = NSMenu(title: "Motion")
-            for (tag, title) in ["Upright", "Flat"].enumerated() {
-                let entry = menu.addItem(withTitle: title, action: #selector(selectMotionPose(_:)), keyEquivalent: "")
-                entry.target = self
-                entry.tag = tag
-            }
-            menu.addItem(.separator())
-            let rate = NSMenuItem(title: "Keyboard Tilt Speed", action: nil, keyEquivalent: "")
-            rate.submenu = NSMenu(title: "Keyboard Tilt Speed")
-            for (degrees, title) in [(45, "Slow"), (90, "Standard"), (180, "Fast")] {
-                let entry = rate.submenu!.addItem(withTitle: title, action: #selector(selectTiltSpeed(_:)), keyEquivalent: "")
-                entry.target = self
-                entry.tag = degrees
-            }
-            menu.addItem(rate)
-            let reset = menu.addItem(withTitle: "Reset Tilt", action: #selector(resetMotion(_:)), keyEquivalent: "")
-            reset.target = self
-            let shake = menu.addItem(withTitle: "Shake", action: #selector(deviceShake(_:)), keyEquivalent: "")
-            shake.target = self
-            item.menu = menu
+            item.menu = MainMenuBuilder.motionMenu(target: self)
             return item
         case .files:
-            return button(id, "Files", "folder", #selector(toggleFiles(_:)), "Browse and transfer device files")
+            return button(id, "iPod Files", "folder", #selector(toggleFiles(_:)), "Show iPod Files (⌘2)")
         case .home:
-            return button(id, "Home", "house", #selector(deviceHome(_:)), "Press the Home button")
+            return button(id, "Home Screen", "square.grid.3x3.fill", #selector(deviceHome(_:)), "Home Screen (⇧⌘H)")
         case .lock:
-            let item = NSMenuToolbarItem(itemIdentifier: id)
-            item.label = "Lock"
-            item.paletteLabel = "Lock and Power Off"
-            item.toolTip = "Lock or wake the device; open the menu for power options"
-            item.image = NSImage(systemSymbolName: "lock", accessibilityDescription: "Lock")
-            item.target = self
-            item.action = #selector(deviceLock(_:))
-            item.isBordered = true
-            item.showsIndicator = true
-            let menu = NSMenu(title: "Device Power")
-            let lock = menu.addItem(withTitle: "Lock", action: #selector(deviceLock(_:)), keyEquivalent: "")
-            lock.target = self
-            lock.image = NSImage(systemSymbolName: "lock", accessibilityDescription: nil)
-            let powerOff = menu.addItem(withTitle: "Power Off", action: #selector(devicePowerOff(_:)), keyEquivalent: "")
-            powerOff.target = self
-            powerOff.image = NSImage(systemSymbolName: "power", accessibilityDescription: nil)
-            powerOff.toolTip = "Shut down the device while keeping this window open"
-            item.menu = menu
-            return item
+            return button(id, "Lock", "lock", #selector(deviceLock(_:)), "Lock (⌘L)")
         case .rotate:
-            let item = button(id, "Rotate", rotateSymbolName, #selector(deviceRotate(_:)), "Rotate between portrait and landscape")
-            rotateItem = item
-            return item
+            let action = RotationControlAction(rotationDegrees: emulator.rotationDegrees, optionPressed: NSEvent.modifierFlags.contains(.option))
+            return button(id, action.title, action.symbol, #selector(deviceRotate(_:)), action.help)
         case .installApp:
             return button(id, "Install App", "square.and.arrow.down", #selector(installApp(_:)), "Install a decrypted .ipa")
         case .searchCatalog:
@@ -323,13 +407,11 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
             // Mac home for search, riding above the inspector pane thanks to
             // the tracking separator.
             let item = NSSearchToolbarItem(itemIdentifier: id)
-            item.label = "Search"
-            item.paletteLabel = "Search Legacy Store"
-            item.toolTip = "Search Legacy Store for apps the device can run"
-            inspectorVC.attachSearchField(to: item)
+            item.label = "Search Apps"
+            item.paletteLabel = "Search Apps"
+            item.toolTip = "Search Installed Apps or Store (⌥⌘F)"
+            if flag { inspectorVC.attachSearchField(to: item) }
             return item
-        case .openTerminal:
-            return button(id, "SSH", "terminal", #selector(openDeviceTerminal(_:)), "Open a root shell on the device")
         case .zoom:
             let item = NSToolbarItem(itemIdentifier: .zoom)
             item.label = "Zoom"
@@ -378,18 +460,27 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         return item
     }
     
-    /// The inspector toggle ships in the default set: an inspector nobody can
-    /// find is an inspector nobody uses, and the toolbar is the only place the
-    /// control is meant to live. The tracking separator sits on the split
-    /// view's divider, so the toggle rides above the inspector rather than
-    /// floating in the middle of the titlebar.
+    /// Frequent capture actions live beside the device controls, as in WireView.
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.home, .lock, .rotate, .zoom, .space, .screenshot, .recording, .liveText,
-         .flexibleSpace, .inspectorTrackingSeparator, .flexibleSpace, .searchCatalog, .toggleInspector]
+        [.home, .lock, .rotate, .zoom, .flexibleSpace,
+         .openScreenshot, .screenshot, .copyScreen, .recording,
+         .inspectorTrackingSeparator, .flexibleSpace, .searchCatalog, .toggleInspector]
+    }
+
+    /// Add the actions displaced from the removed floating bar once. Preserve
+    /// existing customization and subsequent choices to remove toolbar items.
+    private func migrateCaptureToolbar(_ toolbar: NSToolbar) {
+        guard !UserDefaults.standard.bool(forKey: "captureToolbarMigrated") else { return }
+        for id: NSToolbarItem.Identifier in [.home, .rotate, .openScreenshot, .screenshot, .copyScreen, .recording] {
+            guard !toolbar.items.contains(where: { $0.itemIdentifier == id }) else { continue }
+            let index = toolbar.items.firstIndex { $0.itemIdentifier == .inspectorTrackingSeparator } ?? toolbar.items.count
+            toolbar.insertItem(withItemIdentifier: id, at: index)
+        }
+        UserDefaults.standard.set(true, forKey: "captureToolbarMigrated")
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.files, .home, .lock, .rotate, .motion, .zoom, .screenshot, .recording, .liveText, .copyScreen, .fingerDots, .installApp, .openTerminal, .searchCatalog,
+        [.files, .home, .lock, .rotate, .motion, .zoom, .screenshot, .recording, .saveScreenshotAs, .openScreenshot, .captureOptions, .liveText, .copyScreen, .fingerDots, .installApp, .searchCatalog,
          .space, .flexibleSpace, .inspectorTrackingSeparator, .toggleInspector]
     }
     
@@ -400,6 +491,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     }
 
     private func apply(_ mode: ZoomMode) {
+        let mode = mode == .physical && deviceVC.screen.physicalScale == nil ? ZoomMode.fit : mode
         zoom = mode
         deviceVC.setZoom(mode)
         syncZoomControls()
@@ -411,12 +503,14 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         let encoded: String
         switch mode {
         case .fit: encoded = "fit"
+        case .physical: encoded = "physical"
         case .pixels(let n): encoded = "pixels:\(n)"
         }
         UserDefaults.standard.set(encoded, forKey: zoomKey)
     }
     static func savedZoom() -> ZoomMode {
         switch UserDefaults.standard.string(forKey: zoomKey) {
+        case "physical", "pixels:1": return .physical
         case let s? where s.hasPrefix("pixels:"):
             return Int(s.dropFirst("pixels:".count)).flatMap { ZoomMode.steps.contains($0) ? .pixels($0) : nil } ?? .fit
         default: return .fit
@@ -444,7 +538,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
     @objc func zoomIn(_ sender: Any?)  { stepZoom(1) }
     @objc func zoomOut(_ sender: Any?) { stepZoom(-1) }
-    @objc func zoomActualSize(_ sender: Any?) { apply(.pixels(1)) }
+    @objc func zoomPhysicalSize(_ sender: Any?) { apply(.physical) }
     @objc func zoomToFit(_ sender: Any?) { apply(.fit) }
     
     // MARK: - Device menu actions (routed via the responder chain)
@@ -456,20 +550,35 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     @objc func deviceVolumeUp(_ sender: Any?)    { emulator.pressVolumeUp() }
     @objc func deviceVolumeDown(_ sender: Any?)  { emulator.pressVolumeDown() }
     @objc func deviceRotate(_ sender: Any?) {
-        emulator.toggleRotation()
-        syncRotateSymbol()
+        let action = RotationControlAction(rotationDegrees: emulator.rotationDegrees, optionPressed: NSEvent.modifierFlags.contains(.option))
+        emulator.rotate(clockwise: action.clockwise)
+    }
+
+    @objc private func refreshRotationModifiers() {
+        syncRotationControls(optionPressed: NSEvent.modifierFlags.contains(.option))
+    }
+
+    private func syncRotationControls(optionPressed: Bool) {
+        let action = RotationControlAction(rotationDegrees: emulator.rotationDegrees, optionPressed: optionPressed)
+        if let item = window?.toolbar?.items.first(where: { $0.itemIdentifier == .rotate }) {
+            item.label = action.title
+            item.image = NSImage(systemSymbolName: action.symbol, accessibilityDescription: action.title)
+            item.toolTip = action.help
+        }
     }
 
     @objc func configureWebProxy(_ sender: Any?) {
         guard let window else { return }
         let alert = NSAlert()
         alert.messageText = "Proxy"
-        alert.informativeText = "HTTP Proxy connects through your Mac. Choose an optional date to browse pages preserved by the Internet Archive. Everything runs inside Light Touch; archived pages use the closest available capture."
         alert.addButton(withTitle: "Apply")
         alert.addButton(withTitle: "Cancel")
         let editor = ProxySettingsView(configuration: emulator.webProxy, status: emulator.webProxyStatus)
+        proxySettingsEditor = editor
+        editor.onResize = { [weak alert] in alert?.layout() }
         alert.accessoryView = editor
         alert.beginSheetModal(for: window) { [weak self] response in
+            self?.proxySettingsEditor = nil
             guard response == .alertFirstButtonReturn, let self else { return }
             do { try self.emulator.configureWebProxy(editor.configuration) }
             catch { NSAlert(error: error).beginSheetModal(for: window) }
@@ -479,29 +588,26 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     @objc func toggleKeyboardInput(_ sender: Any?) { emulator.toggleKeyboardInput() }
 
     @objc func toggleFiles(_ sender: Any?) {
-        if let filesVC {
-            filesVC.stop()
-            filesVC.view.removeFromSuperview()
-            filesVC.removeFromParent()
-            self.filesVC = nil
-            window?.makeFirstResponder(deviceVC.screen)
-            return
+        if filesWindow == nil {
+            let files = DeviceFilesWindowController()
+            filesWindow = files
+            files.browser.services = (emulator.canReachDevice ? emulator.usbmuxSession : nil).map { DeviceServices(clientSocket: $0) }
+            files.browser.onActivityChange = { [weak self] in self?.refreshFileStatus() }
+            files.browser.reload()
         }
-        let files = DeviceFilesViewController()
-        files.services = (emulator.canReachDevice ? emulator.usbmuxSession : nil).map { DeviceServices(clientSocket: $0) }
-        files.dismiss = { [weak self] in self?.toggleFiles(nil) }
-        deviceVC.screen.endLiveText()
-        deviceVC.addChild(files)
-        files.view.frame = deviceVC.view.bounds
-        files.view.autoresizingMask = [.width, .height]
-        deviceVC.view.addSubview(files.view)
-        filesVC = files
-        files.reload()
-        files.focusBrowser()
+        filesWindow?.showWindow(sender)
+    }
+
+    private func refreshFileStatus() {
+        emulator.hasFileTransfer = hasFileTransfer
+        guard let filesVC, filesVC.hasTransfer else { fileStatus.isHidden = true; deviceVC.updateStatusVisibility(); return }
+        fileStatus.update(title: filesVC.transferStatus, primary: "Files", secondary: "Cancel")
+        deviceVC.updateStatusVisibility()
     }
 
     @objc func focusDeviceScreen(_ sender: Any?) {
-        if filesVC != nil { toggleFiles(nil) }
+        showWindow(sender)
+        window?.makeKeyAndOrderFront(sender)
         deviceVC.screen.endLiveText()
         window?.makeFirstResponder(deviceVC.screen)
     }
@@ -518,29 +624,18 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
     @objc func deviceRotateLeft(_ sender: Any?) {
         emulator.rotate(clockwise: false)
-        syncRotateSymbol()
     }
 
     @objc func deviceRotateRight(_ sender: Any?) {
         emulator.rotate(clockwise: true)
-        syncRotateSymbol()
     }
 
-    /// The symbol always shows which way the *next* toolbar press will rotate.
-    private func syncRotateSymbol() {
-        rotateItem?.image = NSImage(systemSymbolName: rotateSymbolName, accessibilityDescription: "Rotate")
-    }
-
-    private var rotateSymbolName: String { emulator.isLandscape ? "rotate.right" : "rotate.left" }
-    @objc private func selectMotionPose(_ sender: NSMenuItem) {
+    @objc func selectMotionPose(_ sender: NSMenuItem) {
         guard let pose = EmulatorController.MotionPose(rawValue: sender.tag) else { return }
         emulator.setMotionPose(pose)
         deviceVC.screen.resetMotion()
     }
-    @objc private func selectTiltSpeed(_ sender: NSMenuItem) {
-        emulator.setKeyboardTiltRate(Double(sender.tag))
-    }
-    @objc private func resetMotion(_ sender: Any?) { deviceVC.screen.resetMotion() }
+    @objc func resetMotion(_ sender: Any?) { deviceVC.screen.resetMotion() }
 
     @objc func deviceShake(_ sender: Any?)       { emulator.shake() }
     @objc func toggleDevicePause(_ sender: Any?) {
@@ -598,7 +693,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         let alert = NSAlert()
         alert.alertStyle = .critical
         alert.messageText = "Erase all content and settings?"
-        alert.informativeText = "This wipes everything on the device — installed apps, settings, saved state — back to a clean iOS 3.1.3. LightTouchMac quits now and erases the device the next time you open it. This cannot be undone."
+        alert.informativeText = "This permanently removes all apps, settings, and saved state from this iPod. Light Touch closes after erasing it. This cannot be undone."
         alert.addButton(withTitle: "Erase")
         alert.addButton(withTitle: "Cancel")
         alert.buttons.first?.hasDestructiveAction = true
@@ -625,7 +720,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         let panel = NSOpenPanel()
         panel.allowedContentTypes = PreparedMedia.extensions.sorted().compactMap { UTType(filenameExtension: $0) }
         panel.allowsMultipleSelection = true
-        panel.message = "Choose audio files for Music or JPEG, PNG and HEIC images for Photos."
+        panel.message = "Choose photos, audio files or videos to add to the iPod."
         panel.beginSheetModal(for: window!) { [weak self] response in
             guard let self, response == .OK else { return }
             for url in panel.urls {
@@ -662,59 +757,227 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     
     // MARK: - Edit menu (guest clipboard / screen)
     
-    @objc func saveScreenshot(_ sender: Any?) {
-        guard let window, let image = deviceVC.screen.captureFrame(),
-              let data = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { return }
-        do {
-            try data.write(to: captureDestination("Screenshot", extension: "png"), options: .atomic)
-            if let item = window.toolbar?.items.first(where: { $0.itemIdentifier == .screenshot }) {
-                item.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: "Screenshot saved")
-                item.toolTip = "Saved to " + captureFolder.path
-                Task { @MainActor [weak item] in
-                    try? await Task.sleep(for: .seconds(1))
-                    item?.image = NSImage(systemSymbolName: "camera", accessibilityDescription: "Screenshot")
-                }
-            }
-        }
-        catch { NSAlert(error: error).beginSheetModal(for: window) }
+    private func captureImage() async throws -> CGImage {
+        deviceVC.screen.endLiveText()
+        if captureMode == 0 { return try await canvasCapture.screenshot() }
+        guard let image = deviceVC.screen.captureFrame() else { throw CaptureError.failed("No screen image is available.") }
+        return image
     }
 
-    private var captureFolder: URL {
-        if let path = UserDefaults.standard.string(forKey: "captureFolder") {
-            return URL(fileURLWithPath: path, isDirectory: true)
-        }
-        return FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Light Touch", isDirectory: true)
+    @objc func saveScreenshot(_ sender: Any?) { takeScreenshot(.save) }
+    @objc func saveScreenshotAs(_ sender: Any?) { takeScreenshot(.saveAs) }
+    @objc func openScreenshot(_ sender: Any?) { takeScreenshot(.open) }
+
+    /// The standard Copy command reaches here only after focused text and
+    /// other native responders have had their turn.
+    @objc func copy(_ sender: Any?) {
+        guard window?.firstResponder === deviceVC.screen, !deviceVC.screen.isShowingLiveText else { return }
+        copyScreen(sender)
     }
+
+    private enum ScreenshotAction { case copy, save, saveAs, open }
+    private func takeScreenshot(_ action: ScreenshotAction) {
+        guard canTakeScreenshot, let window else { return }
+        screenshotBusy = true
+        validateCaptureToolbar()
+        Task { [weak self] in
+            guard let self else { return }
+            defer { screenshotBusy = false; validateCaptureToolbar() }
+            do {
+                let image = try await captureImage()
+                guard let data = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+                    throw CaptureError.failed("Could not create the screenshot.")
+                }
+                let nsImage = NSImage(cgImage: image, size: .zero)
+                var savedURL: URL?
+                if action == .copy {
+                    try copyImage(nsImage)
+                    showCopyConfirmation()
+                } else if action == .open {
+                    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Light Touch Screenshots", isDirectory: true)
+                    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                    let url = folder.appendingPathComponent(captureName("Screenshot") + " " + UUID().uuidString.prefix(8)).appendingPathExtension("png")
+                    try data.write(to: url, options: .atomic)
+                    if let application = capturePreferences.openInApplicationURL {
+                        _ = try await NSWorkspace.shared.open([url], withApplicationAt: application, configuration: .init())
+                    } else {
+                        _ = try await NSWorkspace.shared.open(url, configuration: .init())
+                    }
+                } else {
+                    if action == .saveAs {
+                        guard let url = await chooseScreenshotDestination() else { return }
+                        try data.write(to: url, options: .atomic)
+                        savedURL = url
+                    } else {
+                        do {
+                            let url = try captureDestination("Screenshot", extension: "png")
+                            try data.write(to: url, options: .atomic)
+                            savedURL = url
+                        } catch {
+                            guard let url = await chooseScreenshotDestination() else { return }
+                            try data.write(to: url, options: .atomic)
+                            savedURL = url
+                        }
+                    }
+                }
+                if action != .copy, capturePreferences.copyOnCapture {
+                    // Copying is an extra convenience; a clipboard failure must
+                    // not turn a successfully saved capture into a save error.
+                    if (try? copyImage(nsImage)) != nil { showCopyConfirmation() }
+                }
+                CaptureSound.screenshot.play()
+                if let savedURL, capturePreferences.openFinderAfterCapture {
+                    NSWorkspace.shared.activateFileViewerSelecting([savedURL])
+                }
+                if !recording.isActive, action != .open {
+                    captureStatus.showCapture(title: action == .copy ? "Screenshot copied" : "Screenshot saved",
+                                              image: nsImage, fileURL: savedURL)
+                    deviceVC.updateStatusVisibility()
+                }
+            } catch { NSAlert(error: error).beginSheetModal(for: window, completionHandler: nil) }
+        }
+    }
+
+    private func copyImage(_ image: NSImage) throws {
+        NSPasteboard.general.clearContents()
+        guard NSPasteboard.general.writeObjects([image]) else { throw CaptureError.failed("Could not copy the screenshot.") }
+    }
+
+    private func showCopyConfirmation() {
+        copyConfirmation?.cancel()
+        copiedScreenshot = true
+        validateCaptureToolbar()
+        copyConfirmation = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(1.5)) } catch { return }
+            self?.copiedScreenshot = false
+            self?.validateCaptureToolbar()
+        }
+    }
+
+    private func chooseScreenshotDestination() async -> URL? {
+        guard let window else { return nil }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.png]
+        panel.directoryURL = captureFolder
+        panel.nameFieldStringValue = captureName("Screenshot") + ".png"
+        return await panel.beginSheetModal(for: window) == .OK ? panel.url : nil
+    }
+
+    @objc func showCaptureOptions(_ sender: Any?) {
+        if captureOptionsWindow == nil {
+            let editor = CaptureOptionsView(preferences: capturePreferences)
+            editor.onChange = { [weak self] in self?.validateCaptureToolbar() }
+            editor.layoutSubtreeIfNeeded()
+            let panel = NSWindow(contentRect: NSRect(origin: .zero, size: editor.fittingSize), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            panel.title = "Capture Options"
+            WindowRestorationPolicy.configure(panel)
+            panel.contentView = editor
+            editor.onResize = { [weak panel, weak editor] in
+                guard let panel, let editor else { return }
+                panel.setContentSize(editor.fittingSize)
+            }
+            panel.isReleasedWhenClosed = false
+            panel.center()
+            captureOptionsWindow = NSWindowController(window: panel)
+        }
+        (captureOptionsWindow?.window?.contentView as? CaptureOptionsView)?.reload()
+        captureOptionsWindow?.showWindow(sender)
+        captureOptionsWindow?.window?.makeKeyAndOrderFront(sender)
+    }
+
+    private func installCaptureKeyboardShortcuts() {
+        captureKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+            guard let self else { return event }
+            if event.keyCode == 49, event.type == .keyUp, consumedCaptureSpace {
+                consumedCaptureSpace = false
+                return nil
+            }
+            if event.keyCode == 49, event.type == .keyDown {
+                if event.isARepeat, consumedCaptureSpace { return nil }
+                if !event.isARepeat { consumedCaptureSpace = false }
+            }
+            guard event.type == .keyDown, event.keyCode == 49,
+                  let window, event.window === window, window.isKeyWindow,
+                  window.attachedSheet == nil, NSApp.modalWindow == nil,
+                  window.firstResponder === deviceVC.screen,
+                  !deviceVC.screen.isShowingLiveText,
+                  event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
+                  capturePreferences.spaceBarAction != .none else { return event }
+            guard !event.isARepeat else { return consumedCaptureSpace ? nil : event }
+            consumedCaptureSpace = true
+            switch capturePreferences.spaceBarAction {
+            case .none: return event
+            case .copyScreenshot: copyScreen(nil)
+            case .saveScreenshot: saveScreenshot(nil)
+            case .saveScreenshotAs: saveScreenshotAs(nil)
+            case .toggleRecording: toggleRecording(nil)
+            }
+            return nil
+        }
+    }
+
+    private func installCaptureNotifications() {
+        CaptureNotifications.shared.onRecordingAction = { [weak self] id, action in
+            guard let self, recording.id == id, recording.canStop else { return }
+            switch action {
+            case .stopAndSave: recording.stop()
+            case .stopAndDelete: recording.stop(discard: true)
+            }
+        }
+        NotificationCenter.default.addObserver(self, selector: #selector(recordingAppDidResignActive), name: NSApplication.didResignActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(recordingAppDidBecomeActive), name: NSApplication.didBecomeActiveNotification, object: nil)
+    }
+
+    @objc private func recordingAppDidResignActive() {
+        guard recording.canStop else { return }
+        let id = recording.id
+        let seconds = capturePreferences.reminderAfterDuration
+        Task { [weak self] in
+            guard let self, recording.id == id, recording.canStop, !NSApp.isActive else { return }
+            await CaptureNotifications.shared.scheduleReminder(after: TimeInterval(seconds), recordingID: id)
+        }
+    }
+
+    @objc private func recordingAppDidBecomeActive() { CaptureNotifications.shared.cancelReminder() }
+
+    private func recoverUnfinishedRecordings() {
+        let cutoff = Date()
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let report = try await ScreenRecordingSession.recoverRecordings(createdBefore: cutoff) { _ in
+                    try self.captureDestination("Recording", extension: "mov")
+                }
+                for url in report.saved {
+                    if capturePreferences.notifyOnRecordingRecovery,
+                       await CaptureNotifications.shared.notifyRecoveredRecording(url) { continue }
+                    if capturePreferences.openFinderAfterCapture || capturePreferences.notifyOnRecordingRecovery {
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    }
+                }
+                if !report.remaining.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(report.remaining) }
+            } catch { logEvent("recording recovery: \(error.localizedDescription)") }
+        }
+    }
+
+    @objc func toggleCaptureScreenOnly(_ sender: Any?) {
+        guard !recording.isActive, !screenshotBusy else { return }
+        UserDefaults.standard.set(captureMode == 0 ? 1 : 0, forKey: "captureMode")
+    }
+    private func installFileStatus() {
+        fileStatus.isHidden = true
+        deviceVC.addStatus(fileStatus)
+        fileStatus.onPrimary = { [weak self] in self?.toggleFiles(nil) }
+        fileStatus.onSecondary = { [weak self] in self?.cancelFileTransfer() }
+    }
+
+    private var captureFolder: URL { capturePreferences.saveLocation }
 
     private func captureDestination(_ kind: String, extension suffix: String) throws -> URL {
         let folder = captureFolder
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder.appendingPathComponent(captureName(kind) + " " + UUID().uuidString.prefix(8))
             .appendingPathExtension(suffix)
-    }
-
-    @objc func showCaptures(_ sender: Any?) {
-        do {
-            try FileManager.default.createDirectory(at: captureFolder, withIntermediateDirectories: true)
-            NSWorkspace.shared.open(captureFolder)
-        } catch { if let window { NSAlert(error: error).beginSheetModal(for: window) } }
-    }
-
-    @objc func chooseCaptureFolder(_ sender: Any?) {
-        guard let window else { return }
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.directoryURL = captureFolder
-        panel.prompt = "Choose"
-        panel.beginSheetModal(for: window) { response in
-            if response == .OK, let url = panel.url {
-                UserDefaults.standard.set(url.path, forKey: "captureFolder")
-            }
-        }
     }
 
     private func captureName(_ kind: String) -> String {
@@ -724,106 +987,150 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     }
 
     @objc func showLiveText(_ sender: Any?) {
-        if filesVC != nil { toggleFiles(nil) }
+        guard !recording.isActive, deviceVC.screen.isShowingLiveText || canTakeScreenshot else { return }
         deviceVC.screen.toggleLiveText()
         window?.toolbar?.validateVisibleItems()
+        validateCaptureToolbar()
     }
 
     @objc func toggleTouchOverlay(_ sender: Any?) {
         deviceVC.screen.showsTouches.toggle()
         window?.toolbar?.validateVisibleItems()
+        validateCaptureToolbar()
+    }
+
+    private func installCaptureStatus() {
+        captureStatus.isHidden = true
+        deviceVC.addStatus(captureStatus)
+        captureStatus.onPrimary = { [weak self] in self?.saveRecordingAs() }
+        captureStatus.onSecondary = { [weak self] in
+            guard let self else { return }
+            // Resolve the file from the displayed banner. A prior recording's
+            // saved state must not hijack a newer screenshot's Reveal action.
+            if let url = captureStatus.fileURL {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            } else if case let .recovery(url) = recording.phase {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+        }
+        captureStatus.onDismiss = { [weak self] in self?.recording.dismiss(); self?.captureStatus.isHidden = true; self?.deviceVC.updateStatusVisibility() }
+    }
+
+    private func validateCaptureToolbar() {
+        refreshRotationModifiers()
+        // AppKit does not automatically validate toolbar items with custom
+        // views. Update the control explicitly on health and elapsed-time changes.
+        for item in window?.toolbar?.items ?? [] where item.itemIdentifier == .recording {
+            item.isEnabled = validateToolbarItem(item)
+        }
+        window?.toolbar?.validateVisibleItems()
+    }
+
+    private func refreshRecording() {
+        defer { deviceVC.updateStatusVisibility() }
+        if !recording.canStop { CaptureNotifications.shared.cancelReminder() }
+        window?.toolbar?.validateVisibleItems()
+        validateCaptureToolbar()
+        switch recording.phase {
+        case .idle: captureStatus.isHidden = true
+        case .starting, .recording:
+            captureStatus.isHidden = true
+        case .saving:
+            captureStatus.isHidden = true
+        case let .saved(url):
+            let thumbnail = recording.previewImage.map { NSImage(cgImage: $0, size: .zero) }
+                ?? NSWorkspace.shared.icon(forFile: url.path)
+            captureStatus.showCapture(title: "Recording saved", image: thumbnail, fileURL: url)
+        case .recovery:
+            captureStatus.update(title: "Recording needs attention", detail: recording.failure?.localizedDescription ?? "Save to another folder.",
+                                 primary: "Save As…", secondary: "Show in Finder", dismissible: true, appearance: .warning)
+        }
     }
 
     @objc func toggleRecording(_ sender: Any?) {
-        if recordingOutput != nil { stopRecording(sender); return }
-        guard !finishingRecording, let window else { return }
-        let output = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("mov")
-        recordingOutput = output
-        recordingFailure = nil
-        recordingStopRequested = false
-        window.toolbar?.validateVisibleItems()
-        recordingTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await movieWriter.start(url: output, recordGuestAudio: true)
-                recordingStartedAt = CACurrentMediaTime()
-                while !Task.isCancelled && !recordingStopRequested {
-                    try await movieWriter.append(deviceVC.screen.captureFrame(),
-                        seconds: CACurrentMediaTime() - recordingStartedAt)
-                    try await Task.sleep(for: .milliseconds(33))
-                }
-            } catch is CancellationError {
-                // Stop waits for this task before finishing the writer.
-            } catch {
-                recordingFailure = error
-                stopRecording(nil)
+        if recording.canStop { recording.stop(); return }
+        if case .recovery = recording.phase { saveRecordingAs(); return }
+        guard !recording.isActive, canStartRecording else { return }
+        deviceVC.screen.endLiveText()
+        let canvas = captureMode == 0
+        let source = canvasCapture
+        let background = NSImage(named: "gradient")?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        recording.start(frame: { [weak self] in
+            if canvas { return try source.frame() }
+            return self?.deviceVC.screen.captureFrame()
+        }, prepare: { [weak self] in
+            if canvas {
+                self?.deviceVC.screen.isCapturingCanvas = true
+                try await source.start(); return source.outputSize
             }
+            return nil
+        }, cleanup: { [weak self] in
+            if canvas {
+                await source.stop()
+                self?.deviceVC.screen.isCapturingCanvas = false
+            }
+        }, background: background,
+        destination: { [weak self] in
+            guard let self else { throw CaptureError.failed("The capture window was closed.") }
+            return try captureDestination("Recording", extension: "mov")
+        })
+        window?.makeFirstResponder(deviceVC.screen)
+    }
+
+    @objc func discardRecording(_ sender: Any?) {
+        guard recording.canStop, let window else { return }
+        let recordingID = recording.id
+        let alert = NSAlert()
+        alert.messageText = "Discard this recording?"
+        alert.addButton(withTitle: "Discard")
+        alert.addButton(withTitle: "Stop and Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons[0].hasDestructiveAction = true
+        alert.buttons[0].keyEquivalent = ""
+        alert.buttons[2].keyEquivalent = "\u{1b}"
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self, recording.id == recordingID else { return }
+            if response == .alertFirstButtonReturn { recording.stop(discard: true) }
+            else if response == .alertSecondButtonReturn { recording.stop() }
         }
-        if filesVC == nil { window.makeFirstResponder(deviceVC.screen) }
+    }
+
+    private func saveRecordingAs() {
+        guard let window, case let .recovery(source) = recording.phase else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.quickTimeMovie]
+        panel.nameFieldStringValue = captureName("Recording") + ".mov"
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url, self?.recording.phase == .recovery(source) else { return }
+            self?.recording.retrySave(to: url)
+        }
+    }
+
+    @objc func showRecordingRecovery(_ sender: Any?) {
+        do {
+            try FileManager.default.createDirectory(at: ScreenRecordingSession.recoveryDirectory, withIntermediateDirectories: true)
+            NSWorkspace.shared.open(ScreenRecordingSession.recoveryDirectory)
+        } catch { if let window { NSAlert(error: error).beginSheetModal(for: window) } }
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        !finishRecordingBeforeQuit()
+        guard recording.isActive else { return true }
+        closeAfterRecording = true
+        recording.stop()
+        return false
     }
 
     func finishRecordingBeforeQuit() -> Bool {
-        guard recordingOutput != nil else { return false }
+        guard recording.isActive else { return false }
         quitAfterRecording = true
-        stopRecording(nil)
+        recording.stop()
         return true
     }
 
-    @objc private func stopRecording(_ sender: Any?) {
-        guard let output = recordingOutput, !finishingRecording else { return }
-        finishingRecording = true
-        let producer = recordingTask
-        // Let the current audio packet finish before draining the capture queue.
-        recordingStopRequested = true
-        window?.toolbar?.validateVisibleItems()
-        Task { [weak self] in
-            guard let self else { return }
-            await producer?.value
-            defer {
-                recordingOutput = nil
-                recordingTask = nil
-                finishingRecording = false
-                window?.toolbar?.validateVisibleItems()
-                if quitAfterRecording {
-                    quitAfterRecording = false
-                    AppDelegate.requestTermination()
-                }
-            }
-            do {
-                try await movieWriter.finish(seconds: max(CACurrentMediaTime() - recordingStartedAt, 0.034))
-                if let recordingFailure { throw recordingFailure }
-                let destination = try captureDestination("Recording", extension: "mov")
-                // Stage on the destination volume so a failed copy never exposes a partial movie.
-                let staged = destination.deletingLastPathComponent().appendingPathComponent(".ltm-" + UUID().uuidString + ".mov")
-                defer { try? FileManager.default.removeItem(at: staged) }
-                try FileManager.default.copyItem(at: output, to: staged)
-                try FileManager.default.moveItem(at: staged, to: destination)
-                try? FileManager.default.removeItem(at: output)
-            } catch {
-                quitAfterRecording = false
-                if let window {
-                    let alert = NSAlert(error: error)
-                    alert.informativeText += "\nRecording recovery file: \(output.path)"
-                    await alert.beginSheetModal(for: window)
-                }
-            }
-        }
-    }
+    @objc func copyScreen(_ sender: Any?) { takeScreenshot(.copy) }
+    @objc private func stopHiddenRecording() { recording.stop() }
+    func windowWillMiniaturize(_ notification: Notification) { recording.stop() }
 
-    @objc func copyScreen(_ sender: Any?) {
-        // Capture owns its pixels before handing the image to the pasteboard.
-        Task {
-            guard let image = await deviceVC.screen.screenImage else { return }
-            let pb = NSPasteboard.general
-            pb.clearContents()
-            pb.writeObjects([image])
-        }
-    }
-    
     @objc func pasteToGuest(_ sender: Any?) {
         guard let text = NSPasteboard.general.string(forType: .string) else { return }
         emulator.pasteToGuest(text)
@@ -964,33 +1271,54 @@ extension MainWindowController: NSToolbarItemValidation {
         // one another, so choosing a second .ipa mid-install is supported and
         // blocking it was a regression. The terminal is gated, because it opens
         // a competing lockdown session.
-        case .screenshot, .copyScreen:
-            return (emulator.isRunning || emulator.isPaused) && !emulator.isSleeping
+        case .screenshot:
+            return canTakeScreenshot
+        case .copyScreen:
+            item.image = NSImage(systemSymbolName: copiedScreenshot ? "checkmark.circle" : "document.on.document",
+                                 accessibilityDescription: "Copy Screenshot")
+            return canTakeScreenshot
         case .recording:
-            let active = recordingOutput != nil
-            item.label = finishingRecording ? "Finishing…" : active ? "Stop Recording" : "Record"
-            item.image = NSImage(systemSymbolName: active ? "stop.circle.fill" : "record.circle", accessibilityDescription: item.label)
-            if active { item.image = item.image?.withSymbolConfiguration(.init(paletteColors: [.systemRed])) }
-            item.toolTip = finishingRecording ? "Saving recording…" : active ? "Stop recording" : "Record device video and audio"
-            return !finishingRecording && (active || (emulator.isRunning && !emulator.isSleeping))
+            let phase: RecordingToolbarButton.Phase = recording.phase == .saving ? .saving
+                : recording.needsRecovery ? .recovery : recording.canStop ? .recording : .idle
+            (item.view as? RecordingToolbarButton)?.update(phase, elapsed: recording.elapsed, enabled: canToggleRecording)
+            item.label = "Record"
+            item.toolTip = (item.view as? NSButton)?.toolTip
+            return canToggleRecording
+        case .openScreenshot:
+            item.label = "Open Screenshot in \(capturePreferences.openInApplicationName)"
+            item.toolTip = item.label + " (⌘O)"
+            return canTakeScreenshot
+        case .saveScreenshotAs:
+            return canTakeScreenshot
+        case .captureOptions:
+            return true
         case .liveText:
             (item.view as? NSButton)?.state = deviceVC.screen.isShowingLiveText ? .on : .off
-            item.label = deviceVC.screen.isShowingLiveText ? "Dismiss Live Text" : "Live Text"
-            return deviceVC.screen.isShowingLiveText || ((emulator.isRunning || emulator.isPaused) && !emulator.isSleeping)
+            item.label = deviceVC.screen.isShowingLiveText ? "Done Selecting Text" : "Select Text on Screen"
+            item.toolTip = item.label
+            (item.view as? NSButton)?.toolTip = item.label
+            (item.view as? NSButton)?.setAccessibilityLabel(item.label)
+            let enabled = !recording.isActive && (deviceVC.screen.isShowingLiveText || canTakeScreenshot)
+            (item.view as? NSButton)?.isEnabled = enabled
+            return enabled
         case .fingerDots:
             (item.view as? NSButton)?.state = deviceVC.screen.showsTouches ? .on : .off
             item.label = deviceVC.screen.showsTouches ? "Hide Finger Dots" : "Show Finger Dots"
+            item.toolTip = item.label
+            (item.view as? NSButton)?.toolTip = item.label
+            (item.view as? NSButton)?.setAccessibilityLabel(item.label)
             return true
         case .installApp:
             return emulator.canQueueInstall
-        case .openTerminal:
-            return emulator.canReachDevice && !emulator.isInstalling
         case .lock:
             item.label = emulator.isPoweredOff ? "Power On" : emulator.isSleeping ? "Wake" : "Lock"
             item.image = NSImage(systemSymbolName: emulator.isPoweredOff ? "power" : "lock", accessibilityDescription: item.label)
+            item.toolTip = item.label + " (⌘L)"
             return emulator.acceptsInput || (emulator.isPoweredOff && !emulator.shuttingDown)
         case .home, .rotate:
             return emulator.acceptsInput
+        case .files, .motion, .searchCatalog:
+            return true
         default:
             return !emulator.isDead
         }
@@ -1002,15 +1330,14 @@ extension MainWindowController: NSToolbarItemValidation {
 extension MainWindowController: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(toggleFiles(_:)) {
-            menuItem.state = filesVC == nil ? .off : .on
             return true
         }
         switch menuItem.action {
+        case #selector(toggleCaptureScreenOnly(_:)):
+            menuItem.state = captureMode == 1 ? .on : .off
+            return !recording.isActive && !screenshotBusy
         case #selector(selectMotionPose(_:)):
             menuItem.state = menuItem.tag == emulator.motionPose.rawValue ? .on : .off
-            return true
-        case #selector(selectTiltSpeed(_:)):
-            menuItem.state = Double(menuItem.tag) == emulator.keyboardTiltRate ? .on : .off
             return true
         case #selector(resetMotion(_:)):
             return emulator.acceptsInput && !emulator.isSleeping
@@ -1048,29 +1375,34 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(deviceReset(_:)):  return !emulator.isDead
         case #selector(saveStateNow(_:)): return emulator.isRunning
         case #selector(discardSavedState(_:)): return emulator.hasSavedState
-        case #selector(eraseDevice(_:)): return !emulator.isDead
+        case #selector(eraseDevice(_:)): return !emulator.isErasing && !emulator.isInstalling && !AppInstaller.hasPendingWork && !hasFileTransfer && !recording.isActive
+        case #selector(discardRecording(_:)):
+            return recording.canStop
         case #selector(toggleRecording(_:)):
-            menuItem.title = recordingOutput == nil ? "Start Recording" : "Stop Recording"
-            menuItem.state = recordingOutput == nil ? .off : .on
-            return !finishingRecording && (recordingOutput != nil || (emulator.isRunning && !emulator.isSleeping))
+            menuItem.title = recording.needsRecovery ? "Save Recording As…" : recording.canStop ? "Stop Recording" : "Start Recording"
+            return canToggleRecording
         case #selector(toggleTouchOverlay(_:)):
-            menuItem.state = deviceVC.screen.showsTouches ? .on : .off
+            menuItem.title = deviceVC.screen.showsTouches ? "Hide Finger Dots" : "Show Finger Dots"
             return true
         case #selector(showLiveText(_:)):
-            menuItem.title = deviceVC.screen.isShowingLiveText ? "Done with Live Text" : "Live Text"
-            menuItem.state = deviceVC.screen.isShowingLiveText ? .on : .off
-            return deviceVC.screen.isShowingLiveText || ((emulator.isRunning || emulator.isPaused) && !emulator.isSleeping)
-        case #selector(saveScreenshot(_:)), #selector(copyScreen(_:)):
-            return (emulator.isRunning || emulator.isPaused) && !emulator.isSleeping
+            menuItem.title = deviceVC.screen.isShowingLiveText ? "Done Selecting Text" : "Select Text on Screen"
+            return !recording.isActive && (deviceVC.screen.isShowingLiveText || canTakeScreenshot)
+        case #selector(openScreenshot(_:)):
+            menuItem.title = "Open Screenshot in \(capturePreferences.openInApplicationName)"
+            return canTakeScreenshot
+        case #selector(copy(_:)):
+            return window?.firstResponder === deviceVC.screen && !deviceVC.screen.isShowingLiveText && canTakeScreenshot
+        case #selector(saveScreenshot(_:)), #selector(saveScreenshotAs(_:)), #selector(copyScreen(_:)):
+            return canTakeScreenshot
         case #selector(pasteToGuest(_:)):
             return emulator.acceptsInput && NSPasteboard.general.string(forType: .string) != nil
         case #selector(zoomIn(_:)):
             return zoom.percent.map { $0 / 100 } ?? 0 < ZoomMode.steps.last!
         case #selector(zoomOut(_:)):
             return zoom != .pixels(ZoomMode.steps[0])
-        case #selector(zoomActualSize(_:)):
-            menuItem.state = (zoom == .pixels(1)) ? .on : .off
-            return true
+        case #selector(zoomPhysicalSize(_:)):
+            menuItem.state = (zoom == .physical) ? .on : .off
+            return deviceVC.screen.physicalScale != nil
         case #selector(zoomToFit(_:)):
             menuItem.state = (zoom == .fit) ? .on : .off
             return true

@@ -21,14 +21,14 @@ nonisolated enum MediaIdentity {
             String(hex[hex.index(hex.startIndex, offsetBy: start)..<hex.index(hex.startIndex, offsetBy: end)])
         }.joined(separator: "-")
     }
-    /// AVAudioFile puts the current time in these three generated M4A headers.
+    /// Audio/video encoders put the current time in generated movie headers.
     /// Zero only those timestamps so repeated conversion has identical bytes.
-    static func normalizeGeneratedM4A(_ file: URL) throws {
+    static func normalizeGeneratedMovie(_ file: URL) throws {
         let handle = try FileHandle(forUpdating: file)
         defer { try? handle.close() }
         let length = try handle.seekToEnd()
         var atoms = 0
-        func invalid() -> DeviceToolsError { .failed("The converted audio file is invalid.") }
+        func invalid() -> DeviceToolsError { .failed("The converted media file is invalid.") }
         func read(_ offset: UInt64, _ count: Int) throws -> Data {
             try handle.seek(toOffset: offset)
             guard let data = try handle.read(upToCount: count), data.count == count else { throw invalid() }

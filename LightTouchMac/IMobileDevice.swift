@@ -132,6 +132,7 @@ nonisolated enum IMobileDevice {
     typealias NpSetCB = @convention(c) (OpaquePointer?, NpNotifyCB?, UnsafeMutableRawPointer?) -> Int32
 
     static let instproxy_client_start_service = symbol("instproxy_client_start_service", StartService2.self)
+    static let instproxy_client_new = symbol("instproxy_client_new", NewServiceClient.self)
     static let instproxy_client_free = symbol("instproxy_client_free", FreeHandle.self)
     static let instproxy_browse = symbol("instproxy_browse", Browse.self)
     static let instproxy_install = symbol("instproxy_install", InstproxyOp.self)
@@ -161,6 +162,47 @@ nonisolated enum IMobileDevice {
 
     /// AFC_FOPEN_WRONLY: w — O_WRONLY | O_CREAT | O_TRUNC.
     static let afcWriteMode: UInt32 = 3
+
+    // MARK: - Installation service connection
+
+    /// The library's convenience factory loses handshake/start-service errors,
+    /// returning installation_proxy's generic -256 instead. Keep those errors
+    /// in their original domain so a locked guest or unavailable service is not
+    /// mistaken for an unresponsive device. The caller owns the returned client.
+    static func startInstallationProxy(device: OpaquePointer) throws -> OpaquePointer {
+        guard let handshake = lockdownd_client_new_with_handshake,
+              let startService = lockdownd_start_service,
+              let freeLockdown = lockdownd_client_free,
+              let freeDescriptor = lockdownd_service_descriptor_free,
+              let newClient = instproxy_client_new,
+              let freeClient = instproxy_client_free else { throw DeviceError.unavailable }
+
+        var lockdown: OpaquePointer?
+        let handshakeResult = handshake(device, &lockdown, "LightTouchMac")
+        guard handshakeResult == success, let lockdown else {
+            if let lockdown { _ = freeLockdown(lockdown) }
+            throw DeviceError.lockdown(handshakeResult == success ? -256 : handshakeResult)
+        }
+
+        var descriptor: OpaquePointer?
+        let serviceResult = startService(lockdown, "com.apple.mobile.installation_proxy", &descriptor)
+        // Match service_client_factory_start_service: close the temporary
+        // lockdown session before connecting to the service's own socket.
+        _ = freeLockdown(lockdown)
+        defer { if let descriptor { _ = freeDescriptor(descriptor) } }
+        guard serviceResult == success, let descriptor else {
+            throw DeviceError.lockdown(serviceResult == success ? -256 : serviceResult)
+        }
+
+        var client: OpaquePointer?
+        let clientResult = newClient(device, descriptor, &client)
+        guard clientResult == success, let client else {
+            if let client { _ = freeClient(client) }
+            throw DeviceError.instproxy(.init(code: clientResult == success ? -256 : clientResult),
+                                       phase: "connect")
+        }
+        return client
+    }
 
     // MARK: - plist ↔ Foundation (via the XML both sides speak)
 
@@ -202,15 +244,16 @@ nonisolated enum IMobileDevice {
     /// actor. Without the library there is nothing to probe with, so answer
     /// yes and fall through to the tools.
     static func deviceReady(socket: String) -> Bool {
-        // FALSE, not true. Answering "yes" with no library made the poll believe
-        // the device was up and call through every tick, so a permanent,
-        // host-side, user-fixable condition rendered as "Waiting for the
-        // device…" forever.
-        guard let idevice_new else { return false }
+        (try? checkAttachment(socket: socket)) != nil
+    }
+
+    /// Preserve the failure for the inspector and diagnostics. Attachment is
+    /// only the USB bridge check; it says nothing about app-service readiness.
+    static func checkAttachment(socket: String) throws {
+        guard let idevice_new else { throw DeviceError.unavailable }
         setenv("USBMUXD_SOCKET_ADDRESS", socket, 1)
         var device: OpaquePointer?
-        guard idevice_new(&device, nil) == success, let device else { return false }
+        guard idevice_new(&device, nil) == success, let device else { throw DeviceError.notAttached }
         _ = idevice_free?(device)
-        return true
     }
 }

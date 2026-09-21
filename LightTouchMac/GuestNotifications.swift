@@ -45,22 +45,41 @@ final class GuestNotifications {
     /// released only after np_client_free has joined the callback thread.
     nonisolated private final class Sink: @unchecked Sendable {
         let fire: @Sendable () -> Void
-        init(_ fire: @escaping @Sendable () -> Void) { self.fire = fire }
+        let closed: AsyncStream<Void>
+        private let continuation: AsyncStream<Void>.Continuation
+
+        init(_ fire: @escaping @Sendable () -> Void) {
+            self.fire = fire
+            (closed, continuation) = AsyncStream.makeStream()
+        }
+
+        func receive(_ notification: UnsafePointer<CChar>?) {
+            // libimobiledevice reports ProxyDeath or a failed receive by
+            // calling the notification callback with an empty string, then
+            // exits its reader thread. USB attachment can still be healthy.
+            guard let notification, notification.pointee != 0 else {
+                continuation.finish()
+                return
+            }
+            if GuestNotifications.observed.contains(String(cString: notification)) {
+                fire()
+            }
+        }
     }
 
     init(clientSocket: String) { self.socket = clientSocket }
 
-    /// The C callback runs on libimobiledevice's own thread: decode nothing,
-    /// block on nothing, just hand off.
-    nonisolated private static let callback: IMobileDevice.NpNotifyCB = { _, userData in
+    /// The C callback runs on libimobiledevice's own thread. Classify the
+    /// notification and hand it off without blocking that reader.
+    nonisolated private static let callback: IMobileDevice.NpNotifyCB = { notification, userData in
         guard let userData else { return }
-        Unmanaged<Sink>.fromOpaque(userData).takeUnretainedValue().fire()
+        Unmanaged<Sink>.fromOpaque(userData).takeUnretainedValue().receive(notification)
     }
 
-    /// `probe` answers "is the device still there" through the app's own gated,
-    /// deadlined path — this used to call `idevice_new` directly, which has no
-    /// timeout, so a half-open usbmuxd socket parked the watcher forever.
-    func start(probe: @escaping @Sendable () async -> Bool,
+    /// Only inspect host activity in `attachAllowed`; existing subscriptions
+    /// stay open during installs. The library reports loss of this specific
+    /// service, so there is no extra USB health probe to queue behind transfers.
+    func start(attachAllowed: @escaping @Sendable () async -> Bool,
                onChange: @escaping @Sendable () -> Void) {
         guard !running, IMobileDevice.isAvailable else { return }
         running = true
@@ -76,7 +95,7 @@ final class GuestNotifications {
         iconTick = Task {
             var seen = qemu_ios_ui_icon_state_generation()
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
+                do { try await Task.sleep(for: .seconds(1)) } catch { break }
                 // One rearrange is several NAND pages, and the plist goes
                 // through the journal as well. Comparing once per tick collapses
                 // the whole burst into a single refresh.
@@ -93,10 +112,15 @@ final class GuestNotifications {
             // on a USB reset, and a watcher that gave up then would leave the
             // sidebar quietly stale for the rest of the session.
             while !Task.isCancelled {
-                let ok = await Self.observeOnce(socket: socket, probe: probe, onChange: onChange)
+                guard await attachAllowed() else {
+                    do { try await Task.sleep(for: .seconds(1)) } catch { break }
+                    continue
+                }
+                let ok = await Self.observeOnce(socket: socket, attachAllowed: attachAllowed,
+                                               onChange: onChange)
                 // A failed attach usually means the guest is still booting;
                 // a successful session that ended means the link dropped.
-                try? await Task.sleep(for: .seconds(ok ? 2 : 10))
+                do { try await Task.sleep(for: .seconds(ok ? 2 : 10)) } catch { break }
             }
         }
     }
@@ -113,46 +137,56 @@ final class GuestNotifications {
     /// Opens one session and blocks until it dies. Returns whether it ever got
     /// as far as observing, so the caller can back off sensibly.
     private nonisolated static func observeOnce(socket: String,
-                                                probe: @escaping @Sendable () async -> Bool,
+                                                attachAllowed: @escaping @Sendable () async -> Bool,
                                                 onChange: @escaping @Sendable () -> Void) async -> Bool {
         // np_client_start_service does a full lockdown handshake and start_service
         // internally, so it goes through the gate like every other service
-        // connect. Ungated, it was a second lockdown session opened against a
-        // guest that serves about one — retried every 10s, including for the
-        // whole of an install, which is precisely the collision every other path
-        // in the app suppresses itself to avoid.
+        // connect. Its factory then closes lockdown; the lasting subscription
+        // uses its own service socket and does not reserve a lockdown session.
         // The deadline's loser is DISCARDED by withDeadline, so a connect that
-        // lands late would leak its np client, its retained Sink, and one of
-        // the ~one lockdown service slots this guest has — every 10 seconds,
-        // forever, which is exactly what stops it recovering. The box is how
-        // the late result is still reachable to be freed.
+        // lands late still needs its client and retained callback context freed.
         let landed = LateSession()
         let handles: Session?
         do {
             handles = try await DeviceGate.shared.serialized {
-                try await withDeadline(Timeouts.serviceProbe * 2, "notification watcher") {
+                // An install may have started while this task waited for the
+                // gate. Do not introduce another handshake between its stages.
+                guard await attachAllowed() else { return nil }
+                return try await withDeadline(Timeouts.serviceProbe * 2, "notification watcher") {
                     let session = connect(socket: socket, onChange: onChange)
                     if let session { landed.store(session) }
                     return session
                 }
             }
         } catch {
-            landed.freeIfLate()
+            await landed.freeIfLate()
             return false
         }
-        guard let handles else { landed.freeIfLate(); return false }
+        guard let handles else { await landed.freeIfLate(); return false }
         landed.claim()
 
         // The callback runs on a thread libimobiledevice owns. Wait out here
         // while it does — asynchronously, so no pool thread is parked — and let
         // np_client_free join that thread before the context is released, never
         // under it.
-        while !Task.isCancelled, await probe() {
-            try? await Task.sleep(for: .seconds(5))
-        }
-        _ = IMobileDevice.np_client_free?(handles.client)
-        Unmanaged<Sink>.fromOpaque(handles.ctx).release()
+        // Cancellation ends the stream wait as well. A busy install is not a
+        // disconnected notification socket, and an attached USB device is not
+        // proof that this reader thread is still alive.
+        for await _ in handles.closed { }
+        await close(handles)
         return true
+    }
+
+    private nonisolated static func close(_ session: Session) async {
+        // np_client_free sends Shutdown and joins the C reader. A partial
+        // packet can leave that reader blocked; never perform the join on the
+        // main actor or release its callback context until the join completes.
+        // This independent task must run even when the watcher was cancelled.
+        await Task.detached {
+            _ = try? await withDeadline(Timeouts.serviceProbe * 2, "notification cleanup") {
+                session.free()
+            }
+        }.value
     }
 
     /// The blocking half: open the session and arm the callback.
@@ -175,7 +209,10 @@ final class GuestNotifications {
         guard start(device, &client, "LightTouchMac") == imd.success, let client else { return nil }
 
         for name in observed {
-            _ = name.withCString { observe(client, $0) }
+            guard name.withCString({ observe(client, $0) }) == imd.success else {
+                _ = imd.np_client_free?(client)
+                return nil
+            }
         }
 
         let sink = Sink(onChange)
@@ -185,7 +222,7 @@ final class GuestNotifications {
             _ = imd.np_client_free?(client)
             return nil
         }
-        return Session(client: client, ctx: ctx)
+        return Session(client: client, ctx: ctx, closed: sink.closed)
     }
 
     /// Holds whatever `connect` produced so the deadline's losing side can still
@@ -198,21 +235,18 @@ final class GuestNotifications {
 
         func store(_ s: Session) {
             lock.lock()
-            if claimed { lock.unlock(); Self.free(s); return }   // already gave up
+            if claimed { lock.unlock(); s.free(); return }   // already gave up
             session = s
             lock.unlock()
         }
         func claim() { lock.lock(); claimed = true; session = nil; lock.unlock() }
-        func freeIfLate() {
-            lock.lock()
-            claimed = true
-            let s = session; session = nil
-            lock.unlock()
-            if let s { Self.free(s) }
-        }
-        private static func free(_ s: Session) {
-            _ = IMobileDevice.np_client_free?(s.client)
-            Unmanaged<Sink>.fromOpaque(s.ctx).release()
+        func freeIfLate() async {
+            let s = lock.withLock {
+                claimed = true
+                let s = session; session = nil
+                return s
+            }
+            if let s { await GuestNotifications.close(s) }
         }
     }
 
@@ -221,8 +255,14 @@ final class GuestNotifications {
     nonisolated private final class Session: @unchecked Sendable {
         let client: OpaquePointer
         let ctx: UnsafeMutableRawPointer
-        init(client: OpaquePointer, ctx: UnsafeMutableRawPointer) {
+        let closed: AsyncStream<Void>
+        init(client: OpaquePointer, ctx: UnsafeMutableRawPointer, closed: AsyncStream<Void>) {
             self.client = client; self.ctx = ctx
+            self.closed = closed
+        }
+        func free() {
+            _ = IMobileDevice.np_client_free?(client)
+            Unmanaged<Sink>.fromOpaque(ctx).release()
         }
     }
 }

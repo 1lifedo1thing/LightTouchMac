@@ -22,6 +22,7 @@ final class DeviceModelView: NSView {
     return UnlitMaterial()
   }()
   private var screenTexture: TextureResource?
+  var viewportCenter: CGPoint? { didSet { updateViewport() } }
   private var rotation = 0
   private var screenOff = false
   private var shakeStarted: CFTimeInterval?
@@ -127,9 +128,21 @@ final class DeviceModelView: NSView {
   }
   private func updateViewport() {
     renderer.frame = bounds
+    if let center = viewportCenter {
+      camera.position.x = -Float(center.x - bounds.midX) * camera.position.z / 3000
+      camera.position.y = Float(center.y - bounds.midY) * camera.position.z / 3000
+    }
     chassisShadow.frame = bounds
     camera.camera.fieldOfViewInDegrees = Float(
       2 * atan(Double(max(renderer.bounds.height, 1)) / 6000) * 180 / .pi)
+  }
+
+  /// Solve the resting front-face projection for a measured chassis height.
+  func physicalScale(heightInPoints height: CGFloat) -> CGFloat {
+    let projectedHeight = Float(height)
+    let depth = displayBounds.max.z - shellBounds.max.z
+    let units = projectedHeight * 0.3 / (3000 * shellBounds.extents.y - projectedHeight * depth)
+    return CGFloat(units * displayBounds.extents.x * 10000 / 594)
   }
 
   func pose(scale: CGFloat, rotation: Int, roll: CGFloat, pitch: CGFloat, yaw: CGFloat = 0, flat: Bool = false, animated: Bool, spring: Bool = false) {

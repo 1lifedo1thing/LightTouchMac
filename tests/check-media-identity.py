@@ -15,12 +15,12 @@ enum DeviceToolsError:Error { case failed(String) }
   var payload=Data(repeating:0x55,count:32);payload[0]=1
   let movie=atom("moov",atom("trak",atom("mdia",atom("mdhd",payload))))+atom("mdat",Data("unchanged audio".utf8))
   try movie.write(to:file)
-  try MediaIdentity.normalizeGeneratedM4A(file)
+  try MediaIdentity.normalizeGeneratedMovie(file)
   payload.replaceSubrange(4..<20,with:Data(count:16))
   let expected=atom("moov",atom("trak",atom("mdia",atom("mdhd",payload))))+atom("mdat",Data("unchanged audio".utf8))
   let normalized=try Data(contentsOf:file);precondition(normalized==expected)
   let first=try MediaIdentity.identifier(for:file)
-  try MediaIdentity.normalizeGeneratedM4A(file)
+  try MediaIdentity.normalizeGeneratedMovie(file)
   let second=try MediaIdentity.identifier(for:file);precondition(second==first && UUID(uuidString:first) != nil)
   try Data("different".utf8).write(to:file)
   let changed=try MediaIdentity.identifier(for:file);precondition(changed != first)
@@ -30,7 +30,7 @@ enum DeviceToolsError:Error { case failed(String) }
            atom("moov",atom("moov",atom("moov",atom("moov",atom("moov",Data())))))]
   for data in bad {
    try data.write(to:file)
-   do { try MediaIdentity.normalizeGeneratedM4A(file);fatalError("accepted invalid atom structure") } catch {}
+   do { try MediaIdentity.normalizeGeneratedMovie(file);fatalError("accepted invalid atom structure") } catch {}
   }
   print("PASS: content IDs, exact timestamp normalization, idempotence and malformed/version/depth bounds")
  }

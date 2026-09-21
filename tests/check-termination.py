@@ -9,7 +9,7 @@ from pathlib import Path
 import subprocess,tempfile
 root=Path(__file__).resolve().parents[1]
 s=(root/'LightTouchMac/AppDelegate.swift').read_text()
-a=s.index('    static func requestTermination()');b=s.index('    @objc func showSettings',a)
+a=s.index('    static func requestTermination()');b=s.index('    @objc func showDeviceWindow',a)
 request=s[a:b]
 a=s.index('    func applicationShouldTerminate(');b=s.index('    func applicationShouldTerminateAfterLastWindowClosed',a)
 terminate=s[a:b]
@@ -21,11 +21,13 @@ source=r'''import AppKit
  static func cancelPendingWork(){}
 }
 @MainActor final class MainWindowController {
+ let hasFileTransfer=false
+ func cancelFileTransfer(){}
  func finishRecordingBeforeQuit()->Bool{false}
 }
 @MainActor final class EmulatorController {
  static let cleanShutdownBudget=0.25,quitSnapshotBudget=0.0,resumeOnLaunch=false
- let isInstalling=false,isDead=false,isPoweredOff=false
+ let isInstalling=false,isDead=false,isPoweredOff=false,isErasing=false
  var requests=0
  func cancelFactoryReset(){}
  func beginQuitSnapshot(completion:@escaping(Bool)->Void){completion(false)}

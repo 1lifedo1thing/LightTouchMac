@@ -40,10 +40,10 @@ import CoreGraphics
   let mode=CommandLine.arguments[2]
   let writer=ScreenMovieWriter()
   let output=URL(fileURLWithPath:CommandLine.arguments[1])
-  try await writer.start(url:output,recordGuestAudio:true)
+  try await writer.start(url:output,recordGuestAudio:true,canvasSize:mode == "canvas" ? CGSize(width:640,height:400) : nil,background:mode == "canvas" ? landscape : nil)
   for tick in 0...30 {
    fixtureTime(Double(tick)/10)
-   let image = mode == "landscape" || (mode == "rotated" && tick > 15) ? landscape : portrait
+   let image = mode == "landscape" || ((mode == "rotated" || mode == "canvas") && tick > 15) ? landscape : portrait
    try await writer.append(image,seconds:999) // Mixer and video must share the capture clock.
    try await Task.sleep(for:.milliseconds(10))
   }
@@ -53,7 +53,7 @@ import CoreGraphics
   let video=try await asset.loadTracks(withMediaType:.video)
   precondition(audio.count==1 && video.count==1)
   let size=try await video[0].load(.naturalSize)
-  let expected:CGSize = mode == "portrait" ? CGSize(width:320,height:480) : mode == "landscape" ? CGSize(width:480,height:320) : CGSize(width:480,height:480)
+  let expected:CGSize = mode == "canvas" ? CGSize(width:640,height:400) : mode == "portrait" ? CGSize(width:320,height:480) : mode == "landscape" ? CGSize(width:480,height:320) : CGSize(width:480,height:480)
   precondition(size == expected, "Unexpected dimensions: \(size)")
   let duration=try await asset.load(.duration)
   precondition(abs(duration.seconds-3)<0.1)
@@ -65,7 +65,7 @@ import CoreGraphics
         str(root/'LightTouchMac/ScreenMovieWriter.swift'),str(tmp/'check.swift'),str(tmp/'capture.o'),
         '-Xlinker','-export_dynamic','-o',str(tmp/'check')],check=True)
     centers = {}
-    for mode in ('portrait','landscape','rotated'):
+    for mode in ('portrait','landscape','rotated','canvas'):
         subprocess.run([str(tmp/'check'),str(tmp/(mode+'.mov')),mode],check=True)
         subprocess.run(['ffmpeg','-v','error','-i',str(tmp/(mode+'.mov')),'-af','aresample=async=1:first_pts=0',
             '-acodec','pcm_s16le',str(tmp/(mode+'.wav'))],check=True)
@@ -83,18 +83,20 @@ import CoreGraphics
                 assert np.sqrt(np.mean(chunk[:,channel]**2))>7000
         silence=audio[int(1.2*44100):int(1.8*44100)]
         assert np.sqrt(np.mean(silence**2))<50,'pause gap lost'
-        width,height = {'portrait':(320,480),'landscape':(480,320),'rotated':(480,480)}[mode]
+        width,height = {'portrait':(320,480),'landscape':(480,320),'rotated':(480,480),'canvas':(640,400)}[mode]
         for seconds in (0.5,2.5):
             pixels=subprocess.check_output(['ffmpeg','-v','error','-ss',str(seconds),'-i',str(tmp/(mode+'.mov')),
                 '-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'])
             pixels=np.frombuffer(pixels,dtype=np.uint8).reshape(height,width,3).astype(float)
-            expected=np.array((0,128,255) if mode=='landscape' or (mode=='rotated' and seconds>1.5) else (255,64,0))
+            expected=np.array((0,128,255) if mode=='landscape' or (mode in ('rotated','canvas') and seconds>1.5) else (255,64,0))
             assert np.max(np.abs(pixels[height//2,width//2]-expected))<30,(mode,pixels[height//2,width//2])
             centers[mode,seconds] = pixels[height//2,width//2]
-            if mode!='rotated':
+            if mode not in ('rotated','canvas'):
                 # Native crop reaches every corner: no padding, no scaling.
                 for y,x in ((4,4),(height-5,width-5)):
                     assert np.max(np.abs(pixels[y,x]-expected))<30
+            elif mode=='canvas':
+                assert np.max(np.abs(pixels[4,4]-np.array((0,128,255))))<30,'canvas lost its background'
             else:
                 assert np.max(pixels[4,4])<12,'rotation canvas lost its padding'
         print('PASS:',mode,'native dimensions, stereo audio, pause gap and final export')

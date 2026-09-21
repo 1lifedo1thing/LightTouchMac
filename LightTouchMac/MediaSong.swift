@@ -59,7 +59,7 @@ struct MediaSong: Sendable {
                 guard size > 0, size <= 1 << 30 else {
                     throw DeviceToolsError.failed("The prepared audio must be nonempty and no larger than 1 GB.")
                 }
-                try MediaIdentity.normalizeGeneratedM4A(converted)
+                try MediaIdentity.normalizeGeneratedMovie(converted)
                 try FileManager.default.removeItem(at: audio)
                 audio = converted
             }

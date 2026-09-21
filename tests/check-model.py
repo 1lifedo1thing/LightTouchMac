@@ -257,7 +257,7 @@ with tempfile.TemporaryDirectory(prefix="ltm-model-") as tmp:
         raise SystemExit("Set QEMU_SRC to the QEMU source tree for the production accelerometer comparison")
     for name,source,extra in [
         ("model",model_source,[]),
-        ("display",display_source,["DisplayView", "GameControllerInput", "AttitudeIndicatorButton", "InlineLiveTextView"])
+        ("display",display_source,["DisplayView", "DisplayMeasurements", "AttitudeIndicatorButton", "InlineLiveTextView"])
     ]:
         swift=work/(name+".swift");swift.write_text(source)
         exe=app/"MacOS"/name

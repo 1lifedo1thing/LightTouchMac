@@ -41,7 +41,6 @@ methods = "\n".join(method(display, signature) for signature in (
     "    private static func layerAngle(",
     "    private func sendAttitude(",
     "    func resetMotion(",
-    "    private func updateKeyboardTilt(",
     "    private func endTilt(",
 ))
 methods = methods.replace("private ", "").replace("CACurrentMediaTime()", "testTime")
@@ -217,24 +216,7 @@ final class ScrollEvent: NSEvent {
                     expect(baseline, context + " mouse-up reset")
                 }
 
-                // Keyboard arrows and mouse directions must reach identical
-                // guest channels; invoke the real keyboard tilt tick.
-                for keys: Set<UInt16> in [[124], [123], [126], [125], [124,126], [123,125]] {
-                    configure(pose, rotation)
-                    tiltKeys = keys
-                    motionRestAngle = Self.layerAngle(rotation)
-                    for _ in 0..<5 { testTime += 0.05; updateKeyboardTilt() }
-                    let keyboard = vector()
-                    tiltKeys.removeAll()
-                    endTilt()
-                    beginMouse()
-                    let horizontal = keys.contains(124) ? 22.5 : keys.contains(123) ? -22.5 : 0
-                    let vertical = keys.contains(126) ? 22.5 : keys.contains(125) ? -22.5 : 0
-                    drag(horizontal: horizontal, vertical: vertical)
-                    expect(keyboard, context + " keyboard/mouse agreement")
-                    releaseMouse()
-                    expect(baseline, context + " keyboard comparison reset")
-                }
+
 
                 // AppKit has already applied Natural Scrolling. Test both
                 // delivered signs and flag values without applying it twice.
@@ -284,7 +266,7 @@ final class ScrollEvent: NSEvent {
             }
         }
         precondition(guestTouches == 0 && guestScrolls == 0, "Chassis gestures leaked to guest touches")
-        print("PASS: production mouse/scroll/keyboard → Swift attitude bridge → LIS302DL gravity; upright/flat, every quarter-turn, direction, diagonal 1g, clamps and release")
+        print("PASS: production mouse/scroll → Swift attitude bridge → LIS302DL gravity; upright/flat, every quarter-turn, direction, diagonal 1g, clamps and release")
     }
 }
 @main struct Main {

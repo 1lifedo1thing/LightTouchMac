@@ -5,7 +5,7 @@ import json, os, signal, subprocess, tempfile, time
 root = Path(__file__).resolve().parents[1]
 source = (root / 'LightTouchMac/DeviceTools.swift').read_text()
 a = source.index('    static func lockButtonPreferences(')
-b = source.index("    /// Push the guest's dirty buffers", a)
+b = source.index("    /// Nil means this image has no agent", a)
 method = source[a:b]
 a = source.index('        let script = """', source.index('    private func guestRun'))
 b = source.index('        var platform = PlatformOptions()', a)

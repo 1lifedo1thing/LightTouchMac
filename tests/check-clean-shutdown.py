@@ -6,6 +6,8 @@ root=Path(__file__).resolve().parents[1]
 s=(root/'LightTouchMac/EmulatorController.swift').read_text()
 a=s.index('    static let preparationShutdownBudget:');b=s.index('    /// Menu ▸ Save State Now',a)
 shutdown=s[a:b].replace('preparationShutdownBudget: TimeInterval = 5','preparationShutdownBudget: TimeInterval = 0.02').replace('haltShutdownBudget: TimeInterval = 30','haltShutdownBudget: TimeInterval = 0.7').replace('syncShutdownBudget: TimeInterval = 20','syncShutdownBudget: TimeInterval = 0.02')
+a=s.index('    func haltFilesystem() async throws {');b=s.index('    func restartSpringBoard()',a)
+halt=s[a:b]
 services=(root/'LightTouchMac/DeviceServices.swift').read_text()
 a=services.index('func withSoftDeadline<T: Sendable>');b=services.index('// MARK: - Install watchdog box',a)
 helpers=services[a:b]
@@ -16,6 +18,8 @@ source=r'''import Foundation
 @MainActor var powerOff=false
 @MainActor func qemu_ios_ui_guest_shutdown_confirmed()->Bool{powerOff}
 @MainActor func qemu_ios_snapshot_resume(){}
+@MainActor var agentReady:Int32=0
+@MainActor func qemu_ios_agent_status()->Int32{agentReady}
 nonisolated func logEvent(_ s:String){}
 enum DeviceStateStorage {
 '''+wait+'}\n'+helpers+r'''
@@ -23,7 +27,7 @@ enum DeviceStateStorage {
  enum State{case notStarted,booting,running,paused,snapshotting,poweredOff}
  var state=State.booting,isDead=false,storageFailed=false,shuttingDown=false,canManageApps=true
  var isPoweredOff:Bool{state == .poweredOff}
- var foregroundTask:Task<Void,Never>?,mediaPreparationTask:Task<Void,Never>?,cleanShutdownTask:Task<Void,Never>?
+ var connectionRecoveryTask:Task<Void,Never>?,orientationTask:Task<Void,Never>?,foregroundTask:Task<Void,Never>?,mediaPreparationTask:Task<Void,Never>?,cleanShutdownTask:Task<Void,Never>?
  var shutdownCompletions:[(Bool)->Void]=[]
  var haltAttempts=0,syncAttempts=0,attemptNeeded=2
  func haltFilesystem() async throws {
@@ -33,6 +37,14 @@ enum DeviceStateStorage {
  func syncFilesystem() async throws{syncAttempts+=1}
  func pollStorageFailure(){if powerOff {state = .poweredOff}}
 '''+shutdown+r'''}
+@MainActor enum DeviceTools {
+ static var available=true
+ static func requestIndependentHalt() async -> Bool {available}
+ func haltFilesystem() async throws {}
+}
+@MainActor struct MissingUSB {
+ func tools() throws -> DeviceTools {throw CocoaError(.fileReadUnknown)}
+'''+halt+r'''}
 @main struct Main {
  @MainActor static func main() async throws {
   let c=Controller(),held=ResumeOnce<Void>()
@@ -57,7 +69,14 @@ enum DeviceStateStorage {
   var saveResult:Bool?
   save.beginCleanShutdown{saveResult=$0}
   precondition(saveResult==false && !save.shuttingDown && save.haltAttempts==0)
-  print("PASS: bounded preparation cancellation, boot-time halt retry, joined completions, sync fallback, snapshot guard")
+  powerOff=false;agentReady=1
+  let noUSB=Controller();noUSB.canManageApps=false;noUSB.attemptNeeded=1
+  let independent=await withCheckedContinuation{continuation in noUSB.beginCleanShutdown{continuation.resume(returning:$0)}}
+  precondition(independent && noUSB.haltAttempts==1)
+  try await MissingUSB().haltFilesystem()
+  DeviceTools.available=false
+  do {try await MissingUSB().haltFilesystem();preconditionFailure("USB fallback must fail")} catch {}
+  print("PASS: independent halt without USB, bounded preparation cancellation, boot-time halt retry, joined completions, sync fallback, snapshot guard")
  }
 }
 '''

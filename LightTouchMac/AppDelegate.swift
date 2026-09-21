@@ -2,11 +2,10 @@
 
 import Cocoa
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     
     private var windowController: MainWindowController?
     private var emulator: EmulatorController?
-    private var settingsController: SettingsWindowController?
     private var helpController: NSWindowController?
     private var awaitingTermination = false
     private var terminationBackstop: Task<Void, Never>?
@@ -29,10 +28,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func quit(_ sender: Any?) { Self.requestTermination() }
 
-    @objc func showSettings(_ sender: Any?) {
-        guard let emulator else { return }
-        if settingsController == nil { settingsController = SettingsWindowController(emulator: emulator) }
-        settingsController?.showWindow(sender)
+    @objc func showDeviceWindow(_ sender: Any?) { windowController?.focusDeviceScreen(sender) }
+    @objc func showFilesWindow(_ sender: Any?) { windowController?.toggleFiles(sender) }
+
+    @objc func toggleAutomaticRotation(_ sender: Any?) {
+        UserDefaults.standard.set(!EmulatorController.autoRotateEnabled, forKey: EmulatorController.autoRotateDefaultsKey)
+    }
+    @objc func toggleInternetAccess(_ sender: Any?) {
+        let current = UserDefaults.standard.object(forKey: NetworkAccessPreference.key) as? Bool ?? emulator?.options.network ?? true
+        UserDefaults.standard.set(!current, forKey: NetworkAccessPreference.key)
+    }
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(toggleAutomaticRotation(_:)) {
+            item.state = EmulatorController.autoRotateEnabled ? .on : .off
+        } else if item.action == #selector(toggleInternetAccess(_:)) {
+            let desired = UserDefaults.standard.object(forKey: NetworkAccessPreference.key) as? Bool ?? emulator?.options.network ?? true
+            item.state = desired ? .on : .off
+            item.title = "Connect to the Internet" + (desired != emulator?.options.network ? " (After Reopening)" : "")
+        }
+        return true
     }
 
     @objc func showHelp(_ sender: Any?) {
@@ -42,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.title = "Light Touch Help"
             window.isReleasedWhenClosed = false
             window.minSize = NSSize(width: 360, height: 300)
-            window.setFrameAutosaveName("Help")
+            WindowRestorationPolicy.configure(window)
             let scroll = NSScrollView(frame: window.contentView!.bounds)
             scroll.hasVerticalScroller = true
             scroll.autoresizingMask = [.width, .height]
@@ -74,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         guard let windowController else { return nil }
         let menu = NSMenu()
-        for (title, action) in [("Home", #selector(MainWindowController.deviceHome(_:))),
+        for (title, action) in [("Home Screen", #selector(MainWindowController.deviceHome(_:))),
                                 ("Lock", #selector(MainWindowController.deviceLock(_:))),
                                 ("Restart…", #selector(MainWindowController.deviceReset(_:)))] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
@@ -85,16 +99,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
-        // AppKit injects AutoFill, Start Dictation and Emoji & Symbols into the
-        // Edit menu, and a Tab Bar section into View. All of them are dead here:
-        // there is no editable text and the app is single-window. These defaults
-        // are the only supported way to decline them, and must be set before the
-        // menu is built.
-        UserDefaults.standard.register(defaults: [
-            "NSDisabledDictationMenuItem": true,
-            "NSDisabledCharacterPaletteMenuItem": true,
-        ])
+        // Keep AppKit's native editing utilities for search fields and panels.
+        // Device, Files, Help, and log windows have distinct jobs, not tabs.
         NSWindow.allowsAutomaticWindowTabbing = false
+        NSApp.disableRelaunchOnLogin()
 
         MainMenuBuilder.install()
         #if DEBUG
@@ -115,7 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         do { try NativeLogging.start() }
         catch { logEvent("logging: native output capture unavailable: \(error.localizedDescription)") }
-        let options = LaunchOptions.resolved()
+        var options = LaunchOptions.resolved()
 
         // Report missing device files up front. Booting without them dies deep
         // inside the dylib on the QEMU thread with no error the app can show.
@@ -136,6 +144,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Self.requestTermination()
             return
         }
+
+        NetworkAccessPreference.configure(&options)
 
         let emulator = EmulatorController(options: options)
         // Start before showing the window: the inspector checks the usbmux
@@ -158,6 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// unmounts. beginCleanShutdown requires explicit guest confirmation;
     /// native halt without PMU power-off remains a known limitation.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if emulator?.isErasing == true { return .terminateCancel }
         if awaitingTermination { return .terminateLater }
         if windowController?.finishRecordingBeforeQuit() == true { return .terminateCancel }
         guard let emulator else { return .terminateNow }
@@ -166,11 +177,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // that is executing; jobs waiting their turn are parked on the previous
         // job's task, so quitting with three .ipas queued used to take no notice
         // and drop them without a word.
-        if emulator.isInstalling || AppInstaller.hasPendingWork {
+        if emulator.isInstalling || AppInstaller.hasPendingWork || windowController?.hasFileTransfer == true {
             let alert = NSAlert()
-            alert.messageText = "An app install is in progress"
-            alert.informativeText = "Quitting now will leave an app half-installed on the device, "
-                + "and cancel any others still queued. Quit anyway?"
+            alert.messageText = "Device changes are in progress"
+            alert.informativeText = "Quitting cancels changes that haven’t finished."
             alert.addButton(withTitle: "Quit Anyway")
             alert.addButton(withTitle: "Cancel")
             alert.buttons.first?.hasDestructiveAction = true
@@ -179,6 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return .terminateCancel
             }
             AppInstaller.cancelPendingWork()
+            windowController?.cancelFileTransfer()
             // Falls through to the SAME shutdown as any other quit. It used to
             // return .terminateNow, on the reasoning that a half-finished
             // install is not a clean state to snapshot — true, and irrelevant
@@ -229,17 +240,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        false
     }
 
-    /// Bring the device window back on a Dock click.
-    ///
-    /// Closing it is normally the same as quitting — but not while Settings is
-    /// open, because then it isn't the last window and the app stays alive with
-    /// the emulator running and nothing on screen. There is no menu item that
-    /// recreates it and the Window menu only lists windows that exist, so the
-    /// app was unrecoverable short of ⌘Q. Checked on the window rather than
-    /// AppKit's hasVisibleWindows, which counts Settings.
+    /// Reopen the retained device window even when Files or Help is still visible.
     func applicationShouldHandleReopen(_ sender: NSApplication,
                                        hasVisibleWindows flag: Bool) -> Bool {
         if windowController?.window?.isVisible != true { windowController?.showWindow(nil) }
@@ -247,6 +251,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        // This selects secure coding if AppKit consults the delegate; returning
+        // false would select legacy coding, not disable window restoration.
+        // LightTouchApplication and each window independently opt out.
         true
     }
 }

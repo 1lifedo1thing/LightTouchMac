@@ -17,6 +17,18 @@ struct InstalledApp: Identifiable, Sendable {
     let version: String
 }
 
+enum AppLaunchError: LocalizedError {
+    case locked, unavailable, failed
+
+    var errorDescription: String? {
+        switch self {
+        case .locked: "Unlock the iPod, then try again."
+        case .unavailable: "Wait for the iPod to finish starting, then try again."
+        case .failed: "Try opening the app on the iPod."
+        }
+    }
+}
+
 enum DeviceToolsError: LocalizedError {
     case toolMissing(String)
     case failed(String)
@@ -85,23 +97,27 @@ struct DeviceTools: Sendable {
     /// Once this starts, keep the staged audio even on an uncertain outcome.
     /// The guest service owns database mutations and reconciles the same path.
     func commitSong(_ song: MediaSong) async throws {
-        guard UUID(uuidString: song.id) != nil else {
+        try await commitLibraryMedia(id: song.id, metadata: song.metadata, destination: "Music")
+    }
+
+    private func commitLibraryMedia(id: String, metadata: URL, destination: String) async throws {
+        guard UUID(uuidString: id) != nil else {
             throw DeviceToolsError.failed("Invalid media staging identifier.")
         }
         guard let helper = Bundled.resolve("itmedia", fallbacks: [
             "\(filesRoot)/../qemu-ios/contrib/it-media/itmedia",
         ]) else { throw DeviceToolsError.toolMissing("itmedia") }
-        let executable = "/tmp/ltm-itmedia-\(song.id)"
-        let metadata = "/tmp/ltm-song-\(song.id).plist"
+        let executable = "/tmp/ltm-itmedia-\(id)"
+        let remoteMetadata = "/tmp/ltm-media-\(id).plist"
         try await guestRun("cat > \(executable) && chmod 755 \(executable) && "
-                           + "chown 501:501 /var/mobile/Media/LightTouch /var/mobile/Media/LightTouch/\(song.id)",
+                           + "chown 501:501 /var/mobile/Media/LightTouch /var/mobile/Media/LightTouch/\(id)",
                            stdinPath: helper)
         let result = try await guestRun(
-            "cat > \(metadata) && chmod 644 \(metadata) && \(executable) \(metadata) \(song.id); "
-                + "result=$?; rm -f \(executable) \(metadata); exit $result",
-            stdinPath: song.metadata.path)
+            "cat > \(remoteMetadata) && chmod 644 \(remoteMetadata) && \(executable) \(remoteMetadata) \(id); "
+                + "result=$?; rm -f \(executable) \(remoteMetadata); exit $result",
+            stdinPath: metadata.path)
         guard String(decoding: result, as: UTF8.self).hasSuffix("imported\n") else {
-            throw DeviceToolsError.failed("The device did not confirm the music import. Its staged audio has been retained.")
+            throw DeviceToolsError.failed("\(destination) did not confirm the import. The copied media has been retained.")
         }
     }
 
@@ -111,6 +127,7 @@ struct DeviceTools: Sendable {
         switch media {
         case .song(let song): try await stageSong(song, progress: progress)
         case .photo(let photo): try await services.stagePhoto(photo, progress: progress)
+        case .video(let video): try await services.stageVideo(video, progress: progress)
         }
     }
 
@@ -118,6 +135,7 @@ struct DeviceTools: Sendable {
         switch media {
         case .song(let song): try await commitSong(song)
         case .photo(let photo): try await commitPhoto(photo)
+        case .video(let video): try await commitLibraryMedia(id: video.id, metadata: video.metadata, destination: "Videos")
         }
     }
 
@@ -443,17 +461,18 @@ struct DeviceTools: Sendable {
             throw DeviceToolsError.failed("The bundled graphics engine is invalid.")
         }
         let preferencesPath = "/var/mobile/Library/Preferences/com.apple.springboard.plist"
-        let oldPreferences = try await guestRun("cat \(preferencesPath)")
-        let newPreferences = try Self.lockButtonPreferences(oldPreferences)
-        let oldPlist = try await guestRun("cat \(plistPath)")
-        let newPlist = try Self.mediaLaunchConfiguration(oldPlist, includeTyping: true)
-        let oldEngine = try await guestRun("cat \(enginePath)")
-        let changedEngine = oldEngine != engineData
-        let oldAgent = try await guestRun("if [ -f \(agentPath) ]; then cat \(agentPath); fi")
-        let oldTyping = try await guestRun("if [ -f \(typingPath) ]; then cat \(typingPath); fi")
-        let oldJob = try await guestRun("if [ -f \(agentJobPath) ]; then cat \(agentJobPath); fi")
         let legacy = "/System/Library/LaunchDaemons/com.qemu.it-pbd.plist"
-        let legacyPresent = try await guestRun("test ! -e \(legacy) || printf legacy")
+        let paths = [preferencesPath, plistPath, enginePath, agentPath, typingPath, agentJobPath, legacy]
+        let request = GuestFileSnapshot(paths: paths)
+        let snapshot = try await guestRun(request.command)
+        let files = try request.decode(snapshot)
+        let newPreferences = try Self.lockButtonPreferences(files[preferencesPath] ?? Data())
+        let newPlist = try Self.mediaLaunchConfiguration(files[plistPath] ?? Data(), includeTyping: true)
+        let changedEngine = files[enginePath] != engineData
+        let oldAgent = files[agentPath]
+        let oldTyping = files[typingPath]
+        let oldJob = files[agentJobPath]
+        let legacyPresent = files[legacy] ?? Data()
         let changedAgent = oldAgent != agentData
         let changedTyping = oldTyping != typingData
         let changedJob = oldJob != jobData
@@ -623,7 +642,31 @@ struct DeviceTools: Sendable {
         }
         // The filter is what makes the value safe inside the single quotes.
         let id = bundleID.filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == "_" }
-        try await guestRun("printf %s '\(id)' > /tmp/sblaunch.id && /usr/local/bin/sblaunch")
+        do {
+            try await guestRun("printf %s '\(id)' > /tmp/sblaunch.id && /usr/local/bin/sblaunch")
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            logEvent("launch \(id): \(error.localizedDescription)")
+            // A dark display and an awake Lock Screen are different states.
+            // Ask SpringBoard rather than treating every launch error as a lock.
+            if (try? await foregroundAppName(stageHelper: false)) == "Lock Screen" {
+                throw AppLaunchError.locked
+            }
+            throw AppLaunchError.failed
+        }
+    }
+
+    static func reconnectManagementService() async throws -> Bool {
+        // Do not fall back to SSH here: recovery must not queue on the broken
+        // management transport. launchd owns and relaunches lockdownd.
+        try await GuestAgentTransport.shared.reconnectManagementIfAvailable()
+    }
+
+    static func requestIndependentHalt() async -> Bool {
+        // Submission is not proof of shutdown. The controller still requires
+        // the guest PMU power-off confirmation before reporting success.
+        await GuestAgentTransport.shared.requestHaltIfAvailable()
     }
 
     /// Shut the guest's filesystem down through the kernel: sync, unmount
@@ -859,6 +902,18 @@ private actor GuestAgentTransport {
         }
         guard body.count + command.utf8.count + 40 <= 256 * 1024 else { return nil }
         return try await perform("exec", arguments: command, body: body)
+    }
+
+    func reconnectManagementIfAvailable() async throws -> Bool {
+        guard qemu_ios_agent_status() == 1 else { return false }
+        _ = try await perform("exec", arguments: "launchctl stop com.apple.mobile.lockdown")
+        return true
+    }
+
+    func requestHaltIfAvailable() -> Bool {
+        guard qemu_ios_agent_status() == 1 else { return false }
+        let request = "\(UUID().uuidString) halt \n"
+        return request.withCString { qemu_ios_agent_request($0) }
     }
 
     func orientationIfAvailable() async throws -> Int? {

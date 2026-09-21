@@ -65,11 +65,8 @@ nonisolated enum CatalogError: LocalizedError {
 @MainActor
 enum CatalogClient {
 
-    /// Overridable so a local jangle dev server can stand in for the real site.
-    static var baseURL: URL {
-        UserDefaults.standard.string(forKey: "LTMCatalogBaseURL").flatMap(URL.init(string:))
-            ?? URL(string: "https://legacystore.app")!
-    }
+    /// Tests may inject a local service; production always uses Legacy Store.
+    static var baseURL = URL(string: "https://legacystore.app")!
 
     private static let userAgent: String = {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"

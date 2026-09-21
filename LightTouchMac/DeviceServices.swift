@@ -33,15 +33,10 @@ struct DeviceServices: Sendable {
     /// ApplicationType=User filter. Replaces parsing `ideviceinstaller list`.
     func installedApps() async throws -> [InstalledApp] {
         try await run(Timeouts.browse, "list apps") { imd, device in
-            guard let start = imd.instproxy_client_start_service,
-                  let browse = imd.instproxy_browse,
+            guard let browse = imd.instproxy_browse,
                   let plistFree = imd.plist_free else { throw DeviceError.unavailable }
 
-            var client: OpaquePointer?
-            let rc = start(device, &client, "LightTouchMac")
-            guard rc == imd.success, let client else {
-                throw DeviceError.instproxy(.init(code: rc), phase: "connect")
-            }
+            let client = try imd.startInstallationProxy(device: device)
             defer { _ = imd.instproxy_client_free?(client) }
 
             // ApplicationType=User: skip Apple's own bundles. Built as a plist
@@ -76,13 +71,8 @@ struct DeviceServices: Sendable {
 
     func uninstall(_ bundleID: String) async throws {
         try await run(Timeouts.uninstall, "uninstall \(bundleID)") { imd, device in
-            guard let start = imd.instproxy_client_start_service,
-                  let uninstall = imd.instproxy_uninstall else { throw DeviceError.unavailable }
-            var client: OpaquePointer?
-            let rc = start(device, &client, "LightTouchMac")
-            guard rc == imd.success, let client else {
-                throw DeviceError.instproxy(.init(code: rc), phase: "connect")
-            }
+            guard let uninstall = imd.instproxy_uninstall else { throw DeviceError.unavailable }
+            let client = try imd.startInstallationProxy(device: device)
             defer { _ = imd.instproxy_client_free?(client) }
             // Synchronous form: no status callback, so the return code is the
             // whole answer (unlike install, whose errors arrive in the callback).
@@ -146,6 +136,13 @@ struct DeviceServices: Sendable {
             throw DeviceError.preflight("Invalid photo staging path.")
         }
         _ = try await stageFile(photo.image, remote: "LightTouch/\(photo.id)/image.jpg", reuseIdentical: true, progress: progress)
+    }
+
+    func stageVideo(_ video: MediaVideo, progress: @escaping @Sendable (Double) -> Void) async throws {
+        guard UUID(uuidString: video.id) != nil, video.video.lastPathComponent == "video.m4v" else {
+            throw DeviceError.preflight("Invalid video staging path.")
+        }
+        _ = try await stageFile(video.video, remote: "LightTouch/\(video.id)/video.m4v", reuseIdentical: true, progress: progress)
     }
 
     func uploadFile(_ source: URL, into directory: String,
@@ -353,10 +350,110 @@ struct DeviceServices: Sendable {
     func install(stagedPath: String, progress: @escaping @Sendable (Int, String) -> Void) async throws {
         try await DeviceGate.shared.serialized {
             let socket = self.clientSocket
-            try await Task.detached {
-                try Self.blockingInstall(socket: socket, stagedPath: stagedPath, progress: progress)
-            }.value
+            let cancellation = InstallCancellation()
+            try await withTaskCancellationHandler {
+                let connection = try await Self.installConnection(socket: socket)
+                // Once the guest mutation begins, retain the gate until its
+                // existing callback watchdog finishes. Cancelling before that
+                // point closes the connection without submitting an install.
+                try await Task.detached {
+                    try Self.blockingInstall(connection: connection, cancellation: cancellation,
+                                             stagedPath: stagedPath, progress: progress)
+                }.value
+            } onCancel: {
+                cancellation.cancel()
+            }
         }
+    }
+
+    nonisolated private final class InstallCancellation: @unchecked Sendable {
+        private let lock = NSLock()
+        private var cancelled = false
+        func cancel() { lock.withLock { cancelled = true } }
+        /// The mutation's ownership boundary. Cancellation after this check
+        /// leaves the active install owned until its terminal callback/watchdog.
+        func beginMutation() throws {
+            try lock.withLock { if cancelled { throw CancellationError() } }
+        }
+    }
+
+    nonisolated private final class InstallConnection: @unchecked Sendable {
+        let device: OpaquePointer
+        let client: OpaquePointer
+        init(device: OpaquePointer, client: OpaquePointer) {
+            self.device = device; self.client = client
+        }
+        func free() {
+            _ = IMobileDevice.instproxy_client_free?(client)
+            _ = IMobileDevice.idevice_free?(device)
+        }
+    }
+
+    /// A deadline may win immediately after connection succeeds. Keep handles
+    /// reachable until the caller claims them or the losing worker closes them.
+    nonisolated private final class PendingInstallConnection: @unchecked Sendable {
+        private let lock = NSLock()
+        private var connection: InstallConnection?
+        private var abandoned = false
+        func store(_ opened: InstallConnection) {
+            let discard = lock.withLock {
+                if abandoned { return true }
+                connection = opened
+                return false
+            }
+            if discard { opened.free() }
+        }
+        func take(abandon: Bool = false) -> InstallConnection? {
+            lock.withLock {
+                abandoned = abandon
+                defer { connection = nil }
+                return connection
+            }
+        }
+    }
+
+    private nonisolated static func installConnection(socket: String) async throws -> InstallConnection {
+        let pending = PendingInstallConnection()
+        do {
+            try await withDeadline(Timeouts.serviceProbe * 2, "install connection") {
+                pending.store(try openInstallConnection(socket: socket))
+            }
+        } catch {
+            if let connection = pending.take(abandon: true) {
+                // The C startup worker has finished; this is a separate cleanup
+                // operation. Run even if the caller's task was cancelled.
+                await Task.detached {
+                    _ = try? await withDeadline(Timeouts.serviceProbe * 2, "install connection cleanup") {
+                        connection.free()
+                    }
+                }.value
+            }
+            throw error
+        }
+        // A successful startup always stores before completing the deadline.
+        guard let connection = pending.take() else { throw DeviceError.unavailable }
+        return connection
+    }
+
+    private nonisolated static func openInstallConnection(socket: String) throws -> InstallConnection {
+        let imd = IMobileDevice.self
+        guard imd.isAvailable, let idevice_new = imd.idevice_new,
+              imd.instproxy_install != nil else { throw DeviceError.unavailable }
+        setenv("USBMUXD_SOCKET_ADDRESS", socket, 1)
+        var device: OpaquePointer?
+        guard idevice_new(&device, nil) == imd.success, let device else { throw DeviceError.notAttached }
+        let client: OpaquePointer
+        do {
+            try Task.checkCancellation()
+            client = try imd.startInstallationProxy(device: device)
+        } catch {
+            _ = imd.idevice_free?(device)
+            throw error
+        }
+        let connection = InstallConnection(device: device, client: client)
+        do { try Task.checkCancellation() }
+        catch { connection.free(); throw error }
+        return connection
     }
 
     nonisolated private final class InstallContext {
@@ -399,30 +496,23 @@ struct DeviceServices: Sendable {
         ctx.progress(Int(percent), name)
     }
 
-    nonisolated private static func blockingInstall(socket: String, stagedPath: String,
+    nonisolated private static func blockingInstall(connection: InstallConnection,
+                                                    cancellation: InstallCancellation, stagedPath: String,
                                                     progress: @escaping @Sendable (Int, String) -> Void) throws {
         let imd = IMobileDevice.self
-        guard imd.isAvailable, let idevice_new = imd.idevice_new,
-              let start = imd.instproxy_client_start_service,
-              let installFn = imd.instproxy_install else { throw DeviceError.unavailable }
-        setenv("USBMUXD_SOCKET_ADDRESS", socket, 1)
-
-        var device: OpaquePointer?
-        guard idevice_new(&device, nil) == imd.success, let device else { throw DeviceError.notAttached }
-        var client: OpaquePointer?
-        let rc = start(device, &client, "LightTouchMac")
-        guard rc == imd.success, let client else {
-            _ = imd.idevice_free?(device)
-            throw DeviceError.instproxy(.init(code: rc), phase: "connect")
+        guard let installFn = imd.instproxy_install else {
+            connection.free()
+            throw DeviceError.unavailable
         }
-
+        do { try cancellation.beginMutation() }
+        catch { connection.free(); throw error }
         let box = SyncBox()
         let ctx = InstallContext(box, progress)
         let ctxPtr = Unmanaged.passRetained(ctx).toOpaque()
-        let ir = stagedPath.withCString { installFn(client, $0, nil, installCallback, ctxPtr) }
+        let ir = stagedPath.withCString { installFn(connection.client, $0, nil, installCallback, ctxPtr) }
         guard ir == imd.success else {
+            connection.free()
             Unmanaged<InstallContext>.fromOpaque(ctxPtr).release()
-            _ = imd.instproxy_client_free?(client); _ = imd.idevice_free?(device)
             throw DeviceError.instproxy(.init(code: ir), phase: "start")
         }
 
@@ -436,10 +526,10 @@ struct DeviceServices: Sendable {
         // under a thread that may still fire one more callback, and the callback
         // does takeUnretainedValue → a write through a freed NSCondition.
         case .done:
-            _ = imd.instproxy_client_free?(client); _ = imd.idevice_free?(device)
+            connection.free()
             Unmanaged<InstallContext>.fromOpaque(ctxPtr).release()
         case .failed(let e, let desc):
-            _ = imd.instproxy_client_free?(client); _ = imd.idevice_free?(device)
+            connection.free()
             Unmanaged<InstallContext>.fromOpaque(ctxPtr).release()
             throw DeviceError.instproxy(e, phase: desc)
         case nil:
@@ -496,12 +586,7 @@ struct DeviceServices: Sendable {
     /// up ~40s before its services, so "lockdown replies" ≠ "installd is ready".
     func installProxyReady() async -> Bool {
         (try? await run(Timeouts.serviceProbe, "installd probe") { imd, device in
-            guard let start = imd.instproxy_client_start_service else { throw DeviceError.unavailable }
-            var client: OpaquePointer?
-            let rc = start(device, &client, "LightTouchMac")
-            guard rc == imd.success, let client else {
-                throw DeviceError.instproxy(.init(code: rc), phase: "probe")
-            }
+            let client = try imd.startInstallationProxy(device: device)
             _ = imd.instproxy_client_free?(client)
             return true
         }) ?? false
@@ -519,20 +604,28 @@ struct DeviceServices: Sendable {
     {
         let socket = clientSocket
         return try await DeviceGate.shared.serialized {
-            try await withDeadline(seconds, label) {
-                let imd = IMobileDevice.self
-                guard imd.isAvailable, let idevice_new = imd.idevice_new else {
-                    throw DeviceError.unavailable
+            let started = ContinuousClock.now
+            do {
+                return try await withDeadline(seconds, label) {
+                    let imd = IMobileDevice.self
+                    guard imd.isAvailable, let idevice_new = imd.idevice_new else {
+                        throw DeviceError.unavailable
+                    }
+                    // Points the whole library at OUR emulator's usbmuxd rather than
+                    // a real device or another instance (they share a UDID).
+                    setenv("USBMUXD_SOCKET_ADDRESS", socket, 1)
+                    var device: OpaquePointer?
+                    guard idevice_new(&device, nil) == imd.success, let device else {
+                        throw DeviceError.notAttached
+                    }
+                    defer { _ = imd.idevice_free?(device) }
+                    return try body(imd, device)
                 }
-                // Points the whole library at OUR emulator's usbmuxd rather than
-                // a real device or another instance (they share a UDID).
-                setenv("USBMUXD_SOCKET_ADDRESS", socket, 1)
-                var device: OpaquePointer?
-                guard idevice_new(&device, nil) == imd.success, let device else {
-                    throw DeviceError.notAttached
+            } catch {
+                if !(error is CancellationError) {
+                    logEvent("device operation \(label) failed after \(started.duration(to: .now)): \(error.localizedDescription)")
                 }
-                defer { _ = imd.idevice_free?(device) }
-                return try body(imd, device)
+                throw error
             }
         }
     }

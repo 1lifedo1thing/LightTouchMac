@@ -122,13 +122,10 @@ final class USBMux {
                                 "-C", conf],
                     environment: .inherit.updating([
                         "USBMUXD_QEMU_ADDR": guestAddress,
-                        // SECONDS, not ms — "100" here was a hundred-second
-                        // stall between QEMU connecting and the first USB
-                        // enumeration attempt, which is why the device took
-                        // forever to "attach" on every boot. Ten skips the
-                        // iBoot phase's noise; the daemon's own retries (now
-                        // uncapped) carry it from there.
-                        "USBMUXD_QEMU_DELAY": "10",
+                        // Enumeration has a bounded early-boot probe and retries.
+                        // Do not impose a ten-second delay on an already-live
+                        // device restored from a snapshot.
+                        "USBMUXD_QEMU_DELAY": "0",
                     ]),
                     input: .none,
                     output: .fileDescriptor(log, closeAfterSpawningProcess: false),

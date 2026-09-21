@@ -31,11 +31,17 @@ struct DeviceToolsError: Error {static func failed(_ s:String)->Self{Self()}}
  var isPoweredOff:Bool{state == .poweredOff}
  func reconnectUSB(){}
  func startForegroundWatch(){}
+ var preparationStatus=""
  let stub=StubTools()
  var onReady:(()->Void)?
  func deviceReady() async -> Bool {onReady?();return true}
  func tools()->StubTools{stub}
- func waitForSpringBoard() async throws{}
+ var springBoardReady=true
+ var springBoardChecks=0
+ func waitForSpringBoard() async throws {
+  springBoardChecks+=1
+  while !springBoardReady { try await Task.sleep(for:.milliseconds(10)) }
+ }
  func logEvent(_ s:String){}
  func resolveDeviceNotice(for n:Notice){}
  func reportDeviceNotice(_ s:String,for n:Notice){}
@@ -47,6 +53,11 @@ struct DeviceToolsError: Error {static func failed(_ s:String)->Self{Self()}}
    sleeping=off;let c=Controller();c.startMediaPreparation();await c.mediaPreparationTask?.value
    precondition(c.homes==(off ? 1:0) && !c.preparingMedia)
   }
+  let pending=Controller();pending.springBoardReady=false;pending.startMediaPreparation()
+  while pending.springBoardChecks==0 {await Task.yield()}
+  precondition(pending.preparingMedia && pending.preparationStatus == "Waiting for the Home screen…")
+  pending.springBoardReady=true;await pending.mediaPreparationTask?.value
+  precondition(!pending.preparingMedia)
   sleeping=true;let restored=Controller();restored.restoringFromSnapshot=true
   restored.startMediaPreparation();await restored.mediaPreparationTask?.value;precondition(restored.homes==0)
   sleeping=true;let cold=Controller();cold.restoringFromSnapshot=true;cold.state = .poweredOff

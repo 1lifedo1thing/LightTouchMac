@@ -1,74 +1,49 @@
 #!/usr/bin/env python3
-"""Exercise the production Settings window without starting an emulator."""
+"""Exercise the production preference actions and menu validation without a guest."""
 from pathlib import Path
-import subprocess,tempfile
+import subprocess, tempfile
 root=Path(__file__).resolve().parents[1]
-with tempfile.TemporaryDirectory(prefix='ltm-settings-') as tmp:
-    tmp=Path(tmp)
-    (tmp/'check.swift').write_text(r'''import Cocoa
+source=(root/'LightTouchMac/AppDelegate.swift').read_text()
+a=source.index('    @objc func toggleAutomaticRotation(')
+b=source.index('    @objc func showHelp(',a)
+actions=source[a:b]
+fixture=r'''import Cocoa
+@MainActor enum NetworkAccessPreference { static let key="guestNetworkEnabled" }
 @MainActor final class EmulatorController {
+ struct Options { var network = true }; var options = Options()
  static let autoRotateDefaultsKey="autoRotateWithGuest"
- static var autoRotateEnabled: Bool { UserDefaults.standard.object(forKey:autoRotateDefaultsKey) as? Bool ?? true }
- var keyboardInputEnabled = true
- func toggleKeyboardInput() { keyboardInputEnabled.toggle() }
- var keyboardTiltRate: Double=90
- func setKeyboardTiltRate(_ value: Double) { keyboardTiltRate=value }
+ static var autoRotateEnabled:Bool { UserDefaults.standard.object(forKey:autoRotateDefaultsKey) as? Bool ?? true }
 }
-@MainActor enum CatalogClient {
- static var baseURL: URL { URL(string:UserDefaults.standard.string(forKey:"LTMCatalogBaseURL") ?? "https://legacystore.app")! }
+@MainActor final class AppDelegate:NSObject, NSMenuItemValidation {
+ var emulator:EmulatorController? = EmulatorController()
+'''+actions+r'''
 }
 @main struct Check {
  @MainActor static func main() {
-  _ = NSApplication.shared
+  _=NSApplication.shared
   let defaults=UserDefaults.standard
-  let domain="ltm-settings-check-"+UUID().uuidString
-  defaults.setPersistentDomain([:],forName:domain)
-  defaults.addSuite(named:domain)
-  // The compiled fixture has its own defaults domain, never the app's bundle ID.
-  defer { defaults.removeObject(forKey:"autoRotateWithGuest");defaults.removeObject(forKey:"LTMCatalogBaseURL");defaults.removePersistentDomain(forName:domain) }
-  let emulator=EmulatorController()
-  let controller=SettingsWindowController(emulator:emulator)
-  controller.showWindow(nil)
-  let window=controller.window!
-  precondition(!window.styleMask.contains(.resizable) && !window.styleMask.contains(.miniaturizable))
-  func descendants(_ view:NSView)->[NSView] { [view]+view.subviews.flatMap(descendants) }
-  let views=descendants(window.contentView!)
-  let button=views.compactMap{$0 as? NSButton}.first{$0.title=="Rotate with the device"}!
-  button.performClick(nil);precondition(!EmulatorController.autoRotateEnabled)
-  let keyboard=views.compactMap{$0 as? NSButton}.first{$0.title=="Send keyboard input to the device"}!
-  keyboard.performClick(nil);precondition(!emulator.keyboardInputEnabled)
-  emulator.toggleKeyboardInput()
-  controller.windowDidBecomeKey(Notification(name:NSWindow.didBecomeKeyNotification,object:window))
-  precondition(keyboard.state == .on)
-  for title in ["Device","Game Controller","App Catalog"] {
-   precondition(views.compactMap{$0 as? NSTextField}.contains{$0.stringValue==title})
-  }
-  let tilt=views.compactMap{$0 as? NSPopUpButton}.first!
-  tilt.selectItem(at:2);tilt.sendAction(tilt.action,to:tilt.target)
-  precondition(emulator.keyboardTiltRate==180)
-  let field=views.compactMap{$0 as? NSTextField}.first{$0.accessibilityLabel()=="Catalog URL"}!
-  for bad in ["file:///etc/passwd","https://user:secret@example.com","https://example.com?x=1","https://example.com:70000","relative"] {
-   precondition(SettingsWindowController.catalogURL(bad)==nil,bad)
-   field.stringValue=bad;controller.controlTextDidEndEditing(Notification(name:NSControl.textDidEndEditingNotification,object:field))
-   precondition(defaults.string(forKey:"LTMCatalogBaseURL")==nil)
-  }
-  field.stringValue="http://127.0.0.1:8000/catalog"
-  controller.controlTextDidEndEditing(Notification(name:NSControl.textDidEndEditingNotification,object:field))
-  precondition(CatalogClient.baseURL.absoluteString==field.stringValue)
-  field.stringValue="";controller.controlTextDidEndEditing(Notification(name:NSControl.textDidEndEditingNotification,object:field))
-  precondition(CatalogClient.baseURL.absoluteString=="https://legacystore.app")
-  window.appearance=NSAppearance(named:.aqua)
-  RunLoop.main.run(until:Date(timeIntervalSinceNow:0.2))
-  window.contentView!.layoutSubtreeIfNeeded()
-  let content=window.contentView!
-  for view in views where view is NSControl {
-   let rect=view.convert(view.bounds,to:content)
-   precondition(content.bounds.insetBy(dx:-1,dy:-1).contains(rect),"Control outside window: \(rect)")
-  }
-  window.close()
-  print("PASS: Settings actions, catalog validation/reset, fixed window and layout bounds")
+  defer { defaults.removeObject(forKey:NetworkAccessPreference.key);defaults.removeObject(forKey:EmulatorController.autoRotateDefaultsKey) }
+  defaults.set(true,forKey:EmulatorController.autoRotateDefaultsKey)
+  defaults.removeObject(forKey:NetworkAccessPreference.key)
+  let delegate=AppDelegate()
+  let rotation=NSMenuItem(title:"Rotate Automatically",action:#selector(AppDelegate.toggleAutomaticRotation(_:)),keyEquivalent:"")
+  let network=NSMenuItem(title:"Connect to the Internet",action:#selector(AppDelegate.toggleInternetAccess(_:)),keyEquivalent:"")
+  precondition(delegate.validateMenuItem(rotation) && rotation.state == .on)
+  delegate.toggleAutomaticRotation(nil)
+  precondition(delegate.validateMenuItem(rotation) && rotation.state == .off && !EmulatorController.autoRotateEnabled)
+  precondition(delegate.validateMenuItem(network) && network.state == .on)
+  delegate.toggleInternetAccess(nil)
+  precondition(delegate.validateMenuItem(network) && network.state == .off && network.title.contains("After Reopening"))
+  delegate.toggleInternetAccess(nil)
+  precondition(delegate.validateMenuItem(network) && network.state == .on && !network.title.contains("After Reopening"))
+  delegate.emulator!.options.network=false
+  defaults.removeObject(forKey:NetworkAccessPreference.key)
+  precondition(delegate.validateMenuItem(network) && network.state == .off && !network.title.contains("After Reopening"))
+  print("PASS: menu preferences apply rotation immediately and show pending internet changes")
  }
 }
-''')
-    subprocess.run(['xcrun','swiftc','-swift-version','5','-default-isolation','MainActor',str(root/'LightTouchMac/SettingsWindowController.swift'),str(root/'LightTouchMac/GameControllerInput.swift'),str(tmp/'check.swift'),'-o',str(tmp/'check')],check=True)
-    subprocess.run([str(tmp/'check')],check=True)
+'''
+with tempfile.TemporaryDirectory(prefix='ltm-preferences-') as directory:
+ work=Path(directory);(work/'check.swift').write_text(fixture)
+ subprocess.run(['xcrun','swiftc','-parse-as-library','-default-isolation','MainActor',str(work/'check.swift'),'-o',str(work/'check')],check=True)
+ subprocess.run([str(work/'check')],check=True)

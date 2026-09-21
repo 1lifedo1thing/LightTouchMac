@@ -17,18 +17,19 @@ and cleanup behavior.
 
 ## Kernel diagnostics
 
-Device > Advanced > Kernel Console enables XNU serial logging on the next boot.
-Verbose Boot separately controls text on the guest display. Kernel output is
-written to the device's `serial.log` and included in Export Diagnostics; it starts
+When kernel console logging is enabled in the emulator configuration, output is
+written to the device's `serial.log` and included in Export Diagnostics. It starts
 when XNU initializes its serial console, so the earliest kernel banner may not
 appear there.
 
-## Music and photo import
+## Media import
 
-Use Apps > Sync Media… or drop MP3, M4A, AAC or WAV audio, or JPEG, PNG or HEIC
-photos onto the device. Light Touch
+Use Apps > Import Media… or drop MP3, M4A, AAC or WAV audio, JPEG, PNG or HEIC
+photos, or MP4, M4V or QuickTime movies onto the device. Light Touch
 prepares a private copy, checks the codec and duration, and queues the upload
-with app installations. Progress appears in the Apps inspector. The guest's
+with app installations. The Apps inspector opens to show preparation and queue
+progress immediately. A mixed drop imports supported files and identifies any
+omitted formats. Failed imports stay visible with Retry. The guest's
 native MusicLibrary service adds each song without replacing the existing
 library; imported tracks appear in Music.
 
@@ -39,8 +40,8 @@ and unsupported codecs are rejected before upload.
 Cancellation is available during preparation/upload; once “Adding to Music…”
 begins the library operation finishes. A failed/uncertain import keeps its
 staged audio, and the same staged request can be reconciled without duplication.
-Selecting the same source again starts a new import; content-based deduplication,
-artwork and playlist editing remain future work.
+Songs are identified by their prepared content, so repeating an import
+reconciles the same library entry. Artwork and playlist editing remain future work.
 
 Photos are oriented upright, reduced to at most 2048 pixels on the longest
 edge and converted to baseline JPEG; transparent areas become white. The guest
@@ -48,15 +49,26 @@ adds them through its native Saved Photos API, generating its own thumbnails.
 A persistent receipt prevents repeating a completed save or blindly replaying
 an uncertain save. Separate import jobs still create separate photos.
 
+Movies are converted by macOS with the iPod export preset (H.264 Baseline,
+up to 640 × 480 at 30 fps, with compatible audio) and added to Videos by the
+same native library service. The source is never edited. Completed conversions
+are cached privately so retries reuse exactly the same bytes and library entry.
+Protected files, multiple video tracks and incomplete conversions are rejected.
+The source and converted movie must each fit within 1 GB.
+
 The product build below compiles the shipped guest helpers from source before packaging.
 
 Validation: tests/check-media-preflight.py, tests/check-upload.py, and the
 opt-in tests/check-media-native.py. The native check compiles the production
 Swift metadata/upload/import methods, uses real AFC and an isolated guest-agent
 adapter, verifies exact bytes and quoted/Unicode metadata, and cleanly shuts
-down its guest. Add --photo to check native Saved Photos, or --aac to check raw
-AAC conversion and native Music playback. tests/check-photo-preflight.py checks
-photo conversion. These tests do not exercise the AppKit picker or drag interaction.
+down its guest. Add --photo to check native Saved Photos, --aac to check raw
+AAC conversion and native Music playback, or --video to check video conversion,
+the Videos library entry and duplicate reconciliation. Use --guest-tools to
+test newly built payloads before publishing them. tests/check-photo-preflight.py
+and tests/check-video-preflight.py check conversion; tests/check-media-drop.py
+checks native drop acceptance and inspector visibility, and
+tests/check-media-queue.py checks ordering, cancellation and recovery.
 
 ## Battery controls
 
@@ -159,7 +171,7 @@ to the sibling QEMU checkout and `QEMU_BUILD_DIR` to its existing
 `build-native14/qemu-build` directory. Override either build setting for a
 product-owned `.build/native` directory or a different checkout. Header paths,
 linkage and runtime search paths follow those settings, including paths with
-spaces. The app's macOS deployment floor remains 14.0.
+spaces. The app's macOS deployment floor is 14.4.
 
 The project has no shell build phases. Ordinary Xcode builds compile the app;
 they do not download dependencies, rebuild the emulator or package firmware.
@@ -226,7 +238,7 @@ the supplied directory for isolated development and tests.
 ### Catalog and installation reliability (2026-09-04)
 
 The Store keeps `/api/emulator/apps` for its compatibility-filtered catalog.
-“Versions and Details…” uses the public versions/copy APIs; each selected copy
+“Choose Version…” uses the public versions/copy APIs; each selected copy
 is revalidated against the emulator endpoint, then checked for size and archive
 MD5 before installation. These checks do not establish runtime compatibility.
 
@@ -261,7 +273,7 @@ decoder or full AMC compressed-audio processing. These are not claimed fixed by
 the frontend changes.
 
 
-Power Off in the Lock toolbar menu shuts down the guest and leaves the window
+Device > Power Off shuts down the guest and leaves the window
 open. Power On cold-boots the same emulator instance. A dimmed device with a
 Sleeping or Powered Off badge distinguishes these states from an unresponsive
 frame; Wake Up uses the power button. The window subtitle follows SpringBoard's
@@ -273,35 +285,65 @@ The default remains the existing user state directory.
 
 ### Web and captures
 
-Device > Proxy offers No Proxy or HTTP Proxy, with an optional archive date.
+Device > Network > Proxy contains Use HTTP proxy and Browse the Internet Archive,
+with an optional archive date.
 The proxy is bundled: no separate server or installation is required. Dated
 browsing fetches the closest available Internet Archive capture through verified
-host HTTPS. Changes apply when the guest is awake and ready; No Proxy restores
+host HTTPS. Changes apply when the guest is awake and ready; turning off HTTP proxy restores
 its previous proxy keys and removes the device-local proxy certificate. HTTPS
 uses a built-in TLS bridge: the guest trusts a unique certificate for its own
 proxy, while the Mac verifies the real site's modern TLS connection. No Mac
 certificate installation is needed. Archive availability/rate limits and the
 old browser's JavaScript/CSS limitations still apply.
 
-Capture provides Save Screenshot (Shift-Command-S), Live Text
-(Shift-Command-L), and Start/Stop Recording (Shift-Command-R). Screenshots use
-the native screen pixels, including while paused. Live Text freezes the image inline inside the device screen for selection and
-data detectors; Done or Escape returns to the live guest. Show Finger Dots uses
-44-point soft gradient indicators with shadows and a 160 ms release fade in the
-preview, screenshots and recordings. Touches do nothing while sleeping or off.
-The sleeping presentation uses the bundled Sleeping.caar animation.
+Capture controls live in the customizable toolbar. Record toggles with Command-R;
+the button shows elapsed time beside Stop, then progress while saving. Command-period
+offers Discard, Stop and Save, or Cancel. Screenshots use Command-S to save,
+Shift-Command-S for Save As, Command-O to open in the selected app, and Command-C
+to copy when the iPod screen has focus. Focused Mac text keeps ordinary Copy.
+Home Screen and the portrait/landscape toggle also live in the toolbar. Hold
+Option to reverse the next rotation; Command-[ and Command-] are explicit left/right
+quarter turns. There is no floating control bar or reserved canvas space.
+Capture uses WireView's shutter and recording start/stop sounds.
 
-Recordings use H.264 video at the native screen dimensions. A recording that
-changes orientation uses a 480 × 480 canvas with black margins. The Record
-button turns red while recording, without shifting the toolbar. Screenshots
-and finished movies save automatically to Downloads/Light Touch; Capture
-includes commands to choose another folder and reveal it in Finder. Recordings include the device’s stereo audio, including silent timing gaps while
-the emulator is paused.
+Capture → Capture Screen Only switches from the canvas to guest pixels and
+remembers the choice. Canvas uses ScreenCaptureKit’s
+macOS 14.4 current-process API and crops the device region, preserving the model,
+rotation, tilt, shadow, and gradient without capturing window chrome or controls.
+It does not request desktop recording permission. Screen Only preserves native
+guest pixels. Both recording modes use guest audio directly, never desktop or
+microphone audio. Canvas movies keep their initial output dimensions and fit a
+resized canvas inside them. Hiding or minimizing the app stops recording.
+
+Captures save directly to the Desktop by default. Capture > Capture Options
+contains the folder, screenshot app, copy-on-capture, Finder reveal, sound,
+Space shortcut, recovery notification, and away-reminder preferences. Space
+remains available to guest apps unless explicitly configured for capture.
+Drag the latest thumbnail to another app or Finder, or click its arrow to reveal
+the file; deleting or moving the file dismisses the thumbnail. Failed saves offer
+a new location and retain the movie if cancelled. Launch recovery saves playable
+older recordings without overwriting existing files. Help > Show Unfinished
+Recordings opens any retained files. Edit > Select Text on Screen selects guest
+text; Done or Escape returns to the live screen.
+
+Window → Show iPod Files (Command-2) opens a retained, independent file browser. Closing the
+window does not cancel its transfer. Physical Size uses reported display
+measurements and disables itself when those measurements are unavailable;
+there is no calibration. The Device menu contains automatic rotation and internet
+access. Pointer and trackpad motion remain available; controller input and
+keyboard tilt have been removed.
 
 
 Device Logs includes app events, device console output, and USB service logs.
 App events are written off the main thread with a 32 KB per-entry limit and
 one current/one previous 1 MB file. Export Diagnostics includes those files.
 Preparation, save-state, erase, and shutdown failures appear in a persistent
-status bar with Show Logs and Dismiss. Successful retries clear the matching
+status pill with Show Logs and Dismiss. Successful retries clear the matching
 status; an active storage-write failure takes priority and cannot be dismissed.
+
+Startup waits for SpringBoard readiness before enabling input and shows preparation
+progress, with a Device Logs action after 90 seconds. Component checks use one
+batched guest read; USB enumeration no longer waits a fixed ten seconds.
+
+Device → Connect to the Internet remembers the network preference for the next
+launch; explicit `--network` / `--no-network` flags override it.

@@ -49,9 +49,11 @@ final class InlineLiveTextView: NSView, ImageAnalysisOverlayViewDelegate {
                                                         configuration: ImageAnalyzer.Configuration([.text]))
                 try Task.checkCancellation()
                 overlay.analysis = analysis
-                hasHighlightedItems = true
-                overlay.selectableItemsHighlighted = true
-                statusLabel.isHidden = true
+                hasHighlightedItems = !analysis.transcript.isEmpty
+                overlay.selectableItemsHighlighted = hasHighlightedItems
+                statusLabel.stringValue = "No text found"
+                statusLabel.isHidden = hasHighlightedItems
+                needsLayout = true
                 window?.makeFirstResponder(overlay)
             } catch {
                 if !Task.isCancelled { statusLabel.stringValue = "Text recognition unavailable"; needsLayout = true }

@@ -19,15 +19,21 @@ struct MediaPhoto: Sendable {
                 throw DeviceToolsError.failed("Choose a JPEG, PNG or HEIC photo.")
             }
             let values = try source.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-            guard values.isRegularFile == true, let size = values.fileSize,
-                  size > 0, size <= 64 << 20,
-                  let imageSource = CGImageSourceCreateWithURL(source as CFURL, nil),
+            guard values.isRegularFile == true, let size = values.fileSize, size > 0 else {
+                throw DeviceToolsError.failed("This photo couldn’t be read.")
+            }
+            guard size <= 64 << 20 else {
+                throw DeviceToolsError.failed("This photo is too large. Choose one smaller than 64 MB.")
+            }
+            guard let imageSource = CGImageSourceCreateWithURL(source as CFURL, nil),
                   let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any],
                   let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
                   let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue,
-                  width > 0, height > 0, width <= 100000, height <= 100000,
-                  width * height <= 100_000_000 else {
-                throw DeviceToolsError.failed("The photo must be a readable image of at most 64 MB and 100 megapixels.")
+                  width > 0, height > 0 else {
+                throw DeviceToolsError.failed("This photo couldn’t be read.")
+            }
+            guard width <= 100000, height <= 100000, width * height <= 100_000_000 else {
+                throw DeviceToolsError.failed("This photo is too large. Choose one below 100 megapixels.")
             }
             let options: [CFString: Any] = [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -40,7 +46,7 @@ struct MediaPhoto: Sendable {
                   let context = CGContext(data: nil, width: thumbnail.width, height: thumbnail.height,
                     bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
                     bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else {
-                throw DeviceToolsError.failed("The photo could not be decoded.")
+                throw DeviceToolsError.failed("This photo couldn’t be read.")
             }
             try Task.checkCancellation()
             // JPEG has no alpha. Flatten transparent images against white.
