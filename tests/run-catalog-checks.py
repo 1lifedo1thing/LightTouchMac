@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-checks-') as work:
             exe=work/name
             run(['swiftc','-parse-as-library','-module-cache-path',str(work/'modules'), *sources,'-o',str(exe)])
             run([str(exe),*arguments], env=env, timeout=30)
-        common = ['LightTouchMac/'+f+'.swift' for f in ['CatalogClient','CatalogCopy','Bundled','AppEventLog']]
+        common = ['LightTouchMac/'+f+'.swift' for f in ['CatalogClient','CatalogCopy','Bundled','AppEventLog','StorageLocations','NativeLogging']]
         if '--ui-only' not in sys.argv:
             swift('catalog',common+['LightTouchMac/IPALibrary.swift','tests/catalog.swift'])
             swift('network',common+['tests/catalog-network.swift'],[port])
@@ -44,6 +44,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-checks-') as work:
                 "    private var installedPlaceholderText:", "    private func updateButtons("))
             fixture=work/'selection.swift'
             fixture.write_text('''import Cocoa
+@MainActor enum AppInstaller {static var isPaused=false}
 @MainActor final class SelectionCheck: NSObject, NSTableViewDataSource {
  let tableView = NSTableView()
  enum PaneMode: Int { case installed, store }
@@ -53,7 +54,12 @@ with tempfile.TemporaryDirectory(prefix='ltm-checks-') as work:
  let placeholder = NSTextField(labelWithString: ""), addRemove = NSSegmentedControl()
  var searchTask: Task<Void, Never>?
  var haveLoaded = true, busyWithDevice = false
- final class Emulator { var canReachDevice = true, canQueueInstall = true }
+ var queries: [PaneMode:String] = [:]
+ var catalogFailed = false
+ let browseButton=NSButton(), installButton=NSButton(), retryButton=NSButton(), resumeButton=NSButton()
+ let emptyActions=NSStackView(), banner=NSTextField(labelWithString:"")
+ var bannerHeight:NSLayoutConstraint?
+ final class Emulator { var canReachDevice = true, canQueueInstall = true, isPaused = false }
  let emulator = Emulator()
  var selectedApps: [App] { searching ? [] : tableView.selectedRowIndexes.compactMap { visibleApps.indices.contains($0) ? visibleApps[$0] : nil } }
  var apps: [App] { visibleApps }
@@ -94,19 +100,19 @@ with tempfile.TemporaryDirectory(prefix='ltm-checks-') as work:
   c.visibleApps = []; c.pending = []; c.setMode(.installed)
   precondition(!c.placeholder.isHidden)
   c.setMode(.store)
-  precondition(c.placeholder.isHidden && c.tableView.selectedRow == -1)
+  precondition(!c.placeholder.isHidden && c.tableView.selectedRow == -1)
   c.showInstalledPlaceholder("late Installed failure")
-  precondition(c.placeholder.isHidden)
+  precondition(c.placeholder.stringValue == "Loading Legacy Store…")
   c.setMode(.installed); c.searchField.stringValue = "query"
-  c.setMode(.store); precondition(c.placeholder.isHidden)
-  c.catalogResults = []; c.scheduleSearch()
+  c.setMode(.store); precondition(c.searchField.stringValue.isEmpty)
+  c.searchField.stringValue = "store query"; c.catalogResults = []; c.scheduleSearch()
   precondition(c.placeholder.stringValue == "Searching Legacy Store…" && !c.placeholder.isHidden)
   c.searchField.stringValue = ""; c.scheduleSearch()
   precondition(c.placeholder.stringValue == "Loading Legacy Store…")
   let outstanding = c.searchTask
   c.setMode(.installed)
   precondition(outstanding?.isCancelled == true)
-  precondition(c.placeholder.stringValue == "No third-party apps installed.")
+  precondition(c.placeholder.stringValue == "No matching apps")
   c.visibleApps = [App(id:"installed")]; c.reloadTablePreservingSelection()
   c.tableView.selectRowIndexes([0], byExtendingSelection:false)
   c.updateButtons(); precondition(c.addRemove.isEnabled(forSegment:1))

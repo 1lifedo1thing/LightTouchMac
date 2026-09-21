@@ -10,6 +10,7 @@ errors = s[s.index('nonisolated enum DeviceError'):s.index('// MARK: - Timeouts'
 source = r'''import Foundation
 nonisolated func logEvent(_ message: String) {}
 nonisolated enum Timeouts { static let stage = 300.0 }
+struct MediaVideo: Sendable { let id: String; let video: URL }
 struct MediaPhoto: Sendable { let id: String; let image: URL }
 struct MediaSong: Sendable {
  let id: String
@@ -86,6 +87,18 @@ struct Services {
   precondition(state.bytes.isEmpty && state.existing==Data("different".utf8) && state.closeCalls==1)
   state.reset()
   do { try await Services().stageSong(MediaSong(id:"../escape",audio:audio)) { _ in }; fatalError("invalid destination accepted") }
+  catch {}
+  precondition(state.destination.isEmpty)
+  state.reset()
+  let video = path.deletingLastPathComponent().appendingPathComponent("video.m4v")
+  try expected.write(to: video)
+  try await Services().stageVideo(MediaVideo(id:id,video:video)) { _ in }
+  precondition(state.bytes == expected && state.destination == "LightTouch/\(id)/video.m4v")
+  state.reset();state.existing=expected
+  try await Services().stageVideo(MediaVideo(id:id,video:video)) { _ in }
+  precondition(state.bytes.isEmpty && state.existing == expected)
+  state.reset()
+  do { try await Services().stageVideo(MediaVideo(id:id,video:audio)) { _ in };fatalError("invalid movie path accepted") }
   catch {}
   precondition(state.destination.isEmpty)
   state.reset();state.cancelOnClose=true

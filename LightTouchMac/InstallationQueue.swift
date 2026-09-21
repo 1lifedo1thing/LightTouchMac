@@ -1,6 +1,7 @@
 import Foundation
 
-/// Only ready IPAs enter this queue. Network transfers never reserve the device.
+/// Serializes ready installs, media imports and confirmed removals.
+/// Network downloads never reserve the device.
 @MainActor final class InstallationQueue {
     private(set) var isBusy = false
     private(set) var isPaused = false

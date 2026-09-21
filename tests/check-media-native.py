@@ -23,8 +23,10 @@ from types import SimpleNamespace
 parser = argparse.ArgumentParser(description=__doc__)
 mode = parser.add_mutually_exclusive_group()
 mode.add_argument('--photo',action='store_true')
+mode.add_argument('--video',action='store_true',help='convert and import a movie into the Videos library')
 mode.add_argument('--aac',action='store_true',help='convert raw AAC, import it and verify native Music playback')
 parser.add_argument('--recording',action='store_true',help='record embedded QEMU video and guest audio across a pause (requires --aac)')
+parser.add_argument('--guest-tools',type=Path,help='freshly built guest payloads to use instead of checkout binaries')
 args = parser.parse_args()
 if args.recording and not args.aac: parser.error('--recording requires --aac')
 APP = Path(__file__).resolve().parents[1]
@@ -52,7 +54,11 @@ enum DeviceToolsError: Error { case toolMissing(String), failed(String) }
 nonisolated enum Bundled {
     static var frameworksDirectory: String? { CommandLine.arguments[5] }
     static func resolve(_ name: String, fallbacks: [String]) -> String? {
-        fallbacks.first { FileManager.default.isExecutableFile(atPath: $0) }
+        if CommandLine.arguments.count > 7 {
+            let candidate = URL(fileURLWithPath: CommandLine.arguments[7]).appendingPathComponent(name).path
+            if FileManager.default.isExecutableFile(atPath: candidate) { return candidate }
+        }
+        return fallbacks.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 }
 struct DeviceTools: Sendable {
@@ -88,13 +94,20 @@ final class Progress: @unchecked Sendable {
 @main struct Check {
     static func main() async throws {
         let source = URL(fileURLWithPath:CommandLine.arguments[1])
-        let media = try await PreparedMedia.prepare(source)
+        func prepare() async throws -> PreparedMedia {
+            if MediaVideo.extensions.contains(source.pathExtension.lowercased()) {
+                return .video(try await MediaVideo.prepare(source, cacheDirectory: source.deletingLastPathComponent().appendingPathComponent("video-cache")))
+            }
+            return try await PreparedMedia.prepare(source)
+        }
+        let media = try await prepare()
         defer { try? FileManager.default.removeItem(at: media.directory) }
         let id: String
         let file: URL
         switch media {
         case .song(let song): id = song.id; file = song.audio
         case .photo(let photo): id = photo.id; file = photo.image
+        case .video(let video): id = video.id; file = video.video
         }
         let prepared = URL(fileURLWithPath:CommandLine.arguments[6]).deletingLastPathComponent()
             .appendingPathComponent("prepared." + file.pathExtension)
@@ -105,12 +118,13 @@ final class Progress: @unchecked Sendable {
         precondition(progress.complete())
         try await device.commitMedia(media)
         try await device.commitMedia(media) // Reconcile an uncertain reply.
-        let repeated = try await PreparedMedia.prepare(source)
+        let repeated = try await prepare()
         defer { try? FileManager.default.removeItem(at: repeated.directory) }
         let secondID: String
         switch repeated {
         case .song(let song): secondID = song.id
         case .photo(let photo): secondID = photo.id
+        case .video(let video): secondID = video.id
         }
         precondition(secondID == id)
         try await device.stageMedia(repeated) { _ in }
@@ -126,6 +140,7 @@ final class Progress: @unchecked Sendable {
         switch media {
         case .song(let song): bad = .song(MediaSong(id: song.id, directory: badDirectory, audio: badFile, metadata: song.metadata, title: song.title))
         case .photo(let photo): bad = .photo(MediaPhoto(id: photo.id, directory: badDirectory, image: badFile, title: photo.title))
+        case .video(let video): bad = .video(MediaVideo(id: video.id, directory: badDirectory, video: badFile, metadata: video.metadata, title: video.title))
         }
         do { try await device.stageMedia(bad) { _ in }; fatalError("overwrote an existing media file") }
         catch {}
@@ -158,7 +173,7 @@ subprocess.run(['xcrun','swiftc','-swift-version','5','-default-isolation','Main
     '-module-cache-path',str(out/'modules'),
     str(APP/'LightTouchMac/MediaIdentity.swift'),str(APP/'LightTouchMac/MediaSong.swift'),str(APP/'LightTouchMac/DeviceServices.swift'),
     str(APP/'LightTouchMac/IMobileDevice.swift'),str(APP/'LightTouchMac/MediaPhoto.swift'),
-    str(APP/'LightTouchMac/PreparedMedia.swift'),str(driver),'-o',str(executable)],check=True)
+    str(APP/'LightTouchMac/MediaVideo.swift'),str(APP/'LightTouchMac/PreparedMedia.swift'),str(driver),'-o',str(executable)],check=True)
 if args.photo:
     from PIL import Image,ImageDraw
     source = out/"Photo 'quoted' $title — été.png"
@@ -168,6 +183,9 @@ if args.photo:
     draw.rectangle((2048,0,4095,1535),fill=(30,210,30,255))
     draw.rectangle((0,1536,2047,3071),fill=(30,30,220,255))
     image.save(source)
+elif args.video:
+    source = out/"Movie 'quoted' $title — été.mp4"
+    shutil.copyfile(ROOT/'contrib/it-harness/build/Payload/Harness.app/h264.mp4',source)
 elif args.aac:
     source = out/"Song 'quoted' $title — été.aac"
     subprocess.run(['ffmpeg','-v','error','-i',str(ROOT/'contrib/it-harness/build/Payload/Harness.app/aac.m4a'),
@@ -228,8 +246,10 @@ try:
     threading.Thread(target=server.serve_forever,daemon=True).start()
     manifest = out/'manifest.json'
     frameworks = ROOT/'build-native14/Light Touch-current.app/Contents/Frameworks'
-    subprocess.run([str(executable),str(source),files,'127.0.0.1:'+str(cfg.mux_port),
-        'http://127.0.0.1:'+str(server.server_port),str(frameworks),str(manifest)],check=True,timeout=180)
+    command = [str(executable),str(source),files,'127.0.0.1:'+str(cfg.mux_port),
+        'http://127.0.0.1:'+str(server.server_port),str(frameworks),str(manifest)]
+    if args.guest_tools: command.append(str(args.guest_tools.resolve()))
+    subprocess.run(command,check=True,timeout=180)
     server.shutdown()
     server.server_close()
     server = None
@@ -254,17 +274,21 @@ try:
         bundle = 'com.apple.mobileslideshow'
     else:
         status, data = r.itqmp.agent(d.qmp,'get',remote)
-        assert status == 0 and data == (out/'prepared.m4a').read_bytes(), 'AFC bytes changed'
-        if not args.aac: assert data == source.read_bytes(), 'immutable copy changed'
+        assert status == 0 and data == (out/('prepared.m4v' if args.video else 'prepared.m4a')).read_bytes(), 'AFC bytes changed'
+        if not args.aac and not args.video: assert data == source.read_bytes(), 'immutable copy changed'
         status, data = r.itqmp.agent(d.qmp,'get',
             '/var/mobile/Media/iTunes_Control/iTunes/iTunes Library.itlp/Library.itdb')
         assert status == 0
         database = out/'Library.itdb'
         database.write_bytes(data)
         with sqlite3.connect(database) as db:
-            rows = db.execute('SELECT title FROM item WHERE is_song=1').fetchall()
+            rows = db.execute('SELECT title FROM item WHERE is_song=0 AND media_kind=2' if args.video else 'SELECT title FROM item WHERE is_song=1').fetchall()
         assert len(rows) == 1 and unicodedata.normalize('NFC',rows[0][0]) == unicodedata.normalize('NFC',source.stem), rows
         bundle = 'com.apple.mobileipod'
+    if args.video:
+        assert d.powerdown(), 'guest shutdown not confirmed'
+        print('PASS: native video conversion, AFC upload, one Videos library item, repeated import reconciliation and guest shutdown',flush=True)
+        sys.exit(0)
     control = r.prepare_app_control(cfg,p,d,r.Result('media control'))
     ok, detail = r.unlock(cfg,control,d)
     assert ok,detail

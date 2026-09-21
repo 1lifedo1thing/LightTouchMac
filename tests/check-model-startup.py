@@ -9,6 +9,8 @@ fixture = next(ast.literal_eval(n.value) for n in node.body if isinstance(n, ast
 prefix = fixture[:fixture.index('@main struct Check')]
 stub_source = prefix + r'''
 @MainActor final class DeviceModelView:NSView {
+ func physicalScale(heightInPoints height: CGFloat) -> CGFloat { height / 1318 }
+ var viewportCenter: CGPoint?
  static var loadingDelay:Duration = .zero
  static var preparationDelay:Duration = .milliseconds(50)
  let delay:Duration
@@ -126,7 +128,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-model-startup-') as tmp:
         (app/'Resources'/name).symlink_to(root/'LightTouchMac'/name)
     for name, source, actual_model in [('stub', stub_source, False), ('renderer', real_source, True)]:
         swift=work/f'{name}.swift';swift.write_text(source);exe=app/'MacOS'/name
-        sources=['DisplayView','GameControllerInput','AttitudeIndicatorButton','InlineLiveTextView']
+        sources=['DisplayView','DisplayMeasurements','AttitudeIndicatorButton','InlineLiveTextView']
         if actual_model: sources.append('DeviceModelView')
         subprocess.run(['swiftc','-module-cache-path',str(work/'modules'),'-default-isolation','MainActor',
                         *[str(root/'LightTouchMac'/f'{item}.swift') for item in sources],

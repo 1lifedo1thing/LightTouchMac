@@ -1,6 +1,6 @@
 // Shared by Debug and Release. Keep the app and packaged native libraries on
 // the same minimum macOS version.
-MACOSX_DEPLOYMENT_TARGET = 14.0
+MACOSX_DEPLOYMENT_TARGET = 14.4
 
 // A sibling QEMU checkout is the default development layout. Override either
 // setting in Xcode or on the xcodebuild command line for another checkout/build.

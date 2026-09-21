@@ -5,7 +5,7 @@ import Cocoa
     @MainActor static func main() {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
-        UserDefaults.standard.set("http://127.0.0.1:\(CommandLine.arguments[1])", forKey: "LTMCatalogBaseURL")
+        CatalogClient.baseURL = URL(string: "http://127.0.0.1:\(CommandLine.arguments[1])")!
         let window = NSWindow(contentRect: NSRect(x: 200, y: 200, width: 510, height: 390),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "LightTouch Catalog Check"

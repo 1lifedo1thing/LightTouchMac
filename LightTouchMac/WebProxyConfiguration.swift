@@ -1,5 +1,20 @@
 import Foundation
 
+enum WebProxyStatus: Equatable {
+    case waiting, applying, ready, failed
+
+    var message: String? {
+        switch self {
+        case .waiting: "Waiting for iPod…"
+        case .applying: "Updating proxy…"
+        case .ready: nil
+        case .failed: "Couldn’t update the proxy. Try again."
+        }
+    }
+
+    var isWorking: Bool { self == .waiting || self == .applying }
+}
+
 /// Host routing is read once per guest connection. Changes need no VM restart.
 struct WebProxyConfiguration: Codable, Equatable {
     enum Mode: String, Codable {

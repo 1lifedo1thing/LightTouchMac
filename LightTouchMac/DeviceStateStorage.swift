@@ -3,7 +3,7 @@ import Darwin
 import CryptoKit
 
 /// Disk operations shared by the controller and the device-free regression check.
-enum DeviceStateStorage {
+nonisolated enum DeviceStateStorage {
     /// An SSH disconnect or a stopped VM alone does not establish an unmount.
     @MainActor
     static func waitForShutdown(until deadline: Date, confirmed: () -> Bool,
@@ -14,6 +14,16 @@ enum DeviceStateStorage {
             try? await Task.sleep(for: .milliseconds(200))
         }
         return false
+    }
+
+    /// Only call after the native VM has exited and released its files.
+    static func erase(overlay: URL, snapshots: [URL], legacyMarker: URL) throws {
+        let fm = FileManager.default
+        let paths = snapshots.flatMap { [$0, $0.appendingPathExtension("meta")] }
+            + [overlay, legacyMarker]
+        for path in paths where fm.fileExists(atPath: path.path) {
+            try fm.removeItem(at: path)
+        }
     }
 
     /// Publish a complete private NOR copy beside the NAND pages. Keeping it
@@ -145,12 +155,7 @@ enum DeviceStateStorage {
     static func packedImage(state: URL, nand: String, legacyKey: String,
                             manifest: URL) throws -> (image: PackedImage, retained: Bool) {
         let fm = FileManager.default
-        let digest = try String(contentsOf: manifest, encoding: .utf8)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard digest.count == 64, digest.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else {
-            throw CocoaError(.fileReadCorruptFile)
-        }
-        let latest = PackedImage(key: "\(nand)-\(digest)", directory: "device/\(nand)-\(digest)")
+        let latest = try bundledImage(nand: nand, manifest: manifest)
         let pointer = state.appendingPathComponent("device/active-\(nand).json")
         var active: PackedImage
         if fm.fileExists(atPath: pointer.path) {
@@ -178,25 +183,34 @@ enum DeviceStateStorage {
             }
             active = latest
         }
-        let oldReset = state.appendingPathComponent(".reset-\(active.key)")
-        let resetting = fm.fileExists(atPath: oldReset.path)
-            || fm.fileExists(atPath: state.appendingPathComponent(".reset-\(nand)").path)
-        if resetting {
-            // Preserve old base + overlay as a pair. Reset applies to the new
-            // image too if this build has previously been used on this Mac.
-            try Data().write(to: state.appendingPathComponent(".reset-\(latest.key)"), options: .atomic)
-            active = latest
-        } else if active != latest, !fm.fileExists(atPath: state.appendingPathComponent(active.directory).path) {
+        if active != latest, !fm.fileExists(atPath: state.appendingPathComponent(active.directory).path) {
             throw CocoaError(.fileNoSuchFile)
         }
         try fm.createDirectory(at: pointer.deletingLastPathComponent(), withIntermediateDirectories: true)
         try JSONEncoder().encode(active).write(to: pointer, options: .atomic)
-        if resetting, active == latest {
-            for marker in Set([oldReset, state.appendingPathComponent(".reset-\(nand)")])
-            where marker.lastPathComponent != ".reset-\(latest.key)" && fm.fileExists(atPath: marker.path) {
-                try fm.removeItem(at: marker)
-            }
-        }
         return (active, active != latest)
     }
+    private static func bundledImage(nand: String, manifest: URL) throws -> PackedImage {
+        let digest = try String(contentsOf: manifest, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard digest.count == 64, digest.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return PackedImage(key: "\(nand)-\(digest)", directory: "device/\(nand)-\(digest)")
+    }
+
+    /// Explicit erase adopts the current bundled base only after removing any
+    /// user overlay previously associated with it. Startup never consumes an
+    /// erase marker or silently switches an existing device to a new base.
+    static func adoptBundledImageAfterErase(state: URL, nand: String, manifest: URL) throws {
+        let latest = try bundledImage(nand: nand, manifest: manifest)
+        let snapshot = state.appendingPathComponent("snapshot-\(latest.key)")
+        try erase(overlay: state.appendingPathComponent("nandrw-\(latest.key)"),
+                  snapshots: [snapshot, snapshot.appendingPathExtension("tmp"), snapshot.appendingPathExtension("bad")],
+                  legacyMarker: state.appendingPathComponent(".reset-\(latest.key)"))
+        let pointer = state.appendingPathComponent("device/active-\(nand).json")
+        try FileManager.default.createDirectory(at: pointer.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode(latest).write(to: pointer, options: .atomic)
+    }
+
 }

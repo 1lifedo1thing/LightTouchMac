@@ -3,11 +3,10 @@ import Cocoa
 @main struct Check {
     @MainActor static func main() async throws {
         let port = CommandLine.arguments[1]
-        let before = UserDefaults.standard.object(forKey: "LTMCatalogBaseURL")
-        UserDefaults.standard.set("http://127.0.0.1:\(port)", forKey: "LTMCatalogBaseURL")
+        let before = CatalogClient.baseURL
+        CatalogClient.baseURL = URL(string: "http://127.0.0.1:\(port)")!
         defer {
-            if let before { UserDefaults.standard.set(before, forKey: "LTMCatalogBaseURL") }
-            else { UserDefaults.standard.removeObject(forKey: "LTMCatalogBaseURL") }
+            CatalogClient.baseURL = before
         }
         let found = try await CatalogClient.search("fixture")
         precondition(found.count == 1)

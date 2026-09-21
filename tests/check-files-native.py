@@ -11,6 +11,7 @@ out=Path(tempfile.mkdtemp(prefix='ltm-files-native-'))
 swift=r'''import Foundation
 nonisolated func logEvent(_ message: String) { print(message) }
 struct InstalledApp: Sendable { let id, name, version: String }
+struct MediaVideo: Sendable { let id: String; let video: URL }
 struct MediaPhoto: Sendable { let id: String; let image: URL }
 struct MediaSong: Sendable { let id: String; let audio: URL; static let extensions: Set<String> = ["m4a"] }
 nonisolated enum Bundled { static var frameworksDirectory: String? { CommandLine.arguments[2] } }

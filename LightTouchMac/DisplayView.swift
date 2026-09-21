@@ -2,11 +2,11 @@
 // zoom uses display pixels per guest pixel, independent of orientation.
 
 import Cocoa
-import GameController
 
 /// Fit the whole device in the window, or use an integer display-pixel scale.
 enum ZoomMode: Equatable {
     case fit
+    case physical
     case pixels(Int)
 
     static let steps = [1, 2, 3, 4, 6, 8]
@@ -42,6 +42,7 @@ final class DisplayView: NSView {
     /// Called when an .ipa is dropped on the screen.
     var onDropIPA: ((URL) -> Void)?
     var onDropMedia: ((URL) -> Void)?
+    var onDropUnsupportedFiles: (([URL]) -> Void)?
     /// Called when a Legacy Store row is dropped on the screen.
     var onDropCatalogApp: ((CatalogApp) -> Void)?
 
@@ -55,6 +56,7 @@ final class DisplayView: NSView {
     /// How long the shell + screen take to swing between portrait and landscape.
     private static let rotationDuration = 0.4
 
+    private var deviceLayoutRect: CGRect { safeAreaRect }
     var zoom: ZoomMode = .fit {
         didSet {
             guard oldValue != zoom else { return }
@@ -69,6 +71,7 @@ final class DisplayView: NSView {
     private enum PowerPresentation: Equatable { case awake, sleeping, poweredOff, shuttingDown }
     private var powerPresentation: PowerPresentation = .awake
     private var powerBadge: NSStackView?
+    var isCapturingCanvas = false { didSet { powerBadge?.isHidden = isCapturingCanvas } }
 
     func updatePowerPresentation() {
         guard let emulator else { return }
@@ -131,6 +134,7 @@ final class DisplayView: NSView {
             stack.centerYAnchor.constraint(equalTo: safeAreaLayoutGuide.centerYAnchor)
         ])
         powerBadge = stack
+        stack.isHidden = isCapturingCanvas
         setAccessibilityValue(title)
     }
 
@@ -157,15 +161,6 @@ final class DisplayView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        // The pane background is the gradient asset, scaled to fill; the shell
-        // and screen content sit centred on top of it.
-        if let gradient = NSImage(named: "gradient")?
-            .cgImage(forProposedRect: nil, context: nil, hints: nil) {
-            layer?.contents = gradient
-            layer?.contentsGravity = .resizeAspectFill
-        } else {
-            layer?.backgroundColor = NSColor.black.cgColor
-        }
         layer?.masksToBounds = true
 
         shellLayer.contents = NSImage(named: "shell")?
@@ -332,8 +327,7 @@ final class DisplayView: NSView {
             wheelTiltResetTask?.cancel()
             displayLink?.invalidate()
             displayLink = nil
-            NotificationCenter.default.removeObserver(
-                self, name: NSWindow.didChangeScreenNotification, object: nil)
+            NotificationCenter.default.removeObserver(self)
             return
         }
         guard displayLink == nil else { return }
@@ -341,12 +335,29 @@ final class DisplayView: NSView {
         link.add(to: .main, forMode: .common)
         displayLink = link
         // Moving between displays can change the backing pixel scale.
+        for name in [NSWindow.didChangeScreenNotification, NSWindow.didMoveNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(screenChanged), name: name, object: window)
+        }
         NotificationCenter.default.addObserver(self, selector: #selector(screenChanged),
-                                               name: NSWindow.didChangeScreenNotification,
-                                               object: window)
+            name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
 
-    @objc private func screenChanged() { needsLayout = true }
+    var onPhysicalSizeUnavailable: (() -> Void)?
+    var physicalScale: CGFloat? {
+        guard let window else { return nil }
+        let center = window.convertPoint(toScreen: convert(CGPoint(x: bounds.midX, y: bounds.midY), to: nil))
+        let screen = NSScreen.screens.first { $0.frame.contains(center) } ?? window.screen
+        return screen.flatMap { DisplayMeasurements.pointsPerMillimeter($0) }.map {
+            let height = 110 * $0
+            return modelView?.physicalScale(heightInPoints: height) ?? height / Self.shellPixels.height
+        }
+    }
+    @objc private func screenChanged() {
+        if zoom == .physical, physicalScale == nil { zoom = .fit; onPhysicalSizeUnavailable?() }
+        needsLayout = true
+    }
+    override func viewDidChangeBackingProperties() { super.viewDidChangeBackingProperties(); screenChanged() }
+
 
     @objc private func homeTapped() { endLiveText(); emulator?.pressHome() }
 
@@ -383,6 +394,8 @@ final class DisplayView: NSView {
         switch zoom {
         case .fit:
             scale = fitScale(shellOnScreenPixels)
+        case .physical:
+            scale = physicalScale ?? fitScale(shellOnScreenPixels)
         case .pixels(let multiple):
             scale = shellScale(guestPixelsPerDisplayPixel: multiple)
         }
@@ -391,7 +404,7 @@ final class DisplayView: NSView {
         // the pane runs behind the toolbar, so centring on bounds would push the
         // device up under it. The gradient still fills the whole pane, which is
         // the point — only the device is inset.
-        let usable = safeAreaRect
+        let usable = deviceLayoutRect
         let viewCenter = CGPoint(x: usable.midX, y: usable.midY)
         let shellCenter = CGPoint(x: Self.shellPixels.width / 2, y: Self.shellPixels.height / 2)
         let rest = Self.layerAngle(rotation)
@@ -453,8 +466,10 @@ final class DisplayView: NSView {
         homeButton.isHidden = !modelPresentationFinished || (modelView == nil && (tiltAngle != 0 || pitchAngle != 0))
         CATransaction.commit()
 
-        modelView?.frame = usable
-        pendingModelView?.frame = usable
+        modelView?.frame = bounds
+        pendingModelView?.frame = bounds
+        modelView?.viewportCenter = viewCenter
+        pendingModelView?.viewportCenter = viewCenter
         updateModelPose(animated: animate)
         if let modelView, let rect = modelView.homeButtonRect {
             homeButton.frame = convert(rect, from: modelView)
@@ -486,7 +501,7 @@ final class DisplayView: NSView {
     /// orientation, so portrait and landscape both land with the same margin
     /// without either needing its own number.
     private func fitScale(_ nativeSize: CGSize) -> CGFloat {
-        let usable = safeAreaRect
+        let usable = deviceLayoutRect
         let maxWidth = max(usable.width - 2 * Self.zoomInset, 1)
         let maxHeight = max(usable.height - 2 * Self.zoomInset, 1)
         return min(maxWidth / nativeSize.width, maxHeight / nativeSize.height)
@@ -505,9 +520,7 @@ final class DisplayView: NSView {
         }
         modelView?.advanceAnimations()
         updateTouchOverlay()
-        updateKeyboardTilt()
         updateKeyboardPointer()
-        updateController()
         var pixels: UnsafeRawPointer?
         var w: Int32 = 0
         var h: Int32 = 0
@@ -588,8 +601,7 @@ final class DisplayView: NSView {
     private static let touchFadeDuration = 0.16
     private var visibleTouches: [Int: (point: CGPoint, expires: CFTimeInterval)] = [:]
 
-    private func sendVisualTouch(_ slot: Int32, _ phase: Int32, _ x: Double, _ y: Double, controller: Bool = false, keyboard: Bool = false) {
-        if !controller { endControllerTouch() }
+    private func sendVisualTouch(_ slot: Int32, _ phase: Int32, _ x: Double, _ y: Double, keyboard: Bool = false) {
         if !keyboard { endKeyboardTouch() }
         guard touchInteractionEnabled else {
             if phase == Int32(QEMU_IOS_TOUCH_END) { qemu_ios_ui_touch(slot, phase, x, y) }
@@ -769,10 +781,6 @@ final class DisplayView: NSView {
     private var rotatingChassis = false
     private var wheelTiltResetTask: Task<Void, Never>?
     private var motionRestAngle: CGFloat?
-    private var tiltKeys = Set<UInt16>()
-    private var consumedTiltKeys = Set<UInt16>()
-    private var lastTiltTick = CACurrentMediaTime()
-    private var motionWasEnabled = false
     private var scrollTilt = 0.0
     private var scrollTilting = false
 
@@ -1053,7 +1061,7 @@ final class DisplayView: NSView {
             // Horizontal movement steers with accelerometer roll, not yaw
             // around gravity. Use fixed deltas from the grab point so a
             // diagonal has the same response anywhere on the frame. This
-            // view is flipped: dragging up matches Option-Up/controller-up.
+            // view is flipped: dragging up matches an upward gesture.
             let point = convert(event.locationInWindow, from: nil)
             tiltAngle = min(max((point.x - grabPoint.x) * 0.004, -.pi / 4), .pi / 4)
             pitchAngle = min(max((grabPoint.y - point.y) * 0.004, -.pi / 4), .pi / 4)
@@ -1154,63 +1162,7 @@ final class DisplayView: NSView {
     }
 
     func resetMotion() {
-        tiltKeys.removeAll()
         endTilt()
-    }
-
-    private var controllerInput = GameControllerInput()
-    private var controllerTilting = false
-    private var controllerTouch: CGPoint?
-
-    private func endControllerTouch() {
-        guard let point = controllerTouch else { return }
-        controllerTouch = nil
-        sendVisualTouch(0, Int32(QEMU_IOS_TOUCH_END), point.x, point.y, controller: true, keyboard: true)
-    }
-    private func updateController() {
-        let active = touchInteractionEnabled && window?.isKeyWindow == true
-            && window?.firstResponder === self && GameControllerInput.enabled
-        let controller = GCController.current ?? GCController.controllers().first { $0.extendedGamepad != nil }
-        let state = controllerInput.read(controller, enabled: active, curve: GameControllerInput.curve)
-        if state.tapEnded || !active { endControllerTouch() }
-        if state.home { emulator?.pressHome() }
-        if state.shake { emulator?.shake() }
-        if state.tapBegan && !touchDown && !pinchingGuest && scrollPoint == nil {
-            let point = CGPoint(x: GameControllerInput.coordinate("controllerTapX"),
-                                y: GameControllerInput.coordinate("controllerTapY"))
-            controllerTouch = point
-            sendVisualTouch(0, Int32(QEMU_IOS_TOUCH_BEGIN), point.x, point.y, controller: true)
-        }
-        let tilting = state.roll != 0 || state.pitch != 0
-        if tilting {
-            if !controllerTilting { motionRestAngle = Self.layerAngle(emulator?.rotationDegrees ?? 0) }
-            tiltAngle = state.roll; pitchAngle = state.pitch
-            setShellAngle(restAngle + tiltAngle)
-            sendAttitude()
-        } else if controllerTilting { endTilt() }
-        controllerTilting = tilting
-    }
-
-    private func updateKeyboardTilt() {
-        let now = CACurrentMediaTime()
-        let dt = min(max(now - lastTiltTick, 0), 0.05)
-        lastTiltTick = now
-        let enabled = touchInteractionEnabled && window?.isKeyWindow == true
-        if !enabled {
-            if motionWasEnabled { resetMotion() }
-            motionWasEnabled = false
-            return
-        }
-        if !motionWasEnabled { sendAttitude() }
-        motionWasEnabled = true
-        guard !tiltKeys.isEmpty else { return }
-        let delta = CGFloat((emulator?.keyboardTiltRate ?? 90) * .pi / 180 * dt)
-        let roll = (tiltKeys.contains(124) ? 1.0 : 0) - (tiltKeys.contains(123) ? 1.0 : 0)
-        let pitch = (tiltKeys.contains(126) ? 1.0 : 0) - (tiltKeys.contains(125) ? 1.0 : 0)
-        tiltAngle = min(max(tiltAngle + roll * delta, -.pi / 4), .pi / 4)
-        pitchAngle = min(max(pitchAngle + pitch * delta, -.pi / 4), .pi / 4)
-        setShellAngle(restAngle + tiltAngle)
-        sendAttitude()
     }
 
     private func setShellAngle(_ angle: CGFloat, animated: Bool = false) {
@@ -1299,7 +1251,7 @@ final class DisplayView: NSView {
     private func endKeyboardTouch() {
         guard !keyboardTouchKeys.isEmpty else { return }
         keyboardTouchKeys.removeAll()
-        sendVisualTouch(0, Int32(QEMU_IOS_TOUCH_END), keyboardPoint.x, keyboardPoint.y, controller: true, keyboard: true)
+        sendVisualTouch(0, Int32(QEMU_IOS_TOUCH_END), keyboardPoint.x, keyboardPoint.y, keyboard: true)
     }
 
     private func keyboardPointerKey(_ event: NSEvent, down: Bool) -> Bool {
@@ -1355,18 +1307,6 @@ final class DisplayView: NSView {
             consumedWakeSpace = true
             return
         }
-        if event.modifierFlags.contains(.option), event.modifierFlags.intersection([.command, .control]).isEmpty,
-           [123, 124, 125, 126, 49].contains(event.keyCode), !isShowingLiveText {
-            consumedTiltKeys.insert(event.keyCode)
-            guard touchInteractionEnabled else { return }
-            if event.keyCode == 49 {
-                if !event.isARepeat { emulator?.shake() }
-            } else {
-                if tiltKeys.isEmpty { motionRestAngle = Self.layerAngle(emulator?.rotationDegrees ?? 0) }
-                tiltKeys.insert(event.keyCode)
-            }
-            return
-        }
         if isShowingLiveText {
             if event.keyCode == 53 { endLiveText() }
             else { super.keyDown(with: event) }
@@ -1384,11 +1324,6 @@ final class DisplayView: NSView {
     override func keyUp(with event: NSEvent) {
         if event.keyCode == 49 && consumedWakeSpace { consumedWakeSpace = false; return }
         if !keyboardTouchKeys.isEmpty, keyboardPointerKey(event, down: false) { return }
-        if consumedTiltKeys.remove(event.keyCode) != nil {
-            tiltKeys.remove(event.keyCode)
-            if tiltKeys.isEmpty { endTilt() }
-            return
-        }
         if isShowingLiveText { return }
         if !event.modifierFlags.intersection([.command, .control]).isEmpty {
             super.keyUp(with: event)
@@ -1399,7 +1334,6 @@ final class DisplayView: NSView {
     }
 
     override func flagsChanged(with event: NSEvent) {
-        if !event.modifierFlags.contains(.option), !tiltKeys.isEmpty { resetMotion() }
         if !event.modifierFlags.contains(.shift), !keyboardTouchKeys.isDisjoint(with: [123, 124, 125, 126]) {
             endKeyboardTouch()
         }
@@ -1408,7 +1342,6 @@ final class DisplayView: NSView {
 
     override func resignFirstResponder() -> Bool {
         endKeyboardTouch()
-        endControllerTouch()
         resetMotion()
         return super.resignFirstResponder()
     }
@@ -1422,18 +1355,33 @@ final class DisplayView: NSView {
         // and then queued one "The device isn't ready yet" sheet per .ipa to be
         // dismissed one at a time.
         guard emulator?.canQueueInstall == true else { return [] }
-        if !droppedCatalogApps(sender).isEmpty { return .copy }
+        let catalog = droppedCatalogApps(sender)
+        if !catalog.isEmpty, onDropCatalogApp != nil {
+            sender.numberOfValidItemsForDrop = catalog.count
+            return .copy
+        }
         // Local drags carry .fileURL too (an installed row is draggable to
         // the Finder as its .ipa), but dropping one back on the device would
         // just reinstall what's already there — only OUTSIDE files install.
         guard sender.draggingSource == nil else { return [] }
-        return droppedIPA(sender) != nil || !droppedMedia(sender).isEmpty ? .copy : []
+        let count = (onDropIPA == nil ? 0 : droppedIPAs(sender).count)
+            + (onDropMedia == nil ? 0 : droppedMedia(sender).count)
+        guard count > 0 else { return [] }
+        sender.numberOfValidItemsForDrop = count
+        return .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        draggingEntered(sender)
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        // Readiness can change after the drag entered. Never animate a
+        // successful drop when its owner will reject the import.
+        guard draggingEntered(sender) == .copy else { return false }
         let catalog = droppedCatalogApps(sender)
-        if !catalog.isEmpty {
-            catalog.forEach { onDropCatalogApp?($0) }
+        if !catalog.isEmpty, let onDropCatalogApp {
+            catalog.forEach(onDropCatalogApp)
             return true
         }
         guard sender.draggingSource == nil else { return false }
@@ -1442,20 +1390,22 @@ final class DisplayView: NSView {
         guard !ipas.isEmpty || !media.isEmpty else { return false }
         ipas.forEach { onDropIPA?($0) }   // AppInstaller queues them
         media.forEach { onDropMedia?($0) }
+        let accepted = Set(ipas + media)
+        let omitted = (sender.draggingPasteboard.readObjects(forClasses: [NSURL.self]) as? [URL] ?? [])
+            .filter { $0.isFileURL && !accepted.contains($0) }
+        if !omitted.isEmpty { onDropUnsupportedFiles?(omitted) }
         return true
     }
-
-    private func droppedIPA(_ sender: NSDraggingInfo) -> URL? { droppedIPAs(sender).first }
 
     private func droppedIPAs(_ sender: NSDraggingInfo) -> [URL] {
         guard let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self])
                 as? [URL] else { return [] }
-        return urls.filter { $0.pathExtension.lowercased() == "ipa" }
+        return urls.filter { $0.isFileURL && $0.pathExtension.lowercased() == "ipa" }
     }
 
     private func droppedMedia(_ sender: NSDraggingInfo) -> [URL] {
         guard let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self]) as? [URL] else { return [] }
-        return urls.filter { PreparedMedia.extensions.contains($0.pathExtension.lowercased()) }
+        return urls.filter { $0.isFileURL && PreparedMedia.extensions.contains($0.pathExtension.lowercased()) }
     }
 
     /// Store rows dragged from the inspector: decode the private payload.

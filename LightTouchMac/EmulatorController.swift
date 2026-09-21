@@ -15,21 +15,22 @@ final class EmulatorController {
     private var started = false
     private var serialCapture: SerialLogCapture?
     private var cleanShutdownTask: Task<Void, Never>?
+    private(set) var isErasing = false { didSet { onStatusChange?() } }
     private var shutdownCompletions: [(Bool) -> Void] = []
     private var poweringOn = false
     private(set) var shuttingDown = false { didSet { onStatusChange?() } }
     private(set) var isSleeping = false { didSet { if oldValue != isSleeping { onStatusChange?() } } }
     private(set) var foregroundAppName: String? { didSet { if oldValue != foregroundAppName { onStatusChange?() } } }
     private(set) var webProxy = WebProxyConfiguration.load()
-    private(set) var webProxyStatus = "Waiting for device"
+    private(set) var webProxyStatus: WebProxyStatus = .waiting
     private var proxyRevision = 0
     private(set) var webProxyAvailable = false
     func configureWebProxy(_ value: WebProxyConfiguration) throws {
-        guard webProxyAvailable else { throw DeviceToolsError.failed("The web proxy helper is unavailable, or networking is disabled.") }
+        guard webProxyAvailable else { throw DeviceToolsError.failed("The proxy is unavailable. Turn on the iPod and connect it to the internet.") }
         try value.save()
         webProxy = value
         proxyRevision += 1
-        webProxyStatus = "Waiting for device"
+        webProxyStatus = .waiting
         onStatusChange?()
     }
     enum NoticeOperation: String { case storage, preparation, erase, snapshot, restore, powerOff }
@@ -69,6 +70,7 @@ final class EmulatorController {
     private(set) var preparingMedia = false {
         didSet { onStatusChange?() }
     }
+    private(set) var preparationStatus = "Starting iOS…" { didSet { onStatusChange?() } }
     private var mediaPreparationFailure: String?
 
 
@@ -91,7 +93,9 @@ final class EmulatorController {
     /// Set by the inspector's poll: nil = never checked, true/false = last read.
     var deviceReachable: Bool? {
         didSet {
+            if deviceReachable == true { connectionIssue = nil }
             if oldValue != deviceReachable { onStatusChange?() }
+            considerConnectionRecovery()
             // Clean abandoned uploads when the guest first answers. The sweep
             // excludes this process’s session-tagged uploads even if it runs late.
             if deviceReachable == true, !didSweepStaging {
@@ -102,12 +106,61 @@ final class EmulatorController {
             }
         }
     }
-    private var didSweepStaging = false
+    var hasFileTransfer = false
+    private(set) var connectionIssue: DeviceConnectionIssue?
 
-    /// Set when a requested erase could not be performed at launch; the window
-    /// reports it once it exists.
-    private(set) var eraseFailure: String?
-    func clearEraseFailure() { eraseFailure = nil }
+    func reportConnectionFailure(_ error: Error, operation: String) {
+        guard let issue = DeviceConnectionIssue(error: error, operation: operation) else { return }
+        if connectionIssue != issue {
+            logEvent("device connection: \(issue.detail); USB=\(usbConnected), agent=\(qemu_ios_agent_status()), blocked requests=\(AbandonedWork.count)")
+        }
+        connectionIssue = issue
+        if issue.blocksCommands {
+            deviceReachable = false
+        } else {
+            // installd can be busy with a deletion made on the iPod itself.
+            // Killing lockdownd during that transition only makes it worse.
+            connectionFailures = 0
+        }
+        onStatusChange?()
+    }
+    private var connectionFailures = 0
+    private var connectionRecoveryTask: Task<Void, Never>?
+    private var lastConnectionRecovery = Date.distantPast
+    private(set) var isReconnecting = false { didSet { onStatusChange?() } }
+
+    /// A transient installd transition is not a dead device. If repeated reads
+    /// fail, reopen the management service through the independent guest agent.
+    /// Never reboot the iPod or touch its applications to repair a connection.
+    private func considerConnectionRecovery() {
+        if deviceReachable == true { connectionFailures = 0; return }
+        guard deviceReachable == false, isRunning, !preparingMedia,
+              connectionIssue?.reconnectManagement == true else { return }
+        connectionFailures += 1
+        guard connectionFailures >= 2, connectionRecoveryTask == nil,
+              !isInstalling, !hasFileTransfer, !AppInstaller.isUsingDevice, qemu_ios_agent_status() == 1,
+              Date().timeIntervalSince(lastConnectionRecovery) >= 60 else { return }
+        lastConnectionRecovery = Date()
+        connectionFailures = 0
+        isReconnecting = true
+        connectionRecoveryTask = Task { [weak self] in
+            guard let self else { return }
+            defer { connectionRecoveryTask = nil; isReconnecting = false }
+            do {
+                guard isRunning, !preparingMedia, !isInstalling, !hasFileTransfer, !AppInstaller.isUsingDevice else { return }
+                if try await DeviceTools.reconnectManagementService() {
+                    logEvent("device: restarted unresponsive management service; reconnecting")
+                    try await Task.sleep(for: .seconds(2))
+                    guard isRunning else { return }
+                    NotificationCenter.default.post(name: .ltmAppsChanged, object: nil)
+                }
+            } catch {
+                if !Task.isCancelled { logEvent("device: connection recovery failed: \(error.localizedDescription)") }
+            }
+        }
+    }
+
+    private var didSweepStaging = false
 
     init(options: LaunchOptions) {
         self.options = options
@@ -152,32 +205,11 @@ final class EmulatorController {
         // One overlay per base image, so an overlay is never replayed onto a
         // different NAND (which would shadow unrelated blocks).
         let overlay = overlayURL
-        // A factory reset requested by the previous process: wipe the overlay
-        // (and any snapshot) now, in this fresh process, before it is reopened.
+        // Older builds armed an erase for a later launch. Never perform a
+        // destructive operation implicitly while opening the app.
         if FileManager.default.fileExists(atPath: resetMarkerURL.path) {
-            logEvent("reset: wiping device overlay back to the base image")
-            do {
-                if FileManager.default.fileExists(atPath: overlay.path) {
-                    try FileManager.default.removeItem(at: overlay)
-                }
-                // Consume the marker only once the wipe has actually happened.
-                // It used to be removed regardless, so a removal that failed
-                // (a leaked process holding a page open, a permissions problem)
-                // silently downgraded "Erase All Content and Settings" to
-                // nothing at all — the device came back with everything the
-                // user had just asked to destroy, and no error anywhere.
-                try? FileManager.default.removeItem(at: resetMarkerURL)
-                if !FileManager.default.fileExists(atPath: resetMarkerURL.path) { resolveDeviceNotice(for: .erase) }
-            } catch {
-                logEvent("reset: could not wipe the overlay (\(error.localizedDescription)) — "
-                      + "leaving the request armed for the next launch")
-                // And SAY so. The user confirmed a destructive, irreversible
-                // action, the app quit, and it came back with everything still
-                // there — with the erase still armed to fire, unannounced, at
-                // some arbitrary later launch.
-                eraseFailure = error.localizedDescription
-            }
-            discardSavedState()
+            try? FileManager.default.removeItem(at: resetMarkerURL)
+            reportDeviceNotice("The previous erase did not finish. Choose Erase All Content and Settings to try again.", for: .erase)
         }
         let writableNOR: URL
         do {
@@ -250,7 +282,10 @@ final class EmulatorController {
                     try webProxy.writeRouting()
                     network += WebProxyConfiguration.guestForward(helper: helper)
                     webProxyAvailable = true
-                } catch { webProxyStatus = error.localizedDescription }
+                } catch {
+                    webProxyStatus = .failed
+                    logEvent("proxy routing: \(error.localizedDescription)")
+                }
             }
             argv += ["-netdev", network]
         }
@@ -295,6 +330,7 @@ final class EmulatorController {
         guard options.appsync, !shuttingDown else { return }
         mediaPreparationTask?.cancel()
         preparingMedia = true
+        preparationStatus = "Starting iOS…"
         mediaPreparationFailure = nil
         let generation = bootGeneration
         mediaPreparationTask = Task { [weak self] in
@@ -309,17 +345,23 @@ final class EmulatorController {
                         throw DeviceToolsError.failed("The device did not become ready for its media update.")
                     }
                     if state == .running, await deviceReady() { break }
-                    try await Task.sleep(for: .seconds(2))
+                    try await Task.sleep(for: .milliseconds(250))
                 }
                 try Task.checkCancellation()
                 guard generation == bootGeneration else { return }
+                preparationStatus = "Preparing your iPod…"
                 logEvent("media: checking guest graphics components")
                 if try await tools().updateMediaComponents() {
-                    try await waitForSpringBoard()
                     logEvent("media: guest graphics components updated")
                 } else {
                     logEvent("media: guest graphics components already current")
                 }
+                try Task.checkCancellation()
+                guard generation == bootGeneration else { return }
+                preparationStatus = "Waiting for the Home screen…"
+                // A framebuffer and lockdown can both respond while SpringBoard
+                // is still starting. Do not enable input until its service answers.
+                try await waitForSpringBoard()
                 try Task.checkCancellation()
                 guard generation == bootGeneration else { return }
                 // Read the emulated backlight, not sblaunch's optional lock
@@ -339,6 +381,7 @@ final class EmulatorController {
                 }
                 try Task.checkCancellation()
                 guard generation == bootGeneration, !isDead, !shuttingDown else { return }
+                logEvent("boot: ready for input")
                 resolveDeviceNotice(for: .preparation)
             } catch {
                 if !Task.isCancelled, generation == bootGeneration {
@@ -380,6 +423,7 @@ final class EmulatorController {
     }
 
     func stop() {
+        connectionRecoveryTask?.cancel()
         // The VM remains alive under -no-shutdown until process exit. Unlink
         // owned FIFO paths now, keeping readers alive until QEMU is finished.
         serialCapture?.removeEndpoints()
@@ -524,7 +568,7 @@ final class EmulatorController {
         }
     }
 
-    var isRunning: Bool { state == .running && !storageFailed && !preparingMedia && !restartingSpringBoard && !shuttingDown }
+    var isRunning: Bool { state == .running && !storageFailed && !preparingMedia && mediaPreparationFailure == nil && !restartingSpringBoard && !shuttingDown && !isErasing }
     var isPaused:  Bool { state == .paused }
     var isDead:    Bool { if case .dead = state { return true } else { return false } }
     /// The guest can take input only while actually executing.
@@ -532,6 +576,7 @@ final class EmulatorController {
 
     /// One line for the window's status area.
     var statusLine: String {
+        if isErasing { return "Erasing iPod…" }
         if storageFailed { return "Storage write failed — device stopped; latest changes were not saved" }
         if shuttingDown, !isPoweredOff { return "Powering off…" }
         switch state {
@@ -539,7 +584,7 @@ final class EmulatorController {
         case .notStarted: return "Starting…"
         case .booting:    return "Booting…"
         case .running:
-            if preparingMedia { return "Booting…" }
+            if preparingMedia { return preparationStatus }
             if isSleeping { return "Sleeping" }
             if restartingSpringBoard { return "Restarting SpringBoard…" }
             if let mediaPreparationFailure { return "Media update failed — \(mediaPreparationFailure)" }
@@ -610,20 +655,10 @@ final class EmulatorController {
     }
     enum MotionPose: Int { case upright, flat }
     private(set) var motionPose = MotionPose(rawValue: UserDefaults.standard.integer(forKey: "motionPose")) ?? .upright
-    var keyboardTiltRate: Double {
-        let saved = UserDefaults.standard.double(forKey: "keyboardTiltRateDegrees")
-        return [45.0, 90.0, 180.0].contains(saved) ? saved : 90
-    }
-
     func setMotionPose(_ pose: MotionPose) {
         motionPose = pose
         UserDefaults.standard.set(pose.rawValue, forKey: "motionPose")
         onStatusChange?()
-    }
-
-    func setKeyboardTiltRate(_ degrees: Double) {
-        guard [45.0, 90.0, 180.0].contains(degrees) else { return }
-        UserDefaults.standard.set(degrees, forKey: "keyboardTiltRateDegrees")
     }
 
     /// Layer rotation and mounted device roll have opposite signs. Normalize
@@ -1002,18 +1037,26 @@ final class EmulatorController {
                 if self.canReachDevice, !self.isSleeping, !self.isInstalling, !AppInstaller.hasPendingWork {
                     if self.webProxyAvailable && appliedProxyRevision != self.proxyRevision {
                         let revision = self.proxyRevision
+                        if self.webProxyStatus == .waiting {
+                            self.webProxyStatus = .applying
+                            self.onStatusChange?()
+                        }
                         do {
                             try await self.tools().configureWebProxy(enabled: self.webProxy.mode != .off)
                             try Task.checkCancellation()
                             guard generation == self.bootGeneration else { return }
                             if revision == self.proxyRevision {
                                 appliedProxyRevision = revision
-                                self.webProxyStatus = self.webProxy.mode == .off ? "Off — previous device settings restored" : "Active"
+                                self.webProxyStatus = .ready
                                 self.onStatusChange?()
                             }
                         } catch {
                             if Task.isCancelled { return }
-                            self.webProxyStatus = error.localizedDescription
+                            if self.webProxyStatus != .failed {
+                                self.webProxyStatus = .failed
+                                logEvent("proxy settings: \(error.localizedDescription)")
+                                self.onStatusChange?()
+                            }
                         }
                     }
                     do {
@@ -1104,8 +1147,7 @@ final class EmulatorController {
     private var snapshotTmpURL: URL { snapshotURL.appendingPathExtension("tmp") }
     private var snapshotBadURL: URL { snapshotURL.appendingPathExtension("bad") }
     private var overlayURL: URL { stateDir.appendingPathComponent("nandrw-\(imageKey)", isDirectory: true) }
-    /// Set by a factory reset; the NEXT launch wipes the overlay before opening
-    /// it (the current process holds it open, so it can't wipe it itself).
+    /// Legacy marker, removed without erasing when opening an older device.
     private var resetMarkerURL: URL { stateDir.appendingPathComponent(".reset-\(imageKey)") }
     private var restoringFromSnapshot = false
 
@@ -1336,6 +1378,8 @@ final class EmulatorController {
             completion(false); return
         }
         shuttingDown = true
+        connectionRecoveryTask?.cancel()
+        orientationTask?.cancel()
         foregroundTask?.cancel()
         qemu_ios_snapshot_resume()   // a paused vCPU cannot unmount
         if state == .paused { state = .running }
@@ -1355,7 +1399,7 @@ final class EmulatorController {
             }
             let confirmed = { !self.storageFailed && qemu_ios_ui_guest_shutdown_confirmed() }
             let stopped = { self.storageFailed || self.isDead }
-            if self.canManageApps {
+            if self.canManageApps || qemu_ios_agent_status() == 1 {
                 let haltDeadline = Date().addingTimeInterval(Self.haltShutdownBudget)
                 // During boot, USB can exist before sshd answers. Retry within
                 // one shared deadline instead of spending the whole timeout
@@ -1458,24 +1502,57 @@ final class EmulatorController {
             || FileManager.default.fileExists(atPath: snapshotBadURL.path)
     }
 
-    /// The full nuke: erase the device back to the base image. The overlay is
-    /// open in this process, so mark it for the next launch, drop any snapshot,
-    /// and cold-relaunch — start() does the wipe before reopening. Destructive
-    /// and deliberate (caller confirms); the base NAND image is never touched.
+    /// Stop the guest and its native writers, erase this device, then quit.
+    /// No request is left behind for an unrelated future launch.
     func requestFactoryReset() {
-        discardSavedState()
-        try? "reset".write(to: resetMarkerURL, atomically: true, encoding: .utf8)
-        quitForRelaunch(reason: "factory reset requested")
+        guard !isErasing, !isInstalling, !AppInstaller.hasPendingWork else { return }
+        isErasing = true
+        skipNextQuitSnapshot = true
+        foregroundTask?.cancel()
+        orientationTask?.cancel()
+        Task {
+            if !isDead, state != .notStarted {
+                _ = await withCheckedContinuation { continuation in
+                    beginCleanShutdown { continuation.resume(returning: $0) }
+                }
+                // Erasing intentionally discards the guest's data. The native
+                // VM must still release every NAND/NOR writer before removal.
+                qemu_ios_ui_quit()
+                let deadline = ContinuousClock.now + .seconds(15)
+                while !isDead, ContinuousClock.now < deadline {
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+                guard isDead else {
+                    isErasing = false
+                    reportDeviceNotice("Couldn’t stop the device to erase it. Your data has not been erased. Reopen Light Touch and try again.", for: .erase)
+                    return
+                }
+            }
+            let overlay = overlayURL
+            let snapshots = [snapshotURL, snapshotTmpURL, snapshotBadURL]
+            let marker = resetMarkerURL
+            let stateDirectory = stateDir
+            let nand = options.nand
+            let manifest = packedImage.map { _ in URL(fileURLWithPath: options.packedNAND + ".sha256") }
+            do {
+                try await Task.detached {
+                    try DeviceStateStorage.erase(overlay: overlay, snapshots: snapshots, legacyMarker: marker)
+                    if let manifest {
+                        try DeviceStateStorage.adoptBundledImageAfterErase(state: stateDirectory, nand: nand, manifest: manifest)
+                    }
+                }.value
+                resolveDeviceNotice(for: .erase)
+                logEvent("reset: device erased; closing Light Touch")
+                isErasing = false
+                AppDelegate.requestTermination()
+            } catch {
+                isErasing = false
+                reportDeviceNotice("The device could not be completely erased: \(error.localizedDescription) Choose Erase All Content and Settings to try again.", for: .erase)
+            }
+        }
     }
 
-    /// The quit that was going to perform the erase was called off, so disarm
-    /// it. Without this the marker survived on disk with the app still running
-    /// normally and nothing on screen to say so — and the wipe then fired,
-    /// unannounced and unconfirmed, at whatever launch happened next. (Cancel is
-    /// reachable: the in-progress-install prompt on the quit path offers it.)
     func cancelFactoryReset() {
-        guard FileManager.default.fileExists(atPath: resetMarkerURL.path) else { return }
-        logEvent("reset: quit cancelled — disarming the pending erase")
         try? FileManager.default.removeItem(at: resetMarkerURL)
     }
 
@@ -1537,30 +1614,42 @@ final class EmulatorController {
                            bakedGuestTools: options.nand.contains("ultimate"))
     }
     
-    /// Cheap in-process check that the guest is attached and lockdownd is
-    /// answering, without spawning a tool to find out the hard way.
+    /// Cheap in-process check that the USB bridge sees the guest. App-service
+    /// reads establish lockdownd readiness separately.
     /// Bounded and gated. A bare `Task.detached` here had neither: `idevice_new`
     /// against a half-open usbmuxd socket blocks with no timeout, and this is
     /// called from the quit-time snapshot health gate and the restore verifier —
     /// so a wedged socket hung the quit itself. `withDeadline` abandons the
     /// blocked thread; the gate keeps it from racing other device work.
     func deviceReady() async -> Bool {
-        guard usbConnected, !isPoweredOff, !shuttingDown else { return false }
-        guard let socket = usbmux.session?.clientSocket else { return false }
+        (try? await checkDeviceConnection()) != nil
+    }
+
+    func checkDeviceConnection() async throws {
+        try Task.checkCancellation()
+        guard usbConnected, !isPoweredOff, !shuttingDown,
+              let socket = usbmux.session?.clientSocket else { throw DeviceError.notAttached }
         // Bounded INCLUDING the wait for the gate. withDeadline bounds the probe
         // itself, but not the queue in front of it, and this is called from the
         // quit path — where waiting out a 120s uninstall means the app's own
         // backstop fires and the guest is killed without ever being asked to
         // power down. Giving up on the answer is safe; every caller treats a
         // silent device as "could not prove it is alive", not "it is dead".
-        let ok = await withSoftDeadline(Timeouts.serviceProbe * 2) {
-            try? await DeviceGate.shared.serialized {
-                try await withDeadline(Timeouts.serviceProbe, "device probe") {
-                    IMobileDevice.deviceReady(socket: socket)
+        let result: Result<Void, Error>? = await withSoftDeadline(Timeouts.serviceProbe * 2) {
+            do {
+                try await DeviceGate.shared.serialized {
+                    try await withDeadline(Timeouts.serviceProbe, "USB connection") {
+                        try IMobileDevice.checkAttachment(socket: socket)
+                    }
                 }
+                return .success(())
+            } catch {
+                return .failure(error)
             }
         }
-        return ok.flatMap { $0 } ?? false
+        try Task.checkCancellation()
+        guard let result else { throw DeviceError.timedOut(operation: "USB connection") }
+        try result.get()
     }
 
     func installedApps() async throws -> [InstalledApp] { try await tools().installedApps() }
@@ -1572,10 +1661,27 @@ final class EmulatorController {
         return await DeviceServices(clientSocket: socket).activationState()
     }
     func uninstall(_ bundleID: String) async throws      { try await tools().uninstall(bundleID) }
-    func launchApp(_ bundleID: String) async throws      { try await tools().launchApp(bundleID) }
+    func launchApp(_ bundleID: String) async throws {
+        guard acceptsInput else { throw AppLaunchError.unavailable }
+        if isSleeping {
+            // Wake with the hardware Home button. SpringBoard still enforces
+            // the Lock Screen and any passcode when the launch is requested.
+            pressHome()
+            for _ in 0..<10 {
+                try await Task.sleep(for: .milliseconds(100))
+                guard acceptsInput else { throw AppLaunchError.unavailable }
+                if !qemu_ios_ui_display_sleeping() { break }
+            }
+        }
+        try await tools().launchApp(bundleID)
+    }
     func openTerminal() async throws                     { try await tools().openTerminal() }
     func syncFilesystem() async throws                   { try await tools().syncFilesystem() }
-    func haltFilesystem() async throws                   { try await tools().haltFilesystem() }
+    func haltFilesystem() async throws {
+        // Do not require a USB session to reach the independent guest channel.
+        if await DeviceTools.requestIndependentHalt() { return }
+        try await tools().haltFilesystem()
+    }
     func restartSpringBoard() async throws {
         guard isRunning, !isInstalling else { return }
         restartingSpringBoard = true

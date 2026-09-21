@@ -5,6 +5,9 @@ import Darwin
 /// The writer and pixel buffers stay on one actor. The producer awaits each
 /// append; encoding cannot accumulate an unbounded queue of guest frames.
 actor ScreenMovieWriter {
+    private var canvasSize: CGSize?
+    private var background: CGImage?
+    private var outputSize = CGSize(width: 480, height: 480)
     private var writer: AVAssetWriter?
     private var input: AVAssetWriterInput?
     private var adaptor: AVAssetWriterInputPixelBufferAdaptor?
@@ -17,28 +20,33 @@ actor ScreenMovieWriter {
     private var firstFrameSize: CGSize?
     private var changedFrameSize = false
 
-    func start(url: URL, recordGuestAudio: Bool = false) throws {
+    func start(url: URL, recordGuestAudio: Bool = false, canvasSize: CGSize? = nil, background: CGImage? = nil) throws {
         guard self.writer == nil, !finishing else { throw CaptureError.failed("A recording is already active.") }
+        self.canvasSize = canvasSize
+        self.background = background
+        outputSize = canvasSize ?? CGSize(width: 480, height: 480)
+        let width = Int(outputSize.width), height = Int(outputSize.height)
+        guard width > 0, height > 0 else { throw CaptureError.failed("Invalid recording size.") }
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let transfer: String
         if #available(macOS 15.0, *) { transfer = AVVideoTransferFunction_IEC_sRGB }
         else { transfer = AVVideoTransferFunction_ITU_R_709_2 }
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264,
-            AVVideoWidthKey: 480, AVVideoHeightKey: 480,
+            AVVideoWidthKey: width, AVVideoHeightKey: height,
             AVVideoColorPropertiesKey: [
                 AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
                 AVVideoTransferFunctionKey: transfer,
                 AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2
             ],
-            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 3_000_000]
+            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: max(3_000_000, width * height * 8)]
         ])
         input.expectsMediaDataInRealTime = true
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input,
             sourcePixelBufferAttributes: [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-                kCVPixelBufferWidthKey as String: 480,
-                kCVPixelBufferHeightKey as String: 480,
+                kCVPixelBufferWidthKey as String: width,
+                kCVPixelBufferHeightKey as String: height,
                 kCVPixelBufferCGImageCompatibilityKey as String: true,
                 kCVPixelBufferCGBitmapContextCompatibilityKey as String: true
             ])
@@ -83,19 +91,32 @@ actor ScreenMovieWriter {
         CVBufferSetAttachment(buffer, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, .shouldPropagate)
         CVPixelBufferLockBaseAddress(buffer, [])
         defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
-        guard let context = CGContext(data: CVPixelBufferGetBaseAddress(buffer), width: 480, height: 480,
+        guard let context = CGContext(data: CVPixelBufferGetBaseAddress(buffer), width: Int(outputSize.width), height: Int(outputSize.height),
                                       bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
                                       space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                       bitmapInfo: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.noneSkipFirst.rawValue) else {
             throw CaptureError.failed("Could not draw a recording frame.")
         }
+        let output = CGRect(origin: .zero, size: outputSize)
         context.setFillColor(CGColor(gray: 0, alpha: 1))
-        context.fill(CGRect(x: 0, y: 0, width: 480, height: 480))
-        // Keep native screen pixels through portrait/landscape changes, on a
-        // constant canvas so rotating never corrupts the encoded stream.
-        context.interpolationQuality = .none
-        context.draw(image, in: CGRect(x: (480 - image.width) / 2, y: (480 - image.height) / 2,
-                                       width: image.width, height: image.height))
+        context.fill(output)
+        if canvasSize != nil {
+            if let background {
+                let factor = max(outputSize.width / CGFloat(background.width), outputSize.height / CGFloat(background.height))
+                let size = CGSize(width: CGFloat(background.width) * factor, height: CGFloat(background.height) * factor)
+                context.draw(background, in: CGRect(x: (output.width-size.width)/2, y: (output.height-size.height)/2,
+                                                   width: size.width, height: size.height))
+            }
+            let factor = min(outputSize.width / CGFloat(image.width), outputSize.height / CGFloat(image.height))
+            let size = CGSize(width: CGFloat(image.width) * factor, height: CGFloat(image.height) * factor)
+            context.interpolationQuality = .high
+            context.draw(image, in: CGRect(x: (output.width-size.width)/2, y: (output.height-size.height)/2,
+                                          width: size.width, height: size.height))
+        } else {
+            context.interpolationQuality = .none
+            context.draw(image, in: CGRect(x: (480-image.width)/2, y: (480-image.height)/2,
+                                          width: image.width, height: image.height))
+        }
         guard adaptor.append(buffer, withPresentationTime: CMTime(seconds: seconds, preferredTimescale: 600)) else {
             throw writer.error ?? CaptureError.failed("Could not encode a recording frame.")
         }
@@ -223,6 +244,14 @@ actor ScreenMovieWriter {
         _ = try FileManager.default.replaceItemAt(url, withItemAt: cropped)
     }
 
+    func cancel() {
+        capture?.stop()
+        writer?.cancelWriting()
+        capture = nil; audioInput = nil; audioFormat = nil
+        writer = nil; input = nil; adaptor = nil
+        finishing = false
+    }
+
     func finish(seconds: Double) async throws {
         guard let writer, let input, !finishing else { throw CaptureError.failed("No recording is active.") }
         finishing = true
@@ -246,7 +275,7 @@ actor ScreenMovieWriter {
             audioInput?.markAsFinished()
             await writer.finishWriting()
             guard writer.status == .completed else { throw writer.error ?? CaptureError.failed("Could not finish recording.") }
-            if let firstFrameSize, !changedFrameSize {
+            if canvasSize == nil, let firstFrameSize, !changedFrameSize {
                 try await cropFinishedMovie(at: writer.outputURL, to: firstFrameSize)
             }
         } catch { writer.cancelWriting(); throw error }
