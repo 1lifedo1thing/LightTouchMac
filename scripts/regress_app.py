@@ -164,7 +164,7 @@ def make_cfg(out):
     class Cfg: pass
     c = Cfg()
     c.files = os.path.expanduser("~/Developer/qemu-ios-files")
-    c.base_nand = os.path.join(c.files, "nand-ultimate")
+    c.base_nand = os.path.join(c.files, "nand-current")
     if not os.path.exists(c.base_nand):
         c.base_nand = os.path.join(c.files, "nand-appsync3")
     c.nor = os.path.join(c.files, "ios3", "nor_7E18.bin")

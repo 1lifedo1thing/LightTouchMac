@@ -24,8 +24,13 @@ struct LaunchOptions: ParsableArguments {
         return "\(NSHomeDirectory())/Developer/qemu-ios-files"
     }
     
+    /// `nand-current` is a symlink in the dev checkout naming the image that
+    /// ships. It resolves to its target's name so device state stays keyed by
+    /// the real image: repointing it starts a fresh overlay instead of
+    /// replaying the old one onto different flash. A packaged app has no such
+    /// link and keeps the legacy "nand-ultimate" label its state is keyed by.
     @Option(name: .long, help: "NAND image directory name under files-root.")
-    var nand: String = "nand-ultimate"
+    var nand: String = "nand-current"
     
     @Flag(name: .long, inversion: .prefixedNo,
           help: "Start usbmuxd so apps can be installed and managed over USB.")
@@ -42,10 +47,13 @@ struct LaunchOptions: ParsableArguments {
     /// back to an all-defaults parse (an empty argument list) rather than the
     /// synthesized `init()`, which leaves the property wrappers unpopulated.
     static func resolved() -> LaunchOptions {
-        if let parsed = try? parse(Array(CommandLine.arguments.dropFirst())) {
-            return parsed
+        var options = (try? parse(Array(CommandLine.arguments.dropFirst())))
+            ?? (try? parse([])) ?? { fatalError("LaunchOptions has a required field without a default") }()
+        if options.nand == "nand-current" {
+            let target = try? FileManager.default.destinationOfSymbolicLink(atPath: "\(options.filesRoot)/nand-current")
+            options.nand = target.map { ($0 as NSString).lastPathComponent } ?? "nand-ultimate"
         }
-        return (try? parse([])) ?? { fatalError("LaunchOptions has a required field without a default") }()
+        return options
     }
     
     // MARK: - Derived paths
