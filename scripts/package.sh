@@ -221,7 +221,8 @@ PLIST
 # LaunchOptions.defaultFilesRoot). The packed NAND is extracted on first boot;
 # all writable device state stays in Application Support. Import is future work.
 FILES="${LTM_ASSETS:-$SRC/../qemu-ios-files}"
-NAND_NAME="${LTM_NAND:-nand-agent-v4}"
+# nand-current names the shipping image; resolve it so provenance records the real one.
+NAND_NAME="${LTM_NAND:-$(basename "$(readlink "$FILES/nand-current" 2>/dev/null)")}"
 DEVICE="$APP/Contents/Resources/device"
 rm -rf "$DEVICE"
 if [ "$FILES" != none ]; then

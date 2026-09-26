@@ -39,6 +39,7 @@ class ReleaseTests(unittest.TestCase):
         for name in ('bootrom_240_4', 'ios3/iBoot.bin', 'ios3/nor_7E18.bin'):
             self.put(self.assets / name)
         (self.assets / 'nand-agent-v4').mkdir()
+        (self.assets / 'nand-current').symlink_to('nand-agent-v4')
         for name in ('usr/lib/libSystem.dylib', 'usr/include/stdio.h'):
             self.put(self.sdk / name)
         self.addCleanup(mock.patch.stopall)

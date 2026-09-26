@@ -110,7 +110,12 @@ under the selected output directory. It never searches arbitrary DerivedData
 folders for an app, consumes an older built app, or selects whichever NAND
 happens to exist.
 
-The selected NAND defaults to `nand-agent-v4`. `--nand NAME` selects another
+`qemu-ios-files/nand-current` is a symlink to the shipping NAND image. The
+release build, the app when run from Xcode, and the regression tests all
+default to it, so they use the same image. To move everything to a new image,
+repoint the link (`ln -sfn nand-agent-v5 nand-current`); the app's development
+state follows the real image name, so a repointed link starts a fresh device
+rather than reusing the old image's overlay. `--nand NAME` selects another
 existing page directory under `--assets`. The selected firmware is packaged
 without modifying the original files or the user's active device state.
 Use `--plan` to validate and inspect the selected inputs without writing.

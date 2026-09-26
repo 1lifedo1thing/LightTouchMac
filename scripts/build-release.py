@@ -258,7 +258,7 @@ def parse(argv=None):
     parser.add_argument('--qemu-source', type=Path, default=Path(os.environ.get('QEMU_IOS_DIR', ROOT.parent / 'qemu-ios')))
     parser.add_argument('--usbmuxd-source', type=Path, default=Path(os.environ.get('USBMUXD_SOURCE_DIR', ROOT.parent / 'usbmuxd-qemu/usbmuxd')))
     parser.add_argument('--assets', type=Path, default=Path(os.environ.get('LTM_ASSETS', ROOT.parent / 'qemu-ios-files')))
-    parser.add_argument('--nand', default=os.environ.get('LTM_NAND', 'nand-agent-v4'), help='Exact local NAND directory name (default: nand-agent-v4)')
+    parser.add_argument('--nand', default=os.environ.get('LTM_NAND'), help='Exact local NAND directory name (default: the target of <assets>/nand-current)')
     parser.add_argument('--sdk', type=Path, default=Path(os.environ['ARMV6_SDK']) if 'ARMV6_SDK' in os.environ else None,
                         help='Locally installed iPhoneOS3.1.3.sdk used to build guest helpers')
     parser.add_argument('--native-build', type=Path, help='Reuse a native build root; rebuild its QEMU before packaging')
@@ -277,6 +277,8 @@ def parse(argv=None):
             setattr(args, name, value.expanduser().resolve())
     if args.output.exists():
         parser.error(f'Output already exists: {args.output}; choose a new directory')
+    if not args.nand and (args.assets / 'nand-current').is_symlink():
+        args.nand = Path(os.readlink(args.assets / 'nand-current')).name
     if not args.nand or Path(args.nand).name != args.nand or args.nand in ('.', '..'):
         parser.error('--nand must be a directory name within --assets')
     if args.notary_profile and args.sign_id == '-':
