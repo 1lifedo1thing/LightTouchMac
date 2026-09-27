@@ -1,5 +1,7 @@
 # LightTouchMac
 
+Built with use from agentic coding products.
+
 A native macOS app that boots and manages an emulated iPod touch 2G (iOS 3.1.3),
 built on a [fork of qemu-ios](https://github.com/samhenrigold/qemu-ios).
 
