@@ -24,6 +24,7 @@ NATIVE_RECIPES = frozenset(('scripts/build-package-native.sh', 'scripts/build-st
                            'build-support/patches/glib-pipe2-availability.patch',
                            'scripts/test-glib-compat.py', 'scripts/check-macho.py'))
 FFMPEG_PATCHES = ('h264-chunk-er.patch', 'h264-cavlc-pcm-offset.patch')
+UNIVERSAL_ARCHS = ('arm64', 'x86_64')
 
 
 def digest(path):
@@ -170,8 +171,10 @@ def tracked_usbmuxd(source):
     }
 
 
-def validate_native(args, root):
+def validate_native(args, root, arch='arm64'):
     native = read_record(root / 'native-build.json')
+    if native.get('architecture') != arch:
+        raise ValueError(f'Native build {root} is not an {arch} build')
     if Path(native.get('qemu_source', '')).resolve() != args.qemu_source:
         raise ValueError('Native build was configured for a different QEMU checkout')
     if Path(native.get('usbmuxd_source', '')).resolve() != args.usbmuxd_source:
@@ -205,6 +208,13 @@ def validate_native(args, root):
                         (root / 'build/usbmuxd/src/usbmuxd', 'native usbmuxd')):
         require(path, label)
     return native
+
+
+def slice_roots(args, base):
+    """Native roots per architecture; a universal build keeps one full root per slice."""
+    if not args.universal:
+        return {'arm64': base}
+    return {arch: base / arch for arch in UNIVERSAL_ARCHS}
 
 
 def validate_output(args):
@@ -261,7 +271,8 @@ def parse(argv=None):
     parser.add_argument('--nand', default=os.environ.get('LTM_NAND'), help='Exact local NAND directory name (default: the target of <assets>/nand-current)')
     parser.add_argument('--sdk', type=Path, default=Path(os.environ['ARMV6_SDK']) if 'ARMV6_SDK' in os.environ else None,
                         help='Locally installed iPhoneOS3.1.3.sdk used to build guest helpers')
-    parser.add_argument('--native-build', type=Path, help='Reuse a native build root; rebuild its QEMU before packaging')
+    parser.add_argument('--native-build', type=Path, help='Reuse a native build root (with --universal, its arm64/ and x86_64/ roots); rebuild its QEMU before packaging')
+    parser.add_argument('--universal', action='store_true', help='Build an arm64 + x86_64 (Intel) app')
     parser.add_argument('--static-deps', type=Path, help='Explicit compatible static prefix; otherwise build it from the pinned recipe')
     parser.add_argument('--guest-tools', type=Path, help='Reuse a guest-tools directory produced by build-guest-tools.sh')
     parser.add_argument('--source-packages', type=Path, help='Optional Xcode SourcePackages cache')
@@ -281,6 +292,8 @@ def parse(argv=None):
         args.nand = Path(os.readlink(args.assets / 'nand-current')).name
     if not args.nand or Path(args.nand).name != args.nand or args.nand in ('.', '..'):
         parser.error('--nand must be a directory name within --assets')
+    if args.universal and args.static_deps:
+        parser.error('--static-deps names one architecture; omit it with --universal')
     if args.notary_profile and args.sign_id == '-':
         parser.error('--notary-profile requires a Developer ID --sign-id')
     return args
@@ -303,7 +316,8 @@ def validate(args):
     if args.static_deps:
         require(args.static_deps / 'lib/libcrypto.a', 'static OpenSSL')
     if args.native_build:
-        validate_native(args, args.native_build)
+        for arch, root in slice_roots(args, args.native_build).items():
+            validate_native(args, root, arch)
 
 
 def inventory(app):
@@ -347,16 +361,23 @@ def main(argv=None):
         env.pop('NOTARY_PROFILE', None)
     sources = {'app': source_identity(ROOT), 'qemu': source_identity(args.qemu_source),
                'usbmuxd': source_identity(args.usbmuxd_source)}
-    native_root = args.native_build or args.output / 'native'
-    if args.native_build:
-        run(['ninja', '-C', native_root / 'qemu-build', 'qemu-system-arm'], env, log)
-        env['PKG_CONFIG_LIBDIR'] = str(native_root / 'prefix/lib/pkgconfig')
-        env['PKG_CONFIG_PATH'] = ''
-        run(['bash', args.qemu_source / 'contrib/macos-app/make-dylib-macos.sh', native_root / 'qemu-build'], env, log)
+    slices = slice_roots(args, args.native_build or args.output / 'native')
+    for arch, root in slices.items():
+        slice_env = dict(env, LTM_ARCH=arch)
+        if args.native_build:
+            run(['ninja', '-C', root / 'qemu-build', 'qemu-system-arm'], slice_env, log)
+            slice_env.update(PKG_CONFIG_LIBDIR=str(root / 'prefix/lib/pkgconfig'), PKG_CONFIG_PATH='')
+            run(['bash', args.qemu_source / 'contrib/macos-app/make-dylib-macos.sh', root / 'qemu-build'], slice_env, log)
+        else:
+            run(['bash', SCRIPTS / 'build-package-native.sh', root], slice_env, log)
+        native = validate_native(args, root, arch)
+    if args.universal:
+        native_root = args.output / 'native-universal'
+        run([sys.executable, SCRIPTS / 'merge-native.py', native_root, *slices.values()], env, log)
+        native = read_record(native_root / 'native-build.json')
     else:
-        run(['bash', SCRIPTS / 'build-package-native.sh', native_root], env, log)
+        native_root = slices['arm64']
     native_record = native_root / 'native-build.json'
-    native = validate_native(args, native_root)
     static = Path(native['static_deps']).resolve()
     env.update(QEMU_BUILD_DIR=str(native_root / 'qemu-build'), LTM_DEPS_PREFIX=str(native_root / 'prefix'),
                LTM_STATIC_DEPS=str(static), USBMUXD_BIN=str(native_root / 'build/usbmuxd/src/usbmuxd'))
@@ -368,7 +389,8 @@ def main(argv=None):
     derived = args.output / 'DerivedData'
     command = ['xcodebuild', '-project', ROOT / 'LightTouchMac.xcodeproj', '-scheme', 'LightTouchMac',
                '-configuration', 'Release', '-derivedDataPath', derived, '-disableAutomaticPackageResolution',
-               '-onlyUsePackageVersionsFromResolvedFile', 'CODE_SIGNING_ALLOWED=NO', 'ARCHS=arm64',
+               '-onlyUsePackageVersionsFromResolvedFile', 'CODE_SIGNING_ALLOWED=NO', f'ARCHS={" ".join(slices)}',
+               'ONLY_ACTIVE_ARCH=NO',
                f'QEMU_IOS_DIR={args.qemu_source}', f'QEMU_BUILD_DIR={native_root / "qemu-build"}', 'build']
     if args.source_packages:
         command[1:1] = ['-clonedSourcePackagesDirPath', args.source_packages]
@@ -381,7 +403,7 @@ def main(argv=None):
     run(['ditto', apps[0], app], env, log)
     provenance = copy_provenance(args.output, native_record, guest.parent / 'guest-tools.json')
     record = {
-        'schema_version': 1, 'sources': sources, 'host_architecture': 'arm64',
+        'schema_version': 1, 'sources': sources, 'host_architectures': list(slices),
         'firmware': {'nand_name': args.nand, 'components': {
             name: digest(args.assets / name) for name in ('bootrom_240_4', 'ios3/iBoot.bin', 'ios3/nor_7E18.bin')}},
         'native_build_record_sha256': provenance['native-build.json'],

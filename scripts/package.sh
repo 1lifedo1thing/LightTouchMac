@@ -48,8 +48,15 @@ if otool -L "$APP_BIN" | grep -q '\.debug\.dylib'; then
 fi
 
 MINOS="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")"
+# Helpers built here get the same slices as the app (arm64, or arm64 + x86_64).
+ARCH_FLAGS=()
+CHECK_ARCHS=()
+for arch in $(lipo -archs "$APP_BIN"); do
+    ARCH_FLAGS+=(-arch "$arch")
+    CHECK_ARCHS+=(--arch "$arch")
+done
 # Check the emulator closure before modifying the app. The app is checked after embedding.
-python3 "$CHECK" --no-weak-imports --minos "$MINOS" "$DYLIB"
+python3 "$CHECK" --no-weak-imports --minos "$MINOS" "${CHECK_ARCHS[@]}" "$DYLIB"
 
 FRAMEWORKS="$APP/Contents/Frameworks"
 mkdir -p "$FRAMEWORKS"
@@ -151,14 +158,14 @@ for stem in libimobiledevice-1.0 libplist-2.0; do
     fi
 done
 TZ_BIN="$WORK/lockdown-tz"
-cc -O2 -mmacosx-version-min="$MINOS" -o "$TZ_BIN" "$SRC/scripts/lockdown-tz.c" \
+cc -O2 "${ARCH_FLAGS[@]}" -mmacosx-version-min="$MINOS" -o "$TZ_BIN" "$SRC/scripts/lockdown-tz.c" \
    -I"$DEPS/include" -L"$DEPS/lib" -limobiledevice-1.0 -lplist-2.0
 copy_tool "$TZ_BIN"
 mkdir -p "$WORK/it-webproxy"
 for source in build.sh itwebproxy.c tls-bridge.h weather.m; do
     cp "$QEMU/contrib/it-webproxy/$source" "$WORK/it-webproxy/"
 done
-OPENSSL_PREFIX="$STATIC" CFLAGS="-mmacosx-version-min=$MINOS" \
+OPENSSL_PREFIX="$STATIC" CFLAGS="${ARCH_FLAGS[*]} -mmacosx-version-min=$MINOS" \
     bash "$WORK/it-webproxy/build.sh"
 copy_tool "$WORK/it-webproxy/itwebproxy"
 copy_tool "${USBMUXD_BIN:-$QEMU/build-native14/build/usbmuxd/src/usbmuxd}"
@@ -197,7 +204,7 @@ copy_guest it-proxy/ittrust
 # back to a checkout path a user's Mac does not have.
 copy_guest it-orientation/itorient
 # Build directly from source; the old launcher app is no longer a dependency.
-cc -O2 -Wall -mmacosx-version-min="$MINOS" \
+cc -O2 -Wall "${ARCH_FLAGS[@]}" -mmacosx-version-min="$MINOS" \
     "$QEMU/contrib/macos-app/ipod-helper.c" -lz -o "$WORK/ipod-helper"
 copy_tool "$WORK/ipod-helper"
 
