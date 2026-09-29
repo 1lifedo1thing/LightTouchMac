@@ -88,7 +88,8 @@ class ReleaseTests(unittest.TestCase):
             self.put(self.qemu / 'contrib/ffmpeg' / name, 'patch ' + name)
             self.put(self.native / 'prefix/share/licenses/ffmpeg' / name, 'patch ' + name)
         record = {
-            'schema_version': 1, 'qemu_source': str(self.qemu), 'usbmuxd_source': str(self.usb),
+            'schema_version': 1, 'architecture': 'arm64',
+            'qemu_source': str(self.qemu), 'usbmuxd_source': str(self.usb),
             'static_deps': str(self.static), 'usbmuxd': release.tracked_usbmuxd(self.usb),
             'recipes': {name: release.digest(self.product / name) for name in release.NATIVE_RECIPES},
             'static_inputs': [{'path': 'lib/libcrypto.a', 'sha256': release.digest(self.static / 'lib/libcrypto.a')}],
@@ -96,6 +97,14 @@ class ReleaseTests(unittest.TestCase):
         self.put(self.native / 'native-build.json', json.dumps(record))
         self.args.native_build = self.native
         return record
+
+    def test_native_slice_architecture_must_match(self):
+        self.guest_fixture()
+        record = self.native_fixture()
+        record['architecture'] = 'x86_64'
+        self.put(self.native / 'native-build.json', json.dumps(record))
+        with self.assertRaisesRegex(ValueError, 'not an arm64 build'):
+            release.validate(self.args)
 
     def test_plan_validates_without_creating_output(self):
         with contextlib.redirect_stdout(io.StringIO()):
