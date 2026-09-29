@@ -73,4 +73,13 @@ with tempfile.TemporaryDirectory() as directory:
     verify(weaklib)  # A low LC_BUILD_VERSION alone cannot establish runtime compatibility.
     verify(weaklib, no_weak_imports=True, error='unexpected weak imports')
     verify(root / 'lib26.0.dylib', no_weak_imports=True, error='requires macOS 26.0')
-print('PASS: compatible closure, newer transitive library, external path, bundle relocation, missing dependency, weak imports')
+    # A universal binary needs every slice of every dependency.
+    both = root / 'both.dylib'
+    run('cc', '-arch', 'arm64', '-arch', 'x86_64', '-mmacosx-version-min=14.0', '-dynamiclib',
+        libsrc, '-install_name', both, '-o', both)
+    fat = root / 'fat'
+    run('cc', '-arch', 'arm64', '-arch', 'x86_64', '-mmacosx-version-min=14.0', mainsrc, both, '-o', fat)
+    verify(fat)
+    run('lipo', both, '-thin', 'arm64', '-output', both)
+    verify(fat, error='missing x86_64 slice')
+print('PASS: compatible closure, newer transitive library, external path, bundle relocation, missing dependency, weak imports, universal slices')

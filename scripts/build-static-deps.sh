@@ -2,6 +2,7 @@
 # Build the client utilities and static libraries from the product's pinned recipes.
 # Usage: build-static-deps.sh NEW-WORK-DIRECTORY (output: WORK-DIRECTORY/prefix)
 # LTM_SOURCE_CACHE optionally names a directory of source archives; each is verified.
+# LTM_ARCH=x86_64 cross-compiles the Intel slice on an Apple Silicon Mac (default arm64).
 set -euo pipefail
 ROOT="${1:?usage: build-static-deps.sh new-work-directory}"
 [ ! -e "$ROOT" ] || { echo "use a new build directory: $ROOT" >&2; exit 1; }
@@ -13,6 +14,12 @@ for tool in python3 curl make pkg-config xcrun "$CMAKE"; do
     command -v "$tool" >/dev/null || { echo "missing build tool: $tool" >&2; exit 1; }
 done
 [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]] || { echo 'requires an Apple Silicon Mac' >&2; exit 1; }
+ARCH="${LTM_ARCH:-arm64}"
+case "$ARCH" in
+    arm64) HOST=() ;;
+    x86_64) HOST=(--host=x86_64-apple-darwin) ;;
+    *) echo "unsupported LTM_ARCH: $ARCH" >&2; exit 1 ;;
+esac
 mkdir -p "$ROOT/src" "$ROOT/build" "$ROOT/logs" "$ROOT/prefix/lib/pkgconfig"
 ROOT="$(cd "$ROOT" && pwd)"
 trap 'echo "Static dependency build failed; see $ROOT/logs" >&2' ERR
@@ -27,7 +34,7 @@ python3 "$SRC/scripts/dependency-sources.py" "${SOURCE_ARGS[@]}"
 # application's supported macOS 14 baseline. Never discover Homebrew libraries.
 export MACOSX_DEPLOYMENT_TARGET=14.0
 MIN="-mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET"
-export CFLAGS="$MIN -O2" CXXFLAGS="$MIN -O2" LDFLAGS="$MIN"
+export CFLAGS="-arch $ARCH $MIN -O2" CXXFLAGS="-arch $ARCH $MIN -O2" LDFLAGS="-arch $ARCH $MIN"
 export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig" PKG_CONFIG_PATH=
 export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
 export CC="$(xcrun -f clang)" CXX="$(xcrun -f clang++)"
@@ -56,7 +63,7 @@ untar openssl-3.6.3.tar.gz
 echo 'Building OpenSSL 3.6.3'
 (
     cd "$ROOT/build/openssl-3.6.3"
-    ./Configure darwin64-arm64-cc no-shared no-tests no-docs \
+    ./Configure "darwin64-$ARCH-cc" no-shared no-tests no-docs \
         --prefix="$PREFIX" --openssldir=/private/etc/ssl "$MIN" > "$LOG/openssl.configure.log" 2>&1
     make -j"$JOBS" > "$LOG/openssl.build.log" 2>&1
     make install_sw > "$LOG/openssl.install.log" 2>&1
@@ -69,7 +76,7 @@ autobuild() {
     untar "$archive"
     (
         cd "$ROOT/build/$directory"
-        ./configure --prefix="$PREFIX" --disable-shared --enable-static "$@" \
+        ./configure --prefix="$PREFIX" --disable-shared --enable-static ${HOST[@]+"${HOST[@]}"} "$@" \
             > "$LOG/$directory.configure.log" 2>&1
         make -j"$JOBS" > "$LOG/$directory.build.log" 2>&1
         make install > "$LOG/$directory.install.log" 2>&1
@@ -85,7 +92,7 @@ echo 'Building libzip 1.11.4'
 untar libzip-1.11.4.tar.xz
 "$CMAKE" -S "$ROOT/build/libzip-1.11.4" -B "$ROOT/build/libzip-out" \
     -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET" \
-    -DCMAKE_OSX_SYSROOT="$SDKROOT" -DCMAKE_OSX_ARCHITECTURES=arm64 \
+    -DCMAKE_OSX_SYSROOT="$SDKROOT" -DCMAKE_OSX_ARCHITECTURES="$ARCH" \
     -DZLIB_INCLUDE_DIR="$SDKROOT/usr/include" -DZLIB_LIBRARY_RELEASE="$SDKROOT/usr/lib/libz.tbd" \
     -DCMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH=OFF -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF \
     -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
@@ -100,14 +107,14 @@ autobuild ideviceinstaller-1.2.0.tar.bz2 ideviceinstaller-1.2.0 \
     libzip_CFLAGS="-I$PREFIX/include" libzip_LIBS="-L$PREFIX/lib -lzip -lz"
 
 for tool in ideviceinstaller ideviceinfo idevicesyslog iproxy idevicepair idevice_id; do
-    python3 "$SRC/scripts/check-macho.py" "$PREFIX/bin/$tool"
+    python3 "$SRC/scripts/check-macho.py" --arch "$ARCH" "$PREFIX/bin/$tool"
 done
-python3 - "$SRC" "$ROOT" <<'PY'
+python3 - "$SRC" "$ROOT" "$ARCH" <<'PY'
 import hashlib, json, pathlib, subprocess, sys
-source, root = map(pathlib.Path, sys.argv[1:])
+source, root = map(pathlib.Path, sys.argv[1:3])
 record = {
     'schema_version': 1, 'static_deps': str(root / 'prefix'),
-    'deployment_target': '14.0', 'architecture': 'arm64',
+    'deployment_target': '14.0', 'architecture': sys.argv[3],
     'sources': json.loads((root / 'src/static-sources.json').read_text()),
     'recipe_sha256': hashlib.sha256((source / 'scripts/build-static-deps.sh').read_bytes()).hexdigest(),
     'xcode': subprocess.check_output(['xcodebuild', '-version'], text=True).strip(),

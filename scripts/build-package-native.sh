@@ -3,6 +3,8 @@
 # Requires Xcode, meson, ninja, pkg-config, cmake and autotools.
 # Usage: build-package-native.sh NEW-WORK-DIRECTORY
 # Builds static dependencies from pinned sources unless LTM_STATIC_DEPS is explicit.
+# LTM_ARCH=x86_64 cross-compiles the Intel slice (default arm64); build-release.py --universal
+# builds both and merges them with merge-native.py.
 set -euo pipefail
 ROOT="${1:?usage: build-package-native.sh new-work-directory}"
 [ ! -e "$ROOT" ] || { echo "use a new build directory: $ROOT" >&2; exit 1; }
@@ -13,6 +15,15 @@ MESON="${MESON:-meson}"
 JOBS="${LTM_JOBS:-$(sysctl -n hw.ncpu)}"
 [[ "$JOBS" =~ ^[1-9][0-9]*$ ]] || { echo 'LTM_JOBS must be a positive integer' >&2; exit 1; }
 [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]] || { echo 'requires an Apple Silicon Mac' >&2; exit 1; }
+ARCH="${LTM_ARCH:-arm64}"
+case "$ARCH" in
+    arm64) HOST=() MESON_CROSS=() QEMU_CROSS=() FFMPEG_CROSS=() ;;
+    x86_64) HOST=(--host=x86_64-apple-darwin)
+        MESON_CROSS=(--cross-file "$ROOT/x86_64-darwin.meson")
+        QEMU_CROSS=(--cross-prefix= --cpu=x86_64)
+        FFMPEG_CROSS=(--enable-cross-compile --arch=x86_64 --target-os=darwin) ;;
+    *) echo "unsupported LTM_ARCH: $ARCH" >&2; exit 1 ;;
+esac
 for tool in python3 curl make ninja pkg-config glibtoolize autoreconf "$MESON"; do
     command -v "$tool" >/dev/null || { echo "missing build tool: $tool" >&2; exit 1; }
 done
@@ -29,20 +40,20 @@ git -C "$USB" describe --tags --always --dirty > "$ROOT/build/usbmuxd/.tarball-v
 if [ -n "${LTM_STATIC_DEPS:-}" ]; then
     STATIC="$(cd "$LTM_STATIC_DEPS" && pwd)"
 else
-    bash "$SRC/scripts/build-static-deps.sh" "$ROOT/static"
+    LTM_ARCH="$ARCH" bash "$SRC/scripts/build-static-deps.sh" "$ROOT/static"
     STATIC="$ROOT/static/prefix"
 fi
 P="$ROOT/prefix"
 export MACOSX_DEPLOYMENT_TARGET=14.0
-export CFLAGS='-O2 -mmacosx-version-min=14.0' CXXFLAGS='-O2 -mmacosx-version-min=14.0'
-export LDFLAGS='-mmacosx-version-min=14.0' CC=/usr/bin/clang CXX=/usr/bin/clang++
+export CFLAGS="-arch $ARCH -O2 -mmacosx-version-min=14.0" CXXFLAGS="-arch $ARCH -O2 -mmacosx-version-min=14.0"
+export LDFLAGS="-arch $ARCH -mmacosx-version-min=14.0" CC=/usr/bin/clang CXX=/usr/bin/clang++
 export PKG_CONFIG_LIBDIR="$P/lib/pkgconfig" PKG_CONFIG_PATH=
 # Some Darwin libtool configure probes return an empty ARG_MAX. Avoid its
 # broken partial-link fallback (which loses private symbols).
 export lt_cv_sys_max_cmd_len=131072
 unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH
 for tool in ideviceinstaller ideviceinfo idevicesyslog iproxy idevicepair idevice_id; do
-    python3 "$SRC/scripts/check-macho.py" --no-weak-imports "$STATIC/bin/$tool"
+    python3 "$SRC/scripts/check-macho.py" --no-weak-imports --arch "$ARCH" "$STATIC/bin/$tool"
 done
 [ -f "$STATIC/lib/libcrypto.a" ] || { echo "missing static prefix: $STATIC" >&2; exit 1; }
 SOURCE_ARGS=(fetch --group native --destination "$ROOT/src")
@@ -58,7 +69,7 @@ tar -xf "$ROOT/src/proxy-libintl-0.5.tar.gz" -C glib-2.88.3/subprojects
 # Keep SDK feature detection tied to the deployment target. A headerless
 # pipe2 probe incorrectly accepts the macOS 27 symbol for a macOS 14 build.
 (cd glib-2.88.3 && patch -p1 < "$SRC/build-support/patches/glib-pipe2-availability.patch")
-(cd pcre2-10.48 && ./configure --prefix="$P" --disable-shared --enable-static --disable-pcre2grep-libz --disable-pcre2grep-libbz2 && make -j"$JOBS" && make install)
+(cd pcre2-10.48 && ./configure --prefix="$P" ${HOST[@]+"${HOST[@]}"} --disable-shared --enable-static --disable-pcre2grep-libz --disable-pcre2grep-libbz2 && make -j"$JOBS" && make install)
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
 cat > "$P/lib/pkgconfig/libffi.pc" <<EOF
 Name: libffi
@@ -67,32 +78,47 @@ Version: 3.4.0
 Libs: -lffi
 Cflags: -I$SDK/usr/include/ffi
 EOF
-"$MESON" setup glib-out glib-2.88.3 --prefix="$P" --buildtype=release -Ddefault_library=static -Dnls=disabled -Dtests=false -Dintrospection=disabled -Dman-pages=disabled -Dlibmount=disabled -Dselinux=disabled -Dsysprof=disabled --wrap-mode=nodownload
+# Meson ignores -arch in CFLAGS when choosing the host machine, so declare it.
+cat > "$ROOT/x86_64-darwin.meson" <<EOF
+[binaries]
+c = ['/usr/bin/clang', '-arch', 'x86_64']
+cpp = ['/usr/bin/clang++', '-arch', 'x86_64']
+objc = ['/usr/bin/clang', '-arch', 'x86_64']
+pkg-config = '$(command -v pkg-config)'
+[host_machine]
+system = 'darwin'
+subsystem = 'macos'
+kernel = 'xnu'
+cpu_family = 'x86_64'
+cpu = 'x86_64'
+endian = 'little'
+EOF
+"$MESON" setup glib-out glib-2.88.3 ${MESON_CROSS[@]+"${MESON_CROSS[@]}"} --prefix="$P" --buildtype=release -Ddefault_library=static -Dnls=disabled -Dtests=false -Dintrospection=disabled -Dman-pages=disabled -Dlibmount=disabled -Dselinux=disabled -Dsysprof=disabled --wrap-mode=nodownload
 ninja -C glib-out -j"$JOBS" && ninja -C glib-out install
 mkdir -p "$P/share/licenses/glib"
 cp glib-2.88.3/COPYING "$SRC/build-support/patches/glib-pipe2-availability.patch" "$P/share/licenses/glib/"
-"$MESON" setup pixman-out pixman-0.46.4 --prefix="$P" --buildtype=release -Ddefault_library=static -Dtests=disabled -Ddemos=disabled --wrap-mode=nofallback
+"$MESON" setup pixman-out pixman-0.46.4 ${MESON_CROSS[@]+"${MESON_CROSS[@]}"} --prefix="$P" --buildtype=release -Ddefault_library=static -Dtests=disabled -Ddemos=disabled --wrap-mode=nofallback
 ninja -C pixman-out -j"$JOBS" && ninja -C pixman-out install
-"$MESON" setup slirp-out libslirp-v4.9.4 --prefix="$P" --buildtype=release -Ddefault_library=static --wrap-mode=nofallback
+"$MESON" setup slirp-out libslirp-v4.9.4 ${MESON_CROSS[@]+"${MESON_CROSS[@]}"} --prefix="$P" --buildtype=release -Ddefault_library=static --wrap-mode=nofallback
 ninja -C slirp-out -j"$JOBS" && ninja -C slirp-out install
-(cd libusb-1.0.30 && ./configure --prefix="$P" --disable-shared --enable-static && make -j"$JOBS" && make install)
+(cd libusb-1.0.30 && ./configure --prefix="$P" ${HOST[@]+"${HOST[@]}"} --disable-shared --enable-static && make -j"$JOBS" && make install)
 # Shared exports are required by IMobileDevice.swift's dlopen/dlsym API; the
 # corresponding static archives intentionally hide these public symbols.
 export PKG_CONFIG_LIBDIR="$P/lib/pkgconfig:$STATIC/lib/pkgconfig"
-(cd libplist-2.7.0 && ./configure --prefix="$P" --enable-shared --disable-static --without-cython && make -j"$JOBS" && make install)
-(cd libimobiledevice-1.4.0 && LDFLAGS="$LDFLAGS -framework SystemConfiguration -framework CoreFoundation" ./configure --prefix="$P" --enable-shared --disable-static --without-cython && make -j"$JOBS" && make install)
+(cd libplist-2.7.0 && ./configure --prefix="$P" ${HOST[@]+"${HOST[@]}"} --enable-shared --disable-static --without-cython && make -j"$JOBS" && make install)
+(cd libimobiledevice-1.4.0 && LDFLAGS="$LDFLAGS -framework SystemConfiguration -framework CoreFoundation" ./configure --prefix="$P" ${HOST[@]+"${HOST[@]}"} --enable-shared --disable-static --without-cython && make -j"$JOBS" && make install)
 for tool in ideviceinstaller ideviceinfo idevicesyslog iproxy idevicepair idevice_id; do cp "$STATIC/bin/$tool" "$P/bin/"; done
 (cd usbmuxd && glibtoolize --copy --force && autoreconf -fi)
-(cd usbmuxd && LDFLAGS="$LDFLAGS -framework IOKit -framework CoreFoundation -framework Security" ./configure --prefix="$P" --without-systemd && make -j"$JOBS")
+(cd usbmuxd && LDFLAGS="$LDFLAGS -framework IOKit -framework CoreFoundation -framework Security" ./configure --prefix="$P" ${HOST[@]+"${HOST[@]}"} --without-systemd && make -j"$JOBS")
 # AMC audio and incremental H.264 slices use libavcodec/libavutil. Keep the closure native
 # to macOS 14, with no automatically discovered Homebrew codec dependencies.
 (cd ffmpeg-9.0.1 && patch -p1 < "$QEMU/contrib/ffmpeg/h264-chunk-er.patch" && patch -p1 < "$QEMU/contrib/ffmpeg/h264-cavlc-pcm-offset.patch")
-(cd ffmpeg-9.0.1 && ./configure --prefix="$P" \
+(cd ffmpeg-9.0.1 && ./configure --prefix="$P" ${FFMPEG_CROSS[@]+"${FFMPEG_CROSS[@]}"} \
     --disable-everything --disable-autodetect --disable-programs --disable-doc \
     --disable-avdevice --disable-avformat --disable-avfilter --disable-swscale --disable-swresample \
     --enable-decoder=aac,mp3,alac,h264 --enable-shared --disable-static --install-name-dir=@rpath \
-    --extra-cflags=-mmacosx-version-min=14.0 \
-    --extra-ldflags='-mmacosx-version-min=14.0 -Wl,-rpath,@loader_path' \
+    --extra-cflags="-arch $ARCH -mmacosx-version-min=14.0" \
+    --extra-ldflags="-arch $ARCH -mmacosx-version-min=14.0 -Wl,-rpath,@loader_path" \
     && make -j"$JOBS" && make install)
 mkdir -p "$P/share/licenses/ffmpeg"
 cp ffmpeg-9.0.1/COPYING.LGPLv2.1 "$P/share/licenses/ffmpeg/"
@@ -106,17 +132,18 @@ cp "$SRC/scripts/build-package-native.sh" "$QEMU/contrib/ffmpeg/h264-chunk-er.pa
 export PKG_CONFIG_LIBDIR="$P/lib/pkgconfig"
 mkdir "$ROOT/qemu-build"
 cd "$ROOT/qemu-build"
-"$QEMU/configure" --target-list=arm-softmmu --without-default-features --enable-cocoa --enable-coreaudio --enable-pixman --enable-slirp --disable-pie \
+"$QEMU/configure" ${QEMU_CROSS[@]+"${QEMU_CROSS[@]}"} --cc="clang -arch $ARCH" --cxx="clang++ -arch $ARCH" --objcc="clang -arch $ARCH" \
+    --target-list=arm-softmmu --without-default-features --enable-cocoa --enable-coreaudio --enable-pixman --enable-slirp --disable-pie \
     --python="${QEMU_PYTHON:-python3.12}" \
     --extra-cflags="-I$STATIC/include -mmacosx-version-min=14.0" \
     --extra-ldflags="-L$STATIC/lib -lcrypto -mmacosx-version-min=14.0"
 ninja -j"$JOBS" qemu-system-arm
 bash "$QEMU/contrib/macos-app/make-dylib-macos.sh" "$ROOT/qemu-build"
-python3 "$SRC/scripts/check-macho.py" --no-weak-imports "$ROOT/qemu-build/libqemu-arm.dylib" "$P/lib/libimobiledevice-1.0.dylib" "$P/lib/libplist-2.0.dylib" "$ROOT/build/usbmuxd/src/usbmuxd"
-python3 "$SRC/scripts/test-glib-compat.py" --native-build "$ROOT"
-python3 - "$SRC" "$ROOT" "$STATIC" "$QEMU" "$USB" <<'PY'
+python3 "$SRC/scripts/check-macho.py" --no-weak-imports --arch "$ARCH" "$ROOT/qemu-build/libqemu-arm.dylib" "$P/lib/libimobiledevice-1.0.dylib" "$P/lib/libplist-2.0.dylib" "$ROOT/build/usbmuxd/src/usbmuxd"
+python3 "$SRC/scripts/test-glib-compat.py" --arch "$ARCH" --native-build "$ROOT"
+python3 - "$SRC" "$ROOT" "$STATIC" "$QEMU" "$USB" "$ARCH" <<'PY'
 import hashlib, json, pathlib, subprocess, sys
-source, root, static, qemu, usb = map(pathlib.Path, sys.argv[1:])
+source, root, static, qemu, usb = map(pathlib.Path, sys.argv[1:6])
 def digest(path):
     result = hashlib.sha256()
     with path.open('rb') as stream:
@@ -129,7 +156,7 @@ record = {
     'schema_version': 1, 'static_deps': str(static), 'qemu_source': str(qemu),
     'usbmuxd_source': str(usb), 'qemu_build': str(root / 'qemu-build'),
     'deps_prefix': str(root / 'prefix'), 'usbmuxd_binary': str(root / 'build/usbmuxd/src/usbmuxd'),
-    'deployment_target': '14.0', 'architecture': 'arm64',
+    'deployment_target': '14.0', 'architecture': sys.argv[6],
     'sources': json.loads((root / 'src/native-sources.json').read_text()),
     'usbmuxd': json.loads((root / 'usbmuxd-source.json').read_text()),
     'qemu_commit': git('rev-parse', 'HEAD').decode().strip(),

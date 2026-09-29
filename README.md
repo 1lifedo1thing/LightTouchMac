@@ -85,7 +85,8 @@ USB reconnects when the device restarts.
 
 ## Building and packaging
 
-The product build supports Apple Silicon and macOS 14 or later. Firmware stays
+The product build supports macOS 14 or later, on Apple Silicon by default or
+as a universal app for Intel too (see `--universal` below). Firmware stays
 inside the app in this phase: users do not need to import an IPSW or boot ROM.
 
 Install Xcode and the build tools: Python 3.12 (with QEMU's `distlib`
@@ -132,6 +133,14 @@ python3 scripts/build-release.py \
   --assets /path/to/qemu-ios-files --nand nand-agent-v4 \
   --sdk /path/to/iPhoneOS3.1.3.sdk
 ```
+
+Add `--universal` to also build for Intel Macs. The build still runs on an
+Apple Silicon Mac: it cross-compiles every native dependency and QEMU a second
+time for x86_64 (`LTM_ARCH=x86_64`), keeps one complete native root per
+architecture under `native/arm64` and `native/x86_64`, merges them with
+`scripts/merge-native.py`, and builds the app with both slices. The x86_64
+FFmpeg build uses NASM for its decoder assembly. With `--native-build`, pass
+the directory that holds the `arm64` and `x86_64` roots.
 
 `--usbmuxd-source` points to the actual fork's source directory (the legacy
 layout is `usbmuxd-qemu/usbmuxd`). No files from its runtime `run/conf` directory
