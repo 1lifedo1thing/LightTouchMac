@@ -638,6 +638,11 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     @objc func resetMotion(_ sender: Any?) { deviceVC.screen.resetMotion() }
 
     @objc func deviceShake(_ sender: Any?)       { emulator.shake() }
+    @objc func specialTrick(_ sender: Any?) {
+        deviceVC.screen.specialTrick()
+        // The chime lands on the pop, a beat after the crouch starts.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { NSSound(named: "special_trick")?.play() }
+    }
     @objc func toggleDevicePause(_ sender: Any?) {
         if emulator.isPaused { emulator.resume() } else if emulator.isRunning { emulator.pause() }
     }
