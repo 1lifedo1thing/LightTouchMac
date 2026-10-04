@@ -66,13 +66,13 @@ nonisolated enum Bundled {
     static var logsDirectory: URL { URL(fileURLWithPath: config.work) }
     static var stateDirectory: URL { URL(fileURLWithPath: config.work) }
     static var workDirectory: URL { URL(fileURLWithPath: config.work) }
+    static var filesRoot: String { config.files }
     static func tool(_ name: String) -> String? { nil }
-    static func resolve(_ name: String, fallbacks: [String]) -> String? { nil }
+    /// The guest helpers MediaImport uploads (single's mediaTools).
+    static func resolve(_ name: String, fallbacks: [String]) -> String? { config.single?.mediaTools.map { "\($0)/\(name)" } }
     static var binarySearchPaths: [String] { [] }
 }
 extension DeviceInstance { var paths: Paths { paths(state: Bundled.stateDirectory, logs: Bundled.logsDirectory) } }
-struct MediaVideo: Sendable { let id: String; let video: URL }
-struct MediaSong: Sendable { let id: String; let audio: URL; var artwork: URL? = nil; static let extensions: Set<String> = ["m4a"] }
 
 // --selftest-walk: the Setup walk's retry core (Setup5.tapUntil) against fake taps, no emulator
 // (tests/sessions/check-setup-walk.py).
@@ -204,7 +204,7 @@ extension String {
                 : "user,id=wifi0" + (netdevExtra ?? "")
             return try prepared.configuration(bootArgs: "amfi_allow_any_signature=1 cs_enforcement_disable=1",
                 usbAddress: mux.guestAddress, wifi: true, guestPackage: offer, serial: serial!.argument,
-                audio: ["-audio", "driver=none"], netdev: netdev, webProxy: webProxy)
+                audio: ["-audio", config.single?.audioWAV.map { "driver=wav,path=\($0)" } ?? "driver=none"], netdev: netdev, webProxy: webProxy)
         }
         processLog = try ProcessLogCapture(url: dir.appendingPathComponent("native.log"))
         let process = makeProcess(profile: profile, log: processLog!, lease: dir.appendingPathComponent("work/lease"),

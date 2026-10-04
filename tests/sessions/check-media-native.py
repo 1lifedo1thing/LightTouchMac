@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Native app-side media pipeline: actual Swift AFC upload and import commands.
 
+--single DEVICE --board ipod|ipad runs the same import on any prepared board and build through the app's session
+code instead, and judges the song's tags, cover and playback there (media_single.py).
+
 The test-only HTTP adapter stands in for the helper's DeviceLink: it carries the
 app's own agent wire (GuestAgent, typed ops or a v1 agent's exec) to the QMP agent
 of an isolated CLI guest. Production MediaSong, DeviceServices, IMobileDevice,
@@ -40,7 +43,23 @@ parser.add_argument('--files', type=Path, default=Path(__file__).resolve().paren
 parser.add_argument('--device', type=Path, help='isolated generated N72 base to test; copied NOR and fresh overlay')
 parser.add_argument('--guest-package',type=Path,help='guest package offered to QEMU at boot (separate from flat upload tools)')
 parser.add_argument('--guest-tools' ,type=Path,help='freshly built guest payloads to use instead of checkout binaries')
+single = parser.add_argument_group('--single: any board and build through the app\'s session code (media_single.py)')
+single.add_argument('--single', type=Path, help='a prepared base (firmwarekit create output) of any board and build')
+single.add_argument('--board', choices=('ipod', 'ipad', 'ipod1g'), help='--single: the base\'s board')
+single.add_argument('--taps', type=json.loads, default=[], help='--single: JSON normalized [x, y] taps in Music that open '
+                    'the song list and start the song (empty: Music is not opened)')
+single.add_argument('--with-photo', action='store_true', help='--single: also drop a photo')
+single.add_argument('--evidence', type=Path, default=Path.home() / 'Developer/ltm-evidence/media-sync')
+single.add_argument('--keep', action='store_true', help='--single: keep the work directory')
+for name in ('helper', 'dylib', 'usbmuxd', 'frameworks', 'firmwarekit', 'ipad-itpack'):
+    single.add_argument('--' + name, help='--single: forwarded to check-sessions.py')
 args = parser.parse_args()
+if args.single:
+    if not args.board: parser.error('--single needs --board')
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import media_single
+    media_single.run(args)
+    sys.exit(0)
 args.tagged = args.tagged or args.tagged_aac
 if args.recording and not args.aac: parser.error('--recording requires --aac')
 APP = Path(__file__).resolve().parents[2]

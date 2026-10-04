@@ -17,7 +17,20 @@ nonisolated enum MediaSupport {
 
     /// Whether this firmware's helpers can add to `destination` ("Music", "Videos", "Photos").
     static func supports(_ destination: String, on firmware: Firmware) -> Bool {
-        firmware.board == "n72ap" && firmware.build == "7E18"
+        func from(_ low: String, below high: String) -> Bool {
+            firmware.version.compare(low, options: .numeric) != .orderedAscending
+                && firmware.version.compare(high, options: .numeric) == .orderedAscending
+        }
+        guard ["n72ap", "k48ap"].contains(firmware.board) else { return false }
+        switch destination {
+        // MusicLibrary's purchase-folder insert over the iTunes Library.itlp library and PLCameraAlbum's save
+        // with the saved path: 3.x. 4.x's post-processing drops the inserted song and 5.x has no such insert;
+        // neither has a photo save that names the saved file (qemu-ios contrib/it-media/README.md).
+        case "Music", "Photos": return from("3.1", below: "4")
+        // Movies through the same insert, verified (decoding included) on 3.1.3 alone.
+        case "Videos": return firmware.board == "n72ap" && firmware.build == "7E18"
+        default: return false
+        }
     }
 
     /// Whether any media can be added (the Import Media… command).

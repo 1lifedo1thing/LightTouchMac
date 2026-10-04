@@ -41,7 +41,7 @@ IPAD_GUEST_PAYLOADS = frozenset(('it_pbd', 'it_ethlink', 'it_prefs', 'it_msmquie
 # Serial 12 carries the native media tags/artwork contract and whole-millisecond
 # duration adapter. Earlier importers can strip metadata or store zero duration.
 # Serial 13 also carries the signed legacy-linked armv6 helpers and stock 2.x launch API.
-GUEST_PACKAGE_MIN_SERIAL = 15
+GUEST_PACKAGE_MIN_SERIAL = 16
 CATALOG = ROOT / 'LightTouchMac/Resources/firmware-catalog.json'
 SOURCE_EXCLUSIONS = {'.git', '.build', 'dist', '__pycache__', 'xcuserdata', '.DS_Store'}
 NATIVE_RECIPES = frozenset(('scripts/build-package-native.sh', 'scripts/build-static-deps.sh',
@@ -217,7 +217,7 @@ def validate_guest(args, guest):
         raise ValueError('Guest tools were built from a different QEMU checkout')
     serial = (manifest.get('guest_package') or {}).get('serial') or 0
     if serial < GUEST_PACKAGE_MIN_SERIAL:
-        raise ValueError(f'Guest package serial {serial} predates {GUEST_PACKAGE_MIN_SERIAL} (the native media contract and signed legacy armv6 helpers); rebuild guest tools')
+        raise ValueError(f'Guest package serial {serial} predates {GUEST_PACKAGE_MIN_SERIAL} (media helpers that adapt to 3.x at runtime); rebuild guest tools')
     files = manifest_hashes(manifest.get('files'), 'guest artifact')
     for directory, required, description in ((guest, GUEST_PAYLOADS, 'Guest payload'),
                                              (guest.parent / 'ipad-guest-tools', IPAD_GUEST_PAYLOADS, 'iPad guest payload')):
