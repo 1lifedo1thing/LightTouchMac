@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Build a self-contained Light Touch app: every device is prepared on the user's Mac from an IPSW."""
+"""Build a self-contained Light Touch app: the built-in iPod is a `firmwarekit create` of n72ap-7E18 packed as one blob;
+every other device is prepared on the user's Mac from an IPSW."""
 import argparse
 import hashlib
 import json
@@ -11,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / 'scripts'
@@ -50,6 +52,12 @@ NATIVE_RECIPES = frozenset(('scripts/build-package-native.sh', 'scripts/build-st
 FFMPEG_PATCHES = ('h264-chunk-er.patch', 'h264-cavlc-pcm-offset.patch')
 # Resumable pipeline (--stage); each step fits a 10-minute tool limit and skips when current.
 STAGES = ('native', 'qemu', 'dylib', 'guest', 'app', 'package', 'notarize', 'staple', 'verify')
+# The built-in iPod: this catalog entry, prepared by the built firmwarekit with the built guest tools from --bundled-ipsw
+# (default: the app's IPSW cache, by the catalog's sha1) and packed by `firmwarekit pack-base` during package
+# (Resources/device/<entry>.itbase, the catalog's `bundled`). The seed is a placeholder: the app gives every unpack an
+# identity of its own (firmwarekit unpack-base --seed <device id>).
+BUNDLED_ENTRY = 'n72ap-7E18'
+BUNDLED_SEED = 'lighttouch-built-in'
 # The SecureROMs under --assets that package.sh flattens into Resources/device (DeviceProfile.bootromName):
 # the iPod touch 2G's, and the 1G's from devos50's n45ap set (qemu-ios docs/ipod1g).
 BOOTROMS = ('bootrom_240_4', 'ipod1g/bootrom_s5l8900')
@@ -392,6 +400,8 @@ def parse(argv=None):
     parser.add_argument('--allow-unpinned', action='store_true',
                         help='Sign a build whose qemu-ios (or, one-step, usbmuxd) checkout is not at the pinned commit')
     parser.add_argument('--assets', type=Path, default=Path(os.environ.get('LTM_ASSETS', ROOT.parent / 'qemu-ios-files')))
+    parser.add_argument('--bundled-ipsw', type=Path,
+                        help=f'The {BUNDLED_ENTRY} IPSW the built firmwarekit prepares as the built-in iPod (default: the app\'s IPSW cache)')
     parser.add_argument('--sdk', type=Path, default=Path(os.environ['ARMV6_SDK']) if 'ARMV6_SDK' in os.environ else None,
                         help='Locally installed iPhoneOS3.1.3.sdk used to build guest helpers')
     parser.add_argument('--native-build', type=Path, help='Reuse a native build root (with --universal, the directory holding '
@@ -418,7 +428,7 @@ def parse(argv=None):
     if args.output.expanduser().is_symlink():
         parser.error(f'Output must not be a symlink: {args.output}')
     for name in ('output', 'qemu_source', 'usbmuxd_source', 'assets', 'sdk', 'native_build', 'static_deps', 'guest_tools',
-                 'source_packages', 'native_deps', 'qemu_build', 'verify_ipsw'):
+                 'source_packages', 'native_deps', 'qemu_build', 'verify_ipsw', 'bundled_ipsw'):
         value = getattr(args, name)
         if value is not None:
             setattr(args, name, value.expanduser().resolve())
@@ -458,6 +468,8 @@ def validate(args):
     pin_status(args)
     for name in BOOTROMS:
         require(args.assets / name, 'bundled firmware input')
+    args.bundled_ipsw = args.bundled_ipsw or IPSW_CACHE / f'{catalog_entry(BUNDLED_ENTRY)["source"]["sha1"]}.ipsw'
+    require(args.bundled_ipsw, f'{BUNDLED_ENTRY} IPSW for the built-in iPod (--bundled-ipsw)')
     validate_output(args)
     if args.guest_tools:
         validate_guest(args, args.guest_tools)
@@ -503,6 +515,50 @@ def build_app(args, env, log, qemu_build):
     return apps[0]
 
 
+def catalog_entry(entry_id):
+    catalog = json.loads((ROOT / 'LightTouchMac/Resources/firmware-catalog.json').read_text())
+    return next(e for e in catalog['entries'] if e['id'] == entry_id)
+
+
+def bundled_base(args, env, log, firmwarekit, guest, helper):
+    """The built-in iPod: `firmwarekit create` of BUNDLED_ENTRY (the built firmwarekit and guest tools, --bundled-ipsw)
+    packed by `firmwarekit pack-base` into <output>/bundled/<entry>.itbase, bundled.json beside it (inputs, the lock's
+    hashes; not shipped). Skipped when its inputs are unchanged."""
+    bundled = args.output / 'bundled'
+    blob, record = bundled / f'{BUNDLED_ENTRY}.itbase', bundled / 'bundled.json'
+    catalog = json.loads((ROOT / 'LightTouchMac/Resources/firmware-catalog.json').read_text())
+    if catalog.get('bundled', {}).get(BUNDLED_ENTRY) != f'device/{BUNDLED_ENTRY}.itbase':
+        raise ValueError(f'The catalog does not name device/{BUNDLED_ENTRY}.itbase as {BUNDLED_ENTRY}\'s bundled base')
+    tools = guest.parent / 'ipad-guest-tools'   # what package.sh ships as Resources/guest-tools
+    inputs = tree_stamp(firmwarekit, tools, helper, args.bundled_ipsw, ROOT / 'LightTouchMac/Resources/firmware-catalog.json')
+    if blob.is_file() and record.is_file() and json.loads(record.read_text()).get('inputs') == inputs:
+        print('bundled: current')
+        return blob
+    if bundled.exists():
+        remove_tree(bundled)
+    staging = bundled / 'staging'
+    staging.mkdir(parents=True)
+    entry = catalog_entry(BUNDLED_ENTRY)
+    (bundled / 'entry.json').write_text(json.dumps(entry))
+    print(f'bundled: preparing {BUNDLED_ENTRY} with the built firmwarekit', flush=True)
+    run([firmwarekit, 'create', '--entry', bundled / 'entry.json', '--ipsw', args.bundled_ipsw, '--out', staging,
+         '--seed', BUNDLED_SEED, '--cache', bundled / 'cache', '--guest-tools', tools, '--helper', helper],
+        {k: v for k, v in env.items() if not k.startswith('LTM_')}, log)
+    lock = json.loads((staging / 'device.lock.json').read_text())
+    if str(tools.resolve()) not in json.dumps(lock):
+        raise RuntimeError(f'The built-in iPod was not prepared with the built guest tools {tools}')
+    run([firmwarekit, 'pack-base', '--base', staging, '--out', blob], env, log)
+    record.write_text(json.dumps({
+        'entry': BUNDLED_ENTRY, 'inputs': inputs, 'ipsw': str(args.bundled_ipsw), 'ipsw_sha1': entry['source']['sha1'],
+        'seed': BUNDLED_SEED, 'firmwarekit_sha256': digest(firmwarekit), 'blob_sha256': digest(blob), 'bytes': blob.stat().st_size,
+        'lock': {'tool': lock.get('tool'), 'outputs': lock.get('outputs'), 'guest_package': lock.get('guest_package')},
+    }, indent=2) + '\n')
+    remove_tree(staging)
+    remove_tree(bundled / 'cache')
+    print(f'bundled: {blob} ({blob.stat().st_size} bytes)', flush=True)
+    return blob
+
+
 def build_firmwarekit(args, log):
     """`swift build` of Packages/FirmwareKit into <output>/firmwarekit/release/firmwarekit (every in-app
     prepare needs it)."""
@@ -528,7 +584,7 @@ def package_env(args):
     return {'LTM_DSYM_DIR': str(args.output / 'dSYMs'), 'LTM_SWIFT_CHECKOUTS': ':'.join(map(str, checkouts))}
 
 
-def write_build_record(args, sources, native_root, qemu_build, guest):
+def write_build_record(args, sources, native_root, qemu_build, guest, blob):
     """build-inputs.json, which ships in the bundle: commits, digests and repo- or root-relative names only.
     The absolute paths (checkouts, build directories, IPSWs) stay in the records beside the output."""
     provenance = copy_provenance(args.output, native_root / 'native-build.json', guest.parent / 'manifest.json')
@@ -537,7 +593,8 @@ def write_build_record(args, sources, native_root, qemu_build, guest):
         'schema_version': 1, 'sources': sources,
         **({'host_architectures': list(UNIVERSAL_ARCHS)} if args.universal else {'host_architecture': 'arm64'}),
         'pin': {name: {k: v for k, v in status.items() if k != 'path'} for name, status in pin_status(args).items()},
-        'firmware': {'bootroms_sha256': {Path(name).name: digest(args.assets / name) for name in BOOTROMS}},
+        'firmware': {'bootroms_sha256': {Path(name).name: digest(args.assets / name) for name in BOOTROMS},
+                     'bundled': {'entry': BUNDLED_ENTRY, 'sha256': digest(blob)}},
         'native_build_record_sha256': provenance['native-build.json'],
         'native_build_reused': bool(args.native_build or args.native_deps),
         'qemu_rebuilt_from_sources': sources['qemu'],
@@ -620,8 +677,10 @@ PREPARE_ENTRY = 'k48ap-7B500'
 IPSW_CACHE = Path.home() / 'Library/Caches/gold.samhenri.LightTouchMac/IPSW'
 # verify: each entry is prepared by the bundled firmwarekit, then booted headless through the bundled helper,
 # dylib and usbmuxd (tests/sessions/check-sessions.py --single): lit, lockdown, AFC round trips past 16 KiB, an IPA
-# install, a clean shutdown. One entry per run; rerun --stage verify until every entry is current.
+# install, a clean shutdown. One entry per run; rerun --stage verify until every entry is current. 'built-in' is the
+# bundle's packed iPod, unpacked by the bundled firmwarekit as the app's first launch does (a fresh identity).
 VERIFY_ENTRIES = {
+    'built-in': ('ipod', None),
     'k48ap-7B500': ('ipad', None),   # --verify-ipsw
     'k48ap-8C148': ('ipad', Path.home() / 'Downloads/ipad1-ios32-feasibility/iPad1,1_4.2.1_8C148_Restore.ipsw'),
     'k48ap-7B367': ('ipad', Path.home() / 'Downloads/ipad1-ios32-feasibility/iPad1,1_3.2_7B367_Restore.ipsw'),
@@ -667,11 +726,13 @@ def check_prepare(args, log, state, app):
     entry_id = pending[0]
     board, ipsw = VERIFY_ENTRIES[entry_id]
     catalog = json.loads((app / 'Contents/Resources/firmware-catalog.json').read_text())
-    entry = next(e for e in catalog['entries'] if e['id'] == entry_id)
+    built_in = entry_id == 'built-in'
+    entry = next(e for e in catalog['entries'] if e['id'] == (BUNDLED_ENTRY if built_in else entry_id))
     ipsw = ipsw or args.verify_ipsw
     if not (ipsw and ipsw.exists()):   # else the app's IPSW cache, which names each by the catalog's sha1
         ipsw = IPSW_CACHE / f'{entry["source"].get("sha1")}.ipsw'
-    require(ipsw, f'{entry_id} IPSW for the in-bundle prepare check')
+    if not built_in:
+        require(ipsw, f'{entry_id} IPSW for the in-bundle prepare check')
     work, frames = args.output / 'prepare-check', args.output / 'verify-frames' / entry_id
 
     def clean():
@@ -685,6 +746,10 @@ def check_prepare(args, log, state, app):
         (work / 'entry.json').write_text(json.dumps(entry))
         command = [app / 'Contents/MacOS/firmwarekit', 'create', '--entry', work / 'entry.json', '--ipsw', ipsw,
                    '--out', work / 'out', '--cache', work / 'cache', '--helper', app / 'Contents/MacOS/LightTouchDevice']
+        seed = str(uuid.uuid4()).upper()
+        if built_in:
+            command = [app / 'Contents/MacOS/firmwarekit', 'unpack-base', '--blob',
+                       app / 'Contents/Resources' / catalog['bundled'][BUNDLED_ENTRY], '--out', work / 'out', '--seed', seed]
         print('+ ' + shlex.join(map(str, command)), flush=True)
         started = time.monotonic()
         with log.open('ab') as output:
@@ -701,7 +766,10 @@ def check_prepare(args, log, state, app):
             raise RuntimeError(f'In-bundle prepare of {entry_id} failed ({result.returncode}); see {log}')
         lock = json.loads((work / 'out' / events[-1]['lock']).read_text())
         bundled = str((app / 'Contents/Resources/guest-tools').resolve())
-        if bundled not in json.dumps(lock):
+        if built_in:
+            if lock['identity']['seed'] != seed or json.loads((work / 'out/identity.json').read_text())['seed'] != seed:
+                raise RuntimeError(f'The built-in iPod did not take its own identity (seed {seed}): {lock["identity"]}')
+        elif bundled not in json.dumps(lock):
             raise RuntimeError(f'Prepare did not use the bundled guest tools {bundled}')
         prepared = int(subprocess.check_output(['du', '-sk', work / 'out'], text=True).split()[0]) * 1024
         lock_base(work / 'out')
@@ -721,7 +789,7 @@ def check_prepare(args, log, state, app):
     finally:
         clean()
     passed = next((l for l in checked.stdout.splitlines() if ' passed; events ' in l), '').split(';')[0]
-    done[entry_id] = {'app': stamp, 'summary': f'prepared in {seconds:.0f} s ({prepared} bytes), boot {passed}',
+    done[entry_id] = {'app': stamp, 'summary': f'{"unpacked" if built_in else "prepared"} in {seconds:.0f} s ({prepared} bytes), boot {passed}',
                       'prepare_seconds': round(seconds), 'prepared_bytes': prepared, 'frames': str(frames)}
     save_state(args, state)
     if len(pending) > 1:
@@ -893,9 +961,10 @@ def staged(args, env, log):
         developer = prepare_developer_tools(args, env, log)
         run([firmwarekit, 'developer-audit', '--payload', developer], env, log)
         sources = sources_now(args)
-        record = write_build_record(args, sources, native_root, build, guest)
+        blob = bundled_base(args, env, log, firmwarekit, guest, product / 'Contents/MacOS/LightTouchDevice')
+        record = write_build_record(args, sources, native_root, build, guest, blob)
         inputs = tree_stamp(product, build / 'libqemu-arm.dylib', guest, guest.parent / 'ipad-guest-tools', developer, firmwarekit, SCRIPTS / 'package.sh',
-                            *(args.assets / name for name in BOOTROMS)) + args.sign_id + digest(record)
+                            *(args.assets / name for name in BOOTROMS), blob) + args.sign_id + digest(record)
         if app.is_dir() and state.get('package', {}).get('inputs') == inputs:
             print('package: current')
         else:
@@ -904,6 +973,7 @@ def staged(args, env, log):
             run(['ditto', product, app], env, log)
             env['LTM_BUILD_RECORD'] = str(record)
             env['LTM_FIRMWAREKIT'] = str(firmwarekit)
+            env['LTM_BASE_BLOB'] = str(blob)
             env.update(package_env(args))
             run(['bash', SCRIPTS / 'package.sh', app], env, log)
             state['package'] = {'app': str(app), 'inputs': inputs, 'firmwarekit': firmwarekit.is_file(),
@@ -1015,7 +1085,9 @@ def main(argv=None):
     run([firmwarekit, 'developer-audit', '--payload', developer], env, log)
     env['LTM_FIRMWAREKIT'] = str(firmwarekit)
     env.update(package_env(args))
-    build_record = write_build_record(args, sources, native_root, native_root / 'qemu-build', guest)
+    blob = bundled_base(args, env, log, firmwarekit, guest, product / 'Contents/MacOS/LightTouchDevice')
+    env['LTM_BASE_BLOB'] = str(blob)
+    build_record = write_build_record(args, sources, native_root, native_root / 'qemu-build', guest, blob)
     env['LTM_BUILD_RECORD'] = str(build_record)
     run(['bash', SCRIPTS / 'package.sh', app], env, log)
     after = {'app': source_identity(ROOT), 'qemu': source_identity(args.qemu_source),

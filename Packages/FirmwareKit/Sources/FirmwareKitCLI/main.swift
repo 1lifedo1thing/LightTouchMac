@@ -9,6 +9,8 @@
 // and leaves STAGING_DIR to the caller. Closed command pipes cannot interrupt owned cleanup.
 // --guest-tools defaults to ../Resources/guest-tools next to this executable (the app bundle's).
 //
+//   firmwarekit pack-base / unpack-base: the built-in device's blob (PreparedBase.swift)
+//
 //   firmwarekit mount  --device DIR [--volume system|data|all] [--out DIR]   (a STOPPED device only)
 //   firmwarekit export --device DIR [--volume system|data|all] [--out DIR]
 //   firmwarekit unmount --out DIR
@@ -39,6 +41,12 @@ if command == "boot-admit" {
     let lifetime = CommandLifetime(output: commandOutput) { await bootAdmissionCommand(arguments) }
     exit(await lifetime.wait())
 }
+if command == "unpack-base" {
+    let arguments = Array(args)
+    let lifetime = CommandLifetime(output: commandOutput) { await unpackBaseCommand(arguments) }
+    exit(await lifetime.wait())
+}
+if command == "pack-base" { packBaseCommand(Array(args)) }
 if command == "developer-audit" { developerAuditCommand(Array(args)) }
 if command == "developer-offer" { developerOfferCommand(Array(args)) }
 if command == "cache-prune" { cacheCommand(Array(args)) }
@@ -63,6 +71,8 @@ guard command == "create" else {
                --gl-test adds the GL fixture job to a test device
                firmwarekit mount|export --device DIR [--volume system|data|all] [--out DIR]
                firmwarekit unmount --out DIR
+               firmwarekit pack-base --base CREATE_OUTPUT --out BLOB
+               firmwarekit unpack-base --blob BLOB --out DIR --seed S   (an n72ap blob; JSON Lines, as create)
                firmwarekit verify-keys --entry ENTRY.json --ipsw IPSW
                firmwarekit fit --root MOUNTED_SYSTEM_VOLUME [--arch armv6|armv7] MACHO...
 

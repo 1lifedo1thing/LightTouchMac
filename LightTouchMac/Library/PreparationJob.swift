@@ -28,6 +28,8 @@ nonisolated final class PreparationJob: @unchecked Sendable {
         var cache: URL
         /// The preparer's stderr.
         var log: URL
+        /// A packed base (the built-in device) to unpack with an identity of its own instead of preparing `ipsw`.
+        var blob: URL? = nil
     }
 
     enum Event: Sendable, Equatable {
@@ -126,7 +128,9 @@ nonisolated final class PreparationJob: @unchecked Sendable {
             process.executableURL = request.preparer
             process.arguments = ["create", "--entry", entryFile.path, "--ipsw", request.ipsw.path, "--out", staging.path,
                                  "--seed", id.uuidString, "--helper", request.helper.path, "--cache", request.cache.path]
-            if let sibling = request.sibling {
+            if let blob = request.blob {
+                process.arguments = ["unpack-base", "--blob", blob.path, "--out", staging.path, "--seed", id.uuidString]
+            } else if let sibling = request.sibling {
                 try JSONEncoder().encode(sibling.entry).write(to: siblingFile)
                 process.arguments! += ["--sibling-entry", siblingFile.path, "--sibling-ipsw", sibling.ipsw.path]
             }

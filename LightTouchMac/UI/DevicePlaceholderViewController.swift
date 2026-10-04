@@ -118,7 +118,7 @@ final class DevicePlaceholderViewController: NSViewController {
         prepareAgain.isHidden = true
         status.isHidden = false
         switch row.state {
-        case .notDownloaded, .downloaded:
+        case .bundled, .notDownloaded, .downloaded:
             status.stringValue = row.stateDescription
             if !canDownload, let why = FirmwareJobs.shared.unavailableReason { reason.stringValue = why; reason.isHidden = false }
         case .downloading:

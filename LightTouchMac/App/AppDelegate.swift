@@ -144,6 +144,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let host = DeviceSessionHost()
         Self.sweepStorage()
         Self.adoptDevelopmentBase(catalog: host.catalog)
+        // A fresh install starts unpacking the built-in iPod and selects it (it starts once published).
+        if let bundled = FirmwareJobs.shared.prepareBundledIfFresh(sidebarSaved: UserDefaults.standard.object(forKey: SidebarList.entriesKey) != nil) {
+            host.lastSelection = bundled
+        }
         let profile = host.launchSelection?.profile ?? .iPodTouch2G
         MainMenuBuilder.install(profile: profile)
         let controller = MainWindowController(host: host, profile: profile)

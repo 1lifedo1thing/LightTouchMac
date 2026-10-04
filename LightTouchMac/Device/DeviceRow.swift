@@ -64,6 +64,8 @@ nonisolated enum DeviceRowState: Equatable, Sendable {
     case notDownloaded(bytes: Int64?)
     /// Its IPSW is in a store (downloaded or imported), not yet prepared.
     case downloaded
+    /// The app ships its prepared base (`entry.bundled`), not yet unpacked.
+    case bundled
     case downloading(fraction: Double, remaining: TimeInterval? = nil, files: Int = 1, mirror: String? = nil)
     case preparing(Preparation)
     case ready, running, stopping
@@ -120,6 +122,7 @@ nonisolated struct DeviceRow: Equatable, Sendable {
         case nil: break
         }
         if startable { return .ready }
+        if entry.bundled != nil { return .bundled }
         if downloaded { return .downloaded }
         return entry.status == .userIPSW ? .unavailable(.requiresIPSW) : .notDownloaded(bytes: entry.source.bytes)
     }
@@ -145,7 +148,7 @@ nonisolated struct DeviceRow: Equatable, Sendable {
     /// VoiceOver's words for the ring: "43%"; nil while there is no fraction yet (the ring spins).
     var progressSummary: String? { progress.map { "\(Int(($0 * 100).rounded(.down)))%" } }
 
-    /// What the sidebar shows after the title. Only what differs from the usual: a downloaded or
+    /// What the sidebar shows after the title. Only what differs from the usual: a downloaded, built-in or
     /// ready build shows nothing; one that isn't here yet shows a download glyph (its size is in VoiceOver).
     enum Accessory: Equatable, Sendable {
         /// `stopping`: an indeterminate ring (stopping, deleting).
@@ -157,7 +160,7 @@ nonisolated struct DeviceRow: Equatable, Sendable {
     var accessory: Accessory {
         switch state {
         case .notDownloaded: .notDownloaded
-        case .downloaded, .ready: .none
+        case .downloaded, .bundled, .ready: .none
         case .downloading, .preparing: .progress(progress)
         case .running: .running
         case .stopping, .deleting: .stopping
@@ -215,7 +218,7 @@ nonisolated struct DeviceRow: Equatable, Sendable {
     func spaceShortage(available: Int64) -> String? {
         let download: Int64 = if case let .notDownloaded(bytes) = state { bytes ?? 0 } else { 0 }
         let needed = download + entry.estimates.peakBytes
-        guard state == .downloaded || download > 0, needed > available else { return nil }
+        guard [.downloaded, .bundled].contains(state) || download > 0, needed > available else { return nil }
         let format = { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
         return "Not enough disk space: this needs \(format(needed)), and \(format(available)) is available."
     }
@@ -269,9 +272,9 @@ nonisolated struct DeviceRow: Equatable, Sendable {
     var primaryAction: DeviceAction? {
         switch state {
         case .ready: .start
-        case .notDownloaded, .downloaded: .downloadAndPrepare
+        case .notDownloaded, .downloaded, .bundled: .downloadAndPrepare
         case .downloading, .preparing: .cancel
-        case .error: isStartable ? .start : entry.status == .userIPSW ? .importIPSW : .downloadAndPrepare
+        case .error: isStartable ? .start : entry.status == .userIPSW && entry.bundled == nil ? .importIPSW : .downloadAndPrepare
         case .unavailable(.requiresIPSW): .importIPSW
         case .unavailable(.comingSoon), .running, .stopping, .deleting: nil
         }
@@ -281,7 +284,7 @@ nonisolated struct DeviceRow: Equatable, Sendable {
         if isError { return "Try Again" }
         return switch primaryAction {
         case .start: "Start"
-        case .downloadAndPrepare: state == .downloaded ? "Prepare" : "Download and Prepare"
+        case .downloadAndPrepare: state == .downloaded || state == .bundled ? "Prepare" : "Download and Prepare"
         case .importIPSW: "Import IPSW…"
         case .cancel: "Cancel"
         default: nil
@@ -319,6 +322,7 @@ nonisolated struct DeviceRow: Equatable, Sendable {
         case let .notDownloaded(bytes):
             bytes.map { "Not downloaded, " + ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "Not downloaded"
         case .downloaded: "Downloaded"
+        case .bundled: "Built in"
         case .downloading: "Downloading" + (progressSummary.map { ", " + $0 } ?? "…")
         case .preparing: "Preparing" + (progressSummary.map { ", " + $0 } ?? "…")
         case .ready: "Ready"
