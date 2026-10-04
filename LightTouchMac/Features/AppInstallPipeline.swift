@@ -109,7 +109,7 @@ struct AppInstallPipeline: Sendable {
             // the session's app management down with it. Transient CONNECT
             // failures still retry; see DeviceError.isTransient.
             try await withTransientRetry(attempts: 3) {
-                try await services.install(stagedPath: staged) { pct, _ in
+                try await services.install(ipa, staged: staged, bundleID: key) { pct, _ in
                     progress(pct >= 0 ? "Installing… \(pct)%" : "Installing…")
                 }
             }

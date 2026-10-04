@@ -235,6 +235,8 @@ def main():
                        help="--single iPod: explicitly retain the legacy shutdown caller for comparison")
     ap.add_argument("--launch", action="store_true", help="--single: launch the installed IPA through the app’s guest agent and verify its foreground identity")
     ap.add_argument("--reboot", action="store_true", help="--single: cold boot the same overlay and verify file/app persistence, identity and shutdown again")
+    ap.add_argument("--upgrade-ipa", type=Path, help="--single: after the install, the same bundle id at a newer version: "
+                    "it must install as an upgrade, keeping the app's data (issue #22)")
     ap.add_argument("--afc-race", type=int, metavar="N", help="--single: N boots, AFC at lockdown's first answer, then Stop (smoke.md #5)")
     ap.add_argument("--afc-race-dirty", action="store_true", help="--afc-race: install, upload and halt first, stopping mid-shutdown")
     ap.add_argument("--service-worker", help="explicit executable host-service worker (otherwise compile production sources)")
@@ -281,6 +283,8 @@ def main():
         tz = bundled_tz if os.access(bundled_tz, os.X_OK) else build_lockdown_tz(work, args.frameworks)
         cfg["single"] = {"board": args.board, "base": str(args.single), "lockdownTZ": str(tz),
                          "launch": args.launch, "reboot": args.reboot, "hostPowerGesture": args.host_power_gesture}
+        if args.upgrade_ipa:
+            cfg["single"]["upgradeIPA"] = str(args.upgrade_ipa)
         if args.afc_race:
             cfg["single"] |= {"raceBoots": args.afc_race, "raceDirty": args.afc_race_dirty}
             cfg["timeout"] = 200 * args.afc_race
@@ -373,6 +377,10 @@ def main():
         check(len(find("afc", device=d)) >= 4, f"{d}: AFC checks ran")
         inst = (find("installed", device=d) or [{}])[0]
         check(inst.get("has"), f"{d}: IPA installed ({inst.get('seconds', 0):.0f} s, attempt {inst.get('attempt')})")
+        if args.upgrade_ipa:
+            up = (find("upgraded", device=d) or [{}])[0]
+            check(not up.get("error") and up.get("after") and up.get("kept"),
+                  f"{d}: upgrade over the installed app keeps its data (now version {up.get('version')!r}): {up}")
         if args.launch:
             launches = find("launched", device=d)
             check(launches and all(e.get("via") == "agent" and not e.get("launchError") and

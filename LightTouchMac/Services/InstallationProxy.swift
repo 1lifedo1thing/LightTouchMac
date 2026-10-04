@@ -68,14 +68,37 @@ extension DeviceServices {
 
     // MARK: - Install (instproxy_install + owned idle watchdog)
 
+    /// Install `ipa`, already staged at `staged`, as a new version of an
+    /// installed `bundleID` too. 3.x and later upgrade through Install itself.
+    /// iPhone OS 2.x's installd refuses (ApplicationAlreadyInstalled), has no
+    /// Upgrade command, and has consumed the upload by then: it is sent again
+    /// and installed `replacing` the old app, which keeps the app's data.
+    func install(_ ipa: URL, staged: String, bundleID: String,
+                 progress: @escaping @Sendable (Int, String) -> Void) async throws {
+        do { try await install(stagedPath: staged, progress: progress) }
+        catch DeviceError.instproxy(.alreadyInstalled, _) {
+            let again = try await stage(ipa) { _ in }
+            defer { Task { await removeStaged(again) } }
+            try await install(stagedPath: again, replacing: bundleID, progress: progress)
+        }
+    }
+
     /// Install a staged .ipa. The owned idle watchdog is the fix for the
     /// unbounded idevice_wait_for_command_to_complete hang: with a status
     /// callback installed, errors arrive ONLY in the callback, and if installd
     /// resets mid-install nothing arrives at all — so the idle timer, not the
     /// library, is what ends the wait.
-    func install(stagedPath: String, progress: @escaping @Sendable (Int, String) -> Void) async throws {
+    ///
+    /// `replacing`: an installed app this one replaces, the way 2.x's installd
+    /// keeps an app's data across a reinstall: a documents-only archive (which
+    /// removes the app), Install, then Restore into the new app's container
+    /// (which consumes the archive).
+    func install(stagedPath: String, replacing: String? = nil,
+                 progress: @escaping @Sendable (Int, String) -> Void) async throws {
         if !local {
-            _ = try await remote(.install(stagedPath), seconds: Timeouts.installAbsolute + Timeouts.serviceProbe * 2) {
+            // Up to three guest commands (replacing), each under its own watchdog.
+            _ = try await remote(.install(stagedPath, replacing: replacing),
+                                 seconds: 3 * Timeouts.installAbsolute + Timeouts.serviceProbe * 2) {
                 if case .install(let percent, let phase) = $0 { progress(percent, phase) }
             }
             return
@@ -84,18 +107,30 @@ extension DeviceServices {
         try await DeviceGate.shared.serialized(socket: socket) {
             let cancellation = InstallCancellation()
             try await withTaskCancellationHandler {
-                let connection = try await Self.installConnection()
-                // Once the guest mutation begins, retain the gate until its
-                // existing callback watchdog finishes. Cancelling before that
-                // point closes the connection without submitting an install.
-                try await Task.detached {
-                    try Self.blockingInstall(connection: connection, cancellation: cancellation,
-                                             stagedPath: stagedPath, progress: progress)
-                }.value
+                if let id = replacing { try await Self.perform(.archiveData(id), cancellation, progress) }
+                try await Self.perform(.install(stagedPath), cancellation, progress)
+                if let id = replacing { try await Self.perform(.restore(id), cancellation, progress) }
             } onCancel: {
                 cancellation.cancel()
             }
         }
+    }
+
+    /// One installation_proxy command with a status callback.
+    nonisolated private enum Command: Sendable {
+        case install(String), archiveData(String), restore(String)
+    }
+
+    private nonisolated static func perform(_ command: Command, _ cancellation: InstallCancellation,
+                                            _ progress: @escaping @Sendable (Int, String) -> Void) async throws {
+        let connection = try await installConnection()
+        // Once the guest mutation begins, retain the gate until its
+        // existing callback watchdog finishes. Cancelling before that
+        // point closes the connection without submitting an install.
+        try await Task.detached {
+            try blockingInstall(connection: connection, cancellation: cancellation,
+                                command: command, progress: progress)
+        }.value
     }
 
     nonisolated private final class InstallCancellation: @unchecked Sendable {
@@ -192,10 +227,15 @@ extension DeviceServices {
     }
 
     nonisolated private static func blockingInstall(connection: InstallConnection,
-                                                    cancellation: InstallCancellation, stagedPath: String,
+                                                    cancellation: InstallCancellation, command: Command,
                                                     progress: @escaping @Sendable (Int, String) -> Void) throws {
         let imd = IMobileDevice.self
-        guard let installFn = imd.instproxy_install else {
+        let (function, target, clientOptions): (IMobileDevice.InstproxyOp?, String, [String: String]) = switch command {
+        case .install(let path): (imd.instproxy_install, path, [:])
+        case .archiveData(let id): (imd.instproxy_archive, id, ["ArchiveType": "DocumentsOnly"])
+        case .restore(let id): (imd.instproxy_restore, id, ["ArchiveType": "DocumentsOnly"])
+        }
+        guard let installFn = function else {
             connection.free()
             throw DeviceError.unavailable
         }
@@ -206,9 +246,9 @@ extension DeviceServices {
         let ctxPtr = Unmanaged.passRetained(ctx).toOpaque()
         // An empty ClientOptions, never none: iPhone OS 2.x's installation_proxy silently drops an Install
         // request without the key (libimobiledevice omits it for NULL options), so no status ever arrives.
-        let options = imd.encode([String: String]())
+        let options = imd.encode(clientOptions)
         defer { if let options { imd.plist_free?(options) } }
-        let ir = stagedPath.withCString { installFn(connection.client, $0, options, installCallback, ctxPtr) }
+        let ir = target.withCString { installFn(connection.client, $0, options, installCallback, ctxPtr) }
         guard ir == imd.success else {
             connection.free()
             Unmanaged<InstallContext>.fromOpaque(ctxPtr).release()

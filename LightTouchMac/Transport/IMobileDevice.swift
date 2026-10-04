@@ -117,7 +117,7 @@ nonisolated enum IMobileDevice {
     typealias Browse = @convention(c) (OpaquePointer?, OpaquePointer?, UnsafeMutablePointer<OpaquePointer?>) -> Int32
     /// (command, status, user_data) — fired on a library thread during install.
     typealias InstproxyStatusCB = @convention(c) (OpaquePointer?, OpaquePointer?, UnsafeMutableRawPointer?) -> Void
-    /// install(pkg_path,…) and uninstall(appid,…) share this signature.
+    /// install(pkg_path,…), uninstall/archive/restore(appid,…) share this signature.
     typealias InstproxyOp = @convention(c) (OpaquePointer?, UnsafePointer<CChar>?, OpaquePointer?, InstproxyStatusCB?, UnsafeMutableRawPointer?) -> Int32
     typealias StatusGetName = @convention(c) (OpaquePointer?, UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) -> Void
     typealias StatusGetPercent = @convention(c) (OpaquePointer?, UnsafeMutablePointer<Int32>) -> Void
@@ -143,6 +143,8 @@ nonisolated enum IMobileDevice {
     static let instproxy_client_free = symbol("instproxy_client_free", FreeHandle.self)
     static let instproxy_browse = symbol("instproxy_browse", Browse.self)
     static let instproxy_install = symbol("instproxy_install", InstproxyOp.self)
+    static let instproxy_archive = symbol("instproxy_archive", InstproxyOp.self)
+    static let instproxy_restore = symbol("instproxy_restore", InstproxyOp.self)
     static let instproxy_uninstall = symbol("instproxy_uninstall", InstproxyOp.self)
     static let instproxy_status_get_name = symbol("instproxy_status_get_name", StatusGetName.self)
     static let instproxy_status_get_percent_complete = symbol("instproxy_status_get_percent_complete", StatusGetPercent.self)

@@ -49,6 +49,10 @@ struct SingleConfig: Decodable {
     /// normalized point (the iPad's panel: portrait top is x 0, portrait left is y 1; the iPod's portrait screen) and
     /// screenshots tapped1-2, 3 s apart. tests/matrix.py --gl-tap opens the Harness's "GL: rotating triangle" with it.
     var tapAfterLaunch: [Double]?
+    /// The same bundle id at a newer version, installed over the first (issue #22): it must install as an upgrade,
+    /// keeping a file written into the app's data before it (judged through the agent). installd may move the data
+    /// to a fresh container UUID; the data is what an upgrade keeps.
+    var upgradeIPA: String?
 }
 
 @MainActor func runSingle(_ s: SingleConfig) async {
@@ -315,6 +319,7 @@ struct SingleConfig: Decodable {
     }
 
     if s.install != false { await install(d) }
+    if let upgrade = s.upgradeIPA { await upgradeInPlace(d, upgrade) }
     try? await Task.sleep(for: .seconds(3))
     await d.wakeForShot("installed")   // wake first: the panel may have slept during the install
     // launch() goes through the guest agent wherever it answers (judged on the frontmost app), else taps the icon.
@@ -611,4 +616,40 @@ struct SingleConfig: Decodable {
         }
         return (true, "walked \(walked.joined(separator: ", "))")
     }
+}
+
+/// installd's own record of where each app lives (iOS 2-5): the container an upgrade must keep.
+@MainActor func container(_ agent: GuestAgent, _ id: String) async -> String? {
+    guard let data = try? await agent.get("/var/mobile/Library/Caches/com.apple.mobile.installation.plist"),
+          let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+          let app = (plist["User"] as? [String: Any])?[id] as? [String: Any] else { return nil }
+    return (app["Container"] as? String) ?? (app["Path"] as? String).map { ($0 as NSString).deletingLastPathComponent }
+}
+
+/// Install `ipa` over the installed config.bundleID, as the app's install does (stage + installation_proxy).
+@MainActor func upgradeInPlace(_ d: Device, _ ipa: String) async {
+    let agent = GuestAgent(link: d.process.link, cache: GuestAgentCache())
+    var event: [String: Any] = ["device": d.name]
+    let alive = await agent.waitAlive(seconds: 30)
+    let before = alive ? await container(agent, config.bundleID) : nil
+    let marker = Data("kept across the upgrade\n".utf8)
+    var file: String?   // Documents where installd made one (not every version does before a first launch), else Library
+    for dir in ["Documents", "Library"] where file == nil {
+        guard let before else { break }
+        do { try await agent.put("\(before)/\(dir)/ltm-upgrade.txt", mode: 0o644, marker); file = "\(dir)/ltm-upgrade.txt" }
+        catch { event["markerError"] = "\(error)" }
+    }
+    event["marker"] = file ?? ""
+    do {
+        let staged = try await d.services.stage(URL(fileURLWithPath: ipa)) { _ in }
+        try await d.services.install(URL(fileURLWithPath: ipa), staged: staged, bundleID: config.bundleID) { _, _ in }
+        await d.services.removeStaged(staged)
+        event["error"] = ""
+    } catch { event["error"] = "\(error)" }
+    let apps = (try? await d.services.installedApps()) ?? []
+    event["version"] = apps.first { $0.id == config.bundleID }?.version ?? ""
+    let after = alive ? await container(agent, config.bundleID) : nil
+    event["before"] = before ?? ""; event["after"] = after ?? ""
+    if let after, let file { event["kept"] = (try? await agent.get("\(after)/\(file)")) == marker } else { event["kept"] = false }
+    emit("upgraded", event)
 }
