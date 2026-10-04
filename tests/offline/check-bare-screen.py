@@ -158,7 +158,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-bare-screen-') as tmp:
     (app / 'Resources/shell.png').symlink_to(root / 'LightTouchMac/Assets.xcassets/shell.imageset/shell_opaque.png')
     (work / 'check.swift').write_text(source)
     exe = app / 'MacOS/check'
-    sources = ['UI/DisplayView', 'Device/DeviceProfile', 'Device/DeviceProfile+Display', 'UI/DisplayMeasurements', 'UI/AttitudeIndicatorButton',
+    sources = ['UI/DisplayView', 'UI/MouseTouchPair', 'Device/DeviceProfile', 'Device/DeviceProfile+Display', 'UI/DisplayMeasurements', 'UI/AttitudeIndicatorButton',
                'UI/InlineLiveTextView', 'UI/DroppedFiles', 'UI/DropHighlight']
     subprocess.run(['swiftc', *device_runtime.swift_flags(root), '-module-cache-path', str(work / 'modules'), '-default-isolation', 'MainActor',
                     *[str(root / 'LightTouchMac' / f'{s}.swift') for s in sources], str(work / 'check.swift'), '-o', str(exe)], check=True)
