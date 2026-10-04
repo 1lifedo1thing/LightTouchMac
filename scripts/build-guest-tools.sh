@@ -1,8 +1,12 @@
 #!/bin/bash
-# Build the package's guest payloads without writing into the QEMU checkout.
+# Build the package's guest payloads: a thin caller of qemu-ios contrib/export-guest-artifacts.sh, the
+# emulator repository's export (the recipes live there; this script only resolves the checkout and the SDKs).
 # Usage: ARMV6_SDK=/path/to/iPhoneOS3.1.3.sdk build-guest-tools.sh NEW-WORK-DIRECTORY
-# QEMU_IOS_DIR selects the source checkout; LDID selects the existing signer.
-# The flat output directory is NEW-WORK-DIRECTORY/guest-tools.
+# QEMU_IOS_DIR selects the source checkout (default: the pin, scripts/sources.py); IPAD_SDK the iPhoneOS3.2.sdk;
+# LDID the existing signer. The export writes NEW-WORK-DIRECTORY/guest-tools (the flat iPod set the app uploads),
+# NEW-WORK-DIRECTORY/ipad-guest-tools (the flat directory firmwarekit reads: helpers, the public OpenGLES front end and the 1.x front end
+# OpenGLES-1x with gles-names.h, armv6.itpack and armv7.itpack) and manifest.json (source commit, dirty flag, sha256 per input and output),
+# which build-release.py validates. Nothing is written into the checkout.
 set -euo pipefail
 
 fail() { echo "build-guest-tools: $*" >&2; exit 1; }
@@ -10,169 +14,17 @@ if [ "$#" -ne 1 ]; then
     fail "usage: ARMV6_SDK=/path/to/iPhoneOS3.1.3.sdk $0 NEW-WORK-DIRECTORY"
 fi
 ROOT="$1"
-SCRIPT="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
-QEMU="${QEMU_IOS_DIR:-$(dirname "$(dirname "$SCRIPT")")/../qemu-ios}"
-SDK="${ARMV6_SDK:-}"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+QEMU="$(python3 "$HERE/sources.py" qemu-ios)"
+EXPORT="$QEMU/contrib/export-guest-artifacts.sh"
 [ ! -e "$ROOT" ] && [ ! -L "$ROOT" ] || fail "use a new build directory: $ROOT"
-[ -n "$SDK" ] || fail "set ARMV6_SDK to the iPhoneOS3.1.3.sdk directory"
-for input in usr/include/stdio.h usr/lib/libSystem.dylib; do
-    [ -f "$SDK/$input" ] || fail "missing SDK input: $SDK/$input"
-done
-for tool in python3 xcrun file; do
-    command -v "$tool" >/dev/null || fail "required tool not found: $tool"
-done
-LDID="${LDID:-ldid}"
-command -v "$LDID" >/dev/null || fail "required guest signer not found: $LDID"
-LDID="$(command -v "$LDID")"
-export LDID
-xcrun --find clang >/dev/null
-xcrun --find ld >/dev/null
-ARMV6_SDK="$(cd "$SDK" && pwd)"
+[ -n "${ARMV6_SDK:-}" ] || fail "set ARMV6_SDK to the iPhoneOS3.1.3.sdk directory"
+[ -f "$ARMV6_SDK/usr/lib/libSystem.dylib" ] || fail "missing SDK input: $ARMV6_SDK/usr/lib/libSystem.dylib"
+[ -f "$EXPORT" ] || fail "no contrib/export-guest-artifacts.sh in $QEMU: a qemu-ios ipad1 checkout at or after the pin (build-support/sources.json)"
 export ARMV6_SDK
-
-COMPONENTS=(it-gles it-instprogress it-halt it-agent it-status it-media it-proxy it-orientation)
-[ -f "$QEMU/contrib/armv6-toolchain/armv6.sh" ] || fail "missing armv6 toolchain in $QEMU"
-for component in "${COMPONENTS[@]}"; do
-    [ -f "$QEMU/contrib/$component/build.sh" ] || fail "missing build recipe: $component"
+bash "$EXPORT" "$ROOT"
+# the GL front end (qemu-ios gles-public) and its name table: an older export stages the GLI shim instead
+for f in OpenGLES gles-names.h; do
+    [ -s "$ROOT/ipad-guest-tools/$f" ] || fail "the export staged no ipad-guest-tools/$f: $QEMU predates gles-public (see build-support/sources.json)"
 done
-
-mkdir -p "$(dirname "$ROOT")"
-mkdir "$ROOT"
-ROOT="$(cd "$ROOT" && pwd)"
-mkdir -p "$ROOT/src/contrib" "$ROOT/logs"
-
-# Preserve the toolchain's relative layout, copying source inputs only.
-# In particular, tracked or ignored binaries from earlier builds are not inputs.
-for component in armv6-toolchain "${COMPONENTS[@]}"; do
-    mkdir "$ROOT/src/contrib/$component"
-    for input in "$QEMU/contrib/$component/"*; do
-        case "$input" in
-            */gles_stubs.h) continue ;;
-            *.c|*.h|*.sh|*.py|*.xml|*.plist|*.entitlements|*.txt)
-                [ -f "$input" ] || continue
-                cp -p "$input" "$ROOT/src/contrib/$component/"
-                ;;
-        esac
-    done
-done
-
-# Keep the package recipe here: the component build.sh files also build probes
-# that are not shipped and should not become release prerequisites. These are
-# their existing cc6/link6 calls for the shipped payloads, using armv6.sh as-is.
-build_component() (
-    HERE="$ROOT/src/contrib/$1"
-    . "$ROOT/src/contrib/armv6-toolchain/armv6.sh"
-    case "$1" in
-        it-gles)
-            python3 "$HERE/genstubs.py" "$HERE/gles_stubs.h"
-            cc6 "$HERE/mbxshim.c" "$HERE/mbxshim.o"
-            link6 -bundle "$HERE/MBXGLEngine" "$HERE/mbxshim.o"
-            ;;
-        it-instprogress|it-halt|it-orientation)
-            case "$1" in
-                it-instprogress) name=sbdlicon ;;
-                it-halt) name=ithalt ;;
-                it-orientation) name=itorient ;;
-            esac
-            cc6 "$HERE/$name.c" "$HERE/$name.o"
-            link6 -execute "$HERE/$name" "$HERE/$name.o" -e __start
-            ;;
-        it-agent)
-            cc6 "$HERE/it_agent.c" "$HERE/it_agent.o" -isystem "$(xcrun clang -print-resource-dir)/include"
-            link6 -execute "$HERE/it_agent" "$HERE/it_agent.o"
-            "$LDID" -S"$HERE/../it-gles/sblaunch-entitlements.xml" "$HERE/it_agent"
-            cc6 "$HERE/it_typein.c" "$HERE/it_typein.o"
-            link6 -dylib "$HERE/it_typein.dylib" "$HERE/it_typein.o" -install_name /usr/lib/it_typein.dylib
-            ;;
-        it-status)
-            cc6 "$HERE/itstatus.c" "$HERE/itstatus.o"
-            link6 -execute "$HERE/itstatus" "$HERE/itstatus.o" -e _main
-            ;;
-        it-media)
-            cc6 "$HERE/itmedia.c" "$HERE/itmedia.o" -Wall -Wextra -isystem "$(xcrun clang -print-resource-dir)/include"
-            link6 -execute "$HERE/itmedia" "$HERE/itmedia.o" -e __start
-            cc6 "$HERE/itphoto.c" "$HERE/itphoto.o" -Wall -Wextra
-            link6 -execute "$HERE/itphoto" "$HERE/itphoto.o" -e __start
-            ;;
-        it-proxy)
-            for name in itproxy ittrust; do
-                cc6 "$HERE/$name.c" "$HERE/$name.o"
-                link6 -execute "$HERE/$name" "$HERE/$name.o" -e __start
-            done
-            "$LDID" -S"$HERE/ittrust.entitlements" "$HERE/ittrust"
-            ;;
-    esac
-    rm -f "$HERE/"*.o
-)
-export -f build_component
-
-# Capture the actual source snapshot before generated files appear. The final
-# record next to guest-tools/ adds output hashes for the product release driver.
-python3 - "$ROOT" "$SCRIPT" "$QEMU" "$ARMV6_SDK" "$LDID" <<'PY'
-import hashlib
-import json
-from pathlib import Path
-import sys
-
-root, script, qemu, sdk, signer = map(Path, sys.argv[1:])
-def sha256(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-record = {
-    "schema": 1,
-    "builder": {"path": str(script), "sha256": sha256(script)},
-    "qemu_source": str(qemu.resolve()),
-    "sdk": str(sdk),
-    "signer": {"path": str(signer), "sha256": sha256(signer)},
-    "source_inputs": [
-        {"path": str(path.relative_to(root / "src")), "sha256": sha256(path)}
-        for path in sorted((root / "src").rglob("*")) if path.is_file()
-    ],
-}
-(root / "guest-tools-inputs.json").write_text(json.dumps(record, indent=2) + "\n")
-PY
-
-for component in "${COMPONENTS[@]}"; do
-    echo "building guest tools: $component"
-    # A separate shell keeps `set -e` effective inside the recipe even while
-    # this caller captures failure to print the log.
-    if ! ROOT="$ROOT" bash -eu -o pipefail -c 'build_component "$1"' _ "$component" >"$ROOT/logs/$component.log" 2>&1; then
-        cat "$ROOT/logs/$component.log" >&2
-        fail "$component failed; build inputs and logs retained in $ROOT"
-    fi
-done
-
-# Publish only the app's payload set, after every build has succeeded.
-mkdir "$ROOT/guest-tools.incomplete"
-stage_payload() {
-    local input="$ROOT/src/contrib/$1/$2"
-    [ -s "$input" ] || fail "build did not produce required payload: $input"
-    cp -p "$input" "$ROOT/guest-tools.incomplete/$2"
-}
-stage_payload it-gles MBXGLEngine
-stage_payload it-instprogress sbdlicon
-stage_payload it-halt ithalt
-stage_payload it-agent it_agent
-stage_payload it-agent it_typein.dylib
-stage_payload it-agent com.qemu.it-agent.plist
-stage_payload it-status itstatus
-stage_payload it-media itmedia
-stage_payload it-media itphoto
-stage_payload it-proxy itproxy
-stage_payload it-proxy ittrust
-stage_payload it-orientation itorient
-python3 - "$ROOT" <<'PY'
-import hashlib
-import json
-from pathlib import Path
-import sys
-
-root = Path(sys.argv[1])
-record = json.loads((root / "guest-tools-inputs.json").read_text())
-record["outputs"] = [
-    {"path": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-    for path in sorted((root / "guest-tools.incomplete").iterdir())
-]
-(root / "guest-tools.json").write_text(json.dumps(record, indent=2) + "\n")
-PY
-mv "$ROOT/guest-tools.incomplete" "$ROOT/guest-tools"
 printf '\nGuest payloads ready. Package with:\nLTM_GUEST_TOOLS_DIR=%q\n' "$ROOT/guest-tools"

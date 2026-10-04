@@ -6,3 +6,8 @@ dist/
 build-package/
 __pycache__/
 *.pyc
+
+tools/activation/build/
+
+build/
+docs/matrix-results.json.lock

@@ -189,28 +189,56 @@
       "checksum_source": "https://api.github.com/repos/libimobiledevice/libtatsu/releases/tags/1.0.5 (assets[].digest, verified 2026-09-11)"
     },
     {
-      "name": "libzip",
-      "version": "1.11.4",
+      "name": "iBoot32Patcher",
+      "version": "1ff9bd14648efae691ed23ae0abb55a4635111e3",
       "groups": [
-        "static"
+        "tools"
       ],
-      "archive": "libzip-1.11.4.tar.xz",
-      "directory": "libzip-1.11.4",
-      "url": "https://libzip.org/download/libzip-1.11.4.tar.xz",
-      "sha256": "8a247f57d1e3e6f6d11413b12a6f28a9d388de110adc0ec608d893180ed7097b",
-      "checksum_source": "SHA-256 calculated from this official HTTPS archive on 2026-09-11."
+      "archive": "iBoot32Patcher-1ff9bd14648efae691ed23ae0abb55a4635111e3.tar.gz",
+      "directory": "iBoot32Patcher-1ff9bd14648efae691ed23ae0abb55a4635111e3",
+      "url": "https://github.com/LukeZGD/iBoot32Patcher/archive/1ff9bd14648efae691ed23ae0abb55a4635111e3.tar.gz",
+      "sha256": "8e6740aa1a248af8cf26aa7af1d785dbc089c67f510db282cc4c9dd529d4cb2f",
+      "license": "GPL-3.0-or-later",
+      "checksum_source": "SHA-256 calculated from this GitHub archive on 2026-09-28. LukeZGD's fork (the one Legacy-iOS-Kit ships), master of 2026-09-14. firmwarekit runs it as a separate process (K48IBoot.patchIBoot) for the k48 iboot recipe. Built with build-support/patches/iBoot32Patcher-ltm.patch (word-aligned xref matches only, smoke #48); K48IBootTests checks its output byte-for-byte against the Legacy-iOS-Kit v25.09.01 binary on every k48 build that binary patches."
     },
     {
-      "name": "ideviceinstaller",
-      "version": "1.2.0",
+      "name": "ZIPFoundation",
+      "version": "0.9.20",
       "groups": [
-        "static"
+        "swiftpm"
       ],
-      "archive": "ideviceinstaller-1.2.0.tar.bz2",
-      "directory": "ideviceinstaller-1.2.0",
-      "url": "https://github.com/libimobiledevice/ideviceinstaller/releases/download/1.2.0/ideviceinstaller-1.2.0.tar.bz2",
-      "sha256": "26115288e50d003bbb7d23c05441c54ea69b255974303bfd44fef6943e042f94",
-      "checksum_source": "https://api.github.com/repos/libimobiledevice/ideviceinstaller/releases/tags/1.2.0 (assets[].digest, verified 2026-09-11)"
+      "archive": "ZIPFoundation-0.9.20.tar.gz",
+      "directory": "ZIPFoundation-0.9.20",
+      "url": "https://github.com/weichsel/ZIPFoundation/archive/refs/tags/0.9.20.tar.gz",
+      "sha256": "3ddad93f81480d141f15d9b8bdc276a21c5242446c179672c2e787799a423b5e",
+      "license": "MIT",
+      "checksum_source": "SHA-256 calculated from this GitHub archive on 2026-09-28. Pinned exact in Packages/FirmwareKit/Package.swift (SwiftPM fetches it; this record is the license and provenance ledger). FirmwareKit's IPSWArchive reads IPSW members through it."
+    },
+    {
+      "name": "MachOKit",
+      "version": "0.53.0",
+      "groups": [
+        "swiftpm"
+      ],
+      "archive": "MachOKit-0.53.0.tar.gz",
+      "directory": "MachOKit-0.53.0",
+      "url": "https://github.com/p-x9/MachOKit/archive/refs/tags/0.53.0.tar.gz",
+      "sha256": "f99e68647cd65664740780e6777441c3cd55ff434bbf5bfdde5dfc33132f9aed",
+      "license": "MIT",
+      "checksum_source": "SHA-256 calculated from this GitHub archive on 2026-09-28. Pinned exact in Packages/FirmwareKit/Package.swift. FirmwareKit's guest-helper checks (MachOSignature: thin/fat headers, load commands, LC_CODE_SIGNATURE) go through it; the dyld_v1 shared-cache reader stays FirmwareKit's own (MachOKitProbeTests says why)."
+    },
+    {
+      "name": "swift-subprocess",
+      "version": "1.0.0",
+      "groups": [
+        "swiftpm"
+      ],
+      "archive": "swift-subprocess-1.0.0.tar.gz",
+      "directory": "swift-subprocess-1.0.0",
+      "url": "https://github.com/swiftlang/swift-subprocess/archive/refs/tags/1.0.0.tar.gz",
+      "sha256": "16dccc16e162f043999078fc8be36938ef723188518d3d4d9f734775bb593c8d",
+      "license": "Apache-2.0",
+      "checksum_source": "SHA-256 calculated from this GitHub archive on 2026-09-28. Pinned exact in Packages/FirmwareKit/Package.swift (the app pins the same version through Xcode). FirmwareKit's DiskImage runs diskutil/hdiutil through it."
     }
   ]
 }

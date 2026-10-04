@@ -1,0 +1,209 @@
+// Created by Sam on 2026-08-06.
+//
+// Push instead of poll. iOS 3.1.3 already has notification_proxy, and it
+// publishes application_installed / application_uninstalled — so the sidebar
+// can be told the moment something changes on the device instead of asking
+// every few seconds. The np symbols were loaded for exactly this and had gone
+// unused; this is the consumer.
+//
+// Stock install/uninstall notifications refresh promptly. The inspector's
+// existing service poll also reads the Home screen layout, for which these
+// older SpringBoard versions publish no notification.
+
+import Foundation
+
+/// A long-lived notification_proxy session. One per device; `start` is
+/// idempotent and the watcher re-establishes itself if the link drops.
+@MainActor
+final class NotificationProxy {
+
+    /// What the guest actually publishes on 3.1.3.
+    ///
+    /// nonisolated, like everything else the session touches: `observeOnce`
+    /// runs on a detached thread and the C callback on libimobiledevice's own,
+    /// so none of this may be main-actor bound.
+    nonisolated private static let observed = [
+        "com.apple.mobile.application_installed",
+        "com.apple.mobile.application_uninstalled",
+    ]
+
+    private var running = false
+    private let endpoint: HostServiceEndpoint
+    /// Held so the watcher can actually be stopped. This used to be
+    /// bare `Task.detached`s with nothing retaining them, so `Task.isCancelled`
+    /// was never true and the loops ran for the life of the process — the
+    /// blocking one parked on a cooperative-pool thread, which is core-count
+    /// sized and shared with every other async task in the app.
+    private var watcher: Task<Void, Never>?
+    /// Handed to the C callback; retained for the session's whole life and
+    /// released only after np_client_free has joined the callback thread.
+    nonisolated private final class Sink: @unchecked Sendable {
+        let fire: @Sendable () -> Void
+        let closed: AsyncStream<Void>
+        private let continuation: AsyncStream<Void>.Continuation
+
+        init(_ fire: @escaping @Sendable () -> Void) {
+            self.fire = fire
+            (closed, continuation) = AsyncStream.makeStream()
+        }
+
+        func receive(_ notification: UnsafePointer<CChar>?) {
+            // libimobiledevice reports ProxyDeath or a failed receive by
+            // calling the notification callback with an empty string, then
+            // exits its reader thread. USB attachment can still be healthy.
+            guard let notification, notification.pointee != 0 else {
+                continuation.finish()
+                return
+            }
+            if NotificationProxy.observed.contains(String(cString: notification)) {
+                fire()
+            }
+        }
+    }
+
+    typealias Observer = @Sendable (HostServiceEndpoint, @escaping @Sendable () async -> Bool, @escaping @Sendable () -> Void) async -> Bool
+    private let observe: Observer
+
+    init(clientSocket: String, udid: String? = nil, session: UUID = DeviceServices.session,
+         observe: @escaping Observer = { endpoint, allowed, change in
+             guard await allowed() else { return false }
+             return await HostServiceWorkers.shared.observe(endpoint: endpoint, onChange: change)
+         }) {
+        self.endpoint = HostServiceEndpoint(socket: clientSocket, udid: udid, session: session)
+        self.observe = observe
+    }
+
+    /// The C callback runs on libimobiledevice's own thread. Classify the
+    /// notification and hand it off without blocking that reader.
+    nonisolated private static let callback: IMobileDevice.NpNotifyCB = { notification, userData in
+        guard let userData else { return }
+        Unmanaged<Sink>.fromOpaque(userData).takeUnretainedValue().receive(notification)
+    }
+
+    /// Only inspect host activity in `attachAllowed`; existing subscriptions
+    /// stay open during installs. The library reports loss of this specific
+    /// service, so there is no extra USB health probe to queue behind transfers.
+    func start(attachAllowed: @escaping @Sendable () async -> Bool,
+               onChange: @escaping @Sendable () -> Void) {
+        guard !running else { return }
+        running = true
+        let endpoint = self.endpoint
+        let observe = self.observe
+
+        watcher = Task {
+            // Re-establish on loss: the guest drops its services on reboot and
+            // on a USB reset, and a watcher that gave up then would leave the
+            // sidebar quietly stale for the rest of the session.
+            while !Task.isCancelled {
+                guard await attachAllowed() else {
+                    do { try await Task.sleep(for: .seconds(1)) } catch { break }
+                    continue
+                }
+                let ok = await observe(endpoint, attachAllowed, onChange)
+                // A failed attach usually means the guest is still booting;
+                // a successful session that ended means the link dropped.
+                do { try await Task.sleep(for: .seconds(ok ? 2 : 10)) } catch { break }
+            }
+        }
+    }
+
+    /// Ends the session. Called when the inspector goes away or USB does.
+    func stop() {
+        running = false
+        watcher?.cancel();  watcher = nil
+    }
+
+    deinit { watcher?.cancel() }
+
+    /// Opens one session and blocks until it dies. Returns whether it ever got
+    /// as far as observing, so the caller can back off sensibly.
+    nonisolated static func localObserveOnce(socket: String,
+                                                attachAllowed: @escaping @Sendable () async -> Bool,
+                                                onChange: @escaping @Sendable () -> Void) async -> Bool {
+        // np_client_start_service does a full lockdown handshake and start_service
+        // internally, so it goes through the gate like every other service
+        // connect. Its factory then closes lockdown; the lasting subscription
+        // uses its own service socket and does not reserve a lockdown session.
+        // A connect that lands after the deadline still has its client and
+        // retained callback context freed (openBeforeDeadline).
+        let handles: Session?
+        do {
+            handles = try await DeviceGate.shared.serialized(socket: socket) {
+                // An install may have started while this task waited for the
+                // gate. Do not introduce another handshake between its stages.
+                guard await attachAllowed() else { return nil }
+                return try await openBeforeDeadline(Timeouts.serviceProbe * 2, "notification watcher") {
+                    connect(onChange: onChange)
+                }
+            }
+        } catch {
+            return false
+        }
+        guard let handles else { return false }
+
+        // The callback runs on a thread libimobiledevice owns. Wait out here
+        // while it does — asynchronously, so no pool thread is parked — and let
+        // np_client_free join that thread before the context is released, never
+        // under it.
+        // Cancellation ends the stream wait as well. A busy install is not a
+        // disconnected notification socket, and an attached USB device is not
+        // proof that this reader thread is still alive.
+        for await _ in handles.closed { }
+        // np_client_free sends Shutdown and joins the C reader. A partial
+        // packet can leave that reader blocked; never perform the join on the
+        // main actor or release its callback context until the join completes.
+        // This independent task must run even when the watcher was cancelled.
+        await freeDetached(handles, Timeouts.serviceProbe * 2, "notification")
+        return true
+    }
+
+    /// The blocking half: open the session and arm the callback.
+    private nonisolated static func connect(onChange: @escaping @Sendable () -> Void)
+        -> Session?
+    {
+        let imd = IMobileDevice.self
+        guard imd.idevice_new != nil,
+              let start = imd.np_client_start_service,
+              let observe = imd.np_observe_notification,
+              let setCB = imd.np_set_notify_callback else { return nil }
+
+        var device: OpaquePointer?
+        guard imd.openDevice(&device) == imd.success, let device else { return nil }
+        defer { _ = imd.idevice_free?(device) }
+
+        var client: OpaquePointer?
+        guard start(device, &client, "LightTouchMac") == imd.success, let client else { return nil }
+
+        for name in observed {
+            guard name.withCString({ observe(client, $0) }) == imd.success else {
+                _ = imd.np_client_free?(client)
+                return nil
+            }
+        }
+
+        let sink = Sink(onChange)
+        let ctx = Unmanaged.passRetained(sink).toOpaque()
+        guard setCB(client, callback, ctx) == imd.success else {
+            Unmanaged<Sink>.fromOpaque(ctx).release()
+            _ = imd.np_client_free?(client)
+            return nil
+        }
+        return Session(client: client, ctx: ctx, closed: sink.closed)
+    }
+
+    /// The open session's handles. A box, because OpaquePointer is not Sendable
+    /// and these cross the gate's await.
+    nonisolated private final class Session: OpenedHandles, @unchecked Sendable {
+        let client: OpaquePointer
+        let ctx: UnsafeMutableRawPointer
+        let closed: AsyncStream<Void>
+        init(client: OpaquePointer, ctx: UnsafeMutableRawPointer, closed: AsyncStream<Void>) {
+            self.client = client; self.ctx = ctx
+            self.closed = closed
+        }
+        func free() {
+            _ = IMobileDevice.np_client_free?(client)
+            Unmanaged<Sink>.fromOpaque(ctx).release()
+        }
+    }
+}

@@ -1,0 +1,324 @@
+#!/usr/bin/env python3
+"""The old layout is erased once, and a prepared base publishes as an ordinary device.
+
+Compiles the production FirmwareCatalog, DeviceInstance, DeviceStateStorage, StorageLocations,
+PreparationJob (its static publish), LegacyState and IPALibrary with stubs, against the shipped
+catalog and a small base in the shape `firmwarekit create` makes, in a temp state dir:
+
+  fresh     no Devices/: the base, copied into Preparing/<id>/, publishes as Devices/<id>
+            with a .prepared record whose base has the boot files BootRecipe.preparedFiles wants,
+            the base locked (uchg) and identity.json 0600 and nor.bin 0444 kept
+  legacy    the old layout (State/device/<nand>-<digest>, active-<nand>.json, nandrw-<key>, a
+            legacyBundled record with a retained IPA, State/IPAs) is found; erase() keeps the
+            IPAs in the library and removes the rest (the old root with its pairing); a device
+            published afterwards is the only one.
+            With a 160 MB retained IPA and 24,000 old pages (about 260 MB), run twice: legacy-quit
+            checks what find() sees in the full layout, then exits midway (200 ms in, State/IPAs adopted; the
+            record may be gone by then on a fast host); the next run
+            resumes without asking (the .legacy-erase marker) and finishes. Both assert a main-
+            actor heartbeat (10 ms ticks, no gap over 250 ms) while erase() runs; a lone marker
+            left by a quit after the last removal resumes and clears
+  none      a state dir with only prepared records has no legacy state
+
+Also the catalog's shape: no entry ships prepared, and the first-run entry is an available build from Apple.
+"""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+import host_runtime
+from pathlib import Path
+import json, os, re, subprocess, sys, tempfile
+from firmwarekit_leaf import capacity_sources, schema_sources
+
+ROOT = Path(__file__).resolve().parents[2]
+APP = ROOT / 'LightTouchMac'
+SOURCES = ['Library/FirmwareCatalog.swift', 'Library/DeviceInstance.swift', 'Library/DeviceStateStorage.swift', 'Library/StorageLocations.swift',
+           'Library/PreparationJob.swift', 'Device/DeviceProfile.swift', 'Library/LegacyState.swift', 'Library/IPALibrary.swift',
+           'Library/IPSWStore.swift', 'Library/FirmwareDownloads.swift']
+
+catalog = json.loads((APP / 'Resources/firmware-catalog.json').read_text())
+assert not [e['id'] for e in catalog['entries'] if 'bundled' in e]
+first = next(e for e in catalog['entries'] if e['id'] == catalog['first_run'])
+assert first['status'] == 'available' and first['source']['url'].startswith('https://secure-appldnld.apple.com/'), first['id']
+hexre = re.compile(r'^[0-9a-f]+$')
+for e in catalog['entries']:
+    assert e['id'] == f"{e['board']}-{e['build']}" and e['source']['kind'] == 'ipsw', e['id']
+    assert len(e['source']['sha1']) == 40 and hexre.match(e['source']['sha1']) and e['source']['bytes'] > 0
+    assert e['status'] == 'user_ipsw' or e['source']['url'].startswith('https://'), e['id']
+    assert 'activation_hook' not in e and 'resource' not in e['source']
+
+STUBS = r'''
+import Foundation
+nonisolated enum Bundled {
+    static var stateDirectory: URL { URL(fileURLWithPath: ProcessInfo.processInfo.environment["LTM_STATE_DIR"]!) }
+    static var logsDirectory: URL { stateDirectory.appendingPathComponent("Logs") }
+}
+extension DeviceInstance {
+    nonisolated var paths: Paths { paths(state: Bundled.stateDirectory, logs: Bundled.logsDirectory) }
+}
+nonisolated func logEvent(_ message: String, _ arguments: CVarArg...) { print("  log: " + String(format: message, arguments: arguments)) }
+'''
+
+CHECK = r'''
+import Foundation
+
+func expect(_ ok: Bool, _ what: @autoclosure () -> String, line: Int = #line) {
+    if !ok { print("FAIL line \(line): \(what())"); exit(1) }
+}
+/// Ticks on the main actor every 10 ms and keeps the longest gap between ticks: `worst` in wall time (for the
+/// log) and `worstBusy` in the main thread's own CPU time. A main actor held by work burns CPU through its gap;
+/// one the host just didn't schedule (load averages of 100+) burns none, so `worstBusy` is the verdict.
+@MainActor final class Heartbeat {
+    var beats = 0, worst = 0.0, worstBusy = 0.0
+    var onBeat: () -> Void = {}
+    private var task: Task<Void, Never>?
+    private var last = Date(), lastBusy = 0.0
+    private func busy() -> Double { var t = timespec(); clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t); return Double(t.tv_sec) + Double(t.tv_nsec) / 1e9 }
+    private func gap() {
+        let now = Date(), nowBusy = busy()
+        worst = max(worst, now.timeIntervalSince(last))
+        worstBusy = max(worstBusy, nowBusy - lastBusy)
+        last = now; lastBusy = nowBusy
+    }
+    func start() {
+        last = Date(); lastBusy = busy()
+        task = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(10))
+                gap()
+                beats += 1
+                onBeat()
+            }
+        }
+    }
+    /// The gap up to now counts too: work that held the main actor until the awaited call returned never lets a tick in.
+    func stop() { gap(); task?.cancel() }
+}
+@main struct Check {
+@MainActor static func main() async throws {
+let fm = FileManager.default
+let args = CommandLine.arguments
+let catalog = try FirmwareCatalog.load(from: URL(fileURLWithPath: args[1]))
+let base = URL(fileURLWithPath: args[2])
+let state = Bundled.stateDirectory
+let entry = catalog.entry(id: "n72ap-7E18")!
+
+/// A preparation's last step: its output in Preparing/<id>/, published.
+func publishPrepared() throws -> DeviceInstance {
+    let id = UUID()
+    let staging = PreparationJob.preparing(state).appendingPathComponent(id.uuidString, isDirectory: true)
+    try StorageLocations.privateDirectory(staging.deletingLastPathComponent())
+    try fm.copyItem(at: base, to: staging)
+    return try PreparationJob.publish(staging: staging, entry: entry, id: id, state: state)
+}
+func mode(_ url: URL) -> Int { (try! fm.attributesOfItem(atPath: url.path)[.posixPermissions] as! NSNumber).intValue }
+
+switch args[3] {
+case "invalid-lock":
+    let invalid = ["{", "[]", "{\"boot_strategy\":null}", "{\"boot_strategy\":17}",
+                   "{\"boot_strategy\":false}", "{\"boot_strategy\":[]}", "{\"boot_strategy\":{}}"]
+    for json in invalid {
+        let id = UUID()
+        let staging = PreparationJob.preparing(state).appendingPathComponent(id.uuidString)
+        try StorageLocations.privateDirectory(staging.deletingLastPathComponent())
+        try fm.copyItem(at: base, to: staging)
+        let lock = staging.appendingPathComponent("device.lock.json")
+        let data = Data(json.utf8)
+        try data.write(to: lock)
+        do {
+            _ = try PreparationJob.publish(staging: staging, entry: entry, id: id, state: state)
+            expect(false, "published invalid lock: \(json)")
+        } catch let error as CocoaError {
+            expect(error.code == .fileReadCorruptFile, "wrong invalid-lock error: \(error)")
+        }
+        expect(try Data(contentsOf: lock) == data, "invalid staging lock remains intact")
+        expect(fm.fileExists(atPath: staging.appendingPathComponent("nand").path), "staging not moved")
+        expect(!fm.fileExists(atPath: DeviceInstance.directory(id, state: state).path), "no record published")
+        try fm.removeItem(at: staging)
+    }
+    print("PASS invalid-lock: malformed and non-string strategies refuse before publication")
+
+case "fresh":
+    expect(LegacyState.find(state: state, applicationSupport: nil) == nil, "a fresh state has nothing legacy")
+    expect(DeviceInstance.all(state: state).isEmpty, "no devices yet")
+    let instance = try publishPrepared()
+    let records = DeviceInstance.all(state: state)
+    expect(records == [instance] && instance.firmware == entry.id && instance.board == "n72ap", "published as the entry's device: \(records)")
+    expect(instance.base.kind == .prepared && instance.base.path == "Devices/\(instance.id.uuidString)/base", "a prepared record: \(instance.base)")
+    expect(instance.storage.writableNOR == "Devices/\(instance.id.uuidString)/nor.bin" && instance.storage.usbmuxConf == "Devices/\(instance.id.uuidString)/usbmuxd-conf", "\(instance.storage)")
+    expect(instance.identity?.udid != nil && instance.provenance?.sha256 != nil && instance.storage.key.count == 16, "identity and provenance from the lock")
+    let paths = instance.paths
+    let boot = try DeviceProfile.iPodTouch2G.preparedBoot(strategy: BootRecipe.bootStrategy(paths.base.appendingPathComponent("device.lock.json")))
+    let files = try BootRecipe.preparedFiles(base: paths.base, overlay: paths.overlay, writableNOR: paths.writableNOR, boot: boot.boot, also: boot.files)
+    expect(files.boot.lastPathComponent == "iBoot.bin" && fm.fileExists(atPath: files.nand.appendingPathComponent("cs0/1.page").path), "the boot files BootRecipe wants")
+    expect(files.writableNOR.map { fm.fileExists(atPath: $0.path) && mode($0) & 0o200 != 0 } == true, "a writable NOR clone on first boot")
+    expect(mode(paths.base.appendingPathComponent("identity.json")) == 0o600 && mode(paths.base.appendingPathComponent("nor.bin")) == 0o444, "modes kept")
+    expect(try DeviceStateStorage.pinOverlay(paths.overlay, toBase: instance.storage.key), "the overlay is pinned to the base")
+    expect((try? fm.removeItem(at: paths.base.appendingPathComponent("gid-blobs.bin"))) == nil, "the base is locked")
+    expect((try? fm.contentsOfDirectory(atPath: PreparationJob.preparing(state).path))?.isEmpty == true, "Preparing/ is empty afterwards")
+    expect(DeviceInstance.lockLacksActivation(paths.base.appendingPathComponent("device.lock.json")) == false, "the lock records the activation")
+    expect(!DeviceInstance.all(state: state).filter { $0.firmware == entry.id }.isEmpty, "the row is Ready: a device exists for the entry")
+    print("PASS fresh: a prepared base is published as a device")
+
+case "legacy-quit":
+    // Erase & Continue, then the app quits midway: 200 ms in, once State/IPAs is adopted
+    // (the big retained IPA is hashing, or the old trees are going). The main actor must have kept beating until then.
+    let legacy = LegacyState.find(state: state, applicationSupport: URL(fileURLWithPath: args[4]))!
+    expect(!legacy.resuming, "a first run asks")
+    // The full old layout, before anything is erased: what find() sees here must not depend on timing.
+    expect(legacy.records.count == 1 && legacy.oldRoot != nil, "the legacy record and the old root are found: \(legacy.records) \(String(describing: legacy.oldRoot))")
+    let names = Set(legacy.items.map(\.lastPathComponent))
+    expect(names.isSuperset(of: ["device", "nandrw-nand-ultimate", "snapshot-nand-ultimate", "IPAs", "app.log", "usbmuxd.pid", "session.env", "AppCache"]), "\(names)")
+    expect(!names.contains("Library") && !names.contains("Devices") && !names.contains("work") && !names.contains(".app-lock"), "the library and the devices stay: \(names)")
+    expect(DeviceInstance.all(state: state).isEmpty, "the legacy record does not decode as a device")
+    let heart = Heartbeat()
+    heart.onBeat = {
+        guard heart.beats >= 20, IPALibrary.index.values.contains(where: { $0.bundleID == "com.example.shared" }) else { return }
+        expect(fm.fileExists(atPath: LegacyState.marker(state).path) && fm.fileExists(atPath: state.appendingPathComponent("device").path),
+               "marked, and not done yet")
+        expect(heart.worstBusy < 0.25, "the main actor free: worst gap \(heart.worstBusy) s of main-thread CPU (\(heart.worst) s wall)")
+        print("PASS legacy-quit: quit midway (\(heart.beats) heartbeats, worst gap \(Int(heart.worstBusy * 1000)) ms busy, \(Int(heart.worst * 1000)) ms wall)")
+        exit(0)
+    }
+    heart.start()
+    try await legacy.erase()
+    expect(false, "the erase finished before the quit")
+
+case "legacy":
+    let legacy = LegacyState.find(state: state, applicationSupport: URL(fileURLWithPath: args[4]))!
+    expect(legacy.resuming, "the launch after the quit resumes without asking")
+    // How far the quit got depends on how fast the host hashed the retained IPA (the record may be gone
+    // already); the old trees are still here (legacy-quit checked "device"), and the rest is the erase's to finish.
+    expect(legacy.oldRoot != nil && legacy.items.contains { $0.lastPathComponent == "device" }, "what the quit left is found: \(legacy.items) \(String(describing: legacy.oldRoot))")
+    // A few hundred MB of old pages go without blocking the main actor.
+    let heart = Heartbeat()
+    heart.start()
+    let started = Date()
+    try await legacy.erase()
+    heart.stop()
+    let took = Date().timeIntervalSince(started)
+    expect(took > 0.5 && heart.worstBusy < 0.25 && heart.beats > 20,
+           "the main actor kept running: worst gap \(heart.worstBusy) s of main-thread CPU (\(heart.worst) s wall) over \(took) s, \(heart.beats) beats")
+    print("  erase: \(String(format: "%.1f", took)) s off the main actor, worst main-actor gap \(Int(heart.worstBusy * 1000)) ms busy, \(Int(heart.worst * 1000)) ms wall")
+    expect(!fm.fileExists(atPath: LegacyState.marker(state).path), "the marker goes with the erase")
+    for name in ["device", "nandrw-nand-ultimate", "snapshot-nand-ultimate", "IPAs", "app.log", "AppCache", "work/usbmuxd.pid", "work/session.env"] {
+        expect(!fm.fileExists(atPath: state.appendingPathComponent(name).path), "\(name) erased")
+    }
+    expect(!fm.fileExists(atPath: args[4] + "/LightTouchMac"), "the old root erased")
+    expect((try? fm.contentsOfDirectory(atPath: state.appendingPathComponent("Devices").path))?.isEmpty == true, "the legacy record's directory erased")
+    let kept = Set(IPALibrary.index.values.map(\.bundleID))
+    expect(kept == ["com.example.retained", "com.example.shared", "com.example.old"], "every retained IPA is in the library: \(kept)")
+    expect(fm.fileExists(atPath: state.appendingPathComponent("Library/IPAs/index.json").path), "the library index")
+    expect(LegacyState.find(state: state, applicationSupport: URL(fileURLWithPath: args[4])) == nil, "erased once: nothing legacy left")
+    // A quit after the last removal but before the marker went: the next launch finishes quietly.
+    fm.createFile(atPath: LegacyState.marker(state).path, contents: nil)
+    let leftover = LegacyState.find(state: state, applicationSupport: URL(fileURLWithPath: args[4]))
+    expect(leftover?.resuming == true && leftover?.items.isEmpty == true, "a lone marker resumes")
+    try await leftover?.erase()
+    expect(LegacyState.find(state: state, applicationSupport: URL(fileURLWithPath: args[4])) == nil, "and then nothing is left")
+    let instance = try publishPrepared()
+    expect(DeviceInstance.all(state: state).map(\.id) == [instance.id], "one device: the one prepared after the erase")
+    print("PASS legacy: the old layout goes, IPAs stay")
+
+case "none":
+    expect(LegacyState.find(state: state, applicationSupport: URL(fileURLWithPath: args[4])) == nil, "prepared records are not legacy")
+    print("PASS none: a library of prepared devices has nothing to erase")
+default: fatalError(args[3])
+}
+}
+}
+'''
+
+
+def main():
+    tmp = Path(tempfile.mkdtemp(prefix='ltm-legacy-erase-'))
+    try:
+        # A small base with the shape firmwarekit's n72 recipe makes.
+        base = tmp / 'base'
+        (base / 'nand/cs0').mkdir(parents=True)
+        (base / 'nand/cs0/1.page').write_bytes(b'\xff' * 4160)
+        for name in ('iBoot.bin', 'gid-blobs.bin'):
+            (base / name).write_bytes(b'boot')
+        (base / 'nor.bin').write_bytes(b'\x00' * 1048576)
+        (base / 'nor.bin').chmod(0o444)
+        (base / 'identity.json').write_text(json.dumps({'udid': 'a' * 40, 'seed': 'fixture'}))
+        (base / 'identity.json').chmod(0o600)
+        (base / 'device.lock.json').write_text(json.dumps({
+            'format': 1, 'entry': {'id': 'n72ap-7E18'}, 'machine': {'aes-uid': 'engine'},
+            'identity': {'udid': 'a' * 40, 'seed': 'fixture'}, 'inputs': {'activation': {'input_sha256': '0', 'output_sha256': '0'}}}))
+
+        (tmp / 'stubs.swift').write_text(STUBS)
+        (tmp / 'main.swift').write_text(CHECK)
+        subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), *schema_sources(), '-O', '-suppress-warnings', '-swift-version', '5', *capacity_sources(ROOT, tmp), '-default-isolation', 'MainActor',
+                        '-parse-as-library', '-module-cache-path', tmp / 'modules', *[APP / s for s in SOURCES], ROOT / 'Shared/DeviceLinkProtocol.swift',
+                        tmp / 'stubs.swift', tmp / 'main.swift', '-o', tmp / 'check'], check=True)
+        catalog_path = APP / 'Resources/firmware-catalog.json'
+
+        def run(case, state, support=''):
+            state.mkdir(parents=True, exist_ok=True)
+            subprocess.run([tmp / 'check', catalog_path, base, case, support], check=True, env=dict(os.environ, LTM_STATE_DIR=str(state)))
+
+        run('invalid-lock', tmp / 'invalid-lock')
+        run('fresh', tmp / 'fresh')
+
+        # The old layout: a 1.0 root, plus a multidevice state with an adopted (legacyBundled) iPod.
+        support = tmp / 'Library/Application Support'
+        old = support / 'LightTouchMac'
+        (old / 'IPAs').mkdir(parents=True)
+        (old / 'IPAs/com.example.old.ipa').write_bytes(b'old ipa')
+        (old / 'work/usbmuxd-conf').mkdir(parents=True)
+        (old / 'work/usbmuxd-conf/device.plist').write_text('paired')
+        state = support / 'gold.samhenri.LightTouchMac'
+        digest = 'b' * 64
+        (state / f'device/nand-ultimate-{digest}/cs0').mkdir(parents=True)
+        (state / f'device/nand-ultimate-{digest}/cs0/0.page').write_bytes(b'\xff' * 4160)
+        (state / 'device/active-nand-ultimate.json').write_text(json.dumps({'key': f'nand-ultimate-{digest}', 'directory': f'device/nand-ultimate-{digest}'}))
+        (state / 'nandrw-nand-ultimate/cs0').mkdir(parents=True)
+        (state / 'nandrw-nand-ultimate/nor.bin').write_bytes(b'\x00' * 16)
+        (state / 'snapshot-nand-ultimate').write_bytes(b'ram')
+        (state / 'IPAs').mkdir()
+        (state / 'IPAs/com.example.shared.ipa').write_bytes(b'shared ipa')
+        (state / 'AppCache').mkdir()
+        (state / 'app.log').write_text('events')
+        (state / 'work').mkdir()
+        (state / 'work/usbmuxd.pid').write_text('1\n')
+        (state / 'work/session.env').write_text('SOCK=x\n')
+        (state / 'work/usbmuxd-conf').mkdir()
+        (state / 'work/usbmuxd-conf/device.plist').write_text('paired')
+        (state / 'work/usbmuxd-conf/SystemConfiguration.plist').write_text('host')
+        (state / 'Library/IPAs').mkdir(parents=True)
+        (state / 'Library/IPAs/index.json').write_text('{}')
+        record = str(__import__('uuid').uuid4()).upper()
+        (state / f'Devices/{record}/IPAs').mkdir(parents=True)
+        # A few hundred MB: a retained IPA big enough that hashing it takes a while, and the old
+        # image's and overlay's pages as thousands of small files.
+        with open(state / f'Devices/{record}/IPAs/com.example.retained.ipa', 'wb') as f:
+            for _ in range(160):
+                f.write(os.urandom(1 << 20))
+        page = b'\xff' * 4160
+        for tree, count in ((state / f'device/nand-ultimate-{digest}', 18000), (state / 'nandrw-nand-ultimate', 6000)):
+            for bank in range(4):
+                (tree / f'cs{bank}').mkdir(parents=True, exist_ok=True)
+            for i in range(count):
+                (tree / f'cs{i % 4}/{i + 1}.page').write_bytes(page)
+        (state / f'Devices/{record}/device.json').write_text(json.dumps({
+            'format': 1, 'id': record, 'name': 'iPod touch', 'board': 'n72ap', 'firmware': 'n72ap-7E18', 'created': '2026-09-01T00:00:00Z',
+            'base': {'kind': 'legacyBundled', 'path': f'device/nand-ultimate-{digest}'},
+            'storage': {'key': 'nand-ultimate', 'overlay': 'nandrw-nand-ultimate', 'writableNOR': 'nandrw-nand-ultimate/nor.bin',
+                        'snapshot': 'snapshot-nand-ultimate', 'usbmuxConf': 'work/usbmuxd-conf'},
+            'legacy': {'filesRoot': '/x', 'nand': 'nand-ultimate', 'pointer': 'device/active-nand-ultimate.json'}}))
+        run('legacy-quit', state, support)
+        run('legacy', state, support)
+
+        prepared = tmp / 'prepared'
+        run('fresh', prepared)   # leaves one prepared record
+        run('none', prepared, tmp / 'nowhere')
+        print('PASS: check-legacy-erase')
+    finally:
+        subprocess.run(['chmod', '-R', 'u+w', tmp], check=False)
+        subprocess.run(['chflags', '-R', 'nouchg', tmp], check=False)
+        subprocess.run(['rm', '-rf', tmp], check=False)
+
+
+if __name__ == '__main__':
+    main()

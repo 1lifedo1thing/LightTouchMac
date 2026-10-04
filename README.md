@@ -2,364 +2,177 @@
 
 Built with use from agentic coding products.
 
-A native macOS app that boots and manages an emulated iPod touch 2G (iOS 3.1.3),
-built on a [fork of qemu-ios](https://github.com/samhenrigold/qemu-ios).
+Light Touch is a native macOS (AppKit) app that runs a library of emulated legacy iOS devices.
+The device catalog includes the **iPod touch 1G** (n45ap), **iPod touch 2G** (n72ap) and **iPad 1** (k48ap). Each device is prepared
+from a stock Apple IPSW by the bundled Swift preparer, `firmwarekit` (`Packages/FirmwareKit`), using
+the keys pinned in `LightTouchMac/Resources/firmware-catalog.json`; there are no hand-prepared images
+per firmware. Each running device is its own helper process (`LightTouchDevice`), which is the only
+thing that links the emulator.
 
-It is one of three repos that version together:
+Project status (what is done, running and left) lives in **[docs/STATUS.md](docs/STATUS.md)**. Read it
+first.
 
-| Repo | What it is |
-|------|------------|
-| [LightTouchMac](https://github.com/samhenrigold/LightTouchMac) | This app (AppKit). |
-| [qemu-ios](https://github.com/samhenrigold/qemu-ios) | The emulator, loaded as `libqemu-arm.dylib`; also the guest-side helpers the app ships. |
-| [usbmuxd-qemu](https://github.com/samhenrigold/usbmuxd-qemu) | Forked usbmuxd that carries USB between the guest and libimobiledevice. |
+## Firmwares in the catalog
 
-See [repository layout](docs/repository-layout.md) for source/input ownership
-and [macOS storage audit](docs/storage-layout.md) for runtime file locations
-and cleanup behavior.
-
-## Kernel diagnostics
-
-When kernel console logging is enabled in the emulator configuration, output is
-written to the device's `serial.log` and included in Export Diagnostics. It starts
-when XNU initializes its serial console, so the earliest kernel banner may not
-appear there.
-
-## Media import
-
-Use Apps > Import Media… or drop MP3, M4A, AAC or WAV audio, JPEG, PNG or HEIC
-photos, or MP4, M4V or QuickTime movies onto the device. Light Touch
-prepares a private copy, checks the codec and duration, and queues the upload
-with app installations. The Apps inspector opens to show preparation and queue
-progress immediately. A mixed drop imports supported files and identifies any
-omitted formats. Failed imports stay visible with Retry. The guest's
-native MusicLibrary service adds each song without replacing the existing
-library; imported tracks appear in Music.
-
-AAC, HE-AAC, MP3, Apple Lossless and PCM are accepted with one or two channels at
-8–48 kHz. Raw AAC is re-encoded as AAC-LC in an M4A container using macOS audio
-codecs; other accepted audio files keep their original bytes. Protected files
-and unsupported codecs are rejected before upload.
-Cancellation is available during preparation/upload; once “Adding to Music…”
-begins the library operation finishes. A failed/uncertain import keeps its
-staged audio, and the same staged request can be reconciled without duplication.
-Songs are identified by their prepared content, so repeating an import
-reconciles the same library entry. Artwork and playlist editing remain future work.
-
-Photos are oriented upright, reduced to at most 2048 pixels on the longest
-edge and converted to baseline JPEG; transparent areas become white. The guest
-adds them through its native Saved Photos API, generating its own thumbnails.
-A persistent receipt prevents repeating a completed save or blindly replaying
-an uncertain save. Separate import jobs still create separate photos.
-
-Movies are converted by macOS with the iPod export preset (H.264 Baseline,
-up to 640 × 480 at 30 fps, with compatible audio) and added to Videos by the
-same native library service. The source is never edited. Completed conversions
-are cached privately so retries reuse exactly the same bytes and library entry.
-Protected files, multiple video tracks and incomplete conversions are rejected.
-The source and converted movie must each fit within 1 GB.
-
-The product build below compiles the shipped guest helpers from source before packaging.
-
-Validation: tests/check-media-preflight.py, tests/check-upload.py, and the
-opt-in tests/check-media-native.py. The native check compiles the production
-Swift metadata/upload/import methods, uses real AFC and an isolated guest-agent
-adapter, verifies exact bytes and quoted/Unicode metadata, and cleanly shuts
-down its guest. Add --photo to check native Saved Photos, --aac to check raw
-AAC conversion and native Music playback, or --video to check video conversion,
-the Videos library entry and duplicate reconciliation. Use --guest-tools to
-test newly built payloads before publishing them. tests/check-photo-preflight.py
-and tests/check-video-preflight.py check conversion; tests/check-media-drop.py
-checks native drop acceptance and inspector visibility, and
-tests/check-media-queue.py checks ordering, cancellation and recovery.
-
-## Battery controls
-
-Device > Battery sets the target level and automatic/forced charging state.
-iOS filters battery measurements, so the displayed estimate changes gradually.
-The settings also apply at the next boot. Drain accepts 0–100 percent per
-emulated minute; 0 disables it. Pausing freezes drain. USB power also freezes
-drain unless charging is set to Not Charging. Disconnect USB in the same panel
-for normal discharge; iOS can defer voltage measurements while USB is connected
-and charging is forced off. Installation and media sync need USB connected.
-USB reconnects when the device restarts.
-
-## Building and packaging
-
-The product build supports macOS 14 or later, on Apple Silicon by default or
-as a universal app for Intel too (see `--universal` below). Firmware stays
-inside the app in this phase: users do not need to import an IPSW or boot ROM.
-
-Install Xcode and the build tools: Python 3.12 (with QEMU's `distlib`
-prerequisite), Meson, Ninja, pkg-config, CMake, autotools/libtool, and `ldid`.
-Guest helpers also require your locally installed iPhoneOS 3.1.3 SDK. The SDK
-and firmware are external inputs; the scripts do not download or redistribute
-an SDK. An old `qemu-ios-deps12` prefix is no longer required.
-
-With the app, QEMU and usbmuxd-qemu checkouts as siblings, and the existing
-`qemu-ios-files` folder alongside them, build the complete package with:
+The shared [firmware catalog](LightTouchMac/Resources/firmware-catalog.json) is the source of truth for
+builds, availability, keys and preparation recipes. The CLI reads that same catalog:
 
 ```sh
-python3 scripts/build-release.py \
-  --output .build/releases/local-1 \
-  --sdk /path/to/iPhoneOS3.1.3.sdk
+firmwarekit create --catalog LightTouchMac/Resources/firmware-catalog.json \
+  --id k48ap-7B500 --ipsw /path/to/stock.ipsw --out /path/to/new-device \
+  --helper /path/to/LightTouchDevice --guest-tools /path/to/ipad-guest-tools
 ```
 
-The output directory must be new. This command builds the pinned native
-libraries/client tools, QEMU, the shipped guest helpers and the Release app,
-then packages and ad-hoc signs a fresh copy. It produces `Light Touch.app`,
-`LightTouchMac.zip`, checksums, a bundle inventory, input/provenance records
-and a build log. Generated sources, intermediate outputs and DerivedData stay
-under the selected output directory. It never searches arbitrary DerivedData
-folders for an app, consumes an older built app, or selects whichever NAND
-happens to exist.
+Catalog availability is distinct from measured acceptance. The six-device boot and persistence
+matrix and current fidelity limits are recorded in [docs/fidelity-consolidation.md](docs/fidelity-consolidation.md).
 
-`qemu-ios-files/nand-current` is a symlink to the shipping NAND image. The
-release build, the app when run from Xcode, and the regression tests all
-default to it, so they use the same image. To move everything to a new image,
-repoint the link (`ln -sfn nand-agent-v5 nand-current`); the app's development
-state follows the real image name, so a repointed link starts a fresh device
-rather than reusing the old image's overlay. `--nand NAME` selects another
-existing page directory under `--assets`. The selected firmware is packaged
-without modifying the original files or the user's active device state.
-Use `--plan` to validate and inspect the selected inputs without writing.
+## The three repositories
 
-All source locations can be supplied explicitly:
+| Repo | What it is | How this app uses it |
+|---|---|---|
+| [LightTouchMac](https://github.com/samhenrigold/LightTouchMac) | This app, the per-device helper, the Swift preparer, the app tests, the product build | — |
+| [qemu-ios](https://github.com/samhenrigold/qemu-ios) (fork; branch `ipad1` carries both boards) | The emulator (`hw/arm/ipod_touch_*.c`, `hw/arm/ipad1.c`, `hw/arm/s5l8930_*.c`), the guest tools under `contrib/` (agent, GL shims, AppSync, guest packages), Python format inspection tools and frozen bake references, and the emulator gates under `tests/` | Pinned by commit in `build-support/sources.json`. Linked by the helper as `libqemu-arm.dylib` (`contrib/macos-app/make-dylib-macos.sh`); its `contrib/export-guest-artifacts.sh` builds and stages the guest tools, GL tables, entitlements and headers with a manifest, and `scripts/build-guest-tools.sh` is a thin caller of it |
+| [usbmuxd](https://github.com/samhenrigold/usbmuxd) (fork, branch `idle-poll` on `qemu-zlp`) | The usbmuxd that bridges the emulated USB device to libimobiledevice | Built into the bundle from the commit pinned in `build-support/sources.json`; the emulator and this fork ship together, so bump both pins in one commit |
+
+The emulator side's own entry point is qemu-ios `README.md`; its iPod capabilities doc is
+`docs/capabilities.md` and its iPad entry is `docs/ipad1/README.md`.
+
+## Building
+
+Open `LightTouchMac.xcodeproj` in Xcode and build the `LightTouchMac` scheme. The project has no shell
+build phases: an Xcode build compiles the app and the helper, nothing else.
+
+Debug and Release share `Configuration/Shared.xcconfig`, which expects a qemu-ios checkout and a build
+directory holding `libqemu-arm.dylib`:
+
+```
+QEMU_IOS_DIR   = $(HOME)/Developer/qemu-ios-ipad1        # headers: contrib/ios-app, contrib/macos-app; helper entitlements
+QEMU_BUILD_DIR = $(QEMU_IOS_DIR)/build-w1-native          # libqemu-arm.dylib the helper links and loads
+```
+
+These two lines repeat **the pin**, `build-support/sources.json`: the qemu-ios commit (branch `ipad1`; the
+iPod-only branch's dylib lacks the iPad exports the helper links), its expected checkout path and development
+build directory, and the usbmuxd commit; iBoot32Patcher is pinned in `build-support/dependencies.json`.
+`scripts/sources.py` resolves the pin for every script and check (`sources.py qemu-ios | usbmuxd | qemu-build`,
+`sources.py check` for pinned vs actual; `QEMU_IOS_DIR`, `USBMUXD_SOURCE_DIR` and `QEMU_BUILD_DIR` override),
+and `tests/release/test-release.py` checks that the xcconfig agrees with it. To produce the dylib, build
+`qemu-system-arm` in that checkout and run `contrib/macos-app/make-dylib-macos.sh BUILD_DIR`.
+
+Development knobs: `LTM_FIRMWAREKIT=/path/to/firmwarekit` makes a Debug app run that preparer instead of
+the bundled one (for example `swift build` output from `Packages/FirmwareKit`); `LTM_STATE_DIR=/dir`
+keeps all writable state and logs inside one directory.
+
+The product build is `scripts/build-release.py` (see its `--help`). Its resumable `--stage` pipeline is
+`native, qemu, dylib, guest, app, package, notarize, staple, verify`. Its `--qemu-source` and `--usbmuxd-source`
+default to the pin; it records pinned vs actual commits in `build-inputs.json` and refuses a Developer ID build
+whose checkout is not at the pinned commit unless `--allow-unpinned` (an ad-hoc build only records it). The
+guest stage runs qemu-ios's export and validates the staged tree against its `manifest.json` (every file at its
+hash, the names the app and firmwarekit need, the catalog's GL tables, the sources unchanged). Dependency
+archives are pinned in `build-support/dependencies.json`. Firmware and the iPhoneOS SDK are external inputs;
+nothing downloads or redistributes them.
+
+The product build supports macOS 14 or later, on Apple Silicon by default or as a universal app for Intel
+too: add `--universal`. The build still runs on an Apple Silicon Mac: it cross-compiles every native
+dependency and QEMU a second time for x86_64 (`LTM_ARCH=x86_64`), keeps one complete native root per
+architecture under `native/arm64` and `native/x86_64`, merges them into `native-universal/` with
+`scripts/merge-native.py`, and builds the app with both slices. The x86_64 FFmpeg build uses NASM for its
+decoder assembly. With `--native-build`, pass the directory that holds the `arm64` and `x86_64` roots.
+
+The pre-multi-device README, with the iPod feature notes (media import, battery, proxy, captures) and
+the older build walkthrough, is kept at `docs/archive/README-2026-09-26.md`.
+
+## Gates
+
+One runner, three tiers, and a wrapper that runs the host-only ones:
 
 ```sh
-python3 scripts/build-release.py \
-  --output .build/releases/local-2 \
-  --qemu-source /path/to/qemu-ios \
-  --usbmuxd-source /path/to/usbmuxd \
-  --assets /path/to/qemu-ios-files --nand nand-agent-v4 \
-  --sdk /path/to/iPhoneOS3.1.3.sdk
+tests/run.py offline            # no emulator, about a minute: every tests/offline/check-*.py (swiftc on the app's
+                                # sources plus temp fixtures) and the catalog checks, -j 4 through one shared
+                                # module cache
+tests/run.py release            # packaging and build checks (tests/release/); --network adds the dependency fetch
+tests/run.py sessions           # helper + emulator, one boot at a time, -audio driver=none: check-helper-boot,
+                                # check-sessions (--ipad-device, then --guest), check-guest-package,
+                                # check-activation-gate, check-boot-deadline, check-files-native, check-media-native
+scripts/gate.sh --quick         # swift test (Packages/FirmwareKit) + offline + release
+scripts/gate.sh --full          # quick + sessions
 ```
 
-Add `--universal` to also build for Intel Macs. The build still runs on an
-Apple Silicon Mac: it cross-compiles every native dependency and QEMU a second
-time for x86_64 (`LTM_ARCH=x86_64`), keeps one complete native root per
-architecture under `native/arm64` and `native/x86_64`, merges them with
-`scripts/merge-native.py`, and builds the app with both slices. The x86_64
-FFmpeg build uses NASM for its decoder assembly. With `--native-build`, pass
-the directory that holds the `arm64` and `x86_64` roots.
+`--only NAME` runs a subset. One line per check (PASS, FAIL, SKIP with the reason, XFAIL for a check
+`tests/run.py` lists as known failing on today's code, XPASS once it passes again); non-zero exit only on
+FAIL; every log under the printed directory. The sessions tier's inputs (`QEMU_IOS_DIR`, the helper's dylib,
+the iPad and iPod device directories, the armv6 package) are documented in `tests/run.py`; a check whose
+input is missing is SKIP with the path it wanted; `--require-inputs` makes a selected skip fail acceptance. Every script resolves the qemu-ios and usbmuxd checkouts
+through `scripts/sources.py` (the pin in `build-support/sources.json`).
 
-`--usbmuxd-source` points to the actual fork's source directory (the legacy
-layout is `usbmuxd-qemu/usbmuxd`). No files from its runtime `run/conf` directory
-are packaged; the app receives an empty configuration seed and generates its
-own host identity in writable state.
+| Directory | What is there |
+|---|---|
+| `tests/offline/` | One check per topic. Each is standalone; its docstring names what it compiles and its flags. Most compile whole production files with a small fixture; the ones that still cut a section out of a hub file by marker are listed with the reason in [tests/SLICED.md](tests/SLICED.md) |
+| `tests/sessions/` | `check-sessions.py` boots two devices at once through the app's own session code (`tests/drivers/session-driver`); `--single DIR --board ipod|ipad` boots one prepared base the way the app does and is what the release verify stage runs; `--guest` runs the guest-services scenario. `check-helper-boot.py` drives the helper directly (`tests/drivers/helper-driver`). `matrix.py`, `install-durability.py` and `volume-rebuild-oracle.py` are tools run by hand (`tests/matrix.py` still works) |
+| `tests/release/` | Build and packaging checks: dependency sources, guest build, release, package, signing, package layout. `scripts/check-macho.py` and `scripts/test-glib-compat.py` stay in `scripts/` because the native recipe hash includes them |
+| `tests/drivers/`, `tests/fixtures/` | The Swift drivers the session checks compile; the fake preparer, the catalog server and the Swift fixtures the checks share |
+| `swift test --package-path Packages/FirmwareKit` | FirmwareKit's synthetic unit tests and fixed legacy reference hashes. Optional corpus tests report real skips unless `FK_TEST_CORPUS=1` or `FK_REQUIRE_FIXTURES=1` selects them; selected missing inputs fail. Format/bake oracle checks resolve qemu-ios through `FIRMWAREKIT_QEMU_IOS` |
+| `scripts/build-release.py --stage verify` | The bundled `firmwarekit` prepares each entry in `VERIFY_ENTRIES`, then `tests/sessions/check-sessions.py --single` boots it through the bundle: lit, lockdown, AFC round trips past 16 KiB, an IPA install, a clean shutdown |
 
-For subsequent builds, `--native-build PATH` reuses a native work directory
-created by the new builder and rebuilds QEMU before packaging. A complete
-`native-build.json` is required so reuse can validate the source/dependency
-inputs. `--guest-tools PATH` similarly reuses the flat `guest-tools` directory
-from the guest builder only when its recorded inputs and outputs still match.
-`--source-packages PATH` can reuse an Xcode SourcePackages cache. Local source
-changes are recorded; these records do not claim an uncommitted tree is a
-published, reproducible release revision.
+Every headless boot passes `-audio driver=none`. Nobody but Sam launches the app itself; verification is
+headless.
 
-The lower-level steps remain available:
+## Documentation
 
-```sh
-# Fresh dependency/emulator build, with its own recorded inputs.
-scripts/build-package-native.sh .build/native
-# Fresh guest-only build. Payloads appear under .build/guest/guest-tools.
-ARMV6_SDK=/path/to/iPhoneOS3.1.3.sdk scripts/build-guest-tools.sh .build/guest
-# Package an explicitly selected Release app, using declared input overrides.
-QEMU_BUILD_DIR="$PWD/.build/native/qemu-build" \
-LTM_DEPS_PREFIX="$PWD/.build/native/prefix" \
-LTM_STATIC_DEPS="$PWD/.build/native/static/prefix" \
-USBMUXD_BIN="$PWD/.build/native/build/usbmuxd/src/usbmuxd" \
-LTM_GUEST_TOOLS_DIR="$PWD/.build/guest/guest-tools" \
-  scripts/package.sh /path/to/Light\ Touch.app
-```
+Reading order for a new contributor:
 
-Dependency archive versions/hashes live in `build-support/dependencies.json`.
-`LTM_SOURCE_CACHE` selects a directory of archives to reuse after checksum
-verification; `LTM_OFFLINE=1` refuses missing archives instead of downloading.
-`LTM_JOBS` limits compiler parallelism. An explicitly supplied `LTM_STATIC_DEPS`
-can reuse a compatible prefix; its contents are recorded, and it is never
-silently selected from a private build job. `CMAKE`, `MESON`, and `QEMU_PYTHON`
-select installed build tools when they are not on the usual PATH.
+1. [docs/STATUS.md](docs/STATUS.md): what is done, running and left, with how each line was checked.
+2. This README.
+3. [docs/multi-device-plan.md](docs/multi-device-plan.md), sections "Preparer contract" and "Corrections
+   from implementation". The rest of that file is the plan as written; the corrections say what was built.
+4. [docs/storage-layout.md](docs/storage-layout.md): where device state, logs and caches live and who may
+   delete what.
+5. [docs/filesystem-f0-findings.md](docs/filesystem-f0-findings.md): the offline root-filesystem work
+   (`firmwarekit mount/export`).
+6. [docs/guest-package-bootstrap.md](docs/guest-package-bootstrap.md): versioned guest tools delivered at
+   boot, with rollback; section "P5, the app" is the app side as built.
 
-## Xcode development builds
+Also live: [docs/Command-organization.md](docs/Command-organization.md) (menus, toolbar, shortcuts),
+[docs/accelerometer-controls.md](docs/accelerometer-controls.md) (Motion menu and the accelerometer
+model), [docs/ipad-frame/README.md](docs/ipad-frame/README.md) (the stand-in iPad chrome),
+[docs/sweep/](docs/sweep/) (the 2026-09-28 consolidation surveys and plan). `docs/activation-211.md` and
+`tools/activation/` are Sam's.
 
-Debug and Release share `Configuration/Shared.xcconfig`. `QEMU_IOS_DIR` defaults
-to the sibling QEMU checkout and `QEMU_BUILD_DIR` to its existing
-`build-native14/qemu-build` directory. Override either build setting for a
-product-owned `.build/native` directory or a different checkout. Header paths,
-linkage and runtime search paths follow those settings, including paths with
-spaces. The app's macOS deployment floor is 14.4.
+`docs/archive/` holds dated correction logs and superseded plans (the pre-multi-device README, the
+`ipad1` branch's app notes, the phase-0 spikes, the September 2026 UX logs). Nothing there describes the
+current tree.
 
-The project has no shell build phases. Ordinary Xcode builds compile the app;
-they do not download dependencies, rebuild the emulator or package firmware.
-Use the explicit product builder for packaging. After emulator-only changes,
-run Ninja and `contrib/macos-app/make-dylib-macos.sh` in the selected native
-build before compiling the app in Xcode.
+## Rules
 
-## Signing and validation
+- **No Python bridge.** The app runs one preparer, the Swift `firmwarekit`, through the contract in
+  `docs/multi-device-plan.md`. qemu-ios's Python `imgtools/` is the test oracle, not a runtime.
+- **Activation is Sam's.** FirmwareKit runs it as a built-in preparation step
+  (`Packages/FirmwareKit/Sources/CActivation`, `tools/activation/`). Treat it as a black box: no
+  activation settings, no rewriting or describing its internals, no bundling of anything else.
+- **No firmware in any repo.** IPSWs, decrypted components, NAND images, SDKs and prepared devices stay
+  outside the three repositories; the app downloads or imports them on the user's Mac.
+- **Never merge into `main`** (here) or `ipod_touch_2g` (qemu-ios) without Sam's explicit go-ahead.
+  Work lives on `multidevice`, `ipad1` and per-task branches.
 
-The default package uses ad-hoc signing for local testing. Pass
-`--sign-id "Developer ID Application: …"` for your distribution identity and
-`--notary-profile PROFILE` to submit/staple through your existing notarytool
-keychain profile. No credentials are stored in the scripts. Packaging validates
-host architecture, minimum macOS version and the relocated dependency closure
-before signing, including the libraries opened dynamically by the app.
+## Layout
 
-Ad-hoc helper signatures use ordinary code signing because they have no Team
-ID. Developer ID builds enable the hardened runtime for helpers and sign their
-bundled libraries with the same identity; helper library validation stays
-enabled. Apple documents the [same-Team-ID library validation rule](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.cs.disable-library-validation).
-The signing test launches a relocated helper linked to a bundled test library.
-It can also exercise your real identity with
-`python3 scripts/test-signing.py --sign-id "Developer ID Application: …"`.
-
-Run the focused build/package checks:
-
-```sh
-python3 scripts/test-dependency-sources.py
-python3 scripts/test-guest-build.py
-python3 scripts/test-release.py
-python3 scripts/test-package.py
-python3 scripts/test-signing.py
-python3 scripts/test-glib-compat.py
-python3 tests/check-package-layout.py
-python3 tests/check-storage-lifecycle.py
-```
-
-Native builds also exercise GLib’s pipe fallback and reject unexpected weak
-imports in C helpers/libraries. A small GLib probe patch preserves SDK API
-availability annotations so a newer SDK cannot silently select `pipe2` for
-the macOS 14 deployment target. `test-glib-compat.py --native-build PATH`
-checks the resulting native artifacts as well as the compiler probe.
-
-The driver always includes firmware. Direct `package.sh` retains
-`LTM_ASSETS=none` solely for development and clears any previous device payload
-when that option is selected; it does not add a consumer import flow.
-
-## Device assets
-
-The emulator boots real iPod touch 2G firmware (bootrom, iBoot, NOR) and a
-prepared iOS 3.1.3 NAND image. These are Apple-copyrighted and are not in any
-of the three repos; a packaged app embeds your local copies from the selected
-`qemu-ios-files` input directory. The app never writes to the base image — per-user
-state (NAND overlay and snapshots) lives in
-`~/Library/Application Support/gold.samhenri.LightTouchMac`. The previous
-`LightTouchMac` directory migrates on launch; conflicting directories stop startup
-with an error so neither device is silently replaced. App, serial, usbmuxd and
-native diagnostics live in `~/Library/Logs/gold.samhenri.LightTouchMac`, with a
-bounded current and previous file for each stream. Device Logs and Export
-Diagnostics use those locations. `LTM_STATE_DIR` keeps both state and logs inside
-the supplied directory for isolated development and tests.
-
-
-### Catalog and installation reliability (2026-09-04)
-
-The Store keeps `/api/emulator/apps` for its compatibility-filtered catalog.
-“Choose Version…” uses the public versions/copy APIs; each selected copy
-is revalidated against the emulator endpoint, then checked for size and archive
-MD5 before installation. These checks do not establish runtime compatibility.
-
-Downloads run independently; only completed IPAs enter the serial device queue.
-A device/transfer failure pauses pending installs while retaining their downloaded
-files. Use “Resume Pending Installs” in the app-list context menu after the device
-responds, or cancel individual jobs. Open/Uninstall remain available during network
-downloads, but wait while a device operation is active. Store rows also expose
-Open/Uninstall for installed apps. Selection tracks stable row identities.
-
-Run the isolated checks (no QEMU or existing device state is used):
-
-```sh
-python3 tests/run-catalog-checks.py
-python3 tests/run-catalog-checks.py --ui  # also briefly presents an AppKit test sheet
-```
-
-Tilt counter-rotation now follows only the guest orientation, so a layout during
-a gesture cannot leave the screen crooked. Quit no longer attempts a UI power-off
-swipe. Native shutdown now follows SpringBoard’s launchd-coordinated `reboot2`
-path and passes actual PMU confirmation. Warm-reset storage mapping and watchdog
-command handling are corrected in QEMU; the app no longer suppresses resets.
-The `boot,restart,persist,fsck` regression passes with byte-identical markers
-and a full-volume filesystem check. A helper banner remains insufficient proof
-of shutdown.
-
-Outstanding reports: Spore’s black MPEG-4/AAC intro, silent PCM game music, missing
-video-player status bar still require further guest/emulator diagnosis. The
-status bar appeared in an isolated movie-player run, so that omission is not
-universal. Native reboot and post-media warm reset now pass. The current hardware model does not implement the video
-decoder or full AMC compressed-audio processing. These are not claimed fixed by
-the frontend changes.
-
-
-Device > Power Off shuts down the guest and leaves the window
-open. Power On cold-boots the same emulator instance. A dimmed device with a
-Sleeping or Powered Off badge distinguishes these states from an unresponsive
-frame; Wake Up uses the power button. The window subtitle follows SpringBoard's
-localized foreground app name (Home Screen when no app is foreground).
-
-For isolated development runs, `LTM_STATE_DIR=/absolute/test/path` redirects
-all writable device state, logs and usbmuxd scratch from Application Support.
-The default remains the existing user state directory.
-
-### Web and captures
-
-Device > Network > Proxy contains Use HTTP proxy and Browse the Internet Archive,
-with an optional archive date.
-The proxy is bundled: no separate server or installation is required. Dated
-browsing fetches the closest available Internet Archive capture through verified
-host HTTPS. Changes apply when the guest is awake and ready; turning off HTTP proxy restores
-its previous proxy keys and removes the device-local proxy certificate. HTTPS
-uses a built-in TLS bridge: the guest trusts a unique certificate for its own
-proxy, while the Mac verifies the real site's modern TLS connection. No Mac
-certificate installation is needed. Archive availability/rate limits and the
-old browser's JavaScript/CSS limitations still apply.
-
-Capture controls live in the customizable toolbar. Record toggles with Command-R;
-the button shows elapsed time beside Stop, then progress while saving. Command-period
-offers Discard, Stop and Save, or Cancel. Screenshots use Command-S to save,
-Shift-Command-S for Save As, Command-O to open in the selected app, and Command-C
-to copy when the iPod screen has focus. Focused Mac text keeps ordinary Copy.
-Home Screen and the portrait/landscape toggle also live in the toolbar. Hold
-Option to reverse the next rotation; Command-[ and Command-] are explicit left/right
-quarter turns. There is no floating control bar or reserved canvas space.
-Capture uses WireView's shutter and recording start/stop sounds.
-
-Capture → Capture Screen Only switches from the canvas to guest pixels and
-remembers the choice. Canvas uses ScreenCaptureKit’s
-macOS 14.4 current-process API and crops the device region, preserving the model,
-rotation, tilt, shadow, and gradient without capturing window chrome or controls.
-It does not request desktop recording permission. Screen Only preserves native
-guest pixels. Both recording modes use guest audio directly, never desktop or
-microphone audio. Canvas movies keep their initial output dimensions and fit a
-resized canvas inside them. Hiding or minimizing the app stops recording.
-
-Captures save directly to the Desktop by default. Capture > Capture Options
-contains the folder, screenshot app, copy-on-capture, Finder reveal, sound,
-Space shortcut, recovery notification, and away-reminder preferences. Space
-remains available to guest apps unless explicitly configured for capture.
-Drag the latest thumbnail to another app or Finder, or click its arrow to reveal
-the file; deleting or moving the file dismisses the thumbnail. Failed saves offer
-a new location and retain the movie if cancelled. Launch recovery saves playable
-older recordings without overwriting existing files. Help > Show Unfinished
-Recordings opens any retained files. Edit > Select Text on Screen selects guest
-text; Done or Escape returns to the live screen.
-
-Window → Show iPod Files (Command-2) opens a retained, independent file browser. Closing the
-window does not cancel its transfer. Physical Size uses reported display
-measurements and disables itself when those measurements are unavailable;
-there is no calibration. The Device menu contains automatic rotation and internet
-access. Pointer and trackpad motion remain available; controller input and
-keyboard tilt have been removed.
-
-
-Device Logs includes app events, device console output, and USB service logs.
-App events are written off the main thread with a 32 KB per-entry limit and
-one current/one previous 1 MB file. Export Diagnostics includes those files.
-Preparation, save-state, erase, and shutdown failures appear in a persistent
-status pill with Show Logs and Dismiss. Successful retries clear the matching
-status; an active storage-write failure takes priority and cannot be dismissed.
-
-Startup waits for SpringBoard readiness before enabling input and shows preparation
-progress, with a Device Logs action after 90 seconds. Component checks use one
-batched guest read; USB enumeration no longer waits a fixed ten seconds.
-
-Device → Connect to the Internet remembers the network preference for the next
-launch; explicit `--network` / `--no-network` flags override it.
+| Path | What |
+|---|---|
+| `LightTouchMac/` | The app, one directory per layer (below), plus `Resources/firmware-catalog.json` (its `first_run` names the device a first launch selects: an `available` build Apple still serves), `Assets.xcassets`, `Shim/` |
+| `LightTouchMac/Transport/` | The wire to a device and the app's logs: `IMobileDevice` (the dlopen'd libimobiledevice), `USBMux` (each device's usbmuxd), `DeviceExecution` (the serial gate, deadlines, late-handle cleanup, errors, timeouts), `NativeLogging`, `AppEventLog` |
+| `LightTouchMac/Services/` | Stock lockdown services on one device, all on `DeviceServices`' `run` kernel: `InstallationProxy`, `AFC` (staging and the Files browser), `SpringBoardServices`, `LockdownTools` (ActivationState, the lockdown-tz and lockdown-mcinstall children), `NotificationProxy` |
+| `LightTouchMac/Guest/` | The guest agent: `GuestAgent` (the wire and typed ops), `GuestServices` (media commit, trust, proxy route, respring, launch), `GuestPackage` |
+| `LightTouchMac/Library/` | What the app keeps: `DeviceInstance`, `DeviceLibrary`, `DeviceStateStorage`, `StorageLocations`, `Bundled`, `LegacyState`, `IPSWStore`, `FirmwareCatalog`, `FirmwareJobs`, `FirmwareDownloads`, `PreparationJob`, `IPALibrary`, `IPAMembers`, `AppMetadataCache` |
+| `LightTouchMac/Device/` | One running device: `DeviceProfile`, `DeviceSession`, `DeviceProcess` (its helper), `BootRecipe`, `EmulatorController` (lifecycle and input; vends `services`, `guest`, `installPipeline`), `DeviceRow`, `DeviceConnectionIssue`, `DeviceFileWatch`, `WebProxyConfiguration` |
+| `LightTouchMac/Features/` | What the app does with a device: `AppInstaller` (the per-device install and removal queue), `AppInstallPipeline`, `MediaImport` (+ `Media*`, `PreparedMedia`), `WebProxySetup`, `CaptureController` (+ recording, movie writer, canvas capture, capture preferences), `CatalogClient`/`CatalogCopy`, `DiagnosticsExport` |
+| `LightTouchMac/UI/` | Windows, views and view controllers: `MainWindowController`, the sidebar, placeholder, device and inspector view controllers, `DisplayView`, `DeviceModelView`, `DroppedFiles`, the Files, log, storage, proxy and capture panels, small controls |
+| `LightTouchMac/App/` | `main`, `AppDelegate`, `MainMenu`, `WindowRestorationPolicy`, `NetworkAccessPreference` |
+| `LightTouchDevice/` | The per-device helper: one QEMU instance, frames over IOSurface, control over the `Shared/` link, and the device's web proxy (`WebProxy` on URLSession, `WebProxyAdapters`) behind the 10.0.2.100:3128 guestfwd |
+| `Shared/` | The app–helper link (`DeviceLink`, `DeviceLinkProtocol`, `DeviceRendezvous`, the `CLink` module); `WebProxyCA`, the per-device proxy CA both sides use |
+| `Packages/FirmwareKit/` | `FirmwareKit` (IPSW → device), the `firmwarekit` CLI (`Sources/FirmwareKitCLI`), `CActivation` |
+| `scripts/` | `build-release.py` and its stages, `build-guest-tools.sh`, `package.sh`, `gate.sh`, `sources.py`, `check-macho.py`, `test-glib-compat.py`, lockdown C helpers |
+| `tests/` | `run.py` and the tiers `offline/`, `sessions/`, `release/`; `drivers/` (helper-driver, session-driver), `fixtures/` (fake-firmwarekit.py, catalog-server.py, the Swift fixtures); `SLICED.md` |
+| `build-support/` | `dependencies.json` (pinned archives) and build patches |
+| `Configuration/` | `Shared.xcconfig` |
+| `docs/` | Documentation; `docs/sweep/` surveys and plan; `docs/archive/` superseded material |
+| `spikes/` | Phase-0 spike sources (rendezvous, GL helper, two-at-once); archive material, kept for reference |
+| `tools/activation/` | Sam's activation tool (its `build/` output is ignored) |

@@ -7,16 +7,96 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1D0C0DE34000000000000002 /* DeveloperTools in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE34000000000000001; };
+		A1D0C0DE33000000000000002 /* FirmwareWire in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE33000000000000001; };
+		A1D0C0DE32000000000000063 /* HostServiceResources in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000062; };
+		A1D0C0DE32000000000000061 /* HostServiceTypes in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000060; };
+		A1D0C0DE32000000000000040 /* Services/DeviceServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000020; };
+		A1D0C0DE32000000000000041 /* Services/InstallationProxy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000021; };
+		A1D0C0DE32000000000000042 /* Services/AFC.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000022; };
+		A1D0C0DE32000000000000043 /* Services/SpringBoardServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000023; };
+		A1D0C0DE32000000000000044 /* Services/LockdownState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000024; };
+		A1D0C0DE32000000000000045 /* Services/HostServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000025; };
+		A1D0C0DE32000000000000046 /* Services/HostServiceWorkers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000026; };
+		A1D0C0DE32000000000000047 /* Services/NotificationProxy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000027; };
+		A1D0C0DE32000000000000048 /* Transport/DeviceExecution.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000028; };
+		A1D0C0DE32000000000000049 /* Transport/IMobileDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000029; };
+		A1D0C0DE32000000000000002 /* LightTouchServices in Embed Device Helper */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000001; };
+		A1D0C0DE3200000000000000C /* Subprocess in Frameworks */ = {isa = PBXBuildFile; productRef = EA17D84C3023A55900BDF83E; };
+		A1D0C0DE3100000000000021 /* StorageCapacity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3100000000000020 /* StorageCapacity.swift */; };
+		A1D0C0DE3100000000000002 /* LightTouchDevice in Embed Device Helper */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3100000000000001 /* LightTouchDevice */; };
 		EA17D84D3023A55900BDF83E /* Subprocess in Frameworks */ = {isa = PBXBuildFile; productRef = EA17D84C3023A55900BDF83E /* Subprocess */; };
 		EA17D8503023A56800BDF83E /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = EA17D84F3023A56800BDF83E /* ArgumentParser */; };
+		A1D0C0DE35000000000000003 = {isa = PBXBuildFile; productRef = A1D0C0DE35000000000000002; };
+		A1D0C0DE35000000000000004 = {isa = PBXBuildFile; productRef = A1D0C0DE35000000000000002; };
+		A1D0C0DE36000000000000003 = {isa = PBXBuildFile; productRef = A1D0C0DE36000000000000002; };
+		A1D0C0DE36000000000000004 = {isa = PBXBuildFile; productRef = A1D0C0DE36000000000000002; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		A1D0C0DE32000000000000003 = {isa = PBXContainerItemProxy; containerPortal = EA17D82A30239D9B00BDF83E; proxyType = 1; remoteGlobalIDString = A1D0C0DE32000000000000005; remoteInfo = LightTouchServices; };
+		A1D0C0DE3100000000000005 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = EA17D82A30239D9B00BDF83E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A1D0C0DE3100000000000006;
+			remoteInfo = LightTouchDevice;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A1D0C0DE3100000000000003 /* Embed Device Helper */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = Executables;
+			files = (
+				A1D0C0DE3100000000000002 /* LightTouchDevice in Embed Device Helper */,
+				A1D0C0DE32000000000000002 /* LightTouchServices in Embed Device Helper */,
+			);
+			name = "Embed Device Helper";
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		A1D0C0DE34000000000000001 /* DeveloperTools */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Packages/FirmwareKit/Sources/FirmwareKit/DeveloperTools/DeveloperTools.swift; sourceTree = SOURCE_ROOT; };
+		A1D0C0DE33000000000000001 /* FirmwareWire */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift; sourceTree = SOURCE_ROOT; };
+		A1D0C0DE32000000000000062 /* HostServiceResources */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/HostServiceResources.swift; sourceTree = SOURCE_ROOT; };
+		A1D0C0DE32000000000000060 /* HostServiceTypes */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/HostServiceTypes.swift; sourceTree = SOURCE_ROOT; };
+		A1D0C0DE32000000000000020 /* Services/DeviceServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/DeviceServices.swift; sourceTree = SOURCE_ROOT; };
+		A1D0C0DE32000000000000021 /* Services/InstallationProxy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/InstallationProxy.swift; sourceTree = SOURCE_ROOT; };
+		A1D0C0DE32000000000000022 /* Services/AFC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/AFC.swift; sourceTree = SOURCE_ROOT; };
+		A1D0C0DE32000000000000023 /* Services/SpringBoardServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/SpringBoardServices.swift; sourceTree = SOURCE_ROOT; };
+		A1D0C0DE32000000000000024 /* Services/LockdownState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/LockdownState.swift; sourceTree = SOURCE_ROOT; };
+		A1D0C0DE32000000000000025 /* Services/HostServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/HostServiceProtocol.swift; sourceTree = SOURCE_ROOT; };
+		A1D0C0DE32000000000000026 /* Services/HostServiceWorkers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/HostServiceWorkers.swift; sourceTree = SOURCE_ROOT; };
+		A1D0C0DE32000000000000027 /* Services/NotificationProxy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/NotificationProxy.swift; sourceTree = SOURCE_ROOT; };
+		A1D0C0DE32000000000000028 /* Transport/DeviceExecution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Transport/DeviceExecution.swift; sourceTree = SOURCE_ROOT; };
+		A1D0C0DE32000000000000029 /* Transport/IMobileDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Transport/IMobileDevice.swift; sourceTree = SOURCE_ROOT; };
+		A1D0C0DE32000000000000001 /* LightTouchServices */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = LightTouchServices; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1D0C0DE3100000000000020 /* StorageCapacity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Packages/FirmwareKit/Sources/FirmwareKit/StorageCapacity/StorageCapacity.swift; sourceTree = SOURCE_ROOT; };
+		A1D0C0DE3100000000000001 /* LightTouchDevice */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = LightTouchDevice; sourceTree = BUILT_PRODUCTS_DIR; };
 		EA17D83230239D9B00BDF83E /* Light Touch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Light Touch.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		EB72984030B2091100000001 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+        A1D0C0DE36000000000000005 = {isa = PBXFileSystemSynchronizedBuildFileExceptionSet; membershipExceptions = (Package.swift, DeviceLink.swift, DeviceLinkProtocol.swift, DeviceRendezvous.swift, SharedStatus.swift, DeviceSessionProcess.swift, HostInputAutomation.swift, CLink/ltm_link.c, CLink/ltm_link.h, CLink/module.modulemap); target = EA17D83130239D9B00BDF83E; };
+        A1D0C0DE36000000000000006 = {isa = PBXFileSystemSynchronizedBuildFileExceptionSet; membershipExceptions = (Package.swift, DeviceLink.swift, DeviceLinkProtocol.swift, DeviceRendezvous.swift, SharedStatus.swift, DeviceSessionProcess.swift, HostInputAutomation.swift, CLink/ltm_link.c, CLink/ltm_link.h, CLink/module.modulemap); target = A1D0C0DE3100000000000006; };
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		A1D0C0DE3200000000000000B /* LightTouchServices */ = {isa = PBXFileSystemSynchronizedRootGroup; path = LightTouchServices; sourceTree = "<group>"; };
+		A1D0C0DE3100000000000012 /* LightTouchDevice */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = LightTouchDevice;
+			sourceTree = "<group>";
+		};
+		A1D0C0DE3100000000000013 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (A1D0C0DE36000000000000005, A1D0C0DE36000000000000006);
+			path = Shared;
+			sourceTree = "<group>";
+		};
 		EA17D83430239D9B00BDF83E /* LightTouchMac */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = LightTouchMac;
@@ -25,9 +105,19 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		A1D0C0DE32000000000000007 = {isa = PBXFrameworksBuildPhase; files = (A1D0C0DE3200000000000000C); };
+		A1D0C0DE3100000000000008 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				A1D0C0DE35000000000000004,
+				A1D0C0DE36000000000000004,
+			);
+		};
 		EA17D82F30239D9B00BDF83E /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				A1D0C0DE35000000000000003,
+				A1D0C0DE36000000000000003,
 				EA17D8503023A56800BDF83E /* ArgumentParser in Frameworks */,
 				EA17D84D3023A55900BDF83E /* Subprocess in Frameworks */,
 			);
@@ -39,6 +129,12 @@
 			isa = PBXGroup;
 			children = (
 				EA17D83430239D9B00BDF83E /* LightTouchMac */,
+				A1D0C0DE3100000000000020 /* StorageCapacity.swift */,
+				A1D0C0DE33000000000000001 /* FirmwareWire */,
+				A1D0C0DE34000000000000001 /* DeveloperTools */,
+				A1D0C0DE3100000000000012 /* LightTouchDevice */,
+				A1D0C0DE3200000000000000B /* LightTouchServices */,
+				A1D0C0DE3100000000000013 /* Shared */,
 				EB72984030B2091100000002 /* Configuration */,
 				EA17D83330239D9B00BDF83E /* Products */,
 			);
@@ -48,6 +144,8 @@
 			isa = PBXGroup;
 			children = (
 				EA17D83230239D9B00BDF83E /* Light Touch.app */,
+				A1D0C0DE3100000000000001 /* LightTouchDevice */,
+				A1D0C0DE32000000000000001 /* LightTouchServices */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -63,6 +161,36 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		A1D0C0DE32000000000000005 /* LightTouchServices */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1D0C0DE32000000000000008;
+			buildPhases = (A1D0C0DE32000000000000006, A1D0C0DE32000000000000007);
+			buildRules = (); dependencies = ();
+			fileSystemSynchronizedGroups = (A1D0C0DE3200000000000000B);
+			name = LightTouchServices; productName = LightTouchServices;
+			packageProductDependencies = (EA17D84C3023A55900BDF83E);
+			productReference = A1D0C0DE32000000000000001; productType = "com.apple.product-type.tool";
+		};
+
+		A1D0C0DE3100000000000006 /* LightTouchDevice */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1D0C0DE3100000000000009 /* Build configuration list for PBXNativeTarget "LightTouchDevice" */;
+			buildPhases = (
+				A1D0C0DE3100000000000007 /* Sources */,
+				A1D0C0DE3100000000000008 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				A1D0C0DE3100000000000012 /* LightTouchDevice */,
+				A1D0C0DE3100000000000013 /* Shared */,
+			);
+			packageProductDependencies = (A1D0C0DE35000000000000002, A1D0C0DE36000000000000002);
+			name = LightTouchDevice;
+			productName = LightTouchDevice;
+			productReference = A1D0C0DE3100000000000001 /* LightTouchDevice */;
+			productType = "com.apple.product-type.tool";
+		};
 		EA17D83130239D9B00BDF83E /* Light Touch */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = EA17D83E30239D9B00BDF83E /* Build configuration list for PBXNativeTarget "Light Touch" */;
@@ -70,14 +198,22 @@
 				EA17D82E30239D9B00BDF83E /* Sources */,
 				EA17D82F30239D9B00BDF83E /* Frameworks */,
 				EA17D83030239D9B00BDF83E /* Resources */,
+				A1D0C0DE3100000000000003 /* Embed Device Helper */,
 			);
 			buildRules = (
 			);
+			dependencies = (
+				A1D0C0DE3100000000000004 /* PBXTargetDependency */,
+				A1D0C0DE32000000000000004,
+			);
 			fileSystemSynchronizedGroups = (
+				A1D0C0DE3100000000000013 /* Shared */,
 				EA17D83430239D9B00BDF83E /* LightTouchMac */,
 			);
 			name = "Light Touch";
 			packageProductDependencies = (
+				A1D0C0DE35000000000000002,
+				A1D0C0DE36000000000000002,
 				EA17D84C3023A55900BDF83E /* Subprocess */,
 				EA17D84F3023A56800BDF83E /* ArgumentParser */,
 			);
@@ -95,6 +231,9 @@
 				LastSwiftUpdateCheck = 2700;
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
+					A1D0C0DE3100000000000006 = {
+						CreatedOnToolsVersion = 27.0;
+					};
 					EA17D83130239D9B00BDF83E = {
 						CreatedOnToolsVersion = 27.0;
 					};
@@ -110,6 +249,8 @@
 			mainGroup = EA17D82930239D9B00BDF83E;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				A1D0C0DE35000000000000001,
+				A1D0C0DE36000000000000001,
 				EA17D84B3023A55900BDF83E /* XCRemoteSwiftPackageReference "swift-subprocess" */,
 				EA17D84E3023A56800BDF83E /* XCRemoteSwiftPackageReference "swift-argument-parser" */,
 			);
@@ -119,6 +260,8 @@
 			projectRoot = "";
 			targets = (
 				EA17D83130239D9B00BDF83E /* Light Touch */,
+				A1D0C0DE3100000000000006 /* LightTouchDevice */,
+							A1D0C0DE32000000000000005 /* LightTouchServices */,
 			);
 		};
 /* End PBXProject section */
@@ -132,14 +275,84 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		EA17D82E30239D9B00BDF83E /* Sources */ = {
+		A1D0C0DE32000000000000006 = {isa = PBXSourcesBuildPhase; files = (A1D0C0DE32000000000000040, A1D0C0DE32000000000000041, A1D0C0DE32000000000000042, A1D0C0DE32000000000000043, A1D0C0DE32000000000000044, A1D0C0DE32000000000000045, A1D0C0DE32000000000000046, A1D0C0DE32000000000000047, A1D0C0DE32000000000000048, A1D0C0DE32000000000000049, A1D0C0DE32000000000000061, A1D0C0DE32000000000000063); };
+		A1D0C0DE3100000000000007 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
 			);
 		};
+		EA17D82E30239D9B00BDF83E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+				A1D0C0DE3100000000000021 /* StorageCapacity.swift in Sources */,
+				A1D0C0DE33000000000000002 /* FirmwareWire in Sources */,
+				A1D0C0DE34000000000000002 /* DeveloperTools in Sources */,
+			);
+		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		A1D0C0DE32000000000000004 = {isa = PBXTargetDependency; target = A1D0C0DE32000000000000005; targetProxy = A1D0C0DE32000000000000003; };
+		A1D0C0DE3100000000000004 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A1D0C0DE3100000000000006 /* LightTouchDevice */;
+			targetProxy = A1D0C0DE3100000000000005 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		A1D0C0DE32000000000000009 = {isa = XCBuildConfiguration; name = Debug; buildSettings = {
+ MACOSX_DEPLOYMENT_TARGET = 14.4; SWIFT_VERSION = 5.0; SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+ SWIFT_APPROACHABLE_CONCURRENCY = YES; CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = SM75355Y6R;
+ ENABLE_HARDENED_RUNTIME = YES; PRODUCT_NAME = "$(TARGET_NAME)"; ENABLE_DEBUG_DYLIB = NO;
+ GENERATE_INFOPLIST_FILE = YES; OTHER_LDFLAGS = ""; }; };
+		A1D0C0DE3200000000000000A = {isa = XCBuildConfiguration; name = Release; buildSettings = {
+ MACOSX_DEPLOYMENT_TARGET = 14.4; SWIFT_VERSION = 5.0; SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+ SWIFT_APPROACHABLE_CONCURRENCY = YES; CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = SM75355Y6R;
+ ENABLE_HARDENED_RUNTIME = YES; PRODUCT_NAME = "$(TARGET_NAME)"; ENABLE_DEBUG_DYLIB = NO;
+ GENERATE_INFOPLIST_FILE = YES; OTHER_LDFLAGS = ""; }; };
+		A1D0C0DE3100000000000010 /* Debug configuration for PBXNativeTarget "LightTouchDevice" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "$(QEMU_IOS_DIR)/contrib/macos-app/entitlements.plist";
+				CODE_SIGN_STYLE = Automatic;
+				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
+				DEVELOPMENT_TEAM = SM75355Y6R;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Configuration/LightTouchDevice-Info.plist";
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "";
+				PRODUCT_BUNDLE_IDENTIFIER = gold.samhenri.LightTouchMac.LightTouchDevice;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/Shared/CLink";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A1D0C0DE3100000000000011 /* Release configuration for PBXNativeTarget "LightTouchDevice" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "$(QEMU_IOS_DIR)/contrib/macos-app/entitlements.plist";
+				CODE_SIGN_STYLE = Automatic;
+				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
+				DEVELOPMENT_TEAM = SM75355Y6R;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Configuration/LightTouchDevice-Info.plist";
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "";
+				PRODUCT_BUNDLE_IDENTIFIER = gold.samhenri.LightTouchMac.LightTouchDevice;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/Shared/CLink";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		EA17D83C30239D9B00BDF83E /* Debug configuration for PBXProject "LightTouchMac" */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = EB72984030B2091100000001 /* Shared.xcconfig */;
@@ -286,6 +499,7 @@
 				INFOPLIST_KEY_NSPrincipalClass = LightTouchApplication;
 				INFOPLIST_KEY_NSViewGestureRecognizerIsExclusive = NO;
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = gold.samhenri.LightTouchMac;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -299,6 +513,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/Shared/CLink";
 				SWIFT_OBJC_BRIDGING_HEADER = "LightTouchMac/Shim/LightTouchMac-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
@@ -331,6 +546,7 @@
 				INFOPLIST_KEY_NSPrincipalClass = LightTouchApplication;
 				INFOPLIST_KEY_NSViewGestureRecognizerIsExclusive = NO;
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = gold.samhenri.LightTouchMac;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -344,6 +560,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/Shared/CLink";
 				SWIFT_OBJC_BRIDGING_HEADER = "LightTouchMac/Shim/LightTouchMac-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
@@ -353,6 +570,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		A1D0C0DE32000000000000008 = {isa = XCConfigurationList; buildConfigurations = (A1D0C0DE32000000000000009, A1D0C0DE3200000000000000A); defaultConfigurationName = Release; };
+		A1D0C0DE3100000000000009 /* Build configuration list for PBXNativeTarget "LightTouchDevice" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1D0C0DE3100000000000010 /* Debug configuration for PBXNativeTarget "LightTouchDevice" */,
+				A1D0C0DE3100000000000011 /* Release configuration for PBXNativeTarget "LightTouchDevice" */,
+			);
+			defaultConfigurationName = Release;
+		};
 		EA17D82D30239D9B00BDF83E /* Build configuration list for PBXProject "LightTouchMac" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -390,7 +616,13 @@
 		};
 /* End XCRemoteSwiftPackageReference section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		A1D0C0DE35000000000000001 = {isa = XCLocalSwiftPackageReference; relativePath = Packages/HostRuntime; };
+		A1D0C0DE36000000000000001 = {isa = XCLocalSwiftPackageReference; relativePath = Shared; };
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
+		A1D0C0DE35000000000000002 = {isa = XCSwiftPackageProductDependency; package = A1D0C0DE35000000000000001; productName = HostRuntime; };
 		EA17D84C3023A55900BDF83E /* Subprocess */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = EA17D84B3023A55900BDF83E /* XCRemoteSwiftPackageReference "swift-subprocess" */;
@@ -401,6 +633,7 @@
 			package = EA17D84E3023A56800BDF83E /* XCRemoteSwiftPackageReference "swift-argument-parser" */;
 			productName = ArgumentParser;
 		};
+		A1D0C0DE36000000000000002 = {isa = XCSwiftPackageProductDependency; package = A1D0C0DE36000000000000001; productName = DeviceRuntime; };
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = EA17D82A30239D9B00BDF83E /* Project object */;

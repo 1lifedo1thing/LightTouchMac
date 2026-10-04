@@ -15,13 +15,15 @@
 #
 # Build compatible dependencies with scripts/build-package-native.sh first; it
 # prints the QEMU_BUILD_DIR/LTM_DEPS_PREFIX/USBMUXD_BIN settings to use here.
-# Device assets are embedded below unless LTM_ASSETS=none (development only).
+# Device assets (the SecureROMs) are embedded below unless LTM_ASSETS=none (development only).
+# LTM_DSYM_DIR: where the dSYMs of the binaries this strips go (build-release.py: <output>/dSYMs), never the bundle.
+# LTM_SWIFT_CHECKOUTS: colon-separated SwiftPM checkouts dirs (the app's, firmwarekit's) whose licenses ship.
 set -euo pipefail
 
 APP="${1:?usage: package.sh path/to/Light Touch.app (or use scripts/build-release.py)}"
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
-QEMU="${QEMU_IOS_DIR:-$SRC/../qemu-ios}"
-BUILD="${QEMU_BUILD_DIR:-$QEMU/build-native14/qemu-build}"
+QEMU="$(python3 "$SRC/scripts/sources.py" qemu-ios)"          # the pin; QEMU_IOS_DIR overrides
+BUILD="$(python3 "$SRC/scripts/sources.py" qemu-build)"       # QEMU_BUILD_DIR overrides
 DYLIB="$BUILD/libqemu-arm.dylib"
 ENTITLEMENTS="$QEMU/contrib/macos-app/entitlements.plist"
 DEPS="${LTM_DEPS_PREFIX:-$QEMU/build-native14/prefix}"
@@ -48,7 +50,8 @@ if otool -L "$APP_BIN" | grep -q '\.debug\.dylib'; then
 fi
 
 MINOS="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")"
-# Helpers built here get the same slices as the app (arm64, or arm64 + x86_64).
+# Every host Mach-O carries the app's slices (arm64, or arm64 + x86_64 from build-release.py --universal):
+# helpers built here are compiled for them, and every check requires them.
 ARCH_FLAGS=()
 CHECK_ARCHS=()
 for arch in $(lipo -archs "$APP_BIN"); do
@@ -74,7 +77,7 @@ copy_with_deps() {
     case "$COPIED" in *" $base "*) return ;; esac
     COPIED="$COPIED$base "
 
-    python3 "$CHECK" --no-weak-imports --minos "$MINOS" "$src"
+    python3 "$CHECK" --no-weak-imports --minos "$MINOS" "${CHECK_ARCHS[@]}" "$src"
     local dst="$FRAMEWORKS/$base"
     if [ "$src" != "$dst" ]; then cp -f "$src" "$dst"; chmod u+w "$dst"; fi
     install_name_tool -id "@rpath/$base" "$dst"
@@ -104,6 +107,25 @@ esac
 
 APP_BIN="$APP/Contents/MacOS/$APP_EXECUTABLE"
 
+# The per-device helper (the LightTouchDevice target, embedded by Xcode). It
+# links only system libraries and dlopens Frameworks/libqemu-arm.dylib, whose
+# closure is embedded above; its build-tree rpath is dropped below.
+DEVICE_HELPER="$APP/Contents/MacOS/LightTouchDevice"
+SERVICE_HELPER="$APP/Contents/MacOS/LightTouchServices"
+[ -f "$SERVICE_HELPER" ] || { echo "missing $SERVICE_HELPER; build the LightTouchMac scheme" >&2; exit 1; }
+python3 "$CHECK" --minos "$MINOS" "${CHECK_ARCHS[@]}" "$SERVICE_HELPER"
+[ -f "$DEVICE_HELPER" ] || { echo "missing $DEVICE_HELPER; build the LightTouchMac scheme (it embeds the helper)" >&2; exit 1; }
+python3 "$CHECK" --minos "$MINOS" "${CHECK_ARCHS[@]}" "$DEVICE_HELPER"   # Swift binaries weak-import their FORCE_LOAD markers
+# The firmware preparer (Packages/FirmwareKit's CLI), when built: hardened
+# runtime only, no entitlements. Signed with the other Contents/MacOS tools.
+FIRMWAREKIT=()
+if [ -n "${LTM_FIRMWAREKIT:-}" ]; then
+    python3 "$CHECK" --minos "$MINOS" "${CHECK_ARCHS[@]}" "$LTM_FIRMWAREKIT"
+    cp -f "$LTM_FIRMWAREKIT" "$APP/Contents/MacOS/firmwarekit"
+    chmod u+rwx "$APP/Contents/MacOS/firmwarekit"
+    FIRMWAREKIT=("$APP/Contents/MacOS/firmwarekit")
+fi
+
 # ---------------------------------------------------------- tools the app runs
 #
 # The app is meant to work on a Mac with no Homebrew and no source checkout, so
@@ -122,7 +144,7 @@ copy_tool() {
     [ -f "$src" ] || { echo "missing required tool: $src" >&2; exit 1; }
     dst="$TOOLS/$base"
     if [ "${2:-host}" = host ] && file "$src" | grep -q Mach-O; then
-        python3 "$CHECK" --no-weak-imports --minos "$MINOS" "$src"
+        python3 "$CHECK" --no-weak-imports --minos "$MINOS" "${CHECK_ARCHS[@]}" "$src"
         dst="$APP/Contents/MacOS/$base"
         HOST_TOOLS+=("$dst")
         # Remove the previous packaging layout's copy on incremental runs.
@@ -144,13 +166,9 @@ copy_tool() {
     install_name_tool -add_rpath "@executable_path/../Frameworks" "$dst" 2>/dev/null || true
 }
 
-echo "embedding compatible tools…"
-for tool in ideviceinstaller ideviceinfo idevicesyslog idevice_id iproxy idevicepair; do
-    copy_tool "$DEPS/bin/$tool"
-done
-# Explicitly ship dlopen libraries even when the command-line tools are static.
+# The worker dlopens device libraries; inetcat bridges stock host OpenSSH.
 for stem in libimobiledevice-1.0 libplist-2.0; do
-    python3 "$CHECK" --no-weak-imports --minos "$MINOS" "$DEPS/lib/$stem.dylib"
+    python3 "$CHECK" --no-weak-imports --minos "$MINOS" "${CHECK_ARCHS[@]}" "$DEPS/lib/$stem.dylib"
     copy_with_deps "$DEPS/lib/$stem.dylib"
     canonical="$(python3 -c 'import os,sys; print(os.path.basename(os.path.realpath(sys.argv[1])))' "$DEPS/lib/$stem.dylib")"
     if [ "$canonical" != "$stem.dylib" ]; then
@@ -161,23 +179,47 @@ TZ_BIN="$WORK/lockdown-tz"
 cc -O2 "${ARCH_FLAGS[@]}" -mmacosx-version-min="$MINOS" -o "$TZ_BIN" "$SRC/scripts/lockdown-tz.c" \
    -I"$DEPS/include" -L"$DEPS/lib" -limobiledevice-1.0 -lplist-2.0
 copy_tool "$TZ_BIN"
-mkdir -p "$WORK/it-webproxy"
-for source in build.sh itwebproxy.c tls-bridge.h weather.m; do
-    cp "$QEMU/contrib/it-webproxy/$source" "$WORK/it-webproxy/"
-done
-OPENSSL_PREFIX="$STATIC" CFLAGS="${ARCH_FLAGS[*]} -mmacosx-version-min=$MINOS" \
-    bash "$WORK/it-webproxy/build.sh"
-copy_tool "$WORK/it-webproxy/itwebproxy"
-copy_tool "${USBMUXD_BIN:-$QEMU/build-native14/build/usbmuxd/src/usbmuxd}"
+MC_BIN="$WORK/lockdown-mcinstall"
+cc -O2 "${ARCH_FLAGS[@]}" -mmacosx-version-min="$MINOS" -o "$MC_BIN" "$SRC/scripts/lockdown-mcinstall.c" \
+   -I"$DEPS/include" -L"$DEPS/lib" -limobiledevice-1.0 -lplist-2.0
+copy_tool "$MC_BIN"
+# Stock inetcat from the same pinned static dependency prefix. It is a separate
+# GPL tool, so its own license and source note must accompany the library notices.
+[ -f "$STATIC/share/licenses/inetcat/GPL-2.0.txt" ] && [ -f "$STATIC/share/licenses/inetcat/SOURCE.txt" ] || {
+    echo "missing inetcat license/provenance; rebuild the pinned static dependencies" >&2; exit 1;
+}
+copy_tool "${INETCAT_BIN:-$STATIC/bin/inetcat}"
+copy_tool "${USBMUXD_BIN:-$(python3 "$SRC/scripts/sources.py" usbmuxd)/src/usbmuxd}"
+# iBoot32Patcher (GPL-3.0, built by build-iboot32patcher.sh next to usbmuxd): firmwarekit's k48
+# real-iBoot recipe runs it from Contents/MacOS, where K48IBoot.patcher looks first.
+PATCHER="${IBOOT32PATCHER_BIN:-$(dirname "$DEPS")/build/iBoot32Patcher/iBoot32Patcher}"
+copy_tool "$PATCHER"
+mkdir -p "$APP/Contents/Resources/licenses/iBoot32Patcher"
+cp "$(dirname "$PATCHER")/LICENSE" "$(dirname "$PATCHER")/SOURCE.txt" "$(dirname "$PATCHER")/iBoot32Patcher-ltm.patch" "$APP/Contents/Resources/licenses/iBoot32Patcher/"
 
 # NOTE: usbmuxd's -C directory is writable state (it stores SystemConfiguration
 # and a pairing record per device). The app copies the bundled seed out to
 # Application Support before use — see USBMux.confDirectory — because the bundle
 # is read-only and signed. Ship only the seed, never a pairing record.
-copy_tool "$QEMU/imgtools/install-ipa.sh"
-copy_tool "$QEMU/contrib/it-ssh-terminal.sh"
-# Guest-side binaries install-ipa.sh copies onto the device, and the helper that
-# stands in for the python3 a clean Mac does not have.
+# Developer access uses standard upstream guest services. Audit the complete
+# qualified public payload before copying; per-device keys never enter resources.
+DEVELOPER="${LTM_DEVELOPER_TOOLS_DIR:-$SRC/.build/developer-tools}"
+if [ ! -d "$DEVELOPER" ]; then
+    LTM_QEMU_SOURCE_DIR="$QEMU" "$SRC/tools/developer-packages/fetch.sh" "$DEVELOPER"
+fi
+[ ${#FIRMWAREKIT[@]} -gt 0 ] || { echo 'developer payload audit requires bundled firmwarekit' >&2; exit 1; }
+"${FIRMWAREKIT[0]}" developer-audit --payload "$DEVELOPER"
+DEVELOPER_DST="$APP/Contents/Resources/developer-tools"
+rm -rf "$DEVELOPER_DST"
+mkdir -p "$DEVELOPER_DST"
+cp -R "$DEVELOPER/" "$DEVELOPER_DST/"
+find "$DEVELOPER_DST" -type d -exec chmod 755 {} +
+find "$DEVELOPER_DST" -type f -exec chmod a+r {} +
+"${FIRMWAREKIT[0]}" developer-audit --payload "$DEVELOPER_DST"
+
+# Guest-side binaries the app uploads through the guest agent to images without
+# the guest-package loader, and the helper that stands in for the python3 a clean
+# Mac does not have. Nothing here needs a guest shell or SSH.
 copy_guest() {
     if [ -n "$GUEST" ]; then
         copy_tool "$GUEST/$(basename "$1")" guest
@@ -186,23 +228,29 @@ copy_guest() {
         copy_tool "$QEMU/contrib/$1" guest
     fi
 }
-copy_guest it-gles/MBXGLEngine
-copy_guest it-instprogress/sbdlicon
-# The quit-time helper asks launchd to shut down through reboot2(RB_HALT);
-# the host still waits for an actual guest PMU power-off event.
-copy_guest it-halt/ithalt
-copy_guest it-agent/it_agent
-copy_guest it-agent/it_typein.dylib
-copy_guest it-agent/com.qemu.it-agent.plist
-copy_guest it-status/itstatus
+# it_agent and it_typein.dylib ship once, in guest-tools below (firmwarekit installs them; the app reads neither).
 copy_guest it-media/itmedia
 copy_guest it-media/itphoto
-copy_guest it-proxy/itproxy
-copy_guest it-proxy/ittrust
-# Auto-rotation's guest-side reporter. Without it the feature is silently absent
-# from every packaged build — the app resolves it bundle-first and then falls
-# back to a checkout path a user's Mac does not have.
-copy_guest it-orientation/itorient
+# The iPad guest helpers firmwarekit installs at prepare time (its --guest-tools
+# default, ../Resources/guest-tools): one flat directory, ldid-signed for the
+# guest, sealed as resources by the app's signature. firmwarekit without them
+# fails every iPad preparation, so they are required whenever it ships.
+IPAD_GUEST="${LTM_IPAD_GUEST_TOOLS_DIR:-${GUEST:+$GUEST/../ipad-guest-tools}}"
+GUEST_TOOLS_DST="$APP/Contents/Resources/guest-tools"
+rm -rf "$GUEST_TOOLS_DST"
+if [ -n "$IPAD_GUEST" ] && [ -d "$IPAD_GUEST" ]; then
+    echo "embedding iPad guest helpers…"
+    mkdir -p "$GUEST_TOOLS_DST"
+    cp -p "$IPAD_GUEST"/* "$GUEST_TOOLS_DST/"
+    # the GL front end (every k48/n72 build) and the name table it speaks; 1.x's front end and the export set
+    # N45Board checks the stock OpenGLES against before the seed package's hook replaces it
+    for f in it_pbd OpenGLES gles-names.h OpenGLES-1x opengles-1x.exports; do
+        [ -s "$GUEST_TOOLS_DST/$f" ] || { echo "incomplete iPad guest tools: $IPAD_GUEST (no $f)" >&2; exit 1; }
+    done
+elif [ ${#FIRMWAREKIT[@]} -gt 0 ]; then
+    echo "firmwarekit needs the iPad guest helpers: set LTM_IPAD_GUEST_TOOLS_DIR (build-guest-tools.sh output)" >&2
+    exit 1
+fi
 # Build directly from source; the old launcher app is no longer a dependency.
 cc -O2 -Wall "${ARCH_FLAGS[@]}" -mmacosx-version-min="$MINOS" \
     "$QEMU/contrib/macos-app/ipod-helper.c" -lz -o "$WORK/ipod-helper"
@@ -224,56 +272,87 @@ PLIST
 
 # -------------------------------------------------------------- device assets
 #
-# The guest firmware and NAND, read from Resources/device (see
-# LaunchOptions.defaultFilesRoot). The packed NAND is extracted on first boot;
-# all writable device state stays in Application Support. Import is future work.
+# Resources/device (Bundled.filesRoot): the iPod SecureROMs, flat. Every device is
+# prepared from an IPSW on the user's Mac; all writable state stays in Application Support.
 FILES="${LTM_ASSETS:-$SRC/../qemu-ios-files}"
-# nand-current names the shipping image; resolve it so provenance records the real one.
-NAND_NAME="${LTM_NAND:-$(basename "$(readlink "$FILES/nand-current" 2>/dev/null)")}"
 DEVICE="$APP/Contents/Resources/device"
 rm -rf "$DEVICE"
 if [ "$FILES" != none ]; then
-    for f in "$FILES/bootrom_240_4" "$FILES/ios3/iBoot.bin" \
-             "$FILES/ios3/nor_7E18.bin" "$FILES/$NAND_NAME"; do
-        [ -e "$f" ] || { echo "missing device asset: $f (LTM_ASSETS=none to skip)" >&2; exit 1; }
+    BOOTROMS=(bootrom_240_4 ipod1g/bootrom_s5l8900)   # the 2G's, the 1G's (build-release.py BOOTROMS)
+    for rom in "${BOOTROMS[@]}"; do
+        [ -e "$FILES/$rom" ] || { echo "missing device asset: $FILES/$rom (LTM_ASSETS=none to skip)" >&2; exit 1; }
     done
-    echo "embedding device assets ($NAND_NAME, packed)…"
-    mkdir -p "$DEVICE/ios3"
-    cp "$FILES/bootrom_240_4" "$DEVICE/"
-    cp "$FILES/ios3/iBoot.bin" "$FILES/ios3/nor_7E18.bin" "$DEVICE/ios3/"
-    # The NAND goes in as ONE opaque blob, never raw pages: the notary walks
-    # every file in the bundle and rejects the armv6 Mach-Os a raw iOS
-    # filesystem contains — and it opens tarballs too, so only a format it
-    # cannot recognise works (see qemu-ios contrib/macos-app/nandpack.py).
-    # The app unpacks it into Application Support on first boot.
-    python3 "$QEMU/contrib/macos-app/nandpack.py" pack "$FILES/$NAND_NAME" "$DEVICE/nand.itnand"
-    shasum -a 256 "$DEVICE/nand.itnand" | awk '{print $1}' > "$DEVICE/nand.itnand.sha256"
+    echo "embedding device assets (bootroms)…"
+    mkdir -p "$DEVICE"
+    for rom in "${BOOTROMS[@]}"; do cp "$FILES/$rom" "$DEVICE/"; done
 fi
 
-mkdir -p "$APP/Contents/Resources/licenses/qemu"
-cp "$QEMU/LICENSE" "$QEMU/COPYING" "$QEMU/COPYING.LIB" "$APP/Contents/Resources/licenses/qemu/"
+# Licenses (Help ▸ Licenses): every component shipped, with SOURCE.txt beside each GPL/LGPL one naming its source.
+# tests/release/test-bundle-hygiene.py checks the result.
+LICENSES="$APP/Contents/Resources/licenses"
+mkdir -p "$LICENSES/qemu"
+cp "$QEMU/LICENSE" "$QEMU/COPYING" "$QEMU/COPYING.LIB" "$LICENSES/qemu/"
+if [ -f "$QEMU/hw/arm/powervr/LICENSE.md" ]; then
+    mkdir -p "$LICENSES/powervr"
+    cp "$QEMU/hw/arm/powervr/LICENSE.md" "$QEMU/hw/arm/powervr/README.md" "$LICENSES/powervr/"
+fi
+QEMU_BRANCH="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["qemu-ios"]["branch"])' "$SRC/build-support/sources.json")"
+printf '%s\n' "QEMU $(cat "$QEMU/VERSION") for iOS devices (qemu-ios): https://github.com/samhenrigold/qemu-ios, branch $QEMU_BRANCH." \
+    'The public commit this build matches is published with this Light Touch release.' \
+    'The emulator (Frameworks/libqemu-arm.dylib), ipod-helper and the guest tools (Resources/guest-tools, Resources/tools) are built from that tree.' \
+    > "$LICENSES/qemu/SOURCE.txt"
+USBMUXD_SRC="$(python3 "$SRC/scripts/sources.py" usbmuxd)"   # USBMUXD_SOURCE_DIR overrides
+mkdir -p "$LICENSES/usbmuxd"
+cp "$USBMUXD_SRC/COPYING.GPLv2" "$USBMUXD_SRC/COPYING.GPLv3" "$LICENSES/usbmuxd/"
+python3 - "$SRC/build-support/sources.json" > "$LICENSES/usbmuxd/SOURCE.txt" <<'PY'
+import json, sys
+pin = json.load(open(sys.argv[1]))['usbmuxd']
+print(f"usbmuxd (Light Touch's fork): {pin['repository']}, branch {pin['branch']}, commit {pin['commit']}.\n"
+      "The branch is published there with this Light Touch release.")
+PY
+IFS=: read -r -a SWIFT_CHECKOUTS <<< "${LTM_SWIFT_CHECKOUTS:-}"
+for checkouts in ${SWIFT_CHECKOUTS[@]+"${SWIFT_CHECKOUTS[@]}"}; do
+    for package in "$checkouts"/*/; do
+        name="$(basename "$package")"
+        texts=("$package"LICENSE* "$package"LICENCE* "$package"COPYING* "$package"NOTICE*)
+        mkdir -p "$LICENSES/swift/$name"
+        for text in "${texts[@]}"; do [ -f "$text" ] && cp -f "$text" "$LICENSES/swift/$name/"; done
+    done
+done
 if [ -d "$DEPS/share/licenses" ]; then
-    cp -R "$DEPS/share/licenses/." "$APP/Contents/Resources/licenses/"
+    cp -R "$DEPS/share/licenses/." "$LICENSES/"
 fi
 if [ -d "$STATIC/share/licenses" ]; then
-    cp -R "$STATIC/share/licenses/." "$APP/Contents/Resources/licenses/"
+    cp -R "$STATIC/share/licenses/." "$LICENSES/"
 fi
 if [ -n "${LTM_BUILD_RECORD:-}" ]; then
     cp "$LTM_BUILD_RECORD" "$APP/Contents/Resources/build-inputs.json"
 fi
 
 # Drop the build-tree rpath so resolution goes through Contents/Frameworks only.
-for f in "$APP_BIN" "$FRAMEWORKS"/*.dylib "${HOST_TOOLS[@]}"; do
+for f in "$APP_BIN" "$DEVICE_HELPER" "$SERVICE_HELPER" "$FRAMEWORKS"/*.dylib "${HOST_TOOLS[@]}" ${FIRMWAREKIT[@]+"${FIRMWAREKIT[@]}"}; do
     while IFS= read -r path; do
         case "$path" in /*) install_name_tool -delete_rpath "$path" "$f" ;; esac
     done < <(python3 "$CHECK" --rpaths "$f")
 done
 
+# No debug symbols or build paths ship: each binary's dSYM (crash symbolication) goes to LTM_DSYM_DIR when it
+# still has a debug map (build-release.py's dylib stage already stripped libqemu-arm.dylib and kept its dSYMs),
+# then strip -S -x (debug and local symbols) before signing.
+for f in "$APP_BIN" "$DEVICE_HELPER" "$SERVICE_HELPER" "$FRAMEWORKS"/*.dylib "${HOST_TOOLS[@]}" ${FIRMWAREKIT[@]+"${FIRMWAREKIT[@]}"}; do
+    [ -L "$f" ] && continue
+    if [ -n "${LTM_DSYM_DIR:-}" ] && nm -ap "$f" 2>/dev/null | grep ' OSO ' >/dev/null; then
+        mkdir -p "$LTM_DSYM_DIR"
+        dsymutil "$f" -o "$LTM_DSYM_DIR/$(basename "$f").dSYM"
+    fi
+    strip -S -x "$f"
+done
+
 # Check all host Mach-Os, including the app and its complete load closure.
 # Guest ARMv6 helpers are resources, not executable on macOS.
 echo "sealing…"
-python3 "$CHECK" --minos "$MINOS" --bundle "$APP" \
-    "$APP_BIN" "$FRAMEWORKS"/*.dylib "${HOST_TOOLS[@]}"
+python3 "$CHECK" --minos "$MINOS" "${CHECK_ARCHS[@]}" --bundle "$APP" \
+    "$APP_BIN" "$DEVICE_HELPER" "$SERVICE_HELPER" "$FRAMEWORKS"/*.dylib "${HOST_TOOLS[@]}" ${FIRMWAREKIT[@]+"${FIRMWAREKIT[@]}"}
 
 # Ad-hoc signatures have no Team ID, so hardened library validation cannot
 # establish shared identity between a helper and its bundled dylibs. Use plain
@@ -285,14 +364,17 @@ sign_nested_code() {
     codesign -f -o "$options" -s "$SIGN_ID" "$1"
 }
 
-# Sign inside-out: frameworks first, then the app with entitlements.
+# Sign inside-out: frameworks, then Contents/MacOS/* (the device helper with the
+# QEMU entitlements: JIT, unsigned executable memory, no library validation),
+# then the app with entitlements.
 echo "signing (id: $SIGN_ID)…"
-for f in "$FRAMEWORKS"/*.dylib "${HOST_TOOLS[@]}"; do
+for f in "$SERVICE_HELPER" "$FRAMEWORKS"/*.dylib "${HOST_TOOLS[@]}" ${FIRMWAREKIT[@]+"${FIRMWAREKIT[@]}"}; do
     [ -L "$f" ] && continue
     # Scripts are not signable and do not need to be; the app's signature covers
     # them as resources.
     [ -f "$f" ] && file "$f" | grep -q Mach-O && sign_nested_code "$f"
 done
+codesign -f -o runtime --entitlements "$ENTITLEMENTS" -s "$SIGN_ID" "$DEVICE_HELPER"
 codesign -f -o runtime --entitlements "$ENTITLEMENTS" -s "$SIGN_ID" "$APP"
 codesign --verify --deep --strict "$APP"
 codesign -dv "$APP" 2>&1 | grep -E "Identifier|Signature" || true

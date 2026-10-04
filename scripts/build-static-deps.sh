@@ -1,23 +1,24 @@
 #!/bin/bash
-# Build the client utilities and static libraries from the product's pinned recipes.
+# Build the static libraries from the product's pinned recipes: OpenSSL (the emulator's AES/SHA, the
+# web proxy's TLS) and the libimobiledevice stack the native shared libimobiledevice links against.
+# inetcat is the stock stdin/stdout USB port bridge used by host OpenSSH.
 # Usage: build-static-deps.sh NEW-WORK-DIRECTORY (output: WORK-DIRECTORY/prefix)
 # LTM_SOURCE_CACHE optionally names a directory of source archives; each is verified.
-# LTM_ARCH=x86_64 cross-compiles the Intel slice on an Apple Silicon Mac (default arm64).
+# LTM_ARCH=x86_64 cross-compiles the Intel slice on an Apple Silicon Mac (default arm64, built exactly as before).
 set -euo pipefail
 ROOT="${1:?usage: build-static-deps.sh new-work-directory}"
 [ ! -e "$ROOT" ] || { echo "use a new build directory: $ROOT" >&2; exit 1; }
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
-CMAKE="${CMAKE:-cmake}"
 JOBS="${LTM_JOBS:-$(sysctl -n hw.ncpu)}"
 [[ "$JOBS" =~ ^[1-9][0-9]*$ ]] || { echo 'LTM_JOBS must be a positive integer' >&2; exit 1; }
-for tool in python3 curl make pkg-config xcrun "$CMAKE"; do
+for tool in python3 curl make pkg-config xcrun; do
     command -v "$tool" >/dev/null || { echo "missing build tool: $tool" >&2; exit 1; }
 done
 [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]] || { echo 'requires an Apple Silicon Mac' >&2; exit 1; }
 ARCH="${LTM_ARCH:-arm64}"
 case "$ARCH" in
-    arm64) HOST=() ;;
-    x86_64) HOST=(--host=x86_64-apple-darwin) ;;
+    arm64) HOST=() ARCH_FLAG='' ;;
+    x86_64) HOST=(--host=x86_64-apple-darwin) ARCH_FLAG='-arch x86_64 ' ;;
     *) echo "unsupported LTM_ARCH: $ARCH" >&2; exit 1 ;;
 esac
 mkdir -p "$ROOT/src" "$ROOT/build" "$ROOT/logs" "$ROOT/prefix/lib/pkgconfig"
@@ -34,7 +35,7 @@ python3 "$SRC/scripts/dependency-sources.py" "${SOURCE_ARGS[@]}"
 # application's supported macOS 14 baseline. Never discover Homebrew libraries.
 export MACOSX_DEPLOYMENT_TARGET=14.0
 MIN="-mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET"
-export CFLAGS="-arch $ARCH $MIN -O2" CXXFLAGS="-arch $ARCH $MIN -O2" LDFLAGS="-arch $ARCH $MIN"
+export CFLAGS="$ARCH_FLAG$MIN -O2" CXXFLAGS="$ARCH_FLAG$MIN -O2" LDFLAGS="$ARCH_FLAG$MIN"
 export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig" PKG_CONFIG_PATH=
 export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
 export CC="$(xcrun -f clang)" CXX="$(xcrun -f clang++)"
@@ -63,11 +64,22 @@ untar openssl-3.6.3.tar.gz
 echo 'Building OpenSSL 3.6.3'
 (
     cd "$ROOT/build/openssl-3.6.3"
-    ./Configure "darwin64-$ARCH-cc" no-shared no-tests no-docs \
+    # SSLv3 for iPhone OS 1.x lockdownd (libimobiledevice-sslv3-ios1.patch picks it below 2.0 only; OpenSSL
+    # still refuses it above security level 0, which only libimobiledevice's contexts set).
+    ./Configure "darwin64-$ARCH-cc" no-shared no-tests no-docs enable-ssl3 enable-ssl3-method \
         --prefix="$PREFIX" --openssldir=/private/etc/ssl "$MIN" > "$LOG/openssl.configure.log" 2>&1
-    make -j"$JOBS" > "$LOG/openssl.build.log" 2>&1
+    # The engine and provider dirs it compiles in: somewhere that holds none (the bundle ships neither), not
+    # this build's prefix. Only the compiled-in value; install_sw still installs under the prefix.
+    make -j"$JOBS" ENGINESDIR=/var/empty/lib/engines-3 MODULESDIR=/var/empty/lib/ossl-modules > "$LOG/openssl.build.log" 2>&1
     make install_sw > "$LOG/openssl.install.log" 2>&1
 )
+license() {   # LICENSE-NAME DIRECTORY FILES...: license texts into prefix/share/licenses/NAME
+    local name="$1" dir="$2"; shift 2
+    mkdir -p "$PREFIX/share/licenses/$name"
+    case "$dir" in /*) ;; *) dir="$ROOT/build/$dir" ;; esac
+    (cd "$dir" && cp "$@" "$PREFIX/share/licenses/$name/")
+}
+license openssl openssl-3.6.3 LICENSE.txt
 
 autobuild() {
     local archive="$1" directory="$2"
@@ -87,28 +99,16 @@ autobuild libimobiledevice-glue-1.3.2.tar.bz2 libimobiledevice-glue-1.3.2
 autobuild libusbmuxd-2.1.1.tar.bz2 libusbmuxd-2.1.1
 autobuild libtatsu-1.0.5.tar.bz2 libtatsu-1.0.5
 autobuild libimobiledevice-1.4.0.tar.bz2 libimobiledevice-1.4.0 --without-cython
-
-echo 'Building libzip 1.11.4'
-untar libzip-1.11.4.tar.xz
-"$CMAKE" -S "$ROOT/build/libzip-1.11.4" -B "$ROOT/build/libzip-out" \
-    -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET" \
-    -DCMAKE_OSX_SYSROOT="$SDKROOT" -DCMAKE_OSX_ARCHITECTURES="$ARCH" \
-    -DZLIB_INCLUDE_DIR="$SDKROOT/usr/include" -DZLIB_LIBRARY_RELEASE="$SDKROOT/usr/lib/libz.tbd" \
-    -DCMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH=OFF -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF \
-    -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
-    -DENABLE_BZIP2=OFF -DENABLE_LZMA=OFF -DENABLE_ZSTD=OFF \
-    -DENABLE_OPENSSL=OFF -DENABLE_GNUTLS=OFF -DENABLE_MBEDTLS=OFF \
-    -DENABLE_COMMONCRYPTO=OFF -DENABLE_WINDOWS_CRYPTO=OFF \
-    -DBUILD_TOOLS=OFF -DBUILD_REGRESS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_DOC=OFF \
-    > "$LOG/libzip.configure.log" 2>&1
-"$CMAKE" --build "$ROOT/build/libzip-out" --parallel "$JOBS" > "$LOG/libzip.build.log" 2>&1
-"$CMAKE" --install "$ROOT/build/libzip-out" > "$LOG/libzip.install.log" 2>&1
-autobuild ideviceinstaller-1.2.0.tar.bz2 ideviceinstaller-1.2.0 \
-    libzip_CFLAGS="-I$PREFIX/include" libzip_LIBS="-L$PREFIX/lib -lzip -lz"
-
-for tool in ideviceinstaller ideviceinfo idevicesyslog iproxy idevicepair idevice_id; do
-    python3 "$SRC/scripts/check-macho.py" --arch "$ARCH" "$PREFIX/bin/$tool"
+# Linked statically into the shipped libimobiledevice and usbmuxd (LGPL-2.1): their texts and sources.
+for package in libimobiledevice-glue:libimobiledevice-glue-1.3.2 libusbmuxd:libusbmuxd-2.1.1 libtatsu:libtatsu-1.0.5; do
+    license "${package%%:*}" "${package#*:}" COPYING
+    python3 "$SRC/scripts/dependency-sources.py" note "${package%%:*}" > "$PREFIX/share/licenses/${package%%:*}/SOURCE.txt"
 done
+# The library is LGPL-2.1, but tools/inetcat.c is GPL-2.0-or-later.
+# Preserve its notice, GPL text and the same pinned archive provenance.
+license inetcat "$SRC/build-support/licenses" GPL-2.0.txt
+cp "$ROOT/build/libusbmuxd-2.1.1/tools/inetcat.c" "$PREFIX/share/licenses/inetcat/"
+python3 "$SRC/scripts/dependency-sources.py" note libusbmuxd > "$PREFIX/share/licenses/inetcat/SOURCE.txt"
 python3 - "$SRC" "$ROOT" "$ARCH" <<'PY'
 import hashlib, json, pathlib, subprocess, sys
 source, root = map(pathlib.Path, sys.argv[1:3])
