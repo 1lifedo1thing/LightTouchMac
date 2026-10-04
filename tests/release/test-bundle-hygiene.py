@@ -9,7 +9,9 @@ Fails when:
   - a GPL or LGPL component (and libslirp) has no SOURCE.txt naming where its source is;
   - a Swift package either Package.resolved pins has no licenses/swift/<package>/ text;
   - Help.txt does not name every component;
-  - any file names a local path (/Users/ or this Mac's home);
+  - any file names a local path (/Users/ or this Mac's home), the packed built-in device's contents included;
+  - the packed built-in device carries a unit identity (its seed must be build-release's placeholder; every unpack
+    gets an identity of its own);
   - a host Mach-O still carries a debug map (it was not stripped) or a .dSYM ships;
   - the same Mach-O ships twice.
 Without an app it runs the same checks on fixture bundles, each broken one way.
@@ -19,9 +21,11 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
+import zlib
 
 ROOT = Path(__file__).resolve().parents[2]
 # component: (licenses/<dir>, the name Help.txt uses, needs SOURCE.txt)
@@ -64,6 +68,8 @@ BINARIES = {
     'Contents/Resources/guest-tools/*': ('qemu',),   # the guest tools: qemu-ios contrib, built for the guest
     'Contents/Resources/tools/*': ('qemu',),
 }
+# build-release.py BUNDLED_SEED: the identity a packed base carries until the app unpacks it with a seed of its own.
+PLACEHOLDER_SEED = 'lighttouch-built-in'
 LICENSE_TEXTS = ('LICENSE*', 'LICENCE*', 'COPYING*', 'COPYRIGHT*', 'GPL-*.txt')
 RESOLVED = (ROOT / 'LightTouchMac.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved',
             ROOT / 'Packages/FirmwareKit/Package.resolved')
@@ -83,6 +89,39 @@ def swift_packages():
     return sorted({pin['identity'] for resolved in RESOLVED for pin in json.loads(resolved.read_text())['pins']})
 
 
+def packed_problems(path, name, local):
+    """A packed device (firmwarekit pack-base, the .itpack format): no local path in any entry, and only the
+    placeholder identity."""
+    found, kept = [], {}
+    with path.open('rb') as stream:
+        head = stream.read(12)
+        if head[:8] != b'ITPACK01':
+            return [f'not a packed device: {name}']
+        entries = json.loads(stream.read(struct.unpack('<I', head[8:])[0]))['entries']
+        inflate, pending, tail, index, left = zlib.decompressobj(), b'', b'', 0, entries[0]['size'] if entries else 0
+        while chunk := stream.read(1 << 20):
+            data = inflate.decompress(chunk)
+            if any(marker in tail + data for marker in local):
+                found.append(f'names a local path: {name} (packed)')
+                local = ()
+            tail = data[-256:]
+            while data and index < len(entries):   # keep the small files the identity lives in
+                take = data[:left]
+                if entries[index]['name'] in ('identity.json', 'device.lock.json'):
+                    kept[entries[index]['name']] = kept.get(entries[index]['name'], b'') + take
+                data, left = data[len(take):], left - len(take)
+                while left == 0 and index < len(entries):
+                    index += 1
+                    left = entries[index]['size'] if index < len(entries) else 0
+    try:
+        seeds = {json.loads(kept['identity.json'])['seed'], json.loads(kept['device.lock.json'])['identity']['seed']}
+    except (KeyError, ValueError) as error:
+        return found + [f'{name}: no readable identity.json and lock ({error})']
+    if seeds != {PLACEHOLDER_SEED}:
+        found.append(f'{name} carries a unit identity (seed {sorted(seeds)}), not the placeholder {PLACEHOLDER_SEED}')
+    return found
+
+
 def problems(app, packages):
     app = Path(app)
     licenses = app / 'Contents/Resources/licenses'
@@ -98,6 +137,9 @@ def problems(app, packages):
         if path.is_dir() and path.suffix == '.dSYM':
             found.append(f'a dSYM ships: {name}')
         if path.is_symlink() or not path.is_file():
+            continue
+        if path.suffix == '.itbase':
+            found += packed_problems(path, name, local)
             continue
         data = path.read_bytes()
         if any(marker in data for marker in local):
@@ -180,6 +222,21 @@ def self_test():
         broken = bundle('local-path')
         (broken / 'Contents/Resources/build-inputs.json').write_text('{"path": "/Users/someone/Developer/qemu-ios"}')
         expect(broken, 'names a local path: Contents/Resources/build-inputs.json')
+        def packed(app, seed, extra=b''):
+            files = [('device.lock.json', json.dumps({'identity': {'seed': seed}}).encode()), ('identity.json', json.dumps({'seed': seed}).encode()),
+                     ('nand/cs0/1.page', b'p' * 5000 + extra)]
+            index = json.dumps({'entries': [{'name': n, 'size': len(d), 'mode': 0o444} for n, d in files]}).encode()
+            blob = app / 'Contents/Resources/device/n72ap-7E18.itbase'
+            blob.parent.mkdir(parents=True, exist_ok=True)
+            blob.write_bytes(b'ITPACK01' + struct.pack('<I', len(index)) + index + zlib.compress(b''.join(d for _, d in files)))
+        packed(good, PLACEHOLDER_SEED)
+        assert problems(good, ['example']) == [], problems(good, ['example'])
+        broken = bundle('packed-local-path')
+        packed(broken, PLACEHOLDER_SEED, b'/Users/someone/Library/Caches/x.ipsw')
+        expect(broken, 'names a local path: Contents/Resources/device/n72ap-7E18.itbase (packed)')
+        broken = bundle('packed-identity')
+        packed(broken, '6A1F0E2B-0000-4000-8000-000000000000')
+        expect(broken, 'carries a unit identity')
         broken = bundle('unattributed')
         (broken / 'Contents/MacOS/newtool').write_bytes(stripped + b'n')
         expect(broken, 'unattributed Mach-O (add it to BINARIES with its licenses): Contents/MacOS/newtool')
@@ -200,7 +257,8 @@ def self_test():
         (broken / 'Contents/Resources/Help.txt').write_text('Licenses: usbmuxd')
         expect(broken, 'Help.txt does not name GLib')
     print('PASS: fixture bundles: complete passes; missing license, SOURCE.txt, Swift package license, Help entry, '
-          'local path, unattributed binary, unstripped binary, dSYM and duplicate each fail')
+          'local path (also inside the packed device), a packed unit identity, unattributed binary, unstripped binary, dSYM '
+          'and duplicate each fail')
 
 
 if __name__ == '__main__':

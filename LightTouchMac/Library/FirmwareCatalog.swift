@@ -9,7 +9,9 @@ nonisolated struct FirmwareCatalog: Codable, Sendable {
     var entries: [Entry]
     /// The entry a first launch selects (firstRunEntry).
     var firstRun: String?
-    enum CodingKeys: String, CodingKey { case format, entries, firstRun = "first_run" }
+    /// Entries the app ships prepared: entry id -> its packed base under the app's Resources (firmwarekit pack-base).
+    var bundled: [String: String]?
+    enum CodingKeys: String, CodingKey { case format, entries, bundled, firstRun = "first_run" }
 
     struct Entry: Codable, Sendable, Identifiable, Equatable {
         /// `untested`: enumerated from Apple's list with public keys, never run through the pipeline (docs/matrix.md).
@@ -23,6 +25,11 @@ nonisolated struct FirmwareCatalog: Codable, Sendable {
         enum Prerelease: String, Codable, Sendable { case beta, gm }
 
         private var wire: FirmwareWire.Entry
+        /// The packed base this app ships for the entry (the catalog's `bundled`), unpacked by FirmwareJobs.prepareBundled.
+        /// Not part of the entry the preparer gets.
+        var bundled: String?
+        /// The same entry whether or not this copy ships it prepared.
+        static func == (a: Entry, b: Entry) -> Bool { a.wire == b.wire }
         init(from decoder: Decoder) throws {
             wire = try FirmwareWire.Entry(from: decoder)
             guard Status(rawValue: wire.status) != nil, wire.source.kind == "ipsw",
@@ -103,7 +110,8 @@ nonisolated struct FirmwareCatalog: Codable, Sendable {
     }
 
     static func load(from url: URL) throws -> FirmwareCatalog {
-        let catalog = try JSONDecoder().decode(FirmwareCatalog.self, from: Data(contentsOf: url))
+        var catalog = try JSONDecoder().decode(FirmwareCatalog.self, from: Data(contentsOf: url))
+        for i in catalog.entries.indices { catalog.entries[i].bundled = catalog.bundled?[catalog.entries[i].id] }
         guard catalog.format == 1, Set(catalog.entries.map(\.id)).count == catalog.entries.count else {
             throw CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: url.path])
         }
@@ -137,13 +145,24 @@ nonisolated struct FirmwareCatalog: Codable, Sendable {
         guard let url = Bundle.main.url(forResource: "firmware-catalog", withExtension: "json") else {
             fatalError("firmware-catalog.json is missing from the app bundle")
         }
-        do { return try load(from: url) } catch { fatalError("firmware-catalog.json: \(error)") }
+        do {
+            var catalog = try load(from: url)
+            // A build without the packed base (a development build) offers the entry as any other.
+            for i in catalog.entries.indices {
+                guard let resource = catalog.entries[i].bundled, let url = Bundle.main.resourceURL?.appendingPathComponent(resource),
+                      FileManager.default.fileExists(atPath: url.path) else { catalog.entries[i].bundled = nil; continue }
+            }
+            return catalog
+        } catch { fatalError("firmware-catalog.json: \(error)") }
     }()
 
     func entry(id: String) -> Entry? { entries.first { $0.id == id } }
 
     /// What a first launch selects: an `available` build whose IPSW Apple's servers still serve (`first_run`).
     var firstRunEntry: Entry? { firstRun.flatMap(entry(id:)) }
+
+    /// The entry this app ships prepared (the iPod 3.1.3), if its base is here.
+    var bundledEntry: Entry? { entries.first { $0.bundled != nil } }
 }
 
 nonisolated extension DeviceProfile {

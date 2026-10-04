@@ -15,7 +15,8 @@
 #
 # Build compatible dependencies with scripts/build-package-native.sh first; it
 # prints the QEMU_BUILD_DIR/LTM_DEPS_PREFIX/USBMUXD_BIN settings to use here.
-# Device assets (the SecureROMs) are embedded below unless LTM_ASSETS=none (development only).
+# Device assets (the SecureROMs, and LTM_BASE_BLOB: the built-in iPod, packed by `firmwarekit pack-base`) are embedded
+# below unless LTM_ASSETS=none (development only).
 # LTM_DSYM_DIR: where the dSYMs of the binaries this strips go (build-release.py: <output>/dSYMs), never the bundle.
 # LTM_SWIFT_CHECKOUTS: colon-separated SwiftPM checkouts dirs (the app's, firmwarekit's) whose licenses ship.
 set -euo pipefail
@@ -272,8 +273,11 @@ PLIST
 
 # -------------------------------------------------------------- device assets
 #
-# Resources/device (Bundled.filesRoot): the iPod SecureROMs, flat. Every device is
-# prepared from an IPSW on the user's Mac; all writable state stays in Application Support.
+# Resources/device (Bundled.filesRoot): the iPod SecureROMs, flat, and the built-in iPod as ONE
+# opaque blob (LTM_BASE_BLOB, the catalog's `bundled`: a `firmwarekit create` of n72ap-7E18 that
+# build-release.py packs). Never raw pages: the notary walks every file in the bundle and rejects
+# the armv6 Mach-Os an iOS filesystem holds, and it opens archives too. The app unpacks it into a
+# device of its own; all writable state stays in Application Support.
 FILES="${LTM_ASSETS:-$SRC/../qemu-ios-files}"
 DEVICE="$APP/Contents/Resources/device"
 rm -rf "$DEVICE"
@@ -285,6 +289,11 @@ if [ "$FILES" != none ]; then
     echo "embedding device assets (bootroms)…"
     mkdir -p "$DEVICE"
     for rom in "${BOOTROMS[@]}"; do cp "$FILES/$rom" "$DEVICE/"; done
+    if [ -n "${LTM_BASE_BLOB:-}" ]; then
+        [ "$(head -c 8 "$LTM_BASE_BLOB")" = ITPACK01 ] || { echo "$LTM_BASE_BLOB is not a packed device" >&2; exit 1; }
+        echo "embedding the built-in iPod ($(basename "$LTM_BASE_BLOB"))…"
+        cp "$LTM_BASE_BLOB" "$DEVICE/n72ap-7E18.itbase"
+    fi
 fi
 
 # Licenses (Help ▸ Licenses): every component shipped, with SOURCE.txt beside each GPL/LGPL one naming its source.

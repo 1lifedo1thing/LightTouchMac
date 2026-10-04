@@ -163,7 +163,7 @@ final class Delegate: DeviceLibraryDelegate {
         var (vc, w) = sidebar(["n72ap-8C148", "n72ap-8B5080c", "n72ap-8B117", "n72ap-7E18"], host: host)
         var seen = rows(vc)
         if seen.map({ Array($0.prefix(1)) + $0.filter { $0.hasPrefix("iOS") } }) != [["iPod2,1", "iOS 3.1.3"], ["iPod2,1", "iOS 4.1 Beta 1"], ["iPod2,1", "iOS 4.1"], ["iPod2,1", "iOS 4.2.1"]]
-            || !seen[0].contains("Requires an IPSW") || seen.dropFirst().contains(where: { $0.count != 2 }) { fail("one kind: \(seen)") }
+            || seen.contains(where: { $0.count != 2 }) { fail("one kind (3.1.3 built in: nothing beside it): \(seen)") }
         try render(vc.view, "sidebar-one-kind")
 
         // Mixed: the same two lines.
