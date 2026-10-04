@@ -28,6 +28,8 @@ nonisolated struct FirmwareCatalog: Codable, Sendable {
         /// The packed base this app ships for the entry (the catalog's `bundled`), unpacked by FirmwareJobs.prepareBundled.
         /// Not part of the entry the preparer gets.
         var bundled: String?
+        /// The same entry whether or not this copy ships it prepared.
+        static func == (a: Entry, b: Entry) -> Bool { a.wire == b.wire }
         init(from decoder: Decoder) throws {
             wire = try FirmwareWire.Entry(from: decoder)
             guard Status(rawValue: wire.status) != nil, wire.source.kind == "ipsw",
