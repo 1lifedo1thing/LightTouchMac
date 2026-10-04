@@ -4,7 +4,8 @@ from pathlib import Path
 import subprocess, tempfile
 root=Path(__file__).resolve().parents[2]
 s=(root/'LightTouchMac/UI/DisplayView.swift').read_text()
-transform=next(line.strip() for line in s.splitlines() if 'contentLayer.transform = CATransform3DMakeRotation' in line)
+# The iPod's (a surface that follows the device) counter-rotation; guestTurn is 0 on its shipped panel.
+transform=next(line.strip() for line in s.splitlines() if 'contentLayer.transform = CATransform3DMakeRotation' in line and 'rest' in line)
 a=s.index('    private func setShellAngle('); b=s.index('    /// Is a mouse-driven touch',a)
 methods=s[a:b].replace('private func','func')
 c=s.index('    private func motionTransform(');d=s.index('\n    }',c)+len('\n    }')
@@ -20,6 +21,7 @@ import QuartzCore
  var rotatingChassis = false, modelPresentationFinished = true
  var modelView: NSObject?
  var bare = false
+ let guestTurn = 0.0
 ''' + hidden + '''
  func updateModelPose(animated: Bool = false, spring: Bool = false) {}
  var motionRestAngle: CGFloat?

@@ -10,6 +10,7 @@ final class DeviceViewController: NSViewController {
     
     let emulator: EmulatorController
     private let displayView: DisplayView
+    private let panelStatus = CaptureStatusView()
     
     init(emulator: EmulatorController) {
         self.emulator = emulator
@@ -17,10 +18,16 @@ final class DeviceViewController: NSViewController {
         super.init(nibName: nil, bundle: nil)
         displayView.emulator = emulator
         let profile = emulator.profile
-        displayView.configureFreeForm(panel: profile.supportsFreeForm ? profile.uprightPanel(emulator.instance.panel) : nil,
-                                      key: emulator.instance.id)
+        displayView.configureFreeForm(scan: DeviceProfile.panelScan(emulator.instance.panel), key: emulator.instance.id)
         displayView.onPanelChange = { [weak emulator] upright, restart in
             emulator?.setPanel(upright.map(profile.panelOption(upright:)), restart: restart) ?? false
+        }
+        // The free-form resize's status is a notice like the others: same stack, same glass, never under one.
+        panelStatus.isHidden = true
+        displayView.onPanelStatus = { [weak self] text in
+            guard let self else { return }
+            if let text { panelStatus.update(title: text, busy: text.hasSuffix("…")) } else { panelStatus.isHidden = true }
+            updateStatusVisibility()
         }
         displayView.onDropIPA = { [weak self] url in self?.installDropped(url) }
         displayView.onDropIPSW = { FirmwareJobs.shared.importIPSW($0, for: nil) }   // matched by its SHA1
@@ -37,7 +44,11 @@ final class DeviceViewController: NSViewController {
     
     required init?(coder: NSCoder) { fatalError("not used") }
     
-    override func loadView() { view = DeviceContentView(screen: displayView) }
+    override func loadView() {
+        let content = DeviceContentView(screen: displayView)
+        view = content
+        content.addStatus(panelStatus)
+    }
 
     func addStatus(_ status: NSView) { (view as? DeviceContentView)?.addStatus(status) }
     func updateStatusVisibility() { (view as? DeviceContentView)?.updateStatusVisibility() }

@@ -25,6 +25,7 @@ final class Screen {
     struct Window { var backingScaleFactor: CGFloat }
     var window: Window? = Window(backingScaleFactor: 2)
     var appliedScale: CGFloat = 1
+    var freeFormActive = false   // the shipped screen
 """ + block(display, "var pixelMultiple:") + "\n" + block(display, "private func shellScale(").replace("private ", "") + """
 }
 final class Controller {

@@ -64,6 +64,8 @@ final class DisplayView: NSView {
     var zoom: ZoomMode = .fit {
         didSet {
             guard oldValue != zoom else { return }
+            // A finished edge drag waiting to be recorded keeps no scale of its own: the new zoom draws it.
+            if panelDrag == nil, !restartingAtPanel { dragScale = nil }
             pendingAnimatedLayout = true
             needsLayout = true
         }
@@ -411,6 +413,11 @@ final class DisplayView: NSView {
             return
         }
         guard displayLink == nil else { return }
+        // Every window entry: leaving one dropped all of this view's observers (above), the bezel's included,
+        // so a view that had left a window (a session swap, a restart at a new panel) ignored View ▸ Show Device
+        // Bezel for good. The preference may have changed meanwhile too.
+        NotificationCenter.default.addObserver(self, selector: #selector(bezelPreferenceChanged), name: Self.bezelDidChange, object: nil)
+        bezelPreferenceChanged()
         let link = displayLink(target: self, selector: #selector(step))
         link.add(to: .main, forMode: .common)
         displayLink = link
@@ -450,11 +457,6 @@ final class DisplayView: NSView {
     /// and the home button's (view-space) frame.
     override func layout() {
         super.layout()
-        if let start = liveResizeStart, let scale = dragScale {
-            let pane = deviceLayoutRect.size
-            updatePanelTarget(onScreen: CGSize(width: start.size.width + (pane.width - start.pane.width) / scale,
-                                               height: start.size.height + (pane.height - start.pane.height) / scale))
-        }
         // The pose comes from the emulator's tracked orientation, not the frame
         // buffer's aspect — 480×320 alone can't tell landscape-left from
         // landscape-right, and 180° doesn't change the dimensions at all.
@@ -466,11 +468,11 @@ final class DisplayView: NSView {
         lastRotation = rotation
         let isLandscape = rotation == 90 || rotation == 270
 
-        // A panel fixed to the shell (the iPad's) never swaps sides; the
-        // iPod's pre-rotated surface does.
-        let cutoutSize = profile.panelRotation != 0
-            ? CGSize(width: screenCutout.height, height: screenCutout.width)
-            : isLandscape
+        // The scan stands a quarter-turn from upright when the guest turned its
+        // UI into it (guestTurn). A panel fixed to the shell (the iPad's) keeps
+        // that; the iPod's pre-rotated surface also swaps with the device.
+        let turned = guestTurn != 0
+        let cutoutSize = (profile.surfaceFollowsRotation ? turned != isLandscape : turned)
             ? CGSize(width: screenCutout.height, height: screenCutout.width)
             : screenCutout.size
         // The shell's own on-screen bounding box once rotated — this, not just
@@ -486,11 +488,13 @@ final class DisplayView: NSView {
         let scale: CGFloat
         switch zoom {
         case _ where dragScale != nil:
-            scale = dragScale!   // a resize in progress keeps its scale, so the edge stays under the pointer
-        case _ where freeFormActive:
-            // Free-form: a point per guest pixel at 1x (fit and physical too), the zoom's multiple otherwise,
-            // never more than fits the pane.
-            scale = min(CGFloat(zoom.percent ?? 100) / 100, fitScale(shellOnScreenPixels))
+            scale = dragScale!   // an edge drag keeps its scale, so the edge stays under the pointer
+        case .pixels(let points) where freeFormActive:
+            scale = CGFloat(points)   // free-form Nx: a guest pixel is N points (Sam's "at 1x a point is a pixel")
+        case .physical where freeFormActive:
+            // Free-form's shell unit is a guest pixel: the shipped panel's pixel pitch, at its physical size.
+            scale = physicalScale.map { $0 * profile.screenCutout.height / profile.uprightScreenPixels.height }
+                ?? fitScale(shellOnScreenPixels)
         case .fit:
             scale = fitScale(shellOnScreenPixels)
         case .physical:
@@ -548,12 +552,12 @@ final class DisplayView: NSView {
         contentLayer.bounds = CGRect(origin: .zero, size: cutoutSize)
         // Counter only the guest's quarter-turn, never the temporary tilt.
         // A layout during a gesture must not leave the panel crooked after release.
-        if profile.panelRotation != 0 {
+        if !profile.surfaceFollowsRotation {
             // The iPad's guest turns its own UI inside a panel that turns with
-            // the shell: only the fixed panel-to-upright quarter-turn applies.
-            contentLayer.transform = CATransform3DRotate(CATransform3DIdentity, profile.panelRotation, 0, 0, 1)
+            // the shell: only the scan-to-upright quarter-turn applies.
+            contentLayer.transform = CATransform3DMakeRotation(guestTurn, 0, 0, 1)
         } else {
-            contentLayer.transform = CATransform3DMakeRotation(-rest, 0, 0, 1)
+            contentLayer.transform = CATransform3DMakeRotation(guestTurn - rest, 0, 0, 1)
         }
         CATransaction.commit()
 
@@ -594,7 +598,9 @@ final class DisplayView: NSView {
 
     /// Scale is independent of a framebuffer arriving before or after rotation.
     var pixelMultiple: CGFloat {
-        appliedScale * screenCutout.width / nativeScreenPixels.width
+        // Free-form steps in points per guest pixel, the unit its Nx is in.
+        if freeFormActive { return appliedScale }
+        return appliedScale * screenCutout.width / nativeScreenPixels.width
             * (window?.backingScaleFactor ?? 2)
     }
 
@@ -618,9 +624,11 @@ final class DisplayView: NSView {
 
     // MARK: - Free-form screen (issue #21)
     //
-    // View ▸ Free-Form Screen: no bezel, and the screen itself is resizable. Dragging the window's edge, or the
-    // screen's edge or corner, stretches the current frame to the new size live, with a W × H readout snapped to
-    // what the board's panel= accepts. A second after the drag ends the size is recorded and, if it changed, the
+    // View ▸ Free-Form Screen: no bezel, and the screen itself is resizable. Dragging the screen's own edge or
+    // corner (nothing else: not the window, the sidebar or the inspector) stretches the current frame to the new
+    // size live, with a W × H status snapped to what the board's panel= accepts. Zoom only draws it bigger or
+    // smaller: Nx is N points per guest pixel, Fit scales the panel into the pane, Physical gives a guest pixel the
+    // shipped panel's physical pitch. Like the shipped screen's, a screen bigger than the pane is clipped, centred. A second after the drag ends the size is recorded and, if it changed, the
     // device restarts at it (Stop's hard halt, then a fresh helper): UIKit takes the panel's size at boot only.
     // The squished frame stays up, through the next session's view (`handoffs`), until the new boot's first frame.
 
@@ -629,6 +637,10 @@ final class DisplayView: NSView {
     /// The upright size on screen while a resize is in progress or waiting to restart (the frame stretched to it).
     private var freeFormTarget: CGSize?
     private var freeFormActive: Bool { freeFormPanel != nil || freeFormTarget != nil }
+    /// The running scan's scan-to-upright turn (DeviceProfile.guestTurn): the shipped panel's, or the free-form one's.
+    private var guestTurn: CGFloat { runningScan.map(DeviceProfile.guestTurn(scan:)) ?? profile.panelRotation }
+    /// The free-form panel as it scans (device.json `panel`); nil, the shipped one.
+    private var runningScan: CGSize?
     var isFreeForm: Bool { freeFormPanel != nil }
     var canToggleFreeForm: Bool { profile.supportsFreeForm && !restartingAtPanel }
     /// Records an upright panel (nil: the shipped one); with `restart` true the owner restarts the device on it.
@@ -638,47 +650,31 @@ final class DisplayView: NSView {
     /// The last frame of a device restarting at a new panel, for that device's next view.
     private static var handoffs: [UUID: CGImage] = [:]
     private var deviceKey: UUID?
-    private var awaitingFirstFrame = false
     private(set) var restartingAtPanel = false
     private var panelCommitTask: Task<Void, Never>?
     /// Points per guest pixel, fixed for the length of a resize.
     private var dragScale: CGFloat?
     private var panelDrag: (origin: CGPoint, edges: CGVector, size: CGSize)?
-    private var liveResizeStart: (pane: CGSize, size: CGSize)?
-    private lazy var panelReadout: NSTextField = {
-        let label = NSTextField(labelWithString: "")
-        label.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
-        label.textColor = .white
-        label.drawsBackground = true
-        label.backgroundColor = NSColor.black.withAlphaComponent(0.65)
-        label.alignment = .center
-        label.wantsLayer = true
-        label.layer?.cornerRadius = 4
-        label.layer?.masksToBounds = true
-        label.isHidden = true
-        label.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(label)
-        NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: safeAreaLayoutGuide.centerXAnchor),
-            label.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor, constant: -4),
-        ])
-        return label
-    }()
-    var panelReadoutText: String? { panelReadout.isHidden ? nil : panelReadout.stringValue.trimmingCharacters(in: .whitespaces) }
+    /// The resize's status for the window's notice stack (the owner shows it there, one surface with the others):
+    /// "W × H" while dragging, "Restarting at W × H…" while this device restarts; nil, none.
+    var onPanelStatus: ((String?) -> Void)?
+    private(set) var panelReadoutText: String? { didSet { if oldValue != panelReadoutText { onPanelStatus?(panelReadoutText) } } }
+    /// "Restarting at W × H…" for the startup notice of a boot this view's device restarted at a new panel.
+    private(set) var restartTitle: String?
 
-    /// The owner's device: its recorded panel (upright, nil when not free-form) and its identity for the hand-off.
-    func configureFreeForm(panel: CGSize?, key: UUID) {
+    /// The owner's device: its recorded panel as it scans (nil when not free-form) and its identity for the hand-off.
+    func configureFreeForm(scan: CGSize?, key: UUID) {
         deviceKey = key
-        if profile.supportsFreeForm, let panel {
-            freeFormPanel = panel
+        if profile.supportsFreeForm, let scan {
+            runningScan = scan
+            freeFormPanel = DeviceProfile.upright(scan: scan)
             applyFreeFormGeometry()
             applyBezel(.off)
             needsLayout = true
         }
         if let image = Self.handoffs.removeValue(forKey: key) {
             contentLayer.contents = image
-            awaitingFirstFrame = true
-            showReadout("Restarting at \(Self.text(onScreen(freeFormPanel ?? profile.uprightScreenPixels)))…")
+            restartTitle = "Restarting at \(Self.text(onScreen(freeFormPanel ?? profile.uprightScreenPixels)))…"
         }
     }
 
@@ -689,6 +685,7 @@ final class DisplayView: NSView {
         panelCommitTask?.cancel()
         let native = profile.uprightScreenPixels
         if on {
+            runningScan = nil
             freeFormPanel = native
             _ = onPanelChange?(native, false)
             applyFreeFormGeometry()
@@ -703,7 +700,7 @@ final class DisplayView: NSView {
         if freeFormTarget == nil || !requestPanel(nil) {
             if freeFormTarget == nil { _ = onPanelChange?(nil, false) }
             freeFormTarget = nil
-            panelReadout.isHidden = true
+            panelReadoutText = nil
             applyFreeFormGeometry()
             applyBezel(Self.bezel)
         }
@@ -730,10 +727,7 @@ final class DisplayView: NSView {
 
     private static func text(_ size: CGSize) -> String { "\(Int(size.width)) × \(Int(size.height))" }
 
-    private func showReadout(_ text: String) {
-        panelReadout.stringValue = "  \(text)  "
-        panelReadout.isHidden = false
-    }
+    private func showReadout(_ text: String) { panelReadoutText = text }
 
     private func beginPanelResize() {
         panelCommitTask?.cancel()
@@ -792,10 +786,11 @@ final class DisplayView: NSView {
     private func commitPanel() {
         guard let target = freeFormTarget, isFreeForm, !restartingAtPanel else { return }
         if target == freeFormPanel || !requestPanel(target) {
-            freeFormPanel = target   // unchanged, or recorded for the next start (the device isn't running)
+            if target != freeFormPanel { runningScan = profile.scan(upright: target) }   // recorded for the next start
+            freeFormPanel = target
             freeFormTarget = nil
             dragScale = nil
-            panelReadout.isHidden = true
+            panelReadoutText = nil
             applyFreeFormGeometry()
             needsLayout = true
         }
@@ -812,20 +807,6 @@ final class DisplayView: NSView {
         updatePowerPresentation()
         window?.invalidateCursorRects(for: self)
         return true
-    }
-
-    override func viewWillStartLiveResize() {
-        super.viewWillStartLiveResize()
-        guard isFreeForm, !restartingAtPanel else { return }
-        beginPanelResize()
-        liveResizeStart = (deviceLayoutRect.size, onScreen(freeFormTarget ?? profile.uprightScreenPixels))
-    }
-
-    override func viewDidEndLiveResize() {
-        super.viewDidEndLiveResize()
-        guard liveResizeStart != nil else { return }
-        liveResizeStart = nil
-        endPanelResize()
     }
 
     override func resetCursorRects() {
@@ -867,10 +848,6 @@ final class DisplayView: NSView {
         guard frame.serial != shownSerial || frame.surface !== shownSurface else { return frame.surface }
         shownSerial = frame.serial
         shownSurface = frame.surface
-        if awaitingFirstFrame {
-            awaitingFirstFrame = false
-            panelReadout.isHidden = true
-        }
         let newFramePixels = CGSize(width: frame.surface.width, height: frame.surface.height)
         if newFramePixels != framePixels {
             framePixels = newFramePixels
@@ -1033,9 +1010,10 @@ final class DisplayView: NSView {
     func captureFrame(includeTouches: Bool = true) -> CGImage? {
         if let liveTextView { return liveTextView.capturedImage }
         guard let image = capturePanelFrame(includeTouches: includeTouches) else { return nil }
-        guard profile.panelRotation != 0 else { return image }
-        // Match the window: panel-to-upright plus the device's own quarter-turn.
-        let turns = ((Int((profile.panelRotation * 2 / .pi).rounded()) + (emulator?.rotationDegrees ?? 0) / 90) % 4 + 4) % 4
+        // Match the window: scan-to-upright plus, where the surface doesn't follow it, the device's own quarter-turn.
+        let device = profile.surfaceFollowsRotation ? 0 : (emulator?.rotationDegrees ?? 0) / 90
+        let turns = ((Int((guestTurn * 2 / .pi).rounded()) + device) % 4 + 4) % 4
+        guard turns != 0 else { return image }
         return Self.rotated(image, clockwiseQuarterTurns: turns) ?? image
     }
 
@@ -1332,7 +1310,7 @@ final class DisplayView: NSView {
     /// A movement in view points expressed in content-layer points, un-rotated
     /// so directions match what the user sees in any orientation.
     private func rotatedPanelDelta(_ dx: CGFloat, _ dy: CGFloat) -> CGVector {
-        let a = -(Self.layerAngle(emulator?.rotationDegrees ?? 0) + tiltAngle + profile.panelRotation)  // the iPad panel is mounted a quarter turn
+        let a = -(Self.layerAngle(emulator?.rotationDegrees ?? 0) + tiltAngle + guestTurn)  // the scan stands a quarter turn from upright when the guest turned its UI
         let s = max(appliedScale * (contentLayer.bounds.width / max(framePixels.width, 1)), 0.01)
         let ux = dx / s, uy = dy / s
         return CGVector(dx: ux * cos(a) - uy * sin(a), dy: ux * sin(a) + uy * cos(a))

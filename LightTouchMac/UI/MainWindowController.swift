@@ -496,7 +496,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         }
         let elapsed = Int(Date().timeIntervalSince(emulator.startupBegan))
         // The subtitle is the boot's real stage (BootStage, from the device's own signals) and the session's counter.
-        startupStatus.update(title: emulator.isErasing ? "Erasing \(emulator.profile.shortName)…" : "Starting iOS…",
+        startupStatus.update(title: emulator.isErasing ? "Erasing \(emulator.profile.shortName)…"
+                                : deviceVC?.screen.restartTitle ?? "Starting iOS…",
                              detail: (emulator.isErasing ? "" : emulator.bootStage.text + " · ") + "\(elapsed) s",
                              busy: true, primary: elapsed >= Int(emulator.profile.bootBudget) ? "Show Logs" : nil)
         if startupTask == nil {
@@ -1305,9 +1306,14 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(addDevice(_:)): return window?.attachedSheet == nil
         case #selector(selectDeviceBezel(_:)):
             menuItem.state = menuItem.tag == DisplayView.bezel.rawValue ? .on : .off
-            return true
+            // Free-form shows this device's screen alone; the setting still applies to the others and comes back here.
+            let freeForm = deviceVC?.screen.isFreeForm == true
+            menuItem.toolTip = freeForm ? "Free-Form Screen shows this device’s screen without its bezel." : nil
+            return !freeForm
         case #selector(toggleFreeFormScreen(_:)):
             menuItem.state = deviceVC?.screen.isFreeForm == true ? .on : .off
+            let profile = deviceVC?.emulator.profile
+            menuItem.toolTip = profile?.supportsFreeForm == false ? profile?.freeFormUnavailableReason : nil
             return deviceVC?.screen.canToggleFreeForm ?? false
         case #selector(toggleDeviceRunning(_:)):
             let running = selectedEntry.map { host.row(for: $0).state == .running } ?? false

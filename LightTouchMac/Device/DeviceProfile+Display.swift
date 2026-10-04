@@ -20,7 +20,18 @@ nonisolated extension DeviceProfile {
     /// and portrait SpringBoard (interface orientation 1) arrives with its
     /// status bar along the panel's left edge, so it is turned a quarter
     /// clockwise to stand upright.
-    var panelRotation: CGFloat { self == .iPad1 ? .pi / 2 : 0 }
+    var panelRotation: CGFloat { Self.guestTurn(scan: screenPixels) }
+
+    /// The quarter-turn the guest gives its portrait UI on a panel of this scan size. UIKit decides it from the
+    /// panel's shape, not the board: +[UIApplication _startWindowServerIfNecessary] (3.2 UIKit 0x3223f2fc) swaps
+    /// the display's bounds and calls GSSetMainScreenInfo with orientation π/2 only when it is wider than tall,
+    /// so a square or taller panel gets the UI as scanned (docs: qemu-ios-files ipad1/7B500 userland-gl-display
+    /// §1.4). The host mirrors that one rule; it gives the shipped iPad π/2 and the iPods 0.
+    static func guestTurn(scan: CGSize) -> CGFloat { scan.width > scan.height ? .pi / 2 : 0 }
+
+    /// The iPod LCD model turns the picture it publishes with the device (ipod_touch_lcd.c); the iPad's pipe
+    /// scans out as is and the guest turns its UI inside it.
+    var surfaceFollowsRotation: Bool { self != .iPad1 }
 
     /// The screen as it sits in the upright shell.
     var uprightScreenPixels: CGSize {
@@ -30,8 +41,12 @@ nonisolated extension DeviceProfile {
 
     // MARK: - Free-form screen (machine panel=WxH, issue #21)
 
-    /// Boards whose machine takes panel=WxH (the iPod touch 1G's doesn't).
+    /// Boards whose guest lays out for a panel of another size. The 1G's machine takes panel= too (qemu-ios
+    /// 1819a0d6cf), but iPhone OS 1.1's SpringBoard keeps its icons and dock at 320x480.
     var supportsFreeForm: Bool { self != .iPodTouch1G }
+    var freeFormUnavailableReason: String? {
+        supportsFreeForm ? nil : "iPhone OS 1 keeps its Home screen at 320 × 480, whatever size the screen is."
+    }
 
     /// iBoot's iPad display region, 0x4f700000 up to DRAM's end: 9 MB at 4 bytes a pixel.
     static let iPadPanelPixels: CGFloat = 0x900000 / 4
@@ -39,7 +54,8 @@ nonisolated extension DeviceProfile {
     /// The nearest size the board's panel= accepts to an upright screen size, in guest pixels. qemu-ios's
     /// limits, in the panel's scan orientation: the iPod's even width 64…1024 by 64…511 rows (the S5L8720
     /// window keeps 9 bits of height); the iPad's landscape width a multiple of 16, both sides 64…2047, and no
-    /// more pixels than iBoot's display region holds (shrunk keeping the aspect).
+    /// more pixels than iBoot's display region holds (shrunk keeping the aspect). Upright it is never wider than
+    /// tall: the guest's portrait is the panel's longer side (guestTurn), so a wider one would come back turned.
     func snappedPanel(upright size: CGSize) -> CGSize {
         let turned = panelRotation != 0
         let s = turned ? CGSize(width: size.height, height: size.width) : size
@@ -54,18 +70,28 @@ nonisolated extension DeviceProfile {
         w = max(64, (w / step).rounded(.down) * step)
         h = h.rounded(.down)
         if pad { h = min(h, (Self.iPadPanelPixels / w).rounded(.down)) }
+        // Portrait no wider than tall: the iPad's upright width is its scan height, the iPod's its even width.
+        if pad { h = min(h, w) } else { w = min(w, max(64, (h / 2).rounded(.down) * 2)) }
         return turned ? CGSize(width: h, height: w) : CGSize(width: w, height: h)
+    }
+
+    /// The scan of an upright size by the board's convention (the iPad's panel is mounted landscape), and the
+    /// upright screen the guest makes of a scan (guestTurn: turned only when wider than tall).
+    func scan(upright size: CGSize) -> CGSize { panelRotation != 0 ? CGSize(width: size.height, height: size.width) : size }
+    static func upright(scan: CGSize) -> CGSize {
+        guestTurn(scan: scan) != 0 ? CGSize(width: scan.height, height: scan.width) : scan
     }
 
     /// device.json `panel` ("WxH" as the panel scans) for an upright guest size, and back.
     func panelOption(upright size: CGSize) -> String {
-        let scan = panelRotation != 0 ? CGSize(width: size.height, height: size.width) : size
+        let scan = scan(upright: size)
         return "\(Int(scan.width))x\(Int(scan.height))"
     }
-    func uprightPanel(_ option: String?) -> CGSize? {
+    func uprightPanel(_ option: String?) -> CGSize? { Self.panelScan(option).map(Self.upright(scan:)) }
+    static func panelScan(_ option: String?) -> CGSize? {
         guard let parts = option?.split(separator: "x"), parts.count == 2,
               let w = Int(parts[0]), let h = Int(parts[1]) else { return nil }
-        return panelRotation != 0 ? CGSize(width: h, height: w) : CGSize(width: w, height: h)
+        return CGSize(width: w, height: h)
     }
 
     // MARK: - Device art (shell-native pixels, top-left origin)

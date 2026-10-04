@@ -12,6 +12,8 @@ display and touch mapping. Windows are built but never ordered in; nothing appea
   In landscape the sides swap (dragging the iPod's on-screen width changes its rows). On release, after
   panelCommitDelay, the owner is asked to restart at the new upright panel, and the screen reads "Restarting at…"
   and keeps the stretched frame; with no restart (a stopped device) the size is just taken.
+- Only the screen's edges resize it: a window resize or a sidebar collapse/expand changes neither the panel nor
+  (at Nx) the LCD's size, and asks for no restart; at Fit the panel is scaled into the pane as the shipped screen is.
 - Off returns to the shipped panel (a restart when the guest runs at another), and a device that was never
   free-form is untouched: no grab band, no readout.
 """
@@ -42,7 +44,9 @@ source = prefix + stub + r'''
   let pod = DeviceProfile.iPodTouch2G, pad = DeviceProfile.iPad1
   check(pod.snappedPanel(upright: size(321, 600)) == size(320, 511), "iPod: even width, 511 rows")
   check(pod.snappedPanel(upright: size(10, 10)) == size(64, 64), "iPod minimum")
-  check(pod.snappedPanel(upright: size(1100, 300)) == size(1024, 300), "iPod maximum width")
+  check(pod.snappedPanel(upright: size(1100, 600)) == size(510, 511), "iPod: never wider than tall upright")
+  check(pad.snappedPanel(upright: size(1100, 1024)) == size(1024, 1024), "iPad: never wider than tall upright")
+  check(pad.snappedPanel(upright: size(1024, 1024)) == size(1024, 1024), "iPad square")
   check(pod.snappedPanel(upright: size(320, 480)) == size(320, 480), "iPod native")
   check(pad.snappedPanel(upright: size(768, 1290)) == size(768, 1280), "iPad: landscape width (portrait height) in 16s")
   check(pad.snappedPanel(upright: size(768, 1024)) == size(768, 1024), "iPad native")
@@ -55,15 +59,25 @@ source = prefix + stub + r'''
 
   DisplayView.panelCommitDelay = .milliseconds(50)
   var requests: [(CGSize?, Bool)] = []
+  let one = 1
+  var statuses: [String?] = []   // what the owner's notice stack is given
   var restarts = true
 
-  func make(_ profile: DeviceProfile, panel: CGSize?) async throws -> (DisplayView, EmulatorController, NSWindow) {
+  func make(_ profile: DeviceProfile, panel: CGSize?, scan: CGSize? = nil, key: UUID = UUID(),
+            rotation: Int = 0) async throws -> (DisplayView, EmulatorController, NSWindow) {
    let display = DisplayView(frame: NSRect(x: 0, y: 0, width: 1400, height: 1400), profile: profile)
    let e = EmulatorController(); display.emulator = e
-   display.configureFreeForm(panel: panel, key: UUID())
+   e.rotationDegrees = rotation
+   display.configureFreeForm(scan: scan ?? panel.map { profile.scan(upright: $0) }, key: key)
+   display.onPanelStatus = { statuses.append($0) }
    display.onPanelChange = { upright, restart in requests.append((upright, restart)); return restart && restarts }
-   let window = NSWindow(contentRect: display.frame, styleMask: [.titled], backing: .buffered, defer: false)
-   window.contentView = display
+   let window = NSWindow(contentRect: display.frame, styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+   // The pane sits in a container, as the window's split view holds it beside the sidebar.
+   let container = NSView(frame: display.frame)
+   display.autoresizingMask = [.width, .height]
+   container.addSubview(display)
+   window.contentView = container
+   display.zoom = .pixels(one)   // free-form Nx is N points per guest pixel
    try await settle(display)
    return (display, e, window)
   }
@@ -104,9 +118,38 @@ source = prefix + stub + r'''
   check(abs(box(d).midX - 700) < 1 && abs(box(d).midY - 700) < 1, "off centre: \(box(d))")
   check(!d.subviews.contains { $0 is DeviceModelView }, "free-form shows a device")
   for f in [CGPoint(x: 0.2, y: 0.3), CGPoint(x: 0.8, y: 0.95)] { touchLands(d, f) }
-  d.zoom = .pixels(2); try await settle(d)
+  d.zoom = .pixels(2 * one); try await settle(d)
   check(near(box(d), 640, 1008), "2x: \(box(d))")
-  d.zoom = .fit; try await settle(d)
+  // ⌘+/⌘− step from the multiple shown, in free-form's unit (points per guest pixel).
+  check(abs(d.pixelMultiple - 2) < 0.001, "2x reads as \(d.pixelMultiple) for zoom stepping")
+  d.zoom = .pixels(one); try await settle(d)
+
+  // Only the screen's own edges resize it. A window resize (AppKit's live resize around it) and a sidebar
+  // collapse or expand leave the panel, the restart and, at Nx, the LCD's size alone (a pane too small clips it).
+  func pane(_ frame: CGRect, live: Bool) async throws {
+   if live { d.viewWillStartLiveResize() }
+   d.frame = frame
+   try await settle(d)
+   if live { d.viewDidEndLiveResize() }
+   try await Task.sleep(for: .milliseconds(200))
+   try await settle(d)
+  }
+  func untouched(_ what: String, line: Int = #line) {
+   check(requests.isEmpty && !d.restartingAtPanel && d.panelReadoutText == nil && d.freeFormPanel == size(320, 504),
+         "\(what) changed the panel: \(requests) \(d.panelReadoutText ?? "none") \(String(describing: d.freeFormPanel))", line: line)
+  }
+  try await pane(CGRect(x: 0, y: 0, width: 900, height: 700), live: true)
+  check(near(box(d), 320, 504), "window resize moved the LCD: \(box(d))"); untouched("a window resize")
+  try await pane(CGRect(x: 300, y: 0, width: 300, height: 1400), live: false)        // the sidebar shown
+  check(near(box(d), 320, 504), "sidebar shown: \(box(d))"); untouched("a sidebar expand")
+  try await pane(CGRect(x: 0, y: 0, width: 1400, height: 1400), live: false)         // and collapsed
+  check(near(box(d), 320, 504), "sidebar collapsed: \(box(d))"); untouched("a sidebar collapse")
+  // Fit scales the panel into the pane as it does the shipped screen; still no new panel.
+  d.zoom = .fit; try await pane(CGRect(x: 0, y: 0, width: 600, height: 600), live: true)
+  check(abs(box(d).height - (600 - 2 * DisplayView.zoomInset)) < 1 && abs(box(d).width / box(d).height - 320.0 / 504) < 0.01,
+        "fit: \(box(d))"); untouched("a window resize at Fit")
+  d.zoom = .pixels(one); try await pane(CGRect(x: 0, y: 0, width: 1400, height: 1400), live: true)
+  untouched("a window resize back")
 
   // Drag the right edge 40 points: 40 more on each side of the centred screen.
   var b = box(d)
@@ -123,6 +166,7 @@ source = prefix + stub + r'''
   check(requests.count == 1 && requests[0].0 == size(420, 511) && requests[0].1, "release asked \(requests)")
   check(d.restartingAtPanel && d.panelReadoutText == "Restarting at 420 × 511…" && near(box(d), 420, 511),
         "restart: \(d.panelReadoutText ?? "none") \(box(d))")
+  check(statuses.last == "Restarting at 420 × 511…" && statuses.contains("400 × 504"), "notices \(statuses)")
   b = box(d)
   d.mouseDown(with: event(.leftMouseDown, d, CGPoint(x: b.maxX + 4, y: b.midY)))
   check(d.panelReadoutText == "Restarting at 420 × 511…", "a drag during the restart")
@@ -181,7 +225,104 @@ source = prefix + stub + r'''
   check(d.isFreeForm && requests.count == 1 && requests[0].0 == size(320, 480) && !requests[0].1 && near(box(d), 320, 480),
         "on: \(requests) \(box(d))")
   w.contentView = nil
-  print("PASS: panel sizes clamp and snap per board; a non-native panel shows a point per guest pixel and takes touches; edge and corner drags stretch the screen live with a snapped readout, swap in landscape, and ask for a restart at the new panel on release")
+
+  // Zoom only draws the screen bigger or smaller. At 1x, 2x and Fit, portrait and landscape, a 320x448 iPod's
+  // LCD is the panel at a guest pixel per N points (Fit: the largest that fits the pane, aspect kept), zooming
+  // changes neither the panel nor asks for a restart, and an edge drag converts the pointer through the zoom.
+  requests.removeAll(); restarts = false
+  for rotation in [0, 90] {
+   let sideways = rotation == 90, upright = size(320, 448), seen = sideways ? size(448, 320) : upright
+   for zoom in [ZoomMode.pixels(1), .pixels(2), .fit] {
+    frameWidth = Int32(sideways ? 448 : 320); frameHeight = Int32(sideways ? 320 : 448)
+    (d, e, w) = try await make(pod, panel: upright, rotation: rotation)
+    for z in [ZoomMode.pixels(2), .fit, .pixels(1), zoom] { d.zoom = z; try await settle(d) }
+    let k: CGFloat = zoom == .fit ? min((1400 - 2 * DisplayView.zoomInset) / seen.width, (1400 - 2 * DisplayView.zoomInset) / seen.height)
+                                  : CGFloat(zoom.percent!) / 100
+    let what = "\(zoom) at \(rotation)°"
+    check(near(box(d), seen.width * k, seen.height * k) && abs(box(d).midX - 700) < 1 && abs(box(d).midY - 700) < 1,
+          "\(what): LCD \(box(d)), want \(seen) x \(k)")
+    check(requests.isEmpty && d.freeFormPanel == upright && d.panelReadoutText == nil, "\(what): zooming changed the panel \(requests)")
+    // The right edge 12 points out: the seen width grows by 24 points, 24 / k guest pixels.
+    let b = box(d)
+    drag(d, from: CGPoint(x: b.maxX + 4, y: b.midY), by: CGVector(dx: 12, dy: 0), release: false)
+    let grown = CGSize(width: seen.width + 24 / k, height: seen.height)
+    let want = pod.snappedPanel(upright: sideways ? size(grown.height, grown.width) : grown)
+    let wantSeen = sideways ? size(want.height, want.width) : want
+    check(d.panelReadoutText == "\(Int(wantSeen.width)) × \(Int(wantSeen.height))" && near(box(d), wantSeen.width * k, wantSeen.height * k),
+          "\(what): drag gave \(d.panelReadoutText ?? "none") \(box(d)), want \(wantSeen)")
+    w.contentView = nil
+   }
+  }
+
+  // Orientation comes from the guest's rule, not the board: UIKit turns its portrait UI a quarter only into a
+  // panel that scans wider than tall. Square, wider and taller scans on both boards, in all four rotations: the
+  // LCD and a capture are the upright screen turned with the device, and a click at a point of it touches the
+  // point of the scan the guest drew there.
+  func rotCCW(_ p: CGPoint, _ quarters: Int) -> CGPoint {
+   var q = p; for _ in 0..<((quarters % 4 + 4) % 4) { q = CGPoint(x: q.y, y: 1 - q.x) }; return q
+  }
+  func rotCW(_ p: CGPoint, _ quarters: Int) -> CGPoint { rotCCW(p, 4 - (quarters % 4 + 4) % 4) }
+  for (profile, scans) in [(pod, [size(400, 400), size(320, 504), size(504, 320)]),
+                           (pad, [size(1024, 1024), size(1104, 1024), size(1024, 1104)])] {
+   for scan in scans {
+    let turned = scan.width > scan.height
+    let upright = turned ? size(scan.height, scan.width) : scan
+    for rotation in [0, 90, 180, 270] {
+     let quarters = rotation / 90, sideways = quarters % 2 == 1
+     // What the guest publishes: the scan; the iPod's LCD model turns it with the device.
+     let published = profile.surfaceFollowsRotation && sideways ? size(scan.height, scan.width) : scan
+     frameWidth = Int32(published.width); frameHeight = Int32(published.height)
+     (d, e, w) = try await make(profile, panel: nil, scan: scan, rotation: rotation)
+     let seen = sideways ? size(upright.height, upright.width) : upright
+     let what = "\(profile) scan \(Int(scan.width))x\(Int(scan.height)) at \(rotation)°"
+     check(near(box(d), seen.width, seen.height), "\(what): LCD \(box(d)), want \(seen)")
+     let shot = d.captureFrame(includeTouches: false)!
+     check(shot.width == Int(seen.width) && shot.height == Int(seen.height), "\(what): capture \(shot.width)x\(shot.height)")
+     for f in [CGPoint(x: 0.2, y: 0.1), CGPoint(x: 0.85, y: 0.6)] {
+      let b = box(d), at = CGPoint(x: b.minX + f.x * b.width, y: b.minY + f.y * b.height)
+      let u = rotCCW(f, quarters), g = turned ? rotCCW(u, 1) : u
+      let want = profile.surfaceFollowsRotation ? rotCW(g, quarters) : g
+      touches.removeAll(); d.mouseDown(with: event(.leftMouseDown, d, at)); d.mouseUp(with: event(.leftMouseUp, d, at))
+      check(!touches.isEmpty && abs(touches[0].0 - want.x) < 0.01 && abs(touches[0].1 - want.y) < 0.01,
+            "\(what): click at \(f) sent \(touches), want \(want)")
+     }
+     w.contentView = nil
+    }
+   }
+  }
+
+  // Back at the shipped panel the bezel follows View ▸ Show Device Bezel again, live: Free-Form on, a resize,
+  // Free-Form off (a restart), then the next session's view (shown, swapped out and back as the window does)
+  // takes the toggle both ways. A free-form screen ignores it.
+  UserDefaults.standard.removeObject(forKey: DisplayView.showsBezelKey)
+  defer { UserDefaults.standard.removeObject(forKey: DisplayView.showsBezelKey) }
+  DisplayView.showsBezel = false
+  requests.removeAll(); restarts = true
+  frameWidth = 1104; frameHeight = 768
+  let key = UUID()
+  (d, e, w) = try await make(pad, panel: size(768, 1104), key: key)   // booted at the size a drag gave it
+  d.setFreeForm(false)
+  check(requests.last.map { $0.0 == nil && $0.1 } == true, "off at 768x1104 asked \(requests)")
+  func shellShown(_ v: DisplayView) -> Bool {
+   let lcd = all(v.layer!).first { $0.backgroundColor == NSColor.black.cgColor && $0.contentsGravity == .resize }!
+   return lcd.superlayer!.contents != nil && lcd.superlayer!.shadowOpacity > 0
+  }
+  DisplayView.showsBezel = true; try await settle(d)
+  check(!shellShown(d), "a free-form screen took the bezel")
+  w.contentView = nil
+  frameWidth = 1024; frameHeight = 768
+  let (next, _, nw) = try await make(pad, panel: nil, key: key)
+  let holder = nw.contentView!
+  nw.contentView = nil; try await Task.sleep(for: .milliseconds(50)); nw.contentView = holder   // the session swap
+  try await settle(next)
+  DisplayView.showsBezel = false; try await settle(next)
+  check(!next.isFreeForm && !shellShown(next), "bezel off: the shipped iPad still shows it")
+  DisplayView.showsBezel = true; try await settle(next)
+  check(shellShown(next), "bezel on: the shipped iPad stayed bare")
+  DisplayView.showsBezel = false; try await settle(next)
+  check(!shellShown(next), "bezel off again: the shipped iPad kept it")
+  nw.contentView = nil
+  print("PASS: panel sizes clamp and snap per board (never wider than tall upright); a non-native panel draws at N points per guest pixel, Fit and Nx in both orientations, edge drags converting through the zoom; window and sidebar changes never touch the panel; square, wider and taller scans give the upright picture and touch mapping in all four rotations; the drag status and restart go to the notice stack; back at the shipped panel the bezel follows the toggle live")
  }
 }
 '''
@@ -190,6 +331,8 @@ with tempfile.TemporaryDirectory(prefix='ltm-free-form-') as tmp:
     app = work / 'Check.app/Contents'
     (app / 'MacOS').mkdir(parents=True)
     (app / 'Resources').mkdir()
+    (app / 'Resources/ipad-frame.png').symlink_to(root / 'LightTouchMac/Assets.xcassets/ipad-frame.imageset' /
+        next(f for f in (root / 'LightTouchMac/Assets.xcassets/ipad-frame.imageset').iterdir() if f.suffix == '.png').name)
     (work / 'check.swift').write_text(source)
     exe = app / 'MacOS/check'
     sources = ['UI/DisplayView', 'UI/MouseTouchPair', 'Device/DeviceProfile', 'Device/DeviceProfile+Display', 'UI/DisplayMeasurements', 'UI/AttitudeIndicatorButton',
