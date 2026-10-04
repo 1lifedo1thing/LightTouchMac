@@ -143,6 +143,7 @@ final class ScrollEvent: NSEvent {
     func convert(_ point: CGPoint, from: NSView?) -> CGPoint { point }
     func isChassisEvent(_ event: NSEvent) -> Bool { true }
     func pressModelControl(_ event: NSEvent) -> Bool { false }
+    func panelResize(_ event: NSEvent) -> Bool { false }
     func cursorOverPanel(_ event: NSEvent) -> Bool { false }
     func emit(_ event: NSEvent, _ phase: Int32) { guestTouches += 1 }
     func guestScrollDrag(_ event: NSEvent) { guestScrolls += 1 }

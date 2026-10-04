@@ -51,6 +51,7 @@ final class Gesture: NSEvent {
  func convert(_ point: CGPoint, from: NSView?) -> CGPoint { point }
  func setShellAngle(_ angle: CGFloat) { shellAngle = angle }
  func sendAttitude() { attitudes += 1 }
+ func panelResize(_ event: NSEvent) -> Bool { false }
  func cursorOverPanel(_ event:NSEvent)->Bool { onPanel }
  func guestScrollDrag(_ event:NSEvent) { guestScrolls += 1 }
  func emit(_ event: NSEvent, _ phase: Int32) { precondition(phase == TouchPhase.update); guestUpdates += 1 }

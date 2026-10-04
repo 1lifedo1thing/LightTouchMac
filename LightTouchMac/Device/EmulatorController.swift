@@ -1334,6 +1334,28 @@ final class EmulatorController {
         } catch { logEvent("guest package: could not record \(guest): \(error.localizedDescription)") }
     }
 
+    /// View ▸ Free-Form Screen (issue #21): device.json `panel`, read fresh and written back ("WxH" as the panel
+    /// scans; nil, the shipped panel). With `restart`, a running device stops (Stop's hard halt) and a fresh helper
+    /// boots on it, since the guest takes its screen size at boot. Returns whether that restart is under way.
+    func setPanel(_ panel: String?, restart: Bool) -> Bool {
+        guard var record = try? DeviceInstance.read(recordURL) else { return false }
+        if record.panel != panel {
+            record.panel = panel
+            do {
+                try record.write(state: stateDir)
+                DeviceLibrary.shared.reload()
+            } catch {
+                logEvent("display: could not record panel \(panel ?? "native"): \(error.localizedDescription)")
+                return false
+            }
+        }
+        instance.panel = panel
+        guard restart, canStop else { return false }
+        logEvent("display: restarting \(instance.name) at panel \(panel ?? "native")")
+        halt { [weak self] _ in self?.onRestartRequested?() }
+        return true
+    }
+
     /// Compose this boot's offer from the bundled itpack; the machine's
     /// guest-package= directory, or nil (no property: an older dylib, no
     /// itpack, or nothing for this build) and the device keeps what it runs.

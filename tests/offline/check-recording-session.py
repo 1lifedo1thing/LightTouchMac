@@ -17,7 +17,7 @@ final class GuestAudioCapture: Sendable { func stop() {} }
  static var delay: Duration = .milliseconds(30)
  var output: URL?
  var frames = 0
- func start(url: URL, audio: GuestAudioCapture?, canvasSize: CGSize? = nil, background: CGImage? = nil) async throws {
+ func start(url: URL, audio: GuestAudioCapture?, canvasSize: CGSize? = nil, background: CGImage? = nil, screenSide: CGFloat = 480) async throws {
   Self.starts += 1
   frames = 0
   try await Task.sleep(for: Self.delay)

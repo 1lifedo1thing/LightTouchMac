@@ -27,7 +27,7 @@ enum CaptureError: Error { case failed(String) }
     func stop(discard: Bool = false) { stops.append(discard); canStop = false }
     func reset() { id = UUID(); canStop = true; stops = [] }
     func start(frame: @escaping () throws -> CGImage?, audio: @escaping () async throws -> Void, prepare: @escaping () async throws -> CGSize?,
-               cleanup: @escaping () async -> Void, background: CGImage?, destination: @escaping () throws -> URL) {}
+               cleanup: @escaping () async -> Void, background: CGImage?, screenSide: CGFloat, destination: @escaping () throws -> URL) {}
     func dismiss() {}
     func retrySave(to url: URL) {}
 }
@@ -56,6 +56,7 @@ enum CaptureError: Error { case failed(String) }
     override var acceptsFirstResponder: Bool { true }
     func endLiveText() {}
     func captureFrame() -> CGImage? { nil }
+    var screenSide: CGFloat { 480 }
 }
 @MainActor final class EmulatorController {
     var isRunning = true, isPaused = false, isSleeping = false

@@ -66,13 +66,13 @@ final class ScreenRecordingSession {
     }
 
     /// `audio` starts the device's guest audio capture (nil: a silent movie).
-    func start(frame: @escaping () throws -> CGImage?, audio: @escaping () async throws -> GuestAudioCapture? = { nil }, prepare: @escaping () async throws -> CGSize? = { nil }, cleanup: @escaping () async -> Void = {}, background: CGImage? = nil, destination: @escaping () throws -> URL) {
+    func start(frame: @escaping () throws -> CGImage?, audio: @escaping () async throws -> GuestAudioCapture? = { nil }, prepare: @escaping () async throws -> CGSize? = { nil }, cleanup: @escaping () async -> Void = {}, background: CGImage? = nil, screenSide: CGFloat = 480, destination: @escaping () throws -> URL) {
         guard !isActive else { return }
         if case .recovery = phase { return }
-        begin(frame: frame, audio: audio, prepare: prepare, cleanup: cleanup, background: background, destination: destination)
+        begin(frame: frame, audio: audio, prepare: prepare, cleanup: cleanup, background: background, screenSide: screenSide, destination: destination)
     }
 
-    private func begin(frame: @escaping () throws -> CGImage?, audio: @escaping () async throws -> GuestAudioCapture?, prepare: @escaping () async throws -> CGSize?, cleanup: @escaping () async -> Void, background: CGImage?, destination: @escaping () throws -> URL) {
+    private func begin(frame: @escaping () throws -> CGImage?, audio: @escaping () async throws -> GuestAudioCapture?, prepare: @escaping () async throws -> CGSize?, cleanup: @escaping () async -> Void, background: CGImage?, screenSide: CGFloat, destination: @escaping () throws -> URL) {
         failure = nil
         previewImage = nil
         id = UUID()
@@ -93,7 +93,7 @@ final class ScreenRecordingSession {
                 output = url
                 let canvasSize = try await prepare()
                 let capture = try await audio()
-                do { try await writer.start(url: url, audio: capture, canvasSize: canvasSize, background: background) }
+                do { try await writer.start(url: url, audio: capture, canvasSize: canvasSize, background: background, screenSide: screenSide) }
                 catch { capture?.stop(); throw error }
                 writerStarted = true
                 startedAt = CACurrentMediaTime()

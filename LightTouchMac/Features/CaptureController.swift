@@ -365,7 +365,7 @@ import UniformTypeIdentifiers
                 await source.stop()
                 screen?.isCapturingCanvas = false
             }
-        }, background: background,
+        }, background: background, screenSide: screen.screenSide,
         destination: { [weak self] in
             guard let self else { throw CaptureError.failed("The capture window was closed.") }
             return try captureDestination("Recording", extension: "mov")

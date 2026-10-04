@@ -1114,6 +1114,12 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         DisplayView.bezel = bezel
     }
 
+    /// View ▸ Free-Form Screen: this device's screen alone, resized by dragging (DisplayView, issue #21).
+    @objc func toggleFreeFormScreen(_ sender: Any?) {
+        guard let screen = deviceVC?.screen else { return }
+        screen.setFreeForm(!screen.isFreeForm)
+    }
+
     @objc func toggleTouchOverlay(_ sender: Any?) {
         deviceVC?.screen.showsTouches.toggle()
         window?.toolbar?.validateVisibleItems()
@@ -1300,6 +1306,9 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(selectDeviceBezel(_:)):
             menuItem.state = menuItem.tag == DisplayView.bezel.rawValue ? .on : .off
             return true
+        case #selector(toggleFreeFormScreen(_:)):
+            menuItem.state = deviceVC?.screen.isFreeForm == true ? .on : .off
+            return deviceVC?.screen.canToggleFreeForm ?? false
         case #selector(toggleDeviceRunning(_:)):
             let running = selectedEntry.map { host.row(for: $0).state == .running } ?? false
             menuItem.title = running ? "Stop" : "Start"

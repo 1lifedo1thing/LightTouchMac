@@ -16,6 +16,12 @@ final class DeviceViewController: NSViewController {
         self.displayView = DisplayView(frame: NSRect(origin: .zero, size: emulator.profile.screenPixels), profile: emulator.profile)
         super.init(nibName: nil, bundle: nil)
         displayView.emulator = emulator
+        let profile = emulator.profile
+        displayView.configureFreeForm(panel: profile.supportsFreeForm ? profile.uprightPanel(emulator.instance.panel) : nil,
+                                      key: emulator.instance.id)
+        displayView.onPanelChange = { [weak emulator] upright, restart in
+            emulator?.setPanel(upright.map(profile.panelOption(upright:)), restart: restart) ?? false
+        }
         displayView.onDropIPA = { [weak self] url in self?.installDropped(url) }
         displayView.onDropIPSW = { FirmwareJobs.shared.importIPSW($0, for: nil) }   // matched by its SHA1
         // Media the firmware can't take is refused on its row, with why (MediaSupport), before anything runs.

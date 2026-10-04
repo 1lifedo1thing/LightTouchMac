@@ -26,6 +26,7 @@ final class Cursor: NSWindow { var at = NSPoint.zero; override var mouseLocation
  var restAngle: CGFloat { 0 }
  func endTilt() {}; func setShellAngle(_ a: CGFloat) {}; func sendAttitude() {}
  func pressModelControl(_ e: NSEvent) -> Bool { false }
+ func panelResize(_ e: NSEvent) -> Bool { false }
  func isChassisEvent(_ e: NSEvent) -> Bool { false }
  // A 100x100 panel at the window origin.
  func normalized(windowPoint p: NSPoint) -> (Double, Double)? {

@@ -28,6 +28,46 @@ nonisolated extension DeviceProfile {
         return panelRotation == 0 ? p : CGSize(width: p.height, height: p.width)
     }
 
+    // MARK: - Free-form screen (machine panel=WxH, issue #21)
+
+    /// Boards whose machine takes panel=WxH (the iPod touch 1G's doesn't).
+    var supportsFreeForm: Bool { self != .iPodTouch1G }
+
+    /// iBoot's iPad display region, 0x4f700000 up to DRAM's end: 9 MB at 4 bytes a pixel.
+    static let iPadPanelPixels: CGFloat = 0x900000 / 4
+
+    /// The nearest size the board's panel= accepts to an upright screen size, in guest pixels. qemu-ios's
+    /// limits, in the panel's scan orientation: the iPod's even width 64…1024 by 64…511 rows (the S5L8720
+    /// window keeps 9 bits of height); the iPad's landscape width a multiple of 16, both sides 64…2047, and no
+    /// more pixels than iBoot's display region holds (shrunk keeping the aspect).
+    func snappedPanel(upright size: CGSize) -> CGSize {
+        let turned = panelRotation != 0
+        let s = turned ? CGSize(width: size.height, height: size.width) : size
+        let pad = self == .iPad1
+        func fit(_ v: CGFloat, _ hi: CGFloat) -> CGFloat { min(max(v.isFinite ? v.rounded() : 64, 64), hi) }
+        var w = fit(s.width, pad ? 2047 : 1024), h = fit(s.height, pad ? 2047 : 511)
+        if pad, w * h > Self.iPadPanelPixels {
+            let k = (Self.iPadPanelPixels / (w * h)).squareRoot()
+            w = max(64, w * k); h = max(64, h * k)
+        }
+        let step: CGFloat = pad ? 16 : 2
+        w = max(64, (w / step).rounded(.down) * step)
+        h = h.rounded(.down)
+        if pad { h = min(h, (Self.iPadPanelPixels / w).rounded(.down)) }
+        return turned ? CGSize(width: h, height: w) : CGSize(width: w, height: h)
+    }
+
+    /// device.json `panel` ("WxH" as the panel scans) for an upright guest size, and back.
+    func panelOption(upright size: CGSize) -> String {
+        let scan = panelRotation != 0 ? CGSize(width: size.height, height: size.width) : size
+        return "\(Int(scan.width))x\(Int(scan.height))"
+    }
+    func uprightPanel(_ option: String?) -> CGSize? {
+        guard let parts = option?.split(separator: "x"), parts.count == 2,
+              let w = Int(parts[0]), let h = Int(parts[1]) else { return nil }
+        return panelRotation != 0 ? CGSize(width: h, height: w) : CGSize(width: w, height: h)
+    }
+
     // MARK: - Device art (shell-native pixels, top-left origin)
 
     /// Each board has a 3D model (<name>.usdz, revision 7 for K48, N45 and N81).

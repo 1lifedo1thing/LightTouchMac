@@ -85,6 +85,7 @@ View/Device Bezels ▸
 View/Device Bezels/3D
 View/Device Bezels/2D
 View/Device Bezels/Off
+View/Free-Form Screen
 View/Show Finger Dots
 View/Show Hidden Files
 View/-
