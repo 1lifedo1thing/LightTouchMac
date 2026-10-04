@@ -369,7 +369,10 @@ final class EmulatorController {
             netdev = network ? proxyForward().map { BootRecipe.wifiNetdev(guestForward: $0, restricted: restrict) } : nil
             setupGate = netdev != nil && restrict ? BootRecipe.SetupNetworkGate() : nil
         } else {
-            netdev = network ? "user,id=wifi0" + (proxyForward() ?? "") : nil
+            // 1.x can't use the proxy (BootRecipe.webProxyWorks): no forward, and webProxyAvailable stays false, so
+            // the Proxy menu is off and nothing tries to configure it.
+            let proxy = BootRecipe.webProxyWorks(iosVersion: iosVersion) ? proxyForward() : nil
+            netdev = network ? "user,id=wifi0" + (proxy ?? "") : nil
         }
         do {
             return try prepared.configuration(bootArgs: Self.bootArgs, usbAddress: usbSession?.guestAddress,
