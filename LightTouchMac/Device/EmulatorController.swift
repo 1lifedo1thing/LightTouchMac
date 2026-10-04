@@ -869,8 +869,9 @@ final class EmulatorController {
         if !bootFinished { return .notBooted }
         let stale = agentStaleSince.map { Date().timeIntervalSince($0) > 60 } ?? false
         let reachable = reachableSince.map { Date().timeIntervalSince($0) > 60 } ?? false
-        // The iPad has no agent: it_ethlink's serial line is its sign of life once a package with jobs runs.
-        let ethlinkMissing = !hasGuestTools && guestOffer?.serial ?? 0 > 0 && (status?.guestPackage?.serial ?? 0) > 0 && !ethlinkUp && reachable
+        // The iPad has no agent: it_ethlink's serial line is its sign of life once a package carrying it runs.
+        let ethlinkMissing = !hasGuestTools && GuestPackage.ethlinkSilent(offer: guestOffer,
+            reportedSerial: status?.guestPackage?.serial, ethlinkUp: ethlinkUp, reachableForAMinute: reachable)
         if hasGuestTools ? stale : ethlinkMissing { return .notResponding }
         return guestToolsStatus
     }

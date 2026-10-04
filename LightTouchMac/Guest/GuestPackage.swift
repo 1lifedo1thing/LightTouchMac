@@ -59,6 +59,9 @@ nonisolated enum GuestPackage {
         /// 0 when the offer asks for the built-in (seed) package.
         var serial: Int64
         var glHook: Bool
+        /// The package runs it_ethlink (the iPad's), whose serial line is the boot's sign of life. 1.x's
+        /// n45-ios1 and the iPod's packages run none, so nothing there can be "not responding".
+        var ethlink = false
     }
 
     /// The offer wire this app writes (it_boot's `ltpkg 1`), and the GL wire
@@ -205,7 +208,16 @@ nonisolated enum GuestPackage {
         }
         try fm.moveItem(at: staging, to: dir)
         return Offer(bundled: manifest.serial, version: offeredVersion, serial: offeredSerial,
-                     glHook: !builtIn && manifest.hooks.contains { Manifest.glTargets.contains($0.target) })
+                     glHook: !builtIn && manifest.hooks.contains { Manifest.glTargets.contains($0.target) },
+                     ethlink: manifest.jobs.contains { $0.hasSuffix("/com.qemu.it-ethlink.plist") })
+    }
+
+    /// "Not responding" for a board without an agent: the offered package runs it_ethlink, the loader reported it
+    /// installed, lockdown has answered for a minute, and it_ethlink's link line never came. Never for a package
+    /// that carries no it_ethlink (1.x's n45-ios1), which has nothing to answer.
+    static func ethlinkSilent(offer: Offer?, reportedSerial: Int64?, ethlinkUp: Bool, reachableForAMinute: Bool) -> Bool {
+        guard let offer, offer.serial > 0, offer.ethlink else { return false }
+        return (reportedSerial ?? 0) > 0 && !ethlinkUp && reachableForAMinute
     }
 
     /// The preparer's record (device.lock.json `guest_package`).
