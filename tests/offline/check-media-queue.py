@@ -145,7 +145,19 @@ extension AppInstaller {
   emulator.finish("After reconnect")
   try await until { waiting.isFinished }
   precondition(!waiting.failed && waiting.status == "Added to Music" && !AppInstaller.hasPendingWork)
-  print("PASS: media publishes immediate feedback, waits behind installs, imports in order, cancels preparation/waiting, retries failure and resumes after disconnection")
+  // Media the firmware's helpers can't take is refused on its row at once: nothing is prepared, queued or
+  // run in the guest, and there is nothing to retry (MediaSupport, compiled for real).
+  fixtureMediaFirmware = .init(board: "n45ap", version: "1.1", build: "3A101a", name: "iOS 1.1")
+  let preparedBefore = PreparedMedia.prepared.count, startedBefore = emulator.started.count
+  let refusedSong = add("Refused song.mp3"), refusedPhoto = add("Refused photo.png")
+  for (job, words) in [(refusedSong, "Adding music isn’t supported on iOS 1.1 yet."),
+                       (refusedPhoto, "Adding photos isn’t supported on iOS 1.1 yet.")] {
+   precondition(job.isFinished && job.failed && job.retry == nil && job.status == words, job.status)
+  }
+  try await Task.sleep(for: .milliseconds(100))
+  precondition(PreparedMedia.prepared.count == preparedBefore && emulator.started.count == startedBefore
+               && !AppInstaller.hasPendingWork, "a refused file was prepared or reached the guest")
+  print("PASS: media publishes immediate feedback, waits behind installs, imports in order, cancels preparation/waiting, retries failure and resumes after disconnection; unsupported firmware is refused before preparation")
  }
 }
 '''
@@ -154,7 +166,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-media-queue-check-') as directory:
     (work / 'check.swift').write_text(code)
     subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-swift-version', '6', '-default-isolation', 'MainActor',
                     '-module-cache-path', str(work / 'modules'), *[str(app / f) for f in [
-                        'Features/AppInstaller.swift', 'Features/InstallationQueue.swift', 'Transport/DeviceExecution.swift',
+                        'Features/AppInstaller.swift', 'Features/MediaSupport.swift', 'Features/InstallationQueue.swift', 'Transport/DeviceExecution.swift',
                         'Device/DeviceProfile.swift']],
                     str(root / 'tests/fixtures/app-installer.swift'), str(root / 'tests/fixtures/app-installer-library.swift'),
                     str(work / 'check.swift'), '-o', str(work / 'check')], check=True)

@@ -1003,7 +1003,10 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     @objc func syncMedia(_ sender: Any?) {
         guard let window, let emulator else { return }
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = PreparedMedia.extensions.sorted().compactMap { UTType(filenameExtension: $0) }
+        let firmware = emulator.mediaFirmware
+        panel.allowedContentTypes = PreparedMedia.extensions.sorted()
+            .filter { MediaSupport.supports(PreparedMedia.destination(forExtension: $0), on: firmware) }
+            .compactMap { UTType(filenameExtension: $0) }
         panel.allowsMultipleSelection = true
         panel.prompt = "Import"
         panel.beginSheetModal(for: window) { [weak window] response in
@@ -1339,7 +1342,7 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(installApp(_:)):
             return emulator.canQueueInstall
         case #selector(syncMedia(_:)):
-            return emulator.canQueueInstall && emulator.hasGuestTools
+            return emulator.canQueueInstall && MediaSupport.supportsAny(emulator.mediaFirmware)
         case #selector(restartSpringBoard(_:)):
             return emulator.canReachDevice && !emulator.isInstalling
         // Device input only reaches a running guest.

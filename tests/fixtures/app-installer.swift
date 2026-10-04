@@ -28,8 +28,13 @@ struct InstalledApp { let id: String }
     static var preparation: [String: CheckedContinuation<Void, Error>] = [:]
     struct Failure: LocalizedError { var errorDescription: String? { "Unreadable photo" } }
     let directory: URL, title: String, destination: String
+    static var prepared: [String] = []
+    nonisolated static func destination(forExtension suffix: String) -> String {
+        ["mp3": "Music", "mov": "Videos"][suffix.lowercased()] ?? "Photos"
+    }
     static func prepare(_ source: URL, profile: DeviceProfile) async throws -> PreparedMedia {
         let name = source.deletingPathExtension().lastPathComponent
+        prepared.append(name)
         if delayed.contains(name) { try await withCheckedThrowingContinuation { preparation[name] = $0 } }
         try Task.checkCancellation()
         if failed.contains(name) { throw Failure() }
@@ -38,6 +43,10 @@ struct InstalledApp { let id: String }
         return PreparedMedia(directory: directory, title: name, destination: source.pathExtension == "mp3" ? "Music" : "Photos")
     }
 }
+
+/// EmulatorController.mediaFirmware, set per check; MediaSupport itself is compiled for real.
+@MainActor var fixtureMediaFirmware = MediaSupport.Firmware(board: "n72ap", version: "3.1.3", build: "7E18", name: "iOS 3.1.3")
+extension EmulatorController { var mediaFirmware: MediaSupport.Firmware { fixtureMediaFirmware } }
 
 /// EmulatorController.installPipeline: the queue checks reach only its placeholder.
 struct InstallPipeline {
