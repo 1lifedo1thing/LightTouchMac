@@ -10,7 +10,7 @@ the blob where the bundle keeps it (Resources/device/n72ap-7E18.itbase, beside t
              bar) and returns n72ap-7E18; it publishes as Devices/<id> with the files the n72 boot wants, a locked
              base, identity.json and the lock's identity seeded with the device id, no build-machine path
   twice      a second fresh install: a different seed, UDID, serial, Wi-Fi/BT MAC, ECID and NOR SysCfg
-  existing   a library with a device: nothing is unpacked (nil, no job, still one device); a saved sidebar with an
+  existing   a library with a device (an iPad): nothing is unpacked (nil, no job, still one device); a saved sidebar with an
              empty library: nothing either
   prepare    Prepare on the row (downloadAndPrepare, e.g. after a Delete): the same unpack
 
@@ -117,11 +117,17 @@ func expect(_ ok: Bool, _ what: @autoclosure () -> String, line: Int = #line) {
         try published()
         print("PASS fresh: the built-in iPod unpacked and published as a device of its own (\(devices()[0].id.uuidString))")
     case "existing":
+        // An iPad prepared earlier: the Mac already has a library.
+        let iPad = catalog.entry(id: "k48ap-7B500")!, staging = state.appendingPathComponent("Preparing/ipad")
+        try fm.createDirectory(at: staging.appendingPathComponent("nand"), withIntermediateDirectories: true)
+        for name in ["iBoot.bin", "nor.bin", "gid-blobs.bin", "identity.json"] { fm.createFile(atPath: staging.appendingPathComponent(name).path, contents: Data("{}".utf8)) }
+        try Data(#"{"boot_strategy": "iboot"}"#.utf8).write(to: staging.appendingPathComponent("device.lock.json"))
+        _ = try PreparationJob.publish(staging: staging, entry: iPad, id: UUID(), state: state)
         expect(devices().count == 1, "a library with a device")
         expect(jobs.prepareBundledIfFresh(sidebarSaved: false) == nil && jobs.jobs.isEmpty, "a Mac with a device gets no built-in iPod")
         expect(jobs.prepareBundledIfFresh(sidebarSaved: true) == nil && jobs.jobs.isEmpty, "nor one that has saved a sidebar")
         try? await Task.sleep(for: .seconds(1))
-        expect(devices().count == 1, "still one device")
+        expect(devices().count == 1 && devices()[0].firmware == "k48ap-7B500", "still only the iPad")
         print("PASS existing: a library with a device, or a saved sidebar, gets nothing new")
     case "saved":
         expect(jobs.prepareBundledIfFresh(sidebarSaved: true) == nil && jobs.jobs.isEmpty && devices().isEmpty, "a saved sidebar with no device: nothing")
@@ -191,7 +197,7 @@ def main():
         assert not same, f'two unpacks share {same}: {first} / {second}'
         print(f'PASS twice: two unpacks, two identities (UDID {first["udid"][:8]}… / {second["udid"][:8]}…, '
               f'serial {first["serial"]} / {second["serial"]}, Wi-Fi {first["wifi"]} / {second["wifi"]})')
-        run('existing', tmp / 'state-a')
+        run('existing', tmp / 'state-e')
         run('saved', tmp / 'state-c')
         run('prepare', tmp / 'state-d')
         print('PASS: check-bundled-device')
