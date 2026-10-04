@@ -27,9 +27,12 @@ final class N45Board: Board {
     /// sound, keyboard clicks and lock included, and on N45 each is played as Beep + Buzz (Celestial's
     /// N45/SystemSoundBehaviour.plist), the Buzz on the piezo behind timer 1. It needs the WM8758 codec to answer
     /// on I2C (qemu-ios ipod1g-buzzer); without one it crash-loops on an empty audio device list.
+    /// Plus mDNSResponder: 1.x's libSystem resolves every host name through it (unicast DNS included), so without it
+    /// Safari, joined and leased, sent no DNS query at all and answered "can't find the server" for any named host
+    /// while an IP literal loaded. It waits on no hardware.
     static let keptDaemons: Set = ["com.apple.AddressBook.plist", "com.apple.CommCenter.plist", "com.apple.configd.plist",
-                                   "com.apple.mobile.lockdown.plist", "com.apple.notifyd.plist", "com.apple.SpringBoard.plist",
-                                   "com.apple.usbptpd.plist", "coreaudiod.plist"]
+                                   "com.apple.mDNSResponder.plist", "com.apple.mobile.lockdown.plist", "com.apple.notifyd.plist",
+                                   "com.apple.SpringBoard.plist", "com.apple.usbptpd.plist", "coreaudiod.plist"]
     /// Kept where the firmware ships them, not required of every 1.x: 1.1.3+ lockdownd starts each service (AFC among
     /// them) through lockbot ("spawn_service_agent: Could not spawn service agent via lockbot" without it); 1.1-1.1.2
     /// have no lockbot and spawn their own.
