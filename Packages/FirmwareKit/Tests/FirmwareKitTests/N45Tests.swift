@@ -276,6 +276,19 @@ import Testing
         #expect(c["iBoot"] == Self.prefix + "iBoot.n45ap.RELEASE.img2" && c["AppleLogo"] == Self.prefix + "applelogo.img2")
         #expect(c["KernelCache"] == "kernelcache.release.s5l8900xrb" && c["OS"] == "022-3601-4.dmg")
     }
+    /// 3A101a's LaunchDaemons: the bake keeps mDNSResponder, 1.x's only host-name resolver (without it Safari sent no
+    /// DNS query and found no server), and still drops the jobs that wait on absent hardware.
+    @Test func resolverKept() {
+        let jobs = ["com.apple.AddressBook.plist", "com.apple.BTServer.plist", "com.apple.CommCenter.plist", "com.apple.configd.plist",
+                    "com.apple.DumpPanic.plist", "com.apple.crashreporterd.plist", "com.apple.daily.plist", "com.apple.iapd.plist",
+                    "com.apple.mDNSResponder.plist", "com.apple.mobile.lockdown.plist", "com.apple.notifyd.plist",
+                    "com.apple.SpringBoard.plist", "com.apple.syslogd.plist", "com.apple.update.plist", "com.apple.usbptpd.plist",
+                    "coreaudiod.plist"]
+        let removed = N45Board.removedDaemons(jobs)
+        #expect(!removed.contains("com.apple.mDNSResponder.plist"), "\(removed)")
+        #expect(removed == ["com.apple.BTServer.plist", "com.apple.DumpPanic.plist", "com.apple.crashreporterd.plist",
+                            "com.apple.daily.plist", "com.apple.iapd.plist", "com.apple.syslogd.plist", "com.apple.update.plist"])
+    }
     /// 1.1.3+ (4A93, 4B1) ship com.apple.mobile.lockbot, through which their lockdownd starts every service (AFC):
     /// the bake keeps it; 1.1.1 (3A110a) has none. Read off the real system volumes.
     @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"), arguments: [("n45ap-4A93", true), ("n45ap-4B1", true), ("n45ap-3A110a", false)])
@@ -291,7 +304,8 @@ import Testing
                 .map { ($0.path as NSString).lastPathComponent }.filter { $0.hasSuffix(".plist") }
             let lockbot = "com.apple.mobile.lockbot.plist", removed = N45Board.removedDaemons(jobs)
             #expect(jobs.contains(lockbot) == ships, "\(id): \(jobs)")
-            #expect(!removed.contains(lockbot) && removed.contains("com.apple.syslogd.plist"), "\(id): \(removed)")
+            #expect(!removed.contains(lockbot) && !removed.contains("com.apple.mDNSResponder.plist")
+                    && removed.contains("com.apple.syslogd.plist"), "\(id): \(removed)")
             #expect(N45Board.keptDaemonsFit(jobs).fits)
         }
     }

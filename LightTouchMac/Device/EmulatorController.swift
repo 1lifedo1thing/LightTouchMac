@@ -369,7 +369,10 @@ final class EmulatorController {
             netdev = network ? proxyForward().map { BootRecipe.wifiNetdev(guestForward: $0, restricted: restrict) } : nil
             setupGate = netdev != nil && restrict ? BootRecipe.SetupNetworkGate() : nil
         } else {
-            netdev = network ? "user,id=wifi0" + (proxyForward() ?? "") : nil
+            // 1.x can't use the proxy (BootRecipe.webProxyWorks): no forward, and webProxyAvailable stays false, so
+            // the Proxy menu is off and nothing tries to configure it.
+            let proxy = BootRecipe.webProxyWorks(iosVersion: iosVersion) ? proxyForward() : nil
+            netdev = network ? "user,id=wifi0" + (proxy ?? "") : nil
         }
         do {
             return try prepared.configuration(bootArgs: Self.bootArgs, usbAddress: usbSession?.guestAddress,
@@ -869,8 +872,9 @@ final class EmulatorController {
         if !bootFinished { return .notBooted }
         let stale = agentStaleSince.map { Date().timeIntervalSince($0) > 60 } ?? false
         let reachable = reachableSince.map { Date().timeIntervalSince($0) > 60 } ?? false
-        // The iPad has no agent: it_ethlink's serial line is its sign of life once a package with jobs runs.
-        let ethlinkMissing = !hasGuestTools && guestOffer?.serial ?? 0 > 0 && (status?.guestPackage?.serial ?? 0) > 0 && !ethlinkUp && reachable
+        // The iPad has no agent: it_ethlink's serial line is its sign of life once a package carrying it runs.
+        let ethlinkMissing = !hasGuestTools && GuestPackage.ethlinkSilent(offer: guestOffer,
+            reportedSerial: status?.guestPackage?.serial, ethlinkUp: ethlinkUp, reachableForAMinute: reachable)
         if hasGuestTools ? stale : ethlinkMissing { return .notResponding }
         return guestToolsStatus
     }
