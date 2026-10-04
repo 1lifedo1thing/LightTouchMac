@@ -57,7 +57,7 @@ public enum SystemEdits {
         public static let itpack = "armv7.itpack"
         public static func itpack(_ arch: String) -> String { arch + ".itpack" }
         /// A helper built for `arch`: the armv7 build keeps the bare name, the others carry the arch
-        /// (it_prefs-armv6, it_keybag-armv6).
+        /// (it_keybag-armv6).
         public static func name(_ base: String, _ arch: String) -> String { arch == "armv7" ? base : base + "-" + arch }
         public static let sealJob = "com.qemu.it-seal.plist", glTestJob = "com.qemu.it-gltest.plist"
         /// The fat armv6+armv7 AppSync dylib.
