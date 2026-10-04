@@ -130,7 +130,11 @@ final class ScrollEvent: NSEvent {
     var lastTiltTick = 0.0, testTime = 0.0, motionWasEnabled = false
     var motionRestAngle: CGFloat?, scrollPoint: CGPoint?
     var tilting = false, scrollTilting = false, rotatingChassis = false
-    var pinching = false, pinchingGuest = false, touchInteractionEnabled = true
+    var pinchingGuest = false, touchInteractionEnabled = true
+    struct TouchPair { mutating func down(at: CGPoint, _ f: NSEvent.ModifierFlags) {}; mutating func up() {} }
+    var touchPair = TouchPair()
+    func normalized(_ event: NSEvent) -> (Double, Double)? { nil }
+    func updatePairRings(_ flags: NSEvent.ModifierFlags) {}
     var grabPoint = CGPoint.zero
     var wheelTiltResetTask: Task<Void, Never>?
     let shellLayer = CALayer(), attitudeIndicator = Indicator()

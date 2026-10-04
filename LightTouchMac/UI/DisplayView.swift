@@ -176,7 +176,9 @@ final class DisplayView: NSView {
     private var shownSerial: UInt64 = 0
     private var shownSurface: IOSurface?
     private let colorSpace = CGColorSpaceCreateDeviceRGB()
-    private var pinching = false
+    private var touchPair = MouseTouchPair()
+    /// Simulator-style rings where the two fingers of an Option drag land.
+    private let pairRings = [CAShapeLayer(), CAShapeLayer()]
 
     init(frame: NSRect, profile: DeviceProfile) {
         self.profile = profile
@@ -229,6 +231,17 @@ final class DisplayView: NSView {
         keyboardPointerLayer.shadowOffset = .zero
         keyboardPointerLayer.isHidden = true
         layer?.addSublayer(keyboardPointerLayer)
+        for ring in pairRings {
+            ring.zPosition = 52
+            ring.actions = ["position": NSNull(), "hidden": NSNull()]
+            ring.bounds = CGRect(x: 0, y: 0, width: 30, height: 30)
+            ring.path = CGPath(ellipseIn: ring.bounds.insetBy(dx: 1, dy: 1), transform: nil)
+            ring.fillColor = NSColor(white: 0.5, alpha: 0.35).cgColor
+            ring.strokeColor = NSColor(white: 0.25, alpha: 0.6).cgColor
+            ring.isHidden = true
+            layer?.addSublayer(ring)
+        }
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
 
         contentLayer.magnificationFilter = .nearest
         // The shell is opaque, so the LCD draws on top of it. Black backing
@@ -843,13 +856,15 @@ final class DisplayView: NSView {
     /// layer tree rather than reading a frame. Returns nil for clicks outside
     /// it. (The emulator un-rotates touches itself — ipod_touch_lcd_map_touch —
     /// so coordinates over the surface as published are exactly what it wants.)
-    private func normalized(_ event: NSEvent) -> (Double, Double)? {
+    private func normalized(_ event: NSEvent) -> (Double, Double)? { normalized(windowPoint: event.locationInWindow) }
+
+    private func normalized(windowPoint: NSPoint) -> (Double, Double)? {
         if let modelView {
-            guard let p = modelView.panelPoint(modelView.convert(event.locationInWindow, from: nil)) else { return nil }
+            guard let p = modelView.panelPoint(modelView.convert(windowPoint, from: nil)) else { return nil }
             return (Double(p.x), Double(p.y))
         }
         guard let rootLayer = layer else { return nil }
-        let p = convert(event.locationInWindow, from: nil)
+        let p = convert(windowPoint, from: nil)
         let cp = contentLayer.convert(p, from: rootLayer)
         let b = contentLayer.bounds
         guard b.width > 0, b.height > 0, b.contains(cp) else { return nil }
@@ -1153,7 +1168,7 @@ final class DisplayView: NSView {
             grabPoint = convert(event.locationInWindow, from: nil)
             return
         }
-        pinching = event.modifierFlags.contains(.option)
+        if let (nx, ny) = normalized(event) { touchPair.down(at: CGPoint(x: nx, y: ny), event.modifierFlags) }
         emit(event, TouchPhase.begin)
     }
 
@@ -1176,7 +1191,33 @@ final class DisplayView: NSView {
     override func mouseUp(with event: NSEvent) {
         if tilting { endTilt(); return }
         emit(event, TouchPhase.end)
-        pinching = false
+        touchPair.up()
+        updatePairRings(event.modifierFlags)
+    }
+
+    override func mouseMoved(with event: NSEvent) { updatePairRings(event.modifierFlags) }
+    override func mouseExited(with event: NSEvent) { updatePairRings([]) }
+
+    /// Hover preview: the rings follow the cursor while Option is held, and
+    /// Option-Shift locks their spacing (Simulator's convention).
+    private func updatePairRings(_ flags: NSEvent.ModifierFlags) {
+        guard !touchDown else { return }
+        let point = window.flatMap { normalized(windowPoint: $0.mouseLocationOutsideOfEventStream) }.map { CGPoint(x: $0.0, y: $0.1) }
+        touchPair.track(flags, at: point)
+        guard touchInteractionEnabled, let point, let second = touchPair.secondFinger(for: point, flags) else {
+            showPairRings(nil); return
+        }
+        showPairRings((point, second))
+    }
+
+    private func showPairRings(_ pair: (CGPoint, CGPoint)?) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (ring, point) in zip(pairRings, [pair?.0, pair?.1]) {
+            ring.isHidden = point == nil
+            if let point { ring.position = projectedPanelPoint(point) }
+        }
+        CATransaction.commit()
     }
 
     // MARK: - Tilt (drag the chassis to rotate; the accelerometer follows)
@@ -1349,11 +1390,12 @@ final class DisplayView: NSView {
 
     private func send(_ phase: Int32, _ nx: Double, _ ny: Double) {
         sendVisualTouch(0, phase, nx, ny)
-        if pinching {
-            // Second finger mirrored through the panel centre — an Option-drag
-            // reads as a symmetric pinch, the geometry cocoa.m uses.
-            sendVisualTouch2(phase, 1.0 - nx, 1.0 - ny)
-        }
+        // Option: second finger mirrored through the panel centre (pinch).
+        // Option-Shift: second finger at a locked offset (two-finger pan).
+        let p = CGPoint(x: nx, y: ny)
+        guard let q = touchPair.secondFinger(for: p, []) else { return }
+        sendVisualTouch2(phase, Double(q.x), Double(q.y))
+        showPairRings(phase == TouchPhase.end ? nil : (p, q))
     }
 
     // MARK: - Keyboard pointer (typing disabled)
@@ -1468,6 +1510,7 @@ final class DisplayView: NSView {
         case 58, 61: emulator?.sendKey(macKeyCode: event.keyCode, down: event.modifierFlags.contains(.option))
         default: break
         }
+        updatePairRings(event.modifierFlags)
         if !event.modifierFlags.contains(.shift), !keyboardTouchKeys.isDisjoint(with: [123, 124, 125, 126]) {
             endKeyboardTouch()
         }
