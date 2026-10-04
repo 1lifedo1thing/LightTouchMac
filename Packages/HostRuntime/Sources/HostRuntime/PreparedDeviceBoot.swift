@@ -62,7 +62,8 @@ public struct PreparedDeviceBoot {
     }
 
     public static func prepare(board: Board, base: URL, overlay: URL, writableNOR: URL?,
-                               storageKey: String?, bootrom: String, dieID: String? = nil) throws -> Self {
+                               storageKey: String?, bootrom: String, dieID: String? = nil,
+                               panel: String? = nil) throws -> Self {
         let lock = base.appendingPathComponent("device.lock.json")
         let strategy = try BootRecipe.bootStrategy(lock)
         let required = try board.requiredFiles(strategy: strategy)
@@ -84,7 +85,7 @@ public struct PreparedDeviceBoot {
                     baseNOR: base.appendingPathComponent("nor.bin"), writableNOR: files.writableNOR,
                     overlay: overlay, bootrom: bootrom, strategy: strategy,
                     gidBlobs: board == .n45 || board == .m68 ? nil : base.appendingPathComponent("gid-blobs.bin").path,
-                    dieID: unitDieID, machine: BootRecipe.lockMachine(lock))
+                    dieID: unitDieID, machine: BootRecipe.lockMachine(lock).merging(panel.map { ["panel": $0] } ?? [:]) { $1 })
     }
 
     /// Explicit adapter for pre-library N72 regression fixtures with separate images.

@@ -377,7 +377,8 @@ final class EmulatorController {
             }
             prepared = try PreparedDeviceBoot.prepare(board: board, base: instance.paths.base,
                 overlay: overlayURL, writableNOR: instance.paths.writableNOR, storageKey: instance.storage.key,
-                bootrom: BootRecipe.bootrom(profile.bootromName, filesRoot: Bundled.filesRoot), dieID: instance.identity?.dieID)
+                bootrom: BootRecipe.bootrom(profile.bootromName, filesRoot: Bundled.filesRoot), dieID: instance.identity?.dieID,
+                panel: instance.panel)
         } catch PreparedDeviceBoot.Failure.baseMismatch {
             baseImageMismatch = true
             reportDeviceNotice("This \(profile.shortName)’s data was made with an older system image.", for: .erase)

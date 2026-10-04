@@ -76,6 +76,10 @@ nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Sendable {
     var provenance: Provenance?
     /// Guest-package serials and verdicts (GuestPackage).
     var guest: Guest?
+    /// device.json `panel`: an opt-in display of another size, "WxH" as the
+    /// panel scans (iPad landscape), passed to the machine as panel=WxH
+    /// (issue #21). Absent: the shipped panel.
+    var panel: String?
 
     var profile: DeviceProfile? { DeviceProfile(boardID: board) }
 

@@ -65,8 +65,8 @@ private final class Fixture {
             .write(to: base.appendingPathComponent("identity.json"))
     }
     deinit { try? FileManager.default.removeItem(at: root) }
-    func prepare(_ board: PreparedDeviceBoot.Board, key: String? = "base-A") throws -> PreparedDeviceBoot {
-        try .prepare(board: board, base: base, overlay: overlay, writableNOR: nor, storageKey: key, bootrom: "rom")
+    func prepare(_ board: PreparedDeviceBoot.Board, key: String? = "base-A", panel: String? = nil) throws -> PreparedDeviceBoot {
+        try .prepare(board: board, base: base, overlay: overlay, writableNOR: nor, storageKey: key, bootrom: "rom", panel: panel)
     }
 }
 
@@ -115,6 +115,19 @@ extension BootTests {
             return   // kboot only: missingLegacyStrategyKeepsBoardDefault covers it
         }
         #expect(config == expected)
+    }
+
+    /// device.json `panel` (issue #21) reaches the machine as panel=WxH; unset, the machine line has no panel.
+    @Test(arguments: [PreparedDeviceBoot.Board.n72, .k48])
+    func panelOption(board: PreparedDeviceBoot.Board) throws {
+        let f = try Fixture(board: board, strategy: "iboot")
+        func machine(_ panel: String?) throws -> String {
+            try f.prepare(board, panel: panel).configuration(bootArgs: "", usbAddress: nil, wifi: false,
+                guestPackage: nil, serial: "null", audio: [], netdev: nil).argv[2]
+        }
+        #expect(!(try machine(nil)).contains("panel="))
+        #expect(try machine("320x504").contains(",panel=320x504"))
+        #expect(try machine("1280x768").contains("aes-uid=engine"))
     }
 
     @Test func privateNORKeepsGuestWritesAndBaseImmutable() throws {
