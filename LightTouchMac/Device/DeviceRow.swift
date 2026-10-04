@@ -66,6 +66,8 @@ nonisolated enum DeviceRowState: Equatable, Sendable {
     case downloading(fraction: Double, remaining: TimeInterval? = nil, files: Int = 1)
     case preparing(Preparation)
     case ready, running, stopping
+    /// Its storage is being removed (DeviceDeletions); the row leaves when that's done.
+    case deleting
     case error(String)
     case unavailable(Unavailable)
 }
@@ -84,16 +86,17 @@ nonisolated struct DeviceRow: Equatable, Sendable {
     let preparedByOlderRecipe: Bool
 
     /// `downloaded`: IPSWStore has this entry's IPSW. `baseRecipe`: DeviceRow.baseRecipeVersion of the device's lock.
+    /// `deleting`: DeviceDeletions is removing the device.
     init(entry: FirmwareCatalog.Entry, instanceID: UUID?, session: SessionPhase?,
          job: FirmwareJob?, downloaded: Bool = false, preparedWithoutActivation: Bool = false,
-         baseRecipe: Int? = nil) {
+         baseRecipe: Int? = nil, deleting: Bool = false) {
         self.entry = entry
         self.instanceID = instanceID
         self.preparedWithoutActivation = preparedWithoutActivation
         preparedByOlderRecipe = instanceID != nil && baseRecipe.map { $0 < entry.recipe?.version ?? 0 } ?? false
         hasSession = session != nil
-        state = Self.state(entry: entry, startable: instanceID != nil,
-                           session: session, job: job, downloaded: downloaded)
+        state = deleting ? .deleting : Self.state(entry: entry, startable: instanceID != nil,
+                                                  session: session, job: job, downloaded: downloaded)
     }
 
     /// A session outranks everything; then the catalog's own verdict, a job
@@ -137,23 +140,25 @@ nonisolated struct DeviceRow: Equatable, Sendable {
         }
     }
 
-    /// The sidebar's words beside the ring: "43%"; nil while there is no fraction yet (the ring spins).
+    /// VoiceOver's words for the ring: "43%"; nil while there is no fraction yet (the ring spins).
     var progressSummary: String? { progress.map { "\(Int(($0 * 100).rounded(.down)))%" } }
 
     /// What the sidebar shows after the title. Only what differs from the usual: a downloaded or
     /// ready build shows nothing; one that isn't here yet shows a download glyph (its size is in VoiceOver).
     enum Accessory: Equatable, Sendable {
+        /// `stopping`: an indeterminate ring (stopping, deleting).
         case none, notDownloaded, running, stopping, error
-        case progress(Double?, String?)
+        /// The ring alone: its fraction, or spinning while there is none.
+        case progress(Double?)
         case text(String)
     }
     var accessory: Accessory {
         switch state {
         case .notDownloaded: .notDownloaded
         case .downloaded, .ready: .none
-        case .downloading, .preparing: .progress(progress, progressSummary)
+        case .downloading, .preparing: .progress(progress)
         case .running: .running
-        case .stopping: .stopping
+        case .stopping, .deleting: .stopping
         case .error: .error
         case .unavailable(.comingSoon): .text("Coming soon")
         case .unavailable(.requiresIPSW): .text("Requires an IPSW")
@@ -222,7 +227,7 @@ nonisolated struct DeviceRow: Equatable, Sendable {
     }
 
     /// `canDownload` is FirmwareJobs.canDownload: whether the preparer is present.
-    private var working: Bool { switch state { case .downloading, .preparing, .stopping: true; default: false } }
+    private var working: Bool { switch state { case .downloading, .preparing, .stopping, .deleting: true; default: false } }
 
     /// Whether the sidebar may drop this row now: a prepared device when it may be deleted (which asks first),
     /// any other when nothing is running or in flight for it.
@@ -240,11 +245,11 @@ nonisolated struct DeviceRow: Equatable, Sendable {
             return canDownload && !isStartable && !working && !isDimmed
         case .importIPSW:
             return !isStartable && entry.status != .comingSoon && !working
-        case .cancel: return !hasSession && working
+        case .cancel: return !hasSession && working && state != .deleting
         case .erase: return instanceID != nil && !working
         case .openFilesystem, .commitFilesystem, .discardFilesystem, .recoverFilesystem:
             return instanceID != nil && !working && state != .running && state != .stopping
-        case .showInFinder: return instanceID != nil
+        case .showInFinder: return instanceID != nil && state != .deleting
         case .delete: return instanceID != nil && !hasSession && !working
         case .prepareAgain: return preparedByOlderRecipe && canDownload && allows(.delete, canDownload: canDownload)
         }
@@ -258,7 +263,7 @@ nonisolated struct DeviceRow: Equatable, Sendable {
         case .downloading, .preparing: .cancel
         case .error: isStartable ? .start : entry.status == .userIPSW ? .importIPSW : .downloadAndPrepare
         case .unavailable(.requiresIPSW): .importIPSW
-        case .unavailable(.comingSoon), .running, .stopping: nil
+        case .unavailable(.comingSoon), .running, .stopping, .deleting: nil
         }
     }
 
@@ -309,6 +314,7 @@ nonisolated struct DeviceRow: Equatable, Sendable {
         case .ready: "Ready"
         case .running: "Running"
         case .stopping: "Stopping"
+        case .deleting: "Deleting"
         case .error: "Error"
         case .unavailable(.comingSoon): "Coming soon"
         case .unavailable(.requiresIPSW): "Requires an IPSW"

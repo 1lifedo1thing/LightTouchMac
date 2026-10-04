@@ -111,6 +111,9 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
     /// The row's name in titles and alerts: the user's, else nil.
     func customName(for entry: FirmwareCatalog.Entry) -> String? { list.names[entry.id] }
 
+    /// What the row says; the window's title and subtitle say the same.
+    func label(for entry: FirmwareCatalog.Entry) -> SidebarList.Label { list.label(for: entry) }
+
     /// The row in an alert or a panel: “Lab iPad”, else iPad iOS 3.2.2.
     func displayName(for entry: FirmwareCatalog.Entry) -> String {
         customName(for: entry).map { "“\($0)”" } ?? "\(entry.profile?.displayName ?? entry.productType) iOS \(entry.version)"
@@ -159,7 +162,7 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         }
     }
 
-    /// Saves, rebuilds the rows (labels depend on every row: one kind of device or several), keeps the selection.
+    /// Saves, rebuilds the rows, keeps the selection.
     private func listDidChange() {
         list.save(defaults)
         let selected = selectedEntry?.id
@@ -221,7 +224,7 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         }
     }
 
-    /// Shows the batch question; a check answers it without a window on screen.
+    /// Shows the batch question and a failed deletion; a check answers them without a window on screen.
     var presentAlert: (NSAlert, NSWindow, @escaping (NSApplication.ModalResponse) -> Void) -> Void = { alert, window, done in
         alert.beginSheetModal(for: window, completionHandler: done)
     }
@@ -244,17 +247,24 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         return alert
     }
 
+    /// Rows with nothing on disk leave now; prepared devices show Deleting and each leaves when its storage is gone.
+    /// Failures stay listed and are reported together once every deletion has ended.
     private func finish(_ batch: Batch) {
-        for entry in batch.delete {
-            guard let instance = host.instance(for: entry) else { continue }
-            do { try host.delete(instance) } catch {
-                if let window = view.window { NSAlert(error: error).beginSheetModal(for: window) }
-                break
-            }
-            list.remove(entry.id)
-        }
+        let deletions = batch.delete.compactMap { entry in host.instance(for: entry).map { (entry, host.delete($0)) } }
         batch.remove.forEach { list.remove($0.id) }
         listDidChange()
+        guard !deletions.isEmpty else { return }
+        Task {
+            var errors: [Error] = []
+            for (entry, deletion) in deletions {
+                do {
+                    try await deletion.value
+                    list.remove(entry.id)
+                    listDidChange()
+                } catch { errors.append(error) }
+            }
+            if let error = errors.first, let window = view.window { presentAlert(NSAlert(error: error), window) { _ in } }
+        }
     }
 
     // MARK: - Selection
@@ -354,8 +364,7 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         (outline.view(atColumn: 0, row: max(index, 0), makeIfNecessary: false) as? DeviceRowCell)?.endEditing()
         guard index >= 0, let entry = entry(at: index) else { return }
         if !cancelledRename {
-            let mixed = Set(items.map(\.entry.board)).count > 1
-            list.rename(entry.id, to: control.stringValue, defaultTitle: SidebarList.label(for: entry, name: nil, mixed: mixed).title)
+            list.rename(entry.id, to: control.stringValue, defaultTitle: SidebarList.label(for: entry, name: nil).title)
         }
         cancelledRename = true   // one finish per edit
         listDidChange()
@@ -376,19 +385,16 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
     // MARK: - Delegate
 
     func outlineView(_ outlineView: NSOutlineView, typeSelectStringFor tableColumn: NSTableColumn?, item: Any) -> String? {
-        (item as? Entry).map { list.label(for: $0.entry, in: host.catalog).title }
+        (item as? Entry).map { list.label(for: $0.entry).title }
     }
 
-    func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
-        guard let entry = (item as? Entry)?.entry, list.label(for: entry, in: host.catalog).subtitle != nil else { return 24 }
-        return 38
-    }
+    func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat { 38 }
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let entry = (item as? Entry)?.entry else { return nil }
         let cell = outlineView.makeView(withIdentifier: DeviceRowCell.identifier, owner: nil) as? DeviceRowCell
             ?? DeviceRowCell()
-        cell.update(row(for: entry), label: list.label(for: entry, in: host.catalog))
+        cell.update(row(for: entry), label: list.label(for: entry))
         return cell
     }
 
@@ -518,21 +524,18 @@ private final class SidebarOutlineView: NSOutlineView {
 
 // MARK: - Row cell
 
-/// The row's title (SidebarList.Label) with a Beta 3 / GM 1 tag in secondary text, the device and version under it
-/// when the title doesn't say them, and the state accessory only when it isn't the usual (DeviceRow.accessory).
-/// VoiceOver reads the title, the subtitle, the tag, the state and how well the build is tested.
+/// Two lines (SidebarList.Label): the model identifier or custom name over the version, and the state accessory only
+/// when it isn't the usual (DeviceRow.accessory). VoiceOver reads both lines, the state and how well the build is tested.
 final class DeviceRowCell: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("entry")
 
     private let title = NSTextField(labelWithString: "")
-    private let badge = NSTextField(labelWithString: "")
     private let subtitle = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
     private let ring = NSProgressIndicator()
     private let symbol = NSImageView()
     /// The device's artwork (DeviceProfile.icon), sized to the row: as the cell's imageView, selection restyles it.
     private let icon = NSImageView()
-    private lazy var iconSize = icon.widthAnchor.constraint(equalToConstant: 18)
 
     init() {
         super.init(frame: .zero)
@@ -542,10 +545,6 @@ final class DeviceRowCell: NSTableCellView {
         icon.imageScaling = .scaleProportionallyUpOrDown
         title.lineBreakMode = .byTruncatingTail
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-
-        badge.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        badge.textColor = .secondaryLabelColor
-        badge.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
 
         subtitle.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         subtitle.textColor = .secondaryLabelColor
@@ -561,13 +560,10 @@ final class DeviceRowCell: NSTableCellView {
         ring.minValue = 0
         ring.maxValue = 1
 
-        let titleLine = NSStackView(views: [title, badge])
-        titleLine.spacing = 6
-        let text = NSStackView(views: [titleLine, subtitle])
+        let text = NSStackView(views: [title, subtitle])
         text.orientation = .vertical
         text.alignment = .leading
         text.spacing = 1
-        text.detachesHiddenViews = true
         text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let stack = NSStackView()
@@ -581,7 +577,7 @@ final class DeviceRowCell: NSTableCellView {
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            iconSize,
+            icon.widthAnchor.constraint(equalToConstant: 30),
             icon.heightAnchor.constraint(equalTo: icon.widthAnchor),
             ring.widthAnchor.constraint(equalToConstant: 16),
             ring.heightAnchor.constraint(equalToConstant: 16),
@@ -604,18 +600,14 @@ final class DeviceRowCell: NSTableCellView {
     func update(_ row: DeviceRow, label: SidebarList.Label) {
         title.stringValue = label.title
         title.textColor = row.isDimmed ? .disabledControlTextColor : .labelColor
-        subtitle.stringValue = label.subtitle ?? ""
-        subtitle.isHidden = label.subtitle == nil
+        subtitle.stringValue = label.subtitle
         icon.image = row.entry.profile?.icon
         icon.isHidden = icon.image == nil
-        iconSize.constant = label.subtitle == nil ? 18 : 30
         icon.alphaValue = row.isDimmed ? 0.5 : 1
         let size = row.entry.source.bytes.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
         toolTip = (["iOS \(row.entry.version) (\(row.entry.build))",
                     row.supportNote, row.accessory == .notDownloaded ? size.map { "Not downloaded, \($0)" } ?? "Not downloaded" : nil]
                    + row.progressDetail + [row.progressLine]).compactMap { $0 }.joined(separator: "\n")
-        badge.stringValue = label.badge ?? ""
-        badge.isHidden = label.badge == nil
 
         detail.isHidden = true
         ring.isHidden = true
@@ -624,19 +616,17 @@ final class DeviceRowCell: NSTableCellView {
         switch row.accessory {
         case .none: break
         case .notDownloaded: show(symbol: "arrow.down.circle", color: .tertiaryLabelColor, size: 12)
-        case let .progress(fraction, summary):
-            spin(fraction: fraction)
-            show(summary)
+        case let .progress(fraction): spin(fraction: fraction)
         case .running: show(symbol: "circle.fill", color: .systemGreen, size: 8)
         case .stopping: spin(fraction: nil)
         case .error: show(symbol: "exclamationmark.triangle.fill", color: .systemYellow, size: 12)
         case let .text(text): show(text)
         }
         if let note = row.note, detail.isHidden { show(note) }
-        // One element per row for VoiceOver: "iPad, iOS 4.2.1, Beta 1, Running, Untested".
+        // One element per row for VoiceOver: "iPad1,1, iOS 4.2 Beta 1, Running, Untested".
         setAccessibilityElement(true)
         setAccessibilityRole(.cell)
-        setAccessibilityLabel(([label.title] + [label.subtitle, label.badge, row.stateDescription, row.note, row.supportNote].compactMap { $0 })
+        setAccessibilityLabel(([label.title, label.subtitle, row.stateDescription] + [row.note, row.supportNote].compactMap { $0 })
             .joined(separator: ", "))
         if case let .error(reason) = row.state { setAccessibilityHelp(reason) } else { setAccessibilityHelp(nil) }
     }

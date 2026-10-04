@@ -108,7 +108,7 @@ import Foundation
         precondition(p.overall == 1)
         r = row(iPad32, job: .preparing(.init(name: "Checking the IPSW")))
         precondition(r.progress == nil && r.progressLine == nil && r.progressDetail == ["Checking the IPSW"] && r.stateDescription == "Preparing…")
-        precondition(r.accessory == .progress(nil, nil), "no fraction yet: the ring spins, no words")
+        precondition(r.accessory == .progress(nil), "no fraction yet: the ring spins")
 
         // Time remaining: nothing for the first 5 s or 2 %, then the rate so far.
         precondition(estimatedRemaining(elapsed: 4, from: 0, to: 0.5) == nil && estimatedRemaining(elapsed: 60, from: 0.3, to: 0.31) == nil)
@@ -173,8 +173,8 @@ import Foundation
         precondition(downloaded.accessory == .none, "Downloaded is the normal state: nothing after the title")
         precondition(row(iPad, instance: id).accessory == .none, "ready: nothing")
         precondition(row(iPad).accessory == .notDownloaded && row(beta1).accessory == .notDownloaded, "not here yet: the download glyph")
-        precondition(row(iPad32, job: .downloading(fraction: 0.425)).accessory == .progress(0.425, "42%"))
-        precondition(row(iPad32, job: .preparing(p)).accessory == .progress(1, "100%"))
+        precondition(row(iPad32, job: .downloading(fraction: 0.425)).accessory == .progress(0.425))
+        precondition(row(iPad32, job: .preparing(p)).accessory == .progress(1))
         precondition(row(iPad, instance: id, session: .running).accessory == .running && row(iPad, instance: id, session: .stopping).accessory == .stopping)
         precondition(row(iPod, instance: id, session: .dead("x")).accessory == .error && row(soon).accessory == .text("Coming soon"))
         precondition(row(beta).accessory == .text("Requires an IPSW"))
