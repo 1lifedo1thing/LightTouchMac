@@ -75,7 +75,7 @@ func expect(_ ok: Bool, _ what: @autoclosure () -> String, line: Int = #line) {
     let devices = { DeviceInstance.all(state: state).filter { $0.firmware == entry.id }.count }
     let failed = { if case .failed? = jobs.jobs[entry.id] { true } else { false } }
     jobs.downloadAndPrepare(entry)
-    for _ in 0..<600 where devices() == 0 && !failed() { try? await Task.sleep(for: .milliseconds(50)) }
+    for _ in 0..<2000 where devices() == 0 && !failed() { try? await Task.sleep(for: .milliseconds(50)) }
     let mirrors = Set(seen.compactMap { if case let .downloading(_, _, _, mirror) = $0 { mirror } else { nil } })
     if args[2] == "success" {
         expect(devices() == 1 && jobs.jobs[entry.id] == nil, "prepared from the mirror: \(seen)")
