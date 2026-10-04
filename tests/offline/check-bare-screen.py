@@ -33,6 +33,8 @@ source = prefix + stub + r'''
   _ = NSApplication.shared
   NSApp.setActivationPolicy(.prohibited)
   let out = CommandLine.arguments.count > 1 ? URL(fileURLWithPath: CommandLine.arguments[1]) : nil
+  // A crashed run can leave the key behind (this binary's own defaults domain): start clean.
+  UserDefaults.standard.removeObject(forKey: DisplayView.showsBezelKey)
   defer { UserDefaults.standard.removeObject(forKey: DisplayView.showsBezelKey) }
   precondition(DisplayView.showsBezel, "the bezel shows by default")
   DisplayView.showsBezel = false
