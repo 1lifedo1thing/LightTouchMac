@@ -71,6 +71,25 @@ struct ActivationTests {
         }
     }
 
+    /// 1.0 (1A543a): no strategy before this one matched; the no-record initializer is conditional code
+    /// (cmp; moveq brick,#1; ldreq state,=Unactivated; ...; beq store). Only it changes.
+    @Test(.enabled(if: FileManager.default.fileExists(atPath: Self.lockdownd10.path), "needs the 1A543a lockdownd")) func iPhone10() throws {
+        try Oracle.withTemp { dir in
+            let target = dir.appendingPathComponent("lockdownd")
+            try FileManager.default.copyItem(at: Self.lockdownd10, to: target)
+            let before = try Data(contentsOf: target)
+            let patch = try #require(try Activation.run(on: target).patch)
+            #expect(patch.strategy == "conditional-no-record-initializer" && patch.isa == "arm" && patch.offset == 0x90a4)
+            #expect(patch.original == Data([0x01, 0xa0, 0xa0, 0x03, 0x3c, 0x53, 0x9f, 0x05]))
+            #expect(patch.replacement == Data([0x00, 0xa0, 0xa0, 0x03, 0x44, 0x53, 0x9f, 0x05]))   // moveq r10,#0; ldreq r5,=Activated
+            let after = try Data(contentsOf: target)
+            #expect(after.count == before.count && zip(before, after).filter { $0 != $1 }.count == 2)
+            #expect(throws: ActivationFailure.self) { try Activation.run(on: target) }
+        }
+    }
+    static let lockdownd10 = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Developer/qemu-ios-files/m68/m68_10/lockdownd.copy")
+
     @Test func olderPreparationRecordsRemainReadable() throws {
         let old = Data(#"{"inputSHA256":"input","outputSHA256":"output"}"#.utf8)
         let result = try JSONDecoder().decode(Activation.Result.self, from: old)

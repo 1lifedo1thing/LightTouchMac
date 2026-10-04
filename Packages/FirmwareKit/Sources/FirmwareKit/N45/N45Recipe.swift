@@ -15,11 +15,18 @@
 // No other guest tools on 1.x, no keybag, no seal.
 //
 // The recipe: storage "8g" (MA623; the only NAND geometry modelled), system_mib = the volume.
+//
+// The original iPhone (m68ap, recipe "m68", iPhone OS 1.0 1A543a) is this board with its own data: storage "4g"
+// (MA501: the four chip enables its DT's flash disk names, reg 0x0f, of the same chips), an iPhone identity (an IMEI,
+// a Bluetooth MAC; the UDID hashes both), btaddr beside wifiaddr in the nvram (iBoot fills arm-io/uart3/bluetooth from
+// it), the NAND signature its iBoot-159 carries (C000). The LaunchDaemons kept are the same list (1.0 ships no
+// AddressBook job); CommCenter stays, BTServer and iapd go (no Bluetooth or accessory model).
 
 import Foundation
 
 final class N45Board: Board {
     static let models = ["8g": "MA623"]
+    static let iPhoneModels = ["4g": "MA501"]
     /// changes.md: every other job is removed (the rest wait on hardware this machine does not have). Plus ptpd
     /// (usbptpd): USBDeviceConfiguration's iPod1,1 configurations all carry PTP, and IOIpodUSBDevice starts no USB
     /// stack ("can't start! Need functions") until every function has registered, so without it there is no usbmux.
@@ -56,24 +63,32 @@ final class N45Board: Board {
         ] as [String: Any]],
     ] }
 
-    let arch = "armv6", seedPrefix = "ipod1g"
+    let arch = "armv6"
+    var seedPrefix: String { iPhone ? "iphone2g" : "ipod1g" }
     let bootStep = "Writing the identity, NOR and boot files", volumesStep = "Building the system volume", keybagStep = ""
     let dataProtection = false, needsSeal = false
     let shipped = ["nor.bin", "iBoot.bin"]
     let recipe: FirmwareEntry.Recipe, model: String, bytes: Int
+    /// The original iPhone (m68ap): its identity, its NAND's chip enables.
+    let iPhone: Bool
+    var banks: Int { iPhone ? 4 : N45NAND.banks }
     var ident: UnitIdentity!, volume: URL!
     var kcPath = "", kcMember = "", prefix = ""
     var derived: [String: Any] = [:]
 
     init(_ o: Preparer.Options) throws {
-        guard let recipe = o.entry.recipe, let model = Self.models[recipe.storage] else {
-            throw FirmwareError(.unsupported, "\(o.entry.id): no n45 recipe for storage \(o.entry.recipe?.storage ?? "none")")
+        iPhone = o.entry.board == "m68ap"
+        guard let recipe = o.entry.recipe, let model = (iPhone ? Self.iPhoneModels : Self.models)[recipe.storage] else {
+            throw FirmwareError(.unsupported, "\(o.entry.id): no \(o.entry.recipe?.name ?? "n45") recipe for storage \(o.entry.recipe?.storage ?? "none")")
         }
         self.recipe = recipe; self.model = model
         bytes = recipe.systemMiB << 20
     }
 
     func check(_ c: Recipe.Context) throws {}
+
+    /// An IPSW kernelcache that is the restore environment's, not the system's.
+    static func restoreOnly(_ member: String) -> Bool { (member as NSString).lastPathComponent.contains(".restore.") }
 
     /// The jobs this machine keeps must all be among the firmware's (usbptpd: no usbmux without it).
     static func keptDaemonsFit(_ jobs: [String]) -> FitCheck.Fit {
@@ -83,7 +98,8 @@ final class N45Board: Board {
     }
 
     func identity(seed: String) throws -> UnitIdentity {
-        ident = try UnitIdentity.synthesizeIPod(seed: seed, modelNumber: model, regionInfo: UnitIdentity.iPadRegion, bluetooth: false)
+        ident = iPhone ? try UnitIdentity.synthesizeIPhone(seed: seed, modelNumber: model, regionInfo: UnitIdentity.iPadRegion)
+            : try UnitIdentity.synthesizeIPod(seed: seed, modelNumber: model, regionInfo: UnitIdentity.iPadRegion, bluetooth: false)
         return ident
     }
 
@@ -134,7 +150,11 @@ final class N45Board: Board {
             let fm = FileManager.default, at = { (rel: String) in m.appendingPathComponent(rel) }
             try SystemEdits.put(Data(N72Board.fstabRW.utf8), at(SystemEdits.fstab))
             try SystemEdits.mkdirs(at(kcPath).deletingLastPathComponent())
-            try c.ipsw.extract(kcMember, to: at(kcPath))
+            // 1.0 ships only the restore kernelcache in the IPSW (RestoreKernelCaches "kernelcache.restore.*");
+            // its system volume carries the one iBoot boots, where iBoot loads it: kept.
+            if !(Self.restoreOnly(kcMember) && fm.fileExists(atPath: at(kcPath).path)) {
+                try c.ipsw.extract(kcMember, to: at(kcPath))
+            }
             let jobs = try fm.contentsOfDirectory(atPath: at(SystemEdits.daemons).path).filter { $0.hasSuffix(".plist") }
             try c.fit.check(Self.keptDaemonsFit(jobs), required: false, outcome: "the rest removed as planned")
             c.fit.notInstalled("AppSync", recipe.options["appsync"] == true ? "the 1.x recipe has no AppSync" : "appsync off")
@@ -214,7 +234,7 @@ final class N45Board: Board {
 
     nonisolated(nonsending) func store(_ c: Recipe.Context) async throws {
         let fil = try N45NAND.filID(iBoot: Data(contentsOf: c.file("iBoot.bin")))
-        let (written, meta) = try N45NAND.write(volume: volume, out: c.nand, filID: fil)
+        let (written, meta) = try N45NAND.write(volume: volume, out: c.nand, filID: fil, banks: banks, bbtMap: iPhone)
         c.log("\(written) filesystem pages, \(meta) metadata pages generated (NAND signature 0x\(String(fil, radix: 16)))")
         try FileManager.default.removeItem(at: volume)
     }
@@ -226,7 +246,7 @@ final class N45Board: Board {
             "derived": derived,
             // The 88W8686's EEPROM MAC (qemu-ios iPod-Touch-1G wifi-mac): the card the driver reads it from is
             // the same unit whose nvram wifiaddr iBoot copies into the DT (N45NOR), so both carry the identity's.
-            "machine": ["wifi-mac": ident["wifi-mac"] ?? ""],
+            "machine": ["wifi-mac": ident["wifi-mac"] ?? ""].merging(iPhone ? ["imei": ident["imei"] ?? ""] : [:]) { a, _ in a },
         ]
     }
 }

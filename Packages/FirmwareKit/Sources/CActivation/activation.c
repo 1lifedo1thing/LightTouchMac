@@ -36,7 +36,7 @@ typedef struct {
     unsigned width;
     const char *isa;
     uint8_t replacement[16];
-    bool legacy, shared_no_record;
+    bool legacy, shared_no_record, conditional;
 } Match;
 #ifdef LT_ACTIVATION_LIBRARY
 #include <setjmp.h>
@@ -425,6 +425,65 @@ static bool legacy_initializer(const Image *m, size_t o, uint32_t va, Match *out
     encode32(out->replacement + change, 0xe3a00000 | (flag << 12));
     return true;
 }
+/* Reuse a literal within reach of `va` that already points to the firmware's Activated CFString:
+ * the PC-relative LDR that loads it, with `va`'s condition and destination register. */
+static bool activated_literal(const Image *m, uint32_t va, uint32_t ins, uint32_t *out) {
+    uint32_t literal = 0;
+    uint64_t best = UINT64_MAX;
+    for (size_t r = 0; fits(r, 4, m->text_size); r += 4) {
+        uint32_t pc = m->text_va + (uint32_t)r;
+        long long delta = (long long)pc - (va + 8);
+        if (llabs(delta) <= 4095 && cfstring(m, u32(m->bytes + m->text_off + r), "Activated") &&
+            (uint64_t)llabs(delta) < best) {
+            best = (uint64_t)llabs(delta);
+            literal = pc;
+        }
+    }
+    if (best == UINT64_MAX)
+        return false;
+    long long delta = (long long)literal - (va + 8);
+    *out = (ins & 0xff7ff000) | (delta >= 0 ? 0x800000 : 0) | (uint32_t)llabs(delta);
+    return true;
+}
+/* 1.0 (1A543a): the no-record case is conditional code in the state function itself:
+ *     cmp record, #0 ; moveq brick, #1 ; ldreq state, =Unactivated ; ... ; beq store
+ * where the store logs "The activation state has not changed." when nothing moved. Only that
+ * initializer changes (brick 0, state Activated); a present record is verified as before. */
+static bool conditional_initializer(const Image *m, size_t o, uint32_t va, Match *out) {
+    uint32_t ins = u32(m->bytes + o), value;
+    if ((ins & 0xff7f0000) != 0x051f0000 || va < m->text_va + 8 || !text_address(m, va, 16) ||
+        !arm_literal(m, va, ins | 0xe0000000, &value) || !cfstring(m, value, "Unactivated"))
+        return false;
+    uint32_t cmp = u32(m->bytes + o - 8), set = u32(m->bytes + o - 4);
+    unsigned state = (ins >> 12) & 15, flag = (set >> 12) & 15;
+    if ((cmp & 0xfff0ffff) != 0xe3500000 || (set & 0xffff0fff) != 0x03a00001 ||
+        state >= 13 || flag >= 13 || state == flag || ((cmp >> 16) & 15) == state)
+        return false;
+    uint32_t dest = 0;
+    for (unsigned k = 1; k <= 3 && !dest; k++) {
+        uint32_t b = u32(m->bytes + o + 4 * k);
+        if ((b & 0xff000000) == 0x0a000000)
+            dest = va + 4 * k + 8 + (uint32_t)((int32_t)(b << 8) >> 6);
+        else if ((b & 0x0e000000) == 0x0a000000 || ((b >> 12) & 15) == state || ((b >> 12) & 15) == flag)
+            return false;   /* other control flow, or the two values overwritten before the store */
+    }
+    if (!dest || dest <= va || !bounded_target(va, dest) || !text_address(m, dest, 4))
+        return false;
+    bool logged = false;
+    for (uint32_t p = dest; p < dest + 1024 && text_address(m, p, 4) && !logged; p += 4) {
+        uint32_t w;
+        logged = word(m, p, &w) && arm_literal(m, p, w, &value) &&
+                 cstring(m, value, "The activation state has not changed.");
+    }
+    uint32_t load;
+    if (!logged || !activated_literal(m, va, ins, &load))
+        return false;
+    *out = (Match){.off = o - 4, .va = va - 4, .target = dest, .width = 8, .isa = "arm", .legacy = true,
+                   .conditional = true};
+    encode32(out->replacement, 0x03a00000 | (flag << 12));
+    encode32(out->replacement + 4, load);
+    return true;
+}
 static Match locate(const Image *m) {
     Match result = {0};
     unsigned count = 0;
@@ -484,7 +543,7 @@ static Match locate(const Image *m) {
         }
         if (!m->message_va && !(va & 3)) {
             Match legacy = {0};
-            if (legacy_initializer(m, o, va, &legacy)) {
+            if (legacy_initializer(m, o, va, &legacy) || conditional_initializer(m, o, va, &legacy)) {
                 result = legacy;
                 count++;
             }
@@ -527,7 +586,8 @@ int lt_activate_report(uint8_t *bytes, size_t size, LTActivationReport *report, 
     parse(&m);
     Match match = locate(&m);
     if (report) {
-        report->strategy = match.legacy ? "legacy-no-record-initializer" :
+        report->strategy = match.conditional ? "conditional-no-record-initializer" :
+            match.legacy ? "legacy-no-record-initializer" :
             match.shared_no_record ? "ipod-no-record-initializer" : "development-activation-shortcut";
         report->isa = match.isa;
         report->offset = match.off;
@@ -637,7 +697,8 @@ int main(int argc, char **argv) {
     printf("{\"mode\":\"%s\",\"strategy\":\"%s\",\"isa\":\"%s\",\"file_offset\":%zu,\"virtual_"
            "address\":%" PRIu32 ",\"size\":%u,\"old\":\"%s\",\"new\":\"%s\"}\n",
            probe ? "probe" : "apply",
-           match.legacy ? "legacy-no-record-initializer"
+           match.conditional ? "conditional-no-record-initializer"
+           : match.legacy ? "legacy-no-record-initializer"
                         : match.shared_no_record ? "ipod-no-record-initializer"
                                                  : "development-activation-shortcut",
            match.isa, match.off, match.va, match.width, old, replacement);

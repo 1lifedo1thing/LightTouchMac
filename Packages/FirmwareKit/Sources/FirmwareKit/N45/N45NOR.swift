@@ -41,7 +41,8 @@ public enum N45NOR {
         // iBoot-204 fills arm-io/sdio's local-mac-address from nvram wifiaddr (its SysCfg fallback is a stub
         // returning 0, so without it the DT keeps zeros and lockdownd hashes 00:00:00:00:00:00 into the UDID).
         nor.replaceSubrange(nvram..<nvram + N72NOR.nvramBank, with: try N72NOR.nvramBank([("boot-args", bootArgs)]
-            + (id["wifi-mac"].map { [("wifiaddr", $0.uppercased())] } ?? [])))
+            + (id["wifi-mac"].map { [("wifiaddr", $0.uppercased())] } ?? [])
+            + (id["bt-mac"].map { [("btaddr", $0.uppercased())] } ?? [])))
         return Data(nor)
     }
 

@@ -309,4 +309,28 @@ import Testing
             #expect(N45Board.keptDaemonsFit(jobs).fits)
         }
     }
+
+    /// The M68's four chip enables: a superblock spans four banks, nothing lands on banks 4-7, and the factory
+    /// table carries its good-block bitmap (iBoot-159 looks for the VFL context only in blocks it marks good).
+    @Test func iPhoneStoreLayout() throws {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("m68-store-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: dir) }
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let pp = N45NAND.page, ps = N45NAND.superblock(4)
+        let volume = dir.appendingPathComponent("volume.img"), out = dir.appendingPathComponent("nand")
+        try Data(count: (2 * ps - 3) * pp).write(to: volume)
+        let (written, _) = try N45NAND.write(volume: volume, out: out, filID: 0x4330_3030, banks: 4, bbtMap: true)
+        #expect(written == 2 * ps - 3)
+        #expect(try fm.contentsOfDirectory(atPath: out.path).sorted() == ["bank0", "bank1", "bank2", "bank3"])
+        #expect(N45NAND.location(lpn: 5, banks: 4) == N45NAND.Page(bank: 1, page: (201 + 23) * 128 + 1))
+        let bbt = [UInt8](try Data(contentsOf: out.appendingPathComponent("bank3/\(4095 * 128).page")))
+        #expect(Array(bbt[0..<13]) == Array("DEVICEINFOBBT".utf8) && bbt[0x34] == 0x00 && bbt[0x35] == 0x02)
+        #expect(bbt[0x38] == 0xFF && bbt[0x38 + 511] == 0x7F)
+        let fil = [UInt8](try Data(contentsOf: out.appendingPathComponent("bank0/0.page")))
+        #expect(Array(fil[0..<4]) == Array("000C".utf8))
+        // The N45's table stays as devos50 wrote it: no bitmap.
+        let n45 = N45NAND.metadataPages(fsPages: 16, filID: 0x4330_3032)[N45NAND.Page(bank: 0, page: 4095 * 128)]!
+        #expect(n45[0x34] == 0 && n45[0x38] == 0)
+    }
 }

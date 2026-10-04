@@ -82,6 +82,8 @@ public enum FirmwareDecryptor {
             if c == "KernelCache" {
                 try kernel.write(to: dir.appendingPathComponent("kernelcache.mach"))
                 files.append("kernelcache.mach")
+            } else if c == "iBEC", comp[c] == nil {
+                continue   // 1.0: no iBEC (no update path)
             } else {
                 let p = try path(c)
                 if ["iBSS", "iBEC"].contains(c), !keyed(p), try IMG3.tags(ipsw.read(p))["KBAG"] != nil {
