@@ -3,8 +3,8 @@
   "comment": "The source checkouts the app builds against, by commit. scripts/sources.py resolves them (QEMU_IOS_DIR, USBMUXD_SOURCE_DIR, QEMU_BUILD_DIR override the paths); build-release.py records pinned vs actual and refuses a Developer ID build from another commit unless --allow-unpinned. The emulator and usbmuxd ship together (usb-zlp <-> qemu-zlp): bump both lines in one commit.",
   "qemu-ios": {
     "repository": "https://github.com/samhenrigold/qemu-ios",
-    "branch": "ipad1",
-    "commit": "8729fc3d14133f7b7bc979b5d1f075bd7f2bbacb",
+    "branch": "ipod_touch_2g",
+    "commit": "fd4c4b7e6b13617e13f93e200833c2ae8b6031f5",
     "path": "~/Developer/qemu-ios-ipad1",
     "build_dir": "build-w1-native",
     "provides": "contrib/export-guest-artifacts.sh (guest tools, tables, entitlements, headers, dylib); build_dir is the development build (the helper's dylib for Xcode and the checks), never the release's --qemu-build"
