@@ -124,13 +124,19 @@ final class ConsoleSplitView: NSView {
     /// choice follows the file name across devices.
     var sources: [URL] = [] {
         didSet {
-            let chosen = log.url?.lastPathComponent ?? sources.first?.lastPathComponent
+            let chosen = (log.url ?? sources.first).map(Self.title(for:))
             bar.source.removeAllItems()
-            bar.source.addItems(withTitles: sources.map(\.lastPathComponent))
+            bar.source.addItems(withTitles: sources.map(Self.title(for:)))
             if let chosen { bar.source.selectItem(withTitle: chosen) }
             if bar.source.indexOfSelectedItem < 0, !sources.isEmpty { bar.source.selectItem(at: 0) }
             sourceChanged()
         }
+    }
+
+    /// The picker's name for a log; the files keep theirs on disk.
+    static func title(for log: URL) -> String {
+        ["serial.log": "Device Console", "app.log": "Light Touch", "native.log": "Emulator", "usbmuxd.log": "USB"][log.lastPathComponent]
+            ?? log.lastPathComponent
     }
 
     private func sourceChanged() {
@@ -225,6 +231,8 @@ final class ConsoleBar: NSView {
 
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: 600, height: 36))
+        // Always dark, whatever the system appearance: just this strip, not the console under it.
+        appearance = NSAppearance(named: .darkAqua)
         toggleButton.setButtonType(.pushOnPushOff)
         toggleButton.bezelStyle = .toolbar
         toggleButton.isBordered = false
@@ -232,7 +240,7 @@ final class ConsoleBar: NSView {
         toggleButton.target = self; toggleButton.action = #selector(toggle)
         source.controlSize = .small
         source.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        source.setAccessibilityLabel("Log file")
+        source.setAccessibilityLabel("Log")
         source.target = self; source.action = #selector(sourceChosen)
         filter.controlSize = .small
         filter.font = .systemFont(ofSize: NSFont.smallSystemFontSize)

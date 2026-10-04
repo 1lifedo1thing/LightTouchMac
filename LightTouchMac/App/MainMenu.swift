@@ -153,6 +153,7 @@ enum MainMenuBuilder {
         menu.addItem(unshiftedZoomIn)
         menu.addItem(item("Zoom Out", #selector(MainWindowController.zoomOut(_:)), "-"))
         menu.addItem(.separator())
+        menu.addItem(item("Hide Device Bezel", #selector(MainWindowController.toggleDeviceBezel(_:))))
         menu.addItem(item("Show Finger Dots", #selector(MainWindowController.toggleTouchOverlay(_:))))
         menu.addItem(item("Show Hidden Files", #selector(DeviceFilesViewController.toggleHidden(_:))))
         menu.addItem(.separator())
@@ -213,23 +214,12 @@ enum MainMenuBuilder {
         menu.addItem(item("Pause", #selector(MainWindowController.toggleDevicePause(_:))))
         menu.addItem(.separator())
         menu.addItem(item("Restart…", #selector(MainWindowController.deviceReset(_:))))
-        // Guest-package recovery (GuestPackage): shown only while a loader offers it
-        // (MainWindowController.updateGuestToolsMenu); each choice validates itself.
-        let tools = NSMenu(title: guestToolsTitle)
-        tools.addItem(item("Previous", #selector(MainWindowController.restartWithPreviousGuestTools(_:))))
-        tools.addItem(item("Built-in", #selector(MainWindowController.restartWithBuiltInGuestTools(_:))))
-        tools.addItem(item("Latest", #selector(MainWindowController.restartWithLatestGuestTools(_:))))
-        let toolsItem = submenu(tools, title: guestToolsTitle)
-        toolsItem.isHidden = true
-        menu.addItem(toolsItem)
         menu.addItem(item("Power Off", #selector(MainWindowController.devicePowerOff(_:))))
         // Kept at the bottom, away from routine input.
         menu.addItem(.separator())
         menu.addItem(item("Erase All Content and Settings…", #selector(MainWindowController.eraseDevice(_:))))
         return menu
     }
-
-    static let guestToolsTitle = "Restart with Guest Tools"
 
     /// The Apps menu with no device to ask: its commands, dimmed. A device's
     /// inspector rebuilds it as its delegate (AppsInspectorViewController).

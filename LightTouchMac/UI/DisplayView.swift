@@ -147,6 +147,20 @@ final class DisplayView: NSView {
         if emulator.isPoweredOff { emulator.powerOn() } else { emulator.pressLock() }
     }
 
+    /// View ▸ Show Device Bezel, app-wide. Off is the screen alone: no 3D model and no flat shell; input,
+    /// rotation and zoom work on the screen as they do inside the device.
+    static let showsBezelKey = "showsDeviceBezel"
+    static let bezelDidChange = Notification.Name("DisplayViewBezelDidChange")
+    static var showsBezel: Bool {
+        get { UserDefaults.standard.object(forKey: showsBezelKey) as? Bool ?? true }
+        set {
+            UserDefaults.standard.set(newValue, forKey: showsBezelKey)
+            NotificationCenter.default.post(name: bezelDidChange, object: nil)
+        }
+    }
+    private var bare = false
+    private var bezelApplied = false
+
     private var modelView: DeviceModelView?
     private var pendingModelView: DeviceModelView?
     private var modelLoadTask: Task<Void, Never>?
@@ -176,8 +190,6 @@ final class DisplayView: NSView {
         wantsLayer = true
         layer?.masksToBounds = true
 
-        shellLayer.contents = NSImage(named: profile.shellImageName)?
-            .cgImage(forProposedRect: nil, context: nil, hints: nil)
         shellLayer.contentsGravity = .resize
         // The shell stays at its native pixel size forever; layout() scales and
         // rotates it with a single transform. The content layer lives INSIDE it
@@ -229,14 +241,64 @@ final class DisplayView: NSView {
         homeButton.target = self
         homeButton.action = #selector(homeTapped)
         addSubview(homeButton)
+        applyBezel(shown: Self.showsBezel)
+        NotificationCenter.default.addObserver(self, selector: #selector(bezelPreferenceChanged), name: Self.bezelDidChange, object: nil)
+        attitudeIndicator.target = self
+        attitudeIndicator.action = #selector(levelAttitude(_:))
+        attitudeIndicator.isHidden = true
+        attitudeIndicator.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(attitudeIndicator)
+        NSLayoutConstraint.activate([
+            attitudeIndicator.widthAnchor.constraint(equalToConstant: 40),
+            attitudeIndicator.heightAnchor.constraint(equalToConstant: 40),
+            attitudeIndicator.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            attitudeIndicator.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+        ])
+
+        registerForDraggedTypes([.fileURL, .ltmCatalogApp])
+        setAccessibilityLabel("\(profile.displayName) screen")
+        setAccessibilityRole(.image)
+        setAccessibilityHelp("Turn off Send Keyboard Input (Device > Input) to move a pointer with the arrow keys. Hold Space to touch; Shift-arrow drags.")
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    @objc private func bezelPreferenceChanged() { applyBezel(shown: Self.showsBezel) }
+
+    /// The device around the screen, or the screen alone. Bare drops the model (and its load) and empties the
+    /// shell layer, which stays as the screen's transform: rotation, zoom and touch mapping are unchanged.
+    private func applyBezel(shown: Bool) {
+        guard bare == shown || !bezelApplied else { return }
+        bezelApplied = true
+        bare = !shown
+        modelLoadTask?.cancel()
+        modelFallbackTask?.cancel()
+        modelLoadTask = nil
+        for model in [modelView, pendingModelView] { model?.removeFromSuperview() }
+        modelView = nil
+        pendingModelView = nil
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        shellLayer.removeAnimation(forKey: "modelPresentation")
+        shellLayer.contents = bare ? nil : NSImage(named: profile.shellImageName)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        shellLayer.shadowOpacity = bare ? 0 : 0.4
+        // Bare, the transform turns and scales about the screen's centre, which layout() puts at the pane's.
+        shellLayer.anchorPoint = bare
+            ? CGPoint(x: screenCutout.midX / shellPixels.width, y: screenCutout.midY / shellPixels.height)
+            : CGPoint(x: 0.5, y: 0.5)
+        shellLayer.isHidden = false
+        CATransaction.commit()
+        modelPresentationFinished = true
         // macOS 14 keeps the photo shell; RealityKit texture rotation requires 15.
-        if #available(macOS 15, *), let name = profile.deviceModelName,
+        if !bare, #available(macOS 15, *), let name = profile.deviceModelName,
            let url = Bundle.main.url(forResource: name, withExtension: "usdz") {
+            modelPresentationFinished = false
             // Give RealityKit one second to present the device itself. Slower
             // startup shows a temporary photo while the live model keeps
             // loading; a busy GPU must never permanently disable 3D.
             shellLayer.isHidden = true
             homeButton.isHidden = true
+            let profile = profile
             modelFallbackTask = Task { [weak self] in
                 do { try await Task.sleep(for: .seconds(1)) } catch { return }
                 self?.showStaticDevice()
@@ -257,26 +319,9 @@ final class DisplayView: NSView {
                     self?.showStaticDevice()
                 }
             }
-        } else { modelPresentationFinished = true }
-        attitudeIndicator.target = self
-        attitudeIndicator.action = #selector(levelAttitude(_:))
-        attitudeIndicator.isHidden = true
-        attitudeIndicator.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(attitudeIndicator)
-        NSLayoutConstraint.activate([
-            attitudeIndicator.widthAnchor.constraint(equalToConstant: 40),
-            attitudeIndicator.heightAnchor.constraint(equalToConstant: 40),
-            attitudeIndicator.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            attitudeIndicator.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-        ])
-
-        registerForDraggedTypes([.fileURL, .ltmCatalogApp])
-        setAccessibilityLabel("\(profile.displayName) screen")
-        setAccessibilityRole(.image)
-        setAccessibilityHelp("Turn off Send Keyboard Input (Device > Input) to move a pointer with the arrow keys. Hold Space to touch; Shift-arrow drags.")
+        }
+        needsLayout = true
     }
-
-    required init?(coder: NSCoder) { fatalError("not used") }
 
     private func stageModelForPresentation(_ model: DeviceModelView) -> Bool {
         guard modelView == nil else { return false }
@@ -406,9 +451,11 @@ final class DisplayView: NSView {
         // the content, is what needs to fit inside the pane with margin. The
         // 3D model's outline, once it has one: the iPad's flat art is smaller.
         let shell = (modelView ?? pendingModelView)?.shellPixels ?? shellPixels
+        // Bare, the screen's own box is what fits.
+        let fitted = bare ? screenCutout.size : shell
         let shellOnScreenPixels = isLandscape
-            ? CGSize(width: shell.height, height: shell.width)
-            : shell
+            ? CGSize(width: fitted.height, height: fitted.width)
+            : fitted
 
         let scale: CGFloat
         switch zoom {
@@ -489,7 +536,7 @@ final class DisplayView: NSView {
         }
         shellLayer.position = viewCenter
         shellLayer.transform = motionTransform(angle: angle, scale: scale)
-        homeButton.isHidden = !modelPresentationFinished || (modelView == nil && (tiltAngle != 0 || pitchAngle != 0))
+        homeButton.isHidden = homeButtonHidden
         CATransaction.commit()
 
         modelView?.frame = bounds
@@ -508,6 +555,9 @@ final class DisplayView: NSView {
             } else { liveTextView.frame = contentLayer.convert(contentLayer.bounds, to: root) }
         }
     }
+
+    /// No Home button bare (⇧⌘H presses it), while the model loads, or over a tilting flat shell.
+    private var homeButtonHidden: Bool { bare || !modelPresentationFinished || (modelView == nil && (tiltAngle != 0 || pitchAngle != 0)) }
 
     /// Scale is independent of a framebuffer arriving before or after rotation.
     var pixelMultiple: CGFloat {
@@ -1174,7 +1224,8 @@ final class DisplayView: NSView {
         if let modelView {
             return modelView.isChassis(modelView.convert(event.locationInWindow, from: nil))
         }
-        guard modelPresentationFinished, let rootLayer = layer else { return false }
+        // Bare, there is no chassis to grab: the empty shell around the screen is the backdrop.
+        guard modelPresentationFinished, !bare, let rootLayer = layer else { return false }
         let p = convert(event.locationInWindow, from: nil)
         let sp = shellLayer.convert(p, from: rootLayer)
         return shellLayer.bounds.contains(sp) && !screenCutout.contains(sp)
@@ -1236,7 +1287,7 @@ final class DisplayView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         shellLayer.transform = motionTransform(angle: angle, scale: appliedScale)
-        homeButton.isHidden = !modelPresentationFinished || (modelView == nil && (tiltAngle != 0 || pitchAngle != 0))
+        homeButton.isHidden = homeButtonHidden
         CATransaction.commit()
     }
 

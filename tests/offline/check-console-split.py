@@ -73,7 +73,18 @@ func expect(_ ok: Bool, _ what: String, line: Int = #line) { if !ok { print("FAI
   let log1 = try sampleLog()
   defer { try? FileManager.default.removeItem(at: log1.deletingLastPathComponent()) }
   split.sources = [log1, log1.deletingLastPathComponent().appendingPathComponent("usbmuxd.log")]
-  expect(bar.source.itemTitles == ["serial.log", "usbmuxd.log"] && log.url == log1, "sources")
+  expect(bar.source.itemTitles == ["Device Console", "USB"] && log.url == log1, "sources: \(bar.source.itemTitles)")
+  expect(["app.log", "native.log", "other.log"].map { ConsoleSplitView.title(for: URL(fileURLWithPath: "/l/" + $0)) }
+         == ["Light Touch", "Emulator", "other.log"], "plain log names")
+  // The choice follows the log across devices: a new list keeps USB selected.
+  bar.source.selectItem(withTitle: "USB"); bar.source.sendAction(bar.source.action, to: bar.source.target)
+  split.sources = [URL(fileURLWithPath: "/elsewhere/serial.log"), URL(fileURLWithPath: "/elsewhere/usbmuxd.log")]
+  expect(bar.source.titleOfSelectedItem == "USB" && log.url?.path == "/elsewhere/usbmuxd.log", "choice follows the log")
+  split.sources = [log1, log1.deletingLastPathComponent().appendingPathComponent("usbmuxd.log")]
+  bar.source.selectItem(at: 0); bar.source.sendAction(bar.source.action, to: bar.source.target)
+  // The bar is dark in a light window; the console under it is not.
+  expect(bar.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua, "bar is always dark")
+  expect(log.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua, "only the bar is dark")
   func settle() async throws { try await Task.sleep(for: .milliseconds(400)); split.layoutSubtreeIfNeeded() }
   render(split, "collapsed")
 

@@ -9,6 +9,7 @@ a=s.index('    private func setShellAngle('); b=s.index('    /// Is a mouse-driv
 methods=s[a:b].replace('private func','func')
 c=s.index('    private func motionTransform(');d=s.index('\n    }',c)+len('\n    }')
 methods=s[c:d].replace('private func','func')+'\n'+methods
+hidden=next(line for line in s.splitlines() if 'private var homeButtonHidden' in line).replace('private var','var')
 source='''import Cocoa
 import QuartzCore
 @MainActor final class Check {
@@ -18,6 +19,8 @@ import QuartzCore
  var wheelTiltResetTask: Task<Void, Never>?
  var rotatingChassis = false, modelPresentationFinished = true
  var modelView: NSObject?
+ var bare = false
+''' + hidden + '''
  func updateModelPose(animated: Bool = false, spring: Bool = false) {}
  var motionRestAngle: CGFloat?
  func sendAttitude() {}

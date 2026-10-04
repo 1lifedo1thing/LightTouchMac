@@ -253,6 +253,7 @@ final class AppsInspectorViewController: NSViewController {
         nc.addObserver(self, selector: #selector(installProgressed(_:)), name: .ltmInstallProgress, object: nil)
         nc.addObserver(self, selector: #selector(refreshIconDimming), name: NSApplication.didBecomeActiveNotification, object: nil)
         nc.addObserver(self, selector: #selector(refreshIconDimming), name: NSApplication.didResignActiveNotification, object: nil)
+        nc.addObserver(self, selector: #selector(deviceStatusChanged(_:)), name: DeviceSession.didChangeNotification, object: nil)
         startInitialLoad()
         scheduleSearch()   // Store is the default view — fetch the suggested list
     }
@@ -460,6 +461,15 @@ final class AppsInspectorViewController: NSViewController {
         reloadTablePreservingSelection()
         updateButtons()
         Task { await loadOnce() }
+    }
+
+    /// The rows' buttons follow the device (Install needs `canQueueInstall`): booting, readiness, USB and
+    /// power changes re-evaluate them here, not on the next poll that happens to reload the table. Unchanged
+    /// rows keep their views (reloadTablePreservingSelection compares appearances).
+    @objc private func deviceStatusChanged(_ note: Notification) {
+        guard (note.object as? DeviceSession)?.emulator === emulator else { return }
+        reloadTablePreservingSelection()
+        updateButtons()
     }
 
     @objc private func installStarted(_ note: Notification) {

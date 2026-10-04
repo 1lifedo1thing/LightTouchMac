@@ -81,6 +81,7 @@ View/Zoom In  ⌘+
 View/Zoom In  ⌘= hidden
 View/Zoom Out  ⌘-
 View/-
+View/Hide Device Bezel
 View/Show Finger Dots
 View/Show Hidden Files
 View/-
@@ -126,10 +127,6 @@ Device/-
 Device/Pause
 Device/-
 Device/Restart…
-Device/Restart with Guest Tools ▸ hidden
-Device/Restart with Guest Tools/Previous
-Device/Restart with Guest Tools/Built-in
-Device/Restart with Guest Tools/Latest
 Device/Power Off
 Device/-
 Device/Erase All Content and Settings…

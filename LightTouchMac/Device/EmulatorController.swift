@@ -1307,42 +1307,6 @@ final class EmulatorController {
         }
     }
 
-
-    enum GuestToolsChoice { case previous, builtIn, latest }
-
-    /// Device ▸ Restart with … Guest Tools: record the choice, power off
-    /// cleanly, and start a fresh helper, whose boot composes the next offer
-    /// from the record (its loader runs at boot). A cold boot, not a guest
-    /// reset: after system_reset a fresh 7E18 once stayed on the Apple logo.
-    func canRestart(with choice: GuestToolsChoice) -> Bool {
-        guard isRunning, guestOffer != nil, status?.guestPackage != nil else { return false }
-        switch choice {
-        case .previous: return true
-        case .builtIn: return guestOffer?.serial != 0
-        case .latest: return guestOffer?.serial == 0 || guestRecord?.bad.contains(guestOffer?.bundled ?? -1) == true
-        }
-    }
-
-    func restart(with choice: GuestToolsChoice) {
-        guard let offer = guestOffer else { return }
-        let active = status?.guestPackage?.serial
-        updateGuestRecord { guest in
-            switch choice {
-            case .previous:
-                if let active, active != guest.seed, !guest.bad.contains(active) { guest.bad.append(active) }
-                if guest.lastGood == active { guest.lastGood = nil }
-                guest.builtIn = nil
-            case .builtIn:
-                guest.builtIn = offer.bundled
-            case .latest:
-                guest.builtIn = nil
-                guest.bad.removeAll { $0 == offer.bundled }
-            }
-        }
-        logEvent("guest package: restarting with \(choice) guest tools")
-        halt { [weak self] _ in self?.onRestartRequested?() }
-    }
-
     // MARK: - Keyboard passthrough
     
     /// Forward a host key by its macOS virtual keycode; the shim maps it to a

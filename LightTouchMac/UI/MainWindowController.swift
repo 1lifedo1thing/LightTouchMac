@@ -457,7 +457,6 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         }
         updateDeviceNotice()
         updateStartupStatus()
-        updateGuestToolsMenu()
         refreshLockItem()
         window?.toolbar?.validateVisibleItems()
         validateCaptureToolbar()
@@ -475,12 +474,6 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         if emulator.isPoweredOff || emulator.isDead { deviceVC.screen.endLiveText() }
         deviceVC.screen.updatePowerPresentation()
         if emulator.isDead || emulator.isPoweredOff { recording.stop() }
-    }
-
-    /// Device ▸ Restart with Guest Tools appears only while a loader offers a choice.
-    private func updateGuestToolsMenu() {
-        let item = NSApp.mainMenu?.item(withTitle: "Device")?.submenu?.item(withTitle: MainMenuBuilder.guestToolsTitle)
-        item?.isHidden = emulator.map { $0.guestOffer == nil && !$0.canRestart(with: .latest) } ?? true
     }
 
     private func refreshLockItem() {
@@ -1022,9 +1015,6 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         }
     }
 
-    @objc func restartWithPreviousGuestTools(_ sender: Any?) { emulator?.restart(with: .previous) }
-    @objc func restartWithBuiltInGuestTools(_ sender: Any?) { emulator?.restart(with: .builtIn) }
-    @objc func restartWithLatestGuestTools(_ sender: Any?) { emulator?.restart(with: .latest) }
 
     /// Respring — the quick fix for a freshly sideloaded app that crashes on
     /// launch until the device is restarted.
@@ -1101,6 +1091,9 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         window?.toolbar?.validateVisibleItems()
         validateCaptureToolbar()
     }
+
+    /// View ▸ Hide/Show Device Bezel: every device's screen, with or without the device around it.
+    @objc func toggleDeviceBezel(_ sender: Any?) { DisplayView.showsBezel.toggle() }
 
     @objc func toggleTouchOverlay(_ sender: Any?) {
         deviceVC?.screen.showsTouches.toggle()
@@ -1285,6 +1278,9 @@ extension MainWindowController: NSMenuItemValidation {
         // The selected row's commands, and the window's own, work without a device.
         switch menuItem.action {
         case #selector(addDevice(_:)): return window?.attachedSheet == nil
+        case #selector(toggleDeviceBezel(_:)):
+            menuItem.title = DisplayView.showsBezel ? "Hide Device Bezel" : "Show Device Bezel"
+            return true
         case #selector(toggleDeviceRunning(_:)):
             let running = selectedEntry.map { host.row(for: $0).state == .running } ?? false
             menuItem.title = running ? "Stop" : "Start"
@@ -1380,15 +1376,6 @@ extension MainWindowController: NSMenuItemValidation {
             return true
         case #selector(devicePowerOff(_:)): return emulator.canStop
         case #selector(deviceReset(_:)):  return !emulator.isDead
-        case #selector(restartWithPreviousGuestTools(_:)):
-            menuItem.isHidden = emulator.guestOffer == nil
-            return emulator.canRestart(with: .previous)
-        case #selector(restartWithBuiltInGuestTools(_:)):
-            menuItem.isHidden = emulator.guestOffer == nil
-            return emulator.canRestart(with: .builtIn)
-        case #selector(restartWithLatestGuestTools(_:)):
-            menuItem.isHidden = !emulator.canRestart(with: .latest)
-            return emulator.canRestart(with: .latest)
         case #selector(toggleTouchOverlay(_:)):
             menuItem.title = deviceVC.screen.showsTouches ? "Hide Finger Dots" : "Show Finger Dots"
             return true
