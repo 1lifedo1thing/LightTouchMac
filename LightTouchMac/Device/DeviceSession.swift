@@ -88,7 +88,7 @@ import Cocoa
                          job: FirmwareJobs.shared.jobs[entry.id],
                          downloaded: entry.source.sha1.map { IPSWStore.shared.existing($0) != nil } ?? false,
                          preparedWithoutActivation: instance.map(lacksActivation) ?? false,
-                         baseRecipe: instance.flatMap(baseRecipe))
+                         baseRecipe: instance.flatMap(baseRecipe), deleting: deletions.contains(entry.id))
     }
 
     /// Read once per device, like lacksActivation.
@@ -128,6 +128,7 @@ import Cocoa
     @discardableResult
     func start(_ entry: FirmwareCatalog.Entry) -> DeviceSession? {
         if let session = session(for: entry) { return session }
+        guard !deletions.contains(entry.id) else { return nil }
         library.reload() // offline publication may have selected another generation
         guard let instance = instance(for: entry), let profile = entry.profile else { return nil }
         let network = NetworkAccessPreference.resolve(profile: profile)
@@ -192,11 +193,27 @@ import Cocoa
 
     // MARK: Deleting
 
-    /// Removes a stopped device: its directory (record, base, overlay, pairing), its logs and its settings.
-    func delete(_ instance: DeviceInstance) throws {
+    /// Deletions in flight; their rows show Deleting and can't start.
+    private(set) lazy var deletions: DeviceDeletions = {
+        let deletions = DeviceDeletions()
+        deletions.onChange = { [weak self] in
+            guard let self else { return }
+            library.reload()
+            NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
+        }
+        return deletions
+    }()
+
+    /// Removes a stopped device off the main actor: its directory (record, base, overlay, pairing), its logs and
+    /// its settings. Its row says Deleting from now until the task ends.
+    @discardableResult
+    func delete(_ instance: DeviceInstance) -> Task<Void, Error> {
         precondition(!sessions.contains { $0.instance.id == instance.id })
-        try library.remove(id: instance.id)
-        try? DeviceStateStorage.removeTree(instance.paths.logs)
+        let state = library.state, logs = instance.paths.logs
         for name in DeviceInstance.perDeviceDefaults { UserDefaults.standard.removeObject(forKey: instance.defaultsKey(name)) }
+        return deletions.run(instance.firmware) {
+            try DeviceStateStorage.removeDevice(instance.id, state: state)
+            try? DeviceStateStorage.removeTree(logs)
+        }
     }
 }

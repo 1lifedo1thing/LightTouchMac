@@ -79,14 +79,17 @@ struct AddDeviceView: View {
     }
 }
 
-private struct AddDeviceRow: View {
+struct AddDeviceRow: View {
     let entry: FirmwareCatalog.Entry
     let added: Bool
     let downloaded: Bool
 
-    private var status: String {
-        switch entry.status {
-        case .available: "Supported"
+    private var status: String? { Self.statusText(entry.status) }
+
+    /// Nothing for a supported build; only what sets a build apart.
+    static func statusText(_ status: FirmwareCatalog.Entry.Status) -> String? {
+        switch status {
+        case .available: nil
         case .experimental: "Experimental"
         case .untested: "Untested"
         case .comingSoon: "Coming Soon"
@@ -107,9 +110,11 @@ private struct AddDeviceRow: View {
                 Text(badge).foregroundStyle(.secondary)
             }
             Spacer()
-            Text(status)
-                .foregroundStyle(entry.status == .available ? .secondary : .tertiary)
-                .lineLimit(1)
+            if let status {
+                Text(status)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
             // The sidebar's convention: a build that isn't here yet shows the download glyph.
             Image(systemName: "arrow.down.circle")
                 .foregroundStyle(.tertiary)

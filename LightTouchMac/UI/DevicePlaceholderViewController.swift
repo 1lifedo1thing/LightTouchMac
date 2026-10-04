@@ -138,6 +138,7 @@ final class DevicePlaceholderViewController: NSViewController {
             }
         case .running: status.stringValue = "Running"
         case .stopping: status.stringValue = "Stopping…"
+        case .deleting: status.stringValue = "Deleting…"
         case let .error(message):
             // What failed, over why (the reason).
             status.stringValue = row.hasSession ? "Stopped unexpectedly" : row.isStartable ? "Couldn’t start" : "Couldn’t prepare"

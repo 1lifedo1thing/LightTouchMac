@@ -259,8 +259,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         let logs = diagnosticLogs.filter { $0.pathExtension == "log" }
         console.split.sources = logs.filter { $0.lastPathComponent == "serial.log" } + logs.filter { $0.lastPathComponent != "serial.log" }
         if let profile = session?.profile ?? entry?.profile, profile != currentProfile { profileDidChange(to: profile) }
-        window?.title = entry.flatMap(library.customName(for:)) ?? session?.instance.name
-            ?? entry.map { host.instance(for: $0)?.name ?? $0.profile?.displayName ?? $0.productType } ?? "Light Touch"
+        window?.title = entry.map { library.label(for: $0).title } ?? "Light Touch"
         refreshForState()
     }
 
@@ -434,11 +433,14 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         alert.buttons.first?.hasDestructiveAction = true
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn, let self else { return }
-            do {
-                try host.delete(instance)
-                if thenPrepare { FirmwareJobs.shared.downloadAndPrepare(entry) } else { library.removeFromList(entry) }
+            // Off the main actor; the row says Deleting until it's done.
+            let deletion = host.delete(instance)
+            Task {
+                do {
+                    try await deletion.value
+                    if thenPrepare { FirmwareJobs.shared.downloadAndPrepare(entry) } else { self.library.removeFromList(entry) }
+                } catch { NSAlert(error: error).beginSheetModal(for: window, completionHandler: nil) }
             }
-            catch { NSAlert(error: error).beginSheetModal(for: window) }
         }
     }
 
@@ -460,7 +462,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         validateCaptureToolbar()
         updateDeadOverlay()
         guard let emulator, let deviceVC else {
-            window?.subtitle = selectedEntry.map { "iOS \($0.version)" } ?? ""
+            window?.subtitle = selectedEntry.map { library.label(for: $0).subtitle } ?? ""
             return
         }
         // The window subtitle is where AppKit puts secondary window state, and
