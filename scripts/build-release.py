@@ -32,7 +32,7 @@ IPAD_GUEST_PAYLOADS = frozenset(('it_pbd', 'it_ethlink', 'it_prefs', 'it_msmquie
                                  'com.qemu.it-prefs.plist', 'com.qemu.it-seal.plist', 'OpenGLES', 'gles-names.h',
                                  'armv6.itpack', 'armv7.itpack',
                                  'sblaunch', 'sbdlicon', 'it_agent', 'it_typein.dylib',
-                                 'com.qemu.it-agent.plist', 'it_keybag-armv6', 'it_prefs-armv6',
+                                 'com.qemu.it-agent.plist', 'it_keybag-armv6',
                                  'OpenGLES-1x', 'opengles-1x.exports'))
 # The oldest guest package the bundle may carry: serial 7 is the first with the n45-ios1 family (1.x's OpenGLES
 # front-end hook, no loader), which N45Board refuses to bake 1.x GL without (serial 5 brought n72-ios2's).

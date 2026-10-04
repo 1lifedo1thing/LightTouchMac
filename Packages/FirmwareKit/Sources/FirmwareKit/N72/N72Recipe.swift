@@ -11,8 +11,8 @@
 // (7168 MiB = 1835008 blocks), options gles_shim / appsync / web_proxy / data_protection. --guest-tools
 // holds OpenGLES (the GL front end, qemu-ios contrib/gles-public: every build, 2.x to 4.x) and gles-names.h, sblaunch,
 // sbdlicon (optional), it_agent, it_typein.dylib, com.qemu.it-agent.plist, libappsync.dylib, armv6.itpack (the
-// guest-package loader and seed package, as ipod2g_device.py bakes them), it_prefs-armv6 + com.qemu.it-prefs.plist
-// (no first-run "Edit Home Screen" tip, and once per device Brightness at maximum and Auto-Lock Never; without the
+// guest-package loader and seed package, as ipod2g_device.py bakes them; the package's it_prefs keeps the first-run
+// "Edit Home Screen" tip down and sets Brightness at maximum and Auto-Lock Never once per device; without the
 // helpers, the same SpringBoard preferences are baked instead: bakePrefs) and it_keybag-armv6
 // (data protection). With gles_shim the front end replaces OpenGLES once FitCheck.glesFrontEnd fits (else the prepare
 // fails) and SpringBoard gets CA_ENABLE_OGL=1.
@@ -27,7 +27,6 @@ final class N72Board: Board {
     static let openGLES = "System/Library/Frameworks/OpenGLES.framework/OpenGLES"
     static let prefs = "private/var/mobile/Library/Preferences"
     static let agentJob = "System/Library/LaunchDaemons/com.qemu.it-agent.plist"
-    static let prefsJob = "System/Library/LaunchDaemons/com.qemu.it-prefs.plist"
     static let fstabRW = "/dev/disk0s1 / hfs rw 0 1\n"
     /// set-sound-defaults.py: the five Sounds switches of a new device.
     static var soundDefaults: [(String, [String: Any])] { [
@@ -331,11 +330,8 @@ final class N72Board: Board {
             owners.append((0, SystemEdits.appsyncPath))
             if FileManager.default.fileExists(atPath: m.appendingPathComponent(SystemEdits.appsyncLauncherPath).path) { owners.append((0, SystemEdits.appsyncLauncherPath)) }
         }
-        if tools {   // ipod2g_device.PREFS: the iPad's it_prefs without Wi-Fi location (contrib/it-prefs/build-ipod.sh)
-            try SystemEdits.put(helper(SystemEdits.Helpers.name("it_prefs", arch)), at("usr/local/bin/it_prefs"), mode: 0o755)
-            try SystemEdits.put(helper("com.qemu.it-prefs.plist"), at(Self.prefsJob), mode: 0o644)
-            owners += [(0, "usr/local/bin/it_prefs"), (0, Self.prefsJob)]
-            report["prefs"] = "it_prefs: SBDidShowReorderText, then Brightness and Auto-Lock once, at first boot"
+        if tools {   // the seed package's it_prefs (its com.qemu.guest-prefs job), as on every later package
+            report["prefs"] = "it_prefs (guest package): SBDidShowReorderText, then Brightness and Auto-Lock once, at first boot"
         } else {   // Older incompatible helper inputs: bake its keys into mobile’s SpringBoard preferences
             report["prefs"] = try Self.bakePrefs(m, dir: Self.prefs)
         }
@@ -369,7 +365,7 @@ extension N72Board {
     static let sbSwitches = [["CA_ENABLE_OGL", "LK_ENABLE_OGL"], ["CA_AUTO_ENABLE_OGL", "LK_AUTO_ENABLE_OGL"], ["CA_ENABLE_MBX2D", "LK_ENABLE_MBX2D"]]
 
     /// The baked guest tools (and it_typein in SpringBoard) that must all load for any to be installed.
-    static let guestTools = ["it_agent", "it_typein.dylib", "sblaunch", "sbdlicon", SystemEdits.Helpers.name("it_prefs", "armv6")]
+    static let guestTools = ["it_agent", "it_typein.dylib", "sblaunch", "sbdlicon"]
 
     /// One Fit for the iPod's baked guest tools: each proven with FitCheck.loads (sbdlicon only if the helpers have it).
     static func guestToolsFit(_ fw: FitCheck.Firmware, helpers: URL) throws -> FitCheck.Fit {
