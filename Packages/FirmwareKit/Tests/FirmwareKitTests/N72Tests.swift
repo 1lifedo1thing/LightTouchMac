@@ -192,23 +192,36 @@ import Testing
         }
     }
 
-    /// Smoke #45: without helpers (2.x/3.0) the bake writes it_prefs' key itself, SBDidShowReorderText = <true/> in
-    /// mobile's com.apple.springboard.plist, keeping the Sounds defaults already there; a SpringBoard that doesn't name
-    /// the key is left alone. With the 5F138 cache at hand, its real SpringBoard names it.
-    @Test func reorderTipBakedWithoutHelpers() throws {
+    /// Smoke #45 and the once-only defaults: without helpers (1.x, 2.x/3.0) the bake writes it_prefs' keys itself into
+    /// the user's com.apple.springboard.plist, keeping the Sounds defaults already there: SBDidShowReorderText = <true/>,
+    /// Brightness at maximum under the key this SpringBoard names (2.x-3.x SBBacklightLevel2, 1.x SBBacklightLevel; a
+    /// key that only prefixes another is not named) and Auto-Lock Never (SBAutoLockTime and SBAutoDimTime -1: SpringBoard
+    /// resets a lock time below the dim time to its defaults). A SpringBoard naming none
+    /// is left alone. With the 5F138 cache at hand, its real SpringBoard names the tip.
+    @Test func prefsBakedWithoutHelpers() throws {
         try Oracle.withTemp { m in
             let sb = m.appendingPathComponent(N72Board.springBoard), plist = m.appendingPathComponent(N72Board.prefs + "/com.apple.springboard.plist")
+            func baked() throws -> [String: Any] {
+                try #require(PropertyListSerialization.propertyList(from: Data(contentsOf: plist), format: nil) as? [String: Any])
+            }
             try SystemEdits.mkdirs(sb.deletingLastPathComponent())
-            try Data("\0SBDidShowReorderTextX".utf8).write(to: sb)
+            try Data("\0SBDidShowReorderText\0SBBacklightLevel2\0SBAutoLockTime\0SBAutoLockTimeKey\0SBAutoDimTime\0".utf8).write(to: sb)
             try SystemEdits.seedPlist(plist) { $0["lock-unlock"] = true }
-            #expect(try N72Board.bakeReorderTip(m) == "SBDidShowReorderText baked (no helpers)")
-            let d = try #require(PropertyListSerialization.propertyList(from: Data(contentsOf: plist), format: nil) as? [String: Any])
+            #expect(try N72Board.bakePrefs(m, dir: N72Board.prefs) == "SBDidShowReorderText, SBBacklightLevel2, SBAutoLockTime, SBAutoDimTime baked (no helpers)")
+            var d = try baked()
             #expect(d[N72Board.reorderTip] as? Bool == true && d["lock-unlock"] as? Bool == true)
+            #expect(d["SBBacklightLevel2"] as? Double == 1.0 && d["SBBacklightLevel"] == nil && d["SBAutoLockTime"] as? Int == -1 && d["SBAutoDimTime"] as? Int == -1)
             #expect(try String(contentsOf: plist, encoding: .utf8).contains("<key>SBDidShowReorderText</key>\n\t<true/>"))
 
+            try FileManager.default.removeItem(at: plist)   // 1.x: SBBacklightLevel, no reorder tip
+            try Data("\0SBBacklightLevel\0SBAutoLockTime\0".utf8).write(to: sb)
+            #expect(try N72Board.bakePrefs(m, dir: N72Board.prefs) == "SBBacklightLevel, SBAutoLockTime baked (no helpers)")
+            d = try baked()
+            #expect(d["SBBacklightLevel"] as? Double == 1.0 && d["SBBacklightLevel2"] == nil && d[N72Board.reorderTip] == nil)
+
             try FileManager.default.removeItem(at: plist)
-            try Data("SpringBoard".utf8).write(to: sb)
-            #expect(try N72Board.bakeReorderTip(m).hasSuffix("left alone") && !Oracle.exists(plist))
+            try Data("SpringBoard SBDidShowReorderTextX".utf8).write(to: sb)
+            #expect(try N72Board.bakePrefs(m, dir: N72Board.prefs).hasSuffix("left alone") && !Oracle.exists(plist))
         }
     }
 

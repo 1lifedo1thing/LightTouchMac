@@ -161,6 +161,10 @@ final class N45Board: Board {
                                 at(Self.wifiPrefs), mode: 0o644)
             owners += [(0, sc + "/preferences.plist"), (0, Self.wifiPrefs)]
             derived["wifi"] = "en0 AirPort service (PAC /\(SystemEdits.pacPath)); known network qemu-ios, Wi-Fi on (/\(Self.wifiPrefs))"
+            // 1.x runs no guest helpers (it_prefs): its SpringBoard preferences, in root's Library (1.x's user)
+            derived["prefs"] = try N72Board.bakePrefs(m, dir: Self.rootLibrary + "/Preferences")
+            let sbPrefs = Self.rootLibrary + "/Preferences/com.apple.springboard.plist"
+            if fm.fileExists(atPath: at(sbPrefs).path) { owners.append((0, sbPrefs)) }
             let (report, record, owned) = try Self.bake(m, helpers: c.o.guestTools, gles: recipe.options["gles_shim"] ?? true, fit: c.fit, log: c.log)
             for (k, v) in report { derived[k] = v }
             c.guestPackage = record

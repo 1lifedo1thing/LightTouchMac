@@ -120,9 +120,7 @@ Device/Battery/50%
 Device/Battery/20%
 Device/Battery/5%
 Device/Battery/-
-Device/Battery/Charge Automatically
 Device/Battery/Charging
-Device/Battery/Not Charging
 Device/-
 Device/Pause
 Device/-
@@ -160,16 +158,15 @@ Help/Light Touch Help  ⌘?
 Help/-
 Help/Export Diagnostics…
 '''.strip()
-# The iPad's differences: its name, a compass, and the USB charger choice.
+# The iPad's differences: its name and a compass. Battery is the same: levels, then one Charging switch.
 IPAD_BAR=(IPOD_BAR.replace('iPod','iPad')
-    .replace('Device/Input ▸','Device/Compass Heading ▸\nDevice/Compass Heading/North\nDevice/Compass Heading/East\nDevice/Compass Heading/South\nDevice/Compass Heading/West\nDevice/Input ▸')
-    .replace('Device/Battery/Not Charging','Device/Battery/Not Charging\nDevice/Battery/-\nDevice/Battery/High-Power USB Port'))
+    .replace('Device/Input ▸','Device/Compass Heading ▸\nDevice/Compass Heading/North\nDevice/Compass Heading/East\nDevice/Compass Heading/South\nDevice/Compass Heading/West\nDevice/Input ▸'))
 source=r'''import Cocoa
 struct Instance { let id=UUID() }
 @MainActor final class Emulator {
  var isPaused=false,isRunning=true,isInstalling=false,acceptsInput=true,isSleeping=false
  let instance=Instance()
- var batteryLevel:Int?=nil,batteryCharging:Int32=0,highPowerUSB=true,canChooseUSBCharger=false
+ var batteryLevel=100,batteryCharging=true
  var compassHeading:Int?=nil,hasCompass=false
  func pause(){isPaused=true;isRunning=false}
  func resume(){isPaused=false;isRunning=true}

@@ -202,13 +202,7 @@ enum MainMenuBuilder {
             battery.addItem(item("\(level)%", #selector(MainWindowController.setBatteryLevel(_:)), tag: level))
         }
         battery.addItem(.separator())
-        for (mode, title) in ["Charge Automatically", "Charging", "Not Charging"].enumerated() {
-            battery.addItem(item(title, #selector(MainWindowController.setBatteryCharging(_:)), tag: mode))
-        }
-        if profile.canChooseUSBCharger {
-            battery.addItem(.separator())
-            battery.addItem(item("High-Power USB Port", #selector(MainWindowController.toggleHighPowerUSB(_:))))
-        }
+        battery.addItem(item("Charging", #selector(MainWindowController.toggleBatteryCharging(_:))))
         menu.addItem(submenu(battery, title: "Battery"))
         menu.addItem(.separator())
         menu.addItem(item("Pause", #selector(MainWindowController.toggleDevicePause(_:))))
