@@ -30,6 +30,8 @@ import Cocoa
     /// Downloads with a live task, and how far each is.
     private var inFlight: [String: Double] = [:]
     private let bytes: [String: Int64]
+    /// The host each download comes from once its first source failed (FirmwareDownloads' fallback).
+    private var mirrors: [String: String] = [:]
 
     /// `configuration`: tests use an ephemeral session and file URLs.
     init(catalog: FirmwareCatalog = .bundled, store: IPSWStore = .shared,
@@ -46,8 +48,11 @@ import Cocoa
         let bytes = Dictionary(catalog.entries.compactMap { e in e.source.sha1.map { ($0, e.source.bytes ?? 0) } },
                                uniquingKeysWith: { a, _ in a })
         self.bytes = bytes
+        let urls = Dictionary(catalog.entries.compactMap { e in e.source.sha1.map { ($0, e.source.urls) } }, uniquingKeysWith: { a, _ in a })
         // Made at launch so a download the last launch started reports here.
-        downloads = FirmwareDownloads(store: store, configuration: configuration, expectedBytes: { bytes[$0] }) { [weak self] sha1, event in
+        // ponytail: a task resumed at launch from a mirror shows no mirror line until the next fallback.
+        downloads = FirmwareDownloads(store: store, configuration: configuration, expectedBytes: { bytes[$0] },
+                                      sources: { urls[$0] ?? [] }) { [weak self] sha1, event in
             Task { @MainActor in self?.download(sha1, event) }
         }
         // ponytail: a resumed download reports under its own entry, so a sibling IPSW the last
@@ -213,11 +218,14 @@ import Cocoa
             for id in ids {
                 guard let entry = catalog.entry(id: id), case .downloading? = jobs[id], let sha1s = waiting[id] else { continue }
                 let overall = downloadFraction(id)
-                jobs[id] = .downloading(fraction: overall, remaining: remaining(entry, overall), files: sha1s.count)
+                jobs[id] = .downloading(fraction: overall, remaining: remaining(entry, overall), files: sha1s.count,
+                                        mirror: sha1s.lazy.compactMap { self.mirrors[$0] }.first)
             }
+        case let .mirror(url): mirrors[sha1] = url.host
         case .resumed: break
         case .finished:
             inFlight[sha1] = nil
+            mirrors[sha1] = nil
             logEvent("firmware: downloaded \(name)")
             // A job with nothing left to fetch prepares; one still fetching the other IPSW waits.
             for id in ids {
@@ -230,11 +238,14 @@ import Cocoa
             if ids.isEmpty { NotificationCenter.default.post(name: Self.didChangeNotification, object: self) }
         case let .failed(error):
             inFlight[sha1] = nil
+            mirrors[sha1] = nil
             for id in ids {
                 waiting[id] = nil
                 if let entry = catalog.entry(id: id) { fail(entry, error) }
             }
-        case .cancelled: logEvent("firmware: download of \(name) cancelled and discarded")
+        case .cancelled:
+            mirrors[sha1] = nil
+            logEvent("firmware: download of \(name) cancelled and discarded")
         }
     }
 

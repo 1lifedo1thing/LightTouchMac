@@ -38,6 +38,19 @@ nonisolated public enum FirmwareWire {
             public var sha1: String?
             public var bytes: Int64?
             public var resource: String?
+            /// Copies of the same file elsewhere (scripts/catalog-mirrors.py), tried in order after `url`.
+            public var mirrors: [Mirror]?
+
+            public struct Mirror: Codable, Sendable, Equatable {
+                public var url: URL
+                public var sha1: String
+                public var bytes: Int64
+            }
+
+            /// Where to download from, in order: `url`, then each mirror that records this sha1 and size.
+            public var urls: [URL] {
+                [url].compactMap { $0 } + (mirrors ?? []).filter { $0.sha1 == sha1 && $0.bytes == bytes }.map(\.url)
+            }
         }
 
         /// An img3's IV/key, or a root filesystem's VFDecrypt key (no IV). `file` is the name inside the IPSW.

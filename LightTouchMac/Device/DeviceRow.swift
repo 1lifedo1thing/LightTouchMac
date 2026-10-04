@@ -15,9 +15,10 @@ nonisolated enum DeviceAction: CaseIterable, Sendable {
 
 /// A download or preparation in flight for a catalog entry (FirmwareJobs).
 /// `remaining` is the estimated seconds left, nil until there is one; `files` is how many
-/// IPSWs the one job fetches (2 for a build that boots its sibling's ramdisk), `fraction` all of them.
+/// IPSWs the one job fetches (2 for a build that boots its sibling's ramdisk), `fraction` all of them;
+/// `mirror` the host it comes from once a catalog source other than the first serves it.
 nonisolated enum FirmwareJob: Equatable, Sendable {
-    case downloading(fraction: Double, remaining: TimeInterval? = nil, files: Int = 1)
+    case downloading(fraction: Double, remaining: TimeInterval? = nil, files: Int = 1, mirror: String? = nil)
     case preparing(Preparation)
     case failed(String)
 }
@@ -63,7 +64,7 @@ nonisolated enum DeviceRowState: Equatable, Sendable {
     case notDownloaded(bytes: Int64?)
     /// Its IPSW is in a store (downloaded or imported), not yet prepared.
     case downloaded
-    case downloading(fraction: Double, remaining: TimeInterval? = nil, files: Int = 1)
+    case downloading(fraction: Double, remaining: TimeInterval? = nil, files: Int = 1, mirror: String? = nil)
     case preparing(Preparation)
     case ready, running, stopping
     case error(String)
@@ -109,7 +110,8 @@ nonisolated struct DeviceRow: Equatable, Sendable {
         }
         if entry.status == .comingSoon { return .unavailable(.comingSoon) }
         switch job {
-        case let .downloading(fraction, remaining, files)?: return .downloading(fraction: fraction, remaining: remaining, files: files)
+        case let .downloading(fraction, remaining, files, mirror)?:
+            return .downloading(fraction: fraction, remaining: remaining, files: files, mirror: mirror)
         case let .preparing(preparation)?: return .preparing(preparation)
         case let .failed(reason)?: return .error(reason)
         case nil: break
@@ -131,7 +133,7 @@ nonisolated struct DeviceRow: Equatable, Sendable {
     /// A download's or preparation's overall progress; nil while it has no steps yet.
     var progress: Double? {
         switch state {
-        case let .downloading(fraction, _, _): fraction
+        case let .downloading(fraction, _, _, _): fraction
         case let .preparing(preparation): preparation.overall
         default: nil
         }
@@ -163,7 +165,7 @@ nonisolated struct DeviceRow: Equatable, Sendable {
     /// The placeholder's one line under the bar: percent and time left ("34% · About 1 min remaining").
     var progressLine: String? {
         let remaining: TimeInterval? = switch state {
-        case let .downloading(_, remaining, _): remaining
+        case let .downloading(_, remaining, _, _): remaining
         case let .preparing(p): p.remaining
         default: nil
         }
@@ -171,10 +173,12 @@ nonisolated struct DeviceRow: Equatable, Sendable {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    /// What the job is doing inside, for the bar's tooltip only: the preparer's step and its words, or the IPSW count.
+    /// What the job is doing inside, for the bar's tooltip only: the preparer's step and its words, or the IPSW count
+    /// and the third-party mirror it comes from.
     var progressDetail: [String] {
         switch state {
-        case let .downloading(_, _, files): files > 1 ? ["\(files) IPSWs"] : []
+        case let .downloading(_, _, files, mirror):
+            (files > 1 ? ["\(files) IPSWs"] : []) + (mirror.map { ["From \($0), a third-party mirror"] } ?? [])
         case let .preparing(p) where p.steps > 0: ["Step \(p.step) of \(p.steps): \(p.name)", p.detail].compactMap { $0 }
         case let .preparing(p): [p.name]
         default: []

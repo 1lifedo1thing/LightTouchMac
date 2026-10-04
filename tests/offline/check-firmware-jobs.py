@@ -389,6 +389,7 @@ case "download":
             if fraction - last >= 0.05 || fraction == 1 { last = fraction; print(String(format: "progress %.3f", fraction)); fflush(stdout) }
             if phase == "cancel", fraction > 0.08 { downloads.cancel(sha1: sha1) }
         case let .resumed(offset): print("resumed at \(offset)"); fflush(stdout)
+        case let .mirror(url): print("trying \(url)"); fflush(stdout)
         case .cancelled:
             print("cancelled; resume data \(fm.fileExists(atPath: store.resumeData(sha1).path) ? "KEPT" : "deleted")"); fflush(stdout)
             finished.signal()
