@@ -3,8 +3,8 @@
 
 Compiles SidebarList.swift with the real FirmwareCatalog and DeviceRow against the shipped catalog, on a throwaway
 UserDefaults suite. Checks:
-- titles: one kind of device -> "iOS 4.1" (Beta tag beside it); several -> the product name over the version; a
-  custom name -> the name over "iPod touch 2G, iOS 4.1";
+- titles: always two lines, the model identifier ("iPod2,1") over the version with its badge ("iOS 4.1 Beta 1"),
+  whatever else is listed; a custom name -> the name over "iPod2,1, iOS 4.1";
 - rename: saved and read back by a fresh load; an empty name or the default title clears it; removing forgets it;
 - migration: no saved list -> the entries the user owns (prepared / downloaded / in flight), else first_run;
   a saved list (even empty) is kept as saved, entries the catalog dropped are skipped;
@@ -59,33 +59,33 @@ import Foundation
         let order = list.entries(in: catalog).map(\.id)
         precondition(order == ["k48ap-7B367", "k48ap-7B500", "n72ap-5F138", "n72ap-8B5080c", "n72ap-8B117", "n72ap-8C148"], "order: \(order)")
 
-        // Titles: one kind of device.
+        // Titles: the model identifier over the version and its badge, the same whatever else is listed.
         list = SidebarList(ids: ["n72ap-8B117", "n72ap-8B5080c"])
-        precondition(list.label(for: entry("n72ap-8B117"), in: catalog) == .init(title: "iOS 4.1"), "same kind")
-        precondition(list.label(for: entry("n72ap-8B5080c"), in: catalog) == .init(title: "iOS 4.1", badge: "Beta 1"), "same kind beta")
-        // Several kinds: the product name the app uses, the version under it.
-        list.add(["k48ap-7B500"])
-        precondition(list.label(for: entry("n72ap-8B117"), in: catalog) == .init(title: "iPod touch 2G", subtitle: "iOS 4.1"), "mixed: \(list.label(for: entry("n72ap-8B117"), in: catalog))")
-        precondition(list.label(for: entry("n72ap-8B5080c"), in: catalog) == .init(title: "iPod touch 2G", subtitle: "iOS 4.1 Beta 1"), "mixed beta")
-        precondition(list.label(for: entry("k48ap-7B500"), in: catalog) == .init(title: "iPad", subtitle: "iOS 3.2.2"), "mixed iPad")
-        list.add(["n45ap-4B1"])
-        precondition(list.label(for: entry("n45ap-4B1"), in: catalog) == .init(title: "iPod touch 1G", subtitle: "iOS 1.1.5"), "mixed 1G")
+        precondition(list.label(for: entry("n72ap-8B117")) == .init(title: "iPod2,1", subtitle: "iOS 4.1"), "\(list.label(for: entry("n72ap-8B117")))")
+        precondition(list.label(for: entry("n72ap-8B5080c")) == .init(title: "iPod2,1", subtitle: "iOS 4.1 Beta 1"), "beta")
+        list.add(["k48ap-7B500", "n45ap-4B1"])
+        precondition(list.label(for: entry("n72ap-8B117")) == .init(title: "iPod2,1", subtitle: "iOS 4.1"), "mixed list changed the label")
+        precondition(list.label(for: entry("k48ap-7B500")) == .init(title: "iPad1,1", subtitle: "iOS 3.2.2"), "iPad")
+        precondition(list.label(for: entry("n45ap-4B1")) == .init(title: "iPod1,1", subtitle: "iOS 1.1.5"), "1G")
+        precondition(list.label(for: entry("k48ap-8C134")).subtitle.hasPrefix("iOS 4.2") && list.label(for: entry("k48ap-8C134")).subtitle.hasSuffix(" GM 1"), "GM badge")
         list.remove("n45ap-4B1")
 
-        // Rename, and the subtitle a custom name gets, in either mode.
-        list.rename("n72ap-8B117", to: "  Test Rig ", defaultTitle: "iPod touch 2G")
-        precondition(list.label(for: entry("n72ap-8B117"), in: catalog) == .init(title: "Test Rig", subtitle: "iPod touch 2G, iOS 4.1"), "renamed")
+        // Rename: the name over "<identifier>, iOS x.y <badge>".
+        list.rename("n72ap-8B117", to: "  Test Rig ", defaultTitle: "iPod2,1")
+        precondition(list.label(for: entry("n72ap-8B117")) == .init(title: "Test Rig", subtitle: "iPod2,1, iOS 4.1"), "renamed")
+        list.rename("n72ap-8B5080c", to: "Beta Rig", defaultTitle: "iPod2,1")
+        precondition(list.label(for: entry("n72ap-8B5080c")) == .init(title: "Beta Rig", subtitle: "iPod2,1, iOS 4.1 Beta 1"), "renamed beta")
+        list.rename("n72ap-8B5080c", to: "", defaultTitle: "iPod2,1")
         list.remove("k48ap-7B500")
-        precondition(list.label(for: entry("n72ap-8B117"), in: catalog) == .init(title: "Test Rig", subtitle: "iPod touch 2G, iOS 4.1"), "renamed, one kind")
         list.save(defaults)
         var reloaded = SidebarList.load(defaults, catalog: catalog) { _ in false }
         precondition(reloaded.names == ["n72ap-8B117": "Test Rig"] && reloaded == list, "names not persisted: \(reloaded)")
-        reloaded.rename("n72ap-8B117", to: "iOS 4.1", defaultTitle: "iOS 4.1")
+        reloaded.rename("n72ap-8B117", to: "iPod2,1", defaultTitle: "iPod2,1")
         precondition(reloaded.names.isEmpty, "the default title became a custom name")
-        reloaded.rename("n72ap-8B5080c", to: "Beta", defaultTitle: "iOS 4.1")
-        reloaded.rename("n72ap-8B5080c", to: "   ", defaultTitle: "iOS 4.1")
+        reloaded.rename("n72ap-8B5080c", to: "Beta", defaultTitle: "iPod2,1")
+        reloaded.rename("n72ap-8B5080c", to: "   ", defaultTitle: "iPod2,1")
         precondition(reloaded.names.isEmpty, "an empty name kept")
-        reloaded.rename("n72ap-8B117", to: "X", defaultTitle: "iOS 4.1")
+        reloaded.rename("n72ap-8B117", to: "X", defaultTitle: "iPod2,1")
         reloaded.remove("n72ap-8B117")
         reloaded.add(["n72ap-8B117"])
         precondition(reloaded.names.isEmpty, "a removed row kept its name")
@@ -101,6 +101,11 @@ import Foundation
         precondition(!row(UUID(), session: .running).canRemoveFromSidebar, "a running device left the sidebar")
         precondition(!row(nil, job: .downloading(fraction: 0.3)).canRemoveFromSidebar, "a download in flight left the sidebar")
         precondition(!row(nil, job: .preparing(Preparation(name: "x"))).canRemoveFromSidebar, "a preparation in flight left the sidebar")
+        // Deleting: the row says so, can't start, be deleted again or open; it outranks a ready state.
+        let deleting = DeviceRow(entry: e, instanceID: UUID(), session: nil, job: nil, deleting: true)
+        precondition(deleting.state == .deleting && deleting.accessory == .stopping && deleting.stateDescription == "Deleting", "\(deleting.state)")
+        precondition(DeviceAction.allCases.allSatisfy { !deleting.allows($0, canDownload: true) } && deleting.primaryAction == nil
+                     && !deleting.canRemoveFromSidebar, "a deleting row offers an action")
         print("PASS: sidebar list: migration, catalog order, titles and subtitles, rename persistence, removal")
     }
 }

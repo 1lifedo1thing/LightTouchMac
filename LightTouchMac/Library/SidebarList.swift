@@ -57,24 +57,18 @@ nonisolated struct SidebarList: Equatable {
         names[id] = name.isEmpty || name == defaultTitle ? nil : name
     }
 
-    /// What one row says. With a custom name, the name over "iPod touch 2G, iOS 4.1"; among one kind of device, the version
-    /// ("iOS 4.2.1", with its Beta/GM badge beside it); among several, the device over its version.
+    /// What one row says, and the window's title and subtitle for it: the model identifier ("iPod2,1") over the
+    /// version with its Beta/GM badge ("iOS 4.1 Beta 1"); a custom name over "iPod2,1, iOS 4.1".
     struct Label: Equatable {
         var title: String
-        var badge: String?
-        var subtitle: String?
+        var subtitle: String
     }
 
-    func label(for entry: FirmwareCatalog.Entry, in catalog: FirmwareCatalog) -> Label {
-        Self.label(for: entry, name: names[entry.id], mixed: Set(entries(in: catalog).map(\.board)).count > 1)
-    }
+    func label(for entry: FirmwareCatalog.Entry) -> Label { Self.label(for: entry, name: names[entry.id]) }
 
-    static func label(for entry: FirmwareCatalog.Entry, name: String?, mixed: Bool) -> Label {
-        let version = "iOS \(entry.version)"
-        let tagged = ([version] + [entry.prereleaseBadge].compactMap { $0 }).joined(separator: " ")
-        let device = entry.profile?.sidebarName ?? entry.productType
-        if let name { return Label(title: name, subtitle: "\(device), \(tagged)") }
-        if mixed { return Label(title: device, subtitle: tagged) }
-        return Label(title: version, badge: entry.prereleaseBadge)
+    static func label(for entry: FirmwareCatalog.Entry, name: String?) -> Label {
+        let version = (["iOS \(entry.version)"] + [entry.prereleaseBadge].compactMap { $0 }).joined(separator: " ")
+        guard let name else { return Label(title: entry.productType, subtitle: version) }
+        return Label(title: name, subtitle: "\(entry.productType), \(version)")
     }
 }
