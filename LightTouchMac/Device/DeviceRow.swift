@@ -160,15 +160,14 @@ nonisolated struct DeviceRow: Equatable, Sendable {
         }
     }
 
-    /// The placeholder's one line under the bar: percent and time left ("34% · About 1 min remaining").
-    var progressLine: String? {
-        let remaining: TimeInterval? = switch state {
-        case let .downloading(_, remaining, _): remaining
-        case let .preparing(p): p.remaining
+    /// The placeholder's headline over the bar: the time left ("About 2 minutes remaining", "Almost done"),
+    /// else what the job is doing ("Downloading…"); nil outside a job. The percent is the bar's (and the sidebar ring's).
+    var progressHeadline: String? {
+        switch state {
+        case let .downloading(_, remaining, _): remaining.map(Self.remainingText) ?? "Downloading…"
+        case let .preparing(p): p.remaining.map(Self.remainingText) ?? "Preparing…"
         default: nil
         }
-        let parts = [progress.map { "\(Int(($0 * 100).rounded(.down)))%" }, remaining.map(Self.remainingText)].compactMap { $0 }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     /// What the job is doing inside, for the bar's tooltip only: the preparer's step and its words, or the IPSW count.
@@ -213,12 +212,19 @@ nonisolated struct DeviceRow: Equatable, Sendable {
     }
 
     static func remainingText(_ seconds: TimeInterval) -> String {
-        switch seconds {
-        case ..<10: "Almost done"
-        case ..<60: "About \(Int((seconds / 10).rounded(.up)) * 10) s remaining"
-        case ..<5400: "About \(Int((seconds / 60).rounded())) min remaining"
-        default: "About \(Int((seconds / 3600).rounded())) h remaining"
+        guard seconds >= 10 else { return "Almost done" }
+        // Rounded to tens of seconds under a minute, whole minutes under 90, then hours.
+        let (rounded, unit): (TimeInterval, NSCalendar.Unit) = switch seconds {
+        case ..<60: ((seconds / 10).rounded(.up) * 10, .second)
+        case ..<5400: ((seconds / 60).rounded() * 60, .minute)
+        default: ((seconds / 3600).rounded() * 3600, .hour)
         }
+        let format = DateComponentsFormatter()
+        format.unitsStyle = .full
+        format.allowedUnits = unit
+        format.includesApproximationPhrase = true
+        format.includesTimeRemainingPhrase = true
+        return format.string(from: rounded) ?? "Almost done"
     }
 
     /// `canDownload` is FirmwareJobs.canDownload: whether the preparer is present.

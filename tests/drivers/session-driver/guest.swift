@@ -189,9 +189,8 @@ struct GuestConfig: Decodable {
         emit("media", ["device": name, "imported": imported, "receipt": receipt.map { String(decoding: $0, as: UTF8.self) } ?? ""])
         try? FileManager.default.removeItem(at: photo.directory)
 
-        // P5 rollback: judge the running package bad, then restart as the app does
-        // (EmulatorController.restart(with: .previous)): a clean halt, a fresh
-        // helper on the same overlay, whose boot carries the new offer.
+        // P5 rollback: judge the running package bad (as the app's verdict does), then
+        // restart: a clean halt, a fresh helper on the same overlay, whose boot carries the new offer.
         // (The seed is the loader's floor: nothing to roll back to when it is running.)
         if spec.rollback == true, let active = status?.guestPackage?.serial, active != record.seed {
             record.bad.append(active)

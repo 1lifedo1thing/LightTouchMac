@@ -57,6 +57,7 @@ import Cocoa
         precondition(draggingPasteboard.writeObjects(names.map { URL(fileURLWithPath: "/tmp/" + $0) as NSURL }))
     }
 }
+extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil } }
 @main struct Check {
     static func main() throws {
         _ = NSApplication.shared
@@ -75,6 +76,8 @@ import Cocoa
             ("downloaded", DeviceRow(entry: ipad, instanceID: nil, session: nil, job: nil, downloaded: true)),
             ("downloading", DeviceRow(entry: beta, instanceID: nil, session: nil, job: .downloading(fraction: 0.43, remaining: 70))),
             ("preparing", DeviceRow(entry: beta, instanceID: nil, session: nil, job: .preparing(prep))),
+            ("almost-done", DeviceRow(entry: beta, instanceID: nil, session: nil, job: .preparing({ var p = prep; p.remaining = 4; return p }()))),
+            ("downloading-starting", DeviceRow(entry: beta, instanceID: nil, session: nil, job: .downloading(fraction: 0.01))),
             ("error", DeviceRow(entry: beta, instanceID: nil, session: nil, job: .failed(unsupported))),
             ("ready", DeviceRow(entry: ipad, instanceID: id, session: nil, job: nil)),
             ("older-recipe", DeviceRow(entry: entry("n45ap-4B1"), instanceID: id, session: nil, job: nil, baseRecipe: 1)),
@@ -129,6 +132,13 @@ import Cocoa
             if row.preparedByOlderRecipe, again?.isEnabled != true || row.primaryTitle != "Start" { fail("Prepare Again disabled or Start not the default") }
             if row.isError && !texts.contains(where: { $0.hasPrefix("Couldn’t ") || $0 == "Stopped unexpectedly" }) { fail("an error headline that doesn't say what failed: \(texts)") }
             if texts.contains("Error") { fail("a bare Error headline") }
+            // A job's headline is its status ("About 1 minute remaining", "Almost done", "Downloading…"), right under the
+            // version; nothing under the bar: no percent (the bar shows it), no middot.
+            if let headline = row.progressHeadline {
+                if texts[safe: v + 1] != headline { fail("headline \(texts[safe: v + 1] ?? "none"), want \(headline): \(texts)") }
+                if texts.count != v + 2 { fail("a line besides the headline: \(texts)") }
+            }
+            if let odd = texts.first(where: { $0.contains("%") || $0.contains("·") }) { fail("percent or middot shown: \(odd)") }
             if let bar = all(view).compactMap({ $0 as? NSProgressIndicator }).first(where: visible), !["Download progress", "Preparation progress"].contains(bar.accessibilityLabel() ?? "") {
                 fail("progress bar labelled \(bar.accessibilityLabel() ?? "nothing")")
             }

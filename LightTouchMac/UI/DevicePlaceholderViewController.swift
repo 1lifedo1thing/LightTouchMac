@@ -13,7 +13,6 @@ final class DevicePlaceholderViewController: NSViewController {
     private let version = NSTextField(labelWithString: "")
     private let status = NSTextField(wrappingLabelWithString: "")
     private let progress = NSProgressIndicator()
-    private let step = NSTextField(wrappingLabelWithString: "")
     private let reason = NSTextField(wrappingLabelWithString: "")
     private let showLog = NSButton(title: "Show Logs", target: nil, action: nil)
     private let primary = NSButton(title: "", target: nil, action: nil)
@@ -40,7 +39,7 @@ final class DevicePlaceholderViewController: NSViewController {
         version.font = .preferredFont(forTextStyle: .title3)
         version.textColor = .secondaryLabelColor
         version.isSelectable = true
-        for label in [status, step, reason, space] {
+        for label in [status, reason, space] {
             label.alignment = .center
             label.preferredMaxLayoutWidth = 340
         }
@@ -56,8 +55,6 @@ final class DevicePlaceholderViewController: NSViewController {
         progress.isIndeterminate = false   // NSProgressIndicator starts indeterminate: a bar that never fills
         progress.minValue = 0
         progress.maxValue = 1
-        step.textColor = .secondaryLabelColor
-        step.font = .monospacedDigitSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .subheadline).pointSize, weight: .regular)
         for button in [showLog, prepareAgain, primary] {
             button.bezelStyle = .push
             button.controlSize = .large
@@ -70,7 +67,7 @@ final class DevicePlaceholderViewController: NSViewController {
         let versionLine = NSStackView(views: [version, info])
         versionLine.spacing = 4
         let identity = column([model, versionLine], spacing: 2)
-        let state = column([status, progress, step, reason], spacing: 6)
+        let state = column([status, progress, reason], spacing: 6)
         let actions = NSStackView(views: [showLog, prepareAgain, primary])
         actions.spacing = 12
         // The row keeps its height with no button (running), so the lockup doesn't move between states.
@@ -91,7 +88,7 @@ final class DevicePlaceholderViewController: NSViewController {
             art.heightAnchor.constraint(lessThanOrEqualToConstant: 320),
             art.heightAnchor.constraint(lessThanOrEqualTo: guide.heightAnchor, multiplier: 0.45),
             progress.widthAnchor.constraint(equalToConstant: 260),
-            // The state tier holds a line, a bar and its line: the buttons stay put (a two-line reason adds one line).
+            // The state tier holds a line and a bar, or a line and a reason: the buttons stay put (a two-line reason adds one line).
             state.heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
         ])
     }
@@ -116,7 +113,6 @@ final class DevicePlaceholderViewController: NSViewController {
 
         progress.isHidden = true
         progress.stopAnimation(nil)
-        step.isHidden = true
         reason.isHidden = true
         showLog.isHidden = true
         prepareAgain.isHidden = true
@@ -126,11 +122,9 @@ final class DevicePlaceholderViewController: NSViewController {
             status.stringValue = row.stateDescription
             if !canDownload, let why = FirmwareJobs.shared.unavailableReason { reason.stringValue = why; reason.isHidden = false }
         case .downloading:
-            status.stringValue = "Downloading…"
             progress.setAccessibilityLabel("Download progress")
             show(row)
         case .preparing:
-            status.stringValue = "Preparing…"
             progress.setAccessibilityLabel("Preparation progress")
             show(row)
         case .ready:
@@ -173,14 +167,14 @@ final class DevicePlaceholderViewController: NSViewController {
         space.isHidden = shortage == nil
     }
 
-    /// The bar (moving without a fraction yet), percent and time left; the preparer's step is the bar's tooltip.
+    /// The headline (time left, else what the job is doing) over the bar (moving without a fraction yet);
+    /// the preparer's step is the bar's tooltip.
     private func show(_ row: DeviceRow) {
+        status.stringValue = row.progressHeadline ?? ""
         progress.isIndeterminate = row.progress == nil
         if let value = row.progress { progress.doubleValue = value } else { progress.startAnimation(nil) }
         progress.isHidden = false
         progress.toolTip = row.progressDetail.isEmpty ? nil : row.progressDetail.joined(separator: "\n")
-        step.stringValue = row.progressLine ?? ""
-        step.isHidden = step.stringValue.isEmpty
     }
 
     @objc private func infoClicked(_ sender: NSButton) {
