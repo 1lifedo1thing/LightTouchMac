@@ -12,7 +12,8 @@
 // holds OpenGLES (the GL front end, qemu-ios contrib/gles-public: every build, 2.x to 4.x) and gles-names.h, sblaunch,
 // sbdlicon (optional), it_agent, it_typein.dylib, com.qemu.it-agent.plist, libappsync.dylib, armv6.itpack (the
 // guest-package loader and seed package, as ipod2g_device.py bakes them), it_prefs-armv6 + com.qemu.it-prefs.plist
-// (3.1+: no first-run "Edit Home Screen" tip; 2.x/3.0 get its SBDidShowReorderText baked instead) and it_keybag-armv6
+// (no first-run "Edit Home Screen" tip, and once per device Brightness at maximum and Auto-Lock Never; without the
+// helpers, the same SpringBoard preferences are baked instead: bakePrefs) and it_keybag-armv6
 // (data protection). With gles_shim the front end replaces OpenGLES once FitCheck.glesFrontEnd fits (else the prepare
 // fails) and SpringBoard gets CA_ENABLE_OGL=1.
 
@@ -330,13 +331,13 @@ final class N72Board: Board {
             owners.append((0, SystemEdits.appsyncPath))
             if FileManager.default.fileExists(atPath: m.appendingPathComponent(SystemEdits.appsyncLauncherPath).path) { owners.append((0, SystemEdits.appsyncLauncherPath)) }
         }
-        if tools {   // ipod2g_device.PREFS: the iPad's it_prefs, SpringBoard tip only (contrib/it-prefs/build-ipod.sh)
+        if tools {   // ipod2g_device.PREFS: the iPad's it_prefs without Wi-Fi location (contrib/it-prefs/build-ipod.sh)
             try SystemEdits.put(helper(SystemEdits.Helpers.name("it_prefs", arch)), at("usr/local/bin/it_prefs"), mode: 0o755)
             try SystemEdits.put(helper("com.qemu.it-prefs.plist"), at(Self.prefsJob), mode: 0o644)
             owners += [(0, "usr/local/bin/it_prefs"), (0, Self.prefsJob)]
-            report["prefs"] = "it_prefs: SBDidShowReorderText at first boot"
-        } else {   // Older incompatible helper inputs: bake the key into mobile’s SpringBoard preferences
-            report["prefs"] = try Self.bakeReorderTip(m)
+            report["prefs"] = "it_prefs: SBDidShowReorderText, then Brightness and Auto-Lock once, at first boot"
+        } else {   // Older incompatible helper inputs: bake its keys into mobile’s SpringBoard preferences
+            report["prefs"] = try Self.bakePrefs(m, dir: Self.prefs)
         }
         if opt["web_proxy"] ?? true {   // install_web_proxy: the PAC, and the Wi-Fi service on the system volume's /private/var
             try c.fit.check(FitCheck.webProxy(fw), required: false, outcome: "kept: the PAC is unused")
@@ -390,14 +391,25 @@ extension N72Board {
     static let reorderTip = "SBDidShowReorderText"
     static let springBoard = "System/Library/CoreServices/SpringBoard.app/SpringBoard"
 
-    /// contrib/it-prefs (IT_PREFS_TIP_ONLY) offline: SBDidShowReorderText = true in mobile's com.apple.springboard.plist,
-    /// only if SpringBoard names the key (it_prefs checks first too); the report line says which.
-    static func bakeReorderTip(_ m: URL) throws -> String {
-        guard let sb = try? Data(contentsOf: m.appendingPathComponent(springBoard), options: .alwaysMapped),
-              sb.range(of: Data(reorderTip.utf8)) != nil else { return "SpringBoard does not name \(reorderTip): left alone" }
-        try SystemEdits.seedPlist(m.appendingPathComponent(prefs + "/com.apple.springboard.plist")) { $0[reorderTip] = true }
-        return "\(reorderTip) baked (no helpers)"
+    /// contrib/it-prefs offline, where it cannot run (no helpers: 1.x, 2.x/3.0 helper sets that do not load): what it
+    /// writes into the user's com.apple.springboard.plist in `dir`, each key only if SpringBoard names it (it_prefs'
+    /// rule: the key and its NUL): the reorder tip, and its once-only defaults, Brightness at maximum (SBBacklightLevel2,
+    /// 1.x SBBacklightLevel) and Auto-Lock Never (SBAutoLockTime -1, where Settings keeps it through 3.x, with
+    /// SBAutoDimTime -1: SpringBoard resets both to its defaults when the dim time is above the lock time). Baked once
+    /// at prepare, so the user's later choices stand. Returns the report line.
+    static func bakePrefs(_ m: URL, dir: String) throws -> String {
+        guard let sb = try? Data(contentsOf: m.appendingPathComponent(springBoard), options: .alwaysMapped) else { return "no SpringBoard: left alone" }
+        let named = prefsBaked.filter { sb.range(of: Data(($0.key + "\0").utf8)) != nil }
+        guard !named.isEmpty else { return "SpringBoard names none of \(prefsBaked.map(\.key).joined(separator: ", ")): left alone" }
+        try SystemEdits.seedPlist(m.appendingPathComponent(dir + "/com.apple.springboard.plist")) { d in
+            for (k, v) in named { d[k] = v }
+        }
+        return named.map(\.key).joined(separator: ", ") + " baked (no helpers)"
     }
+
+    /// bakePrefs' keys and values, it_prefs' SETTINGS and defaults() for SpringBoard.
+    static var prefsBaked: [(key: String, value: Any)] { [(reorderTip, true), ("SBBacklightLevel2", 1.0), ("SBBacklightLevel", 1.0),
+                                                          ("SBAutoLockTime", -1), ("SBAutoDimTime", -1)] }
 
     /// ipod2g_device.gles2x_front_end (ipod1g_device's for 1.x): (true, line) if the stock OpenGLES exports exactly
     /// the names in `exports` (contrib/it-gles/opengles-<1x|2x>.exports), so the package's hook may replace it;

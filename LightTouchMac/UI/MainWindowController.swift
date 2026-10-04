@@ -926,8 +926,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
     @objc func deviceShake(_ sender: Any?)       { emulator?.shake() }
     @objc func setBatteryLevel(_ sender: NSMenuItem)    { emulator?.setBattery(level: sender.tag) }
-    @objc func setBatteryCharging(_ sender: NSMenuItem) { emulator?.setBattery(charging: Int32(sender.tag)) }
-    @objc func toggleHighPowerUSB(_ sender: Any?)       { emulator.map { $0.setHighPowerUSB(!$0.highPowerUSB) } }
+    @objc func toggleBatteryCharging(_ sender: Any?)   { emulator.map { $0.setCharging(!$0.batteryCharging) } }
     @objc func setCompassHeading(_ sender: NSMenuItem)  { emulator?.setCompassHeading(sender.tag) }
     @objc func specialTrick(_ sender: Any?) {
         deviceVC?.screen.specialTrick()
@@ -1354,14 +1353,9 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(setBatteryLevel(_:)):
             menuItem.state = menuItem.tag == emulator.batteryLevel ? .on : .off
             return emulator.acceptsInput
-        case #selector(setBatteryCharging(_:)):
-            menuItem.state = Int32(menuItem.tag) == emulator.batteryCharging ? .on : .off
+        case #selector(toggleBatteryCharging(_:)):
+            menuItem.state = emulator.batteryCharging ? .on : .off
             return emulator.acceptsInput
-        case #selector(toggleHighPowerUSB(_:)):
-            menuItem.state = emulator.highPowerUSB ? .on : .off
-            menuItem.toolTip = emulator.canChooseUSBCharger ? nil
-                : "A Mac’s USB port always supplies high power."
-            return emulator.acceptsInput && emulator.canChooseUSBCharger
         case #selector(setCompassHeading(_:)):
             menuItem.state = menuItem.tag == emulator.compassHeading ? .on : .off
             return emulator.acceptsInput && emulator.hasCompass

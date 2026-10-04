@@ -769,7 +769,10 @@ final class EmulatorController {
 
     private func noteFrameAdvanced() {
         lastFrameAdvance = Date()
-        if state == .booting, !poweringOn { state = .running }
+        if state == .booting, !poweringOn {
+            state = .running
+            applyBattery()
+        }
     }
 
     /// Frames within the last ~2s. Not sufficient alone for "healthy": a
@@ -940,30 +943,34 @@ final class EmulatorController {
     // MARK: Battery, charger and compass
     //
     // The emulator can't be asked for these, so what the app last set is the
-    // menu's state. nil level = the machine's own default until one is chosen.
-    private(set) var batteryLevel: Int?
-    /// 0 automatic (the power source decides from the host's current), 1 on, 2 off.
-    private(set) var batteryCharging: Int32 = 0
-    func setBattery(level: Int? = nil, charging: Int32? = nil) {
-        let level = level ?? batteryLevel ?? 80
-        let charging = charging ?? batteryCharging
-        control(.battery(level: level, charging: Int(charging))) { [weak self] applied in
-            guard applied, let self else { return }
-            batteryLevel = level
-            batteryCharging = charging
-        }
+    // menu's state, and every boot starts from it (applyBattery): a new QEMU
+    // otherwise starts at its own 80% while the menu still shows the choice.
+    private(set) var batteryLevel = 100
+    /// Whether the USB port charges the device; off, USB data stays connected.
+    /// The iPad's port then grants no charge current (a 500 mA port): "Not
+    /// Charging", and the lock screen keeps its wallpaper. The iPod reads not
+    /// charging but, as on hardware, shows its battery while on USB.
+    private(set) var batteryCharging = true
+    func setBattery(level: Int) {
+        batteryLevel = level
+        control(.battery(level: level, charging: batteryChargingMode))
+    }
+    /// The machine's battery-charging: auto (charge until full) or off.
+    private var batteryChargingMode: Int { batteryCharging ? 0 : 2 }
+
+    /// At a boot's first frame, before configd reads the gauge and the guest
+    /// enumerates USB, so neither needs a replug.
+    private func applyBattery() {
+        control(.battery(level: batteryLevel, charging: batteryChargingMode))
+        if profile.canChooseUSBCharger { control(.usbCharger(batteryCharging)) }
     }
 
-    /// Whether the built-in USB host grants a high-power port's current. The
-    /// usbmuxd bridge always does, as a Mac does, so this only matters with
-    /// app management off (--no-appsync).
-    private(set) var highPowerUSB = true
-    var canChooseUSBCharger: Bool { usbmux.session == nil && profile.canChooseUSBCharger }
-    func setHighPowerUSB(_ on: Bool) {
+    func setCharging(_ on: Bool) {
+        batteryCharging = on
+        guard profile.canChooseUSBCharger else { return control(.battery(level: batteryLevel, charging: batteryChargingMode)) }
         control(.usbCharger(on)) { [weak self] applied in
             guard applied, let self else { return }
-            highPowerUSB = on
-            // The host grants current at enumeration: replug so it asks again.
+            // The port's current is read at enumeration: replug so the guest asks again.
             control(.usbConnection(false)) { [weak self] unplugged in
                 guard unplugged, let self else { return }
                 bootScope[.usbReconnect] = Task { [weak self] in
