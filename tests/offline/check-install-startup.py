@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Bound installation setup without abandoning a started guest mutation; a new version of an installed app on 2.x
-(ApplicationAlreadyInstalled) is sent again and replaces it through a documents-only archive and restore. Compiles Services/InstallationProxy.swift
+(ApplicationAlreadyInstalled) is sent again and replaces it through a documents-only archive and restore; a failed
+replacement keeps the archive, and the next 2.x install of that app restores it. Compiles Services/InstallationProxy.swift
 and Transport/DeviceExecution.swift whole against a fake libimobiledevice, with two pause points patched in
 (after openBeforeDeadline stores the connection for the deadline's loser, and after it is handed to the install) so the races
 run deterministically; no production deadline, cancellation or cleanup is replaced."""
@@ -39,6 +40,7 @@ nonisolated final class Fixture: @unchecked Sendable {
     var script: [Int] = []
     var commands: [String] = []
     var options: [String: String] = [:]
+    var productVersion = "3.1.3", archives: [String: Any] = [:], lookups = 0
     var readStarted = false
     var installResult: Int32 = 0
     var callback: IMobileDevice.InstproxyStatusCB?
@@ -54,6 +56,7 @@ nonisolated final class Fixture: @unchecked Sendable {
             deviceEntered = false; serviceEntered = false; storeEntered = false; handoffEntered = false
             deviceFrees = 0; clientFrees = 0; installs = 0; progress = 0; readStarted = false
             callback = nil; context = nil; installResult = 0; opens = 0; script = []; commands = []
+            productVersion = "3.1.3"; archives = [:]; lookups = 0
         }
     }
     func afterStore() {
@@ -130,8 +133,24 @@ nonisolated enum IMobileDevice {
         precondition(client == OpaquePointer(bitPattern: 18) && String(cString: path!) == "PublicStaging/test.ipa")
         return Fixture.shared.command("install", path, callback, context)
     }
-    static let instproxy_archive: Install? = { _, id, _, callback, context in Fixture.shared.command("archive", id, callback, context) }
-    static let instproxy_restore: Install? = { _, id, _, callback, context in Fixture.shared.command("restore", id, callback, context) }
+    static let instproxy_archive: Install? = { _, id, _, callback, context in
+        let state = Fixture.shared
+        state.lock.withLock { state.archives[String(cString: id!)] = ["ArchiveType": "DocumentsOnly"] }
+        return state.command("archive", id, callback, context)
+    }
+    static let instproxy_restore: Install? = { _, id, _, callback, context in
+        let state = Fixture.shared
+        state.lock.withLock { _ = state.archives.removeValue(forKey: String(cString: id!)) }   // Restore consumes the archive
+        return state.command("restore", id, callback, context)
+    }
+    typealias Browse2 = @convention(c) (OpaquePointer?, OpaquePointer?, UnsafeMutablePointer<OpaquePointer?>) -> Int32
+    static let instproxy_lookup_archives: Browse2? = { client, _, result in
+        precondition(client == OpaquePointer(bitPattern: 18))
+        let state = Fixture.shared
+        state.lock.withLock { state.lookups += 1; state.callback = nil; state.context = nil }   // no install callback is live
+        result.pointee = OpaquePointer(bitPattern: 40)
+        return 0
+    }
     static let instproxy_status_get_error: StatusError? = { status, name, description, _ in
         if status == OpaquePointer(bitPattern: 4) {   // iPhone OS 2.x's answer to Install of an installed bundle id
             name?.pointee = strdup("ApplicationAlreadyInstalled")
@@ -151,12 +170,14 @@ nonisolated enum IMobileDevice {
     typealias Browse = @convention(c) (OpaquePointer?, OpaquePointer?, UnsafeMutablePointer<OpaquePointer?>) -> Int32
     typealias PlistFree = @convention(c) (OpaquePointer?) -> Void
     static let instproxy_browse: Browse? = nil
-    static let plist_free: PlistFree? = nil
+    static let plist_free: PlistFree? = { _ in }
     static func encode(_ value: Any) -> OpaquePointer? {
         Fixture.shared.lock.withLock { Fixture.shared.options = value as? [String: String] ?? [:] }
         return nil
     }
-    static func decode(_ node: OpaquePointer) -> Any? { nil }
+    static func decode(_ node: OpaquePointer) -> Any? {
+        node == OpaquePointer(bitPattern: 40) ? Fixture.shared.lock.withLock { Fixture.shared.archives } : nil
+    }
 }
 struct DeviceServices: Sendable {
     let clientSocket: String
@@ -166,9 +187,17 @@ struct DeviceServices: Sendable {
         return "PublicStaging/test.ipa"
     }
     func removeStaged(_ path: String) async { }
+    func lockdownValue(_ key: String) async throws -> String? {
+        precondition(key == "ProductVersion")
+        return Fixture.shared.lock.withLock { Fixture.shared.productVersion }
+    }
     func run<T: Sendable>(_ seconds: Double, _ label: String,
                           _ body: @escaping @Sendable (IMobileDevice.Type, OpaquePointer) throws -> T) async throws -> T {
-        fatalError("not exercised")
+        // The archive lookup's short query, without the gate's endpoint plumbing.
+        var device: OpaquePointer?
+        _ = IMobileDevice.openDevice(&device)
+        defer { _ = IMobileDevice.idevice_free?(device) }
+        return try body(IMobileDevice.self, device!)
     }
 }
 '''
@@ -294,7 +323,33 @@ main = r'''
                      "2.x upgrade sequence: \(replaced)")
         precondition(state.lock.withLock { state.deviceFrees == state.opens && state.clientFrees == state.opens })
         await gateAvailable()
-        print("PASS: bounded device/service startup, cancellation/handoff races, late-handle cleanup, gate reuse, owned terminal callback and single watchdog accounting, 2.x upgrade by archive/install/restore")
+
+        // 2.x: the replacement's Install fails after the archive. The archive (the app's data) stays, the error says
+        // so, and the next install of the app that succeeds restores it.
+        state.reset(); state.lock.withLock { state.productVersion = "2.1.1"; state.script = [4, 2, 3] }
+        do {
+            try await DeviceServices(clientSocket: "127.0.0.1:1").install(URL(fileURLWithPath: "/tmp/new.ipa"), staged: "PublicStaging/test.ipa",
+                                                                           bundleID: "com.example.app") { _, _ in }
+            preconditionFailure("a failed replacement reported success")
+        } catch DeviceError.failed(let message) {
+            precondition(message.contains("data is kept"), message)
+        }
+        precondition(state.lock.withLock { state.commands.last == "install PublicStaging/test.ipa" && state.archives["com.example.app"] != nil },
+                     "archive dropped or restored after a failed install: \(state.commands)")
+        state.lock.withLock { state.commands = []; state.script = [2, 2] }
+        try await DeviceServices(clientSocket: "127.0.0.1:1").install(URL(fileURLWithPath: "/tmp/new.ipa"), staged: "PublicStaging/test.ipa",
+                                                                       bundleID: "com.example.app") { _, _ in }
+        let next = state.lock.withLock { state.commands }
+        precondition(next == ["install PublicStaging/test.ipa", "restore com.example.app ArchiveType=DocumentsOnly"],
+                     "kept data not restored by the next install: \(next)")
+        precondition(state.lock.withLock { state.archives.isEmpty })
+        // 3.x+: an archive is never looked up or restored by a plain install.
+        state.reset(); state.lock.withLock { state.archives = ["com.example.app": [:]]; state.script = [2] }
+        try await DeviceServices(clientSocket: "127.0.0.1:1").install(URL(fileURLWithPath: "/tmp/new.ipa"), staged: "PublicStaging/test.ipa",
+                                                                       bundleID: "com.example.app") { _, _ in }
+        precondition(state.lock.withLock { state.commands == ["install PublicStaging/test.ipa"] && state.lookups == 0 })
+        await gateAvailable()
+        print("PASS: bounded device/service startup, cancellation/handoff races, late-handle cleanup, gate reuse, owned terminal callback and single watchdog accounting, 2.x upgrade by archive/install/restore, kept archive restored by the next install")
     }
 }
 '''

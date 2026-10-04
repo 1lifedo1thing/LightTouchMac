@@ -25,9 +25,9 @@ nonisolated struct HostServiceEndpoint: Hashable, Codable, Sendable {
 }
 
 nonisolated enum HostServiceOperation: Codable, Sendable {
-    case attachment, apps, freeSpace, installReady, homeOrder, orientation
+    case attachment, apps, archives, freeSpace, installReady, homeOrder, orientation
     case lockdownValue(String)
-    case uninstall(String), install(String, replacing: String?)
+    case uninstall(String), install(String, replacing: String?, restoring: String?)
     case upload(source: String, remote: String, reuse: Bool, allowEmpty: Bool)
     case sweep, remove(String), files(String)
     case download(DeviceFile, destination: String)

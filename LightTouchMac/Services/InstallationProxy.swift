@@ -73,13 +73,38 @@ extension DeviceServices {
     /// iPhone OS 2.x's installd refuses (ApplicationAlreadyInstalled), has no
     /// Upgrade command, and has consumed the upload by then: it is sent again
     /// and installed `replacing` the old app, which keeps the app's data.
+    /// On 2.x, data a failed replacement left in the device's archive comes
+    /// back with the next install of the app that succeeds.
     func install(_ ipa: URL, staged: String, bundleID: String,
                  progress: @escaping @Sendable (Int, String) -> Void) async throws {
-        do { try await install(stagedPath: staged, progress: progress) }
+        var restoring: String?
+        if (try? await lockdownValue("ProductVersion"))?.hasPrefix("2.") == true,
+           (try? await archivedApps())?.contains(bundleID) == true { restoring = bundleID }
+        do { try await install(stagedPath: staged, restoring: restoring, progress: progress) }
         catch DeviceError.instproxy(.alreadyInstalled, _) {
             let again = try await stage(ipa) { _ in }
             defer { Task { await removeStaged(again) } }
             try await install(stagedPath: again, replacing: bundleID, progress: progress)
+        }
+    }
+
+    /// The bundle ids installd holds an archive for (instproxy_lookup_archives).
+    func archivedApps() async throws -> [String] {
+        if !local {
+            guard case .strings(let ids) = try await remote(.archives, seconds: Timeouts.browse) else { return [] }
+            return ids
+        }
+        return try await run(Timeouts.browse, "list archives") { imd, device in
+            guard let lookup = imd.instproxy_lookup_archives, let plistFree = imd.plist_free else { throw DeviceError.unavailable }
+            let client = try imd.startInstallationProxy(device: device)
+            defer { _ = imd.instproxy_client_free?(client) }
+            let options = imd.encode([String: String]())   // 2.x drops a request without ClientOptions
+            defer { if let options { plistFree(options) } }
+            var result: OpaquePointer?
+            let lr = lookup(client, options, &result)
+            guard lr == imd.success, let result else { throw DeviceError.instproxy(.init(code: lr), phase: "archives") }
+            defer { plistFree(result) }
+            return ((IMobileDevice.decode(result) as? [String: Any]) ?? [:]).keys.sorted()
         }
     }
 
@@ -92,12 +117,13 @@ extension DeviceServices {
     /// `replacing`: an installed app this one replaces, the way 2.x's installd
     /// keeps an app's data across a reinstall: a documents-only archive (which
     /// removes the app), Install, then Restore into the new app's container
-    /// (which consumes the archive).
-    func install(stagedPath: String, replacing: String? = nil,
+    /// (which consumes the archive). If the Install fails the archive stays.
+    /// `restoring`: after the Install, Restore that app's archive.
+    func install(stagedPath: String, replacing: String? = nil, restoring: String? = nil,
                  progress: @escaping @Sendable (Int, String) -> Void) async throws {
         if !local {
             // Up to three guest commands (replacing), each under its own watchdog.
-            _ = try await remote(.install(stagedPath, replacing: replacing),
+            _ = try await remote(.install(stagedPath, replacing: replacing, restoring: restoring),
                                  seconds: 3 * Timeouts.installAbsolute + Timeouts.serviceProbe * 2) {
                 if case .install(let percent, let phase) = $0 { progress(percent, phase) }
             }
@@ -108,8 +134,12 @@ extension DeviceServices {
             let cancellation = InstallCancellation()
             try await withTaskCancellationHandler {
                 if let id = replacing { try await Self.perform(.archiveData(id), cancellation, progress) }
-                try await Self.perform(.install(stagedPath), cancellation, progress)
-                if let id = replacing { try await Self.perform(.restore(id), cancellation, progress) }
+                do { try await Self.perform(.install(stagedPath), cancellation, progress) }
+                catch let error as DeviceError where replacing != nil && !error.isTransient {
+                    throw DeviceError.failed("The new version didn’t install (\(error.localizedDescription)). "
+                        + "The app’s data is kept on the device and comes back the next time this app installs.")
+                }
+                if let id = replacing ?? restoring { try await Self.perform(.restore(id), cancellation, progress) }
             } onCancel: {
                 cancellation.cancel()
             }

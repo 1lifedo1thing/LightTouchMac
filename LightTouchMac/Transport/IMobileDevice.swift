@@ -145,6 +145,7 @@ nonisolated enum IMobileDevice {
     static let instproxy_install = symbol("instproxy_install", InstproxyOp.self)
     static let instproxy_archive = symbol("instproxy_archive", InstproxyOp.self)
     static let instproxy_restore = symbol("instproxy_restore", InstproxyOp.self)
+    static let instproxy_lookup_archives = symbol("instproxy_lookup_archives", Browse.self)
     static let instproxy_uninstall = symbol("instproxy_uninstall", InstproxyOp.self)
     static let instproxy_status_get_name = symbol("instproxy_status_get_name", StatusGetName.self)
     static let instproxy_status_get_percent_complete = symbol("instproxy_status_get_percent_complete", StatusGetPercent.self)
