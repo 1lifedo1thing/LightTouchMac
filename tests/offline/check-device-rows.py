@@ -89,6 +89,9 @@ import Foundation
         r = row(iPad32, job: .downloading(fraction: 0.25, files: 2))
         precondition(r.progressSummary == "25%" && r.progressLine == "25%" && r.progressDetail == ["2 IPSWs"] && r.progress == 0.25, "\(r.progressDetail)")
         precondition(r.stateDescription == "Downloading, 25%" && r.primaryTitle == "Cancel", r.stateDescription)
+        // Its first source failed: the bar's tooltip names the third-party host it now comes from.
+        r = row(iPad32, job: .downloading(fraction: 0.25, mirror: "archive.org"))
+        precondition(r.progressDetail == ["From archive.org, a third-party mirror"], "\(r.progressDetail)")
         r = row(iPad32, job: .preparing(.init(step: 2, steps: 5, name: "Decrypting")))
         precondition(r.stateDescription == "Preparing, 20%" && allowed(r, canDownload: true) == ["cancel"], r.stateDescription)
 
