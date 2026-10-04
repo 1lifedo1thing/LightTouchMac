@@ -54,14 +54,15 @@ nonisolated final class EventWriter: @unchecked Sendable {
         switch operation {
         case .attachment: try await service.checkAttachment(); return .none
         case .apps: return .apps(try await service.installedApps())
+        case .archives: return .strings(try await service.archivedApps())
         case .freeSpace: return .integer(try await service.freeSpaceBytes())
         case .lockdownValue(let key): return .string(try await service.lockdownValue(key))
         case .installReady: return .boolean(await service.installProxyReady())
         case .homeOrder: return .strings(try await service.homeScreenOrder())
         case .orientation: return .integer(Int64(try await service.interfaceOrientation()))
         case .uninstall(let id): try await service.uninstall(id); return .none
-        case .install(let path):
-            try await service.install(stagedPath: path) { emit(.progress(.install($0, $1))) }; return .none
+        case .install(let path, let replacing, let restoring):
+            try await service.install(stagedPath: path, replacing: replacing, restoring: restoring) { emit(.progress(.install($0, $1))) }; return .none
         case .upload(let source, let remote, let reuse, let allowEmpty):
             return .string(try await service.stageFile(URL(fileURLWithPath: source), remote: remote,
                 reuseIdentical: reuse, allowEmpty: allowEmpty) { emit(.progress(.fraction($0))) })
