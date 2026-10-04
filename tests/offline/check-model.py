@@ -293,10 +293,12 @@ func pattern(_ profile: DeviceProfile, rotation: Int) -> CGImage {
   model.pose(scale: 0.5, rotation: 0, roll: 0, pitch: 0, animated: false)
   let face = try await render(model)
   try save(face, out+"/\(lower)-pattern.png")
-  // N45 against Apple's product shot (touch_topsongs.jpg, colour-managed from its CMYK): a brushed graphite
-  // frame lit from the upper left, sRGB ~150-175 there falling to ~85-100 at the lower right (the asset's
-  // near-black frameDark alone gives ~0.03 everywhere; flat grey paint gives no gradient), and blue-black
-  // glass, ~25, with a faint sheen (~43) to the upper right of a diagonal (N45Rim).
+  // N45 against Apple's product shot (touch_topsongs.jpg, colour-managed from its CMYK to sRGB): a dark graphite
+  // frame lit from the upper left, sRGB ~115-130 there falling to ~65-90 at the right and bottom, shot on white.
+  // On the app's dark window that level already read as silver (Sam, 10-04: "mid-gray and even silver"), so the
+  // frame sits a stop under the shot: luma ~0.34 upper left, ~0.18 lower right; anything at the old 0.5-0.75 is
+  // silver again. The asset's near-black frameDark alone gives ~0.03 everywhere; flat paint gives no gradient.
+  // Blue-black glass, ~25, with a faint sheen (~43) to the upper right of a diagonal (N45Rim).
   if profile == .iPodTouch1G {
     func level(_ p: CGPoint) -> CGFloat {
       let c = color(face, model.projectedPoint(p), in: model.bounds.size)
@@ -305,9 +307,10 @@ func pattern(_ profile: DeviceProfile, rotation: Int) -> CGImage {
     let lit = [CGPoint(x: -0.095, y: 0.2), CGPoint(x: 0.5, y: -0.217)].map(level)
     let shade = [CGPoint(x: 1.095, y: 0.8), CGPoint(x: 0.5, y: 1.217)].map(level)
     let sheen = level(CGPoint(x: 0.85, y: -0.1)), glass = [CGPoint(x: 0.05, y: -0.2), CGPoint(x: 0.15, y: 1.1)].map(level)
-    print("N45: graphite frame lit \(lit) shaded \(shade); glass \(glass) sheen \(sheen)")
-    precondition(lit.allSatisfy { $0 > 0.5 && $0 < 0.75 }, "N45 frame's upper left is not a light graphite: \(lit)")
-    precondition(shade.allSatisfy { $0 > 0.28 && $0 < 0.45 }, "N45 frame's lower right is not a darker graphite: \(shade)")
+    print("N45: graphite frame lit \(lit) shaded \(shade); glass \(glass) sheen \(sheen)"); fflush(stdout)
+    precondition(lit.allSatisfy { $0 > 0.27 && $0 < 0.42 }, "N45 frame's upper left is not a dark graphite (silver above 0.42): \(lit)")
+    precondition(shade.allSatisfy { $0 > 0.12 && $0 < 0.25 }, "N45 frame's lower right is not a darker graphite: \(shade)")
+    precondition(lit.min()! - shade.max()! > 0.1, "N45 frame has no upper-left light: \(lit) vs \(shade)")
     precondition(glass.allSatisfy { $0 > 0.06 && $0 < 0.15 } && sheen - glass.max()! > 0.05, "N45 glass is not blue-black with a sheen: \(glass) \(sheen)")
   }
   // Nearest-neighbour upscaling: a 4x6 black/white checker blown up to ~600 px must keep hard edges.

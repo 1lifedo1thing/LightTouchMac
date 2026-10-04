@@ -117,10 +117,11 @@ final class DeviceModelView: NSView {
             finish.roughness = .init(floatLiteral: 0.5)
           }
           // N45's graphite front frame ships as near-black (0.03 linear) metal, which reflects almost
-          // nothing; Apple's shots show a lighter brushed anodised rim. It and N45's cover glass take
-          // their gradient and highlight from N45Rim (below); the glass is a blue-black with a sheen.
+          // nothing; Apple's shots show a brushed dark-graphite rim. A neutral mid base (a bluish light
+          // one read as silver) and N45Rim (below) give it its upper-left gradient; the glass is a
+          // blue-black with a sheen.
           if name == "frameDark" {
-            finish.baseColor = .init(tint: NSColor(srgbRed: 0.72, green: 0.75, blue: 0.78, alpha: 1))
+            finish.baseColor = .init(tint: NSColor(srgbRed: 0.47, green: 0.48, blue: 0.5, alpha: 1))
             finish.metallic = .init(floatLiteral: 0.7)
             finish.roughness = .init(floatLiteral: 0.36)
           }

@@ -2,8 +2,8 @@
 """Rebuild N45's rim-and-glass environment (NumPy, Pillow, Xcode): LightTouchMac/N45Rim.realityenv.
 
 DeviceModelView lights only N45's graphite frame and cover glass with it; every other surface keeps
-N72Studio. Apple's product shots light the brushed rim from the upper left: light there, falling to dark
-at the lower right, with a soft highlight along the bevel. The glass (reflecting what is behind the
+N72Studio. Apple's product shots light the brushed rim from the upper left: a dark graphite, lighter there and
+falling to near-black at the lower right, with a toned-down highlight along the bevel. The glass (reflecting what is behind the
 camera) shows a faint lighter sheen to the upper right of a diagonal. Radiance at quarter intensity, as
 N72Studio; DeviceModelView restores two stops.
 """
@@ -18,7 +18,7 @@ x, y, z = np.cos(lat) * np.sin(lon), np.sin(lat), np.cos(lat) * np.cos(lon)
 key = np.array([-.62, .62, -.48]); key /= np.linalg.norm(key)
 along = x * key[0] + y * key[1] + z * key[2]
 # Broad upper-left fill, then a soft key for the bevel highlight.
-light = .08 + .9 * np.clip(along * .5 + .5, 0, 1) ** 2.2 + 1.2 * np.exp(-((1 - along) / .2) ** 2)
+light = .07 + .7 * np.clip(along * .5 + .5, 0, 1) ** 2.2 + .55 * np.exp(-((1 - along) / .2) ** 2)
 # The glass sheen: behind the camera (the flat glass mirrors only the few degrees around +z), brighter
 # to the upper right of a soft diagonal through the view axis.
 behind = np.clip((-z - .96) / .02, 0, 1)
