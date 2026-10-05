@@ -88,10 +88,13 @@ nonisolated public enum FirmwareWire {
             /// NANDDRIVERSIGN flags the build's FTL formats with, when not the store's default (0x5 plain, 0x10005
             /// whitened): the iPod touch 3G's 3.1.x AppleNANDFTL writes 4 and refuses anything above it.
             public var nandSigFlags: Int?
+            /// The PMU clock at power-on (Unix seconds) for every boot, when not the host's: a developer beta
+            /// checks its expiry date against it (6.0 beta 1's lockdownd: 2012-07-18).
+            public var rtcEpoch: Int?
             enum CodingKeys: String, CodingKey {
                 case name, version, storage, options, guest, boot
                 case systemMiB = "system_mib", dataSize = "data_size", keybagRamdiskFrom = "keybag_ramdisk_from"
-                case nandSigFlags = "nand_sig_flags"
+                case nandSigFlags = "nand_sig_flags", rtcEpoch = "rtc_epoch"
             }
         }
 
