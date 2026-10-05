@@ -28,7 +28,8 @@ final class K48Board: Board {
     var machine: String { a4.machine }
     let volumesStep = "Building the system and data volumes", keybagStep = "Creating the data-protection keybag"
     var bootStep: String { iboot ? "Writing the identity and boot chain" : "Writing the identity and boot image" }
-    let needsSeal = true
+    /// The seal boot halts through it_seal, a guest helper: none without them (guest_tools off).
+    var needsSeal: Bool { SystemEdits.Options(recipe: recipe).guestTools }
     let recipe: FirmwareEntry.Recipe, strategy: String, iboot: Bool, dataProtection: Bool
     var helper: URL!, patcher: URL!, mbr: URL!, vols: SystemEdits.Result!
     var gidComponents: [String] = [], ramdisk: String?

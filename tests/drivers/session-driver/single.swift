@@ -11,7 +11,7 @@ import HostRuntime
 
 import Foundation
 struct SingleConfig: Decodable {
-    var board: String   // "ipod" | "ipad" | "ipod1g" | "iphone2g"
+    var board: String   // "ipod" | "ipad" | "ipod1g" | "iphone2g" | "ipod4g" | "iphone4" | "ipod3g" | "iphone3gs"
     var base: String
     /// AFC upload + download sizes; 16384 and 65536 are 512-byte multiples (a ZLP ends each transfer).
     var afcBytes: [Int]?
@@ -62,12 +62,19 @@ struct SingleConfig: Decodable {
     case "ipad": (.iPad1, "k48ap")
     case "ipod1g": (.iPodTouch1G, "n45ap")
     case "iphone2g": (.iPhone2G, "m68ap")
+    case "ipod4g": (.iPodTouch4G, "n81ap")
+    case "iphone4": (.iPhone4, "n90ap")
+    case "ipod3g": (.iPodTouch3G, "n18ap")
+    case "iphone3gs": (.iPhone3GS, "n88ap")
     default: (.iPodTouch2G, "n72ap")
     }
+    // The A4 and S5L8920 boards boot as the iPad does (kboot, the armv7 offer from ipadItpack); input, wake and
+    // power-off stay the phone's.
+    let a4 = profile.isA4
     let d = Device(name: s.board, profile: profile)
     let b = URL(fileURLWithPath: s.base)
-    if s.board == "ipod" { d.preparedBase = b }
-    if !ipad {
+    if s.board == "ipod" || (a4 && !ipad) { d.preparedBase = b }
+    if !a4 {
         let iBoot: String
         do { iBoot = try BootRecipe.iPodIBoot(base: b) }
         catch { fail("boot lock: \(error)") }
@@ -77,9 +84,9 @@ struct SingleConfig: Decodable {
     }
     // Composed per boot from the device's verdicts, as the app's composeGuestOffer (an iPad's in Device.boot);
     // `offered`: this boot carries one (compose gives none for a stub seed).
-    var offered = ipad && config.ipadItpack != nil
+    var offered = a4 && config.ipadItpack != nil
     func offer() -> String? {
-        guard !ipad, let itpack = s.itpack else { return nil }
+        guard !a4, let itpack = s.itpack else { return nil }
         do {
             let dir = try d.offer(base: b, board: boardID, itpack: itpack)
             offered = dir != nil
@@ -112,7 +119,7 @@ struct SingleConfig: Decodable {
                                          "error": completed ? "" : lastError])
             var zone: String?
             // with the agent where the boot has one, as the app's (EmulatorController.guest): a zone 4.x kept is retried after it
-            let guest = agent || (ipad && offered)
+            let guest = agent || (a4 && offered)
                 ? GuestServices(agent: GuestAgent(link: d.process.link, cache: GuestAgentCache()), packaged: offered) : nil
             for _ in 0..<12 where zone == nil {   // services come up after lockdown answers; the app retries every 5 s
                 do { zone = try await DeviceServices.setTimeZone(TimeZone.current.identifier, tool: tool, socket: d.mux.clientSocket, guest: guest) }
@@ -181,7 +188,7 @@ struct SingleConfig: Decodable {
             try? await Task.sleep(for: .seconds(2))
         }
         d.screenshot(generation == 1 ? "lock" : "lock\(generation)")
-        let asks = agent || (ipad && offered)
+        let asks = agent || (a4 && offered)
         let guestAgent = GuestAgent(link: d.process.link, cache: GuestAgentCache())
         if asks { _ = await guestAgent.waitAlive(seconds: 60) }
         await d.slideToUnlock(generation, agent: asks ? guestAgent : nil)
@@ -230,7 +237,9 @@ struct SingleConfig: Decodable {
             }
         }
         else if ipad { d.process.link.send(.machine(.powerdown)) }
-        else if agentCanPowerOff { _ = try? await d.process.link.request(.agent(request: "\(UUID().uuidString) halt \n", deadline: 0), timeout: 5) }
+        // The A4/S5L8920 phones: the agent their offer carries (the machine's hold-and-slide is the iPad's, and on
+        // the iPod touch 4G it confirmed in 45 s once and not at all the next boot).
+        else if agentCanPowerOff || (a4 && offered) { _ = try? await d.process.link.request(.agent(request: "\(UUID().uuidString) halt \n", deadline: 0), timeout: 5) }
         else {   // the machine's own hold-power-and-slide sequence
             d.process.link.send(.machine(.powerdown))
         }

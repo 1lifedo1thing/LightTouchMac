@@ -181,15 +181,15 @@ extension String {
             let overlay = dir.appendingPathComponent("overlay")
             let prepared: PreparedDeviceBoot
             var offer = guestPackage
-            if profile == .iPad1 || profile == .iPodTouch1G || profile == .iPhone2G {
-                let base = profile == .iPad1 ? URL(fileURLWithPath: Self.ipadBase)
+            if profile.isA4 || profile == .iPodTouch1G || profile == .iPhone2G {
+                let base = profile.isA4 ? preparedBase ?? URL(fileURLWithPath: Self.ipadBase)
                     : URL(fileURLWithPath: ipod!.nand).deletingLastPathComponent()
-                let nor = profile != .iPad1 || FileManager.default.fileExists(atPath: base.appendingPathComponent("nor.bin").path)
+                let nor = !profile.isA4 || FileManager.default.fileExists(atPath: base.appendingPathComponent("nor.bin").path)
                     ? dir.appendingPathComponent("nor.bin") : nil
-                prepared = try PreparedDeviceBoot.prepare(board: profile == .iPad1 ? .k48 : profile == .iPhone2G ? .m68 : .n45,
+                prepared = try PreparedDeviceBoot.prepare(board: profile.runtimeBoard,
                     base: base, overlay: overlay, writableNOR: nor, storageKey: managedKey,
                     bootrom: BootRecipe.bootrom(profile.bootromName, filesRoot: Self.files))
-                if profile == .iPad1 { offer = try iPadOffer(base: base) }
+                if profile.isA4 { offer = try iPadOffer(base: base) }
             } else if let base = preparedBase {
                 prepared = try PreparedDeviceBoot.prepare(board: .n72, base: base, overlay: overlay,
                     writableNOR: dir.appendingPathComponent("nor.bin"), storageKey: managedKey,
@@ -200,7 +200,7 @@ extension String {
                     nor: URL(fileURLWithPath: files.nor), iBoot: files.iBoot, gidBlobs: files.gidBlobs,
                     machine: files.machine, overlay: overlay, bootrom: Self.files + "/bootrom_240_4")
             }
-            let netdev = profile == .iPad1 ? netdevExtra.map { "user,id=wifi0" + $0 }
+            let netdev = profile.isA4 ? netdevExtra.map { "user,id=wifi0" + $0 }
                 : "user,id=wifi0" + (netdevExtra ?? "")
             return try prepared.configuration(bootArgs: "amfi_allow_any_signature=1 cs_enforcement_disable=1",
                 usbAddress: mux.guestAddress, wifi: true, guestPackage: offer, serial: serial!.argument,
@@ -251,7 +251,7 @@ extension String {
     /// EmulatorController.composeGuestOffer for a prepared iPad: the bundled itpack, the base's lock record.
     func iPadOffer(base: URL) throws -> String? {
         guard let itpack = config.ipadItpack else { return nil }
-        return try offer(base: base, board: "k48ap", itpack: itpack)
+        return try offer(base: base, board: profile.boardID, itpack: itpack)
     }
 
     /// EmulatorController.composeGuestOffer for any prepared base: the itpack, the base's lock record, and the

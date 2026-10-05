@@ -66,6 +66,9 @@ final class N45Board: Board {
             let en0 = ((d["NetworkServices"] as? NSDictionary)?.allValues ?? []).compactMap { $0 as? NSMutableDictionary }
                 .filter { ($0["Interface"] as? NSDictionary)?["DeviceName"] as? String == "en0" }
             if en0.isEmpty { SystemEdits.wifiProxyPrefs(d) } else { for s in en0 { s["Proxies"] = SystemEdits.pacProxies } }
+            // 1.0's cellular data service is CommCenter's, made at run time with no setup entry of its own; configd
+            // applies the set's global Proxies to it (without them EDGE went DIRECT to :443; with them, CONNECT to the proxy).
+            SystemEdits.dict(SystemEdits.currentNetwork(d), "Global")["Proxies"] = SystemEdits.pacProxies
         }
         let wifi = m.appendingPathComponent(wifiPrefs)
         var known = (try? Data(contentsOf: wifi)).flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? [String: Any] } ?? [:]

@@ -257,7 +257,10 @@ public enum KBoot {
             if dt.contains(path) { try dt.set(path, "local-mac-address", .bytes(mac)) }
         }
         if dt.contains("arm-io/mipi-dsim/lcd") {   // the panel id iBoot's pinot_init writes; the DSI model's reply
-            for k in ["lcd-panel-id", "raw-panel-id"] { try dt.set("arm-io/mipi-dsim/lcd", k, .u32(0x00A1_D13C)) }
+            // 3.0's DTs (N88 7A341) have no raw-panel-id slot
+            for k in ["lcd-panel-id", "raw-panel-id"] where dt.props["arm-io/mipi-dsim/lcd"]?[k] != nil {
+                try dt.set("arm-io/mipi-dsim/lcd", k, .u32(0x00A1_D13C))
+            }
         }
         if dt.contains("baseband"), !board.radio {   // Wi-Fi iPad: no radio, so unmatch and unname the N82 baseband node
             for (k, v) in [("compatible", "none"), ("device_type", "none"), ("name", "nobb")] { try dt.set("baseband", k, .string(v)) }
@@ -265,7 +268,9 @@ public enum KBoot {
             // passes for a real unit (s5l8920_kboot.py).
             if dt.props["baseband"]?["device-imei"] != nil {
                 try dt.set("baseband", "device-imei", .string("004999010640000"))
-                try dt.set("baseband", "snum", .bytes(Data("TESTSNUM0000".utf8)))
+                if dt.props["baseband"]?["snum"] != nil {   // 3.0's DT has none
+                    try dt.set("baseband", "snum", .bytes(Data("TESTSNUM0000".utf8)))
+                }
             }
         }
         if dt.props["arm-io"]?["chip-revision"] != nil { try dt.set("arm-io", "chip-revision", .u32(0x11)) }

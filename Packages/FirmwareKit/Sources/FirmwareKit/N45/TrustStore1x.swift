@@ -105,9 +105,16 @@ public enum TrustStore1x {
             }
             return (record?["storage"] as? [String: Any])?["key"] as? String
         }
+        // The anchor lives in the overlay, which Erase removes while the key stays: the overlay's stamp says it holds it.
+        func overlayStamp() throws -> URL? {
+            let owner = try OwnedStorageRecord.acquire(device: device, policy: policy)
+            defer { withExtendedLifetime(owner) {} }
+            return owner.paths?.overlay.appendingPathComponent(".trust-anchor")
+        }
         let markerURL = device.appendingPathComponent(marker)
         if let data = try? Data(contentsOf: markerURL), let m = try? JSONSerialization.jsonObject(with: data) as? [String: String],
-           m["sha1"] == sha1, m["key"] == (try storageKey()) {
+           m["sha1"] == sha1, m["key"] == (try storageKey()),
+           let stamp = try overlayStamp(), (try? String(contentsOf: stamp, encoding: .utf8)) == sha1 {
             return false
         }
         _ = try normalizedSubject(certificate)               // a certificate this can parse, before any work
@@ -123,6 +130,7 @@ public enum TrustStore1x {
             try? await StoppedVolumeEdit.discard(device: device, id: session.id, policy: policy)
             throw error
         }
+        if let stamp = try overlayStamp() { try N72NAND.writeDurably(Data(sha1.utf8), to: stamp) }
         let record = try JSONSerialization.data(withJSONObject: ["sha1": sha1, "key": try storageKey() ?? ""], options: [.sortedKeys])
         try record.write(to: markerURL, options: .atomic)
         return true
