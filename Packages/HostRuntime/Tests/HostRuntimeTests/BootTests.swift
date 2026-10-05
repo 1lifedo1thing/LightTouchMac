@@ -40,7 +40,7 @@ private final class Fixture {
 }
 
 extension BootTests {
-    @Test(arguments: [PreparedDeviceBoot.Board.n45, .n72, .k48])
+    @Test(arguments: [PreparedDeviceBoot.Board.n45, .n72, .k48, .m68])
     func sharedAssembly(board: PreparedDeviceBoot.Board) throws {
         let f = try Fixture(board: board, strategy: "iboot")
         let prepared = try f.prepare(board)
@@ -57,10 +57,11 @@ extension BootTests {
         // Freeze the pre-extraction recipe output with matching caller dependencies.
         let expected: BootConfig
         switch board {
-        case .n45:
+        case .n45, .m68:
             expected = BootRecipe.iPod1G(.init(bootrom: "rom", iBoot: f.base.appendingPathComponent("iBoot.bin").path,
                 nand: f.base.appendingPathComponent("nand").path, writableNOR: f.nor.path, overlay: f.overlay.path,
-                usbAddress: "127.0.0.1:1234", guestPackage: "offer", machineOptions: ["aes-uid": "engine"]),
+                usbAddress: "127.0.0.1:1234", guestPackage: "offer", machineOptions: ["aes-uid": "engine"],
+                machineName: board == .m68 ? "iPhone-2G" : "iPod-Touch-1G"),
                 serial: "null", audio: ["-audio", "driver=none"], netdev: "user,id=wifi0")
         case .n72:
             expected = BootRecipe.iPod(.init(bootArgs: "args", iBoot: f.base.appendingPathComponent("iBoot.bin").path,
@@ -219,7 +220,9 @@ extension BootTests {
         switch board {
         case .k48: #expect(c.argv[2].contains(",kboot="))
         case .n72: #expect(c.argv[2].contains(",direct-iboot=" + BootRecipe.escape(f.base.appendingPathComponent("iBoot.bin").path)))
-        case .n45: #expect(c.argv[2].contains(",iboot=" + BootRecipe.escape(f.base.appendingPathComponent("iBoot.bin").path)))
+        case .n45, .m68:
+            #expect(c.argv[2].hasPrefix(board == .m68 ? "iPhone-2G," : "iPod-Touch-1G,"))
+            #expect(c.argv[2].contains(",iboot=" + BootRecipe.escape(f.base.appendingPathComponent("iBoot.bin").path)))
         }
     }
 

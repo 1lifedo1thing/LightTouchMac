@@ -12,19 +12,21 @@ nonisolated enum DeviceProfile: Equatable {
     case iPad1
     /// The n45 (iPhone OS 1.x): qemu-ios `-M iPod-Touch-1G`, booted bootrom -> iBoot-204 from the base's iBoot.bin.
     case iPodTouch1G
+    /// The m68 (the original iPhone, iPhone OS 1.0): qemu-ios `-M iPhone-2G`, the 1G's boot with iBoot-159.
+    case iPhone2G
 
     /// The name passed to -M; also the key for the hello's device info.
     var machineName: String {
-        switch self { case .iPad1: "ipad1"; case .iPodTouch2G: "iPod-Touch"; case .iPodTouch1G: "iPod-Touch-1G" }
+        switch self { case .iPad1: "ipad1"; case .iPodTouch2G: "iPod-Touch"; case .iPodTouch1G: "iPod-Touch-1G"; case .iPhone2G: "iPhone-2G" }
     }
-    var displayName: String { self == .iPad1 ? "iPad" : "iPod touch" }
+    var displayName: String { self == .iPad1 ? "iPad" : self == .iPhone2G ? "iPhone" : "iPod touch" }
     /// What the device is called in menus, titles and messages ("the iPod").
-    var shortName: String { self == .iPad1 ? "iPad" : "iPod" }
+    var shortName: String { self == .iPad1 ? "iPad" : self == .iPhone2G ? "iPhone" : "iPod" }
     /// A requested stop's reason (the dead overlay, the session's phase); tests compare it.
     var stoppedReason: String { "The \(shortName) stopped." }
 
     var runtimeBoard: PreparedDeviceBoot.Board {
-        switch self { case .iPad1: .k48; case .iPodTouch2G: .n72; case .iPodTouch1G: .n45 }
+        switch self { case .iPad1: .k48; case .iPodTouch2G: .n72; case .iPodTouch1G: .n45; case .iPhone2G: .m68 }
     }
     var boardID: String { runtimeBoard.rawValue }
     /// A prepared base's boot file and the other files its boots need besides nand/, by the lock's boot_strategy.
@@ -37,13 +39,13 @@ nonisolated enum DeviceProfile: Equatable {
         try runtimeBoard.requiredFiles(strategy: strategy)
     }
     var productType: String {
-        switch self { case .iPad1: "iPad1,1"; case .iPodTouch2G: "iPod2,1"; case .iPodTouch1G: "iPod1,1" }
+        switch self { case .iPad1: "iPad1,1"; case .iPodTouch2G: "iPod2,1"; case .iPodTouch1G: "iPod1,1"; case .iPhone2G: "iPhone1,1" }
     }
     var marketingName: String {
-        switch self { case .iPad1: "iPad"; case .iPodTouch2G: "iPod touch (2nd generation)"; case .iPodTouch1G: "iPod touch" }
+        switch self { case .iPad1: "iPad"; case .iPodTouch2G: "iPod touch (2nd generation)"; case .iPodTouch1G: "iPod touch"; case .iPhone2G: "iPhone" }
     }
     /// The SecureROM image the machine boots, looked up under Bundled.filesRoot (DeviceProfile.bootrom).
-    var bootromName: String { self == .iPodTouch1G ? "bootrom_s5l8900" : "bootrom_240_4" }
+    var bootromName: String { self == .iPodTouch1G || self == .iPhone2G ? "bootrom_s5l8900" : "bootrom_240_4" }
 
     /// How long a boot may take until lockdown answers (the app's "iOS is up")
     /// before the app gives up on it. The lock screen is normally there in 25 s
