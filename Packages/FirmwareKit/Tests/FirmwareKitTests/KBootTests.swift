@@ -210,6 +210,44 @@ struct KBootTests {
         #expect(img.image[Int(img.bootArgsPA - img.loadPA)..<Int(img.bootArgsPA - img.loadPA) + 4] == Data([1, 0, 3, 0]))
     }
 
+    /// xnu-2107 (iOS 6) names the string with movw/movt/add rX, pc after the pair, not through a literal.
+    @Test func bootArgsVersionMovwMovt() throws {
+        var k = Self.kernel(at: 0x8000_0000)
+        let s = Data("pe_identify_machine: Epoch Mismatch\0".utf8)
+        k.replaceSubrange(0x100..<0x100 + s.count, with: s)                             // VA 0x8000_1100
+        func movw(_ top: Bool, _ rd: UInt16, _ imm: UInt16) -> Data {
+            let hw1 = (top ? 0xF2C0 : 0xF240) | ((imm >> 11) & 1) << 10 | (imm >> 12)
+            let hw2 = ((imm >> 8) & 7) << 12 | rd << 8 | (imm & 0xFF)
+            return Data([UInt8(hw1 & 0xFF), UInt8(hw1 >> 8), UInt8(hw2 & 0xFF), UInt8(hw2 >> 8)])
+        }
+        let addAt = 0x20E, pc = UInt32(0x8000_1000 + addAt + 4)
+        let delta = UInt32(0x8000_1100) &- pc
+        let code = Data([0x43, 0x88, 0x03, 0x2B, 0x00, 0xBF])                            // ldrh r3, [r0, #2]; cmp r3, #3; nop
+            + movw(false, 0, UInt16(delta & 0xFFFF)) + movw(true, 0, UInt16(delta >> 16)) + Data([0x78, 0x44])   // add r0, pc
+        k.replaceSubrange(0x200..<0x200 + code.count, with: code)
+        #expect(try MachO(k).bootArgsVersion() == 3)
+        k[0x203] = 0x2C                                                                   // cmp r4: not the loaded register
+        #expect(try MachO(k).bootArgsVersion() == 2)
+    }
+
+    /// The real kernels, where present (asset dirs): 4.2.1 2, 5.1.1 3, 6.0 3 (the movw/movt shape), 7.1.2 2 (no check).
+    @Test func bootArgsVersionRealKernels() throws {
+        let files = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Developer/qemu-ios-files")
+        for (rel, want) in [("n90/dec", 2), ("n90/9B206/dec", 3), ("n81/10A403/dec", 3), ("n90/11D257/dec", 2)] {
+            let url = files.appendingPathComponent(rel + "/kernelcache.mach")
+            guard let k = try? Data(contentsOf: url) else { continue }
+            #expect(try MachO(k).bootArgsVersion() == UInt8(want), "\(rel)")
+        }
+    }
+
+    /// chosen/nvram-proxy-data: the empty image's headers match the K48 NOR's common/free banks.
+    @Test func nvramImage() {
+        let img = KBoot.nvramImage(size: 8192)
+        #expect(img.count == 8192)
+        #expect(img.prefix(16) == Data([0x70, 0x7C, 0x80, 0x00]) + Data("common".utf8) + Data(count: 6))
+        #expect(img[0x800..<0x804] == Data([0x7F, 0xA4, 0x80, 0x01]))
+    }
+
     @Test func iBootVersion() {
         #expect(KBoot.ibootVersion(Data("xxiBoot-xiBoot-817.29.\0".utf8)) == "iBoot-817.29")
         #expect(KBoot.ibootVersion(Data("iBoot-931.71.16 ".utf8)) == "iBoot-931.71.16")
