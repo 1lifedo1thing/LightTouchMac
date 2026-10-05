@@ -16,22 +16,25 @@ nonisolated enum DeviceProfile: Equatable {
     case iPodTouch4G
     /// The n90 (iOS 4.2.1): qemu-ios `-M iPhone-4`, the GSM iPhone 4 on the same A4 machine, booted kboot.
     case iPhone4
+    /// The n88 (iOS 4.2.1): qemu-ios `-M n88`, the S5L8920 iPhone 3GS, prepared and booted (kboot) as the A4 boards are.
+    case iPhone3GS
 
     /// The name passed to -M; also the key for the hello's device info.
     var machineName: String {
         switch self {
         case .iPad1: "ipad1"; case .iPodTouch2G: "iPod-Touch"; case .iPodTouch1G: "iPod-Touch-1G"; case .iPodTouch4G: "iPod-Touch-4G"
-        case .iPhone4: "iPhone-4"
+        case .iPhone4: "iPhone-4"; case .iPhone3GS: "n88"
         }
     }
-    var displayName: String { switch self { case .iPad1: "iPad"; case .iPhone4: "iPhone"; default: "iPod touch" } }
+    var displayName: String { switch self { case .iPad1: "iPad"; case .iPhone4, .iPhone3GS: "iPhone"; default: "iPod touch" } }
     /// What the device is called in menus, titles and messages ("the iPod").
-    var shortName: String { switch self { case .iPad1: "iPad"; case .iPhone4: "iPhone"; default: "iPod" } }
+    var shortName: String { switch self { case .iPad1: "iPad"; case .iPhone4, .iPhone3GS: "iPhone"; default: "iPod" } }
     /// A requested stop's reason (the dead overlay, the session's phase); tests compare it.
     var stoppedReason: String { "The \(shortName) stopped." }
 
     var runtimeBoard: PreparedDeviceBoot.Board {
-        switch self { case .iPad1: .k48; case .iPodTouch2G: .n72; case .iPodTouch1G: .n45; case .iPodTouch4G: .n81; case .iPhone4: .n90 }
+        switch self { case .iPad1: .k48; case .iPodTouch2G: .n72; case .iPodTouch1G: .n45; case .iPodTouch4G: .n81; case .iPhone4: .n90
+        case .iPhone3GS: .n88 }
     }
     var boardID: String { runtimeBoard.rawValue }
     /// The A4 boards share the iPad's machine and boot (Wi-Fi netdev, no host audio, SpringBoard orientation).
@@ -46,12 +49,13 @@ nonisolated enum DeviceProfile: Equatable {
         try runtimeBoard.requiredFiles(strategy: strategy)
     }
     var productType: String {
-        switch self { case .iPad1: "iPad1,1"; case .iPodTouch2G: "iPod2,1"; case .iPodTouch1G: "iPod1,1"; case .iPodTouch4G: "iPod4,1"; case .iPhone4: "iPhone3,1" }
+        switch self { case .iPad1: "iPad1,1"; case .iPodTouch2G: "iPod2,1"; case .iPodTouch1G: "iPod1,1"; case .iPodTouch4G: "iPod4,1"; case .iPhone4: "iPhone3,1"
+        case .iPhone3GS: "iPhone2,1" }
     }
     var marketingName: String {
         switch self {
         case .iPad1: "iPad"; case .iPodTouch2G: "iPod touch (2nd generation)"; case .iPodTouch1G: "iPod touch"
-        case .iPodTouch4G: "iPod touch (4th generation)"; case .iPhone4: "iPhone 4"
+        case .iPodTouch4G: "iPod touch (4th generation)"; case .iPhone4: "iPhone 4"; case .iPhone3GS: "iPhone 3GS"
         }
     }
     /// The SecureROM image the machine boots, looked up under Bundled.filesRoot (DeviceProfile.bootrom).

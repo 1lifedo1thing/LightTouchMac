@@ -8,7 +8,7 @@ nonisolated extension DeviceProfile {
     /// helper's hello disagrees.
     var screenPixels: CGSize {
         switch self {
-        case .iPodTouch2G, .iPodTouch1G: CGSize(width: 320, height: 480)
+        case .iPodTouch2G, .iPodTouch1G, .iPhone3GS: CGSize(width: 320, height: 480)
         case .iPad1: CGSize(width: 1024, height: 768)
         case .iPodTouch4G, .iPhone4: CGSize(width: 640, height: 960)
         }
@@ -39,10 +39,11 @@ nonisolated extension DeviceProfile {
     /// iPad borrows the iPad chrome from the iPhone Simulator in Xcode 3.2.4
     /// (iPad.deviceinfo: portrait.png, 852x1108, with the 768x1024 screen centred in it).
     var shellImageName: String {
-        switch self { case .iPodTouch2G: "shell"; case .iPad1: "ipad-frame"; case .iPodTouch1G: "shell-1g"; case .iPodTouch4G: "shell-4g"; case .iPhone4: "shell-iphone4" }
+        switch self { case .iPodTouch2G: "shell"; case .iPad1: "ipad-frame"; case .iPodTouch1G: "shell-1g"; case .iPodTouch4G: "shell-4g"; case .iPhone4: "shell-iphone4"
+        case .iPhone3GS: "shell-iphone3gs" }
     }
     var deviceModelName: String? {
-        switch self { case .iPodTouch2G: "N72"; case .iPad1: "K48"; case .iPodTouch1G: "N45"; case .iPodTouch4G: "N81"; case .iPhone4: "N90" }
+        switch self { case .iPodTouch2G: "N72"; case .iPad1: "K48"; case .iPodTouch1G: "N45"; case .iPodTouch4G: "N81"; case .iPhone4: "N90"; case .iPhone3GS: "N88" }
     }
 
     var shellPixels: CGSize {
@@ -52,6 +53,7 @@ nonisolated extension DeviceProfile {
         case .iPad1: CGSize(width: 852, height: 1108)
         case .iPodTouch4G: CGSize(width: 696, height: 1310)   // scripts/render-shell-art.py N81
         case .iPhone4: CGSize(width: 697, height: 1362)       // scripts/render-shell-art.py N90
+        case .iPhone3GS: CGSize(width: 731, height: 1360)     // scripts/render-shell-art.py N88
         }
     }
 
@@ -63,6 +65,7 @@ nonisolated extension DeviceProfile {
         case .iPad1: CGRect(x: 42, y: 42, width: 768, height: 1024)
         case .iPodTouch4G: CGRect(x: 54, y: 213, width: 590, height: 886)
         case .iPhone4: CGRect(x: 57, y: 240, width: 590, height: 885)
+        case .iPhone3GS: CGRect(x: 71, y: 240, width: 590, height: 885)
         }
     }
 
@@ -70,14 +73,14 @@ nonisolated extension DeviceProfile {
     /// bottom edge. The iPad's comes from iPad.deviceinfo's homeOriginX/Y
     /// (412, 9, bottom-left origin) and its 29x31 home.png.
     var homeButtonDiameter: CGFloat {
-        switch self { case .iPodTouch2G: 122; case .iPad1: 31; case .iPodTouch1G: 112; case .iPodTouch4G: 119; case .iPhone4: 131 }
+        switch self { case .iPodTouch2G: 122; case .iPad1: 31; case .iPodTouch1G: 112; case .iPodTouch4G: 119; case .iPhone4: 131; case .iPhone3GS: 131 }
     }
     var homeButtonBottomInset: CGFloat {
-        switch self { case .iPodTouch2G: 54; case .iPad1: 9; case .iPodTouch1G: 59; case .iPodTouch4G: 49; case .iPhone4: 56 }
+        switch self { case .iPodTouch2G: 54; case .iPad1: 9; case .iPodTouch1G: 59; case .iPodTouch4G: 49; case .iPhone4: 56; case .iPhone3GS: 64 }
     }
 
     /// Height of the real device, for Actual Size zoom.
     var physicalHeightMillimeters: CGFloat {
-        switch self { case .iPad1: 242.8; case .iPodTouch4G: 111; case .iPhone4: 115.2; case .iPodTouch2G, .iPodTouch1G: 110 }
+        switch self { case .iPad1: 242.8; case .iPodTouch4G: 111; case .iPhone4: 115.2; case .iPhone3GS: 115.5; case .iPodTouch2G, .iPodTouch1G: 110 }
     }
 }
