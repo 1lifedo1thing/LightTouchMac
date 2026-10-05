@@ -92,8 +92,10 @@ public nonisolated enum BootRecipe {
     /// the base's NAND under a page overlay, and the NOR as a pflash drive on the private writable copy (iBoot and
     /// the kernel write it). Wi-Fi is the machine's Marvell 88W8686 (default on; `wifi: false` removes the card).
     /// No GID blobs on this machine.
+    /// The original iPhone is the same machine (qemu-ios `-M iPhone-2G`, its subtype): `machineName`.
     public struct IPod1G {
-        public init(bootrom: String, iBoot: String, nand: String, writableNOR: String, overlay: String, usbAddress: String? = nil, wifi: Bool = true, guestPackage: String? = nil, machineOptions: [String: String] = [:]) {
+        public init(bootrom: String, iBoot: String, nand: String, writableNOR: String, overlay: String, usbAddress: String? = nil, wifi: Bool = true, guestPackage: String? = nil, machineOptions: [String: String] = [:], machineName: String = "iPod-Touch-1G") {
+            self.machineName = machineName
             self.bootrom = bootrom
             self.iBoot = iBoot
             self.nand = nand
@@ -114,6 +116,7 @@ public nonisolated enum BootRecipe {
         /// This boot's guest-package offer directory (GuestPackage; n45-ios1 has it_boot since qemu-ios ff2f139cf9).
         public var guestPackage: String? = nil
         public var machineOptions: [String: String] = [:]
+        public var machineName = "iPod-Touch-1G"
     }
 
     /// A board's SecureROM image (DeviceProfile.bootromName) under the device assets: `root/<name>` (the bundle's
@@ -127,13 +130,6 @@ public nonisolated enum BootRecipe {
     /// Apple-ID page ignores "Skip This Step" for minutes (smoke #54). Such a boot runs Setup with slirp
     /// restrict=on (its no-network path) and opens networking once Setup finishes. 3.x/4.x Setup has
     /// no Apple-ID page and boots unrestricted.
-    /// Whether the guest can use the helper's web proxy: route through it (the image's PAC, or itproxy) and trust its
-    /// CA (the agent's ittrust, else lockdown's MCInstall profile). iPhone OS 1.x does neither: on 3A101a, joined and
-    /// with the PAC baked, Safari went DIRECT (no connection to 10.0.2.100:3128 in the Wi-Fi capture), and it has no
-    /// agent and no MCInstall service, so the trust step failed and retried every poll ("Couldn't update the proxy").
-    public static func webProxyWorks(iosVersion: String) -> Bool {
-        iosVersion.compare("2.0", options: .numeric) != .orderedAscending
-    }
 
     public static func setupPhonesHome(iosVersion: String) -> Bool {
         iosVersion.compare("5.0", options: .numeric) != .orderedAscending
@@ -253,13 +249,15 @@ public nonisolated enum BootRecipe {
     /// `-drive` takes its own comma escaping (as -M does). No -m: the machine's 128 MiB.
     /// `netdev`: the explicit wifi0 (with the web proxy's guestfwd), if any; without one the machine makes its own.
     public static func iPod1G(_ d: IPod1G, serial: String, audio: [String], netdev: String?) -> BootConfig {
-        let machine = "iPod-Touch-1G,bootrom=\(escape(d.bootrom)),iboot=\(escape(d.iBoot))"
+        let machine = "\(d.machineName),bootrom=\(escape(d.bootrom)),iboot=\(escape(d.iBoot))"
             + ",nand=\(escape(d.nand)),nand-overlay=\(escape(d.overlay))"
             + (d.usbAddress.map { ",usb-tcp-addr=\($0)" } ?? "") + (d.wifi ? "" : ",wifi=off")
             + (d.guestPackage.map { ",guest-package=\(escape($0))" } ?? "") + options(d.machineOptions)
         let argv = ["LightTouchMac", "-M", machine, "-drive", "if=pflash,format=raw,file=\(escape(d.writableNOR))",
                     "-display", "none", "-no-shutdown"] + audio + ["-serial", serial] + (netdev.map { ["-netdev", $0] } ?? [])
-        return BootConfig(argv: argv, machine: "iPod-Touch-1G")
+            // The iPhone's modem carries its EDGE data (raw IP over a mux DLCI) to its own slirp, cell0.
+            + (d.machineName == "iPhone-2G" ? ["-netdev", "user,id=cell0"] : [])
+        return BootConfig(argv: argv, machine: d.machineName)
     }
 
     /// Wi-Fi is the machine's default (a BCM4329 on its own slirp wifi0); an

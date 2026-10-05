@@ -7,6 +7,9 @@ nonisolated public enum FirmwareWire {
     /// (boot admission), so a base whose lock names an older recipe is still current. Survives Erase on purpose:
     /// admission re-applies the migration's pages to a fresh overlay on every start.
     public static let migratedRecipeFile = "migrated-recipe.json"
+    /// A 1.x device's record of the certificate its guest trusts as a system anchor (`firmwarekit edit --action
+    /// trust-anchor`): {"sha1": hex, "key": the storage key that commit published}.
+    public static let trustAnchorFile = "trust-anchor.json"
 
     /// Recipe steps boot admission migrates in place, per board: a stopped base at recipe `key` reaches `value` at
     /// its next start (FirmwareBootAdmission), so the GUI counts it as already there and offers no Prepare Again.

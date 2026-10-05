@@ -127,13 +127,16 @@ public enum BuildComponents {
     public static func fromRestore(_ r: RestoreInfo, img2: Bool = false) throws -> [String: String] {
         let board = r.boardConfig, plat = r.platform
         let af = "Firmware/all_flash/all_flash.\(board).production/"
-        guard let kc = r.kernelCache, let os = r.systemImage, let user = r.restoreRamDisk, let update = r.updateRamDisk else {
+        // 1.0 (1A543a) has no update ramdisk and no iBEC: a restore was the only install path
+        guard let kc = r.kernelCache, let os = r.systemImage, let user = r.restoreRamDisk, img2 || r.updateRamDisk != nil else {
             throw FirmwareError(.unsupported, "no BuildManifest.plist, and Restore.plist lacks the 2.x component keys")
         }
         let x = img2 ? "img2" : "img3"
-        return ["iBSS": "Firmware/dfu/iBSS.\(board).RELEASE.dfu", "iBEC": "Firmware/dfu/iBEC.\(board).RELEASE.dfu",
+        var comp = ["iBSS": "Firmware/dfu/iBSS.\(board).RELEASE.dfu",
                 "iBoot": af + "iBoot.\(board).RELEASE.\(x)", "LLB": af + "LLB.\(board).RELEASE.\(x)",
                 "DeviceTree": af + "DeviceTree.\(board).\(x)", "AppleLogo": af + (img2 ? "applelogo.img2" : "applelogo.\(plat).img3"),
-                "KernelCache": kc, "OS": os, "RestoreRamDisk": user, "UpdateRamDisk": update]
+                "KernelCache": kc, "OS": os, "RestoreRamDisk": user]
+        if let update = r.updateRamDisk { comp["UpdateRamDisk"] = update; comp["iBEC"] = "Firmware/dfu/iBEC.\(board).RELEASE.dfu" }
+        return comp
     }
 }

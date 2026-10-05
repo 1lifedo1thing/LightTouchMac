@@ -121,6 +121,9 @@ Device/Battery/20%
 Device/Battery/5%
 Device/Battery/-
 Device/Battery/Charging
+Device/Debugging ▸
+Device/Debugging/Debug Port
+Device/Debugging/Copy lldb Command
 Device/-
 Device/Pause
 Device/-
@@ -174,6 +177,8 @@ struct Instance { let id=UUID() }
 @MainActor enum AppInstaller { static var hasPendingWork=false; static func hasPendingWork(for id:UUID)->Bool {hasPendingWork} }
 @MainActor final class AppDelegate:NSObject { @objc func toggleAutomaticRotation(_ sender:Any?) {}
  @objc func toggleInternetAccess(_ sender:Any?) {}
+ @objc func toggleDebugPort(_ sender:Any?) {}
+ @objc func copyLLDBCommand(_ sender:Any?) {}
  @objc func showHelp(_ sender:Any?) {}
  @objc func showDeviceWindow(_ sender:Any?) {}
  @objc func showFilesWindow(_ sender:Any?) {}

@@ -227,12 +227,13 @@ def main():
     ap.add_argument("--bundle-id", default="com.qemuios.harness")
     ap.add_argument("--work", type=Path)
     ap.add_argument("--single", type=Path, help="one prepared base (firmwarekit create output)")
-    ap.add_argument("--board", choices=("ipod", "ipad", "ipod1g"), help="--single: the base's board")
+    ap.add_argument("--board", choices=("ipod", "ipad", "ipod1g", "iphone2g"), help="--single: the base's board")
     power = ap.add_mutually_exclusive_group()
     power.add_argument("--host-power-gesture", action="store_true", default=None,
                        help="--single iPod: select shared host gesture, with actual PMU shutdown")
     power.add_argument("--no-host-power-gesture", dest="host_power_gesture", action="store_false",
                        help="--single iPod: explicitly retain the legacy shutdown caller for comparison")
+    ap.add_argument("--no-install", action="store_true", help="--single: skip the IPA install (iPhone OS 1.x has no installation_proxy)")
     ap.add_argument("--launch", action="store_true", help="--single: launch the installed IPA through the app’s guest agent and verify its foreground identity")
     ap.add_argument("--reboot", action="store_true", help="--single: cold boot the same overlay and verify file/app persistence, identity and shutdown again")
     ap.add_argument("--upgrade-ipa", type=Path, help="--single: after the install, the same bundle id at a newer version: "
@@ -282,7 +283,8 @@ def main():
         bundled_tz = helper.parent / "lockdown-tz"
         tz = bundled_tz if os.access(bundled_tz, os.X_OK) else build_lockdown_tz(work, args.frameworks)
         cfg["single"] = {"board": args.board, "base": str(args.single), "lockdownTZ": str(tz),
-                         "launch": args.launch, "reboot": args.reboot, "hostPowerGesture": args.host_power_gesture}
+                         "launch": args.launch, "reboot": args.reboot, "hostPowerGesture": args.host_power_gesture,
+                         "install": not args.no_install}
         if args.upgrade_ipa:
             cfg["single"]["upgradeIPA"] = str(args.upgrade_ipa)
         if args.afc_race:
@@ -354,7 +356,7 @@ def main():
         lit = (find("lit", device=d) or [{}])[0]
         check(lit, f"{d}: lit in {lit.get('seconds', -1):.1f} s")
         usb = (find("usb", device=d) or [{}])[0]
-        check(usb.get("productType") == ("iPad1,1" if d == "ipad" else "iPod2,1"), f"{d}: lockdown over its usbmuxd: {usb.get('productType')}")
+        check(usb.get("productType") == {"ipad": "iPad1,1", "ipod1g": "iPod1,1", "iphone2g": "iPhone1,1"}.get(d, "iPod2,1"), f"{d}: lockdown over its usbmuxd: {usb.get('productType')}")
         spec = importlib.util.spec_from_file_location("session_framecheck", ROOT / "tests/sessions/framecheck.py")
         frames = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(frames)
@@ -376,7 +378,7 @@ def main():
                   + (f" ({a.get('seconds', 0):.1f} s)" if a.get("same") else f": {a.get('error', 'content differs')}"))
         check(len(find("afc", device=d)) >= 4, f"{d}: AFC checks ran")
         inst = (find("installed", device=d) or [{}])[0]
-        check(inst.get("has"), f"{d}: IPA installed ({inst.get('seconds', 0):.0f} s, attempt {inst.get('attempt')})")
+        if not args.no_install: check(inst.get("has"), f"{d}: IPA installed ({inst.get('seconds', 0):.0f} s, attempt {inst.get('attempt')})")
         if args.upgrade_ipa:
             up = (find("upgraded", device=d) or [{}])[0]
             check(not up.get("error") and up.get("after") and up.get("kept"),
@@ -400,8 +402,9 @@ def main():
             restarted = find("restartedApps", device=d)
             check(persisted and all(e.get("kept") and e.get("same") for e in persisted),
                   f"{d}: AFC marker survives cold reboot byte for byte: {persisted}")
-            check(restarted and all(e.get("has") for e in restarted),
-                  f"{d}: installed app survives cold reboot: {restarted}")
+            if not args.no_install:
+                check(restarted and all(e.get("has") for e in restarted),
+                      f"{d}: installed app survives cold reboot: {restarted}")
             check(len(find("home", device=d)) == boots and len(activation) == boots and
                   (d != "ipod" or len(ids) == boots),
                   f"{d}: both boots completed Home, activation and identity gates")

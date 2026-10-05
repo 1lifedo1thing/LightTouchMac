@@ -21,24 +21,26 @@ nonisolated enum DeviceProfile: Equatable {
     /// The n18 (iOS 4.2.1): qemu-ios `-M n18`, the S5L8922 iPod touch 3G, the same way; the 2G's chassis, so the
     /// 2G's N72 model.
     case iPodTouch3G
+    /// The m68 (the original iPhone, iPhone OS 1.0): qemu-ios `-M iPhone-2G`, the 1G's boot with iBoot-159.
+    case iPhone2G
 
     /// The name passed to -M; also the key for the hello's device info.
     var machineName: String {
         switch self {
         case .iPad1: "ipad1"; case .iPodTouch2G: "iPod-Touch"; case .iPodTouch1G: "iPod-Touch-1G"; case .iPodTouch4G: "iPod-Touch-4G"
-        case .iPhone4: "iPhone-4"; case .iPhone3GS: "n88"; case .iPodTouch3G: "n18"
+        case .iPhone4: "iPhone-4"; case .iPhone3GS: "n88"; case .iPodTouch3G: "n18"; case .iPhone2G: "iPhone-2G"
         }
     }
-    var displayName: String { switch self { case .iPad1: "iPad"; case .iPhone4, .iPhone3GS: "iPhone"; default: "iPod touch" } }
+    var displayName: String { switch self { case .iPad1: "iPad"; case .iPhone4, .iPhone3GS, .iPhone2G: "iPhone"; default: "iPod touch" } }
     /// What the device is called in menus, titles and messages ("the iPod").
-    var shortName: String { switch self { case .iPad1: "iPad"; case .iPhone4, .iPhone3GS: "iPhone"; default: "iPod" } }
+    var shortName: String { switch self { case .iPad1: "iPad"; case .iPhone4, .iPhone3GS, .iPhone2G: "iPhone"; default: "iPod" } }
     /// A requested stop's reason (the dead overlay, the session's phase); tests compare it.
     var stoppedReason: String { "The \(shortName) stopped." }
 
     var runtimeBoard: PreparedDeviceBoot.Board {
         switch self {
         case .iPad1: .k48; case .iPodTouch2G: .n72; case .iPodTouch1G: .n45; case .iPodTouch4G: .n81; case .iPhone4: .n90
-        case .iPhone3GS: .n88; case .iPodTouch3G: .n18
+        case .iPhone3GS: .n88; case .iPodTouch3G: .n18; case .iPhone2G: .m68
         }
     }
     var boardID: String { runtimeBoard.rawValue }
@@ -56,18 +58,18 @@ nonisolated enum DeviceProfile: Equatable {
     var productType: String {
         switch self {
         case .iPad1: "iPad1,1"; case .iPodTouch2G: "iPod2,1"; case .iPodTouch1G: "iPod1,1"; case .iPodTouch4G: "iPod4,1"; case .iPhone4: "iPhone3,1"
-        case .iPhone3GS: "iPhone2,1"; case .iPodTouch3G: "iPod3,1"
+        case .iPhone3GS: "iPhone2,1"; case .iPodTouch3G: "iPod3,1"; case .iPhone2G: "iPhone1,1"
         }
     }
     var marketingName: String {
         switch self {
         case .iPad1: "iPad"; case .iPodTouch2G: "iPod touch (2nd generation)"; case .iPodTouch1G: "iPod touch"
         case .iPodTouch4G: "iPod touch (4th generation)"; case .iPhone4: "iPhone 4"; case .iPhone3GS: "iPhone 3GS"
-        case .iPodTouch3G: "iPod touch (3rd generation)"
+        case .iPodTouch3G: "iPod touch (3rd generation)"; case .iPhone2G: "iPhone"
         }
     }
     /// The SecureROM image the machine boots, looked up under Bundled.filesRoot (DeviceProfile.bootrom).
-    var bootromName: String { self == .iPodTouch1G ? "bootrom_s5l8900" : "bootrom_240_4" }
+    var bootromName: String { self == .iPodTouch1G || self == .iPhone2G ? "bootrom_s5l8900" : "bootrom_240_4" }
 
     /// How long a boot may take until lockdown answers (the app's "iOS is up")
     /// before the app gives up on it. The lock screen is normally there in 25 s

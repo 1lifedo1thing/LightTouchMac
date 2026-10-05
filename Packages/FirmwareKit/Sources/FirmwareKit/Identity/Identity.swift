@@ -90,6 +90,34 @@ public struct UnitIdentity: Equatable, Sendable {
         return id
     }
 
+    /// The original iPhone (m68ap): the iPod's fields plus a 15-digit IMEI (TAC 00000000, which no real device has;
+    /// 1.0's lockdownd, CommCenter and SpringBoard behave the same with it as with a real TAC; a serial from the seed
+    /// and its Luhn digit), which the baseband reports and lockdownd hashes into the UDID:
+    /// SHA1(serial + IMEI + Wi-Fi MAC + BT MAC).
+    public static func synthesizeIPhone(seed: String, modelNumber: String, regionInfo: String) throws -> UnitIdentity {
+        var id = try synthesizeIPod(seed: seed, modelNumber: modelNumber, regionInfo: regionInfo)
+        let h = Array(SHA256.hash(data: Data(("imei:" + seed).utf8)))
+        let body = syntheticTAC + h[0..<6].map { String($0 % 10) }.joined()
+        let imei = body + String(luhn(body))
+        id.fields.removeAll { $0.key == "udid" }
+        id.fields.insert(("imei", .string(imei)), at: 1)
+        id.fields.append(("udid", .string(Data(Insecure.SHA1.hash(data: Data((id["serial-number"]! + imei + id["wifi-mac"]!.lowercased()
+            + id["bt-mac"]!.lowercased()).utf8))).hexString)))
+        return id
+    }
+
+    /// A type allocation code no manufacturer was ever assigned, so a generated IMEI can't collide with a real phone's.
+    static let syntheticTAC = "00000000"
+
+    /// The Luhn check digit of a digit string (an IMEI's fifteenth).
+    static func luhn(_ digits: String) -> Int {
+        let sum = digits.reversed().enumerated().reduce(0) { s, e in
+            let d = Int(String(e.element))!
+            return s + (e.offset % 2 == 0 ? (d * 2 > 9 ? d * 2 - 9 : d * 2) : d)
+        }
+        return (10 - sum % 10) % 10
+    }
+
     static func mac(_ b: [UInt8]) -> String { b.map { String(format: "%02x", $0) }.joined(separator: ":") }
 
     /// Python's json.dump(obj, f, indent=1) (ensure_ascii, no trailing newline).

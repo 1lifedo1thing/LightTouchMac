@@ -14,8 +14,11 @@ final class DeviceFilesystemEdits {
     func blocked(_ instance: DeviceInstance) -> Bool {
         busy.contains(instance.id) || FileManager.default.fileExists(atPath: instance.paths.work.appendingPathComponent("edit.json").path)
     }
+    /// Boards whose stored volume FirmwareKit can edit while stopped: the N72's generated store, and 1.x devices
+    /// through their legacy FTL (StoppedVolumeEdit edits those in place).
+    static let editableBoards: Set<String> = ["n72ap", "n45ap", "m68ap"]
     func canPerform(_ action: DeviceAction, instance: DeviceInstance) -> Bool {
-        guard FirmwareJobs.preparer != nil, !busy.contains(instance.id), instance.board == "n72ap" else { return false }
+        guard FirmwareJobs.preparer != nil, !busy.contains(instance.id), Self.editableBoards.contains(instance.board) else { return false }
         switch action {
         case .openFilesystem: return pending(instance)?.phase == nil || pending(instance)?.phase == "editing"
         case .commitFilesystem: return pending(instance)?.phase == "editing"

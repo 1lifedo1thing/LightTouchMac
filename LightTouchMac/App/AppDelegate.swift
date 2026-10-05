@@ -36,6 +36,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func showFilesWindow(_ sender: Any?) { windowController?.toggleFiles(sender) }
 
     @objc func toggleAutomaticRotation(_ sender: Any?) { emulator?.toggleAutoRotate() }
+    @objc func toggleDebugPort(_ sender: Any?) { emulator?.toggleDebugPort() }
+    @objc func copyLLDBCommand(_ sender: Any?) {
+        guard let command = emulator?.lldbAttachCommand else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(command, forType: .string)
+    }
     @objc func toggleInternetAccess(_ sender: Any?) {
         let current = UserDefaults.standard.object(forKey: NetworkAccessPreference.key) as? Bool ?? emulator?.network ?? true
         UserDefaults.standard.set(!current, forKey: NetworkAccessPreference.key)
@@ -44,6 +50,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if item.action == #selector(toggleAutomaticRotation(_:)) {
             item.state = emulator?.autoRotateEnabled ?? true ? .on : .off
             return emulator != nil
+        } else if item.action == #selector(toggleDebugPort(_:)) {
+            let enabled = emulator?.debugPortEnabled ?? false
+            item.state = enabled ? .on : .off
+            item.toolTip = emulator.map { enabled != ($0.debugPort != nil) ? "Takes effect the next time the \($0.profile.shortName) starts." : nil } ?? nil
+            return emulator != nil
+        } else if item.action == #selector(copyLLDBCommand(_:)) {
+            item.toolTip = emulator?.debugPort.map { "QEMU's gdbstub is on 127.0.0.1:\($0). Replace KERNELCACHE and QEMU_IOS; see qemu-ios docs/guest-debug.md." }
+            return emulator?.lldbAttachCommand != nil
         } else if item.action == #selector(toggleInternetAccess(_:)) {
             let desired = UserDefaults.standard.object(forKey: NetworkAccessPreference.key) as? Bool ?? emulator?.network ?? true
             // The title stays put; a choice the running device doesn't have yet says when it applies.

@@ -8,7 +8,7 @@ import Darwin
 /// the application's storage transaction boundary.
 public struct PreparedDeviceBoot {
     public enum Board: String, Sendable, CaseIterable {
-        case n45 = "n45ap", n72 = "n72ap", k48 = "k48ap", n81 = "n81ap", n90 = "n90ap", n88 = "n88ap", n18 = "n18ap"
+        case n45 = "n45ap", n72 = "n72ap", k48 = "k48ap", n81 = "n81ap", n90 = "n90ap", n88 = "n88ap", n18 = "n18ap", m68 = "m68ap"
 
         /// The A4 boards (the ipad1 machine family) and the S5L8920 iPhone 3GS, which FirmwareKit prepares
         /// the same way: kboot/iboot via BootRecipe.iPad.
@@ -35,7 +35,7 @@ public struct PreparedDeviceBoot {
                 case "bootrom": return ("nor.bin", ["gid-blobs.bin"])
                 default: throw PreparedDeviceBoot.unknownStrategy(strategy!)
                 }
-            case .n45:
+            case .n45, .m68:
                 guard strategy == nil || strategy == "iboot" else { throw PreparedDeviceBoot.unknownStrategy(strategy!) }
                 return ("iBoot.bin", ["nor.bin"])
             }
@@ -81,7 +81,7 @@ public struct PreparedDeviceBoot {
         return Self(board: board, boot: files.boot, nand: files.nand,
                     baseNOR: base.appendingPathComponent("nor.bin"), writableNOR: files.writableNOR,
                     overlay: overlay, bootrom: bootrom, strategy: strategy,
-                    gidBlobs: board == .n45 ? nil : base.appendingPathComponent("gid-blobs.bin").path,
+                    gidBlobs: board == .n45 || board == .m68 ? nil : base.appendingPathComponent("gid-blobs.bin").path,
                     dieID: unitDieID, machine: BootRecipe.lockMachine(lock))
     }
 
@@ -135,10 +135,11 @@ public struct PreparedDeviceBoot {
                               netdev: String?, restore: [String] = [], webProxy: WebProxyEndpoint? = nil) throws -> BootConfig {
         var config: BootConfig
         switch board {
-        case .n45:
+        case .n45, .m68:
             config = BootRecipe.iPod1G(.init(bootrom: bootrom, iBoot: boot.path, nand: nand.path,
                         writableNOR: writableNOR!.path, overlay: overlay.path, usbAddress: usbAddress,
-                        wifi: wifi, guestPackage: guestPackage, machineOptions: machine),
+                        wifi: wifi, guestPackage: guestPackage, machineOptions: machine,
+                        machineName: board == .m68 ? "iPhone-2G" : "iPod-Touch-1G"),
                         serial: serial, audio: audio, netdev: netdev)
         case .n72:
             config = BootRecipe.iPod(.init(bootArgs: bootArgs, iBoot: strategy == "bootrom" ? "" : boot.path,

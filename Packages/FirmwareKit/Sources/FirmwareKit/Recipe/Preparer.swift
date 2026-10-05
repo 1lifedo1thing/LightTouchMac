@@ -66,7 +66,7 @@ public enum Preparer {
         let board: Board = switch (e.board, e.recipe?.name) {
         case ("k48ap", "k48"), ("n81ap", "n81"), ("n90ap", "n90"), ("n88ap", "n88"), ("n18ap", "n18"): try K48Board(o)
         case ("n72ap", "n72"): try N72Board(o)
-        case ("n45ap", "n45"): try N45Board(o)
+        case ("n45ap", "n45"), ("m68ap", "m68"): try N45Board(o)
         default: throw FirmwareError(.unsupported, "\(e.id): no preparer for board \(e.board) recipe \(e.recipe?.name ?? "none")")
         }
         try await Recipe.create(o, board: board, emit: emit)

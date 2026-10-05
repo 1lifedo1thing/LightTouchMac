@@ -10,6 +10,9 @@
 // only under FMSS_ERASE) reading as blank.
 // One volume, "system" (the generated image keeps /private/var on it).
 //
+// legacy (n45/m68, base = bank<N>/<page>.page): iPhone OS 1.x's FTL as the guest left it (N45FTL: its context's
+// map and log blocks over base + overlay). One volume, "system". A device not shut down cleanly is refused.
+//
 // iPad (k48, base = geometry.json + bus<b>-ce<c>.pages): a YaFTL read-only restore over base + overlay
 // (the .dirty bitmap picks the source): every vblock is walked through the VFL until its first blank
 // page; each user page's copy with the highest (USN, vpn) wins; index pages, BTOCs and the control
@@ -26,13 +29,14 @@ public enum VolumeRebuild {
         public let pagesWritten: Int
     }
 
-    public enum Board: String, Sendable { case ipod, ipad }
+    public enum Board: String, Sendable { case ipod, ipad, legacy }
 
     public static func board(of base: URL) throws -> Board {
         let fm = FileManager.default
         if fm.fileExists(atPath: base.appendingPathComponent("geometry.json").path) { return .ipad }
         if fm.fileExists(atPath: base.appendingPathComponent("cs0").path) { return .ipod }
-        throw FirmwareError(.unsupported, "\(base.path): neither an iPad store (geometry.json) nor an iPod page directory (cs0/)")
+        if fm.fileExists(atPath: base.appendingPathComponent("bank0").path) { return .legacy }
+        throw FirmwareError(.unsupported, "\(base.path): neither an iPad store (geometry.json) nor an iPod page directory (cs0/ or bank0/)")
     }
 
     /// Rebuilds the volumes named in `only` (all when nil) into `<dir>/<name>.img`.
@@ -41,6 +45,7 @@ public enum VolumeRebuild {
         switch try board(of: base) {
         case .ipod: return try iPod(base: base, overlay: overlay, into: dir, only: only)
         case .ipad: return try iPad(base: base, overlay: overlay, into: dir, only: only)
+        case .legacy: return try legacy(base: base, overlay: overlay, into: dir, only: only)
         }
     }
 
@@ -100,6 +105,29 @@ public enum VolumeRebuild {
             written += 1
         }
         return [Volume(name: "system", image: out, bytes: blocks * page, pagesWritten: written)]
+    }
+
+    // MARK: legacy (1.x)
+
+    static func legacy(base: URL, overlay: URL?, into dir: URL, only: Set<String>?) throws -> [Volume] {
+        guard only.map({ $0.contains("system") }) ?? true else {
+            throw FirmwareError(.unsupported, "a 1.x device has one volume, system (/private/var is on it)")
+        }
+        let ftl = try N45FTL(base: base, overlay: overlay), first = N45NAND.firstLBA, ps = N45NAND.page
+        guard let vh = ftl.read(lpn: first)?.data, vh[1024] == 0x48, vh[1025] == 0x2B || vh[1025] == 0x58 else {
+            throw FirmwareError(.unsupported, "\(base.path): no HFS+ volume header at logical page \(first)")
+        }
+        let bytes = Int(be32(vh, 1024 + 44)) * Int(be32(vh, 1024 + 40))
+        let out = dir.appendingPathComponent("system.img")
+        let fd = try create(out, bytes: bytes)
+        defer { close(fd) }
+        var written = 0
+        for i in 0..<bytes / ps {
+            guard let d = ftl.read(lpn: first + i)?.data, d.contains(where: { $0 != 0 }) else { continue }
+            try pwriteAll(fd, d, i * ps, out)
+            written += 1
+        }
+        return [Volume(name: "system", image: out, bytes: bytes, pagesWritten: written)]
     }
 
     // MARK: iPad

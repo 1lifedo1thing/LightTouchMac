@@ -54,6 +54,7 @@ guard command == "create" else {
         firmwarekit \(FirmwareKit.version)
         usage: firmwarekit boot-admit --device DIR [--record-policy standalone|managed] [--allow-raw]
                firmwarekit edit --device DIR --action begin|mount|commit|discard|recover [--session UUID]
+               firmwarekit edit --device DIR --action trust-anchor --cert DER   (1.x: the certificate as a system anchor)
                firmwarekit cache-prune --root DIR [--ipsw SHA1]
                firmwarekit create --entry ENTRY.json --ipsw IPSW --out DIR [--seed S]
                                   [--helper PATH] [--cache DIR] [--guest-tools DIR]

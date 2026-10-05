@@ -39,6 +39,8 @@ final class EmulatorController {
     /// (WebProxyConfiguration.directory): one device's proxy (in its
     /// helper) never reads another's mode.
     private var proxyDirectory: URL { WebProxyConfiguration.directory(for: instance) }
+    /// iPhone OS 1.x devices take the web proxy's CA while stopped (FirmwareTool.trustAnchor): no agent, no MCInstall.
+    private var trustsStopped: Bool { ["n45ap", "m68ap"].contains(instance.board) }
     private(set) lazy var webProxy = WebProxyConfiguration.load(from: proxyDirectory)
     private(set) var webProxyStatus: WebProxyStatus = .waiting
     private var proxyRevision = 0
@@ -296,6 +298,15 @@ final class EmulatorController {
             guard let executable = FirmwareJobs.preparer else {
                 throw DeviceToolsError.failed("The firmware worker is unavailable.")
             }
+            // 1.x has no agent to trust the web proxy's CA: once it exists, the stopped device takes it as an anchor.
+            let ca = URL(fileURLWithPath: WebProxyConfiguration.file(in: self.proxyDirectory).path + ".ca.der")
+            if self.trustsStopped, FileManager.default.fileExists(atPath: ca.path) {
+                self.preparationStatus = "Trusting the proxy certificate…"
+                if try await FirmwareTool.trustAnchor(device: self.instance.paths.directory, certificate: ca, executable: executable) {
+                    logEvent("proxy: certificate written into the stopped device's trust store")
+                }
+                try Task.checkCancellation()
+            }
             _ = try await FirmwareTool.admitBoot(device: self.instance.paths.directory,
                                                  managed: true, executable: executable)
             try Task.checkCancellation()
@@ -328,6 +339,11 @@ final class EmulatorController {
         var config = preparedBootConfiguration()
         config?.webProxy = proxyEndpoint
         config?.storageProof = admittedStorage
+        debugPort = debugPortEnabled && config != nil ? DebugPort.freePort() : nil
+        if let port = debugPort {
+            config?.argv += DebugPort.arguments(port: port)
+            logEvent("debug port: QEMU gdbstub on 127.0.0.1:\(port)")
+        }
         if config != nil {
             // Stopped migration time is separate from the guest boot budget.
             startReadinessWatch()
@@ -369,10 +385,7 @@ final class EmulatorController {
             netdev = network ? proxyForward().map { BootRecipe.wifiNetdev(guestForward: $0, restricted: restrict) } : nil
             setupGate = netdev != nil && restrict ? BootRecipe.SetupNetworkGate() : nil
         } else {
-            // 1.x can't use the proxy (BootRecipe.webProxyWorks): no forward, and webProxyAvailable stays false, so
-            // the Proxy menu is off and nothing tries to configure it.
-            let proxy = BootRecipe.webProxyWorks(iosVersion: iosVersion) ? proxyForward() : nil
-            netdev = network ? "user,id=wifi0" + (proxy ?? "") : nil
+            netdev = network ? "user,id=wifi0" + (proxyForward() ?? "") : nil
         }
         do {
             return try prepared.configuration(bootArgs: Self.bootArgs, usbAddress: usbSession?.guestAddress,
@@ -1106,6 +1119,19 @@ final class EmulatorController {
     /// Per device (`autoRotateWithGuest.<uuid>`), seeded from the app-wide value
     /// of earlier builds; on by default — it is only ever driven by an explicit
     /// change on the guest's side.
+    /// Debug port, per device (`debugPort.<uuid>`), off by default; read at each start. QEMU's gdbstub on a free
+    /// loopback port, `debugPort` while this boot has one (qemu-ios docs/guest-debug.md).
+    static let debugPortDefaultsKey = "debugPort"
+    var debugPortEnabled: Bool {
+        UserDefaults.standard.object(forKey: instance.defaultsKey(Self.debugPortDefaultsKey)) as? Bool ?? false
+    }
+    func toggleDebugPort() {
+        UserDefaults.standard.set(!debugPortEnabled, forKey: instance.defaultsKey(Self.debugPortDefaultsKey))
+        onStatusChange?()
+    }
+    private(set) var debugPort: Int?
+    var lldbAttachCommand: String? { debugPort.map { DebugPort.lldbCommand(board: instance.board, port: $0) } }
+
     static let autoRotateDefaultsKey = "autoRotateWithGuest"
     var autoRotateEnabled: Bool { perDeviceSetting(Self.autoRotateDefaultsKey) }
     func toggleAutoRotate() {
@@ -1481,7 +1507,8 @@ final class EmulatorController {
                             self.onStatusChange?()
                         }
                         do {
-                            let trust = try await WebProxySetup(services: self.services, guest: self.guest, proxyDirectory: self.proxyDirectory)
+                            let trust = try await WebProxySetup(services: self.services, guest: self.guest, proxyDirectory: self.proxyDirectory,
+                                    stoppedTrust: self.trustsStopped ? (self.instance.paths.directory, self.instance.storage.key) : nil)
                                 .configure(enabled: self.webProxy.mode != .off)
                             try Task.checkCancellation()
                             guard generation == self.bootGeneration else { return }

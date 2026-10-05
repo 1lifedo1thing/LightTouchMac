@@ -77,7 +77,7 @@ nonisolated enum GuestPackage {
     }
 
     static func arch(board: String) -> String? {
-        ["n72ap": "armv6", "n45ap": "armv6", "k48ap": "armv7", "n81ap": "armv7", "n90ap": "armv7", "n88ap": "armv7", "n18ap": "armv7"][board]
+        ["n72ap": "armv6", "n45ap": "armv6", "m68ap": "armv6", "k48ap": "armv7", "n81ap": "armv7", "n90ap": "armv7", "n88ap": "armv7", "n18ap": "armv7"][board]
     }
 
     /// The bundled itpack for an arch: the app's flat Resources/guest-tools (which

@@ -17,6 +17,10 @@ fixture=r'''import Cocoa
  static var autoRotateEnabled:Bool { UserDefaults.standard.object(forKey:autoRotateDefaultsKey) as? Bool ?? true }
  var autoRotateEnabled:Bool { Self.autoRotateEnabled }
  func toggleAutoRotate() { UserDefaults.standard.set(!autoRotateEnabled, forKey:Self.autoRotateDefaultsKey) }
+ var debugPortEnabled = false
+ func toggleDebugPort() { debugPortEnabled.toggle() }
+ var debugPort:Int? = nil
+ var lldbAttachCommand:String? { debugPort.map { "lldb -o 'gdb-remote 127.0.0.1:\($0)'" } }
 }
 @MainActor final class AppDelegate:NSObject, NSMenuItemValidation {
  var emulator:EmulatorController? = EmulatorController()
@@ -43,6 +47,14 @@ fixture=r'''import Cocoa
   delegate.emulator!.network=false
   defaults.removeObject(forKey:NetworkAccessPreference.key)
   precondition(delegate.validateMenuItem(network) && network.state == .off && network.toolTip == nil)
+  let debug=NSMenuItem(title:"Debug Port",action:#selector(AppDelegate.toggleDebugPort(_:)),keyEquivalent:"")
+  let copy=NSMenuItem(title:"Copy lldb Command",action:#selector(AppDelegate.copyLLDBCommand(_:)),keyEquivalent:"")
+  precondition(delegate.validateMenuItem(debug) && debug.state == .off && debug.toolTip == nil && !delegate.validateMenuItem(copy))
+  delegate.toggleDebugPort(nil)
+  precondition(delegate.validateMenuItem(debug) && debug.state == .on && debug.toolTip == "Takes effect the next time the iPod starts.")
+  delegate.emulator!.debugPort=4321
+  precondition(delegate.validateMenuItem(debug) && debug.toolTip == nil && delegate.validateMenuItem(copy) && copy.toolTip!.contains("127.0.0.1:4321"))
+  print("PASS: the debug port follows the next start and offers its lldb command only while a boot has one")
   print("PASS: menu preferences apply rotation immediately and show pending internet changes in the tooltip, never the title")
  }
 }

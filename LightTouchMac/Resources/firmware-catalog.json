@@ -2213,6 +2213,22 @@
   "estimates": {"prepared_bytes": 1503238554, "peak_bytes": 3799310312, "seconds": 90}
  },
  {
+  "id": "m68ap-1A543a",
+  "board": "m68ap",
+  "product_type": "iPhone1,1",
+  "version": "1.0",
+  "build": "1A543a",
+  "released": "2007-06-29",
+  "status": "experimental",
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone/061-3538.20070629.B7vXa/iPhone1,1_1.0_1A543a_Restore.ipsw", "sha1": "fb8bb3ee2e9a997affbb97868599f2995c78209c", "bytes": 95604348},
+  "keys": {
+   "rootfs": {"file": "694-5262-39.dmg", "key": "28c909fc6d322fa18940f03279d70880e59a4507998347c70d5b8ca7ef090ecccc15e82d"}
+  },
+  "recipe": {"name": "m68", "version": 1, "storage": "4g", "system_mib": 512, "data_size": "none", "options": {"gles_shim": true}},
+  "emulator": {"min_protocol": 1},
+  "estimates": {"prepared_bytes": 536870912, "peak_bytes": 2147483648, "seconds": 90}
+ },
+ {
   "id": "n88ap-8A293",
   "board": "n88ap",
   "product_type": "iPhone2,1",
