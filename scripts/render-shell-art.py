@@ -21,7 +21,7 @@ import Metal
  @MainActor static func main() async throws {
   _ = NSApplication.shared
   NSApp.setActivationPolicy(.prohibited)
-  let profile: DeviceProfile = ["N72": .iPodTouch2G, "K48": .iPad1, "N45": .iPodTouch1G, "N81": .iPodTouch4G][CommandLine.arguments[2]]!
+  let profile: DeviceProfile = ["N72": .iPodTouch2G, "K48": .iPad1, "N45": .iPodTouch1G, "N81": .iPodTouch4G, "N90": .iPhone4][CommandLine.arguments[2]]!
   let model = try await DeviceModelView(url: URL(fileURLWithPath: CommandLine.arguments[1]), profile: profile)
   let size = CGSize(width: 800, height: 1400)
   model.frame = NSRect(origin: .zero, size: size)

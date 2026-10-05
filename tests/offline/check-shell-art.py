@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-shell-art-') as tmp:
     tmp = Path(tmp)
     (tmp / 'main.swift').write_text('''import Foundation
 for board in CommandLine.arguments.dropFirst() {
-    guard let p = [DeviceProfile.iPodTouch2G, .iPad1, .iPodTouch1G, .iPodTouch4G].first(where: { $0.boardID == board }) else { print(board, "-"); continue }
+    guard let p = [DeviceProfile.iPodTouch2G, .iPad1, .iPodTouch1G, .iPodTouch4G, .iPhone4].first(where: { $0.boardID == board }) else { print(board, "-"); continue }
     let c = p.screenCutout
     print(board, p.shellImageName, Int(p.shellPixels.width), Int(p.shellPixels.height), Int(c.midX), Int(c.midY), Int(c.minY / 2))
 }

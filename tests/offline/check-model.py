@@ -10,7 +10,7 @@ model_source = r'''import AppKit
 import RealityKit
 import Metal
 func - (a:CGPoint,b:CGPoint)->CGPoint { CGPoint(x:a.x-b.x,y:a.y-b.y) }
-let profiles: [String: DeviceProfile] = ["N72": .iPodTouch2G, "K48": .iPad1, "N45": .iPodTouch1G, "N81": .iPodTouch4G]
+let profiles: [String: DeviceProfile] = ["N72": .iPodTouch2G, "K48": .iPad1, "N45": .iPodTouch1G, "N81": .iPodTouch4G, "N90": .iPhone4]
 /// Renders the model's own scene headless: RealityRenderer draws the same
 /// entities and camera into a texture, so no window is ever shown and the
 /// check runs with the display asleep. Pixel (x, y) is the view's y-up point.
@@ -388,7 +388,7 @@ enum PreparedMedia { nonisolated static let extensions: Set<String> = [] }
 @main struct Check {
  @MainActor static func main() async throws {
   _=NSApplication.shared
-  let profile: DeviceProfile = ["N72": .iPodTouch2G, "K48": .iPad1, "N45": .iPodTouch1G, "N81": .iPodTouch4G][CommandLine.arguments[3]]!
+  let profile: DeviceProfile = ["N72": .iPodTouch2G, "K48": .iPad1, "N45": .iPodTouch1G, "N81": .iPodTouch4G, "N90": .iPhone4][CommandLine.arguments[3]]!
   let panel = profile.screenPixels, mounted = profile.panelRotation != 0
   frameWidth = Int32(panel.width); frameHeight = Int32(panel.height)
   let e=EmulatorController(), display=DisplayView(frame:NSRect(x:0,y:0,width:800,height:800),profile:profile)
@@ -476,7 +476,7 @@ enum PreparedMedia { nonisolated static let extensions: Set<String> = [] }
 # DisplayView's flat LCD layer, built without a window: its framebuffer upscales nearest-neighbour too.
 layer_source = display_source.split('@main')[0] + r'''@main struct Check {
  @MainActor static func main() {
-  let profile: DeviceProfile = ["N72": .iPodTouch2G, "K48": .iPad1, "N45": .iPodTouch1G, "N81": .iPodTouch4G][CommandLine.arguments[3]]!
+  let profile: DeviceProfile = ["N72": .iPodTouch2G, "K48": .iPad1, "N45": .iPodTouch1G, "N81": .iPodTouch4G, "N90": .iPhone4][CommandLine.arguments[3]]!
   let display = DisplayView(frame: NSRect(x: 0, y: 0, width: 800, height: 800), profile: profile)
   func all(_ l: CALayer) -> [CALayer] { [l] + (l.sublayers ?? []).flatMap(all) }
   // The LCD layer: black-backed, stretched to the cutout (it takes each frame's IOSurface as contents).
@@ -492,7 +492,7 @@ layer_source = display_source.split('@main')[0] + r'''@main struct Check {
 # The model half renders headless (RealityRenderer, no window) for every board.
 # The DisplayView half needs a presented ARView, which renders only in a visible
 # window: it runs with LTM_DISPLAY_CHECKS=1. `check-model.py DIR` keeps the renders.
-MODELS = ["N72", "K48", "N45", "N81"]
+MODELS = ["N72", "K48", "N45", "N81", "N90"]
 windowed = os.environ.get("LTM_DISPLAY_CHECKS") == "1"
 with tempfile.TemporaryDirectory(prefix="ltm-model-") as tmp:
     work=Path(tmp)
