@@ -3149,7 +3149,7 @@
   "build": "8H7",
   "released": "2011-04-14",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/041-0660.20110414.Gwed5/iPhone2,1_4.3.2_8H7_Restore.ipsw", "sha1": "4021a2d82971fc4c637f1fdb6ce7c4dcfb7ac0d7", "bytes": 440519356, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPhone2,1_4.3.2_8H7_Restore.ipsw", "sha1": "4021a2d82971fc4c637f1fdb6ce7c4dcfb7ac0d7", "bytes": 440519356}]},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/041-0660.20110414.Gwed5/iPhone2,1_4.3.2_8H7_Restore.ipsw", "sha1": "4021a2d82971fc4c637f1fdb6ce7c4dcfb7ac0d7", "bytes": 440519356},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8920x.img3", "iv": "ccc3515c3a505bd045debf219de37c03", "key": "fb1fe36294b8183e03cedfe7edee54ee6fe3919ddd682d55e694ad77fa6f0b1b"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8920x.img3", "iv": "8fd0b33c4a6f19e7ee15d84e4d0d8efb", "key": "240f6a35dfedc9c8af03e56a100a292431a0867e8458afb4591c70de7eff604f"},
@@ -3248,7 +3248,7 @@
   "build": "8L1",
   "released": "2011-07-25",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/041-1965.20110721.gxUB5/iPhone2,1_4.3.5_8L1_Restore.ipsw", "sha1": "80119c009590066dc093ccaeafc9056c05fb73ff", "bytes": 440577895, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPhone2,1_4.3.5_8L1_Restore.ipsw", "sha1": "80119c009590066dc093ccaeafc9056c05fb73ff", "bytes": 440577895}]},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/041-1965.20110721.gxUB5/iPhone2,1_4.3.5_8L1_Restore.ipsw", "sha1": "80119c009590066dc093ccaeafc9056c05fb73ff", "bytes": 440577895},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8920x.img3", "iv": "cc46cbf7f5883358e28fd396b0b23289", "key": "8b08058009f817d1cbd2915cf0977c44364ab3ecb05f29f135f4196754b311c2"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8920x.img3", "iv": "a27f0a7d6c9fb551fd40f93072065b53", "key": "3b88607d553475f0e1db61352e5c666a8ebfab9609da9d83c0fbce05158fd198"},
@@ -3517,7 +3517,7 @@
   "prerelease": "beta",
   "prerelease_number": 1,
   "status_note": "A developer build from the iOS Firmware Exhibit Collection on archive.org (third party; Apple never hosted it).",
-  "source": {"kind": "ipsw", "url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPhone2,1_4.0_8A230m_Restore.ipsw", "sha1": "42a709a74393c0982e254f09bc0413a56bf18e83", "bytes": 381663176, "mirrors": []},
+  "source": {"kind": "ipsw", "url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPhone2,1_4.0_8A230m_Restore.ipsw", "sha1": "42a709a74393c0982e254f09bc0413a56bf18e83", "bytes": 381663176},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8920x.img3", "iv": "743c8ce0913b9a9e9377ba1ceeee1a42", "key": "98ab88e7ad6d729d1b4a61260457ed96e8fcd42c10750d567ef2701c33ee9908"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8920x.img3", "iv": "64f4459062a0841b1cb4f567b7357171", "key": "a6908d3f4852735146db168d3b36f3c3301e3b5d94e0ec61b25a0650b8846c6e"},
@@ -4038,6 +4038,72 @@
   "estimates": {"prepared_bytes": 1503238554, "peak_bytes": 3799310312, "seconds": 90}
  },
  {
+  "id": "n88ap-10A403",
+  "board": "n88ap",
+  "product_type": "iPhone2,1",
+  "version": "6.0",
+  "build": "10A403",
+  "released": "2012-09-19",
+  "status": "experimental",
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS6/Restore/041-7173.20120919.sDDMh/iPhone2,1_6.0_10A403_Restore.ipsw", "sha1": "85963dfe1c0febf34d9871ee32b891b93d47b2b6", "bytes": 818338725},
+  "keys": {
+   "AppleLogo": {"file": "applelogo.s5l8920x.img3", "iv": "b61f56f102db495b144df6c8b2c2d3b6", "key": "7fecf501498ffd79cd407788ae496f4b5d3902a4d3da863d54c9eafa597c52f3"},
+   "BatteryCharging0": {"file": "batterycharging0.s5l8920x.img3", "iv": "5a886afc856878bcf55563b0a32d3dbb", "key": "79b4c2933bf8694e1c9e1778e8ffb707cc166ea43d1daff33a21acf073476774"},
+   "BatteryCharging1": {"file": "batterycharging1.s5l8920x.img3", "iv": "adc1b2ee99e7f8d69d60b26f37e42212", "key": "e02f480a1743ed569e3d6633a9bf04d8ee51586e3dfd6ef2f04904775d78eed6"},
+   "BatteryFull": {"file": "batteryfull.s5l8920x.img3", "iv": "10b43a3d3cd67d91871f2dc8ccabf540", "key": "385d52e09c0bec4749bfef5fbe9435fd7d6a75576e45752afae134e8a5f64d2c"},
+   "BatteryLow0": {"file": "batterylow0.s5l8920x.img3", "iv": "d2f1fe8bb9fb0366d583cafdcf878419", "key": "e28834ee32771c825006ab6ff6c87dd6cfae663b5524314de40fd7ffb70f4b6f"},
+   "BatteryLow1": {"file": "batterylow1.s5l8920x.img3", "iv": "08ca82d859fdc093aea5e6dbb85ce210", "key": "6d226def6b0c2eb48617f7f24cbfc53bf5a128f2e5add9c4f437e0c6ac484890"},
+   "DeviceTree": {"file": "DeviceTree.n88ap.img3", "iv": "8b48e117d042829da64e4c0a7b051e52", "key": "757b2e3544cabdd4198e8a142a789acfde83a36e61067b77a8dee85b3ae01cdf"},
+   "GlyphCharging": {"file": "glyphcharging.s5l8920x.img3", "iv": "305539fef487a8357ef803b10b8e3e77", "key": "d86771343836d9f35951b5731c7002df4029a8dd68d593010a10115cbfa0b72b"},
+   "GlyphPlugin": {"file": "glyphplugin.s5l8920x.img3", "iv": "638ef5f851e93818809a4700dbf44f06", "key": "31f0a60cecd5f095e0981a11f7bc43accaf5b6dc41aed90936f8a59071d78bf0"},
+   "iBEC": {"file": "iBEC.n88ap.RELEASE.dfu", "iv": "2efa019c5b20a427daf6a3cbf4452209", "key": "1a982cd5566a3476db211c4c1aafbd2450843d79f6478a87a3b0b9f1562fc1d1"},
+   "iBoot": {"file": "iBoot.n88ap.RELEASE.img3", "iv": "1ede720c9c329081dfac906fc2d497e9", "key": "2a83acad1432e9a41854ff33c2404814bbcd64c392ef11d3dbed92c2947fd148"},
+   "iBSS": {"file": "iBSS.n88ap.RELEASE.dfu", "iv": "c32ff0788530d2650a3c1108a959aed0", "key": "bf3b69f9bd9c3ec1a6aae962d9cb3da4bbc4e1de12608df2756dc0814857fee8"},
+   "kernelcache": {"file": "kernelcache.release.n88", "iv": "3cc0a84f6b8120fd4f40cff12cc58ed6", "key": "5bb60c7597bf4ed465f8c68938c36184e6af924dda3f8dc4d3eb2767213bcb91"},
+   "LLB": {"file": "LLB.n88ap.RELEASE.img3", "iv": "62e04bfb4f633c5098cad1dde38ac051", "key": "5928cf1fe79143bf9b12e34f1add8368766582fd98fe4f3ffc65238e35bad359"},
+   "RecoveryMode": {"file": "recoverymode~iphone.s5l8920x.img3", "iv": "10a81a0db2a4744c2bdbe3cfc965a64d", "key": "d71a5bd4db0acdafe10dae4449f6766abea8f597935e40edeaa2e4917bcc4823"},
+   "RestoreRamDisk": {"file": "038-1203-273.dmg", "iv": "404e344acc3ab148a3d90997f00aa308", "key": "96bbec672f7c5533250f4fa14798647031b5913843d00d8a4c9b6ebec0664f55"},
+   "rootfs": {"file": "038-6491-001.dmg", "key": "9b80f46bffd90f2507fd1978df3d72e933ac0f894b8ff13aca73f2ef6b822186a4075236"},
+   "UpdateRamDisk": {"file": "038-6450-001.dmg", "iv": "0a03ec34e5a51f7fc80bd1fa8e688457", "key": "69e410d437b32353a313a32db1d13a18b16cf6398a3e66b8ff456137d5470b03"}
+  },
+  "recipe": {"name": "n88", "version": 2, "storage": "16g", "system_mib": 1536, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": false, "writable_nor": true}},
+  "emulator": {"min_protocol": 1},
+  "estimates": {"prepared_bytes": 1503238554, "peak_bytes": 3799310312, "seconds": 90}
+ },
+ {
+  "id": "n88ap-10A523",
+  "board": "n88ap",
+  "product_type": "iPhone2,1",
+  "version": "6.0.1",
+  "build": "10A523",
+  "released": "2012-11-01",
+  "status": "experimental",
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS6/041-7949.20121101.Ortn5/iPhone2,1_6.0.1_10A523_Restore.ipsw", "sha1": "38bda2110c9b6b2227a61ee57c9e9ad7cb0fbfbc", "bytes": 818325876, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPhone2,1_6.0.1_10A523_Restore.ipsw", "sha1": "38bda2110c9b6b2227a61ee57c9e9ad7cb0fbfbc", "bytes": 818325876}]},
+  "keys": {
+   "AppleLogo": {"file": "applelogo.s5l8920x.img3", "iv": "728cdc6639bb284a0898c26b65606633", "key": "0d0014d893a32d5d94aec9d59d7c85cf964da3974a5693eb01be3d52cb832778"},
+   "BatteryCharging0": {"file": "batterycharging0.s5l8920x.img3", "iv": "77f430588ff178ccb1802f9ae2d610b7", "key": "51b2062e8da5e0c78d5464386243481ea67f2b639b913e72272845ce7b2430eb"},
+   "BatteryCharging1": {"file": "batterycharging1.s5l8920x.img3", "iv": "c88a33739137d2946ccab9e24d2557d0", "key": "d76eaac3f2e2849761da72d33078e5ac34ff14e4643497a7e6a6bc82ba9bd9c1"},
+   "BatteryFull": {"file": "batteryfull.s5l8920x.img3", "iv": "695e544e28f4b7c80714b6c11c872963", "key": "61d1d6427a96fab5574302564b89632fa56115f371d10f7e4496b6d14910094b"},
+   "BatteryLow0": {"file": "batterylow0.s5l8920x.img3", "iv": "b90908e23c4db6a38bed7c8c856fcb18", "key": "f31d713d7fdc3abf35787d77a9257a03460d4a10229f9d7b8b786dd1265c4a30"},
+   "BatteryLow1": {"file": "batterylow1.s5l8920x.img3", "iv": "aa5d428f8ec8dd39de5087d777b7256d", "key": "4e8ef5b47faf54dcd68403d2a791f7d9e2255478f5c8abdb75b77e0a3dd79b2e"},
+   "DeviceTree": {"file": "DeviceTree.n88ap.img3", "iv": "d46e7bd462b11969d63888eda610cd0c", "key": "7a47f4e21005b1ba2d87a166e98a17b3505cbe89af485c7c1e7abacb4fab4ffa"},
+   "GlyphCharging": {"file": "glyphcharging.s5l8920x.img3", "iv": "ee40776324e0c3eefa000d9528e7a2f1", "key": "54d8b9dd5820d063001bc4e7932105633265ee99b2a2877ab88d43f7b75d38a4"},
+   "GlyphPlugin": {"file": "glyphplugin.s5l8920x.img3", "iv": "55e33df2506a2483ee4185af4683eaa2", "key": "832f627ca20d68498347def95b450fe27f3fd9e6535435a3a657d3a36cf99af8"},
+   "iBEC": {"file": "iBEC.n88ap.RELEASE.dfu", "iv": "5f91818c8a5bc2027627aee8ac14ef42", "key": "741bfbc205572d57161288a84b1348ec4bce49951fa50a5818e586b672742f1f"},
+   "iBoot": {"file": "iBoot.n88ap.RELEASE.img3", "iv": "d9f0dfd5a6b286b4036c5671237bfa5b", "key": "2357d47d318f49348467c7d0564150d3d4f671aa8bbdaa01cf8f4b246cc84e88"},
+   "iBSS": {"file": "iBSS.n88ap.RELEASE.dfu", "iv": "36b83fb0f15fc824927f64714b572966", "key": "108be8e2f40673d347acaa48142df54ebbc17b4b321f8d1392bc311e9cb92347"},
+   "kernelcache": {"file": "kernelcache.release.n88", "iv": "9545f4313203020c09859485037b084d", "key": "d3ea209f96ceda01e12873c17cdb94fe00a24583433b8031dd6924be96bb6b22"},
+   "LLB": {"file": "LLB.n88ap.RELEASE.img3", "iv": "78e01451b5a715ab5791cd4ceeebc4fd", "key": "5771ed57a5a9e0fd08c06c6e5a85a5b98ec144b588d8a47d8dd754fecbaae565"},
+   "RecoveryMode": {"file": "recoverymode~iphone.s5l8920x.img3", "iv": "63a5d8bccba248ffb6dd04ad8c6e531b", "key": "5ac5c9028b3f7526c76b37ef5ecd880d3f4b2629ae56766467e035bf1c30e2ea"},
+   "RestoreRamDisk": {"file": "038-7920-010.dmg", "iv": "0ae997b55b71a32d9b4948a5e51393b8", "key": "b949d4f33fc2c5d18c4f5c621492780f0bb5c98b3ab4fb9026da91d989f47e8f"},
+   "rootfs": {"file": "038-7952-010.dmg", "key": "3ac8725bed4f5f5cdad44c224dcfbc230e1480d081cbbd625713edc85a9b54015d6165c3"},
+   "UpdateRamDisk": {"file": "038-7923-010.dmg", "iv": "ba24397c7a03cf3eebadf039cbae67bc", "key": "c29670f86c1687a20fc53a2d3df97dc92755514ac1a85b54795ccf8ce4051c6c"}
+  },
+  "recipe": {"name": "n88", "version": 2, "storage": "16g", "system_mib": 1536, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": false, "writable_nor": true}},
+  "emulator": {"min_protocol": 1},
+  "estimates": {"prepared_bytes": 1503238554, "peak_bytes": 3799310312, "seconds": 90}
+ },
+ {
   "id": "n88ap-10B141",
   "board": "n88ap",
   "product_type": "iPhone2,1",
@@ -4045,7 +4111,7 @@
   "build": "10B141",
   "released": "2013-01-28",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS6.1/041-6493.20130128.sh4rG/iPhone2,1_6.1_10B141_Restore.ipsw", "sha1": "db88aa859cb15af1c70e5e4b30e4056367bd998d", "bytes": 822631819, "mirrors": []},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS6.1/041-6493.20130128.sh4rG/iPhone2,1_6.1_10B141_Restore.ipsw", "sha1": "db88aa859cb15af1c70e5e4b30e4056367bd998d", "bytes": 822631819, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPhone2,1_6.1_10B141_Restore.ipsw", "sha1": "db88aa859cb15af1c70e5e4b30e4056367bd998d", "bytes": 822631819}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8920x.img3", "iv": "d067d5d7e0a1db98108843721145fbbc", "key": "6a6771d69384986b12f6698ed5cc06444f00a4dda37aae22409ecef985a2b56c"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8920x.img3", "iv": "d68dbf1c9381e9a4fcdfeb3766891014", "key": "6555e86771048243b20dc6d96ef264b8b397ba9298b65efe244c22b08426f249"},
@@ -4066,7 +4132,7 @@
    "rootfs": {"file": "038-5806-123.dmg", "key": "47d6a1e876dbd3807d2628c32f934525e48fa787f605ee90d209701a76868831def85c5a"},
    "UpdateRamDisk": {"file": "048-0136-003.dmg", "iv": "b921341ae2266ec2058dd654027ab67a", "key": "72dca1aa0a9f505e59a1004f89f17b0973f95a687c238ef7beefb5c12636f3a1"}
   },
-  "recipe": {"name": "n88", "version": 1, "storage": "16g", "system_mib": 1536, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": false, "writable_nor": true}},
+  "recipe": {"name": "n88", "version": 2, "storage": "16g", "system_mib": 1536, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": false, "writable_nor": true}},
   "emulator": {"min_protocol": 1},
   "estimates": {"prepared_bytes": 1503238554, "peak_bytes": 3799310312, "seconds": 90}
  },
@@ -4078,7 +4144,7 @@
   "build": "10B146",
   "released": "2013-02-19",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS6.1/091-0744.20130215.2E34r/iPhone2,1_6.1.2_10B146_Restore.ipsw", "sha1": "17174031c923080be0b7cfa6f550aa8008b63583", "bytes": 822609618, "mirrors": []},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS6.1/091-0744.20130215.2E34r/iPhone2,1_6.1.2_10B146_Restore.ipsw", "sha1": "17174031c923080be0b7cfa6f550aa8008b63583", "bytes": 822609618},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8920x.img3", "iv": "3fb62bd17ec20653e501a556f03d40c3", "key": "2de185050a14ea3cc682ff532c9e3b9908fa4716a869eb69ae914918a78ccf96"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8920x.img3", "iv": "52bccfdfad0b545e2cb85882e094494d", "key": "a0a142e6c03714c4785ccc6d84f90b93a71620e5dc99248330b7b98bec4bd967"},
@@ -4099,7 +4165,7 @@
    "rootfs": {"file": "048-0896-002.dmg", "key": "7ea65d98990caf5db0d92c4a7f5938fe850b3c511de24fdf1f8460ec98caa8698f5fc779"},
    "UpdateRamDisk": {"file": "048-0739-002.dmg", "iv": "0450b79be1f5e0e2549c0c0e400726d7", "key": "634e369f8e618402a3e747919b7d4f0d46bb1aeccf431ce7b1ea5f07864d62cd"}
   },
-  "recipe": {"name": "n88", "version": 1, "storage": "16g", "system_mib": 1536, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": false, "writable_nor": true}},
+  "recipe": {"name": "n88", "version": 2, "storage": "16g", "system_mib": 1536, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": false, "writable_nor": true}},
   "emulator": {"min_protocol": 1},
   "estimates": {"prepared_bytes": 1503238554, "peak_bytes": 3799310312, "seconds": 90}
  },
@@ -4111,7 +4177,7 @@
   "build": "10B329",
   "released": "2013-03-19",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS6.1/091-2371.20130319.715gt/iPhone2,1_6.1.3_10B329_Restore.ipsw", "sha1": "15e92a89ff3caf51523962fdb125e918d78c1807", "bytes": 822996462, "mirrors": []},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS6.1/091-2371.20130319.715gt/iPhone2,1_6.1.3_10B329_Restore.ipsw", "sha1": "15e92a89ff3caf51523962fdb125e918d78c1807", "bytes": 822996462},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8920x.img3", "iv": "1276f1267d7208b132167883bc36d5bd", "key": "b469c98bc66e256c76671391d6740d01874858a11c718b7ad6405518bc755cfd"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8920x.img3", "iv": "2fca73625044eff92e7c1b2dc73ca064", "key": "7fa9a62580201afbecb5210e1b3db79936e5e1ba95b473deec2f7bd257fd3512"},
@@ -4132,7 +4198,7 @@
    "rootfs": {"file": "048-2484-005.dmg", "key": "4bcdd29f167775f32fd7c6bfec2e1f2ffec9b8d7bf72832092a8be71501e347c459e9bc5"},
    "UpdateRamDisk": {"file": "048-2730-005.dmg", "iv": "362b5e3fb4ea0e6a21de4e201b567aed", "key": "3ff01c24bb405260a62abbf28ed55fcd87a01d163ffbfa3f1912d73e21aa633d"}
   },
-  "recipe": {"name": "n88", "version": 1, "storage": "16g", "system_mib": 1536, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": false, "writable_nor": true}},
+  "recipe": {"name": "n88", "version": 2, "storage": "16g", "system_mib": 1536, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": false, "writable_nor": true}},
   "emulator": {"min_protocol": 1},
   "estimates": {"prepared_bytes": 1503238554, "peak_bytes": 3799310312, "seconds": 90}
  },
@@ -4144,7 +4210,7 @@
   "build": "10B500",
   "released": "2014-02-21",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS6.1/091-3457.20140221.Btt3e/iPhone2,1_6.1.6_10B500_Restore.ipsw", "sha1": "eb7f495760a500bb284b07f11492a4fadf687802", "bytes": 822970962, "mirrors": []},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS6.1/091-3457.20140221.Btt3e/iPhone2,1_6.1.6_10B500_Restore.ipsw", "sha1": "eb7f495760a500bb284b07f11492a4fadf687802", "bytes": 822970962},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8920x.img3", "iv": "33787ba6a52afd52cab7080e96d01056", "key": "25ec25f7f2962bc8f655cc039aa463c2a0d0a1f78db7968f741ada0ba37d9ae2"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8920x.img3", "iv": "a0cafdd35eab1173e11426ce22b5bdad", "key": "e13213da988fcad1aed77ca633c8d29edc09ed3a6b085fa1bafb266c3166c9d6"},
@@ -4165,7 +4231,7 @@
    "rootfs": {"file": "048-2955-001.dmg", "key": "7ab6f9149d78ade9b6900740a8312d6f81bf75be6688e72d9048fdf1ec0f231e1e6c3705"},
    "UpdateRamDisk": {"file": "048-2900-001.dmg", "iv": "ba66476a54ad600fa55260a666d3a985", "key": "7175f3b04b21dc4f2440396c99a715e1b491618327c8df71068c632c4cd80baa"}
   },
-  "recipe": {"name": "n88", "version": 1, "storage": "16g", "system_mib": 1536, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": false, "writable_nor": true}},
+  "recipe": {"name": "n88", "version": 2, "storage": "16g", "system_mib": 1536, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": false, "writable_nor": true}},
   "emulator": {"min_protocol": 1},
   "estimates": {"prepared_bytes": 1503238554, "peak_bytes": 3799310312, "seconds": 90}
  }
