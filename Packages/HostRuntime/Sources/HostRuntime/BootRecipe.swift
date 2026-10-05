@@ -86,7 +86,26 @@ public nonisolated enum BootRecipe {
         public var wifi: Bool
         public var guestPackage: String? = nil
         public var machineOptions: [String: String] = [:]
+        /// The radio boards' (-M iPhone-4, n88) modem: always attached, as on a real iPhone (its IMEI is in the UDID);
+        /// `.noSIM` and `.noService` keep it answering without a SIM or a network.
+        public var cellular: Cellular = .on
     }
+
+    /// What the modem of a radio board offers: a registered SIM, no SIM, or a SIM with no network.
+    public enum Cellular: String, Sendable, CaseIterable {
+        case on, noSIM, noService
+
+        var globals: [String] {
+            switch self {
+            case .on: []
+            case .noSIM: ["-global", "ios-baseband.sim-present=off"]
+            case .noService: ["-global", "ios-baseband.registered=off"]
+            }
+        }
+    }
+
+    /// The A4-pipeline machines with a radio: the fake modem behind spi2 (baseband=on) and its data netdev, cell0.
+    static let radioMachines: Set<String> = ["iPhone-4", "n88"]
 
     /// The iPod touch 1G (qemu-ios `-M iPod-Touch-1G`): the S5L8900 bootrom and the base's iBoot-204 (IMG2 payload),
     /// the base's NAND under a page overlay, and the NOR as a pflash drive on the private writable copy (iBoot and
@@ -190,6 +209,14 @@ public nonisolated enum BootRecipe {
                 }
             }
         }
+        // iPhone bases prepared before their identity carried an IMEI (recipe 1): the same seed-derived IMEI
+        // FirmwareKit records now, so the modem's IMEI makes the UDID the boot admission step recorded.
+        if let board = object["board"] as? String, IPhoneIdentity.a4Boards.contains(board), machine["imei"] == nil,
+           let data = try? Data(contentsOf: lock.deletingLastPathComponent().appendingPathComponent("identity.json")),
+           let identity = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let upgraded = IPhoneIdentity.upgraded(identity) {
+            machine["imei"] = upgraded.imei
+        }
         return machine
     }
 
@@ -283,12 +310,18 @@ public nonisolated enum BootRecipe {
         if let usb = d.usbAddress { machine += ",usb-tcp-addr=\(usb)" }
         if !d.wifi { machine += ",wifi=off" }
         if let offer = d.guestPackage { machine += ",guest-package=\(escape(offer))" }
+        let radio = radioMachines.contains(board)
+        if radio { machine += ",baseband=on" }
         machine += options(d.machineOptions)
+        // The modem's packet data goes to its own slirp, cell0: Wi-Fi's (the web proxy's guestfwd, the Setup
+        // restriction) under that id, so a PAC answer cached on Wi-Fi still reaches the proxy over cellular.
+        let cellular = radio ? (netdev.map { ["-netdev", $0.replacingOccurrences(of: "id=wifi0", with: "id=cell0")] } ?? [])
+            + d.cellular.globals : []
         // usb-kbd on the always-on EHCI becomes the active keyboard for key_mac. 20 mA: 4.x gives the
         // dock's host side AAPL,power-supply 50 and refuses the default 100 mA device ("not enough power").
         let argv = ["LightTouchMac", "-M", machine, "-display", "none", "-no-shutdown"] + audio
             + ["-serial", serial] + (s5l8920 ? [] : ["-device", "usb-kbd,bus=usb-bus.0,max-power=20"])
-            + (netdev.map { ["-netdev", $0] } ?? []) + restore
+            + (netdev.map { ["-netdev", $0] } ?? []) + cellular + restore
         return BootConfig(argv: argv, machine: board)
     }
 

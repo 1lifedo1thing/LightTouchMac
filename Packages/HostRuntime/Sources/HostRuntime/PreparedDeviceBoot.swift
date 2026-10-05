@@ -132,7 +132,8 @@ public struct PreparedDeviceBoot {
 
     public func configuration(bootArgs: String, usbAddress: String?, wifi: Bool,
                               guestPackage: String?, serial: String, audio: [String],
-                              netdev: String?, restore: [String] = [], webProxy: WebProxyEndpoint? = nil) throws -> BootConfig {
+                              netdev: String?, restore: [String] = [], webProxy: WebProxyEndpoint? = nil,
+                              cellular: BootRecipe.Cellular = .on) throws -> BootConfig {
         var config: BootConfig
         switch board {
         case .n45, .m68:
@@ -150,9 +151,11 @@ public struct PreparedDeviceBoot {
         case .k48, .n81, .n90, .n88, .n18:
             let bootPath = try BootRecipe.preparedIPadBoot(strategy: strategy, image: boot.path,
                                                           writableNOR: writableNOR?.path, gidBlobs: gidBlobs)
-            config = BootRecipe.iPad(.init(boot: bootPath, nand: nand.path, overlay: overlay.path,
+            var ipad = BootRecipe.IPad(boot: bootPath, nand: nand.path, overlay: overlay.path,
                         dieID: dieID, usbAddress: usbAddress, wifi: wifi,
-                        guestPackage: guestPackage, machineOptions: machine),
+                        guestPackage: guestPackage, machineOptions: machine)
+            ipad.cellular = cellular
+            config = BootRecipe.iPad(ipad,
                         serial: serial, audio: audio, netdev: netdev, restore: restore,
                         board: board.a4Machine)
         }

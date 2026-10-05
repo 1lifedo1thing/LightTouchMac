@@ -3,6 +3,29 @@ import Testing
 import HostRuntime
 
 struct BootTests {
+    /// The radio boards boot with their modem (baseband=on) reporting the seed's IMEI, and its data netdev is
+    /// Wi-Fi's under id=cell0; No SIM and No Service keep the modem. The iPad gets none of it.
+    @Test func radioBoardsGetModemIMEIAndCellNetdev() throws {
+        let identity: [String: Any] = ["serial-number": "ABCDEFGHJKL", "wifi-mac": "02:11:22:33:44:66",
+                                       "bt-mac": "02:11:22:33:44:67", "seed": "iphone4-test"]
+        let imei = IPhoneIdentity.imei(seed: "iphone4-test")
+        #expect(imei.count == 15 && imei.hasPrefix("00000000") && IPhoneIdentity.luhn(String(imei.prefix(14))) == Int(String(imei.last!)))
+        #expect(IPhoneIdentity.upgraded(identity)?.udid == IPhoneIdentity.udid(serial: "ABCDEFGHJKL", imei: imei,
+                                                                              wifiMAC: "02:11:22:33:44:66", btMAC: "02:11:22:33:44:67"))
+        for (board, machine) in [(PreparedDeviceBoot.Board.n90, "iPhone-4"), (.n88, "n88"), (.k48, "ipad1")] {
+            let f = try Fixture(board: board, strategy: "kboot", identity: identity)
+            defer { try? FileManager.default.removeItem(at: f.root) }
+            let config = try f.prepare(board).configuration(bootArgs: "", usbAddress: nil, wifi: true, guestPackage: nil,
+                serial: "null", audio: [], netdev: "user,id=wifi0,guestfwd=tcp:10.0.2.100:3128-cmd:nc", cellular: .noSIM)
+            let m = config.argv[config.argv.firstIndex(of: "-M")! + 1]
+            let radio = board != .k48
+            #expect(m.hasPrefix(machine + ","))
+            #expect(m.contains(",baseband=on") == radio && m.contains(",imei=\(imei)") == radio)
+            #expect(config.argv.contains("user,id=cell0,guestfwd=tcp:10.0.2.100:3128-cmd:nc") == radio)
+            #expect(config.argv.contains("ios-baseband.sim-present=off") == radio)
+        }
+    }
+
     @Test func legacyWireDefaults() throws {
         let boot = try JSONDecoder().decode(BootConfig.self, from: Data(#"{"argv":["LightTouchMac"],"machine":"ipad1"}"#.utf8))
         #expect(boot.environment == [:])
@@ -15,7 +38,7 @@ private final class Fixture {
     var base: URL { root.appendingPathComponent("base, with spaces") }
     var overlay: URL { root.appendingPathComponent("overlay") }
     var nor: URL { root.appendingPathComponent("private-nor") }
-    init(board: PreparedDeviceBoot.Board, strategy: String?) throws {
+    init(board: PreparedDeviceBoot.Board, strategy: String?, identity: [String: Any]? = nil) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: base.appendingPathComponent("nand"), withIntermediateDirectories: true)
         for name in ["iBoot.bin", "kboot.bin", "SecureROM.bin", "gid-blobs.bin"] {
@@ -25,7 +48,7 @@ private final class Fixture {
         var lock: [String: Any] = ["board": board.rawValue, "machine": ["aes-uid": "engine"]]
         if let strategy { lock["boot_strategy"] = strategy }
         try JSONSerialization.data(withJSONObject: lock).write(to: base.appendingPathComponent("device.lock.json"))
-        try JSONSerialization.data(withJSONObject: ["die-id": ["0x123", "0x456"], "unique-chip-id": "0x234", "wifi-mac": "02:11:22:33:44:66"])
+        try JSONSerialization.data(withJSONObject: identity ?? ["die-id": ["0x123", "0x456"], "unique-chip-id": "0x234", "wifi-mac": "02:11:22:33:44:66"])
             .write(to: base.appendingPathComponent("identity.json"))
     }
     deinit { try? FileManager.default.removeItem(at: root) }

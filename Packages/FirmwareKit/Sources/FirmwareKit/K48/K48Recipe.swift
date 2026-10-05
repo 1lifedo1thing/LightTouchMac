@@ -14,6 +14,7 @@
 
 import CryptoKit
 import Foundation
+import HostRuntime
 
 final class K48Board: Board {
     let arch = "armv7"
@@ -74,6 +75,8 @@ final class K48Board: Board {
 
     func identity(seed: String) throws -> UnitIdentity {
         ident = try UnitIdentity.synthesize(seed: seed, storage: recipe.storage, modelNumber: kbootBoard ? a4.modelNumber : nil)
+        // The radio boards: the modem reports the IMEI, and lockdownd/MobileGestalt hash it into the UDID.
+        if IPhoneIdentity.a4Boards.contains(board) { ident = ident.addingIMEI(seed: seed) }
         return ident
     }
 
@@ -236,6 +239,8 @@ final class K48Board: Board {
             "identity": ["die_id": dieID],
             "outputs": outputs,
             "gl_test": SystemEdits.Options(recipe: recipe).glTest,
+            // -M <board>,imei=: the modem (baseband=on) reports the identity's IMEI, so the UDID matches it.
+            "machine": ident["imei"].map { ["imei": $0] } ?? [:],
         ]
     }
 }

@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import HostRuntime
 import Testing
 @testable import FirmwareKit
 
@@ -67,6 +68,20 @@ struct IdentityTests {
         #expect(UnitIdentity.luhn("49015420323751") == 8)   // the classic example IMEI 490154203237518
         #expect(id["bt-mac"] != nil && id.udid == Data(Insecure.SHA1.hash(data: Data((id["serial-number"]! + imei + id["wifi-mac"]! + id["bt-mac"]!).utf8))).hexString)
         #expect(id.fields.filter { $0.key == "udid" }.count == 1)
+    }
+
+    /// The A4 radio boards (n90ap, n88ap): the iPad-pipeline identity plus the IMEI after the serial, the UDID over
+    /// all four; nothing else moves, and the boot's derivation for older bases (IPhoneIdentity.upgraded) agrees.
+    @Test func a4IPhoneIdentityCarriesIMEI() throws {
+        let base = try UnitIdentity.synthesize(seed: "iphone4-8C148-default", modelNumber: "MC603")
+        let id = base.addingIMEI(seed: "iphone4-8C148-default")
+        let imei = try #require(id["imei"])
+        #expect(id.fields[1].key == "imei" && id.fields.last?.key == "udid" && id.fields.count == base.fields.count + 1)
+        #expect(id.fields.filter { $0.key != "imei" && $0.key != "udid" }.map(\.key) == base.fields.filter { $0.key != "udid" }.map(\.key))
+        #expect(id.udid == Data(Insecure.SHA1.hash(data: Data((id["serial-number"]! + imei + id["wifi-mac"]! + id["bt-mac"]!).utf8))).hexString)
+        #expect(id.udid != base.udid)
+        let legacy = try JSONSerialization.jsonObject(with: base.json()) as! [String: Any]
+        #expect(IPhoneIdentity.upgraded(legacy)?.imei == imei && IPhoneIdentity.upgraded(legacy)?.udid == id.udid)
     }
 
     @Test func writeIsExclusiveAndPrivate() throws {

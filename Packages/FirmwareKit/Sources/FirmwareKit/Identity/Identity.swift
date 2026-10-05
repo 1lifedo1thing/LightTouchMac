@@ -3,7 +3,8 @@
 //
 //   let id = UnitIdentity.synthesize(seed: "ipad1-7B500-default", storage: "16g")    // iPad 1 (k48ap)
 //   let pod = UnitIdentity.synthesizeIPod(seed: s, modelNumber: "MC086", regionInfo: "LL/A")   // n72ap
-//   id["udid"], id.udid                         // SHA1(serial + Wi-Fi MAC + BT MAC), MACs lowercase
+//   id["udid"], id.udid                         // SHA1(serial + Wi-Fi MAC + BT MAC), MACs lowercase; iPhones add the IMEI
+//   id.addingIMEI(seed: s)                      // n90ap/n88ap/m68ap: imei + SHA1(serial + IMEI + Wi-Fi MAC + BT MAC)
 //   UnitIdentity.udid(serial:wifiMAC:btMAC:)
 //   id.json()                                   // byte-identical to Python's json.dump(ident, f, indent=1)
 //   try id.write(to: url)                       // O_EXCL, mode 600
@@ -14,6 +15,7 @@
 
 import CryptoKit
 import Foundation
+import HostRuntime
 
 public struct UnitIdentity: Equatable, Sendable {
     public enum Value: Equatable, Sendable { case string(String), list([String]) }
@@ -95,28 +97,26 @@ public struct UnitIdentity: Equatable, Sendable {
     /// and its Luhn digit), which the baseband reports and lockdownd hashes into the UDID:
     /// SHA1(serial + IMEI + Wi-Fi MAC + BT MAC).
     public static func synthesizeIPhone(seed: String, modelNumber: String, regionInfo: String) throws -> UnitIdentity {
-        var id = try synthesizeIPod(seed: seed, modelNumber: modelNumber, regionInfo: regionInfo)
-        let h = Array(SHA256.hash(data: Data(("imei:" + seed).utf8)))
-        let body = syntheticTAC + h[0..<6].map { String($0 % 10) }.joined()
-        let imei = body + String(luhn(body))
-        id.fields.removeAll { $0.key == "udid" }
+        try synthesizeIPod(seed: seed, modelNumber: modelNumber, regionInfo: regionInfo).addingIMEI(seed: seed)
+    }
+
+    /// This identity with an iPhone's IMEI (IPhoneIdentity.imei: TAC 00000000, a serial from the seed, its Luhn digit)
+    /// after the serial, and the UDID the baseband's IMEI makes: SHA1(serial + IMEI + Wi-Fi MAC + BT MAC).
+    public func addingIMEI(seed: String) -> UnitIdentity {
+        var id = self
+        let imei = IPhoneIdentity.imei(seed: seed)
+        id.fields.removeAll { $0.key == "udid" || $0.key == "imei" }
         id.fields.insert(("imei", .string(imei)), at: 1)
-        id.fields.append(("udid", .string(Data(Insecure.SHA1.hash(data: Data((id["serial-number"]! + imei + id["wifi-mac"]!.lowercased()
-            + id["bt-mac"]!.lowercased()).utf8))).hexString)))
+        id.fields.append(("udid", .string(IPhoneIdentity.udid(serial: id["serial-number"]!, imei: imei,
+                                                              wifiMAC: id["wifi-mac"]!, btMAC: id["bt-mac"]!))))
         return id
     }
 
     /// A type allocation code no manufacturer was ever assigned, so a generated IMEI can't collide with a real phone's.
-    static let syntheticTAC = "00000000"
+    static let syntheticTAC = IPhoneIdentity.syntheticTAC
 
     /// The Luhn check digit of a digit string (an IMEI's fifteenth).
-    static func luhn(_ digits: String) -> Int {
-        let sum = digits.reversed().enumerated().reduce(0) { s, e in
-            let d = Int(String(e.element))!
-            return s + (e.offset % 2 == 0 ? (d * 2 > 9 ? d * 2 - 9 : d * 2) : d)
-        }
-        return (10 - sum % 10) % 10
-    }
+    static func luhn(_ digits: String) -> Int { IPhoneIdentity.luhn(digits) }
 
     static func mac(_ b: [UInt8]) -> String { b.map { String(format: "%02x", $0) }.joined(separator: ":") }
 

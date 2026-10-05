@@ -155,7 +155,7 @@ final class EmulatorController {
             if deviceReachable == true, !didSweepStaging {
                 didSweepStaging = true
                 if let socket = usbmux.session?.clientSocket {
-                    let endpoint = DeviceServices(clientSocket: socket, udid: instance.identity?.udid, session: bootScope.id)
+                    let endpoint = DeviceServices(clientSocket: socket, udid: guestUDID, session: bootScope.id)
                     bootScope[.staging] = Task { await endpoint.sweepStaging() }
                 }
             }
@@ -357,6 +357,18 @@ final class EmulatorController {
 
     /// Storage preparation and argv assembly are shared with headless callers.
     /// DeviceProcess already holds the storage lease when this hello callback runs.
+    /// The UDID the guest reports: the record's, or for an iPhone base prepared before its identity carried an IMEI
+    /// (n90/n88 recipe 1) the one its seed-derived IMEI makes; BootRecipe.lockMachine passes that IMEI to the modem.
+    private var guestUDID: String? {
+        if IPhoneIdentity.a4Boards.contains(instance.board),
+           let data = try? Data(contentsOf: instance.paths.base.appendingPathComponent("identity.json")),
+           let identity = try? JSONSerialization.jsonObject(with: data) as? [String: Any], identity["imei"] == nil,
+           let upgraded = IPhoneIdentity.upgraded(identity) {
+            return upgraded.udid
+        }
+        return instance.identity?.udid
+    }
+
     private func preparedBootConfiguration() -> BootConfig? {
         let prepared: PreparedDeviceBoot
         do {
@@ -709,7 +721,7 @@ final class EmulatorController {
         guard let socket = usbmux.session?.clientSocket else { return }
         do {
             try DeveloperConnectionProfile.publish(instance: instance.id, session: bootScope.id,
-                socket: socket, udid: instance.identity?.udid)
+                socket: socket, udid: guestUDID)
         } catch { logEvent("developer access: \(error.localizedDescription)") }
     }
 
@@ -1745,7 +1757,7 @@ final class EmulatorController {
             guard !bootScope.retired, let session = usbmux.session else {
                 throw DeviceToolsError.failed("The device is not reachable over USB yet.")
             }
-            return DeviceServices(clientSocket: session.clientSocket, udid: instance.identity?.udid, session: bootScope.id)
+            return DeviceServices(clientSocket: session.clientSocket, udid: guestUDID, session: bootScope.id)
         }
     }
 

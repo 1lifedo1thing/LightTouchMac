@@ -44,11 +44,32 @@ public nonisolated enum FirmwareBootAdmission {
 
     @Sendable static func migrate(_ owner: StoppedRecordOwner) throws -> Bool {
         guard let bytes = owner.bytes, let paths = owner.paths,
-              let record = try JSONSerialization.jsonObject(with: bytes) as? [String: Any],
-              record["board"] as? String == "n72ap" else { return false }
+              let record = try JSONSerialization.jsonObject(with: bytes) as? [String: Any] else { return false }
+        if let board = record["board"] as? String, IPhoneIdentity.a4Boards.contains(board) {
+            return try iPhoneIMEI(base: paths.base, marker: owner.device.appendingPathComponent(FirmwareWire.migratedRecipeFile))
+        }
+        guard record["board"] as? String == "n72ap" else { return false }
         return try N72NAND.migrateLegacyGPT(base: paths.base, overlay: paths.overlay,
             storageKey: (record["storage"] as? [String: Any])?["key"] as? String,
             marker: owner.device.appendingPathComponent(FirmwareWire.migratedRecipeFile))
+    }
+
+    /// n90/n88 recipe 1 -> 2: the identity gains the IMEI the modem reports, and the UDID it makes
+    /// (IPhoneIdentity). The read-only base keeps its identity.json; both values are pure functions of it, so
+    /// the boot derives the IMEI (BootRecipe.lockMachine) and the app the UDID. The marker records the step.
+    static func iPhoneIMEI(base: URL, marker: URL) throws -> Bool {
+        let fm = FileManager.default
+        guard !fm.fileExists(atPath: marker.path),
+              let lock = (try? Data(contentsOf: base.appendingPathComponent("device.lock.json")))
+                .flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }),
+              let version = (((lock["entry"] as? [String: Any])?["content"] as? [String: Any])?["recipe"] as? [String: Any])?["version"] as? Int,
+              let board = lock["board"] as? String, let step = FirmwareWire.admissionRecipeSteps[board]?[version],
+              let identity = (try? Data(contentsOf: base.appendingPathComponent("identity.json")))
+                .flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }),
+              identity["imei"] == nil, let upgraded = IPhoneIdentity.upgraded(identity) else { return false }
+        try N72NAND.writeDurably(JSONSerialization.data(withJSONObject: ["recipe": step, "step": "iphone-imei",
+            "imei": upgraded.imei, "udid": upgraded.udid], options: [.sortedKeys]), to: marker)
+        return true
     }
 
     nonisolated(nonsending) static func admit(device: URL, policy: StorageRecordPolicy = .standalone,

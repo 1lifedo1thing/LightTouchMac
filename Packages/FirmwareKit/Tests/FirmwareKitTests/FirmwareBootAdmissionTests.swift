@@ -1,9 +1,37 @@
 import Foundation
+import FirmwareSchema
 import HostRuntime
 import Testing
 @testable import FirmwareKit
 
 struct FirmwareBootAdmissionTests {
+    /// n90/n88 recipe 1 -> 2: admission records the IMEI and UDID the base's identity makes, once; a recipe 2 base
+    /// (its identity has the IMEI) and other boards are left alone.
+    @Test func iPhoneIMEIStep() throws {
+        let root = try Fixtures.tempDir("iphone-imei")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let base = root.appendingPathComponent("base"), marker = root.appendingPathComponent(FirmwareWire.migratedRecipeFile)
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        let ident = try UnitIdentity.synthesize(seed: "iphone4-test", modelNumber: "MC603")
+        func write(board: String, version: Int, identity: UnitIdentity) throws {
+            try JSONSerialization.data(withJSONObject: ["board": board, "entry": ["content": ["board": board, "recipe": ["version": version]]]])
+                .write(to: base.appendingPathComponent("device.lock.json"))
+            try identity.json().write(to: base.appendingPathComponent("identity.json"))
+            try? FileManager.default.removeItem(at: marker)
+        }
+        try write(board: "n90ap", version: 1, identity: ident)
+        #expect(try FirmwareBootAdmission.iPhoneIMEI(base: base, marker: marker))
+        let m = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: marker)) as? [String: Any])
+        #expect(m["recipe"] as? Int == 2 && m["step"] as? String == "iphone-imei"
+                && m["udid"] as? String == ident.addingIMEI(seed: "iphone4-test").udid)
+        #expect(try !FirmwareBootAdmission.iPhoneIMEI(base: base, marker: marker))   // once
+        try write(board: "n90ap", version: 2, identity: ident.addingIMEI(seed: "iphone4-test"))
+        #expect(try !FirmwareBootAdmission.iPhoneIMEI(base: base, marker: marker))
+        try write(board: "n81ap", version: 1, identity: ident)
+        #expect(try !FirmwareBootAdmission.iPhoneIMEI(base: base, marker: marker))
+        #expect(FirmwareWire.admittedRecipe(1, board: "n88ap") == 2 && FirmwareWire.admittedRecipe(1, board: "n81ap") == 1)
+    }
+
     private func fixture() throws -> (root: URL, device: URL, record: Data) {
         let root = try Fixtures.tempDir("boot-admission")
         let device = root.appendingPathComponent("device"), base = device.appendingPathComponent("base")
