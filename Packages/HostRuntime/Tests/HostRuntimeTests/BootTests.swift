@@ -231,6 +231,10 @@ extension BootTests {
             #expect(c.argv[2].contains(",iboot=" + BootRecipe.escape(f.base.appendingPathComponent("iBoot.bin").path)))
             // only the iPhone has a modem, whose cellular data needs its cell0 slirp
             #expect(c.argv.contains("user,id=cell0") == (board == .m68))
+            // with the web proxy's forward on Wi-Fi, cellular gets the same one
+            let proxied = try f.prepare(board).configuration(bootArgs: "", usbAddress: nil, wifi: true,
+                guestPackage: nil, serial: "null", audio: [], netdev: "user,id=wifi0,guestfwd=tcp:10.0.2.100:3128-cmd:x")
+            #expect(proxied.argv.contains("user,id=cell0,guestfwd=tcp:10.0.2.100:3128-cmd:x") == (board == .m68))
         }
     }
 
