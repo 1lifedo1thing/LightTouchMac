@@ -5,6 +5,8 @@ enum WebProxyStatus: Equatable {
     case waiting, applying, ready, failed
     /// No guest agent to trust the proxy certificate silently: the profile was offered instead.
     case needsTap
+    /// iPhone OS 1.x: the certificate is written into the stopped device (FirmwareTool.trustAnchor) at its next start.
+    case needsRestart
 
     func message(for profile: DeviceProfile) -> String? {
         switch self {
@@ -13,6 +15,7 @@ enum WebProxyStatus: Equatable {
         case .ready: nil
         case .failed: "Couldn’t update the proxy. Try again."
         case .needsTap: "Tap Install on the \(profile.shortName) to trust the proxy certificate."
+        case .needsRestart: "Restart the \(profile.shortName) to trust the proxy certificate."
         }
     }
 

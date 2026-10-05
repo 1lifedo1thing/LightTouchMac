@@ -3,6 +3,7 @@
 // PAC) and the trust; lockdown's MCInstall profile only for a guest without an
 // agent (LockdownTools).
 
+import CryptoKit
 import Foundation
 import Security
 
@@ -11,6 +12,9 @@ struct WebProxySetup: Sendable {
     let guest: GuestServices
     /// This device's web-proxy files (WebProxyConfiguration.directory).
     let proxyDirectory: URL
+    /// iPhone OS 1.x (no agent, no MCInstall): the device directory and storage key the stopped trust is judged
+    /// against (FirmwareWire.trustAnchorFile, written when the stopped device took the certificate).
+    var stoppedTrust: (device: URL, storageKey: String)? = nil
 
     private var proxyFile: String { WebProxyConfiguration.file(in: proxyDirectory).path }
 
@@ -33,6 +37,9 @@ struct WebProxySetup: Sendable {
             logEvent("proxy: certificate preparation failed: \(error)")
             throw DeviceToolsError.failed("Couldn’t prepare the proxy certificate.")
         }
+        if let stopped = stoppedTrust {
+            return Self.trusted(der, device: stopped.device, storageKey: stopped.storageKey) ? .ready : .needsRestart
+        }
         // The agent claims its channel shortly after lockdown answers; give it a moment before falling back.
         if await guest.agent.waitAlive(seconds: 15) {
             do {
@@ -54,5 +61,13 @@ struct WebProxySetup: Sendable {
             throw DeviceToolsError.toolMissing(name)
         }
         return tool
+    }
+
+    /// Whether the stopped device took `der` as an anchor in its current storage (FirmwareWire.trustAnchorFile).
+    static func trusted(_ der: Data, device: URL, storageKey: String) -> Bool {
+        guard let data = try? Data(contentsOf: device.appendingPathComponent(FirmwareWire.trustAnchorFile)),
+              let marker = try? JSONSerialization.jsonObject(with: data) as? [String: String] else { return false }
+        let sha1 = Insecure.SHA1.hash(data: der).map { String(format: "%02x", $0) }.joined()
+        return marker["sha1"] == sha1 && marker["key"] == storageKey
     }
 }

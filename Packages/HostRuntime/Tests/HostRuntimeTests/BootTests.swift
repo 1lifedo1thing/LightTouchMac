@@ -3,11 +3,6 @@ import Testing
 import HostRuntime
 
 struct BootTests {
-    /// iPhone OS 1.x neither routes through the PAC nor can trust the proxy's CA (3A101a, 10-04): no proxy there.
-    @Test func webProxyNeedsIPhoneOS2() {
-        for v in ["1.0", "1.1", "1.1.5"] { #expect(!BootRecipe.webProxyWorks(iosVersion: v), "\(v)") }
-        for v in ["2.0", "2.1.1", "3.1.3", "4.2.1", "5.1.1"] { #expect(BootRecipe.webProxyWorks(iosVersion: v), "\(v)") }
-    }
     @Test func legacyWireDefaults() throws {
         let boot = try JSONDecoder().decode(BootConfig.self, from: Data(#"{"argv":["LightTouchMac"],"machine":"ipad1"}"#.utf8))
         #expect(boot.environment == [:])

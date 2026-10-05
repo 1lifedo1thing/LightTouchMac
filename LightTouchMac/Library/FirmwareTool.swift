@@ -16,6 +16,15 @@ nonisolated enum FirmwareTool {
         return report.changed
     }
 
+    /// iPhone OS 1.x: `certificate` (DER) as a system anchor in the stopped device (`firmwarekit edit --action
+    /// trust-anchor`, a stopped edit through the 1.x FTL). Nothing when the device already trusts it.
+    static func trustAnchor(device: URL, certificate: URL, executable: URL) async throws -> Bool {
+        let data = try await run(["edit", "--device", device.path, "--action", "trust-anchor", "--cert", certificate.path,
+                                  "--record-policy", "managed"], executable: executable)
+        struct Report: Decodable { let changed: Bool }
+        return try JSONDecoder().decode(Report.self, from: data).changed
+    }
+
     static func run(_ arguments: [String], executable: URL) async throws -> Data {
         let child = try await Subprocess.run(.path(FilePath(executable.path)), arguments: Arguments(arguments),
             input: .none, output: .string(limit: 65536), error: .string(limit: 65536))

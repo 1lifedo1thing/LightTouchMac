@@ -8,6 +8,7 @@
 
 import CryptoKit
 import Foundation
+import FirmwareSchema
 import HostRuntime
 import SQLite3
 
@@ -88,9 +89,9 @@ public enum TrustStore1x {
         }
     }
 
-    /// The device directory's record of the anchor its guest trusts: {"sha1": hex, "key": storage key}. A new
+    /// The device directory's record of the anchor its guest trusts (FirmwareWire.trustAnchorFile). A new
     /// storage generation (prepared again, another edit) has another key, so the anchor is written again.
-    public static let marker = "trust-anchor.json"
+    public static let marker = FirmwareWire.trustAnchorFile
 
     /// Makes `certificate` an anchor in a stopped 1.x device's system volume, through a stopped edit (begin, mount,
     /// the row, commit: the 1.x FTL is written in place). False when the device already trusts it.

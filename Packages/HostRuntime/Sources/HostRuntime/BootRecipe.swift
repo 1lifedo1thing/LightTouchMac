@@ -130,13 +130,6 @@ public nonisolated enum BootRecipe {
     /// Apple-ID page ignores "Skip This Step" for minutes (smoke #54). Such a boot runs Setup with slirp
     /// restrict=on (its no-network path) and opens networking once Setup finishes. 3.x/4.x Setup has
     /// no Apple-ID page and boots unrestricted.
-    /// Whether the guest can use the helper's web proxy: route through it (the image's PAC, or itproxy) and trust its
-    /// CA (the agent's ittrust, else lockdown's MCInstall profile). iPhone OS 1.x does neither: on 3A101a, joined and
-    /// with the PAC baked, Safari went DIRECT (no connection to 10.0.2.100:3128 in the Wi-Fi capture), and it has no
-    /// agent and no MCInstall service, so the trust step failed and retried every poll ("Couldn't update the proxy").
-    public static func webProxyWorks(iosVersion: String) -> Bool {
-        iosVersion.compare("2.0", options: .numeric) != .orderedAscending
-    }
 
     public static func setupPhonesHome(iosVersion: String) -> Bool {
         iosVersion.compare("5.0", options: .numeric) != .orderedAscending
