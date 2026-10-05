@@ -210,6 +210,19 @@ struct KBootTests {
         #expect(img.image[Int(img.bootArgsPA - img.loadPA)..<Int(img.bootArgsPA - img.loadPA) + 4] == Data([1, 0, 3, 0]))
     }
 
+    /// iOS 6 (xnu-2107): the string named by movw/movt + add pc instead of a literal (ipad1_kboot.boot_args_version).
+    @Test func bootArgsVersionPCRelative() throws {
+        var k = Self.kernel(at: 0x8000_0000)
+        let s = Data("pe_identify_machine: Epoch Mismatch\0".utf8)
+        k.replaceSubrange(0x100..<0x100 + s.count, with: s)
+        // ldrh r3, [r0, #2]; cmp r3, #3; beq; movw r1, #0xfeee; movt r1, #0xffff; add r1, pc  (0x8000120e + 4 - 0x112 = string)
+        k.replaceSubrange(0x200..<0x210, with: Data([0x43, 0x88, 0x03, 0x2B, 0x00, 0xD0, 0x4F, 0xF6, 0xEE, 0x61,
+                                                     0xCF, 0xF6, 0xFF, 0x71, 0x79, 0x44]))
+        #expect(try MachO(k).bootArgsVersion() == 3)
+        k[0x20E] = 0x7A   // add r2, pc: lands nowhere
+        #expect(try MachO(k).bootArgsVersion() == 2)
+    }
+
     /// xnu-2107 (iOS 6) names the string with movw/movt/add rX, pc after the pair, not through a literal.
     @Test func bootArgsVersionMovwMovt() throws {
         var k = Self.kernel(at: 0x8000_0000)
