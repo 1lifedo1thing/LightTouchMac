@@ -12,8 +12,10 @@ public enum K48NAND {
     /// NANDDRIVERSIGN nSig: "C11" + the epoch digit in the low byte (the FIL reads it as '0' + epoch); epoch 1 for
     /// IOFlashStorage up to 410.3 (iOS 4.3.0), 2 from 410.4 (4.3.5), see signatureEpoch(kernelcache:).
     /// flags 5, + 0x10000 (metadata whitening) where the DT asks for it; the S5L8920 boards' DTs don't, and their WMR
-    /// refuses a whitened store ("Metadata whitening not supported").
-    static let nsigBase: UInt32 = 0x43313130, sigFlags: UInt32 = 0x00010005, plainSigFlags: UInt32 = 0x5
+    /// refuses a whitened store ("Metadata whitening not supported"). Their plain stores carry flags 4: what their own FIL
+    /// writes when it formats (3.1.3 N88), the only value 3.1.3 accepts (flags > 4 is "Incompatible Signature"); 4.x
+    /// and 5.x take it too (as qemu-ios ipad1_nand.py --no-whitening).
+    static let nsigBase: UInt32 = 0x43313130, sigFlags: UInt32 = 0x00010005, plainSigFlags: UInt32 = 0x4
     static func nsig(epoch: UInt8) -> UInt32 { nsigBase + UInt32(epoch) }
     static let tIndex: UInt8 = 0x4, tClosed: UInt8 = 0x8, tUser: UInt8 = 0x10, tVFL: UInt8 = 0x80
     static let unmapped: UInt32 = 0xFFFFFFFF
