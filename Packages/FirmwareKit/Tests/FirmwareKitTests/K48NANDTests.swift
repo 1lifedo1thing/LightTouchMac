@@ -62,6 +62,13 @@ struct K48NANDTests {
         #expect(g.exportedPages == 3_925_449)          // the real 16 GB unit's sector count
     }
 
+    /// 3.0's layout of the same part (vendor type 0x10001): one VFL bank, 1024-page superblocks, a one-page block TOC.
+    @Test func oneBankGeometryForIOS30() {
+        let g = K48NAND.Geometry.k48_16g_v1
+        #expect(g.vflBanks == 1 && g.ppsublk == 1024 && g.toc == 1 && g.dataPages == 1023)
+        #expect(g.json.contains("\"vendor_type\": 65537") && !K48NAND.Geometry.k48_16g.json.contains("vendor_type"))
+    }
+
     /// The FIL's epoch getter, `ldr rN, [pc, #8]; blx rN; adds r0, #0x30; uxtb r0, r0; pop {r7, pc}` naming `movs r0, #2;
     /// bx lr`: r3 as on 4.3.5, r0 as on the 5.0 betas; no getter (4.3.0, 5.0 GM on) is epoch 1.
     @Test(arguments: [(UInt8(3), UInt8(2)), (0, 2), (nil, 1)]) func signatureEpochFromTheGetter(_ reg: UInt8?, _ want: UInt8) throws {

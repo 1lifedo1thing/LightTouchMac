@@ -101,6 +101,7 @@ extension K48NAND {
                   ($0.buses, $0.cePerBus, $0.blocksPerCE, $0.pagesPerBlock, $0.pageSize)
                       == (g["buses"] as? Int, g["ce_per_bus"] as? Int, g["blocks_per_ce"] as? Int, g["pages_per_block"] as? Int, g["page_bytes"] as? Int)
                       && g["spare_bytes"] as? Int == $0.spareBytes
+                      && (g["vendor_type"] as? Int ?? 0x100014) == Int($0.vendorType)
                       && (g["chip_id"] as? String).flatMap { UInt32($0.hasPrefix("0x") ? String($0.dropFirst(2)) : $0, radix: 16) } == $0.chipID
               }) else { throw FirmwareError(.unsupported, "\(dir.path): no known geometry matches geometry.json") }
         return geo
