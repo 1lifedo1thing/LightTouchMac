@@ -96,6 +96,7 @@ struct SingleConfig: Decodable {
     // The lock says whether the bake installed it_agent, including a fitted legacy build.
     let lock = (try? JSONSerialization.jsonObject(with: Data(contentsOf: b.appendingPathComponent("device.lock.json")))) as? [String: Any]
     let identity = (try? JSONSerialization.jsonObject(with: Data(contentsOf: b.appendingPathComponent("identity.json")))) as? [String: Any]
+    let lockAgent = ((lock?["guest_package"] as? [String: Any])?["jobs"] as? [String])?.contains("com.qemu.it-agent.plist") ?? false
     let agent = d.profile.hasGuestTools && (((lock?["derived"] as? [String: Any])?["guest_tools"] as? String)?.hasPrefix("installed") ?? true)
     // 2.x reboot(RB_HALT) unmounts then halts the CPU without writing PMU standby.
     // Its stock power sheet does power off, even when a legacy agent is installed.
@@ -188,7 +189,9 @@ struct SingleConfig: Decodable {
             try? await Task.sleep(for: .seconds(2))
         }
         d.screenshot(generation == 1 ? "lock" : "lock\(generation)")
-        let asks = agent || (a4 && offered)
+        // A lock whose guest package carries the agent (framecheck's home judge expects its answer) gets the wait
+        // even when this run made no offer (no --ipad-itpack): its seed package starts the agent.
+        let asks = agent || (a4 && offered) || lockAgent
         let guestAgent = GuestAgent(link: d.process.link, cache: GuestAgentCache())
         if asks { _ = await guestAgent.waitAlive(seconds: 60) }
         await d.slideToUnlock(generation, agent: asks ? guestAgent : nil)
