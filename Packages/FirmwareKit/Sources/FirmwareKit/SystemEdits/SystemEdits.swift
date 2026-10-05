@@ -7,7 +7,7 @@
 //               CA_ENABLE_OGL=0) + stdio on /dev/console; [appsync] process-local libappsync.dylib injected into installd;
 //               [ca_ogl] the GL front end as OpenGLES.framework/OpenGLES
 //               (+ dyld's override switch: OpenGLES is cached); [web_proxy] the PAC; the guest helpers; storage_mounter loads
-//               it_msmquiet; BTServer Disabled; lockdownd activated (Activation); the guest-package loader and
+//               it_msmquiet; BTServer Disabled (unless [bluetooth]); lockdownd activated (Activation); the guest-package loader and
 //               seed package from armv7.itpack (GuestPackage.seed), whose jobs it_boot loads.
 //   data.img    fresh journaled HFSX "Data" (sparse) seeded with the system volume's /private/var skeleton
 //               (+ [usb_net] the en1 DHCP service, [web_proxy] the en0 AirPort service with the PAC), owners
@@ -33,12 +33,16 @@ public enum SystemEdits {
         public var seal = true
         /// bake --gl-test: the GL fixture job (test devices only: recipe option gl_test, never set in the catalog).
         public var glTest = false
+        /// Leave BTServer enabled: boards whose machine answers the HCI (N88). Off, BTServer is Disabled: with
+        /// nothing on the UART, BlueTool's HCI_Reset never completes.
+        public var bluetooth = false
         public init() {}
         public init(recipe: FirmwareEntry.Recipe) {
             let o = recipe.options
             caOGL = o["ca_ogl"] ?? true; appsync = o["appsync"] ?? false
             webProxy = o["web_proxy"] ?? true; usbNet = o["usb_net"] ?? true
             glTest = o["gl_test"] ?? false
+            bluetooth = o["bluetooth"] ?? false
         }
     }
 
@@ -228,7 +232,7 @@ public enum SystemEdits {
                     dict(d, "EnvironmentVariables")["DYLD_INSERT_LIBRARIES"] = "/" + msm.path
                 }
             }
-            try rewritePlist(at(btJob)) { $0["Disabled"] = true }
+            if !o.bluetooth { try rewritePlist(at(btJob)) { $0["Disabled"] = true } }
             result.activation = try activate(m, log: log)
             rootOwned.append(lockdownd)
             // what this bake left out on purpose: AppSync when off, it_msmquiet where it does not fit
