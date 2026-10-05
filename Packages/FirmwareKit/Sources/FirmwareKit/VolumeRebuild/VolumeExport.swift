@@ -102,13 +102,16 @@ public enum VolumeExport {
                 t = Date()
                 let clean = try isClean(v.image)
                 var repaired = false
-                if !clean {
+                // A cleanly unmounted volume can still carry what an old guest's HFS leaves and modern fsck flags
+                // (1.x: folders without kHFSHasFolderCountMask); the staging copy is repaired either way.
+                let findings = clean ? try await !fsckClean(v.image) : false
+                if !clean || findings {
                     let dev = try await VolumeMount.attach(v.image)
                     let status: Int32, output: String
                     do { (status, output) = try await VolumeMount.exec("/sbin/fsck_hfs", ["-fy", dev]) }
                     catch { await VolumeMount.cleanupDetach(dev); throw error }
                     try await VolumeMount.detach(dev)
-                    log("\(v.name): not cleanly unmounted; fsck_hfs -fy exit \(status): \(output.suffix(300))")
+                    log("\(v.name): \(clean ? "fsck findings on a clean volume" : "not cleanly unmounted"); fsck_hfs -fy exit \(status): \(output.suffix(300))")
                     repaired = true
                     guard status == 0 else {
                         throw FirmwareError(.internal, "\(v.name): filesystem repair failed: \(output.suffix(600))")
@@ -193,6 +196,16 @@ public enum VolumeExport {
         let e = JSONEncoder()
         e.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         try e.encode(vols).write(to: manifest(out), options: .atomic)
+    }
+
+    /// fsck_hfs -fn passes on the image.
+    nonisolated(nonsending) static func fsckClean(_ image: URL) async throws -> Bool {
+        let dev = try await VolumeMount.attach(image)
+        let status: Int32
+        do { status = try await VolumeMount.exec("/sbin/fsck_hfs", ["-fn", dev]).0 }
+        catch { await VolumeMount.cleanupDetach(dev); throw error }
+        try await VolumeMount.detach(dev)
+        return status == 0
     }
 
     /// kHFSVolumeUnmountedBit (8) set and kHFSVolumeInconsistentBit (11) clear.
