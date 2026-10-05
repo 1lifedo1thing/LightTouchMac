@@ -50,9 +50,12 @@ final class N45Board: Board {
     }
     static let rootLibrary = "private/var/root/Library"
     static let openGLESExports = "opengles-1x.exports"
-    /// configd's Aeropuerto plug-in (AirPort-63) keeps the Wi-Fi power preference (AllowEnable) and the networks
-    /// it has joined ("List of known networks", entries keyed by SSID_STR) in this SCPreferences file.
-    static let wifiPrefs = "private/var/preferences/SystemConfiguration/com.apple.wifi.plist"
+    /// 1.x's SCPreferences live in the user's home, root's: SystemConfiguration (1.0 and 1.1) opens
+    /// ~/Library/Preferences/SystemConfiguration (2.x moved them to /var/preferences, where 1.x never looks).
+    static let scPrefs = rootLibrary + "/Preferences/SystemConfiguration"
+    /// configd's Aeropuerto plug-in (AirPort-53 on 1.0, -63 on 1.1) keeps the Wi-Fi power preference (AllowEnable)
+    /// and the networks it has joined ("List of known networks", entries keyed by SSID_STR) in this file.
+    static let wifiPrefs = scPrefs + "/com.apple.wifi.plist"
     /// A device that has joined the emulator's access point before (the 88W8686 model's open "qemu-ios", channel 6):
     /// Wi-Fi on, and the network remembered as the join left it, so configd auto-joins at boot.
     static var wifiKnownNetwork: [String: Any] { [
@@ -173,9 +176,9 @@ final class N45Board: Board {
             // Wi-Fi as a device that has joined the emulator's network before: the en0 AirPort service in the current
             // set (configd's auto-join skips an interface with none: "AirPort interface en0 not active"), carrying the
             // web proxy's PAC as on the 2G, and Wi-Fi on with qemu-ios among the known networks.
-            let sc = "private/var/preferences/SystemConfiguration"
+            let sc = Self.scPrefs
             try c.fit.check(FitCheck.webProxy(FitCheck.Firmware(root: m, arch: "armv6")), required: false, outcome: "kept: the PAC is unused")
-            owners += try SystemEdits.installPAC(m, dirs: ["private/var/preferences", sc]).map { (UInt32(0), $0) }
+            owners += try SystemEdits.installPAC(m, dirs: [sc]).map { (UInt32(0), $0) }
             try SystemEdits.seedPlist(at(sc + "/preferences.plist"), SystemEdits.wifiProxyPrefs)
             try SystemEdits.put(try PropertyListSerialization.data(fromPropertyList: Self.wifiKnownNetwork, format: .xml, options: 0),
                                 at(Self.wifiPrefs), mode: 0o644)
