@@ -39,6 +39,9 @@ public enum SystemEdits {
         /// Leave BTServer enabled: boards whose machine answers the HCI (N88). Off, BTServer is Disabled: with
         /// nothing on the UART, BlueTool's HCI_Reset never completes.
         public var bluetooth = false
+        /// Bake the guest helpers, their jobs and the guest-package seed. Off for firmware whose dyld predates
+        /// LC_DYLD_INFO (3.0, as the iPod 2G's 7A341): such a device gets no it_seal either, so no seal boot.
+        public var guestTools = true
         public init() {}
         public init(recipe: FirmwareEntry.Recipe) {
             let o = recipe.options
@@ -46,6 +49,7 @@ public enum SystemEdits {
             webProxy = o["web_proxy"] ?? true; usbNet = o["usb_net"] ?? true
             glTest = o["gl_test"] ?? false; dataJournal = o["data_journal"] ?? true
             bluetooth = o["bluetooth"] ?? false
+            guestTools = o["guest_tools"] ?? true
         }
     }
 
@@ -140,8 +144,8 @@ public enum SystemEdits {
         }
 
         // Check every helper before touching a volume.
-        var tools = Helpers.tools, jobs = Helpers.jobs
-        if o.seal { tools.append(Helpers.seal); jobs.append(Helpers.sealJob) }
+        var tools = o.guestTools ? Helpers.tools : [], jobs = o.guestTools ? Helpers.jobs : []
+        if o.seal && o.guestTools { tools.append(Helpers.seal); jobs.append(Helpers.sealJob) }
         if o.glTest { tools.append(Helpers.glTest); jobs.append(Helpers.glTestJob) }
         for t in tools {
             if let why = MachOSignature.guestToolProblem(try helper(t.name)) {
@@ -149,7 +153,7 @@ public enum SystemEdits {
             }
         }
         for j in jobs { _ = try helper(j) }
-        _ = try helper(Helpers.itpack("armv7"))
+        if o.guestTools { _ = try helper(Helpers.itpack("armv7")) }
         if o.appsync, let why = MachOSignature.appSyncProblem(try helper(Helpers.appsync)) {
             throw FirmwareError(.internal, "\(helpers.path)/\(Helpers.appsync): \(why)")
         }
@@ -180,7 +184,7 @@ public enum SystemEdits {
             // (3.1.x has no storage_mounter job at all)
             let msm = Helpers.tools[3]
             var quietJobs: [(String, String)] = []
-            for (job, label) in noticeJobs where fm.fileExists(atPath: at(job).path) {
+            for (job, label) in noticeJobs where o.guestTools && fm.fileExists(atPath: at(job).path) {
                 if try fit.check(FitCheck.msmQuiet(fw, program: try stockProgram(m, job, label: label),
                                                    dylib: Data(contentsOf: try helper(msm.name))), required: false) {
                     quietJobs.append((job, label))
@@ -188,7 +192,11 @@ public enum SystemEdits {
             }
             let quiet = !quietJobs.isEmpty
             if !quiet { tools.removeAll { $0.name == msm.name } }
-            for f in FitCheck.prefs(fw, FitCheck.itPrefs) { try fit.check(f, required: false, outcome: "kept: it_prefs skips the key at boot") }
+            if o.guestTools {
+                for f in FitCheck.prefs(fw, FitCheck.itPrefs) { try fit.check(f, required: false, outcome: "kept: it_prefs skips the key at boot") }
+            } else {
+                fit.notInstalled("guest helpers", "guest_tools off")
+            }
             if o.usbNet { try fit.check(FitCheck.usbEthernet(fw, path: usbEthPath), required: false, outcome: "kept: the link stays down and en1 unpinned") }
             for t in tools where t.name != msm.name {
                 try fit.check(FitCheck.loads(t.name, Data(contentsOf: try helper(t.name)), on: fw), required: true)
@@ -248,9 +256,11 @@ public enum SystemEdits {
                 .split(separator: ".").first ?? "") ?? 0
             // what this bake left out on purpose: AppSync when off, it_msmquiet where it does not fit
             let omitted = Set((o.appsync ? [] : ["/" + appsyncPath]) + (quiet ? [] : ["/" + msm.path]))
-            let (seeded, record) = try seedGuestPackage(m, helpers: helpers, arch: "armv7", gles: result.engine != nil, omitted: omitted, fit: fit, log: log)
-            result.guestPackage = record
-            rootOwned += seeded
+            if o.guestTools {
+                let (seeded, record) = try seedGuestPackage(m, helpers: helpers, arch: "armv7", gles: result.engine != nil, omitted: omitted, fit: fit, log: log)
+                result.guestPackage = record
+                rootOwned += seeded
+            }
             rootOwned += ["usr/local", "usr/local/bin", "usr/local/lib"].filter { fm.fileExists(atPath: at($0).path) } + jobs.map { daemons + "/" + $0 } + tools.map(\.path)
 
             // /private/var skeleton for the data volume
