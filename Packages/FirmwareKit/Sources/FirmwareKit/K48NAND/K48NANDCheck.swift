@@ -8,6 +8,8 @@ extension K48NAND {
     final class StoreReader {
         let geo: Geometry, stride: Int
         let files: [Data], overlay: [Data], dirty: [Data]
+        /// From the signature's flags (plainSigFlags: an S5L8920 store); set once the check has read it.
+        var plain = false
         init(_ dir: URL, geo: Geometry, overlay: URL? = nil) throws {
             guard try K48NAND.geometry(store: dir).json == geo.json else {
                 throw FirmwareError(.unsupported, "\(dir.path): reader geometry does not match geometry.json")
@@ -64,7 +66,7 @@ extension K48NAND {
             guard o + K48NAND.meta <= f.endIndex else { return nil }
             let m = [UInt8](f[o..<o + K48NAND.meta])
             if m.allSatisfy({ $0 == 0 }) || m.allSatisfy({ $0 == 0xFF }) { return nil }
-            return K48NAND.whiten(m, ppage)
+            return plain ? m : K48NAND.whiten(m, ppage)
         }
 
         /// (data, 12-byte meta, un-whitened unless raw), nil if the page is blank.
@@ -75,7 +77,7 @@ extension K48NAND {
             let sp = rec[geo.pageSize...]
             if sp.allSatisfy({ $0 == 0 }) || (sp.allSatisfy { $0 == 0xFF } && rec[..<geo.pageSize].allSatisfy { $0 == 0xFF }) { return nil }
             let m = Array(sp.prefix(K48NAND.meta))
-            return (Array(rec[..<geo.pageSize]), raw ? m : K48NAND.whiten(m, ppage))
+            return (Array(rec[..<geo.pageSize]), raw || plain ? m : K48NAND.whiten(m, ppage))
         }
         func readVPN(_ vpn: Int) -> (data: [UInt8], meta: [UInt8])? { let (cs, p) = geo.vpnToPhys(vpn); return read(cs, p) }
     }
@@ -137,9 +139,10 @@ extension K48NAND {
         let sig = st.read(0, geo.ppage(sigBlock ?? 0, 0))
         ok(sig.map { magic($0.data, "NANDDRIVERSIGN") } ?? false, "NANDDRIVERSIGN at cs0 block \(hex(sigBlock ?? 0)) (BBT hdr+0x24)")
         if let (d, _) = sig {
-            let ns = le32(d, 0x38)
-            ok(ns >> 8 == nsigBase >> 8 && (0x31...0x39).contains(ns & 0xff) && le32(d, 0x3c) == sigFlags,
-               "signature nSig=\(String(format: "%08x", ns)) flags=\(String(format: "%08x", le32(d, 0x3c))) (VSVFL, epoch \(ns & 0xf), whitening on)")
+            let ns = le32(d, 0x38), flags = le32(d, 0x3c)
+            st.plain = flags == plainSigFlags
+            ok(ns >> 8 == nsigBase >> 8 && (0x31...0x39).contains(ns & 0xff) && (flags == sigFlags || st.plain),
+               "signature nSig=\(String(format: "%08x", ns)) flags=\(String(format: "%08x", flags)) (VSVFL, epoch \(ns & 0xf), whitening \(st.plain ? "off" : "on"))")
         }
 
         // VFL contexts

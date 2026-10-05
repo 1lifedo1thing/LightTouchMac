@@ -64,7 +64,7 @@ public enum Preparer {
     @concurrent public static func create(_ o: Options, emit: @escaping @Sendable (PrepareEvent) -> Void) async throws {
         let e = o.entry
         let board: Board = switch (e.board, e.recipe?.name) {
-        case ("k48ap", "k48"), ("n81ap", "n81"), ("n90ap", "n90"), ("n88ap", "n88"): try K48Board(o)
+        case ("k48ap", "k48"), ("n81ap", "n81"), ("n90ap", "n90"), ("n88ap", "n88"), ("n18ap", "n18"): try K48Board(o)
         case ("n72ap", "n72"): try N72Board(o)
         case ("n45ap", "n45"): try N45Board(o)
         default: throw FirmwareError(.unsupported, "\(e.id): no preparer for board \(e.board) recipe \(e.recipe?.name ?? "none")")

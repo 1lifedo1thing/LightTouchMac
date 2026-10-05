@@ -157,7 +157,8 @@ public enum K48NAND {
         /// One page record: data, then the (whitened unless raw) meta, spare[12...] = 0.
         func write(_ cs: Int, _ ppage: Int, _ data: UnsafeRawBufferPointer, _ meta: [UInt8], raw: Bool = false) throws {
             precondition(data.count == geo.pageSize && meta.count == K48NAND.meta)
-            let m = raw || plain ? meta : K48NAND.whiten(meta, ppage)
+            // plain as whitened: bytes 10-11 never travel through the meta DMA, so 00 00 on flash (ipad1_nand.whiten)
+            let m = raw ? meta : plain ? Array(meta.prefix(10)) + [0, 0] : K48NAND.whiten(meta, ppage)
             precondition(m.contains { $0 != 0 }, "spare must not be all zero (hole == blank)")
             rec.withUnsafeMutableBytes { r in
                 r.copyMemory(from: data)

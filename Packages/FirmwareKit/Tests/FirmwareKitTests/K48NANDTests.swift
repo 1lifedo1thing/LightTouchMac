@@ -98,8 +98,10 @@ struct K48NANDTests {
     }
 
     /// Small synthetic store (Python's selfcheck geometry): byte-identical files vs ipad1_nand.build on the same
-    /// inputs, including a sparse data image and an fstab line, and both checkers accept the Swift store.
-    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run")) func syntheticStoreMatchesPython() async throws {
+    /// inputs, including a sparse data image and an fstab line, and both checkers accept the Swift store; whitened
+    /// (K48, N81) and plain (N18: ipad1_nand --no-whitening).
+    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"), arguments: [true, false])
+    func syntheticStoreMatchesPython(whitening: Bool) async throws {
         guard Fixtures.hasPython else { try FixtureRequirements.missing(#"K48NANDTests.swift: Fixtures.hasPython"#) }
         let dir = try Fixtures.tempDir("nand")
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -131,9 +133,11 @@ struct K48NANDTests {
         let kv = Array("Darwin Kernel Version selfcheck".utf8)
         let mine = dir.appendingPathComponent("swift"), theirs = dir.appendingPathComponent("python")
         try await K48NAND.build(geometry: .selfcheck, mbr: paths[0], kernelVersion: kv, system: paths[1], s3: paths[2],
-                          data: .image(paths[3]), out: mine)
+                          data: .image(paths[3]), out: mine, whitening: whitening)
         let py = """
             import sys, argparse; sys.path.insert(0, sys.argv[1]); import ipad1_nand as n
+            assert hasattr(n, "WHITENING"), "this oracle's ipad1_nand has no --no-whitening"
+            n.WHITENING = \(whitening ? "True" : "False")
             n.build(argparse.Namespace(geometry="selfcheck", mbr=sys.argv[2], system=sys.argv[3], s3=sys.argv[4], data=sys.argv[5],
                     out=sys.argv[6], force=True, kernelcache=None, kernel_version=b"Darwin Kernel Version selfcheck"))
             sys.exit(0 if n.check(sys.argv[7]) else 1)

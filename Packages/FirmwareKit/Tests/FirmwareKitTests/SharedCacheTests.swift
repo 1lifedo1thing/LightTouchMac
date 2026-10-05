@@ -3,12 +3,12 @@ import Testing
 @testable import FirmwareKit
 
 /// Fixture plumbing shared by the wave-A2 tests: firmware lives in ~/Developer/qemu-ios-files and
-/// ~/Downloads, the Python oracle in ~/Developer/qemu-ios-ipad1. Nothing is written there; every
+/// ~/Downloads, the Python oracle in Oracle.qemuIOS (~/Developer/qemu-ios-ipad1). Nothing is written there; every
 /// output goes to a temp dir that the test deletes.
 enum Fixtures {
     static let home = FileManager.default.homeDirectoryForCurrentUser
     static let files = home.appendingPathComponent("Developer/qemu-ios-files")
-    static let qemu = home.appendingPathComponent("Developer/qemu-ios-ipad1")
+    static let qemu = Oracle.qemuIOS
     static let imgtools = qemu.appendingPathComponent("imgtools")
 
     static func exists(_ u: URL) -> Bool { FileManager.default.fileExists(atPath: u.path) }
