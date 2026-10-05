@@ -178,6 +178,22 @@ public enum KBoot {
         return (root, chosen, [("arm-io/sdio", try mac(need("wifi-mac"))), ("bluetooth", try mac(need("bt-mac")))])
     }
 
+    /// An empty NVRAM image as IODTNVRAM parses it (ipad1_kboot.nvram_image): CHRP partitions, a 2 KiB "common"
+    /// (0x70), the rest "free" (0x7f). Each 16-byte header is sig, checksum, length in 16-byte units, 12-byte name;
+    /// the checksum adds byte 0 and bytes 2-15 with end-around carry. A zeroed image is a zero-length partition,
+    /// and initNVRAMImage loops on it forever.
+    static func nvramImage(size: Int) -> Data {
+        func part(_ sig: UInt8, _ name: String, _ units: Int) -> Data {
+            var h = [sig, 0, UInt8(units & 0xFF), UInt8(units >> 8)] + Array(name.utf8) + [UInt8](repeating: 0, count: 12 - name.utf8.count)
+            var c = UInt32(h[0])
+            for x in h[2...] { c += UInt32(x); if c > 0xFF { c = (c & 0xFF) + 1 } }
+            h[1] = UInt8(c)
+            return Data(h) + Data(count: units * 16 - 16)
+        }
+        let common = 0x80
+        return part(0x70, "common", common) + part(0x7F, "free", size / 16 - common)
+    }
+
     static func fillDT(_ dt: inout DeviceTree, memoryMap: [(String, UInt32, UInt32)], identity: UnitIdentity,
                        iboot: String, rootMatching: String) throws {
         let board = Board.of(dt)
@@ -189,6 +205,10 @@ public enum KBoot {
             + [("firmware-version", .string(iboot)), ("display-rotation", .u32(board.rotation)), ("display-scale", .u32(board.scale)),
                ("root-matching", .string(rootMatching))] {
             try dt.set("chosen", k, v)
+        }
+        // iBoot-1537/1940 (6.x/7.x) hand NVRAM over as /chosen/nvram-proxy-data; the IPSW DT reserves it zeroed.
+        if let slot = dt.props["chosen"]?["nvram-proxy-data"] {
+            try dt.set("chosen", "nvram-proxy-data", .bytes(nvramImage(size: slot.length)))
         }
         for (k, hz) in [("clock-frequency", cpuHz), ("memory-frequency", memHz), ("bus-frequency", busHz),
                         ("peripheral-frequency", periphHz), ("fixed-frequency", fixedHz), ("timebase-frequency", timebaseHz)] {
@@ -343,12 +363,41 @@ public struct MachO: Sendable {
               let seg = segments.first(where: { Int($0.fileoff) <= so - data.startIndex && so - data.startIndex < Int($0.fileoff + $0.filesize) })
         else { return 2 }
         let sva = seg.vmaddr + UInt32(so - data.startIndex) - seg.fileoff
-        guard let lit = data.range(of: Data(DeviceTree.Value.le([sva])))?.lowerBound else { return 2 }
-        let window = [UInt8](data[max(data.startIndex, lit - 0x400)..<lit])
-        for n in 0..<8 {
-            guard window.count > 2, let i = (0..<(window.count - 1)).reversed().first(where: { window[$0] == 0x40 | UInt8(n) && window[$0 + 1] == 0x88 })
-            else { continue }
-            for j in (i + 2)..<min(i + 10, window.count) where window[j] == 0x28 | UInt8(n) { return window[j - 1] }
+        if let lit = data.range(of: Data(DeviceTree.Value.le([sva])))?.lowerBound {
+            let window = [UInt8](data[max(data.startIndex, lit - 0x400)..<lit])
+            for n in 0..<8 {
+                guard window.count > 2, let i = (0..<(window.count - 1)).reversed().first(where: { window[$0] == 0x40 | UInt8(n) && window[$0 + 1] == 0x88 })
+                else { continue }
+                for j in (i + 2)..<min(i + 10, window.count) where window[j] == 0x28 | UInt8(n) { return window[j - 1] }
+            }
+        }
+        // iOS 6's xnu-2107 reaches the string through movw/movt/add rX, pc, so no literal names it: the pair is
+        // `ldrh rN, [r0, #2]; cmp rN, #V` with that sequence within the next 24 bytes (ipad1_kboot 08a698c2f1).
+        let bytes = [UInt8](data)
+        let h16 = { (o: Int) in UInt32(bytes[o]) | UInt32(bytes[o + 1]) << 8 }
+        let imm16 = { (hw1: UInt32, hw2: UInt32) in
+            (hw1 & 0xF) << 12 | ((hw1 >> 10) & 1) << 11 | ((hw2 >> 12) & 7) << 8 | (hw2 & 0xFF)
+        }
+        func namesString(_ at: Int, _ seg: Segment) -> Bool {
+            for o in stride(from: at, to: min(at + 24, bytes.count - 10), by: 2) {
+                let hw1 = h16(o), hw2 = h16(o + 2)
+                guard hw1 & 0xFBF0 == 0xF240 else { continue }                 // movw
+                let rd = (hw2 >> 8) & 0xF, lo = imm16(hw1, hw2)
+                let t1 = h16(o + 4), t2 = h16(o + 6)
+                guard t1 & 0xFBF0 == 0xF2C0, (t2 >> 8) & 0xF == rd else { continue }   // movt, same register
+                guard h16(o + 8) == 0x4478 | (rd & 7) | ((rd & 8) << 4) else { continue }   // add rd, pc
+                let pc = seg.vmaddr &+ UInt32(o + 8 - Int(seg.fileoff)) &+ 4
+                return (imm16(t1, t2) << 16 | lo) &+ pc == sva
+            }
+            return false
+        }
+        for seg in segments where seg.filesize > 0 {
+            let lo = Int(seg.fileoff), hi = min(Int(seg.fileoff + seg.filesize), bytes.count - 4)
+            guard lo < hi else { continue }
+            for i in stride(from: lo, to: hi, by: 2) where bytes[i + 1] == 0x88 && bytes[i] & 0xF8 == 0x40 {
+                let n = bytes[i] & 7
+                if bytes[i + 3] == 0x28 | n, namesString(i + 6, seg) { return bytes[i + 2] }
+            }
         }
         return 2
     }
