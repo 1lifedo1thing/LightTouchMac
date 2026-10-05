@@ -302,7 +302,7 @@ public final class HFSPlusVolume {
     func resolve(_ path: String, _ idx: [Key: CatalogRecord]) throws -> CatalogRecord {
         var cid = Self.rootID, hit: CatalogRecord?
         for part in path.split(separator: "/") {
-            guard let r = idx[Key(parent: cid, name: String(part))] else {
+            guard let r = idx[Key(parent: cid, name: Self.catalogName(String(part)))] else {
                 throw FirmwareError(.internal, "\(url.lastPathComponent): not in the catalog: \(path) (stuck at \(part))")
             }
             hit = r; cid = r.cnid
@@ -323,6 +323,11 @@ public final class HFSPlusVolume {
 
     // MARK: listings
 
+    /// A catalog name as macOS presents it in a path, and back: HFS+ names may hold "/", which the VFS shows as ":"
+    /// (1.0's /usr/share/zoneinfo/Etc/GMT-0/15 is GMT-0:15 on the host).
+    static func posixName(_ name: String) -> String { name.replacingOccurrences(of: "/", with: ":") }
+    static func catalogName(_ name: String) -> String { name.replacingOccurrences(of: ":", with: "/") }
+
     /// Volume-relative path of every folder and file record (the root is ""), skipping the hard-link
     /// private directories the kernel hides.
     public func paths() throws -> [(path: String, record: CatalogRecord)] {
@@ -334,7 +339,7 @@ public final class HFSPlusVolume {
             if let p = memo[id] { return p }
             guard let r = byID[id], r.parent != 1 else { memo[id] = .some(nil); return nil }
             let p: String? = r.parent == Self.rootID && Self.privateDirs.contains(r.name) ? nil
-                : path(r.parent).map { $0.isEmpty ? r.name : $0 + "/" + r.name }
+                : path(r.parent).map { $0.isEmpty ? Self.posixName(r.name) : $0 + "/" + Self.posixName(r.name) }
             memo[id] = .some(p)
             return p
         }

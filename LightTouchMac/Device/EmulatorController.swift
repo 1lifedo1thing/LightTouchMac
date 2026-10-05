@@ -328,6 +328,11 @@ final class EmulatorController {
         var config = preparedBootConfiguration()
         config?.webProxy = proxyEndpoint
         config?.storageProof = admittedStorage
+        debugPort = debugPortEnabled && config != nil ? DebugPort.freePort() : nil
+        if let port = debugPort {
+            config?.argv += DebugPort.arguments(port: port)
+            logEvent("debug port: QEMU gdbstub on 127.0.0.1:\(port)")
+        }
         if config != nil {
             // Stopped migration time is separate from the guest boot budget.
             startReadinessWatch()
@@ -1106,6 +1111,19 @@ final class EmulatorController {
     /// Per device (`autoRotateWithGuest.<uuid>`), seeded from the app-wide value
     /// of earlier builds; on by default — it is only ever driven by an explicit
     /// change on the guest's side.
+    /// Debug port, per device (`debugPort.<uuid>`), off by default; read at each start. QEMU's gdbstub on a free
+    /// loopback port, `debugPort` while this boot has one (qemu-ios docs/guest-debug.md).
+    static let debugPortDefaultsKey = "debugPort"
+    var debugPortEnabled: Bool {
+        UserDefaults.standard.object(forKey: instance.defaultsKey(Self.debugPortDefaultsKey)) as? Bool ?? false
+    }
+    func toggleDebugPort() {
+        UserDefaults.standard.set(!debugPortEnabled, forKey: instance.defaultsKey(Self.debugPortDefaultsKey))
+        onStatusChange?()
+    }
+    private(set) var debugPort: Int?
+    var lldbAttachCommand: String? { debugPort.map { DebugPort.lldbCommand(board: instance.board, port: $0) } }
+
     static let autoRotateDefaultsKey = "autoRotateWithGuest"
     var autoRotateEnabled: Bool { perDeviceSetting(Self.autoRotateDefaultsKey) }
     func toggleAutoRotate() {
