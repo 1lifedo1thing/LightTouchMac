@@ -82,7 +82,7 @@ final class DeviceModelView: NSView {
     camera.camera.far = 10
     camera.camera.fieldOfViewOrientation = .vertical
     // A black seat closes N72's gap, which otherwise exposes steel around Home.
-    if profile == .iPodTouch2G {
+    if profile.deviceModelName == "N72" {
       var rim = MeshDescriptor(name: "Home black gasket")
       var vertices: [SIMD3<Float>] = []
       var indices: [UInt32] = []
