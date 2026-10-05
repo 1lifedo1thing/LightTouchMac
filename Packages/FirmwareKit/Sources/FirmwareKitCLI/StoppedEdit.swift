@@ -5,14 +5,14 @@ import Foundation
     var flags: [String: String] = [:]
     var args = argv.makeIterator()
     while let flag = args.next() {
-        guard ["--device", "--action", "--session", "--record-policy"].contains(flag), let value = args.next() else {
+        guard ["--device", "--action", "--session", "--record-policy", "--cert"].contains(flag), let value = args.next() else {
             FirmwareDiagnostics.write(Data("firmwarekit edit: bad argument \(flag)\n".utf8)); _ = await FirmwareDiagnostics.finish(); exit(64)
         }
         flags[flag] = value
     }
     do {
         guard let path = flags["--device"], let action = flags["--action"] else {
-            throw FirmwareError(.internal, "edit requires --device DIR --action begin|mount|commit|discard|recover")
+            throw FirmwareError(.internal, "edit requires --device DIR --action begin|mount|commit|discard|recover|trust-anchor")
         }
         let device = URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL
         let policy: VolumeRecordPolicy
@@ -25,6 +25,12 @@ import Foundation
         func emit<T: Encodable>(_ value: T) throws { commandOutput.write(try encoder.encode(value) + Data("\n".utf8)) }
         let log = { (s: String) in FirmwareDiagnostics.write(Data("firmwarekit edit: \(s)\n".utf8)) }
         if action == "begin" { try emit(try await StoppedVolumeEdit.begin(device: device, policy: policy, log: log)); return 0 }
+        if action == "trust-anchor" {   // begin, mount, the 1.x anchor row, commit; nothing when already trusted
+            guard let cert = flags["--cert"] else { throw FirmwareError(.internal, "trust-anchor requires --cert DER") }
+            let changed = try await TrustStore1x.trust(device: device, certificate: Data(contentsOf: URL(fileURLWithPath: cert)),
+                                                       policy: policy, log: log)
+            try emit(["trusted": true, "changed": changed]); return 0
+        }
         guard let session = flags["--session"].flatMap(UUID.init(uuidString:)) else {
             throw FirmwareError(.internal, "edit requires its --session UUID")
         }

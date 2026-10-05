@@ -8,9 +8,10 @@
 
 import CryptoKit
 import Foundation
+import HostRuntime
 import SQLite3
 
-enum TrustStore1x {
+public enum TrustStore1x {
     static let path = "System/Library/Frameworks/Security.framework/TrustStore.sqlite3"
     /// The stock rows' tset: an empty trust-settings array.
     static let emptySettings = Data("""
@@ -85,5 +86,44 @@ enum TrustStore1x {
         guard sqlite3_step(stmt) == SQLITE_DONE else {
             throw FirmwareError(.unsupported, "\(store.path): \(String(cString: sqlite3_errmsg(db)))")
         }
+    }
+
+    /// The device directory's record of the anchor its guest trusts: {"sha1": hex, "key": storage key}. A new
+    /// storage generation (prepared again, another edit) has another key, so the anchor is written again.
+    public static let marker = "trust-anchor.json"
+
+    /// Makes `certificate` an anchor in a stopped 1.x device's system volume, through a stopped edit (begin, mount,
+    /// the row, commit: the 1.x FTL is written in place). False when the device already trusts it.
+    nonisolated(nonsending) public static func trust(device: URL, certificate: Data, policy: StorageRecordPolicy = .standalone,
+                                                     log: (String) -> Void = { _ in }) async throws -> Bool {
+        let sha1 = Insecure.SHA1.hash(data: certificate).map { String(format: "%02x", $0) }.joined()
+        func storageKey() throws -> String? {
+            let record = try JSONSerialization.jsonObject(with: Data(contentsOf: device.appendingPathComponent("device.json"))) as? [String: Any]
+            guard ["n45ap", "m68ap"].contains(record?["board"] as? String ?? "") else {
+                throw FirmwareError(.unsupported, "trust anchors are written into 1.x devices only")
+            }
+            return (record?["storage"] as? [String: Any])?["key"] as? String
+        }
+        let markerURL = device.appendingPathComponent(marker)
+        if let data = try? Data(contentsOf: markerURL), let m = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+           m["sha1"] == sha1, m["key"] == (try storageKey()) {
+            return false
+        }
+        _ = try normalizedSubject(certificate)               // a certificate this can parse, before any work
+        let session = try await StoppedVolumeEdit.begin(device: device, policy: policy, log: log)
+        do {
+            let point = session.image.deletingLastPathComponent().appendingPathComponent("trust-anchor-mount")
+            try await VolumeMount.withMounted(session.image, at: point) { mount in
+                try addAnchor(certificate, to: mount.appendingPathComponent(path))
+            }
+            log("anchor \(sha1) added to /\(path)")
+            try await StoppedVolumeEdit.commit(device: device, id: session.id, policy: policy, log: log)
+        } catch {
+            try? await StoppedVolumeEdit.discard(device: device, id: session.id, policy: policy)
+            throw error
+        }
+        let record = try JSONSerialization.data(withJSONObject: ["sha1": sha1, "key": try storageKey() ?? ""], options: [.sortedKeys])
+        try record.write(to: markerURL, options: .atomic)
+        return true
     }
 }

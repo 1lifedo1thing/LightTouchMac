@@ -69,4 +69,51 @@ struct TrustStore1xTests {
         #expect(blob(3) == Self.certificate)
         #expect(sqlite3_step(stmt) == SQLITE_DONE)
     }
+
+    /// A stopped 1.x device (N45FTLTests' booted-guest store around a volume with an empty system trust store):
+    /// trust() writes the row through a stopped edit, records the marker, and does nothing the second time.
+    @Test func trustsThroughAStoppedEdit() async throws {
+        let fm = FileManager.default
+        let root = try Fixtures.tempDir("trust1x-edit")
+        defer { try? fm.removeItem(at: root) }
+        let device = root.appendingPathComponent("device"), base = device.appendingPathComponent("base")
+        try fm.createDirectory(at: base, withIntermediateDirectories: true)
+        let image = root.appendingPathComponent("volume.img")
+        try await VolumeMount.makeHFS(image, size: 16 << 20, name: "Trust test")
+        try await VolumeMount.withMounted(image, at: root.appendingPathComponent("initial")) { mount in
+            let store = mount.appendingPathComponent(TrustStore1x.path)
+            try fm.createDirectory(at: store.deletingLastPathComponent(), withIntermediateDirectories: true)
+            var db: OpaquePointer?
+            #expect(sqlite3_open(store.path, &db) == SQLITE_OK)
+            #expect(sqlite3_exec(db, "CREATE TABLE tsettings(sha1 BLOB NOT NULL DEFAULT '',subj BLOB NOT NULL DEFAULT '',tset BLOB,data BLOB,PRIMARY KEY(sha1));", nil, nil, nil) == SQLITE_OK)
+            sqlite3_close(db)
+        }
+        try N45NAND.write(volume: image, out: base.appendingPathComponent("nand"), filID: 0x4330_3030, banks: N45FTLTests.banks)
+        let overlay = device.appendingPathComponent("overlay")
+        try N45FTLTests.booted(overlay, base.appendingPathComponent("nand"), changeData: false)
+        try Data("{}".utf8).write(to: base.appendingPathComponent("device.lock.json"))
+        let record: [String: Any] = ["id": UUID().uuidString, "board": "m68ap", "firmware": "test",
+            "base": ["kind": "prepared", "path": base.path],
+            "storage": ["key": "old", "overlay": overlay.path, "snapshot": "old-snapshot"]]
+        try JSONSerialization.data(withJSONObject: record).write(to: device.appendingPathComponent("device.json"))
+
+        #expect(try await TrustStore1x.trust(device: device, certificate: Self.certificate))
+        #expect(try await TrustStore1x.trust(device: device, certificate: Self.certificate) == false)   // the marker
+
+        let published = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: device.appendingPathComponent("device.json"))) as? [String: Any])
+        let newBase = URL(fileURLWithPath: try #require((published["base"] as? [String: Any])?["path"] as? String))
+        let newOverlay = URL(fileURLWithPath: try #require((published["storage"] as? [String: Any])?["overlay"] as? String))
+        let rebuilt = try VolumeRebuild.rebuild(base: newBase.appendingPathComponent("nand"), overlay: newOverlay,
+                                                into: root.appendingPathComponent("verify"))[0]
+        let check = root.appendingPathComponent("check.sqlite3")
+        try HFSPlusVolume(rebuilt.image).contents(HFSPlusVolume(rebuilt.image).record(at: TrustStore1x.path)).write(to: check)
+        var db: OpaquePointer?
+        #expect(sqlite3_open(check.path, &db) == SQLITE_OK)
+        defer { sqlite3_close(db) }
+        var stmt: OpaquePointer?
+        #expect(sqlite3_prepare_v2(db, "SELECT data FROM tsettings", -1, &stmt, nil) == SQLITE_OK)
+        defer { sqlite3_finalize(stmt) }
+        #expect(sqlite3_step(stmt) == SQLITE_ROW)
+        #expect(Data(bytes: sqlite3_column_blob(stmt, 0), count: Int(sqlite3_column_bytes(stmt, 0))) == Self.certificate)
+    }
 }
