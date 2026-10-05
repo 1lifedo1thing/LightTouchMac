@@ -8,6 +8,15 @@ struct ActivationTests {
         (0..<4).reduce(0) { $0 | Int(b[o + $1]) << (big ? 24 - 8 * $1 : 8 * $1) }
     }
 
+    /// iOS 6: lockdownd naming the lockdown_cache domain and FactoryActivated gets the data route, unchanged.
+    @Test func dataArkRoute() {
+        let ld = Data("xx\0com.apple.mobile.lockdown_cache\0FactoryActivated\0".utf8)
+        let r = Activation.dataArkRoute(lockdownd: ld)
+        #expect(r?.dataArk == ["com.apple.mobile.lockdown_cache-ActivationState": "FactoryActivated"])
+        #expect(r?.inputSHA256 == r?.outputSHA256 && r?.patch == nil)
+        #expect(Activation.dataArkRoute(lockdownd: Data("com.apple.mobile.lockdown_cache\0".utf8)) == nil)
+    }
+
     // Independently check every code-page hash and retained special blobs in real fixtures.
     @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run")) func activationCorpus() throws {
         let corpus = FileManager.default.homeDirectoryForCurrentUser

@@ -517,6 +517,18 @@ public final class HFSPlusVolume {
         try restore([(j.offset, Data(count: j.size)), (at, Data(jib))])
     }
 
+    /// Sets kHFSContentProtectionBit (0x40000000) in the volume header's attributes, as a restore formats iOS's
+    /// data volume.
+    public func setContentProtection() throws {
+        guard writable else { throw FirmwareError(.internal, "\(url.lastPathComponent) is open read-only") }
+        for at in headerOffsets() {
+            var a = [UInt8](repeating: 0, count: 4)
+            guard pread(fd, &a, 4, off_t(at + 4)) == 4 else { throw FirmwareError(.internal, "read volume header at \(at) of \(url.lastPathComponent)") }
+            put32(&a, 0, be32(a, 0) | 0x4000_0000)
+            guard pwrite(fd, a, 4, off_t(at + 4)) == 4 else { throw FirmwareError(.internal, "write volume header at \(at) of \(url.lastPathComponent)") }
+        }
+    }
+
     public func restore(_ pieces: [(offset: Int, bytes: Data)]) throws {
         guard writable else { throw FirmwareError(.internal, "\(url.lastPathComponent) is open read-only") }
         for p in pieces {

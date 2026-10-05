@@ -212,12 +212,34 @@ public enum KBoot {
             guard let props = dt.props[node] else { continue }
             for (k, v) in nand where props[k] != nil { try dt.set(node, k, .u32(v)) }
         }
+        // iOS 6 DTs carry chosen/nvram-proxy-data for iBoot to fill with the NVRAM image. IODTNVRAM walks its partitions
+        // by their length until 0x2000, so the all-zero placeholder (length 0) hangs the boot after corecrypto's FIPS POST.
+        if let slot = dt.props["chosen"]?["nvram-proxy-data"] {
+            try dt.set("chosen", "nvram-proxy-data", .bytes(nvramImage(size: slot.length)))
+        }
         try dt.set("pram", "reg", .words([board.pramPA, pramSize]))
         try dt.set("vram", "reg", .words([board.vramPA, vramSize]))
         for (i, (name, pa, size)) in memoryMap.enumerated() {
             try dt.rename("chosen/memory-map", "MemoryMapReserved-\(i)", name)
             try dt.set("chosen/memory-map", name, .words([pa, size]))
         }
+    }
+
+    /// ipad1_kboot.nvram_image: an empty NVRAM as iBoot hands it over, a "common" partition (0x70) and the rest free
+    /// (0x7f, "wwwwwwwwwwww"). Headers: {signature, checksum, length in 16-byte blocks (u16 LE), 12-byte name}; the
+    /// checksum is the header's byte sum, folded at each carry.
+    static func nvramImage(size: Int) -> Data {
+        func part(_ sig: UInt8, _ name: String, _ n: Int) -> Data {
+            var h = [sig, 0, UInt8((n / 16) & 0xFF), UInt8((n / 16) >> 8)] + Array(name.utf8) + [UInt8](repeating: 0, count: 12 - name.utf8.count)
+            var c = Int(h[0])
+            for b in h[2...] {
+                c += Int(b)
+                if c > 0xFF { c = (c + 1) & 0xFF }
+            }
+            h[1] = UInt8(c)
+            return Data(h) + Data(count: n - 16)
+        }
+        return part(0x70, "common", size / 2) + part(0x7F, "wwwwwwwwwwww", size - size / 2)
     }
 
     /// The flat physical image, its load PA, entry PA and boot_args PA. `ramdisk`: raw HFS to boot as md0.
@@ -343,12 +365,35 @@ public struct MachO: Sendable {
               let seg = segments.first(where: { Int($0.fileoff) <= so - data.startIndex && so - data.startIndex < Int($0.fileoff + $0.filesize) })
         else { return 2 }
         let sva = seg.vmaddr + UInt32(so - data.startIndex) - seg.fileoff
-        guard let lit = data.range(of: Data(DeviceTree.Value.le([sva])))?.lowerBound else { return 2 }
+        guard let lit = data.range(of: Data(DeviceTree.Value.le([sva])))?.lowerBound else { return pcRelativeBootArgsVersion(sva) }
         let window = [UInt8](data[max(data.startIndex, lit - 0x400)..<lit])
         for n in 0..<8 {
             guard window.count > 2, let i = (0..<(window.count - 1)).reversed().first(where: { window[$0] == 0x40 | UInt8(n) && window[$0 + 1] == 0x88 })
             else { continue }
             for j in (i + 2)..<min(i + 10, window.count) where window[j] == 0x28 | UInt8(n) { return window[j - 1] }
+        }
+        return 2
+    }
+
+    /// iOS 6's xnu-2107 names the string pc-relatively: `ldrh rN, [r0, #2]; cmp rN, #V; beq; movw/movt rX; add rX, pc`.
+    /// The pair whose movw/movt/add pc lands on the string gives V (ipad1_kboot.boot_args_version, 10A403: 3).
+    func pcRelativeBootArgsVersion(_ sva: UInt32) -> UInt8 {
+        let b = [UInt8](data)
+        let h = { (o: Int) -> UInt32 in UInt32(b[o]) | UInt32(b[o + 1]) << 8 }
+        let imm16 = { (h1: UInt32, h2: UInt32) -> UInt32 in (h1 & 0xF) << 12 | (h1 >> 10 & 1) << 11 | (h2 >> 12 & 7) << 8 | (h2 & 0xFF) }
+        let va = { (o: Int) -> UInt32? in
+            self.segments.first { Int($0.fileoff) <= o && o < Int($0.fileoff + $0.filesize) }.map { $0.vmaddr + UInt32(o) - $0.fileoff }
+        }
+        guard b.count > 32 else { return 2 }
+        for i in stride(from: 0, to: b.count - 32, by: 2) where b[i + 1] == 0x88 && b[i] & 0xF8 == 0x40 && b[i + 3] == 0x28 | (b[i] & 7) {
+            for k in stride(from: i + 4, to: i + 12, by: 2) {
+                let (m0, m1, t0, t1) = (h(k), h(k + 2), h(k + 4), h(k + 6))
+                guard m0 & 0xFBF0 == 0xF240, t0 & 0xFBF0 == 0xF2C0 else { continue }
+                let add = UInt32(0x4478) | (m1 >> 8 & 0xF)
+                for a in stride(from: k + 8, to: k + 16, by: 2) where h(a) == add {
+                    if let at = va(a), (imm16(m0, m1) | imm16(t0, t1) << 16) &+ at &+ 4 == sva { return b[i + 2] }
+                }
+            }
         }
         return 2
     }

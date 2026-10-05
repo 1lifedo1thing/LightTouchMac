@@ -91,6 +91,17 @@ enum FitFixture {
     /// FitCheck.loads on real firmware: the iPod agent (linked for 3.1's dyld, LC_DYLD_INFO_ONLY) fits 3.1.3 and 4.2.1,
     /// and does not fit 3.0 or 2.1.1, whose own executables carry no such command (the dyld that refused it with
     /// "unknown required load command 0x80000022"); the legacy-linked loader fits all four.
+    /// An export trie's one-by-one re-export (iOS 6 CoreFoundation's _OBJC_CLASS_$_NSObject) counts as an export;
+    /// a plain export, which the nlist already lists, does not come from here.
+    @Test func trieReexports() {
+        // (one byte before the trie) root: no info, children "_A" -> 10 and "_B" -> 15;
+        // _A: flags 8 (re-export), ordinal 2, same name; _B: flags 0, address 4
+        let b: [UInt8] = [0xEE] + [0x00, 0x02] + Array("_A".utf8) + [0, 10] + Array("_B".utf8) + [0, 15]
+            + [0x03, 0x08, 0x02, 0x00, 0x00] + [0x02, 0x00, 0x04, 0x00]
+        #expect(b.withUnsafeBytes { MachO32.trieReexports($0, at: 1, size: b.count - 1) } == ["_A"])
+        #expect(b.withUnsafeBytes { MachO32.trieReexports($0, at: 1, size: 3) } == [])   // truncated: nothing, no crash
+    }
+
     @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run")) func iPodAgentNeedsTheShippingCacheDyld() async throws {
         guard let agent = try FitFixture.payload("armv6", "n72-ios3/bin/it_agent"), let loader = try FitFixture.payload("armv6", "loader/it_boot") else { try FixtureRequirements.missing(#"FitCheckTests.swift: let agent = try FitFixture.payload("armv6", "n72-ios3/bin/it_agent"), let loader = try FitFixture.payload("armv6", "loader/it_boot")"#) }
         for (id, fits) in [("n72ap-7E18", true), ("n72ap-8C148", true), ("n72ap-7A341", false), ("n72ap-5F138", false)] {

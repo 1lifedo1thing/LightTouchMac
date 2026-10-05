@@ -17,8 +17,11 @@ public enum Activation {
         public let inputSHA256: String, outputSHA256: String
         // Optional so device records written by earlier releases remain decodable.
         public var patch: Patch? = nil
+        /// The data route (iOS 6): lockdownd left stock, these keys seeded into /var/root/Library/Lockdown/data_ark.plist.
+        public var dataArk: [String: String]? = nil
         var record: [String: Any] {
             var result: [String: Any] = ["input_sha256": inputSHA256, "output_sha256": outputSHA256]
+            if let dataArk { result["data_ark"] = dataArk }
             if let patch {
                 result["patch"] = ["strategy": patch.strategy, "isa": patch.isa, "offset": patch.offset,
                                    "original": patch.original.map { String(format: "%02x", $0) }.joined(),
@@ -79,6 +82,16 @@ public enum Activation {
                           original: withUnsafeBytes(of: report.original) { Data($0.prefix(Int(report.width))) },
                           replacement: withUnsafeBytes(of: report.replacement) { Data($0.prefix(Int(report.width))) })
         return Result(inputSHA256: hash(before), outputSHA256: hash(after), patch: patch)
+    }
+
+    /// iOS 6 lockdownd, which no binary strategy matches, takes its activation state from its data ark: the
+    /// lockdown_cache domain's ActivationState, which a factory unit carries as FactoryActivated. Offered only when
+    /// lockdownd names that domain and state; the binary stays stock.
+    public static func dataArkRoute(lockdownd: Data) -> Result? {
+        guard lockdownd.range(of: Data("com.apple.mobile.lockdown_cache\0".utf8)) != nil,
+              lockdownd.range(of: Data("FactoryActivated\0".utf8)) != nil else { return nil }
+        let h = hash(lockdownd)
+        return Result(inputSHA256: h, outputSHA256: h, dataArk: ["com.apple.mobile.lockdown_cache-ActivationState": "FactoryActivated"])
     }
 
     private static func hash(_ data: Data) -> String {

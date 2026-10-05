@@ -162,6 +162,27 @@ struct KBootTests {
         #expect(img.image[Int(img.bootArgsPA - img.loadPA)..<Int(img.bootArgsPA - img.loadPA) + 4] == Data([1, 0, 3, 0]))
     }
 
+    /// iOS 6 (xnu-2107): the string named by movw/movt + add pc instead of a literal (ipad1_kboot.boot_args_version).
+    @Test func bootArgsVersionPCRelative() throws {
+        var k = Self.kernel(at: 0x8000_0000)
+        let s = Data("pe_identify_machine: Epoch Mismatch\0".utf8)
+        k.replaceSubrange(0x100..<0x100 + s.count, with: s)
+        // ldrh r3, [r0, #2]; cmp r3, #3; beq; movw r1, #0xfeee; movt r1, #0xffff; add r1, pc  (0x8000120e + 4 - 0x112 = string)
+        k.replaceSubrange(0x200..<0x210, with: Data([0x43, 0x88, 0x03, 0x2B, 0x00, 0xD0, 0x4F, 0xF6, 0xEE, 0x61,
+                                                     0xCF, 0xF6, 0xFF, 0x71, 0x79, 0x44]))
+        #expect(try MachO(k).bootArgsVersion() == 3)
+        k[0x20E] = 0x7A   // add r2, pc: lands nowhere
+        #expect(try MachO(k).bootArgsVersion() == 2)
+    }
+
+    /// ipad1_kboot.nvram_image(0x2000): byte-identical headers, the free partition at the half.
+    @Test func nvramImage() {
+        let d = KBoot.nvramImage(size: 0x2000)
+        #expect(d.count == 0x2000)
+        #expect(d.prefix(16) == Data([0x70, 0xFC, 0x00, 0x01] + Array("common".utf8) + [UInt8](repeating: 0, count: 6)))
+        #expect(d[0x1000..<0x1010] == Data([0x7F, 0x1A, 0x00, 0x01] + Array("wwwwwwwwwwww".utf8)))
+    }
+
     @Test func iBootVersion() {
         #expect(KBoot.ibootVersion(Data("xxiBoot-xiBoot-817.29.\0".utf8)) == "iBoot-817.29")
         #expect(KBoot.ibootVersion(Data("iBoot-931.71.16 ".utf8)) == "iBoot-931.71.16")

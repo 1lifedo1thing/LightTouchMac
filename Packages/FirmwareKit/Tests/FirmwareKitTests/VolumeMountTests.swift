@@ -50,6 +50,22 @@ import Testing
     }
 
     /// A handle left open on the volume: unmount fails, the image is force-detached and the call throws.
+    /// iOS 6's data volume: kHFSContentProtectionBit in both volume headers, the rest of the attributes kept.
+    @Test func contentProtection() async throws {
+        try await Oracle.withTemp { dir in
+            let img = dir.appendingPathComponent("data.img")
+            try await VolumeMount.makeHFS(img, size: 32 << 20)
+            let attrs = { (at: Int) throws -> UInt32 in
+                let d = try Data(contentsOf: img)
+                return d[at + 4..<at + 8].reduce(0) { $0 << 8 | UInt32($1) }
+            }
+            let before = try attrs(1024), size = try Int(VolumeMount.size(img))
+            try HFSPlusVolume(img, writable: true).setContentProtection()
+            #expect(try attrs(1024) == before | 0x4000_0000 && before & 0x4000_0000 == 0)
+            #expect(try attrs(size - 1024) & 0x4000_0000 != 0)
+        }
+    }
+
     @Test func busyVolumeIsDetached() async throws {
         try await Oracle.withTemp { dir in
             let img = dir.appendingPathComponent("v.img")
