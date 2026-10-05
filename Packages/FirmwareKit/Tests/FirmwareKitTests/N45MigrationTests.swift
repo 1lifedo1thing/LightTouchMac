@@ -26,10 +26,19 @@ struct N45MigrationTests {
         try fm.createDirectory(at: base, withIntermediateDirectories: true)
         let image = root.appendingPathComponent("volume.img")
         try await VolumeMount.makeHFS(image, size: 16 << 20, name: "SC step test")
+        // What 1.x's configd writes there at first boot (measured on 1A543a): its own AirPort service on en0, and
+        // no known networks.
         try await VolumeMount.withMounted(image, at: root.appendingPathComponent("initial")) { mount in
-            try fm.createDirectory(at: mount.appendingPathComponent(N45Board.rootLibrary + "/Preferences"), withIntermediateDirectories: true)
+            let sc = mount.appendingPathComponent(N45Board.scPrefs)
+            try fm.createDirectory(at: sc, withIntermediateDirectories: true)
+            let service: [String: Any] = ["Interface": ["DeviceName": "en0", "Hardware": "AirPort", "Type": "Ethernet"], "UserDefinedName": "AirPort"]
+            try PropertyListSerialization.data(fromPropertyList: ["NetworkServices": ["CONFIGD": service]], format: .xml, options: 0)
+                .write(to: sc.appendingPathComponent("preferences.plist"))
+            try PropertyListSerialization.data(fromPropertyList: ["JoinMode": "Automatic", "List of known networks": [Any]()], format: .xml, options: 0)
+                .write(to: sc.appendingPathComponent("com.apple.wifi.plist"))
         }
-        let dirs = ["private", "private/var", "private/var/root", N45Board.rootLibrary, N45Board.rootLibrary + "/Preferences"]
+        let dirs = ["private", "private/var", "private/var/root", N45Board.rootLibrary, N45Board.rootLibrary + "/Preferences", N45Board.scPrefs,
+                    N45Board.scPrefs + "/preferences.plist", N45Board.wifiPrefs]
         try HFSPlusVolume(image, writable: true).setOwner(dirs, uid: 0, gid: 0, mode: 0o755)   // root's, as the recipe leaves them
         try N45NAND.write(volume: image, out: base.appendingPathComponent("nand"), filID: 0x4330_3030, banks: N45FTLTests.banks)
         let overlay = device.appendingPathComponent("overlay")
@@ -43,7 +52,7 @@ struct N45MigrationTests {
         try JSONSerialization.data(withJSONObject: record).write(to: device.appendingPathComponent("device.json"))
         #expect(try N45Migration.pending(device: device, policy: .standalone) == 2)
 
-        _ = try await FirmwareBootAdmission.admit(device: device)
+        #expect(try await FirmwareBootAdmission.admit(device: device).changed)
         let first = try Self.storage(device)
         #expect(first.key != "old")
         #expect(fm.fileExists(atPath: first.overlay.appendingPathComponent(N45Migration.stamp).path))
@@ -55,9 +64,12 @@ struct N45MigrationTests {
         let prefs = try PropertyListSerialization.propertyList(from: volume.contents(volume.record(at: N45Board.scPrefs + "/preferences.plist")),
                                                                format: nil) as? [String: Any]
         let services = try #require(prefs?["NetworkServices"] as? [String: [String: Any]])
-        #expect(services.values.contains { ($0["Proxies"] as? [String: Any])?["ProxyAutoConfigURLString"] as? String == "file:///" + SystemEdits.pacPath })
+        #expect(Array(services.keys) == ["CONFIGD"])                       // the PAC on configd's service, not a second en0 one
+        #expect((services["CONFIGD"]?["Proxies"] as? [String: Any])?["ProxyAutoConfigURLString"] as? String == "file:///" + SystemEdits.pacPath)
         let wifi = try volume.record(at: N45Board.wifiPrefs)
-        #expect(try volume.contents(wifi) == PropertyListSerialization.data(fromPropertyList: N45Board.wifiKnownNetwork, format: .xml, options: 0))
+        let known = try PropertyListSerialization.propertyList(from: volume.contents(wifi), format: nil) as? [String: Any]
+        #expect(known?["JoinMode"] as? String == "Automatic" && known?["AllowEnable"] as? Bool == true)
+        #expect((known?["List of known networks"] as? [[String: Any]])?.map { $0["SSID_STR"] as? String } == ["qemu-ios"])
         #expect(wifi.uid == 0)
 
         _ = try await FirmwareBootAdmission.admit(device: device)          // stamped: nothing to do

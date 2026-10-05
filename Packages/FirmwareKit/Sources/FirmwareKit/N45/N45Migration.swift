@@ -4,8 +4,8 @@ import HostRuntime
 
 /// The 1.x admission step (FirmwareWire.admissionRecipeSteps: n45 2 -> 3, m68 1 -> 2): a device prepared before
 /// 8a54efd has its Wi-Fi known network and the PAC'd AirPort service under /private/var/preferences, where 1.x never
-/// looks. A stopped edit writes them into root's home (N45Board.seedSystemConfiguration, keeping a wifi plist the
-/// guest already wrote there), as the recipe does now.
+/// looks. A stopped edit writes them into root's home as the recipe does now (N45Board.seedSystemConfiguration,
+/// merged into the files configd has written there by then).
 ///
 /// The edit lands in the overlay, so the overlay records it (`stamp`): an edit clones the overlay and keeps it, and
 /// Erase removes the overlay, so an erased device takes the step again at its next start. A storage-key marker
@@ -20,7 +20,7 @@ public nonisolated enum N45Migration {
         let session = try await StoppedVolumeEdit.begin(device: device, policy: policy, log: log)
         do {
             let point = session.image.deletingLastPathComponent().appendingPathComponent("sc-prefs-mount")
-            try await VolumeMount.withMounted(session.image, at: point) { _ = try N45Board.seedSystemConfiguration($0, keepWifi: true) }
+            try await VolumeMount.withMounted(session.image, at: point) { _ = try N45Board.seedSystemConfiguration($0) }
             try await StoppedVolumeEdit.commit(device: device, id: session.id, policy: policy, log: log)
         } catch {
             try? await StoppedVolumeEdit.discard(device: device, id: session.id, policy: policy)

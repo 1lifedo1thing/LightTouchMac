@@ -57,17 +57,27 @@ final class N45Board: Board {
     /// and the networks it has joined ("List of known networks", entries keyed by SSID_STR) in this file.
     static let wifiPrefs = scPrefs + "/com.apple.wifi.plist"
     /// The PAC, the en0 AirPort service carrying it (preferences.plist) and the known network (wifiPrefs) in scPrefs.
-    /// `keepWifi`: a com.apple.wifi.plist already there (the guest's own) is left as it is. Returns the paths to make
-    /// root-owned. The recipe and its admission step (N45Migration) both write them.
-    static func seedSystemConfiguration(_ m: URL, keepWifi: Bool = false) throws -> [String] {
+    /// Returns the paths to make root-owned. The recipe writes them on a fresh volume; its admission step
+    /// (N45Migration) on a device whose configd has already written both files there: the PAC goes on configd's own
+    /// en0 service (not a second one) and qemu-ios joins its known networks, the rest of each file kept.
+    static func seedSystemConfiguration(_ m: URL) throws -> [String] {
         let owned = try SystemEdits.installPAC(m, dirs: [scPrefs])
-        try SystemEdits.seedPlist(m.appendingPathComponent(scPrefs + "/preferences.plist"), SystemEdits.wifiProxyPrefs)
-        let wifi = m.appendingPathComponent(wifiPrefs)
-        if !(keepWifi && FileManager.default.fileExists(atPath: wifi.path)) {
-            try SystemEdits.put(try PropertyListSerialization.data(fromPropertyList: wifiKnownNetwork, format: .xml, options: 0), wifi, mode: 0o644)
+        try SystemEdits.seedPlist(m.appendingPathComponent(scPrefs + "/preferences.plist")) { d in
+            let en0 = ((d["NetworkServices"] as? NSDictionary)?.allValues ?? []).compactMap { $0 as? NSMutableDictionary }
+                .filter { ($0["Interface"] as? NSDictionary)?["DeviceName"] as? String == "en0" }
+            if en0.isEmpty { SystemEdits.wifiProxyPrefs(d) } else { for s in en0 { s["Proxies"] = SystemEdits.pacProxies } }
         }
+        let wifi = m.appendingPathComponent(wifiPrefs)
+        var known = (try? Data(contentsOf: wifi)).flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? [String: Any] } ?? [:]
+        if known["AllowEnable"] == nil { known["AllowEnable"] = wifiKnownNetwork["AllowEnable"] }
+        let list = known["List of known networks"] as? [[String: Any]] ?? []
+        if !list.contains(where: { $0["SSID_STR"] as? String == "qemu-ios" }) {
+            known["List of known networks"] = list + (wifiKnownNetwork["List of known networks"] as! [[String: Any]])
+        }
+        try SystemEdits.put(try PropertyListSerialization.data(fromPropertyList: known, format: .xml, options: 0), wifi, mode: 0o644)
         return owned + [scPrefs + "/preferences.plist", wifiPrefs]
     }
+
     /// A device that has joined the emulator's access point before (the 88W8686 model's open "qemu-ios", channel 6):
     /// Wi-Fi on, and the network remembered as the join left it, so configd auto-joins at boot.
     static var wifiKnownNetwork: [String: Any] { [

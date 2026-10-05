@@ -494,12 +494,15 @@ public enum SystemEdits {
     }
 
     /// preferences.plist: the AirPort service on en0 (the unit's own shape) carrying the proxy PAC, first.
+    /// A network service's Proxies: the web proxy's PAC.
+    static var pacProxies: NSDictionary {
+        ["ExceptionsList": ["*.local", "169.254/16"], "FTPPassive": 1, "ProxyAutoConfigEnable": 1, "ProxyAutoConfigURLString": "file:///" + pacPath]
+    }
     static func wifiProxyPrefs(_ d: NSMutableDictionary) {
         let svc = dict(dict(d, "NetworkServices"), wifiService, NSMutableDictionary(dictionary: [
             "Interface": ["DeviceName": "en0", "Hardware": "AirPort", "Type": "Ethernet", "UserDefinedName": "AirPort"],
             "IPv4": ["ConfigMethod": "DHCP"], "IPv6": ["ConfigMethod": "Automatic"], "DNS": [String: Any](), "UserDefinedName": "AirPort"]))
-        svc["Proxies"] = ["ExceptionsList": ["*.local", "169.254/16"], "FTPPassive": 1,
-                          "ProxyAutoConfigEnable": 1, "ProxyAutoConfigURLString": "file:///" + pacPath] as NSDictionary
+        svc["Proxies"] = pacProxies
         let net = currentNetwork(d)
         dict(net, "Service")[wifiService] = ["__LINK__": "/NetworkServices/" + wifiService]
         dict(dict(net, "Interface"), "en0", NSMutableDictionary(dictionary: ["AirPort": ["JoinMode": "Automatic"]]))

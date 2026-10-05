@@ -34,10 +34,12 @@ public nonisolated enum FirmwareBootAdmission {
                                                     allowRaw: Bool = false) async throws -> Result {
         // 1.x's step is a stopped edit, which takes its own lease, so it runs before admission's. A failure (an FTL
         // the guest didn't shut down cleanly is refused) doesn't keep the device from starting; the next start retries.
-        do { _ = try await N45Migration.systemConfiguration(device: device, policy: policy, allowRaw: allowRaw) }
+        var edited = false
+        do { edited = try await N45Migration.systemConfiguration(device: device, policy: policy, allowRaw: allowRaw) }
         catch is CancellationError { throw CancellationError() }
         catch { FirmwareDiagnostics.write(Data("boot admission: 1.x SystemConfiguration step skipped: \(error)\n".utf8)) }
-        return try await admit(device: device, policy: policy, allowRaw: allowRaw, prepare: migrate)
+        let result = try await admit(device: device, policy: policy, allowRaw: allowRaw, prepare: migrate)
+        return Result(changed: result.changed || edited, record: result.record, paths: result.paths)
     }
 
     @Sendable static func migrate(_ owner: StoppedRecordOwner) throws -> Bool {
