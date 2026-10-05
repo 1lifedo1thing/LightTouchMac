@@ -66,6 +66,10 @@ struct N45MigrationTests {
         let services = try #require(prefs?["NetworkServices"] as? [String: [String: Any]])
         #expect(Array(services.keys) == ["CONFIGD"])                       // the PAC on configd's service, not a second en0 one
         #expect((services["CONFIGD"]?["Proxies"] as? [String: Any])?["ProxyAutoConfigURLString"] as? String == "file:///" + SystemEdits.pacPath)
+        // the set's global Proxies: 1.0's run-time cellular service takes them
+        let set = String((prefs?["CurrentSet"] as? String ?? "").split(separator: "/").last ?? "")
+        let global = ((((prefs?["Sets"] as? [String: Any])?[set] as? [String: Any])?["Network"] as? [String: Any])?["Global"] as? [String: Any])
+        #expect((global?["Proxies"] as? [String: Any])?["ProxyAutoConfigURLString"] as? String == "file:///" + SystemEdits.pacPath)
         let wifi = try volume.record(at: N45Board.wifiPrefs)
         let known = try PropertyListSerialization.propertyList(from: volume.contents(wifi), format: nil) as? [String: Any]
         #expect(known?["JoinMode"] as? String == "Automatic" && known?["AllowEnable"] as? Bool == true)
@@ -79,6 +83,12 @@ struct N45MigrationTests {
         _ = try await FirmwareBootAdmission.admit(device: device)
         let erased = try Self.storage(device)
         #expect(erased.key != first.key && fm.fileExists(atPath: erased.overlay.appendingPathComponent(N45Migration.stamp).path))
+
+        // a device the first version stamped (no global Proxies) takes the step again
+        try fm.removeItem(at: erased.overlay.appendingPathComponent(N45Migration.stamp))
+        try Data().write(to: erased.overlay.appendingPathComponent(".n45-sc-prefs"))
+        #expect(try await FirmwareBootAdmission.admit(device: device).changed)
+        #expect(fm.fileExists(atPath: try Self.storage(device).overlay.appendingPathComponent(N45Migration.stamp).path))
     }
 
     /// Only the declared steps: a device prepared at the current recipe, or not 1.x, takes none.

@@ -11,7 +11,9 @@ import HostRuntime
 /// Erase removes the overlay, so an erased device takes the step again at its next start. A storage-key marker
 /// would not do: Erase keeps the key, and every edit (the proxy's trust anchor among them) changes it.
 public nonisolated enum N45Migration {
-    static let stamp = ".n45-sc-prefs"
+    /// -2: the set's global Proxies too (cellular through the web proxy); a device stamped by the first version takes
+    /// the step again (seedSystemConfiguration merges, so it only adds what is missing).
+    static let stamp = ".n45-sc-prefs-2"
 
     /// Runs the step on a stopped 1.x device that needs it. True when it edited. The caller holds no lease.
     nonisolated(nonsending) public static func systemConfiguration(device: URL, policy: StorageRecordPolicy = .standalone,
