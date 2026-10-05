@@ -96,8 +96,9 @@ nonisolated extension DeviceProfile {
         }
     }
 
-    /// Height of the real device, for Actual Size zoom.
+    /// Height of the real device, for Actual Size zoom. The iPhone 2G (115 mm) wears the 1G's art, so it takes the
+    /// 1G's height: its screen, the same 3.5", stays true to size.
     var physicalHeightMillimeters: CGFloat {
-        switch self { case .iPad1: 242.8; case .iPodTouch4G: 111; case .iPhone4: 115.2; case .iPhone3GS: 115.5; case .iPodTouch2G, .iPodTouch1G, .iPodTouch3G: 110 }
+        switch self { case .iPad1: 242.8; case .iPodTouch4G: 111; case .iPhone4: 115.2; case .iPhone3GS: 115.5; case .iPodTouch2G, .iPodTouch1G, .iPodTouch3G, .iPhone2G: 110 }
     }
 }
