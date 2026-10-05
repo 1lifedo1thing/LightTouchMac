@@ -10,6 +10,7 @@ import HostRuntime
 // lockdown and still hold a file uploaded before the clean shutdown (tests/matrix.py's persist check).
 
 import Foundation
+import Vision
 struct SingleConfig: Decodable {
     var board: String   // "ipod" | "ipad" | "ipod1g" | "iphone2g" | "ipod4g" | "iphone4" | "ipod3g" | "iphone3gs"
     var base: String
@@ -211,6 +212,21 @@ struct SingleConfig: Decodable {
             let after = try? await GuestAgent(link: d.process.link, cache: GuestAgentCache()).frontmost().bundleID
             emit("setup", ["device": d.name, "generation": generation, "ok": ok && after != Setup5.bundleID, "detail": detail,
                            "frontmost": after ?? ""])
+            try? await Task.sleep(for: .seconds(5))
+        }
+        // A fresh 6.x phone: Setup's welcome slider (SpringBoard's lock screen) and then purplebuddy's pages.
+        // Ask until the agent answers, as the iPad's walk does (n90 6.0.1's first boot, at load 30: no answer at 60 s).
+        var phoneFront: (bundleID: String, name: String)?
+        if a4, !ipad, asks {
+            let t0 = Date()
+            while phoneFront == nil, Date().timeIntervalSince(t0) < d.profile.bootBudget / 2.5 {
+                phoneFront = try? await guestAgent.frontmost()
+                if phoneFront == nil { try? await Task.sleep(for: .seconds(3)) }
+            }
+        }
+        if let front = phoneFront, front.bundleID == Setup5.bundleID || front.name == "Lock Screen" {
+            let (ok, detail) = await SetupPhone.walk(d, agent: guestAgent, generation: generation)
+            emit("setup", ["device": d.name, "generation": generation, "ok": ok, "detail": detail])
             try? await Task.sleep(for: .seconds(5))
         }
         let hp = await d.wakeForShot(generation == 1 ? "home" : "home\(generation)")
@@ -671,4 +687,62 @@ struct SingleConfig: Decodable {
     event["before"] = before ?? ""; event["after"] = after ?? ""
     if let after, let file { event["kept"] = (try? await agent.get("\(after)/\(file)")) == marker } else { event["kept"] = false }
     emit("upgraded", event)
+}
+
+/// A phone's Setup Assistant (6.x on the iPod touch 4G, iPhone 4 and 3GS), walked as qemu-ios
+/// tests/ipad1/app-install.py walk_setup does: Vision reads each page's labels off a screenshot; an alert's
+/// button labelled exactly as one of `alertYes` goes first, then the first of `picks` the page shows, then its
+/// Next (the language page's is an arrow, top right). The welcome page (SpringBoard's "slide to set up", in a
+/// rotating language) has none of those and is slid. Done when the agent says the home screen is up.
+@MainActor enum SetupPhone {
+    static let picks = ["Start Using iPod touch", "Start Using iPod", "Start Using iPhone", "Set Up as New iPod touch",
+                        "Set Up as New iPod", "Set Up as New iPhone", "Disable Location Services", "Skip This Step", "Agree",
+                        "Don't Send", "Australia", "United States"]
+    static let alertYes = ["OK", "Skip", "Agree", "Continue"]
+    static let nextArrow = (x: 587.0 / 640, y: 84.0 / 960)
+
+    /// Each label Vision reads on the screenshot, at its centre as a touch point (top-left origin, 0...1).
+    static func labels(_ path: String) -> [String: (x: Double, y: Double)] {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        guard (try? VNImageRequestHandler(url: URL(fileURLWithPath: path)).perform([request])) != nil else { return [:] }
+        var found: [String: (x: Double, y: Double)] = [:]
+        for o in request.results ?? [] {
+            guard let text = o.topCandidates(1).first?.string.trimmingCharacters(in: .whitespaces) else { continue }
+            found[text] = found[text] ?? (o.boundingBox.midX, 1 - o.boundingBox.midY)
+        }
+        return found
+    }
+
+    static func walk(_ d: Device, agent: GuestAgent, generation: Int) async -> (Bool, String) {
+        var pages: [String] = []
+        for n in 0..<40 {
+            try? await Task.sleep(for: .seconds(3))
+            if let f = try? await agent.frontmost(), f.bundleID == "com.apple.springboard", f.name == "Home Screen" {
+                return (true, "Setup walked: " + pages.joined(separator: ", "))
+            }
+            guard let shot = await d.wakeForShot("setup\(generation)-\(n)") else { continue }
+            let found = labels(shot)
+            if let yes = alertYes.first(where: { found[$0] != nil }), let p = found[yes] {
+                await d.tap(p.x, p.y); pages.append("(\(yes))"); continue
+            }
+            let pick = picks.first { found[$0] != nil }
+            if let pick, let p = found[pick] {
+                // a label tapped again and again: nudge the tap (as walk_setup, the digitizer's edges)
+                let again = pages.filter { $0 == pick }.count
+                await d.tap(p.x, p.y + [0, -14, 14, -24, 24][again % 5] / 960)
+                pages.append(pick)
+                if pick.hasPrefix("Start Using") { continue }
+                try? await Task.sleep(for: .seconds(1.5))
+            }
+            if let next = found["Next"] ?? (found["English"] != nil ? nextArrow : nil) {
+                await d.tap(next.x, next.y)
+                if pick == nil { pages.append(found.filter { $0.value.y < 130.0 / 960 && $0.key != "Next" }.keys.first ?? "?") }
+            } else if pick == nil {
+                await d.drag(0.18, 0.9, 0.92, 0.9)   // the welcome page's slider
+                pages.append("(slide)")
+            }
+        }
+        return (false, "Setup still up after 40 pages: " + pages.joined(separator: ", "))
+    }
 }
