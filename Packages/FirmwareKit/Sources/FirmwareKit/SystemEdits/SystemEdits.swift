@@ -170,9 +170,10 @@ public enum SystemEdits {
             let fw = FitCheck.Firmware(root: m, arch: "armv7", kernelcache: kernel)
             _ = fw.precedent
             // it_msmquiet only where the mounter raises the notice it recognises; else left out, job untouched
+            // (3.1.x has no storage_mounter job at all)
             let msm = Helpers.tools[3]
             var quietJobs: [(String, String)] = []
-            for (job, label) in noticeJobs where job == msmJob || fm.fileExists(atPath: at(job).path) {
+            for (job, label) in noticeJobs where fm.fileExists(atPath: at(job).path) {
                 if try fit.check(FitCheck.msmQuiet(fw, program: try stockProgram(m, job, label: label),
                                                    dylib: Data(contentsOf: try helper(msm.name))), required: false) {
                     quietJobs.append((job, label))
