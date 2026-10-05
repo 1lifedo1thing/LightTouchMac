@@ -4167,7 +4167,7 @@
    "rootfs": {"file": "038-6494-001.dmg", "key": "ca9ed452f256fa47ccdb387fdc0daa53d19428b2569fb089af58df576f6e54a4fb6de0ae"},
    "UpdateRamDisk": {"file": "038-6454-001.dmg", "iv": "6f28d334c28c4452548b6edd725e3462", "key": "9e4775115c8926371026b964c613d27ebafd4cf0672bfb2c28f94bb2bd00f8f4"}
   },
-  "recipe": {"name": "n90", "version": 1, "storage": "16g", "system_mib": 1280, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": true, "writable_nor": true}},
+  "recipe": {"name": "n90", "version": 2, "storage": "16g", "system_mib": 1280, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": true, "writable_nor": true}},
   "emulator": {"min_protocol": 1},
   "estimates": {"prepared_bytes": 1503238554, "peak_bytes": 3799310312, "seconds": 90}
  },
@@ -4200,7 +4200,7 @@
    "rootfs": {"file": "038-7954-010.dmg", "key": "43fd5c7357cfc1bfa0c16ab72343bcb9e8974922b3c00af7a27cf522d2dca3ec471a6f83"},
    "UpdateRamDisk": {"file": "038-7927-011.dmg", "iv": "610727d2aa925565948bfd54f061ba32", "key": "be65efe98b937b3cb574e4267a925966ed2c32b6717130574a664933560d4943"}
   },
-  "recipe": {"name": "n90", "version": 1, "storage": "16g", "system_mib": 1280, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": true, "writable_nor": true}},
+  "recipe": {"name": "n90", "version": 2, "storage": "16g", "system_mib": 1280, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": true, "writable_nor": true}},
   "emulator": {"min_protocol": 1},
   "estimates": {"prepared_bytes": 1503238554, "peak_bytes": 3799310312, "seconds": 90}
  },
@@ -4233,7 +4233,7 @@
    "rootfs": {"file": "048-0820-001.dmg", "key": "751775f5f345c9632fcc52876c63cffffd5b05b28b402986e3e0898c2fb8c58051bfd575"},
    "UpdateRamDisk": {"file": "048-0785-001.dmg", "iv": "bcb069d855bae0e0b7026775d97a05ce", "key": "60f94bdbfcee4e95d685b25f0b2191f619a50ceca34058ea0a1ef89146ea22fa"}
   },
-  "recipe": {"name": "n90", "version": 1, "storage": "16g", "system_mib": 1280, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": true, "writable_nor": true}},
+  "recipe": {"name": "n90", "version": 2, "storage": "16g", "system_mib": 1280, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": true, "writable_nor": true}},
   "emulator": {"min_protocol": 1},
   "estimates": {"prepared_bytes": 1503238554, "peak_bytes": 3799310312, "seconds": 90}
  },
@@ -4266,7 +4266,7 @@
    "rootfs": {"file": "048-0903-002.dmg", "key": "01c1fb58265e6a22ebe784edf55cc549d4f7f73d5a5769eb7365d1145b3f9e0798b8851a"},
    "UpdateRamDisk": {"file": "048-0838-002.dmg", "iv": "9d1b9ffe841b3a95a7f886294f00d12c", "key": "5a2e6bf4f158b59f63e006a4d44adfb636d4d7011325176ba73578d1040d70df"}
   },
-  "recipe": {"name": "n90", "version": 1, "storage": "16g", "system_mib": 1280, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": true, "writable_nor": true}},
+  "recipe": {"name": "n90", "version": 2, "storage": "16g", "system_mib": 1280, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": true, "writable_nor": true}},
   "emulator": {"min_protocol": 1},
   "estimates": {"prepared_bytes": 1503238554, "peak_bytes": 3799310312, "seconds": 90}
  },
@@ -4299,7 +4299,7 @@
    "rootfs": {"file": "048-2748-005.dmg", "key": "c676166434b79cbde341e094000dfc47b3161034371b25a9054880a757d73aead553a317"},
    "UpdateRamDisk": {"file": "048-2533-005.dmg", "iv": "49ab89542e78dce8866bd005af2a2515", "key": "6b5b0b02f3ef2a02fc3b40a185aacdc57a9e2b377aabae42d117387720a8cc4d"}
   },
-  "recipe": {"name": "n90", "version": 1, "storage": "16g", "system_mib": 1280, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": true, "writable_nor": true}},
+  "recipe": {"name": "n90", "version": 2, "storage": "16g", "system_mib": 1280, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": true, "writable_nor": true}},
   "emulator": {"min_protocol": 1},
   "estimates": {"prepared_bytes": 1503238554, "peak_bytes": 3799310312, "seconds": 90}
  },
@@ -4331,7 +4331,7 @@
    "rootfs": {"file": "058-4520-010.dmg", "key": "38d0320d099b9dd34ffb3308c53d397f14955b347d6a433fe173acc2ced1ae78756b3684"},
    "UpdateRamDisk": {"file": "058-4266-010.dmg", "iv": "6f634978ee1d464dd30d9b49c72d62d9", "key": "276e895192154e7903711a9aaa3444177c92f1c79e6cc58051429ce52e2d1beb"}
   },
-  "recipe": {"name": "n90", "version": 1, "storage": "16g", "system_mib": 1664, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": true, "writable_nor": true}},
+  "recipe": {"name": "n90", "version": 2, "storage": "16g", "system_mib": 1664, "data_size": "partition", "boot": "kboot", "options": {"ca_ogl": true, "appsync": true, "web_proxy": true, "usb_net": true, "writable_nor": true}},
   "emulator": {"min_protocol": 1},
   "estimates": {"prepared_bytes": 1905891738, "peak_bytes": 4604616680, "seconds": 90}
  }
