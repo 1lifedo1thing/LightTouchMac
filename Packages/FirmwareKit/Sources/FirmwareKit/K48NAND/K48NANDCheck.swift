@@ -140,8 +140,8 @@ extension K48NAND {
         ok(sig.map { magic($0.data, "NANDDRIVERSIGN") } ?? false, "NANDDRIVERSIGN at cs0 block \(hex(sigBlock ?? 0)) (BBT hdr+0x24)")
         if let (d, _) = sig {
             let ns = le32(d, 0x38), flags = le32(d, 0x3c)
-            st.plain = flags == plainSigFlags
-            ok(ns >> 8 == nsigBase >> 8 && (0x31...0x39).contains(ns & 0xff) && (flags == sigFlags || st.plain),
+            st.plain = flags & 0x10000 == 0   // 0x5, or a recipe's nand_sig_flags (3.1.x: 4)
+            ok(ns >> 8 == nsigBase >> 8 && (0x31...0x39).contains(ns & 0xff) && (flags == sigFlags || (st.plain && (4...5).contains(flags))),
                "signature nSig=\(String(format: "%08x", ns)) flags=\(String(format: "%08x", flags)) (VSVFL, epoch \(ns & 0xf), whitening \(st.plain ? "off" : "on"))")
         }
 

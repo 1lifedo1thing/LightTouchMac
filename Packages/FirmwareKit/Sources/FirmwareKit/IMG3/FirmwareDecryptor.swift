@@ -77,7 +77,11 @@ public enum FirmwareDecryptor {
         // does need one (the 4.x keybag's Update ramdisk) fails on the missing file with its own message.
         // An 8900 container needs none.
         var files: [String] = []
-        func keyed(_ p: String) -> Bool { (try? entry.key(forPath: p)) != nil || (try? Apple8900.isContainer(ipsw.read(p))) == true }
+        // An 8900 container, or an img3 without a KBAG (N18 4.3.4/4.3.5 ship their ramdisks in the clear), needs none.
+        func keyed(_ p: String) -> Bool {
+            (try? entry.key(forPath: p)) != nil || (try? Apple8900.isContainer(ipsw.read(p))) == true
+                || (try? IMG3.tags(ipsw.read(p))["KBAG"] == nil) == true
+        }
         for (name, c) in components {
             if c == "KernelCache" {
                 try kernel.write(to: dir.appendingPathComponent("kernelcache.mach"))

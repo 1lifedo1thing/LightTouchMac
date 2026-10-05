@@ -29,6 +29,9 @@ public enum SystemEdits {
     /// The recipe options SystemEdits reads (FirmwareEntry.Recipe.options), plus bake's switches.
     public struct Options: Sendable, Equatable {
         public var caOGL = true, appsync = false, webProxy = true, usbNet = true
+        /// data_journal false: an unjournaled data volume (the iPod touch 3G's 3.1.x mount_hfs refuses the journaled
+        /// one the Mac makes with EINVAL).
+        public var dataJournal = true
         /// bake --seal: the one-shot clean halt the seal step needs (always on for a prepared device).
         public var seal = true
         /// bake --gl-test: the GL fixture job (test devices only: recipe option gl_test, never set in the catalog).
@@ -38,7 +41,7 @@ public enum SystemEdits {
             let o = recipe.options
             caOGL = o["ca_ogl"] ?? true; appsync = o["appsync"] ?? false
             webProxy = o["web_proxy"] ?? true; usbNet = o["usb_net"] ?? true
-            glTest = o["gl_test"] ?? false
+            glTest = o["gl_test"] ?? false; dataJournal = o["data_journal"] ?? true
         }
     }
 
@@ -258,7 +261,7 @@ public enum SystemEdits {
         }
         if o.webProxy { try seedPlist(sc.appendingPathComponent("preferences.plist"), wifiProxyPrefs) }
         try? fm.removeItem(at: data)
-        try await VolumeMount.makeHFS(data, size: dataBytes)
+        try await VolumeMount.makeHFS(data, size: dataBytes, journaled: o.dataJournal)
         var byOwner: [[UInt32]: [String]] = [:]
         try await VolumeMount.withMounted(data, at: work.appendingPathComponent("mnt-data")) { m in
             try copyTree(skeleton, m)   // merges into the root, which takes /private/var's mode

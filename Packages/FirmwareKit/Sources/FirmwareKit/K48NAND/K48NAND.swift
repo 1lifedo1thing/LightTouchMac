@@ -234,7 +234,7 @@ public enum K48NAND {
         return c
     }
 
-    static func writeMetadata(_ st: Store, _ geo: Geometry, kernelVersion: [UInt8], epoch: UInt8) throws {
+    static func writeMetadata(_ st: Store, _ geo: Geometry, kernelVersion: [UInt8], epoch: UInt8, sigFlags flags: UInt32? = nil) throws {
         for cs in 0..<geo.numCS {
             let pg = specialPage(geo, "DEVICEINFOBBT", 4, geo.cand[cs], bbtBitmap(geo, cs))
             for blk in geo.cand[cs].prefix(2) {
@@ -246,7 +246,7 @@ public enum K48NAND {
             for p in 0..<8 { try st.write(cs, geo.ppage(geo.vflBlocks[0], p), ctx, m) }
         }
         var payload = [UInt8](repeating: 0, count: 8 + 0x100)
-        put32(&payload, 0, nsig(epoch: epoch)); put32(&payload, 4, st.plain ? plainSigFlags : sigFlags)
+        put32(&payload, 0, nsig(epoch: epoch)); put32(&payload, 4, flags ?? (st.plain ? plainSigFlags : sigFlags))
         payload.replaceSubrange(8..<8 + kernelVersion.count, with: kernelVersion)
         let sig = specialPage(geo, "NANDDRIVERSIGN", 0, [Int](repeating: 0, count: 8), payload)
         for p in 0..<geo.pagesPerBlock { try st.write(0, geo.ppage(geo.cand[0][4], p), sig.data, sig.meta, raw: true) }
@@ -456,7 +456,7 @@ public enum K48NAND {
     /// ipad1_nand.py build: the store for `system` (+ `s3` + the data volume) at the MBR's partitions, into `out`.
     @discardableResult
     nonisolated(nonsending) public static func build(geometry geo: Geometry = .k48_16g, mbr: URL, kernelVersion: [UInt8], epoch: UInt8 = 1, system: URL, s3: URL? = nil,
-                             data: DataVolume, out: URL, force: Bool = false, whitening: Bool = true,
+                             data: DataVolume, out: URL, force: Bool = false, whitening: Bool = true, sigFlags: UInt32? = nil,
                              log: (String) -> Void = { _ in }) async throws -> BuildResult {
         let fm = FileManager.default
         if fm.fileExists(atPath: out.appendingPathComponent("geometry.json").path) && !force {
@@ -500,7 +500,7 @@ public enum K48NAND {
         }
 
         let st = try Store(create: out, geo: geo, plain: !whitening)
-        try writeMetadata(st, geo, kernelVersion: kernelVersion, epoch: epoch)
+        try writeMetadata(st, geo, kernelVersion: kernelVersion, epoch: epoch, sigFlags: sigFlags)
         let ftl = FTLWriter(st, geo)
         // LPN == 4 KiB LBA, segments in ascending LBA order
         for n in 0..<min(p1.lba, head.count / ps) {

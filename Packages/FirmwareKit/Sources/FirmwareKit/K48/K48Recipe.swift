@@ -142,7 +142,8 @@ final class K48Board: Board {
             c.log("NAND signature epoch \(epoch) (this kernel's FIL)")
         }
         try await K48NAND.build(geometry: .k48_16g, mbr: mbr, kernelVersion: K48NAND.kernelVersion(kernelcache: c.decFile("kernelcache.mach")),
-                          epoch: epoch, system: vols.system, data: .image(vols.data), out: c.nand, whitening: whitening, log: c.log)
+                          epoch: epoch, system: vols.system, data: .image(vols.data), out: c.nand, whitening: whitening,
+                          sigFlags: recipe.nandSigFlags.map(UInt32.init), log: c.log)
         try? FileManager.default.removeItem(at: vols.system); try? FileManager.default.removeItem(at: vols.data)
     }
 

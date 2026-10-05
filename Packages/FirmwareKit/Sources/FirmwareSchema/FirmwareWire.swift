@@ -81,9 +81,13 @@ nonisolated public enum FirmwareWire {
             /// keybag one-shot when this build has no public ramdisk keys (iPad 4.3.1-4.3.5 -> k48ap-8F190). The caller
             /// supplies that entry and its IPSW (firmwarekit create --sibling-entry/--sibling-ipsw).
             public var keybagRamdiskFrom: String?
+            /// NANDDRIVERSIGN flags the build's FTL formats with, when not the store's default (0x5 plain, 0x10005
+            /// whitened): the iPod touch 3G's 3.1.x AppleNANDFTL writes 4 and refuses anything above it.
+            public var nandSigFlags: Int?
             enum CodingKeys: String, CodingKey {
                 case name, version, storage, options, guest, boot
                 case systemMiB = "system_mib", dataSize = "data_size", keybagRamdiskFrom = "keybag_ramdisk_from"
+                case nandSigFlags = "nand_sig_flags"
             }
         }
 
