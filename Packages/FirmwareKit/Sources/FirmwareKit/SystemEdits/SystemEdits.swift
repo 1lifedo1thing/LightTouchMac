@@ -92,6 +92,7 @@ public enum SystemEdits {
     // Volume paths (ipad1_rootfs constants).
     static let fstab = "private/etc/fstab"
     static let fstabRW = "/dev/disk0s1 / hfs rw 0 1\n/dev/disk0s2 /private/var hfs rw,nosuid,nodev 0 2\n"
+    static let fstabRO = fstabRW.replacingOccurrences(of: "/ hfs rw 0", with: "/ hfs ro 0")
     static let daemons = "System/Library/LaunchDaemons"
     static let springBoardJob = daemons + "/com.apple.SpringBoard.plist"
     static let msmJob = daemons + "/com.apple.mobile.storage_mounter.plist"
@@ -206,7 +207,10 @@ public enum SystemEdits {
                 try mkdirs(at(kernelcachePath).deletingLastPathComponent())
                 try put(kernelcache, at(kernelcachePath), mode: 0o644)
             }
-            try put(Data(fstabRW.utf8), at(fstab))
+            productMajor = Int((NSDictionary(contentsOf: at("System/Library/CoreServices/SystemVersion.plist"))?["ProductVersion"] as? String)?
+                .split(separator: ".").first ?? "") ?? 0
+            // 7.x's launchd cannot remount / rw (mount_hfs: Operation not permitted) and reboots; keep its stock ro root
+            try put(Data((productMajor >= 7 ? fstabRO : fstabRW).utf8), at(fstab))
             if o.webProxy {
                 try fit.check(FitCheck.webProxy(FitCheck.Firmware(root: m, arch: "armv7")), required: false, outcome: "kept: the PAC is unused")
                 rootOwned += try installPAC(m)
@@ -252,8 +256,6 @@ public enum SystemEdits {
                 result.activation = r
             }
             rootOwned.append(lockdownd)
-            productMajor = Int((NSDictionary(contentsOf: at("System/Library/CoreServices/SystemVersion.plist"))?["ProductVersion"] as? String)?
-                .split(separator: ".").first ?? "") ?? 0
             // what this bake left out on purpose: AppSync when off, it_msmquiet where it does not fit
             let omitted = Set((o.appsync ? [] : ["/" + appsyncPath]) + (quiet ? [] : ["/" + msm.path]))
             if o.guestTools {
