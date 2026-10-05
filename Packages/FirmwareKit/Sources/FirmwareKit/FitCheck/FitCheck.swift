@@ -165,6 +165,10 @@ public enum FitCheck {
                 }
                 cache.loadCommands(img) { cmd, off, b in
                     if cmd == MachO32.lcReexportDylib { reexports.append(b.latin1(off + Int(b.u32le(off + 8)))) }
+                    // a cache image's export trie offset is a cache file offset
+                    if cmd == MachO32.lcDyldInfo || cmd == MachO32.lcDyldInfoOnly {
+                        out.formUnion(MachO32.trieReexports(b, at: Int(b.u32le(off + 40)), size: Int(b.u32le(off + 44))))
+                    }
                 }
                 for r in reexports { out.formUnion(exports(r) ?? []) }
                 return out
@@ -172,6 +176,11 @@ public enum FitCheck {
             guard onDisk, let d = data(followed), let m = MachO32.slice(d, arch: arch)?.image else { return nil }
             var out = Set(m.symbols().filter { MachO32.isExport($0.type) }.map(\.name))
             for r in m.reexported() { out.formUnion(exports(r) ?? []) }
+            if let info = m.commands.first(where: { $0.cmd == MachO32.lcDyldInfo || $0.cmd == MachO32.lcDyldInfoOnly }) {
+                m.b.withUnsafeBytes { b in
+                    out.formUnion(MachO32.trieReexports(b, at: Int(u32(m.b, info.off + 40)), size: Int(u32(m.b, info.off + 44))))
+                }
+            }
             return out
         }
     }
@@ -251,6 +260,44 @@ struct MachO32 {
     static let lcLoadDylib: UInt32 = 0xC, lcLoadWeakDylib: UInt32 = 0x8000_0018, lcReexportDylib: UInt32 = 0x8000_001F
     static let lcLoadUpwardDylib: UInt32 = 0x8000_0023, lcSubUmbrella: UInt32 = 0x13, lcSubLibrary: UInt32 = 0x15
     static let linkCommands: Set<UInt32> = [lcLoadDylib, lcLoadWeakDylib, lcReexportDylib, lcLoadUpwardDylib]
+    static let lcDyldInfo: UInt32 = 0x22, lcDyldInfoOnly: UInt32 = 0x8000_0022
+
+    /// The names an export trie re-exports one by one (EXPORT_SYMBOL_FLAGS_REEXPORT). iOS 6 moved NSObject to libobjc
+    /// and left CoreFoundation re-exporting _OBJC_CLASS_$_NSObject this way, with no nlist entry, so images that
+    /// bind NSObject to CoreFoundation (built against an older SDK) still load.
+    static func trieReexports(_ b: UnsafeRawBufferPointer, at start: Int, size: Int) -> [String] {
+        guard start > 0, size > 0, start + size <= b.count else { return [] }
+        let end = start + size
+        func uleb(_ p: inout Int) -> Int? {
+            var r = 0, shift = 0
+            while p < end, shift < 63 {
+                let x = b[p]; p += 1
+                r |= Int(x & 0x7F) << shift; shift += 7
+                if x < 0x80 { return r }
+            }
+            return nil
+        }
+        var out: [String] = [], stack: [(Int, [UInt8])] = [(0, [])], seen = Set<Int>()
+        while let (node, prefix) = stack.popLast() {
+            guard seen.insert(node).inserted else { continue }   // a malformed trie cannot loop
+            var p = start + node
+            guard p < end, let info = uleb(&p) else { continue }
+            if info > 0 {
+                var q = p
+                if let flags = uleb(&q), flags & 0x8 != 0 { out.append(String(decoding: prefix, as: UTF8.self)) }
+            }
+            p += info
+            guard p < end else { continue }
+            let children = Int(b[p]); p += 1
+            for _ in 0..<children {
+                guard let nul = b[p..<end].firstIndex(of: 0) else { break }
+                let label = Array(b[p..<nul]); p = nul + 1
+                guard let child = uleb(&p) else { break }
+                stack.append((child, prefix + label))
+            }
+        }
+        return out
+    }
 
     let b: [UInt8]
     let filetype: UInt32, flags: UInt32

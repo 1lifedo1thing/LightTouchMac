@@ -171,7 +171,7 @@ public enum SystemEdits {
         log("editing the system volume")
         let skeleton = work.appendingPathComponent("var-skeleton")
         try? fm.removeItem(at: skeleton)
-        var rootOwned: [String] = []
+        var rootOwned: [String] = [], productMajor = 0
         try await VolumeMount.withMounted(system, at: work.appendingPathComponent("mnt-system")) { m in
             let at = { (rel: String) in m.appendingPathComponent(rel) }
             // every baked helper proven to load on this firmware (FitCheck.loads), read before any edit
@@ -241,8 +241,16 @@ public enum SystemEdits {
                 }
             }
             if !o.bluetooth { try rewritePlist(at(btJob)) { $0["Disabled"] = true } }
-            result.activation = try activate(m, log: log)
+            do {
+                result.activation = try activate(m, log: log)
+            } catch let e as ActivationFailure {
+                guard let r = Activation.dataArkRoute(lockdownd: try Data(contentsOf: at(lockdownd))) else { throw e }
+                log("lockdownd: no binary strategy; activation by the data ark (\(r.dataArk!.keys.sorted().joined(separator: ", ")))")
+                result.activation = r
+            }
             rootOwned.append(lockdownd)
+            productMajor = Int((NSDictionary(contentsOf: at("System/Library/CoreServices/SystemVersion.plist"))?["ProductVersion"] as? String)?
+                .split(separator: ".").first ?? "") ?? 0
             // what this bake left out on purpose: AppSync when off, it_msmquiet where it does not fit
             let omitted = Set((o.appsync ? [] : ["/" + appsyncPath]) + (quiet ? [] : ["/" + msm.path]))
             if o.guestTools {
@@ -271,6 +279,9 @@ public enum SystemEdits {
             try seedPlist(sc.appendingPathComponent("preferences.plist"), usbNetPrefs)
         }
         if o.webProxy { try seedPlist(sc.appendingPathComponent("preferences.plist"), wifiProxyPrefs) }
+        if let ark = result.activation?.dataArk {
+            try seedPlist(skeleton.appendingPathComponent("root/Library/Lockdown/data_ark.plist")) { d in d.addEntries(from: ark) }
+        }
         try? fm.removeItem(at: data)
         try await VolumeMount.makeHFS(data, size: dataBytes)
         var byOwner: [[UInt32]: [String]] = [:]
@@ -289,6 +300,12 @@ public enum SystemEdits {
         let summary = byOwner.sorted { $0.key.lexicographicallyPrecedes($1.key) }.map { "\($0.key[0]):\($0.key[1]) x\($0.value.count)" }
         log("owners from the skeleton, else root / mobile by rule: \(summary.joined(separator: ", ")) (\(patched) catalog records patched)")
         try dv.normalize(after: newest, to: newest, uuid: dataVolumeUUID)
+        if productMajor >= 6 {
+            // A restore formats the data volume with content protection; iOS 6 installd fails without protection classes.
+            // ponytail: earlier releases still boot without it, unmeasured with it (ipad1_rootfs.set_content_protection).
+            try dv.setContentProtection()
+            log("data volume: content protection on")
+        }
         for d in ["mnt-system", "mnt-data"] { try? fm.removeItem(at: work.appendingPathComponent(d)) }
         return result
     }
