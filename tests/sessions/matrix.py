@@ -245,7 +245,7 @@ def excerpt(path, n=3):
 
 def boot(entry, base, a, helper, work, env, app):
     """tests/drivers/session-driver --single with reboot; returns the parsed events, the driver's exit and the serial log."""
-    board = {"k48ap": "ipad", "n45ap": "ipod1g"}.get(entry["board"], "ipod")
+    board = {"k48ap": "ipad", "n45ap": "ipod1g", "m68ap": "iphone2g"}.get(entry["board"], "ipod")
     nand_current = a.files / "nand-current"
     cfg = {"helper": str(helper), "requirement": check_sessions.helper_requirement(a), "firmwarekit": str(a.firmwarekit), "usbmuxd": str(a.usbmuxd), "ipa": app["ipa"],
            "bundleID": app["bundle_id"], "work": str(work), "files": str(a.files),

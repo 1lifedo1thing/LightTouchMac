@@ -11,7 +11,7 @@ import HostRuntime
 
 import Foundation
 struct SingleConfig: Decodable {
-    var board: String   // "ipod" | "ipad" | "ipod1g"
+    var board: String   // "ipod" | "ipad" | "ipod1g" | "iphone2g"
     var base: String
     /// AFC upload + download sizes; 16384 and 65536 are 512-byte multiples (a ZLP ends each transfer).
     var afcBytes: [Int]?
@@ -57,7 +57,14 @@ struct SingleConfig: Decodable {
 
 @MainActor func runSingle(_ s: SingleConfig) async {
     let ipad = s.board == "ipad"
-    let d = Device(name: s.board, profile: ipad ? .iPad1 : s.board == "ipod1g" ? .iPodTouch1G : .iPodTouch2G)
+    // The S5L8900 boards (the 1G and the original iPhone) share the 1.x paths; boardID is FirmwareKit's.
+    let (profile, boardID): (DeviceProfile, String) = switch s.board {
+    case "ipad": (.iPad1, "k48ap")
+    case "ipod1g": (.iPodTouch1G, "n45ap")
+    case "iphone2g": (.iPhone2G, "m68ap")
+    default: (.iPodTouch2G, "n72ap")
+    }
+    let d = Device(name: s.board, profile: profile)
     let b = URL(fileURLWithPath: s.base)
     if s.board == "ipod" { d.preparedBase = b }
     if !ipad {
@@ -74,7 +81,7 @@ struct SingleConfig: Decodable {
     func offer() -> String? {
         guard !ipad, let itpack = s.itpack else { return nil }
         do {
-            let dir = try d.offer(base: b, board: s.board == "ipod1g" ? "n45ap" : "n72ap", itpack: itpack)
+            let dir = try d.offer(base: b, board: boardID, itpack: itpack)
             offered = dir != nil
             return dir
         } catch { emit("offerError", ["error": "\(error)"]); offered = false; return nil }
@@ -216,7 +223,7 @@ struct SingleConfig: Decodable {
         let quit = Date()
         if s.prefersHostPowerGesture(build: lock?["build"] as? String) && !ipad {
             do {
-                try await HostInputAutomation.shutdown(d.process, firstGeneration: s.board == "ipod1g")
+                try await HostInputAutomation.shutdown(d.process, firstGeneration: profile == .iPodTouch1G)
                 emit("hostPowerGesture", ["device": d.name, "generation": generation, "confirmed": d.process.status?.shutdownConfirmed == true])
             } catch {
                 emit("hostPowerGesture", ["device": d.name, "generation": generation, "error": "\(error)"])

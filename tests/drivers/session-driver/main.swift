@@ -181,12 +181,12 @@ extension String {
             let overlay = dir.appendingPathComponent("overlay")
             let prepared: PreparedDeviceBoot
             var offer = guestPackage
-            if profile == .iPad1 || profile == .iPodTouch1G {
+            if profile == .iPad1 || profile == .iPodTouch1G || profile == .iPhone2G {
                 let base = profile == .iPad1 ? URL(fileURLWithPath: Self.ipadBase)
                     : URL(fileURLWithPath: ipod!.nand).deletingLastPathComponent()
-                let nor = profile == .iPodTouch1G || FileManager.default.fileExists(atPath: base.appendingPathComponent("nor.bin").path)
+                let nor = profile != .iPad1 || FileManager.default.fileExists(atPath: base.appendingPathComponent("nor.bin").path)
                     ? dir.appendingPathComponent("nor.bin") : nil
-                prepared = try PreparedDeviceBoot.prepare(board: profile == .iPad1 ? .k48 : .n45,
+                prepared = try PreparedDeviceBoot.prepare(board: profile == .iPad1 ? .k48 : profile == .iPhone2G ? .m68 : .n45,
                     base: base, overlay: overlay, writableNOR: nor, storageKey: managedKey,
                     bootrom: BootRecipe.bootrom(profile.bootromName, filesRoot: Self.files))
                 if profile == .iPad1 { offer = try iPadOffer(base: base) }
@@ -772,7 +772,8 @@ CFRunLoopRun()
 @MainActor extension DeviceSessionProcess {
     var deathReason: String? {
         guard let death else { return nil }
-        let name = link.configuration.machine == DeviceProfile.iPad1.machineName ? "iPad" : "iPod"
+        let machine = link.configuration.machine
+        let name = machine == DeviceProfile.iPad1.machineName ? "iPad" : machine == DeviceProfile.iPhone2G.machineName ? "iPhone" : "iPod"
         switch death {
         case .startFailed(.helperFailure(DeviceLinkWire.leaseRefusal)): return DeviceLinkWire.leaseRefusal
         case .startFailed: return "The \(name) didn’t start."

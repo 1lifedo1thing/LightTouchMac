@@ -40,6 +40,8 @@ nonisolated extension DeviceProfile {
         // ponytail: the iPhone's is the 1G's art with its earpiece slot added (same geometry); a real picture replaces it.
         switch self { case .iPodTouch2G: "shell"; case .iPad1: "ipad-frame"; case .iPodTouch1G: "shell-1g"; case .iPhone2G: "shell-iphone2g" }
     }
+    /// The bundled LightTouchMac/<name>.usdz (multidevice 98eac7c). The iPhone has none yet: it shows its 2D shell
+    /// until an M68.usdz is bundled and named here.
     var deviceModelName: String? {
         switch self { case .iPodTouch2G: "N72"; case .iPad1: "K48"; case .iPodTouch1G: "N45"; case .iPhone2G: nil }
     }
