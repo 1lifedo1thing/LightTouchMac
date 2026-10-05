@@ -14,10 +14,12 @@ catalog = json.loads((root / 'LightTouchMac/Resources/firmware-catalog.json').re
 
 # Every catalog entry's expected destinations. Anything not listed takes none.
 # Booted round trips (check-media-native.py --single): 7D11, 7E18 and 7B367; 7C145, 7B405 and 7B500 share their 3.x
-# services. 4.2.1 (both boards) and 5.1.1 were run and fail (it-media README), so 4.x and 5.x stay refused.
+# services. Music on the iPad's 5.1.1 (9B206) through ML3's importer; other 5.x builds have not been round-tripped.
+# 4.2.1 (both boards) fails (it-media README), so 4.x stays refused.
 EXPECTED = {
     'n72ap-7E18': {'Music', 'Videos', 'Photos'},
     **{i: {'Music', 'Photos'} for i in ('n72ap-7C145', 'n72ap-7D11', 'k48ap-7B367', 'k48ap-7B405', 'k48ap-7B500')},
+    'k48ap-9B206': {'Music'},
 }
 
 code = r'''import Foundation

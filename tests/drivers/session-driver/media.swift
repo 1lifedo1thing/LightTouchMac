@@ -35,8 +35,12 @@ import Foundation
     var copied: [String] = []
     // The library's own processes may still be writing (AFC refuses a file that changed while it was read): the
     // folder is listed and read again, up to five times, 3 s apart.
+    // 5.x keeps each cover's renderings one folder down (iTunes_Control/iTunes/Artwork/NN/).
+    let ml3Artwork = ((try? await d.services.files(in: "iTunes_Control/iTunes/Artwork")) ?? [])
+        .filter { $0.isDirectory && !$0.name.hasPrefix(".") }.map { "iTunes_Control/iTunes/Artwork/" + $0.name }
     for folder in ["iTunes_Control/iTunes/iTunes Library.itlp", "iTunes_Control/iTunes", "Purchases/MobileArtworkDB",
-                   "iTunes_Control/Artwork", "iTunes_Control/iTunes/Artwork", "iTunes_Control/Artwork/Originals", "DCIM/100APPLE", "LightTouch"] {
+                   "iTunes_Control/Artwork", "iTunes_Control/iTunes/Artwork", "iTunes_Control/Artwork/Originals", "DCIM/100APPLE", "LightTouch"]
+                  + ml3Artwork {
         for attempt in 0..<5 {
             if attempt > 0 { try? await Task.sleep(for: .seconds(3)) }
             let files: [DeviceFile]

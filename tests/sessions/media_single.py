@@ -73,9 +73,28 @@ def artwork_pixels(afc, artwork_id):
     return {'formats': formats, 'chosen': [fmt, width, height, bpp], 'colours': colours}, None
 
 
+def ml3_artwork_pixels(afc, db, cache_id):
+    """5.x: the cover as ML3 keeps it, the largest JPEG rendering listed for the item's artwork cache ID
+    (iTunes_Control/iTunes/Artwork/NN/<key>_<format>.jpg), decoded."""
+    from PIL import Image
+    formats = db.execute('SELECT format_id, length FROM artwork_info WHERE cache_id=?', (str(cache_id),)).fetchall()
+    if not formats:
+        return None, f'no artwork_info rows for cache ID {cache_id}'
+    files = {f.name.rsplit('_', 1)[-1].split('.')[0]: f for f in afc.glob('iTunes_Control_iTunes_Artwork_*__*.jpg')}
+    found = [(length, files[str(fmt)]) for fmt, length in formats if str(fmt) in files]
+    if not found:
+        return None, f'none of the artwork renderings {formats} read back from iTunes_Control/iTunes/Artwork'
+    _, path = max(found)
+    with Image.open(path) as im:
+        rgb = im.convert('RGB')
+        colours = [rgb.getpixel((int(x * im.width), int(y * im.height))) for (x, y), _ in QUADRANTS]
+        return {'formats': formats, 'chosen': [path.name, *im.size], 'colours': colours}, None
+
+
 def judge_library(afc):
     """The song in the 3.x/4.x library (iTunes Library.itlp) or 5.x's ML3 MediaLibrary.sqlitedb, with its artwork."""
     lib, ml3 = afc / 'iTunes_Control_iTunes_iTunes Library.itlp__Library.itdb', afc / 'iTunes_Control_iTunes__MediaLibrary.sqlitedb'
+    ml3_db = None
     if ml3.exists():
         with sqlite3.connect(ml3) as db:   # its -wal and -shm were read back beside it
             rows = db.execute('SELECT e.title, a.item_artist, al.album, aa.album_artist, e.year, e.total_time_ms, e.artwork_cache_id '
@@ -83,7 +102,8 @@ def judge_library(afc):
                               'LEFT JOIN item_artist a ON a.item_artist_pid=i.item_artist_pid '
                               'LEFT JOIN album al ON al.album_pid=i.album_pid '
                               'LEFT JOIN album_artist aa ON aa.album_artist_pid=i.album_artist_pid '
-                              'WHERE i.media_type & 1').fetchall()
+                              'WHERE i.media_type & 8').fetchall()   # ML3's Song bit (itmedia.c)
+        ml3_db = ml3
     elif lib.exists():
         with sqlite3.connect(lib) as db:
             rows = db.execute('SELECT title, artist, album, album_artist, year, total_time_ms, artwork_cache_id FROM item NOT INDEXED '
@@ -100,10 +120,18 @@ def judge_library(afc):
                                                ('album_artist', album_artist, ALBUM_ARTIST), ('year', year, 1999)) if v != nfc(want)]
     if not (29700 < (ms or 0) < 30400):
         problems.append(f'duration {ms} ms')
+    if ml3_db:   # 5.x's Music plays only a row whose FairPlay integrity is set (it-media README)
+        with sqlite3.connect(ml3_db) as db:
+            if not db.execute('SELECT COUNT(*) FROM item_extra WHERE artwork_cache_id=? AND integrity IS NOT NULL', (art,)).fetchone()[0]:
+                problems.append('no item_extra.integrity (Music lists the song but will not play it)')
     if not art:
         problems.append('no artwork_cache_id')
     else:
-        pixels, why = artwork_pixels(afc, art)
+        if ml3_db:
+            with sqlite3.connect(ml3_db) as db:
+                pixels, why = ml3_artwork_pixels(afc, db, art)
+        else:
+            pixels, why = artwork_pixels(afc, art)
         result['artwork'] = pixels
         if why:
             problems.append(why)

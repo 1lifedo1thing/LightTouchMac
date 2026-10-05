@@ -24,9 +24,11 @@ nonisolated enum MediaSupport {
         guard ["n72ap", "k48ap"].contains(firmware.board) else { return false }
         switch destination {
         // MusicLibrary's purchase-folder insert over the iTunes Library.itlp library and PLCameraAlbum's save
-        // with the saved path: 3.x. 4.x's post-processing drops the inserted song and 5.x has no such insert;
-        // neither has a photo save that names the saved file (qemu-ios contrib/it-media/README.md).
-        case "Music", "Photos": return from("3.1", below: "4")
+        // with the saved path: 3.x. Music on 5.x through ML3's importer, round-tripped on the iPad's 5.1.1 alone.
+        // 4.x's post-processing deletes a library it can't verify, and neither 4.x nor 5.x has a photo save that
+        // names the saved file (qemu-ios contrib/it-media/README.md).
+        case "Music": return from("3.1", below: "4") || (firmware.board == "k48ap" && firmware.build == "9B206")
+        case "Photos": return from("3.1", below: "4")
         // Movies through the same insert, verified (decoding included) on 3.1.3 alone.
         case "Videos": return firmware.board == "n72ap" && firmware.build == "7E18"
         default: return false
