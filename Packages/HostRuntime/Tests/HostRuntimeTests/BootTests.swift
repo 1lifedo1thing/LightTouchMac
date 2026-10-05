@@ -223,6 +223,8 @@ extension BootTests {
         case .n45, .m68:
             #expect(c.argv[2].hasPrefix(board == .m68 ? "iPhone-2G," : "iPod-Touch-1G,"))
             #expect(c.argv[2].contains(",iboot=" + BootRecipe.escape(f.base.appendingPathComponent("iBoot.bin").path)))
+            // only the iPhone has a modem, whose cellular data needs its cell0 slirp
+            #expect(c.argv.contains("user,id=cell0") == (board == .m68))
         }
     }
 

@@ -262,6 +262,8 @@ public nonisolated enum BootRecipe {
             + (d.guestPackage.map { ",guest-package=\(escape($0))" } ?? "") + options(d.machineOptions)
         let argv = ["LightTouchMac", "-M", machine, "-drive", "if=pflash,format=raw,file=\(escape(d.writableNOR))",
                     "-display", "none", "-no-shutdown"] + audio + ["-serial", serial] + (netdev.map { ["-netdev", $0] } ?? [])
+            // The iPhone's modem carries its EDGE data (raw IP over a mux DLCI) to its own slirp, cell0.
+            + (d.machineName == "iPhone-2G" ? ["-netdev", "user,id=cell0"] : [])
         return BootConfig(argv: argv, machine: d.machineName)
     }
 
