@@ -59,11 +59,11 @@ struct IdentityTests {
         #expect(id.udid != pod.udid)
     }
 
-    /// The original iPhone: the iPod's fields plus an IMEI (TAC 01161200, Luhn-checked); the UDID hashes all four.
+    /// The original iPhone: the iPod's fields plus an IMEI (the synthetic TAC 00000000, Luhn-checked); the UDID hashes all four.
     @Test func iPhone() throws {
         let id = try UnitIdentity.synthesizeIPhone(seed: "iphone2g-test", modelNumber: "MA501", regionInfo: "LL/A")
         let imei = try #require(id["imei"])
-        #expect(imei.count == 15 && imei.hasPrefix("01161200") && UnitIdentity.luhn(String(imei.prefix(14))) == Int(String(imei.last!)))
+        #expect(imei.count == 15 && imei.hasPrefix("00000000") && UnitIdentity.syntheticTAC == "00000000" && UnitIdentity.luhn(String(imei.prefix(14))) == Int(String(imei.last!)))
         #expect(UnitIdentity.luhn("49015420323751") == 8)   // the classic example IMEI 490154203237518
         #expect(id["bt-mac"] != nil && id.udid == Data(Insecure.SHA1.hash(data: Data((id["serial-number"]! + imei + id["wifi-mac"]! + id["bt-mac"]!).utf8))).hexString)
         #expect(id.fields.filter { $0.key == "udid" }.count == 1)
