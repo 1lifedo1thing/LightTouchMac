@@ -67,7 +67,8 @@ public enum K48NAND {
             self.spareBytes = spareBytes; self.vendorType = vendorType
             numCS = buses * cePerBus
             pagesPerCE = blocksPerCE * pagesPerBlock
-            vflBanks = 2
+            // VSVFL: two banks per CE for vendor type 0x100014, one for 0x10001 (3.0's own table for this part on 2x4 CEs)
+            vflBanks = vendorType == 0x100014 ? 2 : 1
             banksTotal = numCS * vflBanks
             blocksPerBank = blocksPerCE / vflBanks
             ppsublk = pagesPerBlock * banksTotal
@@ -98,10 +99,15 @@ public enum K48NAND {
         /// iBoot-817.29's 0xB614D5AD row: 2 buses x 4 CE x 4096 blocks x 128 pages x 4 KiB; the captured 16 GB unit.
         public static let k48_16g = Geometry(name: "k48-16g", chipID: 0xB614D5AD, buses: 2, cePerBus: 4, blocksPerCE: 0x1000,
                                              pagesPerBlock: 128, pageSize: 4096, spareBytes: 0x80)
+        /// The same part as 3.0's AppleS5L8920XIOPFMI table lists it on 2x4 CEs: vendor type 0x10001, one VFL bank per CE,
+        /// 1024-page superblocks whose block TOC fits one page. 3.0's yaFTL assumes one TOC page (YAFTL_Init 0xc05c74ec on
+        /// N88 7A341; fixed in 3.1), so k48_16g's 2048-page superblocks restore a garbage map there. ipad1_nand k48-16g-v1.
+        public static let k48_16g_v1 = Geometry(name: "k48-16g-v1", chipID: 0xB614D5AD, buses: 2, cePerBus: 4, blocksPerCE: 0x1000,
+                                                pagesPerBlock: 128, pageSize: 4096, spareBytes: 0x80, vendorType: 0x10001)
         /// ipad1_nand.py's tiny synthetic geometry (--selfcheck): same math, 16-page blocks.
         public static let selfcheck = Geometry(name: "selfcheck", chipID: 0xB614D5AD, buses: 2, cePerBus: 2, blocksPerCE: 0x1000,
                                                pagesPerBlock: 16, pageSize: 4096, spareBytes: 0x80)
-        static let known = [k48_16g, selfcheck]
+        static let known = [k48_16g, k48_16g_v1, selfcheck]
 
         func poolPBlock(_ bank: Int, _ slot: Int) -> Int { vflBanks * (usable + slot) + bank }
         func busCE(_ cs: Int) -> (Int, Int) { (cs / cePerBus, cs % cePerBus) }
@@ -122,7 +128,8 @@ public enum K48NAND {
         var json: String {
             "{\n \"page_bytes\": \(pageSize),\n \"spare_bytes\": \(spareBytes),\n \"pages_per_block\": \(pagesPerBlock),\n"
                 + " \"blocks_per_ce\": \(blocksPerCE),\n \"ce_per_bus\": \(cePerBus),\n \"buses\": \(buses),\n"
-                + " \"chip_id\": \"0x\(String(format: "%08X", chipID))\"\n}"
+                + " \"chip_id\": \"0x\(String(format: "%08X", chipID))\""
+                + (vendorType == 0x100014 ? "" : ",\n \"vendor_type\": \(vendorType)") + "\n}"   // only off the default, as ipad1_nand
         }
     }
 

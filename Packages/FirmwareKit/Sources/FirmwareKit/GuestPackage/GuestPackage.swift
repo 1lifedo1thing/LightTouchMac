@@ -166,7 +166,10 @@ public enum GuestPackage {
 
         // the loader and the package's own binaries must load on this firmware's dyld, with this firmware's images
         let fw = FitCheck.Firmware(root: m, arch: itpack.deletingPathExtension().lastPathComponent)
-        guard let loaderBytes = entries["loader/it_boot"] else { throw FirmwareError(.internal, "\(itpack.lastPathComponent): no loader/it_boot") }
+        // a legacy-linked family's loader where the arch's own is modern (armv7.itpack's k48-ios30; mkpkg.LEGACY_LOADER)
+        let legacyLoader = (man["requires"] as? [String: Any])?["link"] as? String == "legacy" && entries["loader/it_boot-legacy"] != nil
+        let loaderName = legacyLoader ? "loader/it_boot-legacy" : "loader/it_boot"
+        guard let loaderBytes = entries[loaderName] else { throw FirmwareError(.internal, "\(itpack.lastPathComponent): no \(loaderName)") }
         try fit.check(FitCheck.loads("it_boot (guest-package loader)", loaderBytes, on: fw), required: true)
         let hookTargets = Dictionary(hooks.map { ($0["file"] as? String ?? "", $0["target"] as? String ?? "") }, uniquingKeysWith: { a, _ in a })
         for f in files {
@@ -195,7 +198,7 @@ public enum GuestPackage {
         }
         let mode = { (s: Any?) in mode_t(strtoul(s as? String ?? "0", nil, 8)) }
 
-        try put(loader.0, payload("loader/it_boot"), 0o755)
+        try put(loader.0, loaderBytes, 0o755)
         try put(loader.1, payload("loader/com.qemu.it-boot.plist"), 0o644)
         let serial = man["serial"] as? Int ?? 0, pkg = "\(root)/pkgs/\(serial)"
         for f in files { try put(pkg + "/" + (f["name"] as! String), payload(family + "/" + (f["name"] as! String)), mode(f["mode"])) }

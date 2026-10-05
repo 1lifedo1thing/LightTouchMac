@@ -88,10 +88,13 @@ nonisolated public enum FirmwareWire {
             /// NANDDRIVERSIGN flags the build's FTL formats with, when not the store's default (0x5 plain, 0x10005
             /// whitened): the iPod touch 3G's 3.1.x AppleNANDFTL writes 4 and refuses anything above it.
             public var nandSigFlags: Int?
+            /// The NAND vendor type the store's VFL context declares, when not the part's default (0x100014, two VFL banks
+            /// per CE). 0x10001 (one bank) for iOS 3.0 on the S5L8920 boards: K48NAND.Geometry.k48_16g_v1.
+            public var nandVendorType: Int?
             enum CodingKeys: String, CodingKey {
                 case name, version, storage, options, guest, boot
                 case systemMiB = "system_mib", dataSize = "data_size", keybagRamdiskFrom = "keybag_ramdisk_from"
-                case nandSigFlags = "nand_sig_flags"
+                case nandSigFlags = "nand_sig_flags", nandVendorType = "nand_vendor_type"
             }
         }
 

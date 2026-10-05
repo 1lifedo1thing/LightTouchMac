@@ -120,9 +120,12 @@ final class K48Board: Board {
     }
 
     /// MBR, system + data volumes (+ activation); the iBoot fsboot kernelcache goes in the system volume.
+    /// The store geometry: the part's default, or the recipe's nand_vendor_type variant (iOS 3.0: one VFL bank per CE).
+    var geometry: K48NAND.Geometry { recipe.nandVendorType == 0x10001 ? .k48_16g_v1 : .k48_16g }
+
     nonisolated(nonsending) func volumes(_ c: Recipe.Context) async throws {
         mbr = c.work.appendingPathComponent("mbr.bin")
-        try K48NAND.makeMBR(geometry: .k48_16g, systemMiB: recipe.systemMiB).write(to: mbr)
+        try K48NAND.makeMBR(geometry: geometry, systemMiB: recipe.systemMiB).write(to: mbr)
         let parts = K48NAND.partitions(mbr: [UInt8](try Data(contentsOf: mbr)))
         var kernelcacheImg3: Data?
         if iboot {
@@ -149,7 +152,7 @@ final class K48Board: Board {
         } else {
             c.log("NAND signature epoch \(epoch) (this kernel's FIL)")
         }
-        try await K48NAND.build(geometry: .k48_16g, mbr: mbr, kernelVersion: K48NAND.kernelVersion(kernelcache: c.decFile("kernelcache.mach")),
+        try await K48NAND.build(geometry: geometry, mbr: mbr, kernelVersion: K48NAND.kernelVersion(kernelcache: c.decFile("kernelcache.mach")),
                           epoch: epoch, system: vols.system, data: .image(vols.data), out: c.nand, whitening: whitening,
                           sigFlags: recipe.nandSigFlags.map(UInt32.init), log: c.log)
         try? FileManager.default.removeItem(at: vols.system); try? FileManager.default.removeItem(at: vols.data)
