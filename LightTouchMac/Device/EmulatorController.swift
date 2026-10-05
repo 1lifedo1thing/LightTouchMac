@@ -363,7 +363,7 @@ final class EmulatorController {
         let usbSession = usbmux.start(paths: instance.paths)
         openSerialLog()
         let netdev: String?
-        if profile == .iPad1 {
+        if profile.isA4 {
             let setupDone = FileManager.default.fileExists(atPath: BootRecipe.setupDoneMark(overlay: overlayURL).path)
             let restrict = network && BootRecipe.setupPhonesHome(iosVersion: iosVersion) && !setupDone
             netdev = network ? proxyForward().map { BootRecipe.wifiNetdev(guestForward: $0, restricted: restrict) } : nil
@@ -377,7 +377,7 @@ final class EmulatorController {
         do {
             return try prepared.configuration(bootArgs: Self.bootArgs, usbAddress: usbSession?.guestAddress,
                 wifi: network, guestPackage: composeGuestOffer(), serial: serialCapture?.argument ?? "null",
-                audio: profile == .iPad1 ? [] : ["-audio", "driver=coreaudio,out.buffer-count=16"], netdev: netdev)
+                audio: profile.isA4 ? [] : ["-audio", "driver=coreaudio,out.buffer-count=16"], netdev: netdev)
         } catch {
             failBoot(error)
             return nil

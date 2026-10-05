@@ -11,6 +11,8 @@ Home button numbers that DeviceProfile+Display.swift needs for that art.
 from pathlib import Path
 import subprocess, sys, tempfile
 root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(root / "scripts"))
+import device_runtime   # DeviceProfile imports HostRuntime: the same flags check-model.py compiles with
 name, out = sys.argv[1], Path(sys.argv[2]).resolve()
 source = r'''import AppKit
 import RealityKit
@@ -19,7 +21,7 @@ import Metal
  @MainActor static func main() async throws {
   _ = NSApplication.shared
   NSApp.setActivationPolicy(.prohibited)
-  let profile: DeviceProfile = ["N72": .iPodTouch2G, "K48": .iPad1, "N45": .iPodTouch1G][CommandLine.arguments[2]]!
+  let profile: DeviceProfile = ["N72": .iPodTouch2G, "K48": .iPad1, "N45": .iPodTouch1G, "N81": .iPodTouch4G][CommandLine.arguments[2]]!
   let model = try await DeviceModelView(url: URL(fileURLWithPath: CommandLine.arguments[1]), profile: profile)
   let size = CGSize(width: 800, height: 1400)
   model.frame = NSRect(origin: .zero, size: size)
@@ -96,7 +98,7 @@ with tempfile.TemporaryDirectory(prefix="ltm-shell-art-") as tmp:
     (work / "render.swift").write_text(source)
     exe = app / "MacOS/render"
     src = root / "LightTouchMac"
-    subprocess.run(["swiftc", "-module-cache-path", str(work / "modules"), "-default-isolation", "MainActor",
+    subprocess.run(["swiftc", *device_runtime.swift_flags(root), "-module-cache-path", str(work / "modules"), "-default-isolation", "MainActor",
                     str(src / "UI/DeviceModelView.swift"), str(src / "Device/DeviceProfile.swift"),
                     str(src / "Device/DeviceProfile+Display.swift"), str(work / "render.swift"), "-o", str(exe)], check=True)
     out.parent.mkdir(parents=True, exist_ok=True)

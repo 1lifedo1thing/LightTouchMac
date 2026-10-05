@@ -25,8 +25,8 @@ final class DeviceModelView: NSView {
   /// follows the device. Either way the mapping is one of the four below.
   private let fixedSurfaceRotation: Int?
   enum Control: Equatable { case sleepWake, volumeUp, volumeDown }
-  /// Side controls by node name (revision 7 names, then N72's own).
-  private var controls: [(entity: Entity, isRocker: Bool)] = []
+  /// Side controls by node name (revision 7 names, then N72's own); nil is a volume rocker (by half).
+  private var controls: [(entity: Entity, control: Control?)] = []
   private var screenMaterial: UnlitMaterial = {
     if #available(macOS 15, *) { return UnlitMaterial(applyPostProcessToneMap: false) }
     return UnlitMaterial()
@@ -59,10 +59,13 @@ final class DeviceModelView: NSView {
     // The clockwise panel quarter-turn is the iPod surface's 270° mapping.
     fixedSurfaceRotation = profile.panelRotation == 0 ? nil
       : (360 - Int((profile.panelRotation * 180 / .pi).rounded())) % 360
-    for (names, isRocker) in [(["SleepWakeButton", "Sleep_wake___black_fitted_button"], false),
-                              (["VolumeButton", "Volume___continuous_recessed_centre_rocker"], true)] {
+    // N81 (revision 7) has two volume buttons where the others have one rocker.
+    let named: [([String], Control?)] = [(["SleepWakeButton", "Sleep_wake___black_fitted_button"], .sleepWake),
+                                         (["VolumeButton", "Volume___continuous_recessed_centre_rocker"], nil),
+                                         (["VolumeUpButton"], .volumeUp), (["VolumeDownButton"], .volumeDown)]
+    for (names, control) in named {
       if let entity = names.lazy.compactMap({ loaded.findEntity(named: $0) }).first {
-        controls.append((entity, isRocker))
+        controls.append((entity, control))
       }
     }
     super.init(frame: .zero)
@@ -399,12 +402,12 @@ final class DeviceModelView: NSView {
     guard let ray = renderer.ray(through: renderer.convert(point, from: self)) else { return nil }
     let origin = chassis.convert(position: ray.origin, from: nil)
     let direction = chassis.convert(direction: ray.direction, from: nil)
-    for (entity, isRocker) in controls {
+    for (entity, control) in controls {
       let b = entity.visualBounds(relativeTo: chassis)
       let t0 = (b.min - origin) / direction, t1 = (b.max - origin) / direction
       let near = simd_reduce_max(simd_min(t0, t1)), far = simd_reduce_min(simd_max(t0, t1))
       guard near <= far, far >= 0 else { continue }
-      guard isRocker else { return .sleepWake }
+      if let control { return control }
       return (origin + direction * max(near, 0)).y > b.center.y ? .volumeUp : .volumeDown
     }
     return nil
