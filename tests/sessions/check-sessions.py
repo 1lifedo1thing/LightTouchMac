@@ -371,6 +371,9 @@ def main():
             ids = find("identity", device=d)
             check(ids and all(e.get("matches") for e in ids),
                   f"{d}: lockdown factory identity matches the prepared identity: " + ", ".join(f"{e['bt']} (want {e['want']})" for e in ids))
+        if d == "ipad":
+            ids = find("identity", device=d)
+            check(ids and all(e.get("matches") for e in ids), f"{d}: lockdown WiFiAddress matches the prepared identity's wifi-mac")
         for a in find("afc", device=d):
             check(a.get("same") and a.get("listed") == a["bytes"], f"{d}: AFC round trip of {a['bytes']} bytes"
                   + (f" ({a.get('seconds', 0):.1f} s)" if a.get("same") else f": {a.get('error', 'content differs')}"))

@@ -70,4 +70,22 @@ struct IdentityTests {
             #expect(back["udid"] == id.udid && back.dieID == id.dieID)
         }
     }
+
+    /// The K48 lock's machine map boots the BCM4329 with the unit's own address (the one in its DT and NOR).
+    @Test func k48LockCarriesWifiMAC() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let any = dir.appendingPathComponent("file")
+        for n in ["file", "iBoot.bin", "gid-blobs.bin", "nor.bin", "kboot.bin"] { try Data(n.utf8).write(to: dir.appendingPathComponent(n)) }
+        let o = Preparer.Options(entry: try Oracle.entry("k48ap-7B500"), ipsw: dir, out: dir, helper: nil, guestTools: dir)
+        let board = try K48Board(o)
+        board.helper = any; board.patcher = any; board.mbr = any
+        board.vols = SystemEdits.Result(system: dir, data: dir)
+        let id = try board.identity(seed: "k48-lock")
+        let lock = try board.lock(Recipe.Context(o, recipe: o.entry.recipe!, emit: { _ in }))
+        let machine = try #require(lock["machine"] as? [String: Any])
+        #expect(machine["wifi-mac"] as? String == id["wifi-mac"])
+        #expect(id["wifi-mac"]?.isEmpty == false)
+    }
 }

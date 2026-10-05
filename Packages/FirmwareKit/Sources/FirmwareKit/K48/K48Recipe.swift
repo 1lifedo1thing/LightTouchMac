@@ -20,6 +20,8 @@ final class K48Board: Board {
     var gidComponents: [String] = [], ramdisk: String?
     var shipped: [String] { iboot ? ["iBoot.bin", "nor.bin", "gid-blobs.bin"] : ["kboot.bin"] + (dataProtection ? ["nor.bin"] : []) }
     var dieID: String { (ident.dieID ?? []).joined(separator: ":") }
+    /// The BCM4329's CIS address: the same unit address KBoot/K48IBoot write to the device tree and NOR.
+    var wifiMAC: String { ident["wifi-mac"]! }
     var ident: UnitIdentity!
 
     init(_ o: Preparer.Options) throws {
@@ -138,7 +140,7 @@ final class K48Board: Board {
         let attempts = 3
         for attempt in 1...attempts {
             let serial = work.appendingPathComponent("keybag-\(attempt).log")
-            let (r, text) = try Preparer.oneshot(helper, boot: "kboot=\(Preparer.esc(kboot))", machine: "nand=\(Preparer.esc(store)),nor-rw=\(Preparer.esc(nor)),die-id=\(dieID)",
+            let (r, text) = try Preparer.oneshot(helper, boot: "kboot=\(Preparer.esc(kboot))", machine: "nand=\(Preparer.esc(store)),nor-rw=\(Preparer.esc(nor)),die-id=\(dieID),wifi-mac=\(wifiMAC)",
                                                  serial: serial, stop: "panic(", timeout: 300, work: work, log: c.log)
             for line in text.split(separator: "\n") where line.contains("it_keybag:") { c.log(String(line)) }
             if r.exited, text.contains(Preparer.keybagDone) { break }
@@ -163,10 +165,10 @@ final class K48Board: Board {
             // ipad1_seal.py --iboot: enter the patched iBoot with the catalog keys; the writable NOR is where this
             // boot's effaceable/NVRAM writes land (no base nor=). die-id must be non-zero or iBoot rejects it.
             boot = "iboot=\(Preparer.esc(c.file("iBoot.bin"))),gid-blobs=\(Preparer.esc(c.file("gid-blobs.bin")))"
-            extra = ",die-id=\(dieID),nor-rw=\(Preparer.esc(nor!))"
+            extra = ",die-id=\(dieID),wifi-mac=\(wifiMAC),nor-rw=\(Preparer.esc(nor!))"
         } else {
             boot = "kboot=\(Preparer.esc(c.file("kboot.bin")))"
-            extra = ",die-id=\(dieID)" + (nor.map { ",nor-rw=\(Preparer.esc($0))" } ?? "")
+            extra = ",die-id=\(dieID),wifi-mac=\(wifiMAC)" + (nor.map { ",nor-rw=\(Preparer.esc($0))" } ?? "")
         }
         let serial = work.appendingPathComponent("seal.log")
         let (r, text) = try Preparer.oneshot(helper, boot: boot, machine: "nand=\(Preparer.esc(store))" + extra, serial: serial, stop: nil,
@@ -205,6 +207,7 @@ final class K48Board: Board {
             "inputs": ["kernelcache": "kernelcache.mach", "devicetree": "DeviceTree.bin", "restore_ramdisk": opt(ramdisk),
                        "mbr": ["sha256": try Preparer.digest(mbr, SHA256())], "stash": NSNull()],
             "identity": ["die_id": dieID],
+            "machine": ["wifi-mac": wifiMAC],
             "outputs": outputs,
             "gl_test": SystemEdits.Options(recipe: recipe).glTest,
         ]

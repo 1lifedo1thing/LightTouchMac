@@ -116,9 +116,10 @@ struct SingleConfig: Decodable {
             emit("timezone", ["device": d.name, "generation": generation, "zone": zone ?? ""])
         }
         emit("activation", ["device": d.name, "generation": generation, "state": await d.lockdownValue("ActivationState") ?? ""])
-        if s.board == "ipod", let identity {
-            let keys = [("SerialNumber", "serial-number"), ("UniqueDeviceID", "udid"),
-                        ("WiFiAddress", "wifi-mac"), ("BluetoothAddress", "bt-mac")]
+        if s.board == "ipod" || ipad, let identity {
+            let keys = ipad ? [("WiFiAddress", "wifi-mac")]
+                : [("SerialNumber", "serial-number"), ("UniqueDeviceID", "udid"),
+                   ("WiFiAddress", "wifi-mac"), ("BluetoothAddress", "bt-mac")]
             let expected = Dictionary(uniqueKeysWithValues: keys.compactMap { key, field in
                 (identity[field] as? String).map { (key, $0.lowercased()) }
             })

@@ -54,6 +54,8 @@ extension BootTests {
         #expect(config.argv.contains("driver=none"))
         if board == .n72 { #expect(machine.contains("ecid=0x234")) }
         if board == .k48 { #expect(machine.contains("die-id=0x123:0x456")) }
+        // A lock without the card address takes the unit's from identity.json.
+        if board != .n45 { #expect(machine.contains(",wifi-mac=02:11:22:33:44:66")) }
         // Freeze the pre-extraction recipe output with matching caller dependencies.
         let expected: BootConfig
         switch board {
@@ -73,7 +75,8 @@ extension BootTests {
             expected = BootRecipe.iPad(.init(boot: .iBoot(image: f.base.appendingPathComponent("iBoot.bin").path,
                 writableNOR: f.nor.path, gidBlobs: f.base.appendingPathComponent("gid-blobs.bin").path),
                 nand: f.base.appendingPathComponent("nand").path, overlay: f.overlay.path, dieID: "0x123:0x456",
-                usbAddress: "127.0.0.1:1234", wifi: true, guestPackage: "offer", machineOptions: ["aes-uid": "engine"]),
+                usbAddress: "127.0.0.1:1234", wifi: true, guestPackage: "offer",
+                machineOptions: ["aes-uid": "engine", "wifi-mac": "02:11:22:33:44:66"]),
                 serial: "null", audio: ["-audio", "driver=none"], netdev: "user,id=wifi0", restore: [])
         }
         #expect(config == expected)
