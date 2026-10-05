@@ -38,6 +38,10 @@ final class K48Board: Board {
     /// NOR (blank on 3.x: NVRAM only).
     var kbootNOR: Bool { dataProtection || s5l8920 }
     var dieID: String { (ident.dieID ?? []).joined(separator: ":") }
+    /// The radio boards' one-shot boots carry the modem with the lock's IMEI, as BootRecipe boots them: a phone's
+    /// lockdownd decides activation from CommCenter (6.0's keeps FactoryActivated only for a phone it can see), and
+    /// what the seal boot decides is what the store keeps.
+    var modem: String { IPhoneIdentity.a4Boards.contains(board) ? ",baseband=on" + (ident["imei"].map { ",imei=\($0)" } ?? "") : "" }
     var ident: UnitIdentity!
 
     init(_ o: Preparer.Options) throws {
@@ -171,7 +175,7 @@ final class K48Board: Board {
         let attempts = 3
         for attempt in 1...attempts {
             let serial = work.appendingPathComponent("keybag-\(attempt).log")
-            let (r, text) = try Preparer.oneshot(helper, boot: "kboot=\(Preparer.esc(kboot))", machine: "nand=\(Preparer.esc(store)),nor-rw=\(Preparer.esc(nor)),die-id=\(dieID)",
+            let (r, text) = try Preparer.oneshot(helper, boot: "kboot=\(Preparer.esc(kboot))", machine: "nand=\(Preparer.esc(store)),nor-rw=\(Preparer.esc(nor)),die-id=\(dieID)" + modem,
                                                  serial: serial, stop: "panic(", timeout: 300, work: work, log: c.log, board: machine)
             for line in text.split(separator: "\n") where line.contains("it_keybag:") { c.log(String(line)) }
             if r.exited, text.contains(Preparer.keybagDone) { break }
@@ -196,10 +200,10 @@ final class K48Board: Board {
             // ipad1_seal.py --iboot: enter the patched iBoot with the catalog keys; the writable NOR is where this
             // boot's effaceable/NVRAM writes land (no base nor=). die-id must be non-zero or iBoot rejects it.
             boot = "iboot=\(Preparer.esc(c.file("iBoot.bin"))),gid-blobs=\(Preparer.esc(c.file("gid-blobs.bin")))"
-            extra = ",die-id=\(dieID),nor-rw=\(Preparer.esc(nor!))"
+            extra = ",die-id=\(dieID),nor-rw=\(Preparer.esc(nor!))" + modem
         } else {
             boot = "kboot=\(Preparer.esc(c.file("kboot.bin")))"
-            extra = ",die-id=\(dieID)" + (nor.map { ",nor-rw=\(Preparer.esc($0))" } ?? "")
+            extra = ",die-id=\(dieID)" + (nor.map { ",nor-rw=\(Preparer.esc($0))" } ?? "") + modem
         }
         let serial = work.appendingPathComponent("seal.log")
         let (r, text) = try Preparer.oneshot(helper, boot: boot, machine: "nand=\(Preparer.esc(store))" + extra, serial: serial, stop: nil,
