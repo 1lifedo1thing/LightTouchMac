@@ -62,17 +62,27 @@ public enum KBoot {
         public var fbWidth: Int, fbHeight: Int
         public var rotation: UInt32, scale: UInt32, boardID: UInt32
         public var modelNumber: String
+        /// DRAM bytes: memSize, vram and pram sit at its top, as iBoot puts them.
+        public var dram: UInt32 = KBoot.dramSize
+        /// A radio board (N90) keeps its baseband node; the machine's `baseband` property unmatches it at boot.
+        public var radio = false
 
         public static let k48 = Board(machine: "ipad1", fbWidth: 1024, fbHeight: 768, rotation: 270, scale: 1,
                                       boardID: 0x02, modelNumber: "MB292")
         public static let n81 = Board(machine: "iPod-Touch-4G", fbWidth: 640, fbHeight: 960, rotation: 0, scale: 2,
                                       boardID: 0x08, modelNumber: "MC540")
+        public static let n90 = Board(machine: "iPhone-4", fbWidth: 640, fbHeight: 960, rotation: 0, scale: 2,
+                                      boardID: 0x00, modelNumber: "MC603", dram: 0x2000_0000, radio: true)
 
         /// From the DT's compatible ("N81AP\0iPod4,1\0AppleARM" -> n81); K48 otherwise.
         public static func of(_ dt: DeviceTree) -> Board {
             let first = dt.value("", "compatible").map { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) } ?? ""
-            return first == "N81AP" ? .n81 : .k48
+            return ["N81AP": .n81, "N90AP": .n90][first] ?? .k48
         }
+
+        var memSize: UInt32 { dram - KBoot.pramSize - KBoot.vramSize }
+        var vramPA: UInt32 { KBoot.physBase + memSize }
+        var pramPA: UInt32 { KBoot.physBase + dram - KBoot.pramSize }
     }
 
     /// K48's 4.x (8C148) spi0/nor-flash subtree: diagnostics, nvram, the image area and effaceable storage
@@ -194,7 +204,7 @@ public enum KBoot {
         if dt.contains("arm-io/mipi-dsim/lcd") {   // the panel id iBoot's pinot_init writes; the DSI model's reply
             for k in ["lcd-panel-id", "raw-panel-id"] { try dt.set("arm-io/mipi-dsim/lcd", k, .u32(0x00A1_D13C)) }
         }
-        if dt.contains("baseband") {   // Wi-Fi iPad: no radio, so unmatch and unname the N82 baseband node
+        if dt.contains("baseband"), !board.radio {   // Wi-Fi iPad: no radio, so unmatch and unname the N82 baseband node
             for (k, v) in [("compatible", "none"), ("device_type", "none"), ("name", "nobb")] { try dt.set("baseband", k, .string(v)) }
         }
         if dt.props["arm-io"]?["chip-revision"] != nil { try dt.set("arm-io", "chip-revision", .u32(0x11)) }
@@ -202,8 +212,8 @@ public enum KBoot {
             guard let props = dt.props[node] else { continue }
             for (k, v) in nand where props[k] != nil { try dt.set(node, k, .u32(v)) }
         }
-        try dt.set("pram", "reg", .words([pramPA, pramSize]))
-        try dt.set("vram", "reg", .words([vramPA, vramSize]))
+        try dt.set("pram", "reg", .words([board.pramPA, pramSize]))
+        try dt.set("vram", "reg", .words([board.vramPA, vramSize]))
         for (i, (name, pa, size)) in memoryMap.enumerated() {
             try dt.rename("chosen/memory-map", "MemoryMapReserved-\(i)", name)
             try dt.set("chosen/memory-map", name, .words([pa, size]))
@@ -258,8 +268,8 @@ public enum KBoot {
         let cmdline = Array(args.utf8)
         guard cmdline.count < 256 else { throw FirmwareError(.unsupported, "boot-args longer than BOOT_LINE_LENGTH") }
         var ba = Data([1, 0, m.bootArgsVersion(), 0])
-        ba += DeviceTree.Value.le([UInt32(vbase), physBase, memSize, topOfKernel,
-                                   vramPA, verbose ? 0 : 1, UInt32(board.fbWidth * fbDepth / 8), UInt32(board.fbWidth),
+        ba += DeviceTree.Value.le([UInt32(vbase), physBase, board.memSize, topOfKernel,
+                                   board.vramPA, verbose ? 0 : 1, UInt32(board.fbWidth * fbDepth / 8), UInt32(board.fbWidth),
                                    UInt32(board.fbHeight), UInt32(fbDepth) | (board.scale - 1) << 16,
                                    0, UInt32(dtVA), UInt32(dtLen)])
         ba += cmdline + [UInt8](repeating: 0, count: 256 - cmdline.count)
@@ -288,7 +298,7 @@ public enum KBoot {
                             iboot: ibootVersion(exists("iBoot.bin") ? try Data(contentsOf: file("iBoot.bin")) : nil),
                             ramdisk: try ramdisk.map { try Data(contentsOf: $0) })
         let board = Board.of(try DeviceTree(Data(contentsOf: file("DeviceTree.bin"))))
-        let logo = exists("AppleLogo.bin") ? try BootLogo.segments(iBootIm: Data(contentsOf: file("AppleLogo.bin")), framebufferPA: vramPA,
+        let logo = exists("AppleLogo.bin") ? try BootLogo.segments(iBootIm: Data(contentsOf: file("AppleLogo.bin")), framebufferPA: board.vramPA,
                                                                    width: board.fbWidth, height: board.fbHeight,
                                                                    turn: board.rotation == 270) : []
         try bundle(img, segments: logo).write(to: out)

@@ -12,7 +12,7 @@ struct KBootTests {
     }
     static func z(_ n: Int) -> Data { Data(count: n) }
     static let dtBlob = deviceTree()
-    static func deviceTree(armIO extra: [Data] = []) -> Data { node([("name", Data("device-tree\0".utf8))] + ["platform-name", "model-number", "region-info", "serial-number", "mlb-serial-number"].map { ($0, z(32)) }, [
+    static func deviceTree(armIO extra: [Data] = [], top: [Data] = []) -> Data { node([("name", Data("device-tree\0".utf8))] + ["platform-name", "model-number", "region-info", "serial-number", "mlb-serial-number"].map { ($0, z(32)) }, [
         node([("name", Data("chosen\0".utf8)), ("firmware-version", z(256)), ("root-matching", z(256)), ("unique-chip-id", z(8)), ("die-id", z(8))]
              + ["debug-enabled", "production-cert", "secure-boot", "gid-aes-key", "uid-aes-key", "system-trusted",
                 "board-id", "chip-id", "display-rotation", "display-scale"].map { ($0, z(4)) },
@@ -23,7 +23,7 @@ struct KBootTests {
              [node([("name", Data("usb-complex\0".utf8))], [node([("name", Data("usb-ehci\0".utf8))])])] + extra),
         node([("name", Data("pram\0".utf8)), ("reg", z(8))]),
         node([("name", Data("vram\0".utf8)), ("reg", z(8))]),
-    ]) }
+    ] + top) }
     static let placeholder = UnitIdentity(fields: [
         ("serial-number", .string("EMU000000000")), ("mlb-serial-number", .string("EMU0000000000")),
         ("unique-chip-id", .string("0x0000000001")), ("die-id", .list(["0x0", "0x0"])),
@@ -65,6 +65,23 @@ struct KBootTests {
         #expect(dt.props["arm-io/flash-controller0/disk"]?["boot-from-nand"] == nil && word("arm-io/flash-controller0/disk", "boot-from-nor") == 1)
         #expect(dt.value("arm-io/uart1/bluetooth", "local-mac-address") == Data([2, 0, 0, 0, 0, 2]))
         #expect(dt.value("", "model-number")?.prefix(5) == Data("MC540".utf8))
+    }
+
+    /// N90: 512 MiB (memSize, vram, pram at its top) and the baseband node kept matchable for the machine.
+    @Test func n90Board() throws {
+        let n = { (s: String) in Data((s + "\0").utf8) }
+        let bb = Self.node([("name", n("baseband")), ("compatible", n("baseband,n90")), ("device_type", n("baseband"))])
+        var tree = try DeviceTree(Self.deviceTree(armIO: [Self.node([("name", n("spi0"))])], top: [bb]))
+        try tree.add("", "compatible", Data("N90AP\0iPhone3,1\0AppleARM\0".utf8))
+        #expect(KBoot.Board.of(tree) == .n90)
+        let img = try KBoot.build(kernel: Self.kernel(at: 0x8000_0000), deviceTree: tree.data, identity: Self.placeholder)
+        let r0 = Int(img.bootArgsPA - img.loadPA), image = img.image
+        #expect([0x0C, 0x14].map { Self.u32(image, r0 + $0) } == [0x1F70_0000, 0x5F70_0000])   // memSize, vram base
+        let dtp = Int(Self.u32(image, r0 + 0x30)) - 0x8000_0000, dtlen = Int(Self.u32(image, r0 + 0x34))
+        let out = try DeviceTree(image[dtp..<dtp + dtlen])
+        #expect(out.value("baseband", "compatible") == n("baseband,n90"))
+        #expect(out.value("vram", "reg") == DeviceTree.Value.le([0x5F70_0000, 0x8F_C000]))
+        #expect(out.value("chosen", "board-id") == DeviceTree.Value.le([0]))
     }
 
     @Test func selfcheck() throws {

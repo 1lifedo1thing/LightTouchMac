@@ -1,5 +1,6 @@
 // K48Board: the A4 boards' side of Recipe.create: the iPad 1 (k48ap, recipe "k48") and the iPod touch 4G
-// (n81ap, recipe "n81": kboot only, KBoot grafts the NOR it lacks, -M iPod-Touch-4G, model MC540). Ports ipad1_device.build's board steps,
+// (n81ap, recipe "n81": kboot only, KBoot grafts the NOR it lacks, -M iPod-Touch-4G, model MC540) and the
+// iPhone 4 (n90ap, recipe "n90": as n81, -M iPhone-4, 512 MiB, model MC603, its baseband node kept). Ports ipad1_device.build's board steps,
 // ipad1_keybag.py and ipad1_seal.py over the other modules; the build-time boots run through
 // `LightTouchDevice --oneshot`.
 //
@@ -13,10 +14,12 @@ import Foundation
 
 final class K48Board: Board {
     let arch = "armv7"
-    var seedPrefix: String { n81 ? "ipod4" : "ipad1" }
-    /// The iPod touch 4G: same SoC and pipeline; KBoot.Board.n81 carries the DT differences.
-    let n81: Bool
-    var machine: String { (n81 ? KBoot.Board.n81 : KBoot.Board.k48).machine }
+    var seedPrefix: String { ["n81ap": "ipod4", "n90ap": "iphone4"][board] ?? "ipad1" }
+    let board: String
+    /// The kboot-only A4 boards (iPod touch 4G, iPhone 4): same SoC and pipeline; their KBoot.Board carries the DT differences.
+    var kbootBoard: Bool { a4 != .k48 }
+    var a4: KBoot.Board { ["n81ap": .n81, "n90ap": .n90][board] ?? .k48 }
+    var machine: String { a4.machine }
     let volumesStep = "Building the system and data volumes", keybagStep = "Creating the data-protection keybag"
     var bootStep: String { iboot ? "Writing the identity and boot chain" : "Writing the identity and boot image" }
     let needsSeal = true
@@ -29,10 +32,11 @@ final class K48Board: Board {
 
     init(_ o: Preparer.Options) throws {
         recipe = o.entry.recipe!
-        n81 = o.entry.board == "n81ap"
-        strategy = recipe.boot ?? (n81 ? "kboot" : "iboot")
+        board = o.entry.board
+        let kbootOnly = o.entry.board != "k48ap"
+        strategy = recipe.boot ?? (kbootOnly ? "kboot" : "iboot")
         guard strategy == "iboot" || strategy == "kboot" else { throw FirmwareError(.unsupported, "\(o.entry.id): unknown boot strategy \(strategy)") }
-        guard !(n81 && strategy == "iboot") else { throw FirmwareError(.unsupported, "\(o.entry.id): the iPod touch 4G boots by kboot only (no NAND boot chain yet)") }
+        guard !(kbootOnly && strategy == "iboot") else { throw FirmwareError(.unsupported, "\(o.entry.id): the \(o.entry.board == "n90ap" ? "iPhone 4" : "iPod touch 4G") boots by kboot only (no NAND boot chain yet)") }
         iboot = strategy == "iboot"
         dataProtection = recipe.options["writable_nor"] == true
     }
@@ -61,7 +65,7 @@ final class K48Board: Board {
     }
 
     func identity(seed: String) throws -> UnitIdentity {
-        ident = try UnitIdentity.synthesize(seed: seed, storage: recipe.storage, modelNumber: n81 ? KBoot.Board.n81.modelNumber : nil)
+        ident = try UnitIdentity.synthesize(seed: seed, storage: recipe.storage, modelNumber: kbootBoard ? a4.modelNumber : nil)
         return ident
     }
 

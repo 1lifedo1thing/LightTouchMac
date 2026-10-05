@@ -75,7 +75,7 @@ extension BootTests {
                 nand: f.base.appendingPathComponent("nand").path, overlay: f.overlay.path, dieID: "0x123:0x456",
                 usbAddress: "127.0.0.1:1234", wifi: true, guestPackage: "offer", machineOptions: ["aes-uid": "engine"]),
                 serial: "null", audio: ["-audio", "driver=none"], netdev: "user,id=wifi0", restore: [])
-        case .n81:
+        case .n81, .n90:
             return   // kboot only: missingLegacyStrategyKeepsBoardDefault covers it
         }
         #expect(config == expected)
@@ -220,9 +220,10 @@ extension BootTests {
             guestPackage: nil, serial: "null", audio: [], netdev: nil)
         switch board {
         case .k48: #expect(c.argv[2].hasPrefix("ipad1,kboot="))
-        case .n81:
-            #expect(c.argv[2].hasPrefix("iPod-Touch-4G,kboot=") && c.argv[2].contains(",nor-rw=") && c.machine == "iPod-Touch-4G")
-            #expect(throws: CocoaError.self) { _ = try PreparedDeviceBoot.Board.n81.requiredFiles(strategy: "iboot") }
+        case .n81, .n90:
+            let m = board == .n81 ? "iPod-Touch-4G" : "iPhone-4"
+            #expect(c.argv[2].hasPrefix(m + ",kboot=") && c.argv[2].contains(",nor-rw=") && c.machine == m)
+            #expect(throws: CocoaError.self) { _ = try board.requiredFiles(strategy: "iboot") }
         case .n72: #expect(c.argv[2].contains(",direct-iboot=" + BootRecipe.escape(f.base.appendingPathComponent("iBoot.bin").path)))
         case .n45: #expect(c.argv[2].contains(",iboot=" + BootRecipe.escape(f.base.appendingPathComponent("iBoot.bin").path)))
         }
