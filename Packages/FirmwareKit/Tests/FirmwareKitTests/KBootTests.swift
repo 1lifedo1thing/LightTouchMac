@@ -84,6 +84,34 @@ struct KBootTests {
         #expect(out.value("chosen", "board-id") == DeviceTree.Value.le([0]))
     }
 
+    /// N88 (S5L8920): its own platform-name/chip-id, a 320x480 panel, its own NOR kept (nothing grafted) with
+    /// boot-from-nand renamed away, the baseband node unmatched (renamed nobb) with test identity in it.
+    @Test func n88Board() throws {
+        let n = { (s: String) in Data((s + "\0").utf8) }
+        let nor = Self.node([("name", n("nor-flash")), ("compatible", n("nor-flash,spi"))])
+        let armIO = [Self.node([("name", n("spi0"))], [nor]),
+                     Self.node([("name", n("flash-controller0"))], [Self.node([("name", n("disk")), ("boot-from-nand", DeviceTree.Value.le([1]))])])]
+        let bb = Self.node([("name", n("baseband")), ("compatible", n("baseband,n88")), ("device_type", n("baseband")),
+                            ("device-imei", Self.z(16)), ("snum", Self.z(12))])
+        var tree = try DeviceTree(Self.deviceTree(armIO: armIO, top: [bb]))
+        try tree.add("", "compatible", Data("N88AP\0iPhone2,1\0AppleARM\0".utf8))
+        #expect(KBoot.Board.of(tree) == .n88)
+        let img = try KBoot.build(kernel: Self.kernel(at: 0x8000_0000), deviceTree: tree.data, identity: Self.placeholder)
+        let r0 = Int(img.bootArgsPA - img.loadPA), image = img.image
+        #expect([0x1C, 0x20, 0x24, 0x28].map { Self.u32(image, r0 + $0) } == [320 * 4, 320, 480, 32])
+        let dtp = Int(Self.u32(image, r0 + 0x30)) - 0x8000_0000, dtlen = Int(Self.u32(image, r0 + 0x34))
+        let dt = try DeviceTree(image[dtp..<dtp + dtlen])
+        let word = { (p: String, k: String) in dt.value(p, k).map { Self.u32($0, 0) } }
+        #expect(word("chosen", "chip-id") == 0x8920 && word("chosen", "board-id") == 0 && word("chosen", "display-rotation") == 0)
+        #expect(dt.value("", "platform-name")?.prefix(9) == Data("s5l8920x\0".utf8))
+        #expect(!dt.contains("arm-io/spi0/nor-flash/effaceable"))   // its own NOR: no graft
+        #expect(dt.props["arm-io/flash-controller0/disk"]?["boot-from-nand"] == nil)
+        #expect(dt.value("nobb", "compatible")?.prefix(5) == Data("none\0".utf8))
+        #expect(dt.value("nobb", "device-imei")?.prefix(16) == Data("004999010640000\0".utf8))
+        #expect(dt.value("nobb", "snum") == Data("TESTSNUM0000".utf8))
+        #expect(dt.value("", "model-number")?.prefix(5) == Data("MB715".utf8))
+    }
+
     @Test func selfcheck() throws {
         let img = try KBoot.build(kernel: Self.kernel(at: 0xC000_0000), deviceTree: Self.dtBlob, identity: Self.placeholder)
         #expect((img.loadPA, img.entryPA, img.bootArgsPA) == (0x4000_0000, 0x4000_1040, 0x4000_6000))

@@ -278,16 +278,19 @@ public nonisolated enum BootRecipe {
             machine = "\(board),bootrom=\(escape(image)),nor-rw=\(escape(nor)),gid-blobs=\(escape(gid)),development-fuses=\(developmentFuses ? "on" : "off")"
         }
         machine += ",nand=\(escape(d.nand)),nand-overlay=\(escape(d.overlay))"
-        if let dieID = d.dieID { machine += ",die-id=\(escape(dieID))" }
+        // The S5L8920 machine (-M n88) has no die-id or Wi-Fi property and no EHCI for the keyboard.
+        let s5l8920 = board == "n88"
+        if let dieID = d.dieID, !s5l8920 { machine += ",die-id=\(escape(dieID))" }
         // Without a bridge the machine's built-in USB host keeps it charging.
         if let usb = d.usbAddress { machine += ",usb-tcp-addr=\(usb)" }
-        if !d.wifi { machine += ",wifi=off" }
+        if !d.wifi, !s5l8920 { machine += ",wifi=off" }
         if let offer = d.guestPackage { machine += ",guest-package=\(escape(offer))" }
         machine += options(d.machineOptions)
         // usb-kbd on the always-on EHCI becomes the active keyboard for key_mac. 20 mA: 4.x gives the
         // dock's host side AAPL,power-supply 50 and refuses the default 100 mA device ("not enough power").
         let argv = ["LightTouchMac", "-M", machine, "-display", "none", "-no-shutdown"] + audio
-            + ["-serial", serial, "-device", "usb-kbd,bus=usb-bus.0,max-power=20"] + (netdev.map { ["-netdev", $0] } ?? []) + restore
+            + ["-serial", serial] + (s5l8920 ? [] : ["-device", "usb-kbd,bus=usb-bus.0,max-power=20"])
+            + (netdev.map { ["-netdev", $0] } ?? []) + restore
         return BootConfig(argv: argv, machine: board)
     }
 

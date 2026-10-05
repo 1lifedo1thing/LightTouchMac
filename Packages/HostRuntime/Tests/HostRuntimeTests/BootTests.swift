@@ -75,7 +75,7 @@ extension BootTests {
                 nand: f.base.appendingPathComponent("nand").path, overlay: f.overlay.path, dieID: "0x123:0x456",
                 usbAddress: "127.0.0.1:1234", wifi: true, guestPackage: "offer", machineOptions: ["aes-uid": "engine"]),
                 serial: "null", audio: ["-audio", "driver=none"], netdev: "user,id=wifi0", restore: [])
-        case .n81, .n90:
+        case .n81, .n90, .n88:
             return   // kboot only: missingLegacyStrategyKeepsBoardDefault covers it
         }
         #expect(config == expected)
@@ -224,6 +224,10 @@ extension BootTests {
             let m = board == .n81 ? "iPod-Touch-4G" : "iPhone-4"
             #expect(c.argv[2].hasPrefix(m + ",kboot=") && c.argv[2].contains(",nor-rw=") && c.machine == m)
             #expect(throws: CocoaError.self) { _ = try board.requiredFiles(strategy: "iboot") }
+        case .n88:
+            // The S5L8920 machine: no die-id, wifi or usb-kbd (no such properties, no EHCI).
+            #expect(c.argv[2].hasPrefix("n88,kboot=") && c.argv[2].contains(",nor-rw=") && c.machine == "n88")
+            #expect(!c.argv[2].contains("die-id=") && !c.argv[2].contains("wifi=") && !c.argv.contains { $0.hasPrefix("usb-kbd") })
         case .n72: #expect(c.argv[2].contains(",direct-iboot=" + BootRecipe.escape(f.base.appendingPathComponent("iBoot.bin").path)))
         case .n45: #expect(c.argv[2].contains(",iboot=" + BootRecipe.escape(f.base.appendingPathComponent("iBoot.bin").path)))
         }

@@ -15,7 +15,9 @@
 // chosen/root-matching; the DT's own secure-root-prefix is left as the IPSW has it, so md0 is a SecureRoot.
 // What differs per A4 board is a KBoot.Board, picked from the DT's own compatible (ipad1_kboot.BOARDS): K48's
 // landscape panel (display-rotation 270, 4.x lays its UI out by it) or N81's portrait Retina one. A board without
-// the SPI NOR (N81: boot-from-nand) gets K48's 4.x nor-flash subtree grafted in (graftNOR).
+// the SPI NOR (N81: boot-from-nand) gets K48's 4.x nor-flash subtree grafted in (graftNOR). The S5L8920 iPhone 3GS
+// (N88, -M n88; s5l8920_kboot.py) is a Board too: its own platform-name/chip-id, a 320x480 panel, the iPad's clock
+// table cut to its DT's 32 slots, and its baseband node's identity filled with test values.
 
 import Foundation
 
@@ -66,6 +68,8 @@ public enum KBoot {
         public var dram: UInt32 = KBoot.dramSize
         /// A radio board (N90) keeps its baseband node; the machine's `baseband` property unmatches it at boot.
         public var radio = false
+        /// The SoC as iBoot names it (root platform-name, chosen/chip-id).
+        public var platformName = "s5l8930x", chipID: UInt32 = 0x8930
 
         public static let k48 = Board(machine: "ipad1", fbWidth: 1024, fbHeight: 768, rotation: 270, scale: 1,
                                       boardID: 0x02, modelNumber: "MB292")
@@ -73,11 +77,14 @@ public enum KBoot {
                                       boardID: 0x08, modelNumber: "MC540")
         public static let n90 = Board(machine: "iPhone-4", fbWidth: 640, fbHeight: 960, rotation: 0, scale: 2,
                                       boardID: 0x00, modelNumber: "MC603", dram: 0x2000_0000, radio: true)
+        /// iPhone 3GS (S5L8920): -M n88, model MB715. Its baseband node is unmatched (no modem model yet).
+        public static let n88 = Board(machine: "n88", fbWidth: 320, fbHeight: 480, rotation: 0, scale: 1,
+                                      boardID: 0x00, modelNumber: "MB715", platformName: "s5l8920x", chipID: 0x8920)
 
         /// From the DT's compatible ("N81AP\0iPod4,1\0AppleARM" -> n81); K48 otherwise.
         public static func of(_ dt: DeviceTree) -> Board {
             let first = dt.value("", "compatible").map { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) } ?? ""
-            return ["N81AP": .n81, "N90AP": .n90][first] ?? .k48
+            return ["N81AP": .n81, "N90AP": .n90, "N88AP": .n88][first] ?? .k48
         }
 
         var memSize: UInt32 { dram - KBoot.pramSize - KBoot.vramSize }
@@ -103,12 +110,15 @@ public enum KBoot {
                                                  ("reg", .words([0xF_A000, 0x1000, 0xF_B000, 0x1000])), ("AAPL,phandle", .u32(0x0091_7F70))]),
     ]
 
-    /// A NOR-less board: graft the NOR in, and take the NAND off boot duty. The kernel keys off
-    /// boot-from-nand's presence, not its value (IOFlashStorageDevice then hunts NAND boot blocks and the
-    /// FTL never finds root); the editor cannot delete, so rename it.
+    /// A NOR-less board: graft the NOR in. Either way take the NAND off boot duty (the N88 has its own NOR
+    /// and the property too): the kernel keys off boot-from-nand's presence, not its value
+    /// (IOFlashStorageDevice then hunts NAND boot blocks and the FTL never finds root); the editor cannot
+    /// delete, so rename it.
     static func graftNOR(_ dt: inout DeviceTree) throws {
-        guard dt.contains("arm-io/spi0"), !dt.contains("arm-io/spi0/nor-flash") else { return }
-        for (parent, name, props) in norGraft { try dt.addNode(parent, name, props) }
+        guard dt.contains("arm-io/spi0") else { return }
+        if !dt.contains("arm-io/spi0/nor-flash") {
+            for (parent, name, props) in norGraft { try dt.addNode(parent, name, props) }
+        }
         if dt.props["arm-io/flash-controller0/disk"]?["boot-from-nand"] != nil {
             try dt.rename("arm-io/flash-controller0/disk", "boot-from-nand", "boot-from-nor")
         }
@@ -182,10 +192,10 @@ public enum KBoot {
                        iboot: String, rootMatching: String) throws {
         let board = Board.of(dt)
         let (root, chosen, macs) = try identityDT(identity, board: board)
-        for (k, v) in [("platform-name", DeviceTree.Value.string("s5l8930x"))] + root { try dt.set("", k, v) }
+        for (k, v) in [("platform-name", DeviceTree.Value.string(board.platformName))] + root { try dt.set("", k, v) }
         let flags: [(String, DeviceTree.Value)] = ["debug-enabled", "production-cert", "secure-boot", "gid-aes-key",
                                                     "uid-aes-key", "system-trusted"].map { ($0, .u32(1)) }
-        for (k, v) in flags + [("board-id", .u32(board.boardID)), ("chip-id", .u32(0x8930))] + chosen
+        for (k, v) in flags + [("board-id", .u32(board.boardID)), ("chip-id", .u32(board.chipID))] + chosen
             + [("firmware-version", .string(iboot)), ("display-rotation", .u32(board.rotation)), ("display-scale", .u32(board.scale)),
                ("root-matching", .string(rootMatching))] {
             try dt.set("chosen", k, v)
@@ -194,7 +204,10 @@ public enum KBoot {
                         ("peripheral-frequency", periphHz), ("fixed-frequency", fixedHz), ("timebase-frequency", timebaseHz)] {
             try dt.set("cpus/cpu0", k, .u32(hz))
         }
-        try dt.set("arm-io", "clock-frequencies", .words(clocks))
+        // ponytail: the iPad's table, cut to the slots the DT reserves (the S5L8920's 32); those slots' meanings
+        // there are unchecked. Fix when a driver reads a wrong rate.
+        let slots = (dt.props["arm-io"]?["clock-frequencies"]?.length ?? clocks.count * 4) / 4
+        try dt.set("arm-io", "clock-frequencies", .words(Array(clocks.prefix(slots))))
         try dt.set("arm-io", "usbphy-frequency", .u32(usbphyHz))
         if dt.contains("arm-io/sgx") { try dt.set("arm-io/sgx", "compatible", .string("none")) }   // no SGX model
         for (want, mac) in macs {
@@ -206,6 +219,12 @@ public enum KBoot {
         }
         if dt.contains("baseband"), !board.radio {   // Wi-Fi iPad: no radio, so unmatch and unname the N82 baseband node
             for (k, v) in [("compatible", "none"), ("device_type", "none"), ("name", "nobb")] { try dt.set("baseband", k, .string(v)) }
+            // lockdownd still reads the node's identity (N88): GSMA's test IMEI and a placeholder serial, so nothing
+            // passes for a real unit (s5l8920_kboot.py).
+            if dt.props["baseband"]?["device-imei"] != nil {
+                try dt.set("baseband", "device-imei", .string("004999010640000"))
+                try dt.set("baseband", "snum", .bytes(Data("TESTSNUM0000".utf8)))
+            }
         }
         if dt.props["arm-io"]?["chip-revision"] != nil { try dt.set("arm-io", "chip-revision", .u32(0x11)) }
         for node in nandNodes {

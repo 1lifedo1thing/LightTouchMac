@@ -11,7 +11,9 @@ public enum K48NAND {
     static let meta = 12
     /// NANDDRIVERSIGN nSig: "C11" + the epoch digit in the low byte (the FIL reads it as '0' + epoch); epoch 1 for
     /// IOFlashStorage up to 410.3 (iOS 4.3.0), 2 from 410.4 (4.3.5), see signatureEpoch(kernelcache:).
-    static let nsigBase: UInt32 = 0x43313130, sigFlags: UInt32 = 0x00010005
+    /// flags 5, + 0x10000 (metadata whitening) where the DT asks for it; the S5L8920 boards' DTs don't, and their WMR
+    /// refuses a whitened store ("Metadata whitening not supported").
+    static let nsigBase: UInt32 = 0x43313130, sigFlags: UInt32 = 0x00010005, plainSigFlags: UInt32 = 0x5
     static func nsig(epoch: UInt8) -> UInt32 { nsigBase + UInt32(epoch) }
     static let tIndex: UInt8 = 0x4, tClosed: UInt8 = 0x8, tUser: UInt8 = 0x10, tVFL: UInt8 = 0x80
     static let unmapped: UInt32 = 0xFFFFFFFF
@@ -130,8 +132,12 @@ public enum K48NAND {
         var records = 0
         var rec: [UInt8]
 
-        init(create dir: URL, geo: Geometry) throws {
+        /// Meta written as is (no whitening): the S5L8920 boards.
+        let plain: Bool
+
+        init(create dir: URL, geo: Geometry, plain: Bool = false) throws {
             self.geo = geo
+            self.plain = plain
             stride = geo.pageSize + geo.spareBytes
             rec = [UInt8](repeating: 0, count: stride)
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -151,7 +157,7 @@ public enum K48NAND {
         /// One page record: data, then the (whitened unless raw) meta, spare[12...] = 0.
         func write(_ cs: Int, _ ppage: Int, _ data: UnsafeRawBufferPointer, _ meta: [UInt8], raw: Bool = false) throws {
             precondition(data.count == geo.pageSize && meta.count == K48NAND.meta)
-            let m = raw ? meta : K48NAND.whiten(meta, ppage)
+            let m = raw || plain ? meta : K48NAND.whiten(meta, ppage)
             precondition(m.contains { $0 != 0 }, "spare must not be all zero (hole == blank)")
             rec.withUnsafeMutableBytes { r in
                 r.copyMemory(from: data)
@@ -239,7 +245,7 @@ public enum K48NAND {
             for p in 0..<8 { try st.write(cs, geo.ppage(geo.vflBlocks[0], p), ctx, m) }
         }
         var payload = [UInt8](repeating: 0, count: 8 + 0x100)
-        put32(&payload, 0, nsig(epoch: epoch)); put32(&payload, 4, sigFlags)
+        put32(&payload, 0, nsig(epoch: epoch)); put32(&payload, 4, st.plain ? plainSigFlags : sigFlags)
         payload.replaceSubrange(8..<8 + kernelVersion.count, with: kernelVersion)
         let sig = specialPage(geo, "NANDDRIVERSIGN", 0, [Int](repeating: 0, count: 8), payload)
         for p in 0..<geo.pagesPerBlock { try st.write(0, geo.ppage(geo.cand[0][4], p), sig.data, sig.meta, raw: true) }
@@ -362,6 +368,14 @@ public enum K48NAND {
         return 1
     }
 
+    /// Restore.plist's DeviceMap SCEP for `board` (the NAND epoch a restore would write), nil when it names none.
+    static func restoreEpoch(_ ipsw: IPSWArchive, board: String) throws -> UInt8? {
+        let rp = try PropertyListSerialization.propertyList(from: try ipsw.read("Restore.plist"), format: nil) as? [String: Any]
+        let maps = rp?["DeviceMap"] as? [[String: Any]] ?? []
+        let map = maps.first { ($0["BoardConfig"] as? String)?.lowercased() == board.lowercased() } ?? maps.first
+        return (map?["SCEP"] as? NSNumber).map { UInt8(truncatingIfNeeded: $0.intValue) }
+    }
+
     /// A page-granular reader over a (possibly sparse) raw image, with in-place byte patches.
     final class FilePages {
         let fd: Int32, size: Int, page: Int, pages: Int
@@ -441,7 +455,8 @@ public enum K48NAND {
     /// ipad1_nand.py build: the store for `system` (+ `s3` + the data volume) at the MBR's partitions, into `out`.
     @discardableResult
     nonisolated(nonsending) public static func build(geometry geo: Geometry = .k48_16g, mbr: URL, kernelVersion: [UInt8], epoch: UInt8 = 1, system: URL, s3: URL? = nil,
-                             data: DataVolume, out: URL, force: Bool = false, log: (String) -> Void = { _ in }) async throws -> BuildResult {
+                             data: DataVolume, out: URL, force: Bool = false, whitening: Bool = true,
+                             log: (String) -> Void = { _ in }) async throws -> BuildResult {
         let fm = FileManager.default
         if fm.fileExists(atPath: out.appendingPathComponent("geometry.json").path) && !force {
             throw FirmwareError(.internal, "\(out.path) exists; pass force to overwrite")
@@ -483,7 +498,7 @@ public enum K48NAND {
             throw FirmwareError(.unsupported, "partition 2 ends at \(p2.lba + p2.count) > exported \(geo.exportedPages) sectors")
         }
 
-        let st = try Store(create: out, geo: geo)
+        let st = try Store(create: out, geo: geo, plain: !whitening)
         try writeMetadata(st, geo, kernelVersion: kernelVersion, epoch: epoch)
         let ftl = FTLWriter(st, geo)
         // LPN == 4 KiB LBA, segments in ascending LBA order

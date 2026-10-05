@@ -1,6 +1,8 @@
 // K48Board: the A4 boards' side of Recipe.create: the iPad 1 (k48ap, recipe "k48") and the iPod touch 4G
 // (n81ap, recipe "n81": kboot only, KBoot grafts the NOR it lacks, -M iPod-Touch-4G, model MC540) and the
-// iPhone 4 (n90ap, recipe "n90": as n81, -M iPhone-4, 512 MiB, model MC603, its baseband node kept). Ports ipad1_device.build's board steps,
+// iPhone 4 (n90ap, recipe "n90": as n81, -M iPhone-4, 512 MiB, model MC603, its baseband node kept) and the S5L8920
+// iPhone 3GS (n88ap, recipe "n88": kboot with its own NOR, -M n88, model MB715; its store unwhitened at the IPSW's
+// SCEP epoch, no die-id: the machine has no such property). Ports ipad1_device.build's board steps,
 // ipad1_keybag.py and ipad1_seal.py over the other modules; the build-time boots run through
 // `LightTouchDevice --oneshot`.
 //
@@ -14,11 +16,14 @@ import Foundation
 
 final class K48Board: Board {
     let arch = "armv7"
-    var seedPrefix: String { ["n81ap": "ipod4", "n90ap": "iphone4"][board] ?? "ipad1" }
+    var seedPrefix: String { ["n81ap": "ipod4", "n90ap": "iphone4", "n88ap": "iphone3gs"][board] ?? "ipad1" }
     let board: String
     /// The kboot-only A4 boards (iPod touch 4G, iPhone 4): same SoC and pipeline; their KBoot.Board carries the DT differences.
     var kbootBoard: Bool { a4 != .k48 }
-    var a4: KBoot.Board { ["n81ap": .n81, "n90ap": .n90][board] ?? .k48 }
+    var a4: KBoot.Board { ["n81ap": .n81, "n90ap": .n90, "n88ap": .n88][board] ?? .k48 }
+    /// The S5L8920 machine (-M n88): no metadata whitening, the IPSW's NAND epoch, no die-id property.
+    var s5l8920: Bool { a4.chipID == 0x8920 }
+    var dieIDOption: String { s5l8920 ? "" : ",die-id=\(dieID)" }
     var machine: String { a4.machine }
     let volumesStep = "Building the system and data volumes", keybagStep = "Creating the data-protection keybag"
     var bootStep: String { iboot ? "Writing the identity and boot chain" : "Writing the identity and boot image" }
@@ -36,7 +41,7 @@ final class K48Board: Board {
         let kbootOnly = o.entry.board != "k48ap"
         strategy = recipe.boot ?? (kbootOnly ? "kboot" : "iboot")
         guard strategy == "iboot" || strategy == "kboot" else { throw FirmwareError(.unsupported, "\(o.entry.id): unknown boot strategy \(strategy)") }
-        guard !(kbootOnly && strategy == "iboot") else { throw FirmwareError(.unsupported, "\(o.entry.id): the \(o.entry.board == "n90ap" ? "iPhone 4" : "iPod touch 4G") boots by kboot only (no NAND boot chain yet)") }
+        guard !(kbootOnly && strategy == "iboot") else { throw FirmwareError(.unsupported, "\(o.entry.id): the \(["n90ap": "iPhone 4", "n88ap": "iPhone 3GS"][o.entry.board] ?? "iPod touch 4G") boots by kboot only (no NAND boot chain yet)") }
         iboot = strategy == "iboot"
         dataProtection = recipe.options["writable_nor"] == true
     }
@@ -122,10 +127,15 @@ final class K48Board: Board {
     }
 
     nonisolated(nonsending) func store(_ c: Recipe.Context) async throws {
-        let epoch = try K48NAND.signatureEpoch(kernelcache: c.decFile("kernelcache.mach"))
-        c.log("NAND signature epoch \(epoch) (this kernel's FIL)")
+        var epoch = try K48NAND.signatureEpoch(kernelcache: c.decFile("kernelcache.mach"))
+        if s5l8920, let scep = try K48NAND.restoreEpoch(c.ipsw, board: c.e.board) {
+            epoch = scep   // a store behind it waits for an epoch roll only restored performs
+            c.log("NAND signature epoch \(epoch) (Restore.plist SCEP)")
+        } else {
+            c.log("NAND signature epoch \(epoch) (this kernel's FIL)")
+        }
         try await K48NAND.build(geometry: .k48_16g, mbr: mbr, kernelVersion: K48NAND.kernelVersion(kernelcache: c.decFile("kernelcache.mach")),
-                          epoch: epoch, system: vols.system, data: .image(vols.data), out: c.nand, log: c.log)
+                          epoch: epoch, system: vols.system, data: .image(vols.data), out: c.nand, whitening: !s5l8920, log: c.log)
         try? FileManager.default.removeItem(at: vols.system); try? FileManager.default.removeItem(at: vols.data)
     }
 
@@ -149,7 +159,7 @@ final class K48Board: Board {
         let attempts = 3
         for attempt in 1...attempts {
             let serial = work.appendingPathComponent("keybag-\(attempt).log")
-            let (r, text) = try Preparer.oneshot(helper, boot: "kboot=\(Preparer.esc(kboot))", machine: "nand=\(Preparer.esc(store)),nor-rw=\(Preparer.esc(nor)),die-id=\(dieID)",
+            let (r, text) = try Preparer.oneshot(helper, boot: "kboot=\(Preparer.esc(kboot))", machine: "nand=\(Preparer.esc(store)),nor-rw=\(Preparer.esc(nor))" + dieIDOption,
                                                  serial: serial, stop: "panic(", timeout: 300, work: work, log: c.log, board: machine)
             for line in text.split(separator: "\n") where line.contains("it_keybag:") { c.log(String(line)) }
             if r.exited, text.contains(Preparer.keybagDone) { break }
@@ -177,7 +187,7 @@ final class K48Board: Board {
             extra = ",die-id=\(dieID),nor-rw=\(Preparer.esc(nor!))"
         } else {
             boot = "kboot=\(Preparer.esc(c.file("kboot.bin")))"
-            extra = ",die-id=\(dieID)" + (nor.map { ",nor-rw=\(Preparer.esc($0))" } ?? "")
+            extra = dieIDOption + (nor.map { ",nor-rw=\(Preparer.esc($0))" } ?? "")
         }
         let serial = work.appendingPathComponent("seal.log")
         let (r, text) = try Preparer.oneshot(helper, boot: boot, machine: "nand=\(Preparer.esc(store))" + extra, serial: serial, stop: nil,
