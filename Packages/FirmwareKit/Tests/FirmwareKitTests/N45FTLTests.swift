@@ -33,7 +33,7 @@ struct N45FTLTests {
     /// than the prepared one), logical block 0 remapped to virtual block 30 with page 10 changed, and a log block
     /// (virtual block 31) holding a newer copy of logical block 1's page 5. `clean: false` ends the context block
     /// on a map page instead of the context.
-    static func booted(_ ovl: URL, _ base: URL, clean: Bool = true) throws {
+    static func booted(_ ovl: URL, _ base: URL, clean: Bool = true, changeData: Bool = true) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: ovl, withIntermediateDirectories: true)
         let ctxVB = 3, start = ctxVB * sb
@@ -66,9 +66,10 @@ struct N45FTLTests {
         // logical block 0 copied to virtual block 30 with page 10 changed; the log page for lbn 1 offset 5
         for off in 0..<sb {
             guard let (d, s) = N45FTL.page(base, nil, N45NAND.location(lpn: off, banks: banks)) else { continue }
-            try put(ovl, vpn: 30 * sb + off, off == 10 ? [UInt8](repeating: 0xA1, count: pp) : d, s)
+            try put(ovl, vpn: 30 * sb + off, off == 10 && changeData ? [UInt8](repeating: 0xA1, count: pp) : d, s)
         }
-        try put(ovl, vpn: 31 * sb + 2, [UInt8](repeating: 0xB2, count: pp), N45NAND.dataSpare(sb + 5))
+        let log = changeData ? [UInt8](repeating: 0xB2, count: pp) : N45FTL.page(base, nil, N45NAND.location(lpn: sb + 5, banks: banks))!.data
+        try put(ovl, vpn: 31 * sb + 2, log, N45NAND.dataSpare(sb + 5))
     }
 
     /// A fresh store reads back as its volume, through the prepared context.
@@ -112,5 +113,62 @@ struct N45FTLTests {
         let ovl = dir.appendingPathComponent("overlay")
         try Self.booted(ovl, base, clean: false)
         #expect(throws: FirmwareError.self) { try N45FTL(base: base, overlay: ovl) }
+    }
+
+    /// A stopped edit of a booted 1.x device: begin, an edit through the real HFS driver, commit. The generation's
+    /// overlay (the guest's, cloned) carries the change at the FTL's own locations, new files take their
+    /// ancestors' owners, the journal is left for the device to initialize, and the original storage is intact.
+    @Test func stoppedEditInPlace() async throws {
+        let fm = FileManager.default
+        let root = try Fixtures.tempDir("n45ftl-edit")
+        defer { try? fm.removeItem(at: root) }
+        let device = root.appendingPathComponent("device"), base = device.appendingPathComponent("base")
+        try fm.createDirectory(at: base, withIntermediateDirectories: true)
+        let image = root.appendingPathComponent("volume.img")
+        try await VolumeMount.makeHFS(image, size: 16 << 20, name: "Legacy edit test")
+        try await VolumeMount.withMounted(image, at: root.appendingPathComponent("initial")) { mount in
+            try fm.createDirectory(at: mount.appendingPathComponent("Applications"), withIntermediateDirectories: true)
+            try Data("stock".utf8).write(to: mount.appendingPathComponent("Applications/Stock"))
+        }
+        try HFSPlusVolume(image, writable: true).setOwner(["Applications", "Applications/Stock"], uid: 0, gid: 80, mode: 0o775)
+        try N45NAND.write(volume: image, out: base.appendingPathComponent("nand"), filID: 0x4330_3030, banks: Self.banks)
+        let overlay = device.appendingPathComponent("overlay")
+        try Self.booted(overlay, base.appendingPathComponent("nand"), changeData: false)
+        try Data("{}".utf8).write(to: base.appendingPathComponent("device.lock.json"))
+        let record: [String: Any] = ["id": UUID().uuidString, "board": "m68ap", "firmware": "test",
+            "base": ["kind": "prepared", "path": base.path],
+            "storage": ["key": "old", "overlay": overlay.path, "snapshot": "old-snapshot"]]
+        try JSONSerialization.data(withJSONObject: record).write(to: device.appendingPathComponent("device.json"))
+        let before = try Self.tree(overlay)
+
+        let session = try await StoppedVolumeEdit.begin(device: device)
+        try await VolumeMount.withMounted(session.image, at: root.appendingPathComponent("edit")) { mount in
+            let app = mount.appendingPathComponent("Applications/Hello.app")
+            try fm.createDirectory(at: app, withIntermediateDirectories: true)
+            try Data("hello".utf8).write(to: app.appendingPathComponent("Hello"))
+        }
+        try await StoppedVolumeEdit.commit(device: device, id: session.id)
+
+        let published = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: device.appendingPathComponent("device.json"))) as? [String: Any])
+        let newBase = URL(fileURLWithPath: try #require((published["base"] as? [String: Any])?["path"] as? String))
+        let newOverlay = URL(fileURLWithPath: try #require((published["storage"] as? [String: Any])?["overlay"] as? String))
+        #expect(newOverlay != overlay && newBase != base)
+        let ftl = try N45FTL(base: newBase.appendingPathComponent("nand"), overlay: newOverlay)
+        #expect(ftl.logBlocksInUse == 1)                    // the guest's FTL state carried over unchanged
+        let rebuilt = try VolumeRebuild.rebuild(base: newBase.appendingPathComponent("nand"), overlay: newOverlay,
+                                                into: root.appendingPathComponent("verify"))[0]
+        let volume = try HFSPlusVolume(rebuilt.image)
+        let hello = try volume.record(at: "Applications/Hello.app/Hello")
+        #expect(try volume.contents(hello) == Data("hello".utf8) && hello.uid == 0 && hello.gid == 80)
+        #expect(try volume.contents(volume.record(at: "Applications/Stock")) == Data("stock".utf8))
+        #expect(try Self.tree(overlay) == before)           // the original generation is untouched
+    }
+
+    static func tree(_ dir: URL) throws -> [String: Data] {
+        var out: [String: Data] = [:]
+        for case let u as URL in FileManager.default.enumerator(at: dir, includingPropertiesForKeys: nil)! where !u.hasDirectoryPath {
+            out[u.path] = try Data(contentsOf: u)
+        }
+        return out
     }
 }

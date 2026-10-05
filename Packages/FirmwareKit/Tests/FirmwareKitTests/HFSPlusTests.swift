@@ -155,3 +155,21 @@ enum HFSOracle {
         }
     }
 }
+
+struct HFSPlusNameTests {
+    /// A name holding ":" on the host is stored with "/" in the catalog (1.0's zoneinfo/Etc/GMT-0:15): paths
+    /// and lookups use the host's form, so the stopped edit can restore its metadata.
+    @Test func slashInCatalogName() async throws {
+        let dir = try Fixtures.tempDir("hfs-colon")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let image = dir.appendingPathComponent("v.img")
+        try await VolumeMount.makeHFS(image, size: 8 << 20, name: "Colon")
+        try await VolumeMount.withMounted(image, at: dir.appendingPathComponent("m")) { root in
+            try Data("x".utf8).write(to: root.appendingPathComponent("GMT-0:15"))
+        }
+        let v = try HFSPlusVolume(image)
+        #expect(try v.catalog().contains { $0.name == "GMT-0/15" })
+        #expect(try v.paths().contains { $0.path == "GMT-0:15" })
+        #expect(try v.contents(v.record(at: "GMT-0:15")) == Data("x".utf8))
+    }
+}

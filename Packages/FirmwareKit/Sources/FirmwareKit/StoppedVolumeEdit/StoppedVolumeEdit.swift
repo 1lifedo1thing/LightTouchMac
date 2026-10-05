@@ -5,6 +5,11 @@ import HostRuntime
 
 /// The N72 generated-store adapter is provisional. Transactions are shared;
 /// physical FTL/crypto formats require their own guest-mediated writer.
+///
+/// 1.x devices (n45ap, m68ap; the legacy FTL, N45FTL) are edited in place instead: the generation keeps a clone
+/// of the base and of the overlay, and commit writes each changed logical page over the physical page the FTL
+/// maps it to in the overlay clone (its spare kept). The FTL's context is untouched, so the guest reads the new
+/// data where it expects the old. A device the FTL did not shut down cleanly is refused (N45FTL).
 public enum StoppedVolumeEdit {
     public struct Session: Codable, Sendable {
         public let id: UUID
@@ -20,7 +25,7 @@ public enum StoppedVolumeEdit {
         return try await StorageGeneration.withOwner(transaction) { transaction in
             let exported = try await VolumeExport.export(.init(base: source.base, overlay: source.overlay),
                                                    out: transaction.volumes, log: log)
-            guard exported.count == 1 else { throw FirmwareError(.unsupported, "N72 edit requires one logical volume") }
+            guard exported.count == 1 else { throw FirmwareError(.unsupported, "a stopped edit requires one logical volume") }
             let image = URL(fileURLWithPath: exported[0].image)
             try clone(image, to: transaction.root.appendingPathComponent("original.img"))
             try StorageGeneration.write(JSONEncoder().encode(HFSPlusVolume(image).listing(hashes: false)),
@@ -31,8 +36,14 @@ public enum StoppedVolumeEdit {
             try clone(originalBase, to: transaction.base)
             try makeWritable(transaction.base)
             let oldNAND = transaction.base.appendingPathComponent("nand")
-            try fm.removeItem(at: oldNAND)
-            try fm.createDirectory(at: transaction.overlay, withIntermediateDirectories: false)
+            if try VolumeRebuild.board(of: oldNAND) == .legacy {
+                // edited in place: the overlay as the guest left it, written over at commit
+                if let overlay = source.overlay { try clone(overlay, to: transaction.overlay) }
+                else { try fm.createDirectory(at: transaction.overlay, withIntermediateDirectories: false) }
+            } else {
+                try fm.removeItem(at: oldNAND)
+                try fm.createDirectory(at: transaction.overlay, withIntermediateDirectories: false)
+            }
             let storage = record["storage"] as! [String: Any]
             if let path = storage["writableNOR"] as? String {
                 let nor = StorageRecordPaths.resolve(path, relativeRoot: paths.relativeRoot)
@@ -52,10 +63,14 @@ public enum StoppedVolumeEdit {
         guard let bytes = owner.bytes, let record = try JSONSerialization.jsonObject(with: bytes) as? [String: Any],
               let paths = owner.paths else { throw FirmwareError(.unsupported, "invalid device metadata") }
         defer { withExtendedLifetime(owner) {} }
-        guard record["board"] as? String == "n72ap" else {
-            throw FirmwareError(.unsupported, "stopped writable volumes currently support the N72 generated store only")
-        }
         let source = VolumeExport.ResolvedSource(owner: owner)
+        if ["n45ap", "m68ap"].contains(record["board"] as? String ?? ""), try VolumeRebuild.board(of: source.base) == .legacy {
+            _ = try N45FTL(base: source.base, overlay: source.overlay)      // refuses an unclean FTL before any work
+            return (try StorageGeneration.begin(owner: owner), source, paths, bytes)
+        }
+        guard record["board"] as? String == "n72ap" else {
+            throw FirmwareError(.unsupported, "stopped writable volumes support the N72 generated store and 1.x devices only")
+        }
         guard try VolumeRebuild.board(of: source.base) == .ipod else {
             throw FirmwareError(.unsupported, "this device does not have a supported writable store")
         }
@@ -100,6 +115,10 @@ public enum StoppedVolumeEdit {
             try await eject(edit)
             let before = try JSONDecoder().decode([HFSPlusVolume.Entry].self, from: Data(contentsOf: edit.root.appendingPathComponent("metadata.json")))
             try await preserveMetadata(edit: edit, image: session.image, before: before)
+            if fm.fileExists(atPath: edit.base.appendingPathComponent("nand/bank0").path) {
+                try await commitLegacy(edit: edit, image: session.image, log: log)
+                return
+            }
             let hfs = try HFSPlusVolume(session.image, writable: true)
             let lockURL = edit.base.appendingPathComponent("device.lock.json")
             let originalLockData = try Data(contentsOf: lockURL)
@@ -153,6 +172,38 @@ public enum StoppedVolumeEdit {
             try await edit.publish(record: edit.candidateRecord(provenance: provenance))
             log("published storage generation \(id.uuidString)")
         }
+    }
+
+    /// 1.x: the edited volume's changed pages over the physical pages the FTL maps them to (in the generation's
+    /// overlay clone), the journal left for the device to initialize (a host-written header says 512-byte blocks,
+    /// which 1.x adopts and then fails its 2048-byte I/O with), then publish.
+    nonisolated(nonsending) private static func commitLegacy(edit: StorageGeneration, image: URL, log: (String) -> Void) async throws {
+        try HFSPlusVolume(image, writable: true).leaveJournalToDevice()
+        let nand = edit.base.appendingPathComponent("nand")
+        let ftl = try N45FTL(base: nand, overlay: edit.overlay)
+        let f = try FileHandle(forReadingFrom: image)
+        defer { try? f.close() }
+        let ps = N45NAND.page
+        var changed = 0, lpn = N45NAND.firstLBA
+        while let chunk = try f.read(upToCount: ps), !chunk.isEmpty {
+            let data = [UInt8](chunk) + [UInt8](repeating: 0, count: ps - chunk.count)
+            let old = ftl.read(lpn: lpn)
+            if data != old?.data ?? [UInt8](repeating: 0, count: ps) {
+                let p = ftl.location(lpn: lpn)
+                let dir = edit.overlay.appendingPathComponent("bank\(p.bank)")
+                try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+                try Data(data + (old?.spare ?? N45NAND.dataSpare(lpn))).write(to: dir.appendingPathComponent("\(p.page).page"))
+                changed += 1
+            }
+            lpn += 1
+        }
+        log("wrote \(changed) changed pages through the 1.x FTL")
+        let lockURL = edit.base.appendingPathComponent("device.lock.json")
+        let provenance: [String: Any] = ["lock": try edit.recordPath(lockURL), "sha256": StorageGeneration.hash(try Data(contentsOf: lockURL)),
+                                         "kind": "stopped-volume-edit", "legacy_ftl_pages": changed]
+        try Preparer.readOnly(edit.base)
+        try await edit.publish(record: edit.candidateRecord(provenance: provenance))
+        log("published storage generation \(edit.id.uuidString)")
     }
 
     nonisolated(nonsending) public static func discard(device: URL, id: UUID, policy: StorageRecordPolicy = .standalone) async throws {
