@@ -263,17 +263,19 @@ public nonisolated enum BootRecipe {
     }
 
     /// Wi-Fi is the machine's default (a BCM4329 on its own slirp wifi0); an
-    /// explicit `netdev` replaces it. No -m: the machine's default is the K48's 256 MiB.
-    public static func iPad(_ d: IPad, serial: String, audio: [String], netdev: String?, restore: [String]) -> BootConfig {
+    /// explicit `netdev` replaces it. No -m: the machine's default is the board's (256 MiB on K48 and N81).
+    /// `board`: the A4 machine (-M ipad1, or iPod-Touch-4G for the n81, which shares the iPad's options).
+    public static func iPad(_ d: IPad, serial: String, audio: [String], netdev: String?, restore: [String],
+                            board: String = "ipad1") -> BootConfig {
         var machine: String
         switch d.boot {
         case let .kernel(image, nor):
-            machine = "ipad1,kboot=\(escape(image))"
+            machine = "\(board),kboot=\(escape(image))"
             if let nor { machine += ",nor-rw=\(escape(nor))" }
         case let .iBoot(image, nor, gid):
-            machine = "ipad1,iboot=\(escape(image)),nor-rw=\(escape(nor)),gid-blobs=\(escape(gid))"
+            machine = "\(board),iboot=\(escape(image)),nor-rw=\(escape(nor)),gid-blobs=\(escape(gid))"
         case let .secureROM(image, nor, gid, developmentFuses):
-            machine = "ipad1,bootrom=\(escape(image)),nor-rw=\(escape(nor)),gid-blobs=\(escape(gid)),development-fuses=\(developmentFuses ? "on" : "off")"
+            machine = "\(board),bootrom=\(escape(image)),nor-rw=\(escape(nor)),gid-blobs=\(escape(gid)),development-fuses=\(developmentFuses ? "on" : "off")"
         }
         machine += ",nand=\(escape(d.nand)),nand-overlay=\(escape(d.overlay))"
         if let dieID = d.dieID { machine += ",die-id=\(escape(dieID))" }
@@ -286,7 +288,7 @@ public nonisolated enum BootRecipe {
         // dock's host side AAPL,power-supply 50 and refuses the default 100 mA device ("not enough power").
         let argv = ["LightTouchMac", "-M", machine, "-display", "none", "-no-shutdown"] + audio
             + ["-serial", serial, "-device", "usb-kbd,bus=usb-bus.0,max-power=20"] + (netdev.map { ["-netdev", $0] } ?? []) + restore
-        return BootConfig(argv: argv, machine: "ipad1")
+        return BootConfig(argv: argv, machine: board)
     }
 
     /// A prepared device's boot files (W5/W6): the board's boot file (the iPad's

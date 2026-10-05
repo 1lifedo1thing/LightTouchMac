@@ -8,10 +8,17 @@ import Darwin
 /// the application's storage transaction boundary.
 public struct PreparedDeviceBoot {
     public enum Board: String, Sendable, CaseIterable {
-        case n45 = "n45ap", n72 = "n72ap", k48 = "k48ap"
+        case n45 = "n45ap", n72 = "n72ap", k48 = "k48ap", n81 = "n81ap"
+
+        /// The A4 boards (the ipad1 machine family): kboot/iboot via BootRecipe.iPad.
+        public var isA4: Bool { self == .k48 || self == .n81 }
 
         public func requiredFiles(strategy: String?) throws -> (boot: String, files: [String]) {
             switch self {
+            case .n81:
+                // kboot only (FirmwareKit's n81 recipe); nor.bin carries the grafted NOR's effaceable storage.
+                guard strategy == nil || strategy == "kboot" else { throw PreparedDeviceBoot.unknownStrategy(strategy!) }
+                return ("kboot.bin", ["nor.bin"])
             case .k48:
                 switch strategy {
                 case nil, "kboot": return ("kboot.bin", [])
@@ -56,10 +63,10 @@ public struct PreparedDeviceBoot {
         let required = try board.requiredFiles(strategy: strategy)
         let files = try BootRecipe.preparedFiles(base: base, overlay: overlay, writableNOR: writableNOR,
                                                   boot: required.boot, also: required.files)
-        if board != .k48, files.writableNOR == nil {
+        if !board.isA4, files.writableNOR == nil {
             throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: "writable NOR"])
         }
-        if board == .k48 {
+        if board.isA4 {
             _ = try BootRecipe.preparedIPadBoot(strategy: strategy, image: files.boot.path,
                 writableNOR: files.writableNOR?.path, gidBlobs: base.appendingPathComponent("gid-blobs.bin").path)
         }
@@ -136,13 +143,14 @@ public struct PreparedDeviceBoot {
                         overlay: overlay.path, usbAddress: usbAddress, wifi: wifi,
                         gidBlobs: gidBlobs, guestPackage: guestPackage, machineOptions: machine),
                         serial: serial, audio: audio, netdev: netdev, restore: restore)
-        case .k48:
+        case .k48, .n81:
             let bootPath = try BootRecipe.preparedIPadBoot(strategy: strategy, image: boot.path,
                                                           writableNOR: writableNOR?.path, gidBlobs: gidBlobs)
             config = BootRecipe.iPad(.init(boot: bootPath, nand: nand.path, overlay: overlay.path,
                         dieID: dieID, usbAddress: usbAddress, wifi: wifi,
                         guestPackage: guestPackage, machineOptions: machine),
-                        serial: serial, audio: audio, netdev: netdev, restore: restore)
+                        serial: serial, audio: audio, netdev: netdev, restore: restore,
+                        board: board == .n81 ? "iPod-Touch-4G" : "ipad1")
         }
         config.webProxy = webProxy
         return config

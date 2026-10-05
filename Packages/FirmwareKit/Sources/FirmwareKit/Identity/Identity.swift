@@ -48,8 +48,9 @@ public struct UnitIdentity: Equatable, Sendable {
 
     /// A made-up but well-formed iPad 1 identity: 11-character serial, 13-character MLB, 40-bit ECID, two
     /// die-id words, a locally administered Wi-Fi MAC (02:...) and Bluetooth = Wi-Fi + 1.
-    public static func synthesize(seed: String, storage: String = "16g") throws -> UnitIdentity {
-        guard let model = iPadModels[storage] else { throw FirmwareError(.unsupported, "no iPad 1 model for storage \(storage)") }
+    /// `modelNumber`: another A4 board's (the iPod touch 4G's MC540), in place of the iPad's by storage.
+    public static func synthesize(seed: String, storage: String = "16g", modelNumber: String? = nil) throws -> UnitIdentity {
+        guard let model = modelNumber ?? iPadModels[storage] else { throw FirmwareError(.unsupported, "no iPad 1 model for storage \(storage)") }
         let h = Array(SHA256.hash(data: Data(seed.utf8)))
         let chars = { (from: Int, n: Int) in String(h[from..<from + n].map { serialChars[Int($0) % serialChars.count] }) }
         let wifi = [0x02] + h[28..<32] + [h[27] & 0xFE]          // even last byte: BT = +1 never carries

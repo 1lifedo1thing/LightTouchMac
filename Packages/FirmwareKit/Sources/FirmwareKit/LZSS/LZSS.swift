@@ -74,11 +74,12 @@ public enum BootLogo {
     /// Framebuffer segments that put an iBootIm logo where iBoot puts it: centred on black.
     ///
     /// iBootIm: "iBootIm\0", adler32, "lzss", format tag (only "grey": grey + inverted alpha, composited
-    /// over black), u16 width, height; LZSS data at 0x40. The panel scans out landscape with portrait UI
-    /// turned a quarter counter-clockwise into it (its top along the panel's left edge; the app turns the
-    /// panel a quarter clockwise to stand it up), so the logo is turned the same way.
+    /// over black), u16 width, height; LZSS data at 0x40. On a landscape panel (`turn`, K48) the portrait UI
+    /// arrives turned a quarter counter-clockwise into it (its top along the panel's left edge; the app turns
+    /// the panel a quarter clockwise to stand it up), so the logo is turned the same way.
     public static func segments(iBootIm blob: Data, framebufferPA fb: UInt32,
-                                width fbW: Int = KBoot.fbWidth, height fbH: Int = KBoot.fbHeight) throws -> [KBoot.Segment] {
+                                width fbW: Int = KBoot.fbWidth, height fbH: Int = KBoot.fbHeight,
+                                turn: Bool = true) throws -> [KBoot.Segment] {
         let b = [UInt8](blob)
         guard b.count >= 0x40, b[0..<8].elementsEqual("iBootIm\0".utf8), b[12..<16].elementsEqual("sszl".utf8) else {
             throw FirmwareError(.unsupported, "not an LZSS iBootIm")
@@ -87,14 +88,15 @@ public enum BootLogo {
         let w = Int(b[20]) | Int(b[21]) << 8, h = Int(b[22]) | Int(b[23]) << 8
         let px = [UInt8](LZSS.decompress(b[0x40...], windowFill: 0))
         guard px.count >= w * h * 2 else { throw FirmwareError(.unsupported, "short iBootIm") }
-        let x0 = (fbW - h) / 2, y0 = (fbH - w) / 2, stride = fbW * 4
+        let (lw, lh) = turn ? (h, w) : (w, h)     // the logo as it lands on the panel
+        let x0 = (fbW - lw) / 2, y0 = (fbH - lh) / 2, stride = fbW * 4
         guard x0 >= 0, y0 >= 0 else { throw FirmwareError(.unsupported, "iBootIm larger than the framebuffer") }
-        var rows = [UInt8](repeating: 0, count: stride * w)
+        var rows = [UInt8](repeating: 0, count: stride * lh)
         for ly in 0..<h {
             for lx in 0..<w {
                 let grey = UInt32(px[(ly * w + lx) * 2]), clear = UInt32(px[(ly * w + lx) * 2 + 1])
                 let v = grey * (255 - clear) / 255, pixel = 0xFF00_0000 | v * 0x010101
-                let at = (w - 1 - lx) * stride + (x0 + ly) * 4
+                let at = turn ? (w - 1 - lx) * stride + (x0 + ly) * 4 : ly * stride + (x0 + lx) * 4
                 rows[at] = UInt8(pixel & 0xFF); rows[at + 1] = UInt8(pixel >> 8 & 0xFF)
                 rows[at + 2] = UInt8(pixel >> 16 & 0xFF); rows[at + 3] = 0xFF
             }

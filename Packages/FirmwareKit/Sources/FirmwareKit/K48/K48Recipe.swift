@@ -1,4 +1,5 @@
-// K48Board: the iPad 1 (k48ap, recipe "k48") side of Recipe.create. Ports ipad1_device.build's board steps,
+// K48Board: the A4 boards' side of Recipe.create: the iPad 1 (k48ap, recipe "k48") and the iPod touch 4G
+// (n81ap, recipe "n81": kboot only, KBoot grafts the NOR it lacks, -M iPod-Touch-4G, model MC540). Ports ipad1_device.build's board steps,
 // ipad1_keybag.py and ipad1_seal.py over the other modules; the build-time boots run through
 // `LightTouchDevice --oneshot`.
 //
@@ -11,7 +12,11 @@ import CryptoKit
 import Foundation
 
 final class K48Board: Board {
-    let arch = "armv7", seedPrefix = "ipad1"
+    let arch = "armv7"
+    var seedPrefix: String { n81 ? "ipod4" : "ipad1" }
+    /// The iPod touch 4G: same SoC and pipeline; KBoot.Board.n81 carries the DT differences.
+    let n81: Bool
+    var machine: String { (n81 ? KBoot.Board.n81 : KBoot.Board.k48).machine }
     let volumesStep = "Building the system and data volumes", keybagStep = "Creating the data-protection keybag"
     var bootStep: String { iboot ? "Writing the identity and boot chain" : "Writing the identity and boot image" }
     let needsSeal = true
@@ -24,8 +29,10 @@ final class K48Board: Board {
 
     init(_ o: Preparer.Options) throws {
         recipe = o.entry.recipe!
-        strategy = recipe.boot ?? "iboot"
+        n81 = o.entry.board == "n81ap"
+        strategy = recipe.boot ?? (n81 ? "kboot" : "iboot")
         guard strategy == "iboot" || strategy == "kboot" else { throw FirmwareError(.unsupported, "\(o.entry.id): unknown boot strategy \(strategy)") }
+        guard !(n81 && strategy == "iboot") else { throw FirmwareError(.unsupported, "\(o.entry.id): the iPod touch 4G boots by kboot only (no NAND boot chain yet)") }
         iboot = strategy == "iboot"
         dataProtection = recipe.options["writable_nor"] == true
     }
@@ -54,7 +61,7 @@ final class K48Board: Board {
     }
 
     func identity(seed: String) throws -> UnitIdentity {
-        ident = try UnitIdentity.synthesize(seed: seed, storage: recipe.storage)
+        ident = try UnitIdentity.synthesize(seed: seed, storage: recipe.storage, modelNumber: n81 ? KBoot.Board.n81.modelNumber : nil)
         return ident
     }
 
@@ -139,7 +146,7 @@ final class K48Board: Board {
         for attempt in 1...attempts {
             let serial = work.appendingPathComponent("keybag-\(attempt).log")
             let (r, text) = try Preparer.oneshot(helper, boot: "kboot=\(Preparer.esc(kboot))", machine: "nand=\(Preparer.esc(store)),nor-rw=\(Preparer.esc(nor)),die-id=\(dieID)",
-                                                 serial: serial, stop: "panic(", timeout: 300, work: work, log: c.log)
+                                                 serial: serial, stop: "panic(", timeout: 300, work: work, log: c.log, board: machine)
             for line in text.split(separator: "\n") where line.contains("it_keybag:") { c.log(String(line)) }
             if r.exited, text.contains(Preparer.keybagDone) { break }
             let why = text.split(separator: "\n").first { $0.contains("panic(") }
@@ -170,7 +177,7 @@ final class K48Board: Board {
         }
         let serial = work.appendingPathComponent("seal.log")
         let (r, text) = try Preparer.oneshot(helper, boot: boot, machine: "nand=\(Preparer.esc(store))" + extra, serial: serial, stop: nil,
-                                             timeout: 300, work: work, log: c.log)
+                                             timeout: 300, work: work, log: c.log, board: machine)
         guard r.exited, text.contains(Preparer.halting) else {
             throw FirmwareError(.oneshotFailed, "seal boot: \(r.exited ? "QEMU exited without it_seal" : "no clean halt") after \(Int(r.seconds)) s")
         }
@@ -178,7 +185,7 @@ final class K48Board: Board {
         try FileManager.default.createDirectory(at: overlay, withIntermediateDirectories: true)
         let (ck, check) = try Preparer.oneshot(helper, boot: boot, machine: "nand=\(Preparer.esc(store)),nand-overlay=\(Preparer.esc(overlay))" + extra,
                                                serial: work.appendingPathComponent("check.log"), stop: nil, stopPattern: Preparer.ftlOpen, timeout: 120,
-                                               work: work, log: c.log)
+                                               work: work, log: c.log, board: machine)
         guard ck.marker, Preparer.ftlOpened(check), !check.contains(Preparer.rescan) else {
             throw FirmwareError(.oneshotFailed, "check boot: \(check.contains(Preparer.rescan) ? "the store still rescans" : "no FTL_Open")")
         }

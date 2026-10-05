@@ -64,7 +64,7 @@ public enum Preparer {
     @concurrent public static func create(_ o: Options, emit: @escaping @Sendable (PrepareEvent) -> Void) async throws {
         let e = o.entry
         let board: Board = switch (e.board, e.recipe?.name) {
-        case ("k48ap", "k48"): try K48Board(o)
+        case ("k48ap", "k48"), ("n81ap", "n81"): try K48Board(o)
         case ("n72ap", "n72"): try N72Board(o)
         case ("n45ap", "n45"): try N45Board(o)
         default: throw FirmwareError(.unsupported, "\(e.id): no preparer for board \(e.board) recipe \(e.recipe?.name ?? "none")")
@@ -93,16 +93,16 @@ public enum Preparer {
 
     static func esc(_ p: URL) -> String { p.path.replacingOccurrences(of: ",", with: ",,") }
 
-    /// One `LightTouchDevice --oneshot` boot of the ipad1 machine; `boot` is the boot-source option ("kboot=…" or
+    /// One `LightTouchDevice --oneshot` boot of an A4 machine (`board`: ipad1, iPod-Touch-4G); `boot` is the boot-source option ("kboot=…" or
     /// "iboot=…,gid-blobs=…") and `machine` the rest (nand=…, die-id=…, nor-rw=…).
     /// -no-reboot: the one-shot ends when the guest shuts down, and a restart is a shutdown too (4.3's launchd turns
     /// it_seal's reboot(RB_HALT) into its own clean reboot(RB_AUTOBOOT); 5.x's halt restarts through the PMU),
     /// as qemu-ios imgtools/ipad1_seal.py (8edc395979).
     static func oneshot(_ helper: URL, boot: String, machine: String, serial: URL, stop: String?, stopPattern: String? = nil, timeout: Double,
-                        work: URL, log: (String) -> Void) throws -> (OneShot, String) {
-        let argv = ["LightTouchDevice", "-machine", "ipad1,\(boot),\(machine)", "-display", "none", "-audio", "driver=none",
+                        work: URL, log: (String) -> Void, board: String = "ipad1") throws -> (OneShot, String) {
+        let argv = ["LightTouchDevice", "-machine", "\(board),\(boot),\(machine)", "-display", "none", "-audio", "driver=none",
                     "-monitor", "none", "-serial", "file:\(serial.path)", "-no-reboot"]
-        return try oneshot(helper, argv: argv, machine: "ipad1", serial: serial, stop: stop, stopPattern: stopPattern, timeout: timeout,
+        return try oneshot(helper, argv: argv, machine: board, serial: serial, stop: stop, stopPattern: stopPattern, timeout: timeout,
                            work: work, log: log)
     }
 

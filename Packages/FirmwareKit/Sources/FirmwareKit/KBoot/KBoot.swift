@@ -13,7 +13,9 @@
 // The kernel virtual base is the kernelcache's own link base (0xC0000000 on 3.x, 0x80000000 on 4.x).
 // RAM-disk mode puts the image after the kernel, adds chosen/memory-map RAMDisk, appends rd=md0 and empties
 // chosen/root-matching; the DT's own secure-root-prefix is left as the IPSW has it, so md0 is a SecureRoot.
-// display-rotation is 270 (the panel's turn against the portrait UI; 4.x lays its UI out by it).
+// What differs per A4 board is a KBoot.Board, picked from the DT's own compatible (ipad1_kboot.BOARDS): K48's
+// landscape panel (display-rotation 270, 4.x lays its UI out by it) or N81's portrait Retina one. A board without
+// the SPI NOR (N81: boot-from-nand) gets K48's 4.x nor-flash subtree grafted in (graftNOR).
 
 import Foundation
 
@@ -54,6 +56,54 @@ public enum KBoot {
     static let nandNodes = ["arm-io/flash-controller0", "arm-io/flash-controller0/disk"]
     static let model = [("model-number", "MB292"), ("region-info", "LL/A")]
 
+    /// One A4 board: the QEMU machine that runs it and what iBoot would put in its DT.
+    public struct Board: Equatable, Sendable {
+        public var machine: String
+        public var fbWidth: Int, fbHeight: Int
+        public var rotation: UInt32, scale: UInt32, boardID: UInt32
+        public var modelNumber: String
+
+        public static let k48 = Board(machine: "ipad1", fbWidth: 1024, fbHeight: 768, rotation: 270, scale: 1,
+                                      boardID: 0x02, modelNumber: "MB292")
+        public static let n81 = Board(machine: "iPod-Touch-4G", fbWidth: 640, fbHeight: 960, rotation: 0, scale: 2,
+                                      boardID: 0x08, modelNumber: "MC540")
+
+        /// From the DT's compatible ("N81AP\0iPod4,1\0AppleARM" -> n81); K48 otherwise.
+        public static func of(_ dt: DeviceTree) -> Board {
+            let first = dt.value("", "compatible").map { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) } ?? ""
+            return first == "N81AP" ? .n81 : .k48
+        }
+    }
+
+    /// K48's 4.x (8C148) spi0/nor-flash subtree: diagnostics, nvram, the image area and effaceable storage
+    /// (ipad1_kboot.NOR_GRAFT). Phandles are K48's.
+    static let norGraft: [(String, String, [(String, DeviceTree.Value)])] = [
+        ("arm-io/spi0", "nor-flash", [("compatible", .string("nor-flash,spi")), ("#address-cells", .u32(1)),
+                                      ("device_type", .string("nor-flash")), ("#size-cells", .u32(1)),
+                                      ("ranges", .words([0, 0, 0x10_0000])), ("reg", .words([0, 0x53, 0x0801_0000, 0, 0, 0, 0, 0])),
+                                      ("AAPL,phandle", .u32(0x0091_70E0))]),
+        ("arm-io/spi0/nor-flash", "diagnostic-data", [("compatible", .string("diagnostic-data,format1")),
+                                                      ("device_type", .string("diagnostic-data")),
+                                                      ("reg", .words([0x6000, 0x2000, 0x4000, 0x2000])), ("AAPL,phandle", .u32(0x0091_74F0))]),
+        ("arm-io/spi0/nor-flash", "nvram", [("compatible", .string("nvram,chrp")), ("device_type", .string("nvram")),
+                                            ("reg", .words([0xF_C000, 0x2000, 0xF_E000, 0x2000])), ("AAPL,phandle", .u32(0x0091_7880))]),
+        ("arm-io/spi0/nor-flash", "raw-device", [("compatible", .string("raw-device,non-nvram")), ("device_type", .string("raw-device")),
+                                                 ("reg", .words([0x8000, 0xF_2000, 0, 0x1000])), ("AAPL,phandle", .u32(0x0091_7860))]),
+        ("arm-io/spi0/nor-flash", "effaceable", [("compatible", .string("effaceable,nor")), ("device_type", .string("effaceable")),
+                                                 ("reg", .words([0xF_A000, 0x1000, 0xF_B000, 0x1000])), ("AAPL,phandle", .u32(0x0091_7F70))]),
+    ]
+
+    /// A NOR-less board: graft the NOR in, and take the NAND off boot duty. The kernel keys off
+    /// boot-from-nand's presence, not its value (IOFlashStorageDevice then hunts NAND boot blocks and the
+    /// FTL never finds root); the editor cannot delete, so rename it.
+    static func graftNOR(_ dt: inout DeviceTree) throws {
+        guard dt.contains("arm-io/spi0"), !dt.contains("arm-io/spi0/nor-flash") else { return }
+        for (parent, name, props) in norGraft { try dt.addNode(parent, name, props) }
+        if dt.props["arm-io/flash-controller0/disk"]?["boot-from-nand"] != nil {
+            try dt.rename("arm-io/flash-controller0/disk", "boot-from-nand", "boot-from-nor")
+        }
+    }
+
     public struct Segment: Equatable, Sendable {
         public var pa: UInt32, length: UInt32
         /// nil: zero-fill.
@@ -87,7 +137,7 @@ public enum KBoot {
     }
 
     /// (root props, chosen props, {node: local-mac-address}) for an identity.
-    static func identityDT(_ id: UnitIdentity) throws -> ([(String, DeviceTree.Value)], [(String, DeviceTree.Value)], [(String, Data)]) {
+    static func identityDT(_ id: UnitIdentity, board: Board = .k48) throws -> ([(String, DeviceTree.Value)], [(String, DeviceTree.Value)], [(String, Data)]) {
         func need(_ k: String) throws -> String {
             guard let v = id[k] else { throw FirmwareError(.unsupported, "identity: missing \(k)") }
             return v
@@ -111,20 +161,22 @@ public enum KBoot {
         guard ecid >> 32 <= UInt32.max else { throw FirmwareError(.unsupported, "identity: unique-chip-id over 64 bits") }
         let root: [(String, DeviceTree.Value)] = [("serial-number", .string(try need("serial-number"))),
                                                   ("mlb-serial-number", .string(try need("mlb-serial-number")))]
-            + model.map { k, v in (k, .string(id[k] ?? v)) }
+            + model.map { k, v in (k, .string(id[k] ?? (k == "model-number" ? board.modelNumber : v))) }
         let chosen: [(String, DeviceTree.Value)] = [("unique-chip-id", .words([UInt32(ecid & 0xFFFF_FFFF), UInt32(ecid >> 32)])),
                                                     ("die-id", .words(dieWords))]
-        return (root, chosen, [("arm-io/sdio", try mac(need("wifi-mac"))), ("arm-io/uart3/bluetooth", try mac(need("bt-mac")))])
+        // Bluetooth hangs off whichever UART the board wires it to (K48 uart3, N81 uart1): fillDT finds it.
+        return (root, chosen, [("arm-io/sdio", try mac(need("wifi-mac"))), ("bluetooth", try mac(need("bt-mac")))])
     }
 
     static func fillDT(_ dt: inout DeviceTree, memoryMap: [(String, UInt32, UInt32)], identity: UnitIdentity,
                        iboot: String, rootMatching: String) throws {
-        let (root, chosen, macs) = try identityDT(identity)
+        let board = Board.of(dt)
+        let (root, chosen, macs) = try identityDT(identity, board: board)
         for (k, v) in [("platform-name", DeviceTree.Value.string("s5l8930x"))] + root { try dt.set("", k, v) }
         let flags: [(String, DeviceTree.Value)] = ["debug-enabled", "production-cert", "secure-boot", "gid-aes-key",
                                                     "uid-aes-key", "system-trusted"].map { ($0, .u32(1)) }
-        for (k, v) in flags + [("board-id", .u32(0x02)), ("chip-id", .u32(0x8930))] + chosen
-            + [("firmware-version", .string(iboot)), ("display-rotation", .u32(270)), ("display-scale", .u32(1)),
+        for (k, v) in flags + [("board-id", .u32(board.boardID)), ("chip-id", .u32(0x8930))] + chosen
+            + [("firmware-version", .string(iboot)), ("display-rotation", .u32(board.rotation)), ("display-scale", .u32(board.scale)),
                ("root-matching", .string(rootMatching))] {
             try dt.set("chosen", k, v)
         }
@@ -135,7 +187,10 @@ public enum KBoot {
         try dt.set("arm-io", "clock-frequencies", .words(clocks))
         try dt.set("arm-io", "usbphy-frequency", .u32(usbphyHz))
         if dt.contains("arm-io/sgx") { try dt.set("arm-io/sgx", "compatible", .string("none")) }   // no SGX model
-        for (path, mac) in macs where dt.contains(path) { try dt.set(path, "local-mac-address", .bytes(mac)) }
+        for (want, mac) in macs {
+            let path = dt.props.keys.sorted().first { $0 == want || $0.hasSuffix("/" + want) } ?? want
+            if dt.contains(path) { try dt.set(path, "local-mac-address", .bytes(mac)) }
+        }
         if dt.contains("arm-io/mipi-dsim/lcd") {   // the panel id iBoot's pinot_init writes; the DSI model's reply
             for k in ["lcd-panel-id", "raw-panel-id"] { try dt.set("arm-io/mipi-dsim/lcd", k, .u32(0x00A1_D13C)) }
         }
@@ -165,6 +220,8 @@ public enum KBoot {
         let vbase = Int(lowest & 0xF000_0000)
         let pa = { (va: Int) in UInt32(truncatingIfNeeded: va - vbase + Int(physBase)) }
         var dt = try DeviceTree(deviceTree)
+        let board = Board.of(dt)
+        try graftNOR(&dt)
         // Host nubs (EHCI, OHCI0) up at arbitrator start, next to device mode (docs/ipad1/usb-keyboard.md).
         if dt.contains("arm-io/usb-complex") { try dt.add("arm-io/usb-complex", "hsic-enabled") }
         let dtLen = dt.data.count
@@ -202,7 +259,8 @@ public enum KBoot {
         guard cmdline.count < 256 else { throw FirmwareError(.unsupported, "boot-args longer than BOOT_LINE_LENGTH") }
         var ba = Data([1, 0, m.bootArgsVersion(), 0])
         ba += DeviceTree.Value.le([UInt32(vbase), physBase, memSize, topOfKernel,
-                                   vramPA, verbose ? 0 : 1, UInt32(fbWidth * fbDepth / 8), UInt32(fbWidth), UInt32(fbHeight), UInt32(fbDepth),
+                                   vramPA, verbose ? 0 : 1, UInt32(board.fbWidth * fbDepth / 8), UInt32(board.fbWidth),
+                                   UInt32(board.fbHeight), UInt32(fbDepth) | (board.scale - 1) << 16,
                                    0, UInt32(dtVA), UInt32(dtLen)])
         ba += cmdline + [UInt8](repeating: 0, count: 256 - cmdline.count)
         image.replaceSubrange(argsVA - vbase..<argsVA - vbase + ba.count, with: ba)
@@ -229,7 +287,10 @@ public enum KBoot {
                             bootArgs: bootArgs, identity: identity,
                             iboot: ibootVersion(exists("iBoot.bin") ? try Data(contentsOf: file("iBoot.bin")) : nil),
                             ramdisk: try ramdisk.map { try Data(contentsOf: $0) })
-        let logo = exists("AppleLogo.bin") ? try BootLogo.segments(iBootIm: Data(contentsOf: file("AppleLogo.bin")), framebufferPA: vramPA) : []
+        let board = Board.of(try DeviceTree(Data(contentsOf: file("DeviceTree.bin"))))
+        let logo = exists("AppleLogo.bin") ? try BootLogo.segments(iBootIm: Data(contentsOf: file("AppleLogo.bin")), framebufferPA: vramPA,
+                                                                   width: board.fbWidth, height: board.fbHeight,
+                                                                   turn: board.rotation == 270) : []
         try bundle(img, segments: logo).write(to: out)
     }
 }

@@ -5,6 +5,7 @@
 //   try dt.set("chosen", "firmware-version", .string("iBoot-817.29"))  // into the existing slot, zero-padded
 //   try dt.add("arm-io/usb-complex", "hsic-enabled")                    // appends a property; the blob grows
 //   try dt.rename("chosen/memory-map", "MemoryMapReserved-0", "Kernel-__TEXT")
+//   try dt.addNode("arm-io/spi0", "nor-flash", [("compatible", .string("nor-flash,spi"))])   // a child node
 //   dt.value("chosen", "secure-root-prefix")                            // a property's bytes
 //   dt.data                                                             // the serialized tree
 //
@@ -42,6 +43,8 @@ public struct DeviceTree: Sendable {
     public private(set) var props: [String: [String: Slot]] = [:]
     /// Node path -> (node header offset, offset just past its properties).
     public private(set) var nodes: [String: (start: Int, propsEnd: Int)] = [:]
+    /// Node path -> offset just past its last descendant (where addNode inserts).
+    private var ends: [String: Int] = [:]
 
     public init(_ blob: Data) throws {
         data = blob.withUnsafeBytes { Data($0) }   // rebased: offsets are from 0
@@ -72,6 +75,19 @@ public struct DeviceTree: Sendable {
         try reparse()
     }
 
+    /// Appends a child node (its name first, then `props`) to `parent`; the blob grows, as add().
+    public mutating func addNode(_ parent: String, _ name: String, _ props: [(String, Value)] = []) throws {
+        guard let node = nodes[parent], let end = ends[parent] else { throw FirmwareError(.unsupported, "DeviceTree: no node \(parent)") }
+        var rec = Value.le([UInt32(1 + props.count), 0])
+        for (k, v) in [("name", Value.string(name))] + props {
+            let e = v.encoded
+            rec += Self.name32(k) + Value.le([UInt32(e.count)]) + e + Data(count: ((e.count + 3) & ~3) - e.count)
+        }
+        data.insert(contentsOf: rec, at: end)
+        data.replaceSubrange(node.start + 4..<node.start + 8, with: Value.le([u32(node.start + 4) + 1]))
+        try reparse()
+    }
+
     public mutating func rename(_ path: String, _ old: String, _ new: String) throws {
         guard let s = props[path]?.removeValue(forKey: old) else { throw FirmwareError(.unsupported, "DeviceTree: no \(path):\(old)") }
         data.replaceSubrange(s.offset..<s.offset + 32, with: Self.name32(new))
@@ -85,7 +101,7 @@ public struct DeviceTree: Sendable {
     }
 
     private mutating func reparse() throws {
-        props = [:]; nodes = [:]
+        props = [:]; nodes = [:]; ends = [:]
         let end = try node(at: 0, parent: nil)
         guard end == data.count else { throw FirmwareError(.unsupported, "DeviceTree: trailing bytes after the device tree") }
     }
@@ -108,6 +124,7 @@ public struct DeviceTree: Sendable {
         props[path] = mine
         nodes[path] = (start, off)
         for _ in 0..<nchildren { off = try node(at: off, parent: path) }
+        ends[path] = off
         return off
     }
 }

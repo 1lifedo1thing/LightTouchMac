@@ -42,6 +42,31 @@ struct KBootTests {
     }
     static func u32(_ d: Data, _ at: Int) -> UInt32 { MachO.u32(d, at) }
 
+    /// N81: the board comes from the DT's compatible; its NOR is grafted in and boot-from-nand renamed away.
+    @Test func n81Board() throws {
+        let n = { (s: String) in Data((s + "\0").utf8) }
+        let armIO = [Self.node([("name", n("spi0"))]),
+                     Self.node([("name", n("flash-controller0"))], [Self.node([("name", n("disk")), ("boot-from-nand", DeviceTree.Value.le([1]))])]),
+                     Self.node([("name", n("uart1"))], [Self.node([("name", n("bluetooth")), ("local-mac-address", Self.z(6))])])]
+        var tree = try DeviceTree(Self.deviceTree(armIO: armIO))
+        try tree.add("", "compatible", Data("N81AP\0iPod4,1\0AppleARM\0".utf8))
+        let k48 = try DeviceTree(Self.dtBlob)
+        #expect(KBoot.Board.of(tree) == .n81 && KBoot.Board.of(k48) == .k48)
+        let img = try KBoot.build(kernel: Self.kernel(at: 0x8000_0000), deviceTree: tree.data, identity: Self.placeholder)
+        let r0 = Int(img.bootArgsPA - img.loadPA), image = img.image
+        #expect([0x1C, 0x20, 0x24, 0x28].map { Self.u32(image, r0 + $0) } == [640 * 4, 640, 960, 32 | 1 << 16])   // rowbytes, w, h, depth | scale-1
+        let dtp = Int(Self.u32(image, r0 + 0x30)) - 0x8000_0000, dtlen = Int(Self.u32(image, r0 + 0x34))
+        let dt = try DeviceTree(image[dtp..<dtp + dtlen])
+        let word = { (p: String, k: String) in dt.value(p, k).map { Self.u32($0, 0) } }
+        #expect(word("chosen", "board-id") == 8 && word("chosen", "display-rotation") == 0 && word("chosen", "display-scale") == 2)
+        #expect(["nor-flash", "nor-flash/nvram", "nor-flash/effaceable", "nor-flash/raw-device", "nor-flash/diagnostic-data"]
+            .allSatisfy { dt.contains("arm-io/spi0/" + $0) })
+        #expect(dt.value("arm-io/spi0/nor-flash/effaceable", "compatible") == Data("effaceable,nor\0".utf8))
+        #expect(dt.props["arm-io/flash-controller0/disk"]?["boot-from-nand"] == nil && word("arm-io/flash-controller0/disk", "boot-from-nor") == 1)
+        #expect(dt.value("arm-io/uart1/bluetooth", "local-mac-address") == Data([2, 0, 0, 0, 0, 2]))
+        #expect(dt.value("", "model-number")?.prefix(5) == Data("MC540".utf8))
+    }
+
     @Test func selfcheck() throws {
         let img = try KBoot.build(kernel: Self.kernel(at: 0xC000_0000), deviceTree: Self.dtBlob, identity: Self.placeholder)
         #expect((img.loadPA, img.entryPA, img.bootArgsPA) == (0x4000_0000, 0x4000_1040, 0x4000_6000))
