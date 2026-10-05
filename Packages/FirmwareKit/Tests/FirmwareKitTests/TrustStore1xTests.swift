@@ -100,6 +100,12 @@ struct TrustStore1xTests {
         #expect(try await TrustStore1x.trust(device: device, certificate: Self.certificate))
         #expect(try await TrustStore1x.trust(device: device, certificate: Self.certificate) == false)   // the marker
 
+        // Erase (DeviceStateStorage.erase) removes the overlay the anchor went into and keeps the storage key:
+        // the next start writes the anchor again.
+        let erased = try #require((try JSONSerialization.jsonObject(with: Data(contentsOf: device.appendingPathComponent("device.json"))) as? [String: Any])?["storage"] as? [String: Any])
+        try fm.removeItem(at: URL(fileURLWithPath: try #require(erased["overlay"] as? String)))
+        #expect(try await TrustStore1x.trust(device: device, certificate: Self.certificate))
+
         let published = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: device.appendingPathComponent("device.json"))) as? [String: Any])
         let newBase = URL(fileURLWithPath: try #require((published["base"] as? [String: Any])?["path"] as? String))
         let newOverlay = URL(fileURLWithPath: try #require((published["storage"] as? [String: Any])?["overlay"] as? String))
