@@ -112,6 +112,26 @@ struct KBootTests {
         #expect(dt.value("", "model-number")?.prefix(5) == Data("MB715".utf8))
     }
 
+    /// N18 (S5L8922): its platform-name and chip-id, the 320x480 portrait panel at scale 1, and the NOR graft as on N81.
+    @Test func n18Board() throws {
+        let n = { (s: String) in Data((s + "\0").utf8) }
+        let armIO = [Self.node([("name", n("spi0"))]),
+                     Self.node([("name", n("flash-controller0"))], [Self.node([("name", n("disk")), ("boot-from-nand", DeviceTree.Value.le([1]))])])]
+        var tree = try DeviceTree(Self.deviceTree(armIO: armIO))
+        try tree.add("", "compatible", Data("N18AP\0iPod3,1\0AppleARM\0".utf8))
+        #expect(KBoot.Board.of(tree) == .n18)
+        let img = try KBoot.build(kernel: Self.kernel(at: 0x8000_0000), deviceTree: tree.data, identity: Self.placeholder)
+        let r0 = Int(img.bootArgsPA - img.loadPA), image = img.image
+        #expect([0x1C, 0x20, 0x24, 0x28].map { Self.u32(image, r0 + $0) } == [320 * 4, 320, 480, 32])   // rowbytes, w, h, depth | scale-1
+        let dtp = Int(Self.u32(image, r0 + 0x30)) - 0x8000_0000, dtlen = Int(Self.u32(image, r0 + 0x34))
+        let dt = try DeviceTree(image[dtp..<dtp + dtlen])
+        let word = { (p: String, k: String) in dt.value(p, k).map { Self.u32($0, 0) } }
+        #expect(dt.value("", "platform-name")?.prefix(9) == n("s5l8922x"))
+        #expect(word("chosen", "chip-id") == 0x8922 && word("chosen", "board-id") == 2 && word("chosen", "display-scale") == 1)
+        #expect(dt.contains("arm-io/spi0/nor-flash/effaceable") && word("arm-io/flash-controller0/disk", "boot-from-nor") == 1)
+        #expect(dt.value("", "model-number")?.prefix(5) == Data("MC008".utf8))
+    }
+
     @Test func selfcheck() throws {
         let img = try KBoot.build(kernel: Self.kernel(at: 0xC000_0000), deviceTree: Self.dtBlob, identity: Self.placeholder)
         #expect((img.loadPA, img.entryPA, img.bootArgsPA) == (0x4000_0000, 0x4000_1040, 0x4000_6000))

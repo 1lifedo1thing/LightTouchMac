@@ -15,9 +15,10 @@
 // chosen/root-matching; the DT's own secure-root-prefix is left as the IPSW has it, so md0 is a SecureRoot.
 // What differs per A4 board is a KBoot.Board, picked from the DT's own compatible (ipad1_kboot.BOARDS): K48's
 // landscape panel (display-rotation 270, 4.x lays its UI out by it) or N81's portrait Retina one. A board without
-// the SPI NOR (N81: boot-from-nand) gets K48's 4.x nor-flash subtree grafted in (graftNOR). The S5L8920 iPhone 3GS
-// (N88, -M n88; s5l8920_kboot.py) is a Board too: its own platform-name/chip-id, a 320x480 panel, the iPad's clock
-// table cut to its DT's 32 slots, and its baseband node's identity filled with test values.
+// the SPI NOR (N81: boot-from-nand) gets K48's 4.x nor-flash subtree grafted in (graftNOR). The S5L8920 family
+// (s5l8920_kboot.py) is Boards too: the iPhone 3GS (N88, -M n88) and the S5L8922 iPod touch 3G (N18, -M n18), each
+// with its own platform-name/chip-id, a 320x480 panel and the iPad's clock table cut to its DT's 32 slots; N18 gets
+// the NOR graft, N88 keeps its own NOR and has its baseband node's identity filled with test values.
 
 import Foundation
 
@@ -80,11 +81,16 @@ public enum KBoot {
         /// iPhone 3GS (S5L8920): -M n88, model MB715. Its baseband node is unmatched (no modem model yet).
         public static let n88 = Board(machine: "n88", fbWidth: 320, fbHeight: 480, rotation: 0, scale: 1,
                                       boardID: 0x00, modelNumber: "MB715", platformName: "s5l8920x", chipID: 0x8920)
+        /// iPod touch 3G (S5L8922): -M n18, model MC008; NOR-less, so it takes the graft.
+        public static let n18 = Board(machine: "n18", fbWidth: 320, fbHeight: 480, rotation: 0, scale: 1,
+                                      boardID: 0x02, modelNumber: "MC008", platformName: "s5l8922x", chipID: 0x8922)
+        /// The S5L8920 family (-M n18, n88): no metadata whitening in its DTs, the IPSW's NAND epoch, no USB host.
+        public var isS5L8920: Bool { platformName != "s5l8930x" }
 
         /// From the DT's compatible ("N81AP\0iPod4,1\0AppleARM" -> n81); K48 otherwise.
         public static func of(_ dt: DeviceTree) -> Board {
             let first = dt.value("", "compatible").map { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) } ?? ""
-            return ["N81AP": .n81, "N90AP": .n90, "N88AP": .n88][first] ?? .k48
+            return ["N81AP": .n81, "N90AP": .n90, "N88AP": .n88, "N18AP": .n18][first] ?? .k48
         }
 
         var memSize: UInt32 { dram - KBoot.pramSize - KBoot.vramSize }

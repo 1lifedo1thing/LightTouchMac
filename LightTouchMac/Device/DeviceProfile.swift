@@ -18,12 +18,15 @@ nonisolated enum DeviceProfile: Equatable {
     case iPhone4
     /// The n88 (iOS 4.2.1): qemu-ios `-M n88`, the S5L8920 iPhone 3GS, prepared and booted (kboot) as the A4 boards are.
     case iPhone3GS
+    /// The n18 (iOS 4.2.1): qemu-ios `-M n18`, the S5L8922 iPod touch 3G, the same way; the 2G's chassis, so the
+    /// 2G's N72 model.
+    case iPodTouch3G
 
     /// The name passed to -M; also the key for the hello's device info.
     var machineName: String {
         switch self {
         case .iPad1: "ipad1"; case .iPodTouch2G: "iPod-Touch"; case .iPodTouch1G: "iPod-Touch-1G"; case .iPodTouch4G: "iPod-Touch-4G"
-        case .iPhone4: "iPhone-4"; case .iPhone3GS: "n88"
+        case .iPhone4: "iPhone-4"; case .iPhone3GS: "n88"; case .iPodTouch3G: "n18"
         }
     }
     var displayName: String { switch self { case .iPad1: "iPad"; case .iPhone4, .iPhone3GS: "iPhone"; default: "iPod touch" } }
@@ -33,11 +36,13 @@ nonisolated enum DeviceProfile: Equatable {
     var stoppedReason: String { "The \(shortName) stopped." }
 
     var runtimeBoard: PreparedDeviceBoot.Board {
-        switch self { case .iPad1: .k48; case .iPodTouch2G: .n72; case .iPodTouch1G: .n45; case .iPodTouch4G: .n81; case .iPhone4: .n90
-        case .iPhone3GS: .n88 }
+        switch self {
+        case .iPad1: .k48; case .iPodTouch2G: .n72; case .iPodTouch1G: .n45; case .iPodTouch4G: .n81; case .iPhone4: .n90
+        case .iPhone3GS: .n88; case .iPodTouch3G: .n18
+        }
     }
     var boardID: String { runtimeBoard.rawValue }
-    /// The A4 boards share the iPad's machine and boot (Wi-Fi netdev, no host audio, SpringBoard orientation).
+    /// The A4 boards (and the n18) share the iPad's machine options and boot (Wi-Fi netdev, no host audio, SpringBoard orientation).
     var isA4: Bool { runtimeBoard.isA4 }
     /// A prepared base's boot file and the other files its boots need besides nand/, by the lock's boot_strategy.
     /// The iPad's k48 iboot recipe (default) boots iBoot->kernel from iBoot.bin + nor.bin +
@@ -49,13 +54,16 @@ nonisolated enum DeviceProfile: Equatable {
         try runtimeBoard.requiredFiles(strategy: strategy)
     }
     var productType: String {
-        switch self { case .iPad1: "iPad1,1"; case .iPodTouch2G: "iPod2,1"; case .iPodTouch1G: "iPod1,1"; case .iPodTouch4G: "iPod4,1"; case .iPhone4: "iPhone3,1"
-        case .iPhone3GS: "iPhone2,1" }
+        switch self {
+        case .iPad1: "iPad1,1"; case .iPodTouch2G: "iPod2,1"; case .iPodTouch1G: "iPod1,1"; case .iPodTouch4G: "iPod4,1"; case .iPhone4: "iPhone3,1"
+        case .iPhone3GS: "iPhone2,1"; case .iPodTouch3G: "iPod3,1"
+        }
     }
     var marketingName: String {
         switch self {
         case .iPad1: "iPad"; case .iPodTouch2G: "iPod touch (2nd generation)"; case .iPodTouch1G: "iPod touch"
         case .iPodTouch4G: "iPod touch (4th generation)"; case .iPhone4: "iPhone 4"; case .iPhone3GS: "iPhone 3GS"
+        case .iPodTouch3G: "iPod touch (3rd generation)"
         }
     }
     /// The SecureROM image the machine boots, looked up under Bundled.filesRoot (DeviceProfile.bootrom).

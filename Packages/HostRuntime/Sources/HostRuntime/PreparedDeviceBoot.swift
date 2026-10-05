@@ -8,17 +8,17 @@ import Darwin
 /// the application's storage transaction boundary.
 public struct PreparedDeviceBoot {
     public enum Board: String, Sendable, CaseIterable {
-        case n45 = "n45ap", n72 = "n72ap", k48 = "k48ap", n81 = "n81ap", n90 = "n90ap", n88 = "n88ap"
+        case n45 = "n45ap", n72 = "n72ap", k48 = "k48ap", n81 = "n81ap", n90 = "n90ap", n88 = "n88ap", n18 = "n18ap"
 
         /// The A4 boards (the ipad1 machine family) and the S5L8920 iPhone 3GS, which FirmwareKit prepares
         /// the same way: kboot/iboot via BootRecipe.iPad.
-        public var isA4: Bool { self == .k48 || self == .n81 || self == .n90 || self == .n88 }
+        public var isA4: Bool { self == .k48 || self == .n81 || self == .n90 || self == .n88 || self == .n18 }
         /// An A4 board's -M name.
-        var a4Machine: String { [.n81: "iPod-Touch-4G", .n90: "iPhone-4", .n88: "n88"][self] ?? "ipad1" }
+        var a4Machine: String { [.n81: "iPod-Touch-4G", .n90: "iPhone-4", .n88: "n88", .n18: "n18"][self] ?? "ipad1" }
 
         public func requiredFiles(strategy: String?) throws -> (boot: String, files: [String]) {
             switch self {
-            case .n81, .n90, .n88:
+            case .n81, .n90, .n88, .n18:
                 // kboot only (FirmwareKit's n81 recipe); nor.bin carries the grafted NOR's effaceable storage.
                 guard strategy == nil || strategy == "kboot" else { throw PreparedDeviceBoot.unknownStrategy(strategy!) }
                 return ("kboot.bin", ["nor.bin"])
@@ -146,7 +146,7 @@ public struct PreparedDeviceBoot {
                         overlay: overlay.path, usbAddress: usbAddress, wifi: wifi,
                         gidBlobs: gidBlobs, guestPackage: guestPackage, machineOptions: machine),
                         serial: serial, audio: audio, netdev: netdev, restore: restore)
-        case .k48, .n81, .n90, .n88:
+        case .k48, .n81, .n90, .n88, .n18:
             let bootPath = try BootRecipe.preparedIPadBoot(strategy: strategy, image: boot.path,
                                                           writableNOR: writableNOR?.path, gidBlobs: gidBlobs)
             config = BootRecipe.iPad(.init(boot: bootPath, nand: nand.path, overlay: overlay.path,

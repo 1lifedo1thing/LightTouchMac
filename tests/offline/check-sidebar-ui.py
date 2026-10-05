@@ -374,8 +374,11 @@ final class Delegate: DeviceLibraryDelegate {
         let sheet = AddDeviceView(catalog: catalog, added: ["k48ap-7B500", "n72ap-8C148"], downloaded: ["n72ap-8B117", "k48ap-7B500", "n72ap-8C148"],
                                   selection: ["n72ap-8B117"], onAdd: { _ in }, onCancel: {})
         if sheet.groups.flatMap(\.entries).map(\.id) != catalog.entries.map(\.id) { fail("the sheet's entries aren't the catalog's, in its order") }
-        if sheet.groups.map(\.name) != ["iPad", "iPod touch", "iPod touch (2nd generation)", "iPod touch (4th generation)", "iPhone 4", "iPhone 3GS"] { fail("sheet groups: \(sheet.groups.map(\.name))") }
-        if sheet.groups.contains(where: \.icon.isTemplate) || Set(sheet.groups.map { pixels($0.icon) }).count != sheet.groups.count { fail("the sheet's headers don't show each device's artwork") }
+        if sheet.groups.map(\.name) != ["iPad", "iPod touch", "iPod touch (2nd generation)", "iPod touch (3rd generation)", "iPod touch (4th generation)", "iPhone 4", "iPhone 3GS"] { fail("sheet groups: \(sheet.groups.map(\.name))") }
+        // macOS draws the iPod touch 3G (iPod3,1) with the 2G's picture, the same chassis: those two may match.
+        let art = Dictionary(uniqueKeysWithValues: sheet.groups.map { ($0.id, pixels($0.icon)) })
+        if sheet.groups.contains(where: \.icon.isTemplate) || Set(art.filter { $0.key != "n18ap" }.values).count != sheet.groups.count - 1
+            || art["n18ap"] != art["n72ap"] { fail("the sheet's headers don't show each device's artwork") }
         try renderSheet(sheet, "add-device")
         // A supported build says nothing; the others keep their tag.
         let tags = FirmwareCatalog.Entry.Status.allCasesForCheck.map { AddDeviceRow.statusText($0) }
