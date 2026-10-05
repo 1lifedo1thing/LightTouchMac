@@ -125,9 +125,23 @@ public enum KBoot {
         if !dt.contains("arm-io/spi0/nor-flash") {
             for (parent, name, props) in norGraft { try dt.addNode(parent, name, props) }
         }
+        try landingMap(&dt)
         if dt.props["arm-io/flash-controller0/disk"]?["boot-from-nand"] != nil {
             try dt.rename("arm-io/flash-controller0/disk", "boot-from-nand", "boot-from-nor")
         }
+    }
+
+    /// 3.x's FMI groups the CEs into buses by the disk node's landing-map words, one CE mask per bus (3.1.3
+    /// findNandInfo); the IPSW's DT has a single word, so every CE folds into one bus and its board table has no match
+    /// ("2-bus not supported"). One word per populated bus from the disk's CE bitmap (reg), as s5l8920_kboot.py does;
+    /// DTs without landing-map (4.x on) are untouched.
+    static func landingMap(_ dt: inout DeviceTree) throws {
+        let disk = "arm-io/flash-controller0/disk"
+        guard dt.props[disk]?["landing-map"] != nil, let reg = dt.value(disk, "reg"), reg.count >= 4 else { return }
+        let ces = MachO.u32(reg, 0)
+        let words = (0..<4).map { ces & (0xFF << (8 * UInt32($0))) }.filter { $0 != 0 }
+        try dt.rename(disk, "landing-map", "landing-map-dt")
+        try dt.add(disk, "landing-map", DeviceTree.Value.le(words))
     }
 
     public struct Segment: Equatable, Sendable {
