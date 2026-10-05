@@ -245,7 +245,7 @@ def excerpt(path, n=3):
 
 def boot(entry, base, a, helper, work, env, app):
     """tests/drivers/session-driver --single with reboot; returns the parsed events, the driver's exit and the serial log."""
-    board = {"k48ap": "ipad", "n45ap": "ipod1g", "m68ap": "iphone2g"}.get(entry["board"], "ipod")
+    board = check_sessions.BOARDS[entry["board"]]
     nand_current = a.files / "nand-current"
     cfg = {"helper": str(helper), "requirement": check_sessions.helper_requirement(a), "firmwarekit": str(a.firmwarekit), "usbmuxd": str(a.usbmuxd), "ipa": app["ipa"],
            "bundleID": app["bundle_id"], "work": str(work), "files": str(a.files),
@@ -257,9 +257,9 @@ def boot(entry, base, a, helper, work, env, app):
                       **({"tapAfterLaunch": [float(v) for v in a.gl_tap.split(",")]} if a.gl_tap else {})}}
     if a.frameworks:
         cfg["frameworks"] = str(a.frameworks)
-    itpack = a.guest_tools / ("armv7.itpack" if board == "ipad" else "armv6.itpack")
+    itpack = a.guest_tools / ("armv7.itpack" if board in check_sessions.ARMV7 else "armv6.itpack")
     if itpack.exists():
-        if board == "ipad":
+        if board in check_sessions.ARMV7:
             cfg["ipadItpack"] = str(itpack)
         else:
             cfg["single"]["itpack"] = str(itpack)

@@ -23,7 +23,7 @@ DeviceStateStorage.writableNOR, and the shared runtime DeviceLink, and runs:
 
     tests/sessions/check-sessions.py --ipad-device DIR [--ipad-itpack ARMV7.itpack] [--helper PATH] [--dylib PATH] [--ipa PATH] [--work DIR]
     tests/sessions/check-sessions.py --guest --ipod-device DIR --itpack ARMV6.itpack [...]
-    tests/sessions/check-sessions.py --single DIR --board ipod|ipad [--frameworks DIR] [...]
+    tests/sessions/check-sessions.py --single DIR --board ipod|ipad|ipod1g|iphone2g|ipod4g|iphone4|ipod3g|iphone3gs [...]
 
 --single --afc-race N (smoke.md #5) instead boots the base N times, lists the Media root over AFC the moment lockdown
 first answers (polled every 100 ms), and Stops; --afc-race-dirty adds an IPA install, an upload and the agent halt,
@@ -72,6 +72,13 @@ import device_runtime
 # The helper these checks build (xcodebuild Debug) is signed by the project's team: pin it, as the app's
 # DeviceRendezvous.defaultRequirement does when the app is Team-signed. Left nil, the ad-hoc test driver falls
 # back to the helper's own designated requirement, which any helper satisfies.
+# --single boards: the driver's name for each catalog board, the product type lockdown must answer, and the boards
+# booted as the iPad is (kboot, an armv7 offer from --ipad-itpack).
+BOARDS = {"n72ap": "ipod", "k48ap": "ipad", "n45ap": "ipod1g", "m68ap": "iphone2g",
+          "n81ap": "ipod4g", "n90ap": "iphone4", "n18ap": "ipod3g", "n88ap": "iphone3gs"}
+PRODUCT = {"ipod": "iPod2,1", "ipad": "iPad1,1", "ipod1g": "iPod1,1", "iphone2g": "iPhone1,1",
+           "ipod4g": "iPod4,1", "iphone4": "iPhone3,1", "ipod3g": "iPod3,1", "iphone3gs": "iPhone2,1"}
+ARMV7 = {"ipad", "ipod4g", "iphone4", "ipod3g", "iphone3gs"}
 TEAM_REQ = 'anchor apple generic and certificate leaf[subject.OU] = "SM75355Y6R"'
 
 
@@ -227,7 +234,7 @@ def main():
     ap.add_argument("--bundle-id", default="com.qemuios.harness")
     ap.add_argument("--work", type=Path)
     ap.add_argument("--single", type=Path, help="one prepared base (firmwarekit create output)")
-    ap.add_argument("--board", choices=("ipod", "ipad", "ipod1g", "iphone2g"), help="--single: the base's board")
+    ap.add_argument("--board", choices=tuple(PRODUCT), help="--single: the base's board")
     power = ap.add_mutually_exclusive_group()
     power.add_argument("--host-power-gesture", action="store_true", default=None,
                        help="--single iPod: select shared host gesture, with actual PMU shutdown")
@@ -356,7 +363,7 @@ def main():
         lit = (find("lit", device=d) or [{}])[0]
         check(lit, f"{d}: lit in {lit.get('seconds', -1):.1f} s")
         usb = (find("usb", device=d) or [{}])[0]
-        check(usb.get("productType") == {"ipad": "iPad1,1", "ipod1g": "iPod1,1", "iphone2g": "iPhone1,1"}.get(d, "iPod2,1"), f"{d}: lockdown over its usbmuxd: {usb.get('productType')}")
+        check(usb.get("productType") == PRODUCT[d], f"{d}: lockdown over its usbmuxd: {usb.get('productType')}")
         spec = importlib.util.spec_from_file_location("session_framecheck", ROOT / "tests/sessions/framecheck.py")
         frames = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(frames)
