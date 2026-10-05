@@ -31,7 +31,10 @@ final class K48Board: Board {
     let recipe: FirmwareEntry.Recipe, strategy: String, iboot: Bool, dataProtection: Bool
     var helper: URL!, patcher: URL!, mbr: URL!, vols: SystemEdits.Result!
     var gidComponents: [String] = [], ramdisk: String?
-    var shipped: [String] { iboot ? ["iBoot.bin", "nor.bin", "gid-blobs.bin"] : ["kboot.bin"] + (dataProtection ? ["nor.bin"] : []) }
+    var shipped: [String] { iboot ? ["iBoot.bin", "nor.bin", "gid-blobs.bin"] : ["kboot.bin"] + (kbootNOR ? ["nor.bin"] : []) }
+    /// A kboot device ships a writable NOR for 4.x data protection, and always on the N88, whose DT keeps its own
+    /// NOR (blank on 3.x: NVRAM only).
+    var kbootNOR: Bool { dataProtection || s5l8920 }
     var dieID: String { (ident.dieID ?? []).joined(separator: ":") }
     var ident: UnitIdentity!
 
@@ -104,6 +107,7 @@ final class K48Board: Board {
             try K48IBoot.buildNOR(identity: ident, allFlash: allFlash, order: order, bootArgs: bootArgs).write(to: c.file("nor.bin"))
         } else {
             try KBoot.write(decrypted: c.dec, to: c.file("kboot.bin"), identity: ident, bootArgs: bootArgs)
+            if kbootNOR && !dataProtection { try Data(repeating: 0xFF, count: 1 << 20).write(to: c.file("nor.bin")) }
         }
     }
 
@@ -139,7 +143,7 @@ final class K48Board: Board {
         try? FileManager.default.removeItem(at: vols.system); try? FileManager.default.removeItem(at: vols.data)
     }
 
-    func norURL(_ c: Recipe.Context) -> URL? { iboot || dataProtection ? c.file("nor.bin") : nil }
+    func norURL(_ c: Recipe.Context) -> URL? { iboot || kbootNOR ? c.file("nor.bin") : nil }
 
     /// 4.x data protection: effaceable + system keybag from the IPSW's own Update ramdisk (ipad1_keybag): the
     /// ramdisk with it_keybag as restored_external, booted once as md0 on the store + NOR; retried (from copies
@@ -214,7 +218,7 @@ final class K48Board: Board {
             for (k, n) in [("iboot", "iBoot.bin"), ("gid_blobs", "gid-blobs.bin"), ("nor", "nor.bin")] { outputs[k] = try Recipe.fileRecord(c, n) }
         } else {
             outputs["kboot"] = try Recipe.fileRecord(c, "kboot.bin")
-            outputs["nor"] = opt(dataProtection ? try Recipe.fileRecord(c, "nor.bin") : nil)
+            outputs["nor"] = opt(kbootNOR ? try Recipe.fileRecord(c, "nor.bin") : nil)
         }
         return [
             "boot_strategy": strategy,

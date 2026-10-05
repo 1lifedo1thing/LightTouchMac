@@ -198,6 +198,8 @@ public enum KBoot {
         for (k, v) in flags + [("board-id", .u32(board.boardID)), ("chip-id", .u32(board.chipID))] + chosen
             + [("firmware-version", .string(iboot)), ("display-rotation", .u32(board.rotation)), ("display-scale", .u32(board.scale)),
                ("root-matching", .string(rootMatching))] {
+            // 3.1.3's DTs (N88 7E18) have none of these: nothing to fill.
+            if ["die-id", "display-rotation", "display-scale"].contains(k), dt.props["chosen"]?[k] == nil { continue }
             try dt.set("chosen", k, v)
         }
         for (k, hz) in [("clock-frequency", cpuHz), ("memory-frequency", memHz), ("bus-frequency", busHz),
