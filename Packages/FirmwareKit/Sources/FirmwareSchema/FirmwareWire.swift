@@ -14,7 +14,7 @@ nonisolated public enum FirmwareWire {
     /// Recipe steps boot admission migrates in place, per board: a stopped base at recipe `key` reaches `value` at
     /// its next start (FirmwareBootAdmission), so the GUI counts it as already there and offers no Prepare Again.
     /// The one list of such steps; a migration that isn't listed here leaves its devices flagged.
-    public static let admissionRecipeSteps: [String: [Int: Int]] = ["n72ap": [1: 2]]
+    public static let admissionRecipeSteps: [String: [Int: Int]] = ["n72ap": [1: 2], "n45ap": [2: 3], "m68ap": [1: 2]]
 
     /// `version` after every admission step for `board` (FirmwareWire.admissionRecipeSteps).
     public static func admittedRecipe(_ version: Int, board: String?) -> Int {

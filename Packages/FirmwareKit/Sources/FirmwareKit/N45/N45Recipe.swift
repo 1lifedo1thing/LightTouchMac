@@ -56,6 +56,18 @@ final class N45Board: Board {
     /// configd's Aeropuerto plug-in (AirPort-53 on 1.0, -63 on 1.1) keeps the Wi-Fi power preference (AllowEnable)
     /// and the networks it has joined ("List of known networks", entries keyed by SSID_STR) in this file.
     static let wifiPrefs = scPrefs + "/com.apple.wifi.plist"
+    /// The PAC, the en0 AirPort service carrying it (preferences.plist) and the known network (wifiPrefs) in scPrefs.
+    /// `keepWifi`: a com.apple.wifi.plist already there (the guest's own) is left as it is. Returns the paths to make
+    /// root-owned. The recipe and its admission step (N45Migration) both write them.
+    static func seedSystemConfiguration(_ m: URL, keepWifi: Bool = false) throws -> [String] {
+        let owned = try SystemEdits.installPAC(m, dirs: [scPrefs])
+        try SystemEdits.seedPlist(m.appendingPathComponent(scPrefs + "/preferences.plist"), SystemEdits.wifiProxyPrefs)
+        let wifi = m.appendingPathComponent(wifiPrefs)
+        if !(keepWifi && FileManager.default.fileExists(atPath: wifi.path)) {
+            try SystemEdits.put(try PropertyListSerialization.data(fromPropertyList: wifiKnownNetwork, format: .xml, options: 0), wifi, mode: 0o644)
+        }
+        return owned + [scPrefs + "/preferences.plist", wifiPrefs]
+    }
     /// A device that has joined the emulator's access point before (the 88W8686 model's open "qemu-ios", channel 6):
     /// Wi-Fi on, and the network remembered as the join left it, so configd auto-joins at boot.
     static var wifiKnownNetwork: [String: Any] { [
@@ -176,13 +188,8 @@ final class N45Board: Board {
             // Wi-Fi as a device that has joined the emulator's network before: the en0 AirPort service in the current
             // set (configd's auto-join skips an interface with none: "AirPort interface en0 not active"), carrying the
             // web proxy's PAC as on the 2G, and Wi-Fi on with qemu-ios among the known networks.
-            let sc = Self.scPrefs
             try c.fit.check(FitCheck.webProxy(FitCheck.Firmware(root: m, arch: "armv6")), required: false, outcome: "kept: the PAC is unused")
-            owners += try SystemEdits.installPAC(m, dirs: [sc]).map { (UInt32(0), $0) }
-            try SystemEdits.seedPlist(at(sc + "/preferences.plist"), SystemEdits.wifiProxyPrefs)
-            try SystemEdits.put(try PropertyListSerialization.data(fromPropertyList: Self.wifiKnownNetwork, format: .xml, options: 0),
-                                at(Self.wifiPrefs), mode: 0o644)
-            owners += [(0, sc + "/preferences.plist"), (0, Self.wifiPrefs)]
+            owners += try Self.seedSystemConfiguration(m).map { (UInt32(0), $0) }
             derived["wifi"] = "en0 AirPort service (PAC /\(SystemEdits.pacPath)); known network qemu-ios, Wi-Fi on (/\(Self.wifiPrefs))"
             // 1.x runs no guest helpers (it_prefs): its SpringBoard preferences, in root's Library (1.x's user)
             derived["prefs"] = try N72Board.bakePrefs(m, dir: Self.rootLibrary + "/Preferences")

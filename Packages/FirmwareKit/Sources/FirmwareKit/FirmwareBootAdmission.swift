@@ -3,8 +3,9 @@ import HostRuntime
 import FirmwareSchema
 
 /// Common stopped storage admission used before any host launches a helper.
-/// Format-specific preparation borrows the existing stopped authority: today
-/// only the N72 recipe 1 -> 2 GPT migration (N72NAND.migrateLegacyGPT).
+/// Format-specific preparation borrows the existing stopped authority: the N72
+/// recipe 1 -> 2 GPT migration (N72NAND.migrateLegacyGPT), and before it 1.x's
+/// SystemConfiguration step (N45Migration), a stopped edit of its own.
 public nonisolated enum FirmwareBootAdmission {
     public struct Result: Sendable {
         public let changed: Bool
@@ -31,7 +32,12 @@ public nonisolated enum FirmwareBootAdmission {
 
     nonisolated(nonsending) public static func admit(device: URL, policy: StorageRecordPolicy = .standalone,
                                                     allowRaw: Bool = false) async throws -> Result {
-        try await admit(device: device, policy: policy, allowRaw: allowRaw, prepare: migrate)
+        // 1.x's step is a stopped edit, which takes its own lease, so it runs before admission's. A failure (an FTL
+        // the guest didn't shut down cleanly is refused) doesn't keep the device from starting; the next start retries.
+        do { _ = try await N45Migration.systemConfiguration(device: device, policy: policy, allowRaw: allowRaw) }
+        catch is CancellationError { throw CancellationError() }
+        catch { FirmwareDiagnostics.write(Data("boot admission: 1.x SystemConfiguration step skipped: \(error)\n".utf8)) }
+        return try await admit(device: device, policy: policy, allowRaw: allowRaw, prepare: migrate)
     }
 
     @Sendable static func migrate(_ owner: StoppedRecordOwner) throws -> Bool {
