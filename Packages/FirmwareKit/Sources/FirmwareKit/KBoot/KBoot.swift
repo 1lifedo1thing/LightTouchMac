@@ -71,6 +71,11 @@ public enum KBoot {
         public var radio = false
         /// The SoC as iBoot names it (root platform-name, chosen/chip-id).
         public var platformName = "s5l8930x", chipID: UInt32 = 0x8930
+        /// /product/product-id, which iBoot fills and the IPSW DT reserves zeroed (6.x MobileGestalt's product hash).
+        /// 6.x GraphicsServices picks the font cache by it: the 3GS's (compared at GSFontInitialize) selects
+        /// CGFontCacheUR.plist, the only set its rootfs ships fonts for; zeroed, the default plist names fonts the 3GS
+        /// IPSW lacks and every UIFont and bitmap context comes back nil. nil: leave the slot alone.
+        public var productID: [UInt8]? = nil
 
         public static let k48 = Board(machine: "ipad1", fbWidth: 1024, fbHeight: 768, rotation: 270, scale: 1,
                                       boardID: 0x02, modelNumber: "MB292")
@@ -80,7 +85,9 @@ public enum KBoot {
                                       boardID: 0x00, modelNumber: "MC603", dram: 0x2000_0000, radio: true)
         /// iPhone 3GS (S5L8920): -M n88, model MB715. Its baseband node is unmatched (no modem model yet).
         public static let n88 = Board(machine: "n88", fbWidth: 320, fbHeight: 480, rotation: 0, scale: 1,
-                                      boardID: 0x00, modelNumber: "MB715", platformName: "s5l8920x", chipID: 0x8920)
+                                      boardID: 0x00, modelNumber: "MB715", platformName: "s5l8920x", chipID: 0x8920,
+                                      productID: [0x87, 0x84, 0xae, 0x8d, 0x70, 0x66, 0xb0, 0xf0, 0x13, 0x6b,
+                                                  0xe9, 0x1d, 0xcf, 0xe6, 0x32, 0xa4, 0x36, 0xff, 0xd6, 0xfb])
         /// iPod touch 3G (S5L8922): -M n18, model MC008; NOR-less, so it takes the graft.
         public static let n18 = Board(machine: "n18", fbWidth: 320, fbHeight: 480, rotation: 0, scale: 1,
                                       boardID: 0x02, modelNumber: "MC008", platformName: "s5l8922x", chipID: 0x8922)
@@ -241,6 +248,9 @@ public enum KBoot {
         // iBoot-1537/1940 (6.x/7.x) hand NVRAM over as /chosen/nvram-proxy-data; the IPSW DT reserves it zeroed.
         if let slot = dt.props["chosen"]?["nvram-proxy-data"] {
             try dt.set("chosen", "nvram-proxy-data", .bytes(nvramImage(size: slot.length)))
+        }
+        if let id = board.productID, dt.props["product"]?["product-id"]?.length == id.count {
+            try dt.set("product", "product-id", .bytes(Data(id)))
         }
         for (k, hz) in [("clock-frequency", cpuHz), ("memory-frequency", memHz), ("bus-frequency", busHz),
                         ("peripheral-frequency", periphHz), ("fixed-frequency", fixedHz), ("timebase-frequency", timebaseHz)] {
