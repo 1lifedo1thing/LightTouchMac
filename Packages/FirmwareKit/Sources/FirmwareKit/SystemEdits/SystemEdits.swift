@@ -70,6 +70,11 @@ public enum SystemEdits {
         /// A helper built for `arch`: the armv7 build keeps the bare name, the others carry the arch
         /// (it_keybag-armv6).
         public static func name(_ base: String, _ arch: String) -> String { arch == "armv7" ? base : base + "-" + arch }
+        /// The legacy-linked build of a helper (it_pbd-legacy, libappsync-legacy.dylib): what a firmware whose dyld
+        /// predates LC_DYLD_INFO_ONLY (armv7 on 3.0) loads.
+        public static func legacy(_ name: String) -> String {
+            name.hasSuffix(".dylib") ? String(name.dropLast(6)) + "-legacy.dylib" : name + "-legacy"
+        }
         public static let sealJob = "com.qemu.it-seal.plist", glTestJob = "com.qemu.it-gltest.plist"
         /// The fat armv6+armv7 AppSync dylib.
         public static let appsync = "libappsync.dylib", appsyncLauncher = "appsync-launch"
@@ -179,14 +184,17 @@ public enum SystemEdits {
             let at = { (rel: String) in m.appendingPathComponent(rel) }
             // every baked helper proven to load on this firmware (FitCheck.loads), read before any edit
             let fw = FitCheck.Firmware(root: m, arch: "armv7", kernelcache: kernel)
-            _ = fw.precedent
+            // a dyld without LC_DYLD_INFO_ONLY (3.0's: none of its own executables carry one) takes the legacy builds
+            let legacy = fw.precedent[MachO32.lcDyldInfoOnly] == nil
+            let pick = { (n: String) in legacy ? Helpers.legacy(n) : n }
+            if legacy { log("this dyld predates LC_DYLD_INFO_ONLY: the legacy-linked helpers and AppSync") }
             // it_msmquiet only where the mounter raises the notice it recognises; else left out, job untouched
             // (3.1.x has no storage_mounter job at all)
             let msm = Helpers.tools[3]
             var quietJobs: [(String, String)] = []
             for (job, label) in noticeJobs where o.guestTools && fm.fileExists(atPath: at(job).path) {
                 if try fit.check(FitCheck.msmQuiet(fw, program: try stockProgram(m, job, label: label),
-                                                   dylib: Data(contentsOf: try helper(msm.name))), required: false) {
+                                                   dylib: Data(contentsOf: try helper(pick(msm.name)))), required: false) {
                     quietJobs.append((job, label))
                 }
             }
@@ -199,9 +207,9 @@ public enum SystemEdits {
             }
             if o.usbNet { try fit.check(FitCheck.usbEthernet(fw, path: usbEthPath), required: false, outcome: "kept: the link stays down and en1 unpinned") }
             for t in tools where t.name != msm.name {
-                try fit.check(FitCheck.loads(t.name, Data(contentsOf: try helper(t.name)), on: fw), required: true)
+                try fit.check(FitCheck.loads(pick(t.name), Data(contentsOf: try helper(pick(t.name))), on: fw), required: true)
             }
-            if o.appsync { try FitCheck.checkAppSync(fit, fw, helpers: helpers) } else { fit.notInstalled("AppSync", "appsync off") }
+            if o.appsync { try FitCheck.checkAppSync(fit, fw, helpers: helpers, name: pick(Helpers.appsync)) } else { fit.notInstalled("AppSync", "appsync off") }
             if let kernelcache {   // real-iBoot fsboot: the raw IPSW img3 kernelcache in the system volume
                 try mkdirs(at(kernelcachePath).deletingLastPathComponent())
                 try put(kernelcache, at(kernelcachePath), mode: 0o644)
@@ -225,7 +233,7 @@ public enum SystemEdits {
                 d["StandardOutPath"] = "/dev/console"; d["StandardErrorPath"] = "/dev/console"
             }
             if o.appsync {
-                _ = try installAppSync(m, helper: try helper(Helpers.appsync), cache: dyldCache("armv7"), log: log)
+                _ = try installAppSync(m, helper: try helper(pick(Helpers.appsync)), cache: dyldCache("armv7"), log: log)
                 rootOwned.append(appsyncPath)
             }
             // bake
@@ -234,7 +242,7 @@ public enum SystemEdits {
             }
             for t in tools {
                 try mkdirs(at(t.path).deletingLastPathComponent())
-                try put(Data(contentsOf: try helper(t.name)), at(t.path), mode: t.mode)
+                try put(Data(contentsOf: try helper(pick(t.name))), at(t.path), mode: t.mode)
             }
             for j in jobs { try put(Data(contentsOf: try helper(j)), at(daemons + "/" + j), mode: 0o644) }
             for (job, label) in quietJobs {

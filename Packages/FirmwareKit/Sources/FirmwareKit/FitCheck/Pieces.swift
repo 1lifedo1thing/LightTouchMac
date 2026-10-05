@@ -221,13 +221,13 @@ extension FitCheck {
 
     /// AppSync's process-local pieces: libappsync in installd's job's program, else
     /// (2.x) in Lockbot's installation_proxy service with appsync-launch.
-    static func checkAppSync(_ log: Log, _ fw: Firmware, helpers: URL) throws {
+    static func checkAppSync(_ log: Log, _ fw: Firmware, helpers: URL, name: String = SystemEdits.Helpers.appsync) throws {
         func piece(_ n: String) throws -> Data {
             let u = helpers.appendingPathComponent(n)
             guard FileManager.default.fileExists(atPath: u.path) else { throw FirmwareError(.internal, "guest helper \(n) missing from \(helpers.path)") }
             return try Data(contentsOf: u)
         }
-        let dylib = try piece(SystemEdits.Helpers.appsync)
+        let dylib = try piece(name)
         let program: (NSDictionary?) -> String? = { d in (d?["ProgramArguments"] as? [String])?.first ?? d?["Program"] as? String }
         if let job = ["com.apple.mobile.installd.plist", "com.apple.installd.plist"].map({ SystemEdits.daemons + "/" + $0 }).first(where: { fw.resolve($0) != nil }) {
             guard let host = program(NSDictionary(contentsOf: fw.resolve(job)!)) else {
