@@ -40,6 +40,9 @@ public enum StoppedVolumeEdit {
                 // edited in place: the overlay as the guest left it, written over at commit
                 if let overlay = source.overlay { try clone(overlay, to: transaction.overlay) }
                 else { try fm.createDirectory(at: transaction.overlay, withIntermediateDirectories: false) }
+                // The overlay belongs to the generation's key now (PreparedDeviceBoot.pinOverlay): the clone's stamp
+                // names the old one, and a fresh overlay that takes the edit's pages would have none.
+                try Data(transaction.id.uuidString.utf8).write(to: transaction.overlay.appendingPathComponent(".base-identity"), options: .atomic)
             } else {
                 try fm.removeItem(at: oldNAND)
                 try fm.createDirectory(at: transaction.overlay, withIntermediateDirectories: false)
