@@ -728,7 +728,13 @@ struct SingleConfig: Decodable {
             if let yes = alertYes.first(where: { found[$0] != nil }), let p = found[yes] {
                 await d.tap(p.x, p.y); pages.append("(\(yes))"); continue
             }
-            let pick = picks.first { found[$0] != nil }
+            var pick = picks.first { found[$0] != nil }
+            // The country list without Australia/United States on screen (the 3GS's 480-line panel): its first row
+            // (7.x's walk takes the first country too); Next stays disabled until one is chosen.
+            if pick == nil, found.keys.contains(where: { $0.hasPrefix("Country") }),
+               let first = found.filter({ $0.value.y > 0.15 && $0.value.y < 0.6 }).min(by: { $0.value.y < $1.value.y }) {
+                pick = first.key
+            }
             if let pick, let p = found[pick] {
                 // a label tapped again and again: nudge the tap (as walk_setup, the digitizer's edges)
                 let again = pages.filter { $0 == pick }.count
@@ -745,8 +751,16 @@ struct SingleConfig: Decodable {
             if let next = found["Next"] ?? (found["English"] != nil ? nextArrow : nil) {
                 await d.tap(next.x, next.y)
                 if pick == nil { pages.append(found.filter { $0.value.y < 130.0 / 960 && $0.key != "Next" }.keys.first ?? "?") }
-            } else if pick == nil {
-                await d.drag(0.18, 0.9, 0.92, 0.9)   // the welcome page's slider
+            } else if pick == nil, let cancel = found["Cancel"], found["Start Over"] != nil {
+                await d.tap(cancel.x, cancel.y); pages.append("(Cancel)")   // Setup's Home sheet (Emergency Call)
+            } else if pick == nil, (try? await agent.frontmost())?.name == "Lock Screen" {
+                // The welcome page (SpringBoard's lock screen) and its slider. Home first, as app-install's unlock():
+                // the S5L8920 boards power the digitizer down on the lock screen (DisablePowerForUILock), and a slide
+                // then does nothing (n88 6.0.1: 40 slides, still welcome). Only there: in Setup, Home opens a sheet.
+                d.process.link.send(.button(0, down: true)); try? await Task.sleep(for: .milliseconds(150))
+                d.process.link.send(.button(0, down: false))
+                try? await Task.sleep(for: .seconds(1.5))
+                await d.drag(0.18, 0.9, 0.92, 0.9)
                 pages.append("(slide)")
             }
         }
