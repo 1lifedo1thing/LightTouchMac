@@ -62,6 +62,8 @@ struct SingleConfig: Decodable {
     var mediaTaps: [[Double]]?
     /// The guest's audio to this WAV instead of none (a playback check); never the Mac's speakers.
     var audioWAV: String?
+    /// A file the guest agent reads back at home (fileRead), e.g. a marker a stopped edit wrote into the root FS.
+    var readFile: String?
 }
 
 @MainActor func runSingle(_ s: SingleConfig) async {
@@ -253,6 +255,11 @@ struct SingleConfig: Decodable {
         if asks, let f = try? await guestAgent.frontmost() { (front, screen) = f }
         emit("home", ["device": d.name, "generation": generation, "brightness": d.brightness() ?? -1,
                       "agent": asks, "frontmost": front, "screen": screen, "path": hp ?? ""])
+        if let path = s.readFile {
+            let data = asks ? try? await guestAgent.get(path) : nil
+            emit("fileRead", ["device": d.name, "generation": generation, "path": path, "agent": asks,
+                              "found": data != nil, "content": data.map { String(decoding: $0, as: UTF8.self) } ?? ""])
+        }
     }
 
     /// Test-only clean shutdown: stock gesture or qualified agent halt, confirmed by PMU.

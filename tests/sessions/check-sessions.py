@@ -243,6 +243,7 @@ def main():
     power.add_argument("--no-host-power-gesture", dest="host_power_gesture", action="store_false",
                        help="--single iPod: explicitly retain the legacy shutdown caller for comparison")
     ap.add_argument("--no-install", action="store_true", help="--single: skip the IPA install (iPhone OS 1.x has no installation_proxy)")
+    ap.add_argument("--read-file", help="--single: a guest path the agent reads back at home (a driver.jsonl fileRead event)")
     ap.add_argument("--launch", action="store_true", help="--single: launch the installed IPA through the app’s guest agent and verify its foreground identity")
     ap.add_argument("--reboot", action="store_true", help="--single: cold boot the same overlay and verify file/app persistence, identity and shutdown again")
     ap.add_argument("--upgrade-ipa", type=Path, help="--single: after the install, the same bundle id at a newer version: "
@@ -301,6 +302,8 @@ def main():
                          "install": not args.no_install}
         if args.upgrade_ipa:
             cfg["single"]["upgradeIPA"] = str(args.upgrade_ipa)
+        if args.read_file:
+            cfg["single"]["readFile"] = args.read_file
         # 6.x/7.x: the first boot walks the Setup Assistant; 7.x also boots and pairs far slower (qemu-ios
         # app-install's 1400 s cap). Per boot, one per --reboot leg.
         major = str(json.loads((args.single / "device.lock.json").read_text()).get("product_version", "0")).split(".")[0]
@@ -438,6 +441,9 @@ def main():
             check(len(find("home", device=d)) == boots and len(activation) == boots and
                   (d != "ipod" or len(ids) == boots),
                   f"{d}: both boots completed Home, activation and identity gates")
+        if args.read_file:
+            reads = find("fileRead", device=d)
+            check(reads and all(e.get("found") for e in reads), f"{d}: the guest reads {args.read_file}: {reads}")
         same, why = unchanged(base_dir, base_before)
         check(same, f"{d}: the prepared base is unchanged{why}")
         check(find("done") and driver.returncode == 0, f"driver finished (exit {driver.returncode})")
