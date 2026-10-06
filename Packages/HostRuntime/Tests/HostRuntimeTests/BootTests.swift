@@ -86,7 +86,8 @@ extension BootTests {
         if board == .n72 { #expect(machine.contains("ecid=0x234")) }
         if board == .k48 { #expect(machine.contains("die-id=0x123:0x456")) }
         // A lock without the card address takes the unit's from identity.json.
-        if board != .n45 { #expect(machine.contains(",wifi-mac=02:11:22:33:44:66")) }
+        // (the 1.x/S5L8900 boards, N45 and M68, put wifi-mac in their lock when prepared; no identity fallback)
+        if board != .n45 && board != .m68 { #expect(machine.contains(",wifi-mac=02:11:22:33:44:66")) }
         // Freeze the pre-extraction recipe output with matching caller dependencies.
         let expected: BootConfig
         switch board {
