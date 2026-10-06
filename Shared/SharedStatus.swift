@@ -174,7 +174,7 @@ nonisolated public final class FrameRingWriter: @unchecked Sendable {
     public func activate() {
         status[.width] = UInt64(width)
         status[.height] = UInt64(height)
-        status[.front] = 0
+        status[.front] = 3      // nothing published in this ring yet: the reader keeps its last surface
         status[.ringGeneration] = generation
     }
 

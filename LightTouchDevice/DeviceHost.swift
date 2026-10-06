@@ -69,13 +69,17 @@ final class DeviceHost: @unchecked Sendable {
         var w: Int32 = 0, h: Int32 = 0
         var serial = frameSerial
         guard qemu.ready(), qemu.frame(&pixels, &w, &h, &serial), let pixels, w > 0, h > 0 else { return }
-        frameSerial = serial
         if Int(w) != ring.width || Int(h) != ring.height {
             ring.resize(width: Int(w), height: Int(h))
             onRingChanged?(ring)
             ring.activate()
         }
-        ring.publish { FrameRingWriter.copy(pixels, width: Int(w), height: Int(h), into: $0) }
+        // A frame that found no free surface is taken again next tick: the emulator republishes only
+        // changed pixels, so a dropped frame would otherwise stay off screen until the guest draws.
+        // A new ring's surfaces read as in use until the app has taken their Mach ports.
+        if ring.publish({ FrameRingWriter.copy(pixels, width: Int(w), height: Int(h), into: $0) }) {
+            frameSerial = serial
+        }
     }
 
     private func refreshStatus() {
