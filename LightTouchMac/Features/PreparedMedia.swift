@@ -31,6 +31,12 @@ enum PreparedMedia: Sendable {
         }
     }
 
+    /// The library a file would go to, by its extension, before it is read (MediaSupport's gate).
+    nonisolated static func destination(forExtension suffix: String) -> String {
+        let suffix = suffix.lowercased()
+        return MediaSong.extensions.contains(suffix) ? "Music" : MediaVideo.extensions.contains(suffix) ? "Videos" : "Photos"
+    }
+
     nonisolated static func prepare(_ source: URL, profile: DeviceProfile) async throws -> PreparedMedia {
         if MediaSong.extensions.contains(source.pathExtension.lowercased()) {
             return .song(try await MediaSong.prepare(source))

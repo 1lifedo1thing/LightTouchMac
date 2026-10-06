@@ -46,7 +46,7 @@ stub_source = prefix + r'''
  func projectedPoint(_ p:CGPoint)->CGPoint{.zero}
  func panelPoint(_ p:CGPoint,clamped:Bool=false)->CGPoint?{nil}
  func isChassis(_ p:CGPoint)->Bool{false}
- func advanceAnimations(){}
+ func advanceAnimations() -> Bool { false }
  func shake(){}
  func specialTrick(){}
 }

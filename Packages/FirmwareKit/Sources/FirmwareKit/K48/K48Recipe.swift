@@ -44,7 +44,11 @@ final class K48Board: Board {
     var modem: String { IPhoneIdentity.a4Boards.contains(board) ? ",baseband=on" + (ident["imei"].map { ",imei=\($0)" } ?? "") : "" }
     /// What every boot of the device carries, as BootRecipe boots it (the lock's "machine"): the modem, and the
     /// recipe's pinned clock (a beta's lockdownd stops activating past its expiry date).
-    var bootOptions: String { modem + (recipe.rtcEpoch.map { ",rtc-epoch=\($0)" } ?? "") }
+    var bootOptions: String { wifiOption + modem + (recipe.rtcEpoch.map { ",rtc-epoch=\($0)" } ?? "") }
+    /// The BCM4329's CIS address on the iPad machine (its wifi-mac property): the same unit address KBoot/K48IBoot
+    /// write to the device tree and NOR. The N81/N90 machines take theirs from the device tree's /chosen only.
+    var wifiMAC: String? { board == "k48ap" ? ident["wifi-mac"] : nil }
+    var wifiOption: String { wifiMAC.map { ",wifi-mac=\($0)" } ?? "" }
     var ident: UnitIdentity!
     /// The keybag and seal one-shots' limit. 7.x's launchd starts our RunAtLoad daemons (it_seal among them) about
     /// 170 s into the boot, and it_seal halts 40 s later: modem-on 7.0-7.0.6 seals took 118-229 s, 7.1.2's about
@@ -259,7 +263,8 @@ final class K48Board: Board {
             "outputs": outputs,
             "gl_test": SystemEdits.Options(recipe: recipe).glTest,
             // -M <board>,imei=: the modem (baseband=on) reports the identity's IMEI, so the UDID matches it.
-            "machine": (ident["imei"].map { ["imei": $0] } ?? [:]).merging(recipe.rtcEpoch.map { ["rtc-epoch": String($0)] } ?? [:]) { a, _ in a },
+            "machine": (ident["imei"].map { ["imei": $0] } ?? [:]).merging(recipe.rtcEpoch.map { ["rtc-epoch": String($0)] } ?? [:]) { a, _ in a }
+                .merging(wifiMAC.map { ["wifi-mac": $0] } ?? [:]) { a, _ in a },
         ]
     }
 }

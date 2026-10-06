@@ -82,6 +82,52 @@ import Testing
         }
     }
 
+    /// smoke #36: a volume whose only fsck findings are wrong HFSX folder counts comes out of withMounted repaired
+    /// and clean; a wrong item count (valence), alone or beside a folder count, still fails and nothing is set.
+    @Test func folderCountsAloneAreRepaired() async throws {
+        try await Oracle.withTemp { dir in
+            let img = dir.appendingPathComponent("v.img"), mnt = dir.appendingPathComponent("mnt")
+            try await VolumeMount.makeHFS(img, size: 16 << 20)
+            try await VolumeMount.withMounted(img, at: mnt) { root in
+                for d in ["a/b", "a/c", "d/e"] { try FileManager.default.createDirectory(at: root.appendingPathComponent(d), withIntermediateDirectories: true) }
+            }
+            let pristine = try Data(contentsOf: img)
+            func corrupt(folderCount: String?, valence: String?) throws {
+                try pristine.write(to: img)
+                let v = try HFSPlusVolume(img, writable: true)
+                if let folderCount { try v.setFolderCounts([try v.record(at: folderCount).cnid: 0]) }
+                if let valence {
+                    let r = try v.record(at: valence), t = try v.btree(v.catalogFork, fileID: HFSPlusVolume.catalogID)
+                    try v.write(v.catalogFork, fileID: HFSPlusVolume.catalogID, offset: r.node * t.nodeSize + r.bodyOffset + 4, bytes: [0, 0, 0, 9])
+                }
+            }
+            func edit() async throws {
+                try await VolumeMount.withMounted(img, at: mnt) { root in try Data("x".utf8).write(to: root.appendingPathComponent("x")) }
+            }
+            func fsck() async throws -> (ok: Bool, output: String) {
+                let dev = try await VolumeMount.attach(img)
+                do { let r = try await VolumeMount.check(dev); try await VolumeMount.detach(dev); return r }
+                catch { await VolumeMount.cleanupDetach(dev); throw error }
+            }
+
+            try corrupt(folderCount: "a", valence: nil)
+            let before = try await fsck(), a = try HFSPlusVolume(img).record(at: "a").cnid
+            #expect(!before.ok && VolumeMount.folderCountFindings(before.output) == [a: 2], "\(before.output)")
+            try await edit()
+            let after = try await fsck()
+            #expect(after.ok, "\(after.output)")
+
+            for (fc, val) in [(nil, "d"), ("a", "d")] as [(String?, String?)] {
+                try corrupt(folderCount: fc, valence: val)
+                await #expect(throws: FirmwareError.self) { try await edit() }
+                let left = try await fsck()
+                #expect(left.output.contains("Invalid directory item count"), "\(left.output)")
+                #expect(left.output.contains("Incorrect folder count") == (fc != nil), "a folder count was set beside another finding")
+                #expect(!(try await Self.attached(img)))
+            }
+        }
+    }
+
     /// Growing the raw 7B500 / 8C148 system volume to partition 1 (1280 MiB) against grow_to_partition:
     /// same size, same volume-header geometry, same tree.
     @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"), arguments: HFSOracle.ipads) func growMatchesPython(_ fw: Oracle.Firmware) async throws {

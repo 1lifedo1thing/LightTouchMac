@@ -18,13 +18,10 @@ final class DeviceViewController: NSViewController {
         displayView.emulator = emulator
         displayView.onDropIPA = { [weak self] url in self?.installDropped(url) }
         displayView.onDropIPSW = { FirmwareJobs.shared.importIPSW($0, for: nil) }   // matched by its SHA1
-        // Media import runs through the iPod's guest tools; the iPad has none,
-        // so its screen doesn't take media drops (Import Media… is disabled too).
-        if emulator.hasGuestTools {
-            displayView.onDropMedia = { [weak self] url in
-                guard let self, self.emulator.canQueueInstall else { return }
-                AppInstaller.startMedia(url, with: self.emulator, presenting: self.view.window)
-            }
+        // Media the firmware can't take is refused on its row, with why (MediaSupport), before anything runs.
+        displayView.onDropMedia = { [weak self] url in
+            guard let self, self.emulator.canQueueInstall else { return }
+            AppInstaller.startMedia(url, with: self.emulator, presenting: self.view.window)
         }
         displayView.onDropCatalogApp = { [weak self] app in
             guard let self, self.emulator.canQueueInstall else { return }

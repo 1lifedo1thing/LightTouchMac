@@ -54,6 +54,14 @@ struct SingleConfig: Decodable {
     /// keeping a file written into the app's data before it (judged through the agent). installd may move the data
     /// to a fresh container UUID; the data is what an upgrade keeps.
     var upgradeIPA: String?
+    /// Files through the app's media import after the install, then read back and played (media.swift).
+    var media: [String]?
+    /// The itmedia/itphoto MediaImport uploads.
+    var mediaTools: String?
+    /// After the imports, Music is opened and these normalized points tapped (media.swift); nil skips Music.
+    var mediaTaps: [[Double]]?
+    /// The guest's audio to this WAV instead of none (a playback check); never the Mac's speakers.
+    var audioWAV: String?
 }
 
 @MainActor func runSingle(_ s: SingleConfig) async {
@@ -135,9 +143,10 @@ struct SingleConfig: Decodable {
             emit("timezone", ["device": d.name, "generation": generation, "zone": zone ?? ""])
         }
         emit("activation", ["device": d.name, "generation": generation, "state": await d.lockdownValue("ActivationState") ?? ""])
-        if s.board == "ipod", let identity {
-            let keys = [("SerialNumber", "serial-number"), ("UniqueDeviceID", "udid"),
-                        ("WiFiAddress", "wifi-mac"), ("BluetoothAddress", "bt-mac")]
+        if s.board == "ipod" || ipad, let identity {
+            let keys = ipad ? [("WiFiAddress", "wifi-mac")]
+                : [("SerialNumber", "serial-number"), ("UniqueDeviceID", "udid"),
+                   ("WiFiAddress", "wifi-mac"), ("BluetoothAddress", "bt-mac")]
             let expected = Dictionary(uniqueKeysWithValues: keys.compactMap { key, field in
                 (identity[field] as? String).map { (key, $0.lowercased()) }
             })
@@ -362,6 +371,12 @@ struct SingleConfig: Decodable {
     await d.wakeForShot("installed")   // wake first: the panel may have slept during the install
     // launch() goes through the guest agent wherever it answers (judged on the frontmost app), else taps the icon.
     if s.launch == true { await launch(d, at: s.launchAt, tap: s.tapAfterLaunch) }
+    if s.media != nil {
+        let version = lock?["product_version"] as? String ?? "", build = lock?["build"] as? String ?? ""
+        let firmware = MediaSupport.Firmware(board: ipad ? "k48ap" : s.board == "ipod1g" ? "n45ap" : "n72ap",
+                                             version: version, build: build, name: "iOS \(version)")
+        await mediaRoundTrip(d, s, firmware: firmware, packaged: offered)
+    }
 
     // The persist marker: a file that must still be there after the clean shutdown and the second boot.
     let marker = "ltm-matrix-persist.bin"

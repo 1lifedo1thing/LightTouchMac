@@ -188,25 +188,26 @@ public nonisolated enum BootRecipe {
         guard let data = try? Data(contentsOf: lock),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
         var machine = (object["machine"] as? [String: Any] ?? [:]).mapValues { "\($0)" }
-        // Prepared N72 bases predating card provisioning already have the unit's
+        // Prepared N72/K48 bases predating card provisioning already have the unit's
         // identity beside the lock. Use it without changing the immutable base.
-        if object["board"] as? String == "n72ap",
-           let data = try? Data(contentsOf: lock.deletingLastPathComponent().appendingPathComponent("identity.json")),
-           let identity = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            for key in ["wifi-mac", "bt-mac"] where machine[key] == nil {
-                if let mac = identity[key] as? String, !mac.isEmpty { machine[key] = mac }
-            }
-            if machine["ecid"] == nil {
-                if let ecid = identity["unique-chip-id"] as? String {
-                    machine["ecid"] = ecid
-                } else if let seed = identity["seed"] as? String {
-                    // Legacy N72 identities omitted ECID. Recover the same
-                    // 40-bit seed value UnitIdentity uses, without rewriting
-                    // the immutable base or changing its serial/MAC/UDID.
-                    let hash = Array(SHA256.hash(data: Data(seed.utf8)))
-                    let ecid = hash[20..<25].reduce(UInt64(0)) { ($0 << 8) | UInt64($1) } | 1
-                    machine["ecid"] = String(format: "0x%010llx", ecid)
-                }
+        let board = object["board"] as? String
+        guard board == "n72ap" || board == "k48ap",
+              let data = try? Data(contentsOf: lock.deletingLastPathComponent().appendingPathComponent("identity.json")),
+              let identity = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return machine }
+        // The iPad machine has wifi-mac only; its unit identity otherwise comes from die-id.
+        for key in board == "k48ap" ? ["wifi-mac"] : ["wifi-mac", "bt-mac"] where machine[key] == nil {
+            if let mac = identity[key] as? String, !mac.isEmpty { machine[key] = mac }
+        }
+        if board == "n72ap", machine["ecid"] == nil {
+            if let ecid = identity["unique-chip-id"] as? String {
+                machine["ecid"] = ecid
+            } else if let seed = identity["seed"] as? String {
+                // Legacy N72 identities omitted ECID. Recover the same
+                // 40-bit seed value UnitIdentity uses, without rewriting
+                // the immutable base or changing its serial/MAC/UDID.
+                let hash = Array(SHA256.hash(data: Data(seed.utf8)))
+                let ecid = hash[20..<25].reduce(UInt64(0)) { ($0 << 8) | UInt64($1) } | 1
+                machine["ecid"] = String(format: "0x%010llx", ecid)
             }
         }
         // iPhone bases prepared before their identity carried an IMEI (recipe 1): the same seed-derived IMEI

@@ -147,7 +147,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-media-metadata-') as work:
     a, b = c.index('static __typeof__(sqlite3_open_v2) *sql_open;'), c.index('static void import_artwork(')
     library = work/'library'; library.mkdir()
     (work/'alloc.c').write_text('#include <stdio.h>\n#include <unistd.h>\n#include <sqlite3.h>\n'
-        f'#define LIBRARY "{library}/"\n'
+        f'#define LIBRARY "{library}/"\n#define MEDIA "{library}/"\n'
         'static void fail(const char *r) { fprintf(stderr, "%s\\n", r); _exit(1); }\n' + c[a:b] +
         'int main(void) { sql_open = sqlite3_open_v2; sql_timeout = sqlite3_busy_timeout; sql_exec = sqlite3_exec;'
         ' sql_prepare = sqlite3_prepare_v2; sql_bind = sqlite3_bind_text; sql_column = sqlite3_column_int64;'

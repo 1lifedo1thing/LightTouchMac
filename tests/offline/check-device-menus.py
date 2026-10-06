@@ -81,7 +81,10 @@ View/Zoom In  ⌘+
 View/Zoom In  ⌘= hidden
 View/Zoom Out  ⌘-
 View/-
-View/Hide Device Bezel
+View/Device Bezels ▸
+View/Device Bezels/3D
+View/Device Bezels/2D
+View/Device Bezels/Off
 View/Show Finger Dots
 View/Show Hidden Files
 View/-

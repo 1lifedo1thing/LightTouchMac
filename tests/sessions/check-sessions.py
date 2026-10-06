@@ -90,7 +90,8 @@ def helper_requirement(args):
 APP_SOURCES = ["Services/DeviceServices", "Transport/DeviceExecution", "Services/AFC", "Services/InstallationProxy", "Services/LockdownTools", "Transport/IMobileDevice", "Device/DeviceProfile", "Device/DeviceProfile+Display",
                "Transport/NativeLogging", "Library/StorageLocations", "Library/DeviceStateStorage", "Guest/GuestServices", "Guest/GuestAgent", "Guest/GuestPackage",
                "Library/DeviceInstance", "Library/FirmwareCatalog", "Features/MediaPhoto", "Features/MediaIdentity", "Device/DeviceConnectionIssue",
-               "Device/WebProxyConfiguration", "Services/SpringBoardServices", "Services/LockdownState", "Services/HostServiceTypes", "Services/HostServiceProtocol", "Services/HostServiceResources", "Services/HostServiceWorkers", "Services/MediaStaging", "Services/HomeScreenOrdering", "Library/FirmwareTool"]
+               "Device/WebProxyConfiguration", "Services/SpringBoardServices", "Services/LockdownState", "Services/HostServiceTypes", "Services/HostServiceProtocol", "Services/HostServiceResources", "Services/HostServiceWorkers", "Services/MediaStaging", "Services/HomeScreenOrdering", "Library/FirmwareTool",
+               "Features/MediaSong", "Features/MediaVideo", "Features/PreparedMedia", "Features/MediaImport", "Features/MediaSupport"]
 
 
 def tree(root):
@@ -194,6 +195,7 @@ def build(args, out):
                     ROOT / "tests/drivers/session-driver/main.swift", ROOT / "tests/drivers/session-driver/guest.swift",
                     ROOT / "tests/drivers/session-driver/single.swift", ROOT / "tests/drivers/session-driver/activation.swift",
                     ROOT / "tests/drivers/session-driver/deadline.swift", ROOT / "tests/drivers/session-driver/proxy.swift",
+                    ROOT / "tests/drivers/session-driver/media.swift",
                     "-o", out / "session-driver"],
                    check=True, stdout=open(out / "swiftc.log", "w"), stderr=subprocess.STDOUT)
     worker = out / "LightTouchServices"
@@ -245,6 +247,11 @@ def main():
     ap.add_argument("--reboot", action="store_true", help="--single: cold boot the same overlay and verify file/app persistence, identity and shutdown again")
     ap.add_argument("--upgrade-ipa", type=Path, help="--single: after the install, the same bundle id at a newer version: "
                     "it must install as an upgrade, keeping the app's data (issue #22)")
+    ap.add_argument("--media", type=Path, nargs="+", help="--single: after the install, these files through the app's media import "
+                    "(tests/sessions/check-media-native.py --single judges the read-back library and screenshots)")
+    ap.add_argument("--media-tools", type=Path, help="--media: the itmedia/itphoto to upload (default: the qemu-ios checkout's)")
+    ap.add_argument("--audio-wav", type=Path, help="--single: record the guest's audio to this WAV (default: no audio)")
+    ap.add_argument("--media-taps", help="--media: JSON list of normalized [x, y] taps in Music after the imports")
     ap.add_argument("--afc-race", type=int, metavar="N", help="--single: N boots, AFC at lockdown's first answer, then Stop (smoke.md #5)")
     ap.add_argument("--afc-race-dirty", action="store_true", help="--afc-race: install, upload and halt first, stopping mid-shutdown")
     ap.add_argument("--service-worker", help="explicit executable host-service worker (otherwise compile production sources)")
@@ -299,6 +306,14 @@ def main():
         major = str(json.loads((args.single / "device.lock.json").read_text()).get("product_version", "0")).split(".")[0]
         if major.isdigit() and int(major) >= 6:
             cfg["timeout"] = (1400 if int(major) >= 7 else 700) * (2 if args.reboot else 1)
+        if args.audio_wav:
+            cfg["single"]["audioWAV"] = str(args.audio_wav.resolve())
+        if args.media:
+            cfg["single"] |= {"media": [str(m.resolve()) for m in args.media],
+                              "mediaTools": str((args.media_tools or sources.path("qemu-ios") / "contrib/it-media").resolve())}
+            if args.media_taps:
+                cfg["single"]["mediaTaps"] = json.loads(args.media_taps)
+            cfg["timeout"] = max(cfg.get("timeout", 0), 900)
         if args.afc_race:
             cfg["single"] |= {"raceBoots": args.afc_race, "raceDirty": args.afc_race_dirty}
             cfg["timeout"] = 200 * args.afc_race
@@ -385,6 +400,9 @@ def main():
             ids = find("identity", device=d)
             check(ids and all(e.get("matches") for e in ids),
                   f"{d}: lockdown factory identity matches the prepared identity: " + ", ".join(f"{e['bt']} (want {e['want']})" for e in ids))
+        if d == "ipad":
+            ids = find("identity", device=d)
+            check(ids and all(e.get("matches") for e in ids), f"{d}: lockdown WiFiAddress matches the prepared identity's wifi-mac")
         for a in find("afc", device=d):
             check(a.get("same") and a.get("listed") == a["bytes"], f"{d}: AFC round trip of {a['bytes']} bytes"
                   + (f" ({a.get('seconds', 0):.1f} s)" if a.get("same") else f": {a.get('error', 'content differs')}"))

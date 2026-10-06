@@ -21,7 +21,8 @@ public enum VolumeMount {
 
     /// Mounts `image` read-write at `mountPoint` (created if needed), runs `body` with the mount root, then
     /// removes `junk`, unmounts (retrying while Spotlight or fseventsd hold the volume), checks it with
-    /// `fsck_hfs -fn` and detaches. A volume that would not unmount is never fsck'd (a mounted volume
+    /// `fsck_hfs -fn` and detaches (findings that are only folder counts are set offline and rechecked:
+    /// `repairingFolderCounts`). A volume that would not unmount is never fsck'd (a mounted volume
     /// reports bogus damage); it is force-detached and the call throws. When `body` throws, its error wins.
     nonisolated(nonsending) public static func withMounted<T>(_ image: URL, at mountPoint: URL,
         _ body: (URL) async throws -> T) async throws -> T {
@@ -41,7 +42,7 @@ public enum VolumeMount {
             catch { FirmwareDiagnostics.write(Data("mount cleanup: \(error)\n".utf8)) }
             throw error
         }
-        let fsck = try await finish(dev: dev, mountPoint: mountPoint, check: true)
+        let fsck = try await repairingFolderCounts(image, try await finish(dev: dev, mountPoint: mountPoint, check: true))
         guard fsck.ok else { throw FirmwareError(.internal, "fsck_hfs is not happy with \(image.lastPathComponent): \(fsck.output.suffix(600))") }
         if let journal { try HFSPlusVolume(image, writable: true).restore(journal) }
         return value
@@ -85,6 +86,37 @@ public enum VolumeMount {
     public static func check(_ dev: String) async throws -> (ok: Bool, output: String) {
         let (status, out) = try await exec("/sbin/fsck_hfs", ["-fn", dev])
         return (status == 0 && out.contains("appears to be OK"), out)
+    }
+
+    /// smoke #36: macOS 27's HFS driver now and then writes a directory's HFSX folder count as 0 at the unmount
+    /// (seen on directories the edit only read, e.g. 7B500's private/var/log, and on fresh data volumes), so
+    /// fsck finds "Incorrect folder count in a directory". When those are fsck's only findings, set the counts
+    /// it names in the detached image and check again; the result of that check is what counts. Any other
+    /// finding is returned as is.
+    static func repairingFolderCounts(_ image: URL, _ fsck: (ok: Bool, output: String)) async throws -> (ok: Bool, output: String) {
+        guard !fsck.ok, let counts = folderCountFindings(fsck.output) else { return fsck }
+        FirmwareDiagnostics.write(Data("\(image.lastPathComponent): fsck_hfs found only folder counts, set offline: \(counts)\n".utf8))
+        try HFSPlusVolume(image, writable: true).setFolderCounts(counts)
+        let dev = try await attach(image)
+        let again: (ok: Bool, output: String)
+        do { again = try await check(dev) } catch { await cleanupDetach(dev); throw error }
+        try await detach(dev)
+        return again.ok ? again : (false, fsck.output + "\nafter setting the folder counts:\n" + again.output)
+    }
+
+    /// CNID -> the count fsck_hfs wants, when every finding in `output` is "Incorrect folder count in a directory
+    /// (id = N)" + "(It should be X instead of Y)"; nil when there is any other finding (or none).
+    static func folderCountFindings(_ output: String) -> [UInt32: UInt32]? {
+        let lines = output.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("** ") && !$0.hasPrefix("Executing fsck_hfs") && !$0.hasPrefix("The volume name is ") }
+        guard !lines.isEmpty, lines.count % 2 == 0 else { return nil }
+        var counts: [UInt32: UInt32] = [:]
+        for i in stride(from: 0, to: lines.count, by: 2) {
+            guard let id = lines[i].wholeMatch(of: /Incorrect folder count in a directory \(id = (\d+)\)/).flatMap({ UInt32($0.1) }),
+                  let n = lines[i + 1].wholeMatch(of: /\(It should be (\d+) instead of \d+\)/).flatMap({ UInt32($0.1) }) else { return nil }
+            counts[id] = n
+        }
+        return counts
     }
 
     /// A bare (no partition map) case-sensitive journaled HFS+ volume in a sparse raw file of `size` bytes

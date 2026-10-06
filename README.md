@@ -9,9 +9,6 @@ the keys pinned in `LightTouchMac/Resources/firmware-catalog.json`; there are no
 per firmware. Each running device is its own helper process (`LightTouchDevice`), which is the only
 thing that links the emulator.
 
-Project status (what is done, running and left) lives in **[docs/STATUS.md](docs/STATUS.md)**. Read it
-first.
-
 ## Firmwares in the catalog
 
 The shared [firmware catalog](LightTouchMac/Resources/firmware-catalog.json) is the source of truth for
@@ -23,8 +20,7 @@ firmwarekit create --catalog LightTouchMac/Resources/firmware-catalog.json \
   --helper /path/to/LightTouchDevice --guest-tools /path/to/ipad-guest-tools
 ```
 
-Catalog availability is distinct from measured acceptance. The six-device boot and persistence
-matrix and current fidelity limits are recorded in [docs/fidelity-consolidation.md](docs/fidelity-consolidation.md).
+Catalog availability is distinct from measured acceptance.
 
 ## The three repositories
 
@@ -34,8 +30,7 @@ matrix and current fidelity limits are recorded in [docs/fidelity-consolidation.
 | [qemu-ios](https://github.com/samhenrigold/qemu-ios) (fork; branch `ipad1` carries both boards) | The emulator (`hw/arm/ipod_touch_*.c`, `hw/arm/ipad1.c`, `hw/arm/s5l8930_*.c`), the guest tools under `contrib/` (agent, GL shims, AppSync, guest packages), Python format inspection tools and frozen bake references, and the emulator gates under `tests/` | Pinned by commit in `build-support/sources.json`. Linked by the helper as `libqemu-arm.dylib` (`contrib/macos-app/make-dylib-macos.sh`); its `contrib/export-guest-artifacts.sh` builds and stages the guest tools, GL tables, entitlements and headers with a manifest, and `scripts/build-guest-tools.sh` is a thin caller of it |
 | [usbmuxd](https://github.com/samhenrigold/usbmuxd) (fork, branch `idle-poll` on `qemu-zlp`) | The usbmuxd that bridges the emulated USB device to libimobiledevice | Built into the bundle from the commit pinned in `build-support/sources.json`; the emulator and this fork ship together, so bump both pins in one commit |
 
-The emulator side's own entry point is qemu-ios `README.md`; its iPod capabilities doc is
-`docs/capabilities.md` and its iPad entry is `docs/ipad1/README.md`.
+The emulator side's own entry point is qemu-ios `README.md`.
 
 ## Building
 
@@ -78,9 +73,6 @@ architecture under `native/arm64` and `native/x86_64`, merges them into `native-
 `scripts/merge-native.py`, and builds the app with both slices. The x86_64 FFmpeg build uses NASM for its
 decoder assembly. With `--native-build`, pass the directory that holds the `arm64` and `x86_64` roots.
 
-The pre-multi-device README, with the iPod feature notes (media import, battery, proxy, captures) and
-the older build walkthrough, is kept at `docs/archive/README-2026-09-26.md`.
-
 ## Gates
 
 One runner, three tiers, and a wrapper that runs the host-only ones:
@@ -116,35 +108,9 @@ through `scripts/sources.py` (the pin in `build-support/sources.json`).
 Every headless boot passes `-audio driver=none`. Nobody but Sam launches the app itself; verification is
 headless.
 
-## Documentation
-
-Reading order for a new contributor:
-
-1. [docs/STATUS.md](docs/STATUS.md): what is done, running and left, with how each line was checked.
-2. This README.
-3. [docs/multi-device-plan.md](docs/multi-device-plan.md), sections "Preparer contract" and "Corrections
-   from implementation". The rest of that file is the plan as written; the corrections say what was built.
-4. [docs/storage-layout.md](docs/storage-layout.md): where device state, logs and caches live and who may
-   delete what.
-5. [docs/filesystem-f0-findings.md](docs/filesystem-f0-findings.md): the offline root-filesystem work
-   (`firmwarekit mount/export`).
-6. [docs/guest-package-bootstrap.md](docs/guest-package-bootstrap.md): versioned guest tools delivered at
-   boot, with rollback; section "P5, the app" is the app side as built.
-
-Also live: [docs/Command-organization.md](docs/Command-organization.md) (menus, toolbar, shortcuts),
-[docs/accelerometer-controls.md](docs/accelerometer-controls.md) (Motion menu and the accelerometer
-model), [docs/ipad-frame/README.md](docs/ipad-frame/README.md) (the stand-in iPad chrome),
-[docs/sweep/](docs/sweep/) (the 2026-09-28 consolidation surveys and plan). `docs/activation-211.md` and
-`tools/activation/` are Sam's.
-
-`docs/archive/` holds dated correction logs and superseded plans (the pre-multi-device README, the
-`ipad1` branch's app notes, the phase-0 spikes, the September 2026 UX logs). Nothing there describes the
-current tree.
-
 ## Rules
 
-- **No Python bridge.** The app runs one preparer, the Swift `firmwarekit`, through the contract in
-  `docs/multi-device-plan.md`. qemu-ios's Python `imgtools/` is the test oracle, not a runtime.
+- **No Python bridge.** The app runs one preparer, the Swift `firmwarekit`. qemu-ios's Python `imgtools/` is the test oracle, not a runtime.
 - **Activation is Sam's.** FirmwareKit runs it as a built-in preparation step
   (`Packages/FirmwareKit/Sources/CActivation`, `tools/activation/`). Treat it as a black box: no
   activation settings, no rewriting or describing its internals, no bundling of anything else.
@@ -157,7 +123,7 @@ current tree.
 
 | Path | What |
 |---|---|
-| `LightTouchMac/` | The app, one directory per layer (below), plus `Resources/firmware-catalog.json` (its `first_run` names the device a first launch selects: an `available` build Apple still serves), `Assets.xcassets`, `Shim/` |
+| `LightTouchMac/` | The app, one directory per layer (below), plus `Resources/firmware-catalog.json` (its `bundled` names the built-in iPod, `Resources/device/n72ap-7E18.itbase`, which a fresh install unpacks and selects; `first_run` is what a first launch selects without it: an `available` build Apple still serves), `Assets.xcassets`, `Shim/` |
 | `LightTouchMac/Transport/` | The wire to a device and the app's logs: `IMobileDevice` (the dlopen'd libimobiledevice), `USBMux` (each device's usbmuxd), `DeviceExecution` (the serial gate, deadlines, late-handle cleanup, errors, timeouts), `NativeLogging`, `AppEventLog` |
 | `LightTouchMac/Services/` | Stock lockdown services on one device, all on `DeviceServices`' `run` kernel: `InstallationProxy`, `AFC` (staging and the Files browser), `SpringBoardServices`, `LockdownTools` (ActivationState, the lockdown-tz and lockdown-mcinstall children), `NotificationProxy` |
 | `LightTouchMac/Guest/` | The guest agent: `GuestAgent` (the wire and typed ops), `GuestServices` (media commit, trust, proxy route, respring, launch), `GuestPackage` |
@@ -173,6 +139,5 @@ current tree.
 | `tests/` | `run.py` and the tiers `offline/`, `sessions/`, `release/`; `drivers/` (helper-driver, session-driver), `fixtures/` (fake-firmwarekit.py, catalog-server.py, the Swift fixtures); `SLICED.md` |
 | `build-support/` | `dependencies.json` (pinned archives) and build patches |
 | `Configuration/` | `Shared.xcconfig` |
-| `docs/` | Documentation; `docs/sweep/` surveys and plan; `docs/archive/` superseded material |
 | `spikes/` | Phase-0 spike sources (rendezvous, GL helper, two-at-once); archive material, kept for reference |
 | `tools/activation/` | Sam's activation tool (its `build/` output is ignored) |

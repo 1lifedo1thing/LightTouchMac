@@ -37,6 +37,16 @@ final class DeviceModelView: NSView {
   private var screenOff = false
   private var shakeStarted: CFTimeInterval?
   private var trickStarted: CFTimeInterval?
+  /// Set when the pose or viewport changes; a still model is not re-posed every frame.
+  private var poseDirty = true
+  /// RealityKit presents every display refresh even when nothing moves, so a
+  /// model that has been still for `freezeDelay` is swapped for a snapshot and
+  /// the renderer hidden; any change brings the live renderer straight back.
+  private let still = CALayer()
+  private var lastChange = CACurrentMediaTime()
+  private var changeGeneration = 0
+  private var freezing = false
+  private static let freezeDelay: CFTimeInterval = 0.5
 
   @available(macOS 15, *)
   init(url: URL, profile: DeviceProfile) async throws {
@@ -163,6 +173,10 @@ final class DeviceModelView: NSView {
     }
     wantsLayer = true
     layer?.insertSublayer(chassisShadow, at: 0)
+    still.isHidden = true
+    still.contentsGravity = .resize
+    still.actions = ["contents": NSNull(), "hidden": NSNull(), "bounds": NSNull(), "position": NSNull()]
+    layer?.addSublayer(still)
     chassisShadow.shadowColor = NSColor.black.cgColor
     chassisShadow.shadowOpacity = 0.4
     chassisShadow.shadowRadius = 24
@@ -185,6 +199,8 @@ final class DeviceModelView: NSView {
     updateViewport()
   }
   private func updateViewport() {
+    poseDirty = true
+    noteChange()
     renderer.frame = bounds
     if let center = viewportCenter {
       camera.position.x = -Float(center.x - bounds.midX) * camera.position.z / 3000
@@ -292,9 +308,13 @@ final class DeviceModelView: NSView {
     }
   }
   func updateFrame(_ image: CGImage) {
+    noteChange()
     do {
+      // replace() updates the texture the material already holds; reassigning
+      // the material every frame makes RealityKit reprocess the model.
       if let screenTexture {
         try screenTexture.replace(withImage: image, options: .init(semantic: .color))
+        return
       } else if #available(macOS 15, *) {
         screenTexture = try TextureResource(image: image, options: .init(semantic: .color))
       } else {
@@ -322,6 +342,7 @@ final class DeviceModelView: NSView {
     display.components.set(model)
   }
   func setScreenOff(_ off: Bool) {
+    noteChange()
     screenOff = off
     updateScreenMaterial()
   }
@@ -412,6 +433,32 @@ final class DeviceModelView: NSView {
     }
     return nil
   }
+  private func noteChange() {
+    lastChange = CACurrentMediaTime()
+    changeGeneration += 1
+    freezing = false
+    if renderer.isHidden {
+      renderer.isHidden = false
+      still.isHidden = true
+      still.contents = nil
+    }
+  }
+  private func freezeIfStill() {
+    guard !freezing, !renderer.isHidden, window != nil,
+      CACurrentMediaTime() - lastChange >= Self.freezeDelay else { return }
+    freezing = true
+    let generation = changeGeneration
+    renderer.snapshot(saveToHDR: false) { [weak self] image in
+      // A change since the request makes this picture stale: stay live.
+      guard let self, self.freezing, self.changeGeneration == generation else { return }
+      self.freezing = false
+      guard let image else { self.lastChange = CACurrentMediaTime(); return }
+      self.still.frame = self.renderer.frame
+      self.still.contents = image
+      self.still.isHidden = false
+      self.renderer.isHidden = true
+    }
+  }
   func shake() {
     guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
     shakeStarted = CACurrentMediaTime()
@@ -421,7 +468,15 @@ final class DeviceModelView: NSView {
     guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
     trickStarted = CACurrentMediaTime()
   }
-  func advanceAnimations() {
+  /// Returns false, touching nothing, when the model is still: writing the
+  /// same transform and shadow every frame keeps RealityKit and Core Animation busy.
+  @discardableResult func advanceAnimations() -> Bool {
+    guard poseDirty || transition != nil || shakeStarted != nil || trickStarted != nil else {
+      freezeIfStill()
+      return false
+    }
+    poseDirty = false
+    noteChange()
     let now = CACurrentMediaTime()
     if let animation = transition {
       let t = now - animation.start
@@ -505,5 +560,6 @@ final class DeviceModelView: NSView {
     }
     path.closeSubpath()
     chassisShadow.shadowPath = path
+    return true
   }
 }

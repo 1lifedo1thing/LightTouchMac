@@ -201,10 +201,12 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
     // MARK: - Library and selection
 
-    /// Selects the launch device and starts it, as the single-device app did.
+    /// Selects the launch device, and starts it when it is the only one set up.
     func selectLaunchDevice() {
         guard let entry = host.launchSelection.flatMap({ library.contains($0) ? $0 : nil }) ?? library.entries.first else { return }
         library.select(entry)
+        // With several devices, which to run is the user's call: launch only selects.
+        guard library.entries.filter({ host.instance(for: $0) != nil }).count <= 1 else { return }
         if canPerform(.start, for: entry) { start(entry) }
     }
 
@@ -935,7 +937,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         carrierWindows[id]?.showWindow(sender)
     }
     @objc func specialTrick(_ sender: Any?) {
-        deviceVC?.screen.specialTrick()
+        guard let screen = deviceVC?.screen, screen.canPerformSpecialTrick else { return }
+        screen.specialTrick()
         // The chime lands on the pop, a beat after the crouch starts.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { NSSound(named: "special_trick")?.play() }
     }
@@ -1014,7 +1017,10 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     @objc func syncMedia(_ sender: Any?) {
         guard let window, let emulator else { return }
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = PreparedMedia.extensions.sorted().compactMap { UTType(filenameExtension: $0) }
+        let firmware = emulator.mediaFirmware
+        panel.allowedContentTypes = PreparedMedia.extensions.sorted()
+            .filter { MediaSupport.supports(PreparedMedia.destination(forExtension: $0), on: firmware) }
+            .compactMap { UTType(filenameExtension: $0) }
         panel.allowsMultipleSelection = true
         panel.prompt = "Import"
         panel.beginSheetModal(for: window) { [weak window] response in
@@ -1102,8 +1108,11 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         validateCaptureToolbar()
     }
 
-    /// View ▸ Hide/Show Device Bezel: every device's screen, with or without the device around it.
-    @objc func toggleDeviceBezel(_ sender: Any?) { DisplayView.showsBezel.toggle() }
+    /// View ▸ Device Bezels: every device as the 3D model, the flat art, or the screen alone.
+    @objc func selectDeviceBezel(_ sender: NSMenuItem) {
+        guard let bezel = DisplayView.Bezel(rawValue: sender.tag) else { return }
+        DisplayView.bezel = bezel
+    }
 
     @objc func toggleTouchOverlay(_ sender: Any?) {
         deviceVC?.screen.showsTouches.toggle()
@@ -1288,8 +1297,8 @@ extension MainWindowController: NSMenuItemValidation {
         // The selected row's commands, and the window's own, work without a device.
         switch menuItem.action {
         case #selector(addDevice(_:)): return window?.attachedSheet == nil
-        case #selector(toggleDeviceBezel(_:)):
-            menuItem.title = DisplayView.showsBezel ? "Hide Device Bezel" : "Show Device Bezel"
+        case #selector(selectDeviceBezel(_:)):
+            menuItem.state = menuItem.tag == DisplayView.bezel.rawValue ? .on : .off
             return true
         case #selector(toggleDeviceRunning(_:)):
             let running = selectedEntry.map { host.row(for: $0).state == .running } ?? false
@@ -1342,6 +1351,8 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(selectMotionPose(_:)):
             menuItem.state = menuItem.tag == emulator.motionPose.rawValue ? .on : .off
             return true
+        case #selector(specialTrick(_:)):
+            return deviceVC.screen.canPerformSpecialTrick
         case #selector(resetMotion(_:)):
             return emulator.acceptsInput && !emulator.isSleeping
 
@@ -1350,7 +1361,7 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(installApp(_:)):
             return emulator.canQueueInstall
         case #selector(syncMedia(_:)):
-            return emulator.canQueueInstall && emulator.hasGuestTools
+            return emulator.canQueueInstall && MediaSupport.supportsAny(emulator.mediaFirmware)
         case #selector(restartSpringBoard(_:)):
             return emulator.canReachDevice && !emulator.isInstalling
         // Device input only reaches a running guest.

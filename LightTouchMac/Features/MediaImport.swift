@@ -17,10 +17,16 @@ struct MediaImport: Sendable {
     }
 
     func commit(_ media: PreparedMedia) async throws {
-        switch media {
-        case .song(let song): try await commitSong(song)
-        case .photo(let photo): try await commitPhoto(photo)
-        case .video(let video): try await commitLibraryMedia(id: video.id, metadata: video.metadata, destination: "Videos")
+        do {
+            switch media {
+            case .song(let song): try await commitSong(song)
+            case .photo(let photo): try await commitPhoto(photo)
+            case .video(let video): try await commitLibraryMedia(id: video.id, metadata: video.metadata, destination: "Videos")
+            }
+        } catch let error as GuestAgentError {
+            // The helper refused (its reason is in app.log through failureText); the row gets plain words.
+            logEvent("media: \(error)")
+            throw DeviceToolsError.failed("\(media.destination) couldn’t add “\(media.title)”.")
         }
     }
 

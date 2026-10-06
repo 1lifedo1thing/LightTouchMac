@@ -103,6 +103,13 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
             let labels = all(view).compactMap { $0 as? NSTextField }.filter { visible($0) && !$0.stringValue.isEmpty }
             let buttons = all(view).compactMap { $0 as? NSButton }.filter { visible($0) && $0.isBordered }
             func fail(_ s: String) { failures.append("\(name): \(s)") }
+            // The art is the sidebar's thumbnail for the model, dimmed, not the shell.
+            if let profile = row.entry.profile {
+                let art = all(view).compactMap { $0 as? NSImageView }.first { $0.alphaValue < 1 }
+                if art?.image?.tiffRepresentation != { let i = profile.icon.copy() as! NSImage; i.size = NSSize(width: 256, height: 256); return i.tiffRepresentation }() {
+                    fail("the art isn't the device's icon")
+                }
+            }
             for l in labels {
                 let f = frame(l)
                 if !view.bounds.contains(f) { fail("\(l.stringValue) outside the view") }
@@ -196,15 +203,13 @@ with tempfile.TemporaryDirectory(prefix='ltm-placeholder-') as tmp:
     tmp = Path(tmp)
     out = Path(args.out) if args.out else tmp / 'out'
     out.mkdir(parents=True, exist_ok=True)
-    source = (app / 'UI/DevicePlaceholderViewController.swift').read_text()
-    art = 'NSImage(named: $0.shellImageName)'
-    assert art in source, 'the art lookup moved: update this check'
-    assets = app / 'Assets.xcassets'
-    (tmp / 'placeholder.swift').write_text(source.replace(art, f'NSImage(contentsOfFile: "{assets}/" + $0.shellImageName + ".imageset/" + ["shell": "shell_opaque.png", "shell-1g": "shell-1g.png"][$0.shellImageName, default: "ipad-frame.png"])'))
+    # The art is the sidebar's device icon (macOS's own artwork), which needs no app bundle.
+    (tmp / 'placeholder.swift').write_text((app / 'UI/DevicePlaceholderViewController.swift').read_text())
     (tmp / 'stubs.swift').write_text(stubs)
     (tmp / 'main.swift').write_text(check)
     subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), *schema_sources(), '-parse-as-library', '-swift-version', '5', '-module-cache-path', str(tmp / 'modules'),
                     str(app / 'Library/FirmwareCatalog.swift'), str(app / 'Device/DeviceProfile.swift'),
                     str(app / 'Device/DeviceProfile+Display.swift'), str(app / 'Device/DeviceRow.swift'), str(app / 'UI/DropHighlight.swift'),
+                    str(app / 'UI/DeviceProfile+Icon.swift'), str(app / 'UI/AppleDeviceType.swift'),
                     str(tmp / 'placeholder.swift'), str(tmp / 'stubs.swift'), str(tmp / 'main.swift'), '-o', str(tmp / 'check')], check=True)
     subprocess.run([str(tmp / 'check'), str(app / 'Resources/firmware-catalog.json'), str(out)], check=True, timeout=60)

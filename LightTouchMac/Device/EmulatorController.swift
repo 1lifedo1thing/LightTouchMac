@@ -1830,6 +1830,12 @@ final class EmulatorController {
     /// "iPod2,1": the model Legacy Store judges apps for, with iosVersion.
     var productType: String? { catalogEntry?.productType }
     var guestArch: String { catalogEntry?.recipe?.guest?.arch ?? GuestPackage.arch(board: instance.board) ?? "armv6" }
+    /// What the media gate reads (MediaSupport).
+    var mediaFirmware: MediaSupport.Firmware {
+        MediaSupport.Firmware(board: instance.board, version: iosVersion,
+                              build: catalogEntry?.build ?? instance.firmware.split(separator: "-").last.map(String.init) ?? "",
+                              name: (["iOS \(iosVersion)"] + [catalogEntry?.prereleaseBadge].compactMap { $0 }).joined(separator: " "))
+    }
     
     /// Cheap in-process check that the USB bridge sees the guest (bounded and
     /// gated: DeviceServices.checkAttachment). App-service reads establish

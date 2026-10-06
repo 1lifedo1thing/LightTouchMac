@@ -51,6 +51,18 @@ public enum N72NOR {
         return Data(nor)
     }
 
+    /// `nor` (a build) as `build` would have made it for `id`: the SysCfg block and the nvram bank are the only
+    /// identity-bearing bytes (the UID that wraps the SHSH is the machine's, not the unit's).
+    public static func reidentify(_ nor: Data, identity id: UnitIdentity) throws -> Data {
+        guard nor.count == size else { throw FirmwareError(.unsupported, "nor.bin is \(nor.count) bytes, not \(size)") }
+        var b = [UInt8](nor)
+        let fresh = try base(id)
+        let imageStart = 0x40 * 0x200
+        b.replaceSubrange(sysCfg..<imageStart, with: fresh[sysCfg..<imageStart])
+        b.replaceSubrange(nvram..<size, with: fresh[nvram..<size])
+        return Data(b)
+    }
+
     /// Encrypts the SHSH tag (past sigCheckArea, so no digest covers it) under the UID-derived key.
     static func wrapSHSH(_ b: inout [UInt8], key: Data) throws -> Bool {
         let nopack = Int(le32(b, 8))

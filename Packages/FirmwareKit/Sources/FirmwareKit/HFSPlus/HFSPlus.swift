@@ -409,6 +409,29 @@ public final class HFSPlusVolume {
         return changed
     }
 
+    /// Sets each folder's HFSX folder count (folderCount, the number of subfolders; kept only on records with
+    /// kHFSHasFolderCountMask) in place. Bookkeeping only: nothing else in the record changes. Throws before
+    /// writing anything if a CNID is not such a folder.
+    public func setFolderCounts(_ counts: [UInt32: UInt32]) throws {
+        guard writable else { throw FirmwareError(.internal, "\(url.lastPathComponent) is open read-only") }
+        let byID = Dictionary(try catalog().filter { $0.kind == .folder }.map { ($0.cnid, $0) }, uniquingKeysWith: { a, _ in a })
+        let t = try btree(catalogFork, fileID: Self.catalogID)
+        let targets = try counts.map { cnid, n -> (Int, UInt32) in
+            guard let r = byID[cnid] else { throw FirmwareError(.internal, "\(url.lastPathComponent): no folder \(cnid)") }
+            let body = r.node * t.nodeSize + r.bodyOffset
+            guard try read(catalogFork, fileID: Self.catalogID, offset: body + 3, count: 1)[0] & 0x10 != 0 else {   // kHFSHasFolderCountMask
+                throw FirmwareError(.internal, "\(url.lastPathComponent): folder \(cnid) keeps no folder count")
+            }
+            return (body + 84, n)   // HFSPlusCatalogFolder.folderCount
+        }
+        for (at, n) in targets {
+            var b = [UInt8](repeating: 0, count: 4)
+            put32(&b, 0, n)
+            try write(catalogFork, fileID: Self.catalogID, offset: at, bytes: b)
+        }
+        catalogCache = nil
+    }
+
     // MARK: determinism (what a mount leaves behind: dates, a fresh volume's identifier, the journal)
 
     /// The newest create/modify/attribute/access date in the catalog: on a pristine IPSW volume, its newest file.

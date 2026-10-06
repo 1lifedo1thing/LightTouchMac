@@ -4,6 +4,8 @@
 // Download and Prepare: an IPSW either store already has, else a CDN download;
 // then `firmwarekit create` (PreparationJob), then a device in the library.
 // Import: hash, match, clone into State/IPSW, then the same preparation.
+// The built-in device (the catalog's `bundled`): its packed base unpacked by
+// `firmwarekit unpack-base` with an identity of its own, published the same way.
 
 import Cocoa
 
@@ -112,6 +114,7 @@ import Cocoa
 
     func downloadAndPrepare(_ entry: FirmwareCatalog.Entry) {
         guard jobs[entry.id].map({ if case .failed = $0 { true } else { false } }) ?? true else { return }
+        if let blob = Self.bundledBlob(entry) { return prepare(entry, ipsw: blob, bundled: true) }
         guard let sha1 = entry.source.sha1, !refuseExisting(entry) else { return }
         // The entry's IPSW and its keybag sibling's (4.3.1–4.3.5 boot 4.3's ramdisk), whichever aren't here yet.
         let sources = ([entry] + [entry.recipe?.keybagRamdiskFrom.flatMap(catalog.entry(id:))].compactMap { $0 })
@@ -257,7 +260,25 @@ import Cocoa
         }
     }
 
-    private func prepare(_ entry: FirmwareCatalog.Entry, ipsw: URL) {
+    /// The entry's packed base in this bundle (a development build has none).
+    static func bundledBlob(_ entry: FirmwareCatalog.Entry) -> URL? {
+        guard let resource = entry.bundled, let blob = Bundle.main.resourceURL?.appendingPathComponent(resource),
+              FileManager.default.fileExists(atPath: blob.path) else { return nil }
+        return blob
+    }
+
+    /// A fresh install (`sidebarSaved` false: no launch has saved a sidebar yet; and no device in the library): the
+    /// built-in device is unpacked and returned, for the launch to select. A Mac that already has a library gets
+    /// nothing new; its Prepare is the user's (the row offers it once added with +, and after a Delete).
+    func prepareBundledIfFresh(sidebarSaved: Bool) -> FirmwareCatalog.Entry? {
+        guard !sidebarSaved, DeviceInstance.all(state: Bundled.stateDirectory).isEmpty,
+              let entry = catalog.bundledEntry, let blob = Self.bundledBlob(entry) else { return nil }
+        prepare(entry, ipsw: blob, bundled: true)
+        return entry
+    }
+
+    /// `bundled`: `ipsw` is the entry's packed base, unpacked rather than prepared.
+    private func prepare(_ entry: FirmwareCatalog.Entry, ipsw: URL, bundled: Bool = false) {
         guard preparations[entry.id] == nil else { return }
         if refuseExisting(entry) { jobs[entry.id] = nil; return }
         guard let preparer = Self.preparer else { return fail(entry, FirmwareError.failed(unavailableReason ?? "")) }
@@ -267,7 +288,7 @@ import Cocoa
         do { try IPSWStore.checkSpace(entry.estimates.peakBytes + others, at: Bundled.stateDirectory) }
         catch { return fail(entry, error) }
         var sibling: (entry: FirmwareCatalog.Entry, ipsw: URL)?
-        if let from = entry.recipe?.keybagRamdiskFrom {
+        if !bundled, let from = entry.recipe?.keybagRamdiskFrom {
             guard let sib = catalog.entry(id: from), let sha1 = sib.source.sha1 else { return fail(entry, FirmwareError.failed("catalog names no \(from)")) }
             // An imported IPSW whose sibling isn't here yet: that download first, as this entry's job.
             guard let sibIPSW = store.existing(sha1) else { return fetch(entry, [sib]) }
@@ -276,14 +297,14 @@ import Cocoa
         let request = PreparationJob.Request(
             entry: entry, ipsw: ipsw, sibling: sibling, state: Bundled.stateDirectory, preparer: preparer, helper: Self.helper,
             cache: IPSWStore.cachesDirectory.appendingPathComponent("Decrypted", isDirectory: true),
-            log: Bundled.logsDirectory.appendingPathComponent("Preparing/\(entry.id).log"))
+            log: Bundled.logsDirectory.appendingPathComponent("Preparing/\(entry.id).log"), blob: bundled ? ipsw : nil)
         let job = PreparationJob(request) { event in
             Task { @MainActor [weak self] in self?.preparation(entry, event) }
         }
         preparations[entry.id] = job
         starts[entry.id] = (Date(), 0)
         jobs[entry.id] = .preparing(.init(name: "Starting"))
-        logEvent("firmware: preparing \(entry.id) as \(job.id.uuidString)")
+        logEvent("firmware: \(bundled ? "unpacking the built-in" : "preparing") \(entry.id) as \(job.id.uuidString)")
         job.start()
     }
 

@@ -171,15 +171,25 @@ enum AppInstaller {
     static func startMedia(_ source: URL, with emulator: EmulatorController,
                            presenting window: NSWindow?) -> InstallJob {
         let job = InstallJob(name: source.deletingPathExtension().lastPathComponent, device: emulator.instance.id)
-        job.retry = { [weak job, weak emulator, weak window] in
-            guard let emulator else { return }
-            job?.dismiss()
-            startMedia(source, with: emulator, presenting: window)
+        // Refused before anything is read, staged or run in the guest: its helpers can't add this here.
+        let refusal = MediaSupport.refusal(PreparedMedia.destination(forExtension: source.pathExtension), on: emulator.mediaFirmware)
+        if refusal == nil {
+            job.retry = { [weak job, weak emulator, weak window] in
+                guard let emulator else { return }
+                job?.dismiss()
+                startMedia(source, with: emulator, presenting: window)
+            }
         }
-        job.status = "Preparing media…"
+        job.status = refusal ?? "Preparing media…"
         jobs.append(job)
         rows.add(job)
         NotificationCenter.default.post(name: .ltmInstallStarted, object: job)
+        if let refusal {
+            logEvent("install: \(job.name) refused: \(refusal)")
+            job.failed = true
+            finish(job)
+            return job
+        }
         let readyQueue = queue(for: emulator.instance.id)
         job.task = Task {
             var acquired = false
