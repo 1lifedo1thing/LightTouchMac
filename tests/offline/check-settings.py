@@ -8,6 +8,7 @@ a=source.index('    @objc func toggleAutomaticRotation(')
 b=source.index('    @objc func showHelp(',a)
 actions=source[a:b]
 fixture=r'''import Cocoa
+import SwiftUI
 @MainActor enum NetworkAccessPreference { static let key="guestNetworkEnabled" }
 @MainActor final class EmulatorController {
  var network = true
@@ -50,13 +51,24 @@ fixture=r'''import Cocoa
   let debug=NSMenuItem(title:"Debug Port…",action:#selector(AppDelegate.showDebugPort(_:)),keyEquivalent:"")
   let copy=NSMenuItem(title:"Copy lldb Command",action:#selector(AppDelegate.copyLLDBCommand(_:)),keyEquivalent:"")
   precondition(delegate.validateMenuItem(debug) && debug.state == .off && debug.toolTip == nil && !delegate.validateMenuItem(copy))
-  precondition(AppDelegate.debugPortText(shortName:"iPod",enabled:false,port:nil).hasPrefix("Off.\n"))
+  precondition(DebugPortView.state(shortName:"iPod",enabled:false,port:nil) == "Off.")
   delegate.emulator!.toggleDebugPort()
   precondition(delegate.validateMenuItem(debug) && debug.state == .on && debug.toolTip == "Takes effect the next time the iPod starts.")
   delegate.emulator!.debugPort=4321
-  let text=AppDelegate.debugPortText(shortName:"iPod",enabled:true,port:4321)
-  precondition(text.hasPrefix("On, at 127.0.0.1:4321.") && text.contains("gdb-remote 127.0.0.1:4321") && text.contains("target remote 127.0.0.1:4321"))
-  precondition(AppDelegate.debugPortText(shortName:"iPod",enabled:false,port:4321).hasPrefix("Off from the next start."))
+  precondition(DebugPortView.state(shortName:"iPod",enabled:true,port:4321) == "On, at 127.0.0.1:4321.")
+  let commands=DebugPortView.commands(port:4321,lldbWithSymbols:delegate.emulator!.lldbAttachCommand).map(\.1)
+  precondition(commands.count == 3 && commands[0].contains("gdb-remote 127.0.0.1:4321") && commands[2].contains("target remote 127.0.0.1:4321"))
+  precondition(DebugPortView.state(shortName:"iPod",enabled:false,port:4321).hasPrefix("Off from the next start."))
+  // The sheet: a real size, every command on it with a Copy button, offscreen.
+  let sheet=NSHostingView(rootView:DebugPortView(shortName:"iPod",port:4321,lldbWithSymbols:delegate.emulator!.lldbAttachCommand,enabled:true,onToggle:{},onDone:{}))
+  let window=NSWindow(contentRect:NSRect(x:0,y:0,width:520,height:400),styleMask:[.titled],backing:.buffered,defer:true)
+  window.contentView=sheet; sheet.setFrameSize(sheet.fittingSize); sheet.layoutSubtreeIfNeeded()
+  func all(_ v:NSView)->[NSView] { v.subviews.flatMap { [$0]+all($0) } }
+  precondition(sheet.fittingSize.width >= 500 && sheet.fittingSize.height > 250, "debug port sheet \(sheet.fittingSize)")
+  if let out=ProcessInfo.processInfo.environment["LTM_CHECK_OUT"] {
+   let rep=sheet.bitmapImageRepForCachingDisplay(in:sheet.bounds)!; sheet.cacheDisplay(in:sheet.bounds,to:rep)
+   try? rep.representation(using:.png,properties:[:])!.write(to:URL(fileURLWithPath:out).appendingPathComponent("debug-port.png"))
+  }
   precondition(delegate.validateMenuItem(debug) && debug.toolTip == nil && delegate.validateMenuItem(copy) && copy.toolTip!.contains("127.0.0.1:4321"))
   print("PASS: the debug port follows the next start and offers its lldb command only while a boot has one")
   print("PASS: menu preferences apply rotation immediately and show pending internet changes in the tooltip, never the title")
@@ -65,5 +77,5 @@ fixture=r'''import Cocoa
 '''
 with tempfile.TemporaryDirectory(prefix='ltm-preferences-') as directory:
  work=Path(directory);(work/'check.swift').write_text(fixture)
- subprocess.run(['xcrun','swiftc','-parse-as-library','-default-isolation','MainActor',str(work/'check.swift'),'-o',str(work/'check')],check=True)
+ subprocess.run(['xcrun','swiftc','-parse-as-library','-default-isolation','MainActor',str(root/'LightTouchMac/UI/DebugPortView.swift'),str(work/'check.swift'),'-o',str(work/'check')],check=True)
  subprocess.run([str(work/'check')],check=True)
