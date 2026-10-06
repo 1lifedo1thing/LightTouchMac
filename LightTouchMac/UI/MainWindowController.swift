@@ -150,18 +150,19 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         migrateCaptureToolbar(toolbar)
         migrateSidebarToolbar(toolbar)
         migrateAddDeviceToolbar(toolbar)
-        // Out and in. Momentary, because both are commands rather than states
+        // Out, physical size, in. Momentary, because all are commands rather than states
         // to sit in — which state you are in is the menu's job, where the
         // checkmarks live.
-        zoomControl.segmentCount = 2
+        zoomControl.segmentCount = 3
         zoomControl.trackingMode = .momentary
         zoomControl.segmentStyle = .separated
-        let symbols = [("minus.magnifyingglass", "Zoom Out"),
-                       ("plus.magnifyingglass", "Zoom In")]
-        for (index, (symbol, label)) in symbols.enumerated() {
+        let symbols = [("minus.magnifyingglass", "Zoom Out", "⌘−"),
+                       ("1.magnifyingglass", "Physical Size", "⌘0"),
+                       ("plus.magnifyingglass", "Zoom In", "⌘+")]
+        for (index, (symbol, label, key)) in symbols.enumerated() {
             zoomControl.setImage(NSImage(systemSymbolName: symbol, accessibilityDescription: label),
                                  forSegment: index)
-            zoomControl.setToolTip(label + (index == 0 ? " (⌘−)" : " (⌘+)"), forSegment: index)
+            zoomControl.setToolTip("\(label) (\(key))", forSegment: index)
         }
         zoomControl.target = self
         zoomControl.action = #selector(zoomSegmentClicked(_:))
@@ -779,7 +780,11 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     // MARK: - Zoom (single source of truth for the toggle, menu, and view)
     
     @objc private func zoomSegmentClicked(_ sender: NSSegmentedControl) {
-        sender.selectedSegment == 0 ? zoomOut(sender) : zoomIn(sender)
+        switch sender.selectedSegment {
+        case 0: zoomOut(sender)
+        case 1: zoomPhysicalSize(sender)
+        default: zoomIn(sender)
+        }
     }
 
     private func apply(_ mode: ZoomMode) {
@@ -814,7 +819,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     private func syncZoomControls() {
         let step = zoom.percent.map { $0 / 100 }
         zoomControl.setEnabled(step != ZoomMode.steps.first, forSegment: 0)
-        zoomControl.setEnabled(step != ZoomMode.steps.last, forSegment: 1)
+        zoomControl.setEnabled(deviceVC?.screen.physicalScale != nil, forSegment: 1)
+        zoomControl.setEnabled(step != ZoomMode.steps.last, forSegment: 2)
     }
 
     /// One notch along the ladder, from the pinch gesture and from ⌘+ / ⌘−.
