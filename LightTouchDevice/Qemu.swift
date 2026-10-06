@@ -15,6 +15,8 @@ struct QemuDeviceInfoC {
 }
 
 final class Qemu: @unchecked Sendable {
+    /// The libqemu-arm.dylib C API major version this helper binds.
+    static let apiMajor: UInt32 = 1
     let path: String
     private let handle: UnsafeMutableRawPointer
 
@@ -33,6 +35,14 @@ final class Qemu: @unchecked Sendable {
         // RTLD_NOW: a missing export fails here, not mid-session.
         guard let handle = dlopen(path, RTLD_NOW | RTLD_LOCAL) else {
             throw HelperError.dylib(String(cString: dlerror()))
+        }
+        // The C API's major version must be ours (qemu-macos-extras.h QEMU_IOS_API_VERSION: major << 16 | minor);
+        // a dylib from before the version existed is 0.
+        let version = dlsym(handle, "qemu_ios_api_version").map { unsafeBitCast($0, to: (@convention(c) () -> UInt32).self)() } ?? 0
+        guard version >> 16 == Self.apiMajor else {
+            dlclose(handle)
+            throw HelperError.dylib("\(path) has C API \(version >> 16).\(version & 0xffff); this LightTouchDevice needs "
+                + "\(Self.apiMajor).x. Build libqemu-arm.dylib from the qemu-ios commit build-support/sources.json pins.")
         }
         self.handle = handle
         var info = Dl_info()
