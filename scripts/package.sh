@@ -377,7 +377,7 @@ sign_nested_code() {
 
 # Sign inside-out: frameworks, then Contents/MacOS/* (the device helper with the
 # QEMU entitlements: JIT, unsigned executable memory, no library validation),
-# then the app with entitlements.
+# then the app with none: it hosts no emulator and loads no bundled dylib.
 echo "signing (id: $SIGN_ID)…"
 for f in "$SERVICE_HELPER" "$FRAMEWORKS"/*.dylib "${HOST_TOOLS[@]}" ${FIRMWAREKIT[@]+"${FIRMWAREKIT[@]}"}; do
     [ -L "$f" ] && continue
@@ -386,7 +386,7 @@ for f in "$SERVICE_HELPER" "$FRAMEWORKS"/*.dylib "${HOST_TOOLS[@]}" ${FIRMWAREKI
     [ -f "$f" ] && file "$f" | grep -q Mach-O && sign_nested_code "$f"
 done
 codesign -f -o runtime --entitlements "$ENTITLEMENTS" -s "$SIGN_ID" "$DEVICE_HELPER"
-codesign -f -o runtime --entitlements "$ENTITLEMENTS" -s "$SIGN_ID" "$APP"
+codesign -f -o runtime -s "$SIGN_ID" "$APP"
 codesign --verify --deep --strict "$APP"
 codesign -dv "$APP" 2>&1 | grep -E "Identifier|Signature" || true
 

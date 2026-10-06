@@ -4,7 +4,8 @@
     tests/release/test-package.py [PACKAGED.app]
 
 With an app (package.sh output), also check its device helper: present in
-Contents/MacOS, hardened runtime with the QEMU entitlements, its load closure and
+Contents/MacOS, hardened runtime with the QEMU entitlements (and no entitlements on the app or
+any other tool), its load closure and
 the dlopened Frameworks/libqemu-arm.dylib resolved inside the bundle, and a
 --probe that actually loads the bundled emulator library.
 """
@@ -115,6 +116,10 @@ def check_helper(app):
     flags = re.search(r'flags=0x([0-9a-fA-F]+)', details.stderr)
     assert flags and int(flags[1], 16) & 0x10000, 'helper lacks hardened runtime'
     assert 'Identifier=gold.samhenri.LightTouchMac.LightTouchDevice' in details.stderr, details.stderr
+    # Only the helper hosts QEMU: the app and every other tool carry no entitlements at all.
+    for path in [app, *(p for p in (app / 'Contents/MacOS').iterdir() if p != helper)]:
+        granted = subprocess.run(['codesign', '-d', '--entitlements', ':-', path], capture_output=True, text=True)
+        assert 'com.apple.security' not in granted.stdout, f'{path.name} has entitlements: {granted.stdout}'
     subprocess.run(['codesign', '--verify', '--strict', helper], check=True)
     info = subprocess.run(['/usr/libexec/PlistBuddy', '-c', 'Print :LSMinimumSystemVersion', app / 'Contents/Info.plist'],
                           capture_output=True, text=True, check=True).stdout.strip()
