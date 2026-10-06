@@ -147,8 +147,10 @@ enum MainMenuBuilder {
         // second, hidden item on the unshifted "=" carrying the same action.
         // Hidden items normally give up their key equivalent, hence
         // allowsKeyEquivalentWhenHidden.
-        menu.addItem(item("Physical Size", #selector(MainWindowController.zoomPhysicalSize(_:)), "0"))
-        menu.addItem(item("Zoom to Fit", #selector(MainWindowController.zoomToFit(_:)), "9"))
+        menu.addItem(item("Zoom to Fit", #selector(MainWindowController.zoomToFit(_:)), "0"))
+        menu.addItem(item("Physical Size", #selector(MainWindowController.zoomPhysicalSize(_:)), "8"))
+        // 100%: one screen pixel per display pixel.
+        menu.addItem(item("Pixel Accurate", #selector(MainWindowController.zoomPixelAccurate(_:)), "9"))
         menu.addItem(item("Zoom In", #selector(MainWindowController.zoomIn(_:)), "+"))
         let unshiftedZoomIn = item("Zoom In", #selector(MainWindowController.zoomIn(_:)), "=")
         unshiftedZoomIn.isHidden = true

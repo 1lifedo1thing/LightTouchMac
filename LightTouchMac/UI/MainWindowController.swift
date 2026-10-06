@@ -150,14 +150,14 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         migrateCaptureToolbar(toolbar)
         migrateSidebarToolbar(toolbar)
         migrateAddDeviceToolbar(toolbar)
-        // Out, physical size, in. Momentary, because all are commands rather than states
+        // Out, zoom to fit, in. Momentary, because all are commands rather than states
         // to sit in — which state you are in is the menu's job, where the
         // checkmarks live.
         zoomControl.segmentCount = 3
         zoomControl.trackingMode = .momentary
         zoomControl.segmentStyle = .separated
         let symbols = [("minus.magnifyingglass", "Zoom Out", "⌘−"),
-                       ("1.magnifyingglass", "Physical Size", "⌘0"),
+                       ("arrow.up.left.and.down.right.magnifyingglass", "Zoom to Fit", "⌘0"),
                        ("plus.magnifyingglass", "Zoom In", "⌘+")]
         for (index, (symbol, label, key)) in symbols.enumerated() {
             zoomControl.setImage(NSImage(systemSymbolName: symbol, accessibilityDescription: label),
@@ -782,7 +782,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     @objc private func zoomSegmentClicked(_ sender: NSSegmentedControl) {
         switch sender.selectedSegment {
         case 0: zoomOut(sender)
-        case 1: zoomPhysicalSize(sender)
+        case 1: zoomToFit(sender)
         default: zoomIn(sender)
         }
     }
@@ -808,7 +808,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     }
     static func savedZoom() -> ZoomMode {
         switch UserDefaults.standard.string(forKey: zoomKey) {
-        case "physical", "pixels:1": return .physical
+        case "physical": return .physical
         case let s? where s.hasPrefix("pixels:"):
             return Int(s.dropFirst("pixels:".count)).flatMap { ZoomMode.steps.contains($0) ? .pixels($0) : nil } ?? .fit
         default: return .fit
@@ -819,7 +819,6 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     private func syncZoomControls() {
         let step = zoom.percent.map { $0 / 100 }
         zoomControl.setEnabled(step != ZoomMode.steps.first, forSegment: 0)
-        zoomControl.setEnabled(deviceVC?.screen.physicalScale != nil, forSegment: 1)
         zoomControl.setEnabled(step != ZoomMode.steps.last, forSegment: 2)
     }
 
@@ -840,6 +839,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     @objc func zoomOut(_ sender: Any?) { stepZoom(-1) }
     @objc func zoomPhysicalSize(_ sender: Any?) { apply(.physical) }
     @objc func zoomToFit(_ sender: Any?) { apply(.fit) }
+    @objc func zoomPixelAccurate(_ sender: Any?) { apply(.pixels(1)) }
     
     // MARK: - Device menu actions (routed via the responder chain)
     
@@ -1461,6 +1461,9 @@ extension MainWindowController: NSMenuItemValidation {
             return deviceVC.screen.physicalScale != nil
         case #selector(zoomToFit(_:)):
             menuItem.state = (zoom == .fit) ? .on : .off
+            return true
+        case #selector(zoomPixelAccurate(_:)):
+            menuItem.state = (zoom == .pixels(1)) ? .on : .off
             return true
         default:
             return true

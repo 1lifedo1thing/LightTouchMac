@@ -34,7 +34,15 @@ final class Controller {
     var zoom = ZoomMode.fit
     func apply(_ value: ZoomMode) { zoom = value }
 """ + block(controller, "func stepZoom(") + """
+    static let zoomKey = "zoomMode-check"
+""" + block(controller, "private static func saveZoom(").replace("private ", "") + "\n" + block(controller, "static func savedZoom(") + """
 }
+// Pixel Accurate (100%) comes back as itself, not as Physical Size.
+for mode in [ZoomMode.fit, .physical, .pixels(1), .pixels(3)] {
+    Controller.saveZoom(mode)
+    assert(Controller.savedZoom() == mode, "a saved zoom came back as another")
+}
+UserDefaults.standard.removeObject(forKey: Controller.zoomKey)
 let c = Controller()
 let s = c.deviceVC!.screen
 for backing: CGFloat in [1, 2] {
@@ -51,7 +59,7 @@ s.appliedScale = s.shellScale(guestPixelsPerDisplayPixel: 8)
 c.stepZoom(1); assert(c.zoom == .pixels(8))
 s.appliedScale = s.shellScale(guestPixelsPerDisplayPixel: 1)
 c.stepZoom(-1); assert(c.zoom == .pixels(1))
-print("PASS: backing scale, manual pixel scale, fit-to-step transitions and limits")
+print("PASS: backing scale, manual pixel scale, fit-to-step transitions and limits, saved zoom (Pixel Accurate stays 100%)")
 """
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory) / "check.swift"

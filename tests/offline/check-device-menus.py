@@ -75,8 +75,9 @@ View/Show Sidebar  ⌃⌘s
 View/Show Inspector  ⌥⌘i
 View/Show Console  ⇧⌘y
 View/-
-View/Physical Size  ⌘0
-View/Zoom to Fit  ⌘9
+View/Zoom to Fit  ⌘0
+View/Physical Size  ⌘8
+View/Pixel Accurate  ⌘9
 View/Zoom In  ⌘+
 View/Zoom In  ⌘= hidden
 View/Zoom Out  ⌘-
