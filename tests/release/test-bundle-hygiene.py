@@ -50,7 +50,7 @@ COMPONENTS = {
 # Where each shipped Mach-O comes from (bundle-relative glob: the components linked into it). Light Touch's own
 # binaries list only what they link in; their Swift packages are checked against the Package.resolved files.
 BINARIES = {
-    'Contents/MacOS/Light Touch': (),
+    'Contents/MacOS/LightTouch': (),
     'Contents/MacOS/LightTouchDevice': (),
     'Contents/MacOS/LightTouchServices': (),
     'Contents/MacOS/inetcat': ('inetcat', 'libusbmuxd', 'libimobiledevice-glue', 'libplist'),
