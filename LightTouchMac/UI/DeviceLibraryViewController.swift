@@ -623,7 +623,7 @@ final class DeviceRowCell: NSTableCellView {
         case let .text(text): show(text)
         }
         if let note = row.note, detail.isHidden { show(note) }
-        // One element per row for VoiceOver: "iPad1,1, iOS 4.2 Beta 1, Running, Untested".
+        // One element per row for VoiceOver: "iPad1,1, iOS 4.2 beta 1, Running, Untested".
         setAccessibilityElement(true)
         setAccessibilityRole(.cell)
         setAccessibilityLabel(([label.title, label.subtitle, row.stateDescription] + [row.note, row.supportNote].compactMap { $0 })

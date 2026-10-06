@@ -103,9 +103,9 @@ nonisolated struct FirmwareCatalog: Codable, Sendable {
 
         var profile: DeviceProfile? { DeviceProfile(boardID: board) }
 
-        /// The sidebar's badge, always numbered: "Beta 1", "Beta 3", "GM 1", "GM 2"; nil for a release.
+        /// The sidebar's badge, always numbered: "beta 1", "beta 3", "GM 1", "GM 2"; nil for a release.
         var prereleaseBadge: String? {
-            prerelease.map { "\($0 == .beta ? "Beta" : "GM") \(prereleaseNumber ?? 1)" }
+            prerelease.map { "\($0 == .beta ? "beta" : "GM") \(prereleaseNumber ?? 1)" }
         }
     }
 
@@ -121,7 +121,7 @@ nonisolated struct FirmwareCatalog: Codable, Sendable {
     /// Boards in the order the file introduces them; each board's entries in version order. By
     /// marketing version ascending, and within a version its betas and GMs, then the release, by
     /// `released` date (betas by number, then GMs by number, where undated), build as the last
-    /// tiebreak: 4.3.x stays together and 5.0 Beta 1 lists after 4.3.5, just before 5.0.
+    /// tiebreak: 4.3.x stays together and 5.0 beta 1 lists after 4.3.5, just before 5.0.
     /// Every listing (sidebar, settings) shows this order.
     func sortedByVersion() -> FirmwareCatalog {
         var boards: [String] = []

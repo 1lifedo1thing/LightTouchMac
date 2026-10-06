@@ -129,7 +129,7 @@ nonisolated struct DeviceRow: Equatable, Sendable {
 
     var title: String { "iOS \(entry.version)" }
     var isExperimental: Bool { entry.status == .experimental }
-    /// The tag beside the title, in secondary text: a developer build's "Beta 3"/"GM 1". How well a build is
+    /// The tag beside the title, in secondary text: a developer build's "beta 3"/"GM 1". How well a build is
     /// tested isn't the row's to shout: that is `supportNote`, in the tooltip, VoiceOver and the placeholder's popover.
     var badge: String? { entry.prereleaseBadge }
     var supportNote: String? { entry.status == .untested ? "Untested" : isExperimental ? "Experimental" : nil }

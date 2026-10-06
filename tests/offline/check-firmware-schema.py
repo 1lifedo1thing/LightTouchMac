@@ -20,7 +20,7 @@ source = r'''import Foundation
    let actual=try JSONSerialization.jsonObject(with:data) as! NSDictionary
    precondition(actual==expected,"flat wire field was lost")
   }
-  precondition(gui.profile == .iPad1 && gui.prereleaseBadge == "Beta 3" && gui.status == .experimental)
+  precondition(gui.profile == .iPad1 && gui.prereleaseBadge == "beta 3" && gui.status == .experimental)
   gui.recipe?.boot="kboot";gui.source.resource="other.ipsw";gui.status = .available
   let changed=try decoder.decode(FirmwareWire.Entry.self,from:encoder.encode(gui))
   precondition(changed.recipe?.boot=="kboot" && changed.source.resource=="other.ipsw" && changed.status=="available")

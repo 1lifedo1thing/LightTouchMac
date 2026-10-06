@@ -7,7 +7,7 @@ never ordered front: nothing appears on screen. PNGs land in --out (default a te
 sidebar-{one-kind,mixed,renamed,empty,multi-select}.png, batch-delete-alert.png and add-device.png.
 
 Checks what the user sees, from the rendered cells: every row is two lines, the model identifier ("iPod2,1") over
-the version with its Beta/GM badge ("iOS 4.1 Beta 1"), whatever else is listed; a custom name shows over
+the version with its Beta/GM badge ("iOS 4.1 beta 1"), whatever else is listed; a custom name shows over
 "iPad1,1, iOS 3.2.2" / "iPod2,1, iOS 4.2.1". A download's row shows its ring and no percentage. Renaming in place (the context
 menu's Rename, typing, ending the edit) saves the name to defaults; Delete on a row with nothing on disk removes
 it (saved), on a prepared one it asks the delegate to delete instead; an empty sidebar shows Add Device…. A
@@ -163,14 +163,14 @@ final class Delegate: DeviceLibraryDelegate {
         host.downloaded = ["n72ap-8B117"]
         var (vc, w) = sidebar(["n72ap-8C148", "n72ap-8B5080c", "n72ap-8B117", "n72ap-7E18"], host: host)
         var seen = rows(vc)
-        if seen.map({ Array($0.prefix(1)) + $0.filter { $0.hasPrefix("iOS") } }) != [["iPod2,1", "iOS 3.1.3"], ["iPod2,1", "iOS 4.1 Beta 1"], ["iPod2,1", "iOS 4.1"], ["iPod2,1", "iOS 4.2.1"]]
+        if seen.map({ Array($0.prefix(1)) + $0.filter { $0.hasPrefix("iOS") } }) != [["iPod2,1", "iOS 3.1.3"], ["iPod2,1", "iOS 4.1 beta 1"], ["iPod2,1", "iOS 4.1"], ["iPod2,1", "iOS 4.2.1"]]
             || seen.contains(where: { $0.count != 2 }) { fail("one kind (3.1.3 built in: nothing beside it): \(seen)") }
         try render(vc.view, "sidebar-one-kind")
 
         // Mixed: the same two lines.
         (vc, w) = sidebar(["n72ap-8C148", "k48ap-7B500", "n72ap-8B5080c", "n45ap-4B1"], host: host)
         seen = rows(vc)
-        if seen != [["iPad1,1", "iOS 3.2.2"], ["iPod1,1", "iOS 1.1.5"], ["iPod2,1", "iOS 4.1 Beta 1"], ["iPod2,1", "iOS 4.2.1"]] { fail("mixed: \(seen)") }
+        if seen != [["iPad1,1", "iOS 3.2.2"], ["iPod1,1", "iOS 1.1.5"], ["iPod2,1", "iOS 4.1 beta 1"], ["iPod2,1", "iOS 4.2.1"]] { fail("mixed: \(seen)") }
 
         // Artwork: macOS's declared type per board, the two iPods apart, the fallback for a model macOS doesn't know.
         var types: [String: String] = [:]

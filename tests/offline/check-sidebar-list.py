@@ -3,7 +3,7 @@
 
 Compiles SidebarList.swift with the real FirmwareCatalog and DeviceRow against the shipped catalog, on a throwaway
 UserDefaults suite. Checks:
-- titles: always two lines, the model identifier ("iPod2,1") over the version with its badge ("iOS 4.1 Beta 1"),
+- titles: always two lines, the model identifier ("iPod2,1") over the version with its badge ("iOS 4.1 beta 1"),
   whatever else is listed; a custom name -> the name over "iPod2,1, iOS 4.1";
 - rename: saved and read back by a fresh load; an empty name or the default title clears it; removing forgets it;
 - migration: no saved list -> the entries the user owns (prepared / downloaded / in flight), else first_run;
@@ -62,7 +62,7 @@ import Foundation
         // Titles: the model identifier over the version and its badge, the same whatever else is listed.
         list = SidebarList(ids: ["n72ap-8B117", "n72ap-8B5080c"])
         precondition(list.label(for: entry("n72ap-8B117")) == .init(title: "iPod2,1", subtitle: "iOS 4.1"), "\(list.label(for: entry("n72ap-8B117")))")
-        precondition(list.label(for: entry("n72ap-8B5080c")) == .init(title: "iPod2,1", subtitle: "iOS 4.1 Beta 1"), "beta")
+        precondition(list.label(for: entry("n72ap-8B5080c")) == .init(title: "iPod2,1", subtitle: "iOS 4.1 beta 1"), "beta")
         list.add(["k48ap-7B500", "n45ap-4B1"])
         precondition(list.label(for: entry("n72ap-8B117")) == .init(title: "iPod2,1", subtitle: "iOS 4.1"), "mixed list changed the label")
         precondition(list.label(for: entry("k48ap-7B500")) == .init(title: "iPad1,1", subtitle: "iOS 3.2.2"), "iPad")
@@ -74,7 +74,7 @@ import Foundation
         list.rename("n72ap-8B117", to: "  Test Rig ", defaultTitle: "iPod2,1")
         precondition(list.label(for: entry("n72ap-8B117")) == .init(title: "Test Rig", subtitle: "iPod2,1, iOS 4.1"), "renamed")
         list.rename("n72ap-8B5080c", to: "Beta Rig", defaultTitle: "iPod2,1")
-        precondition(list.label(for: entry("n72ap-8B5080c")) == .init(title: "Beta Rig", subtitle: "iPod2,1, iOS 4.1 Beta 1"), "renamed beta")
+        precondition(list.label(for: entry("n72ap-8B5080c")) == .init(title: "Beta Rig", subtitle: "iPod2,1, iOS 4.1 beta 1"), "renamed beta")
         list.rename("n72ap-8B5080c", to: "", defaultTitle: "iPod2,1")
         list.remove("k48ap-7B500")
         list.save(defaults)

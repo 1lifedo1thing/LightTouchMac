@@ -11,7 +11,7 @@ nonisolated enum MediaSupport {
         var board: String
         var version: String
         var build: String
-        /// "iOS 5.0 Beta 1"
+        /// "iOS 5.0 beta 1"
         var name: String
     }
 

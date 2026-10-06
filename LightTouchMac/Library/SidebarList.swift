@@ -58,7 +58,7 @@ nonisolated struct SidebarList: Equatable {
     }
 
     /// What one row says, and the window's title and subtitle for it: the model identifier ("iPod2,1") over the
-    /// version with its Beta/GM badge ("iOS 4.1 Beta 1"); a custom name over "iPod2,1, iOS 4.1".
+    /// version with its beta/GM badge ("iOS 4.1 beta 1"); a custom name over "iPod2,1, iOS 4.1".
     struct Label: Equatable {
         var title: String
         var subtitle: String

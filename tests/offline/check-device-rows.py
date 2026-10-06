@@ -161,11 +161,11 @@ import Foundation
         precondition(r.badge == nil && r.supportNote == "Experimental" && row(iPad).badge == nil && row(iPad).supportNote == nil,
                      "Experimental is the tooltip's and VoiceOver's, not a capsule in the row")
         // A developer build: its badge is the beta/GM ordinal.
-        let beta3 = entry("k48ap-8C5115c"), gm2 = entry("k48ap-8C134b"), beta1 = entry("n72ap-8C5091e")   // a Beta 1
-        precondition(row(beta3).badge == "Beta 3" && row(gm2).badge == "GM 2" && row(beta1).badge == "Beta 1", "\(row(beta1).badge ?? "nil")")
+        let beta3 = entry("k48ap-8C5115c"), gm2 = entry("k48ap-8C134b"), beta1 = entry("n72ap-8C5091e")   // a beta 1
+        precondition(row(beta3).badge == "beta 3" && row(gm2).badge == "GM 2" && row(beta1).badge == "beta 1", "\(row(beta1).badge ?? "nil")")
         var unnumbered = beta1
         unnumbered.prereleaseNumber = nil
-        precondition(row(unnumbered).badge == "Beta 1" && entry("k48ap-8C134").prereleaseBadge == "GM 1", "a first beta/GM without a number is 1")
+        precondition(row(unnumbered).badge == "beta 1" && entry("k48ap-8C134").prereleaseBadge == "GM 1", "a first beta/GM without a number is 1")
 
         // Untested builds (betas from archive.org, releases the matrix hasn't run) download and
         // prepare like any other, with an Untested note; coming soon stays shut (above).
@@ -179,7 +179,7 @@ import Foundation
             precondition(row(e, job: .downloading(fraction: 0.5)).state == .downloading(fraction: 0.5), e.id)
             precondition(row(e, instance: id).state == .ready && row(e, instance: id).isStartable, e.id)
         }
-        precondition(row(beta1).badge == "Beta 1" && row(entry("n72ap-8B117")).badge == nil, "the badge stays on an offered beta")
+        precondition(row(beta1).badge == "beta 1" && row(entry("n72ap-8B117")).badge == nil, "the badge stays on an offered beta")
         precondition(row(iPad).note == nil && row(iPod4).note == nil, "tested builds carry no note")
         // The sidebar shows only what differs from the usual (DeviceRow.accessory, what the cell draws).
         let downloaded = DeviceRow(entry: iPad, instanceID: nil, session: nil, job: nil, downloaded: true)
