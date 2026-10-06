@@ -19,7 +19,7 @@ status block, frame ring, framed link). Cases:
              halts the helper, which exits (the flush lands in the dead inode, harmlessly)
   oneshot    --oneshot: an iPad boot stopped at FTL_Open [OK] (stopPattern, newlines removed)
   headless   --headless: an iPod boot to a lit lock screen, dump, quit
-  carrier    --iphone-device (a FirmwareKit n90ap/n88ap device): the Carrier panel's path, app -> link ->
+  carrier    --iphone-device (a FirmwareKit n90ap/n88ap/m68ap device): the Carrier panel's path, app -> link ->
              qemu_ios_ui_modem_set/_status -> the modem: booted with saved settings (-global), carrier renamed, a bad
              MCC/MNC refused (error in the next status), signal moved, an incoming SMS delivered, a call
              rung (incoming) and hung up (idle), quit
@@ -172,14 +172,21 @@ def iphone_boot(device, ovl, serial):
     """A FirmwareKit iPhone (kboot): its modem on (baseband=on, the lock's IMEI) and its data netdev, as the app boots it."""
     ovl.mkdir(parents=True, exist_ok=True)
     lock = json.loads((device / "device.lock.json").read_text())
-    board = {"n90ap": "iPhone-4", "n88ap": "n88"}[lock["board"]]
+    board = {"n90ap": "iPhone-4", "n88ap": "n88", "m68ap": "iPhone-2G"}[lock["board"]]
     nor = ovl / "nor.bin"
     if not nor.exists():
         shutil.copy(device / "nor.bin", nor)
         nor.chmod(0o600)
-    machine = (f"{board},kboot={esc(device / 'kboot.bin')},nand={esc(device / 'nand')},nand-overlay={esc(ovl)}"
-               f",nor-rw={esc(nor)},baseband=on" + "".join(f",{k}={esc(v)}" for k, v in sorted(lock.get("machine", {}).items())))
-    argv = ["LightTouchDevice", "-M", machine, "-display", "none", "-audio", "driver=none", "-no-shutdown",
+    options = "".join(f",{k}={esc(v)}" for k, v in sorted(lock.get("machine", {}).items()))
+    if board == "iPhone-2G":   # BootRecipe.iPod1G: the S5L8900 ROM, the base's iBoot, the NOR as pflash; the modem is built in
+        rom = HOME / "Developer/qemu-ios-files/ipod1g/bootrom_s5l8900"
+        machine = f"{board},bootrom={esc(rom)},iboot={esc(device / 'iBoot.bin')},nand={esc(device / 'nand')},nand-overlay={esc(ovl)}" + options
+        drive = ["-drive", f"if=pflash,format=raw,file={str(nor).replace(',', ',,')}"]
+    else:
+        machine = (f"{board},kboot={esc(device / 'kboot.bin')},nand={esc(device / 'nand')},nand-overlay={esc(ovl)}"
+                   f",nor-rw={esc(nor)},baseband=on" + options)
+        drive = []
+    argv = ["LightTouchDevice", "-M", machine, *drive, "-display", "none", "-audio", "driver=none", "-no-shutdown",
             "-serial", f"file:{serial}", "-netdev", "user,id=wifi0", "-netdev", "user,id=cell0",
             # saved Carrier settings, as CarrierSettings.globals passes them at boot
             "-global", "ios-baseband.carrier=Saved, Carrier", "-global", "ios-baseband.signal-dbm=-81"]
