@@ -148,16 +148,7 @@ nonisolated struct IPSWStore: Sendable {
 
     /// ProductType and ProductBuildVersion from the IPSW's Restore.plist, or nil if it has none.
     static func restoreInfo(_ ipsw: URL) -> (productType: String, build: String)? {
-        let unzip = Process()
-        unzip.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-        unzip.arguments = ["-p", ipsw.path, "Restore.plist"]
-        let pipe = Pipe()
-        unzip.standardOutput = pipe
-        unzip.standardError = FileHandle.nullDevice
-        guard (try? unzip.run()) != nil else { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        unzip.waitUntilExit()
-        guard unzip.terminationStatus == 0,
+        guard let data = ZipMembers.data(ipsw, "Restore.plist"),
               let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
               let type = plist["ProductType"] as? String, let build = plist["ProductBuildVersion"] as? String
         else { return nil }

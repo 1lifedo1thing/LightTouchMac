@@ -44,7 +44,7 @@ import Cocoa
         // torn download or import. Only the app holding the library's lock
         // may sweep: another copy's jobs could be live.
         if (try? Bundled.requireStorage()) != nil {
-            PreparationJob.sweep(state: Bundled.stateDirectory)
+            PreparationJob.sweep(state: Bundled.stateDirectory, preparer: Self.preparer)
             store.sweep()
         }
         // Keyed by the IPSW's sha1 (a task's name); what is downloaded and weighed is the archive for a "rar" source.

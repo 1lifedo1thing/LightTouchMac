@@ -171,6 +171,15 @@ public enum DiskImage {
         try await checkedAttachedImages()
     }
 
+    /// Force-detaches every attached image whose file is under `root` (a killed preparer's leftovers).
+    public static func detachAll(under root: URL) async throws {
+        let prefix = root.resolvingSymlinksInPath().path + "/"
+        for (path, dev) in try await checkedAttachedImages()
+            where URL(fileURLWithPath: path).resolvingSymlinksInPath().path.hasPrefix(prefix) {
+            try await detach(dev, force: true)
+        }
+    }
+
     /// Cleanup must distinguish an empty attachment list from a failed query.
     public static func checkedAttachedImages() async throws -> [(image: String, device: String)] {
         let (status, out) = try await exec(["/usr/bin/hdiutil", "info", "-plist"])

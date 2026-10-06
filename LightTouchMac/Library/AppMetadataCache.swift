@@ -4,15 +4,13 @@
 // Add). installation_proxy's browse is a lossy source of truth for the
 // display name (e.g. it reports Starbucks by bundle ID), so
 // on install we read the real CFBundleDisplayName/icon straight out of the
-// .ipa via /usr/bin/unzip (shipped with macOS, no new dependency) and cache
+// .ipa (ZipMembers) and cache
 // it to disk keyed by bundle ID. The live device list still drives *which*
 // bundle IDs are installed; this only supplies the name/icon for them, so an
 // app installed inside the guest simply falls back to the reported name.
 
 import Cocoa
 import HostRuntime
-import Subprocess
-import System
 
 @MainActor
 final class AppMetadataCache {
@@ -57,7 +55,6 @@ final class AppMetadataCache {
         assert(root == "Payload/Super Monkey Ball [SEGA].app/", "nested .app won: \(root ?? "nil")")
         assert(IPAMembers.iconMember(members, root: root!, info: [:]) == "\(root!)Icon@2x.png")
         assert(IPAMembers.iconMember(members, root: root!, info: ["CFBundleIconFile": "Icon.png"]) == "\(root!)Icon@2x.png")
-        assert(IPAMembers.escapedForUnzip("a [b]*?.png") == "a \\[b\\]\\*\\?.png")
     }
     #endif
     
@@ -201,34 +198,17 @@ final class AppMetadataCache {
     
     // MARK: - .ipa reading (Payload/<something>.app is the app bundle)
     //
-    // Every member is looked up in the archive's own listing and then extracted
-    // by its exact name, rather than handing unzip a `Payload/*.app/Info.plist`
-    // pattern. Two reasons that pattern misfired: unzip's `*` matches `/` too,
-    // so a nested .app inside a bundle could win and the two matches would be
-    // concatenated into unparseable plist data; and `[`, `]`, `?` in a real
-    // bundle name (Super Monkey Ball [SEGA].app) are wildcard syntax to unzip,
-    // so those apps matched nothing at all and learned no name or icon.
+    // Every member is looked up in the archive's own listing and then read by its exact name (ZipMembers), so a
+    // nested .app inside a bundle can't win and a bundle named with `[`, `]` or `?` (Super Monkey Ball [SEGA].app)
+    // is found like any other. Off the main actor: reading a large .ipa's directory takes a moment.
 
     /// Every path in the archive.
-    private static func members(_ ipa: URL) async -> [String] {
-        let result = try? await run(
-            .path(FilePath("/usr/bin/unzip")),
-            arguments: ["-Z1", ipa.path],
-            output: .string(limit: 1 << 22), error: .discarded
-        )
-        guard let text = result?.standardOutput else { return [] }
-        return text.split(separator: "\n").map(String.init)
+    @concurrent nonisolated private static func members(_ ipa: URL) async -> [String] {
+        ZipMembers.paths(ipa)
     }
 
-    private static func unzip(_ ipa: URL, member: String) async throws -> Data {
-        let result = try await run(
-            .path(FilePath("/usr/bin/unzip")),
-            arguments: ["-p", ipa.path, IPAMembers.escapedForUnzip(member)],
-            output: .data(limit: 1 << 22), error: .discarded
-        )
-        guard result.terminationStatus.isSuccess, !result.standardOutput.isEmpty else {
-            throw DeviceToolsError.failed("no such member: \(member)")
-        }
-        return result.standardOutput
+    @concurrent nonisolated private static func unzip(_ ipa: URL, member: String) async throws -> Data {
+        guard let data = ZipMembers.data(ipa, member) else { throw DeviceToolsError.failed("no such member: \(member)") }
+        return data
     }
 }

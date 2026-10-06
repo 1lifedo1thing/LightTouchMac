@@ -87,6 +87,23 @@ import Testing
         }
     }
 
+    /// detachAll(under:) takes the images whose files are under the root (a killed preparer's) and no others.
+    @Test func detachAllUnderRoot() async throws {
+        try await Oracle.withTemp { dir in
+            let inside = dir.appendingPathComponent("Preparing/job"), outside = dir.appendingPathComponent("kept")
+            try FileManager.default.createDirectory(at: inside, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+            let (a, b) = (inside.appendingPathComponent("a.img"), outside.appendingPathComponent("b.img"))
+            for img in [a, b] { #expect(FileManager.default.createFile(atPath: img.path, contents: nil) && truncate(img.path, 1 << 20) == 0) }
+            _ = try await DiskImage.attach(a)
+            let kept = try await DiskImage.attach(b)
+            try await DiskImage.detachAll(under: dir.appendingPathComponent("Preparing"))
+            let attached = try await DiskImage.attachedImages().map(\.image)
+            try await DiskImage.detach(kept.device)
+            #expect(!attached.contains(a.path) && attached.contains(b.path), "\(attached)")
+        }
+    }
+
     /// Each backend converts a UDIF (zlib) image to the same raw disk.
     @Test func convertToRaw() async throws {
         try await Oracle.withTemp { dir in

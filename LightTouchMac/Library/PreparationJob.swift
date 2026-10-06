@@ -207,41 +207,23 @@ nonisolated final class PreparationJob: @unchecked Sendable {
     }
 
     /// Launch, under the app lock: nothing in Preparing/ is a device. Disk
-    /// images a killed preparer left attached there are detached first, or
-    /// their files couldn't go.
-    static func sweep(state: URL) {
+    /// images a killed preparer left attached there are detached first
+    /// (`firmwarekit detach-images`, FirmwareKit's DiskImage), or their files couldn't go.
+    static func sweep(state: URL, preparer: URL?) {
         let preparing = preparing(state)
         let names = (try? FileManager.default.contentsOfDirectory(atPath: preparing.path)) ?? []
         guard !names.isEmpty else { return }
-        detachImages(under: preparing)
+        if let preparer {
+            let detach = Process()
+            detach.executableURL = preparer
+            detach.arguments = ["detach-images", "--root", preparing.path]
+            detach.standardOutput = FileHandle.nullDevice
+            if (try? detach.run()) != nil {
+                detach.waitUntilExit()
+                if detach.terminationStatus != 0 { logEvent("firmware: detach-images exited \(detach.terminationStatus)") }
+            }
+        }
         for name in names { try? DeviceStateStorage.removeTree(preparing.appendingPathComponent(name)) }
-    }
-
-    /// `hdiutil detach -force` for every attached image whose file is under `root`.
-    static func detachImages(under root: URL) {
-        func run(_ arguments: [String]) -> Data? {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
-            process.arguments = arguments
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = FileHandle.nullDevice
-            guard (try? process.run()) != nil else { return nil }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            return process.terminationStatus == 0 ? data : nil
-        }
-        let prefix = DeviceStateStorage.canonicalPath(root) + "/"
-        guard let data = run(["info", "-plist"]),
-              let info = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else { return }
-        for image in info["images"] as? [[String: Any]] ?? [] {
-            guard let path = image["image-path"] as? String,
-                  DeviceStateStorage.canonicalPath(URL(fileURLWithPath: path)).hasPrefix(prefix),
-                  let device = (image["system-entities"] as? [[String: Any]])?.compactMap({ $0["dev-entry"] as? String })
-                      .min(by: { $0.count < $1.count }) else { continue }
-            logEvent("firmware: detaching \(device), left attached from \(path)")
-            _ = run(["detach", device, "-force"])
-        }
     }
 
     // MARK: - Publish

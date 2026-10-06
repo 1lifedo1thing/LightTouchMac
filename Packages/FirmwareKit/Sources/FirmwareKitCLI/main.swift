@@ -50,6 +50,11 @@ if command == "pack-base" { packBaseCommand(Array(args)) }
 if command == "developer-audit" { developerAuditCommand(Array(args)) }
 if command == "developer-offer" { developerOfferCommand(Array(args)) }
 if command == "cache-prune" { cacheCommand(Array(args)) }
+if command == "detach-images" {
+    let arguments = Array(args)
+    let lifetime = CommandLifetime(output: commandOutput) { await detachImagesCommand(arguments) }
+    exit(await lifetime.wait())
+}
 if command == "edit" {
     let arguments = Array(args)
     let lifetime = CommandLifetime(output: commandOutput) { await stoppedEditCommand(arguments) }
@@ -66,6 +71,7 @@ guard command == "create" else {
                firmwarekit edit --device DIR --action begin|mount|commit|discard|recover [--session UUID]
                firmwarekit edit --device DIR --action trust-anchor --cert DER   (1.x: the certificate as a system anchor)
                firmwarekit cache-prune --root DIR [--ipsw SHA1]
+               firmwarekit detach-images --root DIR   (force-detach disk images whose files are under DIR)
                firmwarekit create --entry ENTRY.json --ipsw IPSW --out DIR [--seed S]
                                   [--helper PATH] [--cache DIR] [--guest-tools DIR]
                                   [--sibling-entry ENTRY.json --sibling-ipsw IPSW]   (recipe.keybag_ramdisk_from)

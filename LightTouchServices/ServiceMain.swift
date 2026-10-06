@@ -28,13 +28,11 @@ nonisolated final class EventWriter: @unchecked Sendable {
         // never the independently owned QEMU process.
         let parent = getppid()
         guard parent > 1 else { exit(0) }
-        let parentWatch = Task.detached {
-            while !Task.isCancelled {
-                do { try await Task.sleep(for: .seconds(1)) } catch { return }
-                if getppid() != parent { exit(0) }
-            }
-        }
+        let parentWatch = DispatchSource.makeProcessSource(identifier: parent, eventMask: .exit, queue: .global())
+        parentWatch.setEventHandler { exit(0) }
+        parentWatch.resume()
         defer { parentWatch.cancel() }
+        if getppid() != parent { exit(0) }   // it went before the source was watching
         let socket = args[1], udid = args[3].isEmpty ? nil : args[3]
         let service = DeviceServices(clientSocket: socket, udid: udid, session: session, local: true)
         let writer = EventWriter()

@@ -146,17 +146,7 @@ struct AppInstallPipeline: Sendable {
     private static func execBitRepaired(_ ipa: URL) async throws -> URL? {
         guard let member = await AppMetadataCache.executableMember(of: ipa),
               let helper = Bundled.tool("ipod-helper") else { return nil }
-        // `unzip -Z` long listing: the mode string is the first field and the
-        // member the last, e.g. "-rw-r--r--  2.0 unx  … Payload/X.app/X".
-        guard let listing = try? await run(
-            .path(FilePath("/usr/bin/unzip")), arguments: ["-Z", ipa.path],
-            output: .string(limit: 1 << 22), error: .discarded).standardOutput,
-              let line = listing.split(separator: "\n").first(where: {
-                  $0.hasSuffix(" " + member)
-              }),
-              let mode = line.split(separator: " ").first,
-              mode.count >= 4, !mode.contains("x")
-        else { return nil }
+        guard let mode = ZipMembers.permissions(ipa, member), mode & 0o111 == 0 else { return nil }
 
         let out = FileManager.default.temporaryDirectory
             .appendingPathComponent("ltm-fixed-\(UUID().uuidString)")

@@ -29,6 +29,7 @@
 		A1D0C0DE35000000000000003 = {isa = PBXBuildFile; productRef = A1D0C0DE35000000000000002; };
 		A1D0C0DE35000000000000004 = {isa = PBXBuildFile; productRef = A1D0C0DE35000000000000002; };
 		A1D0C0DE36000000000000003 = {isa = PBXBuildFile; productRef = A1D0C0DE36000000000000002; };
+		A1D0C0DE37000000000000003 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = A1D0C0DE37000000000000002; };
 		A1D0C0DE36000000000000004 = {isa = PBXBuildFile; productRef = A1D0C0DE36000000000000002; };
 /* End PBXBuildFile section */
 
@@ -118,6 +119,7 @@
 				A1D0C0DE35000000000000003,
 				A1D0C0DE36000000000000003,
 				EA17D84D3023A55900BDF83E /* Subprocess in Frameworks */,
+				A1D0C0DE37000000000000003 /* ZIPFoundation in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -213,6 +215,7 @@
 				A1D0C0DE35000000000000002,
 				A1D0C0DE36000000000000002,
 				EA17D84C3023A55900BDF83E /* Subprocess */,
+				A1D0C0DE37000000000000002 /* ZIPFoundation */,
 			);
 			productName = LightTouchMac;
 			productReference = EA17D83230239D9B00BDF83E /* Light Touch.app */;
@@ -249,6 +252,7 @@
 				A1D0C0DE35000000000000001,
 				A1D0C0DE36000000000000001,
 				EA17D84B3023A55900BDF83E /* XCRemoteSwiftPackageReference "swift-subprocess" */,
+				A1D0C0DE37000000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = EA17D83330239D9B00BDF83E /* Products */;
@@ -584,6 +588,14 @@
 				minimumVersion = 1.0.0;
 			};
 		};
+		A1D0C0DE37000000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/weichsel/ZIPFoundation.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.9.20;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -599,6 +611,11 @@
 			productName = Subprocess;
 		};
 		A1D0C0DE36000000000000002 = {isa = XCSwiftPackageProductDependency; package = A1D0C0DE36000000000000001; productName = DeviceRuntime; };
+		A1D0C0DE37000000000000002 /* ZIPFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1D0C0DE37000000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
+			productName = ZIPFoundation;
+		};
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = EA17D82A30239D9B00BDF83E /* Project object */;

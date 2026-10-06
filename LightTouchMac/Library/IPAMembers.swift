@@ -1,5 +1,5 @@
 // Which members of an .ipa (a zip) are the app: its one root Payload bundle and
-// the icon to show, and how to name a member to unzip. Pure; AppMetadataCache
+// the icon to show. Pure; AppMetadataCache
 // lists and extracts, tests/offline/check-extracted.py compiles this whole.
 
 import Foundation
@@ -39,14 +39,5 @@ nonisolated enum IPAMembers {
                 ?? pngs.first(where: { $0.hasPrefix(base) }) { return hit }
         }
         return nil
-    }
-
-    /// unzip reads `*`, `?` and `[]` in a member name as wildcards, so the name
-    /// has to be escaped even though it came from unzip's own listing.
-    static func escapedForUnzip(_ member: String) -> String {
-        member.reduce(into: "") { out, c in
-            if "*?[]\\".contains(c) { out.append("\\") }
-            out.append(c)
-        }
     }
 }

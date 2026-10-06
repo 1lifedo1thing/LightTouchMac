@@ -35,3 +35,21 @@ def swift_flags(root):
     return ['-I', str(modules),
         *[arg for path in maps for arg in ['-Xcc', '-fmodule-map-file=' + str(path)]],
         *map(str, objects)]
+
+
+def zip_flags(root):
+    """ZIPFoundation (the app's in-process zip reader, ZipMembers.swift), from the same FirmwareKit checkout."""
+    if value := os.environ.get('LTM_SUBPROCESS_PRODUCTS'):
+        built = Path(value)
+    else:
+        scratch = root / '.build/offline-subprocess'
+        subprocess.run(['swift', 'build', '--package-path', str(root / 'Packages/FirmwareKit'),
+                        '--scratch-path', str(scratch), '--target', 'ZIPFoundation'], check=True)
+        built = scratch / 'debug'
+    if (built / 'ZIPFoundation.o').is_file():
+        modules, objects = built, [built / 'ZIPFoundation.o']
+    else:
+        modules, objects = built / 'Modules', sorted((built / 'ZIPFoundation.build').rglob('*.o'))
+    if not objects:
+        raise FileNotFoundError(f'No package objects for ZIPFoundation in {built}')
+    return ['-I', str(modules), *map(str, objects), str(root / 'LightTouchMac/Library/ZipMembers.swift')]

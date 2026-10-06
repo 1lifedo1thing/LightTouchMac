@@ -200,10 +200,7 @@ public enum Preparer {
 
     public static func cancel(staging: URL) async throws {
         await terminateDescendants(of: getpid(), grace: 1)
-        let root = staging.resolvingSymlinksInPath().path + "/"
-        for (path, dev) in try await DiskImage.attachedImages() where URL(fileURLWithPath: path).resolvingSymlinksInPath().path.hasPrefix(root) {
-            try await DiskImage.detach(dev, force: true)
-        }
+        try await DiskImage.detachAll(under: staging)
     }
 
     /// Every process below `root` (depth first, children before their parent), as libproc sees it now.

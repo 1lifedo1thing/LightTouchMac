@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import host_runtime
+import swift_subprocess
 import base64, hashlib, http.server, json, os, subprocess, tempfile, threading
 from firmwarekit_leaf import capacity_sources, schema_sources
 
@@ -139,7 +140,7 @@ def main():
 
         (tmp / 'stubs.swift').write_text(STUBS)
         (tmp / 'main.swift').write_text(CHECK)
-        subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(ROOT), *schema_sources(), '-O', '-suppress-warnings', '-swift-version', '5',
+        subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(ROOT), *swift_subprocess.zip_flags(ROOT), *schema_sources(), '-O', '-suppress-warnings', '-swift-version', '5',
                         *capacity_sources(ROOT, tmp), '-default-isolation', 'MainActor', '-D', 'DEBUG',
                         '-parse-as-library', '-module-cache-path', tmp / 'modules', *[source(s) for s in SOURCES],
                         ROOT / 'Shared/DeviceLinkProtocol.swift', tmp / 'stubs.swift', tmp / 'main.swift', '-o', tmp / 'check'], check=True)
