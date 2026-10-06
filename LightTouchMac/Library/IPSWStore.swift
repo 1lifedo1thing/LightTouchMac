@@ -162,7 +162,7 @@ nonisolated struct IPSWStore: Sendable {
         let ipsw = catalog.entries
         if let entry = ipsw.first(where: { $0.source.sha1 == sha1 }) { return entry }
         if let restore, let entry = ipsw.first(where: { $0.productType == restore.productType && $0.build == restore.build }) {
-            throw FirmwareError.wrongFile(model: entry.profile?.displayName ?? entry.productType, version: entry.version)
+            throw FirmwareError.wrongFile(model: entry.marketingName, version: entry.version)
         }
         throw FirmwareError.unsupported
     }

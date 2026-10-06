@@ -202,7 +202,7 @@ import Cocoa
     private func refuseExisting(_ entry: FirmwareCatalog.Entry) -> Bool {
         guard !DeviceLibrary.shared.instances(firmware: entry.id).isEmpty else { return false }
         logEvent("firmware: \(entry.id) already has a device; not preparing another")
-        NSApp.presentError(FirmwareError.failed("\(entry.profile?.displayName ?? entry.productType) iOS \(entry.version) already has a device."))
+        NSApp.presentError(FirmwareError.failed("\(entry.marketingName) iOS \(entry.version) already has a device."))
         return true
     }
 

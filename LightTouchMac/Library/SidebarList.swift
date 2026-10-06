@@ -57,8 +57,8 @@ nonisolated struct SidebarList: Equatable {
         names[id] = name.isEmpty || name == defaultTitle ? nil : name
     }
 
-    /// What one row says, and the window's title and subtitle for it: the model identifier ("iPod2,1") over the
-    /// version with its beta/GM badge ("iOS 4.1 beta 1"); a custom name over "iPod2,1, iOS 4.1".
+    /// What one row says, and the window's title and subtitle for it: the marketing name ("iPod touch (2nd generation)") over the
+    /// version with its beta/GM badge ("iOS 4.1 beta 1"); a custom name over "iPod touch (2nd generation), iOS 4.1".
     struct Label: Equatable {
         var title: String
         var subtitle: String
@@ -68,7 +68,7 @@ nonisolated struct SidebarList: Equatable {
 
     static func label(for entry: FirmwareCatalog.Entry, name: String?) -> Label {
         let version = (["iOS \(entry.version)"] + [entry.prereleaseBadge].compactMap { $0 }).joined(separator: " ")
-        guard let name else { return Label(title: entry.productType, subtitle: version) }
-        return Label(title: name, subtitle: "\(entry.productType), \(version)")
+        guard let name else { return Label(title: entry.marketingName, subtitle: version) }
+        return Label(title: name, subtitle: "\(entry.marketingName), \(version)")
     }
 }

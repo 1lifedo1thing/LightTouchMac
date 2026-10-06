@@ -6,9 +6,9 @@ app singletons they ask (DeviceSessionHost, FirmwareJobs, the sessions). Everyth
 never ordered front: nothing appears on screen. PNGs land in --out (default a temp dir):
 sidebar-{one-kind,mixed,renamed,empty,multi-select}.png, batch-delete-alert.png and add-device.png.
 
-Checks what the user sees, from the rendered cells: every row is two lines, the model identifier ("iPod2,1") over
+Checks what the user sees, from the rendered cells: every row is two lines, the marketing name ("iPod touch (2nd generation)") over
 the version with its Beta/GM badge ("iOS 4.1 beta 1"), whatever else is listed; a custom name shows over
-"iPad1,1, iOS 3.2.2" / "iPod2,1, iOS 4.2.1". A download's row shows its ring and no percentage. Renaming in place (the context
+"iPad, iOS 3.2.2" / "iPod touch (2nd generation), iOS 4.2.1". A download's row shows its ring and no percentage. Renaming in place (the context
 menu's Rename, typing, ending the edit) saves the name to defaults; Delete on a row with nothing on disk removes
 it (saved), on a prepared one it asks the delegate to delete instead; an empty sidebar shows Add Device…. A
 download starting for an entry not in the list adds it. The sheet lists every catalog entry once.
@@ -163,14 +163,14 @@ final class Delegate: DeviceLibraryDelegate {
         host.downloaded = ["n72ap-8B117"]
         var (vc, w) = sidebar(["n72ap-8C148", "n72ap-8B5080c", "n72ap-8B117", "n72ap-7E18"], host: host)
         var seen = rows(vc)
-        if seen.map({ Array($0.prefix(1)) + $0.filter { $0.hasPrefix("iOS") } }) != [["iPod2,1", "iOS 3.1.3"], ["iPod2,1", "iOS 4.1 beta 1"], ["iPod2,1", "iOS 4.1"], ["iPod2,1", "iOS 4.2.1"]]
+        if seen.map({ Array($0.prefix(1)) + $0.filter { $0.hasPrefix("iOS") } }) != [["iPod touch (2nd generation)", "iOS 3.1.3"], ["iPod touch (2nd generation)", "iOS 4.1 beta 1"], ["iPod touch (2nd generation)", "iOS 4.1"], ["iPod touch (2nd generation)", "iOS 4.2.1"]]
             || seen.contains(where: { $0.count != 2 }) { fail("one kind (3.1.3 built in: nothing beside it): \(seen)") }
         try render(vc.view, "sidebar-one-kind")
 
         // Mixed: the same two lines.
         (vc, w) = sidebar(["n72ap-8C148", "k48ap-7B500", "n72ap-8B5080c", "n45ap-4B1"], host: host)
         seen = rows(vc)
-        if seen != [["iPad1,1", "iOS 3.2.2"], ["iPod1,1", "iOS 1.1.5"], ["iPod2,1", "iOS 4.1 beta 1"], ["iPod2,1", "iOS 4.2.1"]] { fail("mixed: \(seen)") }
+        if seen != [["iPad", "iOS 3.2.2"], ["iPod touch", "iOS 1.1.5"], ["iPod touch (2nd generation)", "iOS 4.1 beta 1"], ["iPod touch (2nd generation)", "iOS 4.2.1"]] { fail("mixed: \(seen)") }
 
         // Artwork: macOS's declared type per board, the two iPods apart, the fallback for a model macOS doesn't know.
         var types: [String: String] = [:]
@@ -210,16 +210,16 @@ final class Delegate: DeviceLibraryDelegate {
         guard let editor = w.firstResponder as? NSTextView, let field = editor.delegate as? NSTextField, field.isEditable else {
             fail("Rename didn't start an edit: \(String(describing: w.firstResponder))"); precondition(failures.isEmpty, failures.joined(separator: "\n")); return
         }
-        if field.stringValue != "iPad1,1" { fail("the edit starts from \(field.stringValue)") }
+        if field.stringValue != "iPad" { fail("the edit starts from \(field.stringValue)") }
         editor.string = "Lab iPad"
         w.makeFirstResponder(nil)
         if (defaults.dictionary(forKey: SidebarList.namesKey) as? [String: String]) != ["k48ap-7B500": "Lab iPad"] {
             fail("rename not saved: \(String(describing: defaults.dictionary(forKey: SidebarList.namesKey)))")
         }
         seen = rows(vc)
-        if seen.first != ["Lab iPad", "iPad1,1, iOS 3.2.2"] { fail("renamed: \(seen)") }
+        if seen.first != ["Lab iPad", "iPad, iOS 3.2.2"] { fail("renamed: \(seen)") }
         if field.isEditable { fail("the title stays editable after renaming") }
-        // And an iPod: its subtitle names the model by its identifier.
+        // And an iPod: its subtitle names the model by its marketing name.
         vc.select(catalog.entry(id: "n72ap-8C148")!)
         vc.perform(NSSelectorFromString("renameFromMenu:"), with: nil)
         if let editor = w.firstResponder as? NSTextView {
@@ -227,7 +227,7 @@ final class Delegate: DeviceLibraryDelegate {
             w.makeFirstResponder(nil)
         } else { fail("Rename didn't start an edit on the iPod row") }
         seen = rows(vc)
-        if seen.last != ["Test iPod", "iPod2,1, iOS 4.2.1"] { fail("renamed iPod: \(seen)") }
+        if seen.last != ["Test iPod", "iPod touch (2nd generation), iOS 4.2.1"] { fail("renamed iPod: \(seen)") }
         // Renaming a row whose preparation is moving: its progress updates don't end the edit or lose the typing.
         vc.select(catalog.entry(id: "n45ap-4B1")!)
         vc.perform(NSSelectorFromString("renameFromMenu:"), with: nil)
@@ -279,7 +279,7 @@ final class Delegate: DeviceLibraryDelegate {
             let texts = rows(vc)[index]
             let cell = outline.view(atColumn: 0, row: index, makeIfNecessary: true)!
             let ring = all(cell).compactMap { $0 as? NSProgressIndicator }.first
-            if texts != ["iPod2,1", "iOS 4.1"] { fail("a download's row reads \(texts)") }
+            if texts != ["iPod touch (2nd generation)", "iOS 4.1"] { fail("a download's row reads \(texts)") }
             if ring.map({ !visible($0) || $0.isIndeterminate || $0.doubleValue != 0.25 }) ?? true { fail("a download's row has no 25% ring") }
             outline.deselectAll(nil)
             try render(vc.view, "sidebar-progress")
@@ -316,7 +316,7 @@ final class Delegate: DeviceLibraryDelegate {
         if alerts.count != 1 { fail("a mixed batch asked \(alerts.count) questions") }
         if let alert = alerts.first {
             if alert.messageText != "Delete 3 devices?" { fail("batch question: \(alert.messageText)") }
-            if !alert.informativeText.contains("iPod touch iOS 4.2.1") || !alert.informativeText.contains("iPad iOS 3.2.2") {
+            if !alert.informativeText.contains("iPod touch (2nd generation) iOS 4.2.1") || !alert.informativeText.contains("iPad iOS 3.2.2") {
                 fail("the question doesn't name the prepared and the skipped device: \(alert.informativeText)")
             }
             alert.layout()

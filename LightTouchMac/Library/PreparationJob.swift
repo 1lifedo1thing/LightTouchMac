@@ -254,7 +254,7 @@ nonisolated final class PreparationJob: @unchecked Sendable {
         let relative = "Devices/\(id.uuidString)"
         let base = keep ? staging.path : "\(relative)/base"
         let instance = DeviceInstance(
-            id: id, name: entry.profile?.displayName ?? entry.productType, board: entry.board, firmware: entry.id,
+            id: id, name: entry.marketingName, board: entry.board, firmware: entry.id,
             created: DeviceInstance.now, base: .init(kind: .prepared, path: base),
             storage: .init(key: String(sha256(lockData).prefix(16)), overlay: "\(relative)/overlay",
                            writableNOR: fm.fileExists(atPath: staging.appendingPathComponent("nor.bin").path)

@@ -106,7 +106,7 @@ final class StorageSettingsView: NSView {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         let size = { (bytes: Int64) in ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
         func name(_ id: String) -> String {
-            catalog.entry(id: id).map { "\($0.profile?.displayName ?? $0.productType) iOS \($0.version)" } ?? id
+            catalog.entry(id: id).map { "\($0.marketingName) iOS \($0.version)" } ?? id
         }
         func heading(_ text: String) -> NSTextField {
             let label = NSTextField(labelWithString: text)

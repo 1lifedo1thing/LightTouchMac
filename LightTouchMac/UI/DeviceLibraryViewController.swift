@@ -116,7 +116,7 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
 
     /// The row in an alert or a panel: “Lab iPad”, else iPad iOS 3.2.2.
     func displayName(for entry: FirmwareCatalog.Entry) -> String {
-        customName(for: entry).map { "“\($0)”" } ?? "\(entry.profile?.displayName ?? entry.productType) iOS \(entry.version)"
+        customName(for: entry).map { "“\($0)”" } ?? "\(entry.marketingName) iOS \(entry.version)"
     }
 
     /// Edit ▸ Delete while the sidebar has the focus (and its Delete key, SidebarOutlineView).
@@ -529,7 +529,7 @@ private final class SidebarOutlineView: NSOutlineView {
 
 // MARK: - Row cell
 
-/// Two lines (SidebarList.Label): the model identifier or custom name over the version, and the state accessory only
+/// Two lines (SidebarList.Label): the marketing name or custom name over the version, and the state accessory only
 /// when it isn't the usual (DeviceRow.accessory). VoiceOver reads both lines, the state and how well the build is tested.
 final class DeviceRowCell: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("entry")

@@ -102,6 +102,8 @@ nonisolated struct FirmwareCatalog: Codable, Sendable {
         }
 
         var profile: DeviceProfile? { DeviceProfile(boardID: board) }
+        /// What the user reads: "iPhone 4", never the model identifier ("iPhone3,1") unless the board is unknown.
+        var marketingName: String { profile?.marketingName ?? productType }
 
         /// iPhone OS 1.x has no installation service (it came with 2.0): no apps to manage.
         var managesApps: Bool { (Int(version.prefix { $0 != "." }) ?? 2) >= 2 }

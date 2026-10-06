@@ -139,7 +139,7 @@ struct AddDeviceRow: View {
                 .opacity(downloaded ? 0 : 1)
                 .frame(width: 16)
         }
-        .help("\(entry.productType) · iOS \(entry.version) (\(entry.build))\n" + (downloaded ? "Downloaded" : "Not downloaded"))
+        .help("\(entry.marketingName) · iOS \(entry.version) (\(entry.build))\n" + (downloaded ? "Downloaded" : "Not downloaded"))
         .accessibilityElement(children: .combine)
         .accessibilityValue([status, downloaded ? "Downloaded" : "Not downloaded", added ? "In the sidebar" : nil]
             .compactMap { $0 }.joined(separator: ", "))

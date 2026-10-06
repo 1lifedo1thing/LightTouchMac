@@ -1296,7 +1296,7 @@ extension AppsInspectorViewController: NSMenuDelegate {
                         let submenu = NSMenu()
                         for session in targets {
                             let entry = FirmwareCatalog.bundled.entry(id: session.instance.firmware)
-                            let title = entry.map { "\($0.profile?.displayName ?? $0.productType) iOS \($0.version)" } ?? session.instance.name
+                            let title = entry.map { "\($0.marketingName) iOS \($0.version)" } ?? session.instance.name
                             let item = submenu.addItem(withTitle: title, action: #selector(installOnClicked(_:)), keyEquivalent: "")
                             item.target = self
                             item.representedObject = (file: file, emulator: session.emulator)

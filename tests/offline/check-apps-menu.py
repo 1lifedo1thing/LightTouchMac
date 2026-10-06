@@ -29,7 +29,7 @@ struct Instance { let id=UUID(); let firmware="ipod-3.1.3"; let name="iPod" }
 @MainActor final class DeviceSession { let instance=Instance(); let emulator=Emulator() }
 @MainActor final class DeviceSessionHost { static var shared:DeviceSessionHost?; var sessions:[DeviceSession]=[] }
 struct FirmwareCatalog {
- struct Entry { let productType="iPad1,1",version="3.2.2"; var profile:Profile?; struct Profile { let displayName:String } }
+ struct Entry { let productType="iPad1,1",version="3.2.2"; var profile:Profile?; struct Profile { let displayName:String }; var marketingName:String { profile?.displayName ?? productType } }
  static let bundled=FirmwareCatalog()
  func entry(id:String)->Entry? { Entry(profile:.init(displayName:"iPad")) }
 }
