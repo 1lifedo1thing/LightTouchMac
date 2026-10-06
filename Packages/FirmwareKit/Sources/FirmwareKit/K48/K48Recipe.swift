@@ -42,6 +42,9 @@ final class K48Board: Board {
     /// lockdownd decides activation from CommCenter (6.0's keeps FactoryActivated only for a phone it can see), and
     /// what the seal boot decides is what the store keeps.
     var modem: String { IPhoneIdentity.a4Boards.contains(board) ? ",baseband=on" + (ident["imei"].map { ",imei=\($0)" } ?? "") : "" }
+    /// What every boot of the device carries, as BootRecipe boots it (the lock's "machine"): the modem, and the
+    /// recipe's pinned clock (a beta's lockdownd stops activating past its expiry date).
+    var bootOptions: String { modem + (recipe.rtcEpoch.map { ",rtc-epoch=\($0)" } ?? "") }
     var ident: UnitIdentity!
 
     init(_ o: Preparer.Options) throws {
@@ -178,7 +181,7 @@ final class K48Board: Board {
         let attempts = 3
         for attempt in 1...attempts {
             let serial = work.appendingPathComponent("keybag-\(attempt).log")
-            let (r, text) = try Preparer.oneshot(helper, boot: "kboot=\(Preparer.esc(kboot))", machine: "nand=\(Preparer.esc(store)),nor-rw=\(Preparer.esc(nor)),die-id=\(dieID)" + modem,
+            let (r, text) = try Preparer.oneshot(helper, boot: "kboot=\(Preparer.esc(kboot))", machine: "nand=\(Preparer.esc(store)),nor-rw=\(Preparer.esc(nor)),die-id=\(dieID)" + bootOptions,
                                                  serial: serial, stop: "panic(", timeout: 300, work: work, log: c.log, board: machine)
             for line in text.split(separator: "\n") where line.contains("it_keybag:") { c.log(String(line)) }
             if r.exited, text.contains(Preparer.keybagDone) { break }
@@ -203,10 +206,10 @@ final class K48Board: Board {
             // ipad1_seal.py --iboot: enter the patched iBoot with the catalog keys; the writable NOR is where this
             // boot's effaceable/NVRAM writes land (no base nor=). die-id must be non-zero or iBoot rejects it.
             boot = "iboot=\(Preparer.esc(c.file("iBoot.bin"))),gid-blobs=\(Preparer.esc(c.file("gid-blobs.bin")))"
-            extra = ",die-id=\(dieID),nor-rw=\(Preparer.esc(nor!))" + modem
+            extra = ",die-id=\(dieID),nor-rw=\(Preparer.esc(nor!))" + bootOptions
         } else {
             boot = "kboot=\(Preparer.esc(c.file("kboot.bin")))"
-            extra = ",die-id=\(dieID)" + (nor.map { ",nor-rw=\(Preparer.esc($0))" } ?? "") + modem
+            extra = ",die-id=\(dieID)" + (nor.map { ",nor-rw=\(Preparer.esc($0))" } ?? "") + bootOptions
         }
         let serial = work.appendingPathComponent("seal.log")
         let (r, text) = try Preparer.oneshot(helper, boot: boot, machine: "nand=\(Preparer.esc(store))" + extra, serial: serial, stop: nil,
@@ -248,7 +251,7 @@ final class K48Board: Board {
             "outputs": outputs,
             "gl_test": SystemEdits.Options(recipe: recipe).glTest,
             // -M <board>,imei=: the modem (baseband=on) reports the identity's IMEI, so the UDID matches it.
-            "machine": ident["imei"].map { ["imei": $0] } ?? [:],
+            "machine": (ident["imei"].map { ["imei": $0] } ?? [:]).merging(recipe.rtcEpoch.map { ["rtc-epoch": String($0)] } ?? [:]) { a, _ in a },
         ]
     }
 }

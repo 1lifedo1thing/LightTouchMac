@@ -91,10 +91,13 @@ nonisolated public enum FirmwareWire {
             /// The NAND vendor type the store's VFL context declares, when not the part's default (0x100014, two VFL banks
             /// per CE). 0x10001 (one bank) for iOS 3.0 on the S5L8920 boards: K48NAND.Geometry.k48_16g_v1.
             public var nandVendorType: Int?
+            /// The PMU clock at power-on (Unix seconds) for every boot, when not the host's: a developer beta
+            /// checks its expiry date against it (6.0 beta 1's lockdownd: 2012-07-18).
+            public var rtcEpoch: Int?
             enum CodingKeys: String, CodingKey {
                 case name, version, storage, options, guest, boot
                 case systemMiB = "system_mib", dataSize = "data_size", keybagRamdiskFrom = "keybag_ramdisk_from"
-                case nandSigFlags = "nand_sig_flags", nandVendorType = "nand_vendor_type"
+                case nandSigFlags = "nand_sig_flags", nandVendorType = "nand_vendor_type", rtcEpoch = "rtc_epoch"
             }
         }
 
