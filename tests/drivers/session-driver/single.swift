@@ -791,6 +791,15 @@ struct SingleConfig: Decodable {
             if let f = try? await agent.frontmost(), f.bundleID == "com.apple.springboard", f.name == "Home Screen" {
                 return (true, "Setup walked: " + pages.joined(separator: ", "))
             }
+            // LTM_SETUP_SHEET_PROBE=1 (a live check of the sheet path): once past the welcome page, press Home in Setup,
+            // which opens the Emergency Call / Start Over sheet over the page; the walk must dismiss it and go on.
+            if ProcessInfo.processInfo.environment["LTM_SETUP_SHEET_PROBE"] == "1", !pages.contains("(sheet probe)"), n > 0,
+               let f = try? await agent.frontmost(), f.name != "Lock Screen" {
+                d.process.link.send(.button(0, down: true)); try? await Task.sleep(for: .milliseconds(150))
+                d.process.link.send(.button(0, down: false))
+                try? await Task.sleep(for: .seconds(1.5))
+                pages.append("(sheet probe)")
+            }
             guard let shot = await d.wakeForShot("setup\(generation)-\(n)") else { continue }
             for step in plan(labels(shot), pages: pages) {
                 switch step {
