@@ -402,7 +402,8 @@ final class EmulatorController {
         do {
             return try prepared.configuration(bootArgs: Self.bootArgs, usbAddress: usbSession?.guestAddress,
                 wifi: network, guestPackage: composeGuestOffer(), serial: serialCapture?.argument ?? "null",
-                audio: profile.isA4 ? [] : ["-audio", "driver=coreaudio,out.buffer-count=16"], netdev: netdev)
+                audio: profile.isA4 ? [] : ["-audio", "driver=coreaudio,out.buffer-count=16"], netdev: netdev,
+                carrier: profile.hasCellular ? carrierSettings : nil)
         } catch {
             failBoot(error)
             return nil
@@ -1096,6 +1097,49 @@ final class EmulatorController {
             let delta = (target - rotationDegrees + 360) % 360
             guard delta != 0 else { return }
             rotate(clockwise: delta != 270)   // 90 and 180 go clockwise, 270 back
+        }
+    }
+
+    // MARK: Carrier (radio boards)
+    //
+    // The fake network's settings are the device's (UserDefaults "carrier.<uuid>"): every boot starts the modem
+    // with them (BootRecipe, -global ios-baseband.*), and a change while it runs is written to the modem too.
+
+    var hasCellular: Bool { profile.hasCellular }
+
+    private(set) lazy var carrierSettings: CarrierSettings = UserDefaults.standard.data(forKey: instance.defaultsKey("carrier"))
+        .flatMap { try? JSONDecoder().decode(CarrierSettings.self, from: $0) }.flatMap { $0.isValid ? $0 : nil } ?? CarrierSettings()
+
+    /// Saves valid settings and writes what changed to the running modem; false (nothing saved) for invalid ones.
+    @discardableResult
+    func setCarrierSettings(_ settings: CarrierSettings) -> Bool {
+        guard hasCellular, settings.isValid else { return false }
+        let old = Dictionary(carrierSettings.properties.map { ($0.name, $0.value) }, uniquingKeysWith: { a, _ in a })
+        carrierSettings = settings
+        if let data = try? JSONEncoder().encode(settings) {
+            UserDefaults.standard.set(data, forKey: instance.defaultsKey("carrier"))
+        }
+        for p in settings.properties where old[p.name] != p.value { modem(p.name, p.value) }
+        return true
+    }
+
+    /// One modem property or action (incoming-call, remote-answer, remote-hangup, incoming-sms); `done` gets whether
+    /// the helper queued it. The modem's own refusal shows in the next status's `error`.
+    func modem(_ property: String, _ value: String, done: @escaping (Bool) -> Void = { _ in }) {
+        guard hasCellular else { return done(false) }
+        control(.modemSet(property: property, value: value), done)
+    }
+
+    /// The modem's state as of the previous poll (the helper refreshes it per call); nil when it isn't running.
+    func modemStatus(_ done: @escaping (ModemStatus?) -> Void) {
+        guard hasCellular, let link, !bootScope.retired else { return done(nil) }
+        let session = bootScope.id
+        link.request(.modemStatus) { [weak self] reply in
+            MainActor.assumeIsolated {
+                guard let self, !self.bootScope.retired, session == self.bootScope.id,
+                      case .success(.modemStatus(let json?)) = reply else { return done(nil) }
+                done(ModemStatus(json: json))
+            }
         }
     }
 

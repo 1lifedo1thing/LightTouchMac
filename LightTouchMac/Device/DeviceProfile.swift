@@ -92,6 +92,8 @@ nonisolated enum DeviceProfile: Equatable {
     /// The iPod image carries our guest shell and agent; the stock iPad has none, nor has 1.x (smoke.md #31).
     var hasGuestTools: Bool { self == .iPodTouch2G }
     var hasCompass: Bool { self == .iPad1 }
+    /// A cellular modem (the Carrier panel): the original iPhone, the 3GS and the iPhone 4.
+    var hasCellular: Bool { self == .iPhone2G || self == .iPhone3GS || self == .iPhone4 }
     /// Whether the board's charging is its USB port's current (the iPad's usb-charger), not the PMU's charger.
     var canChooseUSBCharger: Bool { self == .iPad1 }
 

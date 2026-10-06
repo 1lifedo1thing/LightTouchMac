@@ -197,6 +197,7 @@ enum MainMenuBuilder {
         network.addItem(.separator())
         network.addItem(item("Proxy…", #selector(MainWindowController.configureWebProxy(_:))))
         menu.addItem(submenu(network, title: "Network"))
+        if profile.hasCellular { menu.addItem(item("Carrier…", #selector(MainWindowController.showCarrier(_:)))) }
         let battery = NSMenu(title: "Battery")
         for level in [100, 80, 50, 20, 5] {
             battery.addItem(item("\(level)%", #selector(MainWindowController.setBatteryLevel(_:)), tag: level))

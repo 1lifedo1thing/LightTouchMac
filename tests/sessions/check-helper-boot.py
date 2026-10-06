@@ -19,6 +19,10 @@ status block, frame ring, framed link). Cases:
              halts the helper, which exits (the flush lands in the dead inode, harmlessly)
   oneshot    --oneshot: an iPad boot stopped at FTL_Open [OK] (stopPattern, newlines removed)
   headless   --headless: an iPod boot to a lit lock screen, dump, quit
+  carrier    --iphone-device (a FirmwareKit n90ap/n88ap device): the Carrier panel's path, app -> link ->
+             qemu_ios_ui_modem_set/_status -> the modem: booted with saved settings (-global), carrier renamed, a bad
+             MCC/MNC refused (error in the next status), signal moved, an incoming SMS delivered, a call
+             rung (incoming) and hung up (idle), quit
 
     tests/sessions/check-helper-boot.py --ipad-device DIR [--helper PATH] [--dylib PATH] [--work DIR] [--only a,b]
 
@@ -164,6 +168,24 @@ def ipad_boot(device, ovl, serial, restore=None, shutdown=True):
     return {"machine": "ipad1", "argv": argv}
 
 
+def iphone_boot(device, ovl, serial):
+    """A FirmwareKit iPhone (kboot): its modem on (baseband=on, the lock's IMEI) and its data netdev, as the app boots it."""
+    ovl.mkdir(parents=True, exist_ok=True)
+    lock = json.loads((device / "device.lock.json").read_text())
+    board = {"n90ap": "iPhone-4", "n88ap": "n88"}[lock["board"]]
+    nor = ovl / "nor.bin"
+    if not nor.exists():
+        shutil.copy(device / "nor.bin", nor)
+        nor.chmod(0o600)
+    machine = (f"{board},kboot={esc(device / 'kboot.bin')},nand={esc(device / 'nand')},nand-overlay={esc(ovl)}"
+               f",nor-rw={esc(nor)},baseband=on" + "".join(f",{k}={esc(v)}" for k, v in sorted(lock.get("machine", {}).items())))
+    argv = ["LightTouchDevice", "-M", machine, "-display", "none", "-audio", "driver=none", "-no-shutdown",
+            "-serial", f"file:{serial}", "-netdev", "user,id=wifi0", "-netdev", "user,id=cell0",
+            # saved Carrier settings, as CarrierSettings.globals passes them at boot
+            "-global", "ios-baseband.carrier=Saved, Carrier", "-global", "ios-baseband.signal-dbm=-81"]
+    return {"machine": board, "argv": argv}
+
+
 def parent_kill(d, case, results, budget):
     """SIGKILL the driver (the 'app') once it holds; the helper must halt (no guest shutdown) and exit."""
     hold = d.wait_event("hold", 400)
@@ -184,18 +206,22 @@ def parent_kill(d, case, results, budget):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--ipad-device", type=Path)
+    ap.add_argument("--iphone-device", type=Path, help="a FirmwareKit n90ap/n88ap device for the carrier case")
     ap.add_argument("--helper")
     ap.add_argument("--dylib", default=os.environ.get("LTM_QEMU_DYLIB"))
     ap.add_argument("--files", type=Path, default=HOME / "Developer/qemu-ios-files")
     ap.add_argument("--work", type=Path)
     ap.add_argument("--only")
     args = ap.parse_args()
-    cases = ["reject", "lease", "ipod", "ipad", "restore", "ipad-orphan", "oneshot", "headless", "meddle"]
+    cases = ["reject", "lease", "ipod", "ipad", "restore", "ipad-orphan", "oneshot", "headless", "meddle", "carrier"]
     if args.only:
         cases = [c for c in cases if c in args.only.split(",")]
     if not args.ipad_device:
         cases = [c for c in cases if not c.startswith(("ipad", "restore", "oneshot"))]
         print("no --ipad-device: skipping the iPad cases")
+    if not args.iphone_device and "carrier" in cases:
+        cases.remove("carrier")
+        print("no --iphone-device: skipping the carrier case")
     work = args.work or Path(tempfile.mkdtemp(prefix="ltm-helper-boot-"))
     work.mkdir(parents=True, exist_ok=True)
     bin_dir = work / "bin"
@@ -326,6 +352,31 @@ def main():
                 d.p.wait()
             else:
                 print(d.tail())
+
+        if "carrier" in cases:
+            print("carrier", flush=True)
+            ovl = work / "carrier/overlay"
+            boot = iphone_boot(args.iphone_device, ovl, work / "carrier/serial.log")
+            d = Driver(args, bin_dir, helper, work, "carrier", {"machine": boot["machine"], "boot": boot,
+                       "steps": ["boot", "lit 0.1 300", "wait 60", "modemStatus",
+                                 "modem carrier Cell Panel", "modem signal-dbm -97", "modem mcc-mnc 001", "wait 1", "modemStatus",
+                                 "modem incoming-sms +15555550100|hello from the panel", "wait 2", "modemStatus",
+                                 "modem incoming-call 15555550100", "wait 3", "modemStatus",
+                                 "modem remote-hangup 1", "wait 3", "modemStatus",
+                                 "modem no-such-property x", "quit", "expectExit 60"]})
+            rc = d.wait(600)
+            check(rc == 0, "scenario completed", "carrier", results) or print(d.tail())
+            st = [json.loads(e["json"]) if e["json"] else {} for e in d.find("modemStatus")]
+            replies = {e["modem"]: e["reply"] for e in d.find("reply") if "modem" in e}
+            if check(len(st) == 5, f"five statuses ({len(st)})", "carrier", results):
+                check(st[0].get("carrier") == "Saved, Carrier" and st[0].get("signal-dbm") == -81 and st[0].get("mcc-mnc") == "00101"
+                      and st[0].get("registered"), f"booted registered with the saved settings ({st[0]})", "carrier", results)
+                check(st[1].get("carrier") == "Cell Panel" and st[1].get("signal-dbm") == -97 and st[1].get("mcc-mnc") == "00101"
+                      and "mcc-mnc" in st[1].get("error", ""), f"renamed, signal moved, the bad MCC/MNC refused ({st[1]})", "carrier", results)
+                check("error" not in st[2] and "ok(true)" in replies.get("incoming-sms", ""), f"SMS delivered ({st[2]})", "carrier", results)
+                check(st[3].get("call-state") == "incoming", f"ringing: {st[3].get('call-state')}", "carrier", results)
+                check(st[4].get("call-state") == "idle", f"hung up: {st[4].get('call-state')}", "carrier", results)
+            check("ok(false)" in replies.get("no-such-property", ""), "an unknown property is refused at the link", "carrier", results)
 
         if "headless" in cases:
             print("headless", flush=True)

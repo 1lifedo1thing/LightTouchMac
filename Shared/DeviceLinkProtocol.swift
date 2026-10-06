@@ -88,6 +88,11 @@ nonisolated public enum LinkRequest: Codable, Sendable, Equatable {
     case inputSequence(id: UInt64, events: [VirtualInputEvent])
     case inputSequenceStatus(id: UInt64)
     case inputSequenceCancel(id: UInt64)
+    /// qemu_ios_ui_modem_set: one modem property (CarrierSettings, the call and SMS actions) from its string form.
+    /// `.ok(false)`: no modem, no such property, or an older dylib.
+    case modemSet(property: String, value: String)
+    /// -> `.modemStatus(json)`: qemu_ios_ui_modem_status (as of the previous poll); nil without a modem.
+    case modemStatus
 }
 
 nonisolated public enum LinkReply: Codable, Sendable, Equatable {
@@ -98,6 +103,7 @@ nonisolated public enum LinkReply: Codable, Sendable, Equatable {
     case audio(generation: UInt64)
     case failure(String)
     case inputSequenceStatus(Int)
+    case modemStatus(String?)
 }
 
 nonisolated public enum LinkEvent: Codable, Sendable, Equatable {

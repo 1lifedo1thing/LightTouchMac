@@ -202,6 +202,13 @@ final class DeviceHost: @unchecked Sendable {
         case let .compass(heading): reply(.ok(qemu.compass(Int32(heading))))
         case let .usbCharger(high): reply(.ok(qemu.usbCharger(high)))
         case let .orientation(value): reply(.ok(qemu.orientation(Int32(value))))
+        case let .modemSet(property, value):
+            reply(.ok(qemu.modemSet.map { set in property.withCString { p in value.withCString { set(p, $0) } } } ?? false))
+        case .modemStatus:
+            guard let status = qemu.modemStatus, let raw = status() else { return reply(.modemStatus(nil)) }
+            let json = String(cString: raw)
+            qemu.modemFree?(raw)
+            reply(.modemStatus(json))
         case let .inputSequence(id, events):
             guard let submit = qemu.inputSequence,
                   VirtualInputEvent.valid(events) else {

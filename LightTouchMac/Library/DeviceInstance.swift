@@ -149,7 +149,7 @@ nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Sendable {
     /// Per-device UserDefaults key, e.g. "deviceNotice.<uuid>".
     func defaultsKey(_ name: String) -> String { "\(name).\(id.uuidString)" }
     /// The names kept per device; Delete removes them with the record.
-    static let perDeviceDefaults = ["deviceNotice", "motionPose", "keyboardInputEnabled", "autoRotateWithGuest", "debugPort"]
+    static let perDeviceDefaults = ["deviceNotice", "motionPose", "keyboardInputEnabled", "autoRotateWithGuest", "debugPort", "carrier"]
 
     // MARK: - Record I/O
 
