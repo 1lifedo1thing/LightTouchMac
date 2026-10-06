@@ -258,9 +258,7 @@ public nonisolated enum BootRecipe {
     /// `audio`: the app's CoreAudio arguments, or `-audio driver=none` in tests.
     /// `netdev`: the explicit wifi0 (with the web proxy's guestfwd), if any.
     public static func iPod(_ d: IPod, serial: String, audio: [String], netdev: String?, restore: [String]) -> BootConfig {
-        var machine = "iPod-Touch,h264-decode=on,scaler-decode=on,mpvd-decode=on,amc-mode=decode,lcd-planes=on"
-            + ",boot-args=\(escape(d.bootArgs))"
-            + ",boot-args-delay-ms=0,boot-args-repeat=200,boot-args-interval-ms=250"
+        var machine = "iPod-Touch,boot-args=\(escape(d.bootArgs))"
             + ",direct-iboot=\(escape(d.iBoot)),direct-llb="
             + ",bootrom=\(escape(d.bootrom)),nand=\(escape(d.nand)),nor=\(escape(d.nor))"
             + ",nor-rw=\(escape(d.writableNOR)),nandrw=\(escape(d.overlay))"
