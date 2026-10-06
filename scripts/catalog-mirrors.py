@@ -5,7 +5,7 @@
 
 For every entry whose IPSW the collection holds with the same sha1 and size (matched by file name, then by sha1),
 source.mirrors gets that copy's archive.org URL, sha1 and bytes; a copy that differs (truncated uploads) is left out.
-Mirrors on other hosts stay as they are, ahead of archive.org. The app downloads source.url first, then each mirror
+Other mirrors (BetaArchive RARs, other hosts) stay; mirrors are kept Apple, archive.org IPSW, RAR, other hosts. The app downloads source.url first, then each mirror
 (FirmwareDownloads), and checks the sha1 of whatever it got. Rewrites only the "source" lines of
 LightTouchMac/Resources/firmware-catalog.json; prints a line per entry.
 """
@@ -37,6 +37,8 @@ def main():
         mirrors = [m for m in src.get("mirrors", []) if not m["url"].startswith(DOWNLOAD)]
         if same and url != src["url"]:
             mirrors.append({"url": url, "sha1": found["sha1"], "bytes": int(found["size"])})
+        # Most reliable first: Apple, archive.org IPSWs, archive.org RARs, other hosts.
+        mirrors.sort(key=lambda m: 0 if "apple.com" in m["url"] else 3 if "archive.org" not in m["url"] else 2 if m.get("kind") == "rar" else 1)
         if mirrors:
             src["mirrors"] = mirrors
         else:
