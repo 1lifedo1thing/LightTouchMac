@@ -85,6 +85,26 @@ nonisolated struct IPSWStore: Sendable {
         return destination
     }
 
+    /// A "rar" source's finished download (`file`): `firmwarekit unwrap` checks the archive against the entry,
+    /// extracts its IPSW and checks that, into <sha1>.ipsw. The archive goes either way; a refusal is `.corrupted`,
+    /// so the download moves on to the next source as for a plain IPSW.
+    func installArchive(_ file: URL, entry: FirmwareCatalog.Entry, preparer: URL?) throws -> URL {
+        let fm = FileManager.default
+        let entryFile = file.appendingPathExtension("entry.json")
+        defer { try? fm.removeItem(at: file); try? fm.removeItem(at: entryFile) }
+        guard let preparer, let sha1 = entry.source.sha1 else { throw FirmwareError.unsupported }
+        try JSONEncoder().encode(entry).write(to: entryFile)
+        let unwrap = Process()
+        unwrap.executableURL = preparer
+        unwrap.arguments = ["unwrap", "--entry", entryFile.path, "--archive", file.path, "--out", download(sha1).path]
+        unwrap.standardOutput = FileHandle.nullDevice
+        unwrap.standardError = FileHandle.nullDevice
+        try unwrap.run()
+        unwrap.waitUntilExit()
+        guard unwrap.terminationStatus == 0, fm.fileExists(atPath: download(sha1).path) else { throw FirmwareError.corrupted }
+        return download(sha1)
+    }
+
     /// `url` or its nearest existing parent, for volume questions.
     private static func existing(_ url: URL) -> URL {
         var probe = url

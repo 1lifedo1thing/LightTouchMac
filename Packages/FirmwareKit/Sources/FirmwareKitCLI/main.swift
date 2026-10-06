@@ -49,6 +49,8 @@ if command == "edit" {
 }
 if command == "verify-keys" { verifyKeysCommand(Array(args)) }
 if command == "fit" { fitCommand(Array(args)) }
+if command == "unwrap" { unwrapCommand(Array(args)) }
+if command == "fetch" { fetchCommand(Array(args)) }
 guard command == "create" else {
     FirmwareDiagnostics.write(Data("""
         firmwarekit \(FirmwareKit.version)
@@ -66,6 +68,8 @@ guard command == "create" else {
                firmwarekit unmount --out DIR
                firmwarekit verify-keys --entry ENTRY.json --ipsw IPSW
                firmwarekit fit --root MOUNTED_SYSTEM_VOLUME [--arch armv6|armv7] MACHO...
+               firmwarekit unwrap --entry ENTRY.json --archive FILE --out IPSW   (a "rar" source's download)
+               firmwarekit fetch --entry ENTRY.json --out IPSW   (download and check the entry's IPSW)
 
         """.utf8))
     _ = await FirmwareDiagnostics.finish()

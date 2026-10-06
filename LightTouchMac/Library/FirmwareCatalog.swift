@@ -25,7 +25,7 @@ nonisolated struct FirmwareCatalog: Codable, Sendable {
         private var wire: FirmwareWire.Entry
         init(from decoder: Decoder) throws {
             wire = try FirmwareWire.Entry(from: decoder)
-            guard Status(rawValue: wire.status) != nil, wire.source.kind == "ipsw",
+            guard Status(rawValue: wire.status) != nil, ["ipsw", "rar"].contains(wire.source.kind),
                   wire.prerelease == nil || Prerelease(rawValue: wire.prerelease!) != nil else {
                 throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath,
                     debugDescription: "Unknown firmware presentation status, prerelease or source kind"))

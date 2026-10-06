@@ -1,5 +1,5 @@
 {
-  "originHash" : "b93563fe829055f2d5d8e3c7659d787a116d46a80d5fb2fff893f4ce3b98a4e0",
+  "originHash" : "8a24c26ebd9809b12d335c2db96a4a878fe2d4e7b94c978ce03b3ad29cdd762d",
   "pins" : [
     {
       "identity" : "machokit",
@@ -80,6 +80,15 @@
       "state" : {
         "revision" : "869129b7bf4ecc57b97d0193ad29690ca2134750",
         "version" : "1.8.1"
+      }
+    },
+    {
+      "identity" : "unrar.swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/mtgto/Unrar.swift.git",
+      "state" : {
+        "revision" : "7216007a38ac122dbdeae26cfdaf7f10775c868f",
+        "version" : "0.5.4"
       }
     },
     {

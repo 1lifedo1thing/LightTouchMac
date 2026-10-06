@@ -6,7 +6,8 @@
 //
 // Dependencies are pinned to exact versions and recorded with their licenses in build-support/dependencies.json
 // (scripts/dependency-sources.py's manifest): ZIPFoundation (IPSW members), MachOKit (Mach-O headers, fat
-// files, code signatures), swift-subprocess (`diskutil image` / `hdiutil` through DiskImage).
+// files, code signatures), swift-subprocess (`diskutil image` / `hdiutil` through DiskImage), Unrar.swift (a "rar"
+// source's IPSW: RARLAB's UnRAR, extraction only).
 import PackageDescription
 
 let package = Package(
@@ -21,6 +22,7 @@ let package = Package(
         .package(url: "https://github.com/weichsel/ZIPFoundation.git", exact: "0.9.20"),
         .package(url: "https://github.com/p-x9/MachOKit.git", exact: "0.53.0"),
         .package(url: "https://github.com/swiftlang/swift-subprocess.git", exact: "1.0.0"),
+        .package(url: "https://github.com/mtgto/Unrar.swift.git", exact: "0.5.4"),
     ],
     targets: [
         .target(name: "FirmwareSchema"),
@@ -31,6 +33,7 @@ let package = Package(
             .product(name: "ZIPFoundation", package: "ZIPFoundation"),
             .product(name: "MachOKit", package: "MachOKit"),
             .product(name: "Subprocess", package: "swift-subprocess"),
+            .product(name: "Unrar", package: "Unrar.swift"),
         ]),
         .executableTarget(name: "FirmwareKitCLI", dependencies: ["FirmwareKit",
             .product(name: "HostRuntime", package: "HostRuntime"),

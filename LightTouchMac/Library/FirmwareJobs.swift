@@ -45,14 +45,22 @@ import Cocoa
             PreparationJob.sweep(state: Bundled.stateDirectory)
             store.sweep()
         }
-        let bytes = Dictionary(catalog.entries.compactMap { e in e.source.sha1.map { ($0, e.source.bytes ?? 0) } },
+        // Keyed by the IPSW's sha1 (a task's name); what is downloaded and weighed is the archive for a "rar" source.
+        let bytes = Dictionary(catalog.entries.compactMap { e in e.source.sha1.map { ($0, e.source.downloadBytes ?? 0) } },
                                uniquingKeysWith: { a, _ in a })
+        let archives = Dictionary(catalog.entries.filter(\.source.isArchive).compactMap { e in e.source.sha1.map { ($0, e) } },
+                                  uniquingKeysWith: { a, _ in a })
         self.bytes = bytes
         let urls = Dictionary(catalog.entries.compactMap { e in e.source.sha1.map { ($0, e.source.urls) } }, uniquingKeysWith: { a, _ in a })
         // Made at launch so a download the last launch started reports here.
         // ponytail: a task resumed at launch from a mirror shows no mirror line until the next fallback.
+        let preparer = Self.preparer
+        let install: @Sendable (String, URL) throws -> URL = { sha1, file in
+            guard let entry = archives[sha1] else { return try store.install(file, sha1: sha1, bytes: bytes[sha1]) }
+            return try store.installArchive(file, entry: entry, preparer: preparer)
+        }
         downloads = FirmwareDownloads(store: store, configuration: configuration, expectedBytes: { bytes[$0] },
-                                      sources: { urls[$0] ?? [] }) { [weak self] sha1, event in
+                                      sources: { urls[$0] ?? [] }, install: install) { [weak self] sha1, event in
             Task { @MainActor in self?.download(sha1, event) }
         }
         // ponytail: a resumed download reports under its own entry, so a sibling IPSW the last
@@ -119,7 +127,7 @@ import Cocoa
         guard wanted.count == sources.count, !wanted.isEmpty else { return fail(entry, FirmwareError.unsupported) }
         do {
             // The IPSWs, then the preparation, beside every job already under way.
-            let size = sources.reduce(0) { $0 + ($1.source.bytes ?? 0) }
+            let size = sources.reduce(0) { $0 + ($1.source.bytes ?? 0) + ($1.source.isArchive ? $1.source.archiveBytes ?? 0 : 0) }
             try IPSWStore.checkSpace(size + entry.estimates.peakBytes + inFlightPeakBytes, at: store.downloads)
             starts[entry.id] = nil
             waiting[entry.id] = wanted.map(\.0)
