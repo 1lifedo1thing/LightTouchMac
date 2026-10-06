@@ -372,6 +372,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
     private func start(_ entry: FirmwareCatalog.Entry) {
         library.select(entry)
+        if let id = host.instance(for: entry)?.id { Task { try? await DeviceFilesystemEdits.shared.endBrowsing(id) } }
         if let session = host.session(for: entry) {
             if session.emulator.isDead { host.restart(session) } else { session.emulator.powerOn() }
             return

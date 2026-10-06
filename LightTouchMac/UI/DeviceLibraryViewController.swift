@@ -408,7 +408,7 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         (.start, "Start"), (.stop, "Stop"), (nil, ""),
         (.downloadAndPrepare, "Download and Prepare"), (.importIPSW, "Import IPSW…"), (.cancel, "Cancel"), (nil, ""),
         (.showInFinder, "Show in Finder"),
-        (.openFilesystem, "Open Filesystem in Finder"), (.commitFilesystem, "Save Filesystem Edits"),
+        (.openFilesystem, "Show File System in Finder"), (.commitFilesystem, "Save Filesystem Edits"),
         (.discardFilesystem, "Discard Filesystem Edits"), (.recoverFilesystem, "Finish Filesystem Recovery"), (nil, ""),
         (.erase, "Erase All Content and Settings…"),
     ]
