@@ -128,6 +128,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return menu
     }
 
+    @objc func showAbout(_ sender: Any?) { AboutCredits.show() }
+
     func applicationWillFinishLaunching(_ notification: Notification) {
         // Keep AppKit's native editing utilities for search fields and panels.
         // Device, Files, Help, and log windows have distinct jobs, not tabs.

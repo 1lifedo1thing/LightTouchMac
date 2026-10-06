@@ -227,20 +227,28 @@ class ReleaseTests(unittest.TestCase):
         self.put(self.product / 'LightTouchMac.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', '{"pins": []}')
         sources = {name: {'revision': None, 'dirty': True, 'source_sha256': '0' * 64, 'files': 1, 'submodules': {}}
                    for name in ('app', 'qemu', 'usbmuxd')}
-        record = release.write_build_record(self.args, sources, self.native, self.native / 'qemu-build', self.guest)
+        self.put(self.product / 'build-support/dependencies.json', json.dumps(
+            {'packages': [{'name': 'libimobiledevice', 'version': '1.4.0'}]}))
+        blob = self.root / 'n72ap-7E18.itbase'
+        blob.write_bytes(b'blob')
+        record = release.write_build_record(self.args, sources, self.native, self.native / 'qemu-build', self.guest, blob)
         text = record.read_text()
         self.assertNotIn(str(self.root), text)
         self.assertEqual(json.loads(text)['native_artifacts']['iboot32patcher'], {'commit': 'c' * 40, 'sha256': 'd' * 64})
         self.assertEqual(set(json.loads(text)['pin']['qemu-ios']), {'pinned', 'actual', 'dirty', 'matches'})
+        # About Light Touch's list: the guest package and each pinned dependency with its version.
+        components = json.loads(text)['components']
+        self.assertEqual(components['guest tools'], f'1.1.5 (serial {release.GUEST_PACKAGE_MIN_SERIAL})')
+        self.assertEqual(components['libimobiledevice'], '1.4.0')
         # A source-only revision change must refresh the shipped receipt even
         # when the compiled payload and source bytes have not changed.
         sources['qemu']['revision'] = 'e' * 40
-        changed = release.write_build_record(self.args, sources, self.native, self.native / 'qemu-build', self.guest).read_text()
+        changed = release.write_build_record(self.args, sources, self.native, self.native / 'qemu-build', self.guest, blob).read_text()
         self.assertNotEqual(text, changed)
         self.assertEqual(json.loads(changed)['sources']['qemu']['revision'], 'e' * 40)
         self.put(self.native / 'build/iBoot32Patcher/build.json', json.dumps({'commit': 'c' * 40, 'source': str(Path.home() / 'src')}))
         with self.assertRaisesRegex(ValueError, 'local path'):
-            release.write_build_record(self.args, sources, self.native, self.native / 'qemu-build', self.guest)
+            release.write_build_record(self.args, sources, self.native, self.native / 'qemu-build', self.guest, blob)
 
     def test_existing_and_symlink_outputs_are_rejected(self):
         self.args.output.mkdir()

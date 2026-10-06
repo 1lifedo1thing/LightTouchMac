@@ -190,6 +190,7 @@ struct Instance { let id=UUID() }
  @objc func showDebugPort(_ sender:Any?) {}
  @objc func copyLLDBCommand(_ sender:Any?) {}
  @objc func showHelp(_ sender:Any?) {}
+ @objc func showAbout(_ sender:Any?) {}
  @objc func showDeviceWindow(_ sender:Any?) {}
  @objc func showFilesWindow(_ sender:Any?) {}
  @objc func quit(_ sender:Any?) {} }

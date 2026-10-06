@@ -596,10 +596,17 @@ def write_build_record(args, sources, native_root, qemu_build, guest, blob):
     The absolute paths (checkouts, build directories, IPSWs) stay in the records beside the output."""
     provenance = copy_provenance(args.output, native_root / 'native-build.json', guest.parent / 'manifest.json')
     patcher = json.loads((native_root / PATCHER).with_name('build.json').read_text())
+    package = json.loads((guest.parent / 'manifest.json').read_text())['guest_package']
+    pinned = pin_status(args)
+    # What About Light Touch lists: each bundled component and its version (commits shortened).
+    components = {'qemu-ios': (sources['qemu']['revision'] or '')[:10], 'usbmuxd': (sources['usbmuxd']['revision'] or '')[:10],
+                  'guest tools': f"{package['version']} (serial {package['serial']})",
+                  **{p['name']: p['version'][:10] for p in json.loads((ROOT / 'build-support/dependencies.json').read_text())['packages']}}
     record = {
         'schema_version': 1, 'sources': sources,
         **({'host_architectures': list(UNIVERSAL_ARCHS)} if args.universal else {'host_architecture': 'arm64'}),
-        'pin': {name: {k: v for k, v in status.items() if k != 'path'} for name, status in pin_status(args).items()},
+        'pin': {name: {k: v for k, v in status.items() if k != 'path'} for name, status in pinned.items()},
+        'components': components,
         'firmware': {'bootroms_sha256': {Path(name).name: digest(args.assets / name) for name in BOOTROMS},
                      'bundled': {'entry': BUNDLED_ENTRY, 'sha256': digest(blob)}},
         'native_build_record_sha256': provenance['native-build.json'],
