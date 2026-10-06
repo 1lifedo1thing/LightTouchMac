@@ -716,6 +716,74 @@ struct SingleConfig: Decodable {
         return found
     }
 
+    enum Step: Equatable { case tap(Double, Double, String?), pause(Double), slideIfLockScreen }
+
+    /// One Setup page's taps, from the labels Vision read on it (`pages`: what the walk has tapped so far).
+    static func plan(_ found: [String: (x: Double, y: Double)], pages: [String]) -> [Step] {
+        // Setup's Home sheet (Emergency Call / Start Over) dims the page, whose labels Vision still reads and whose
+        // rows and Next it would tap in vain (n88 6.0.1: 40 pages of English): dismiss it before anything else.
+        if let cancel = found["Cancel"], found["Start Over"] != nil {
+            return [.tap(cancel.x, cancel.y, "(Cancel)")]
+        }
+        if let yes = alertYes.first(where: { found[$0] != nil }), let p = found[yes] {
+            return [.tap(p.x, p.y, "(\(yes))")]
+        }
+        var steps: [Step] = []
+        var pick = picks.first { found[$0] != nil }
+        // The country list without Australia/United States on screen (the 3GS's 480-line panel, 7.x's "Select Your
+        // Country or Region" with "MORE COUNTRIES AND REGIONS" over Afghanistan): the first row below the page's
+        // last country heading in its top 60 %. Next stays disabled until one is chosen.
+        let headings = found.filter { $0.key.localizedCaseInsensitiveContains("countr") && $0.value.y < 0.6 }
+        if pick == nil, let below = headings.map({ $0.value.y }).max(),
+           let first = found.filter({ $0.value.y > max(below, 0.15) && $0.value.y < 0.9 && !["Next", "Back"].contains($0.key) })
+                            .min(by: { $0.value.y < $1.value.y }) {
+            pick = first.key
+        }
+        if let pick, let p = found[pick] {
+            // a label tapped again and again: nudge the tap (as walk_setup, the digitizer's edges)
+            let again = pages.filter { $0 == pick }.count
+            steps.append(.tap(p.x, p.y + [0, -14, 14, -24, 24][again % 5] / 960, pick))
+            if pick.hasPrefix("Start Using") || pick == "Get Started" { return steps }
+            steps.append(.pause(1.5))
+        }
+        // The language page: 7.x moves on when its English row is tapped; 6.x needs its arrow after (top right).
+        if pick == nil, let english = found["English"] {
+            steps += [.tap(english.x, english.y, "English"), .pause(1.5)]
+        }
+        if let next = found["Next"] ?? (found["English"] != nil ? nextArrow : nil) {
+            steps.append(.tap(next.x, next.y, pick == nil ? (found.filter { $0.value.y < 130.0 / 960 && $0.key != "Next" }.keys.first ?? "?") : nil))
+        } else if pick == nil {
+            steps.append(.slideIfLockScreen)
+        }
+        return steps
+    }
+
+    /// `plan` against label sets read off real Setup screenshots (positions rounded): session-driver --selftest-walk.
+    static func selfTest() -> Bool {
+        var ok = true
+        func expect(_ label: String, _ cond: Bool) { print((cond ? "PASS " : "FAIL ") + label); ok = ok && cond }
+        func taps(_ steps: [Step]) -> [String] { steps.compactMap { if case .tap(_, _, let log) = $0 { return log ?? "(next)" }; return nil } }
+        // n88ap-10A523 (3GS 6.0.1), fold-9 run 2: the language page with the Home sheet up
+        let sheetOnLanguage: [String: (x: Double, y: Double)] = [
+            "Test Network": (0.2, 0.02), "9:43 PM": (0.5, 0.02), "English": (0.15, 0.2), "Français": (0.15, 0.29),
+            "Deutsch": (0.15, 0.39), "Emergency Call": (0.5, 0.66), "Start Over": (0.5, 0.77), "Cancel": (0.5, 0.91)]
+        expect("Home sheet over the language page: Cancel only", plan(sheetOnLanguage, pages: []) == [.tap(0.5, 0.91, "(Cancel)")])
+        var sheetOnPick = sheetOnLanguage; sheetOnPick["Skip This Step"] = (0.82, 0.95)
+        expect("Home sheet over a page with a pick: Cancel only", taps(plan(sheetOnPick, pages: [])) == ["(Cancel)"])
+        var language = sheetOnLanguage; ["Emergency Call", "Start Over", "Cancel"].forEach { language[$0] = nil }
+        let lang = plan(language, pages: [])
+        expect("language page: English, then the arrow", lang.count == 3 && lang[0] == .tap(0.15, 0.2, "English")
+               && { if case .tap(let x, let y, _) = lang[2] { return x == nextArrow.x && y == nextArrow.y }; return false }())
+        // n90ap-11D257 (7.1.2), fold-10 run 1: the Country page
+        let country7: [String: (x: Double, y: Double)] = [
+            "Back": (0.12, 0.09), "Select Your Country": (0.5, 0.19), "or Region": (0.5, 0.26),
+            "MORE COUNTRIES AND REGIONS": (0.4, 0.5), "Afghanistan": (0.2, 0.595), "Åland Islands": (0.22, 0.72)]
+        expect("7.x Country page: its first row", taps(plan(country7, pages: [])) == ["Afghanistan"])
+        expect("an alert's OK", taps(plan(["OK": (0.5, 0.6), "Location Services": (0.5, 0.4)], pages: [])) == ["(OK)"])
+        expect("nothing known: the welcome slide, if on the lock screen", plan(["slide to set up": (0.5, 0.9)], pages: []) == [.slideIfLockScreen])
+        return ok
+    }
+
     static func walk(_ d: Device, agent: GuestAgent, generation: Int) async -> (Bool, String) {
         var pages: [String] = []
         for n in 0..<40 {
@@ -724,50 +792,23 @@ struct SingleConfig: Decodable {
                 return (true, "Setup walked: " + pages.joined(separator: ", "))
             }
             guard let shot = await d.wakeForShot("setup\(generation)-\(n)") else { continue }
-            let found = labels(shot)
-            // Setup's Home sheet (Emergency Call / Start Over) dims the page, whose labels Vision still reads and whose
-            // rows and Next it would tap in vain (n88 6.0.1: 40 pages of English): dismiss it before anything else.
-            if let cancel = found["Cancel"], found["Start Over"] != nil {
-                await d.tap(cancel.x, cancel.y); pages.append("(Cancel)"); continue
-            }
-            if let yes = alertYes.first(where: { found[$0] != nil }), let p = found[yes] {
-                await d.tap(p.x, p.y); pages.append("(\(yes))"); continue
-            }
-            var pick = picks.first { found[$0] != nil }
-            // The country list without Australia/United States on screen (the 3GS's 480-line panel, 7.x's "Select Your
-            // Country or Region" with "MORE COUNTRIES AND REGIONS" over Afghanistan): the first row below the page's
-            // last country heading in its top 60 %. Next stays disabled until one is chosen.
-            let headings = found.filter { $0.key.localizedCaseInsensitiveContains("countr") && $0.value.y < 0.6 }
-            if pick == nil, let below = headings.map({ $0.value.y }).max(),
-               let first = found.filter({ $0.value.y > max(below, 0.15) && $0.value.y < 0.9 && !["Next", "Back"].contains($0.key) })
-                                .min(by: { $0.value.y < $1.value.y }) {
-                pick = first.key
-            }
-            if let pick, let p = found[pick] {
-                // a label tapped again and again: nudge the tap (as walk_setup, the digitizer's edges)
-                let again = pages.filter { $0 == pick }.count
-                await d.tap(p.x, p.y + [0, -14, 14, -24, 24][again % 5] / 960)
-                pages.append(pick)
-                if pick.hasPrefix("Start Using") || pick == "Get Started" { continue }
-                try? await Task.sleep(for: .seconds(1.5))
-            }
-            // The language page: 7.x moves on when its English row is tapped; 6.x needs its arrow after (top right).
-            if pick == nil, let english = found["English"] {
-                await d.tap(english.x, english.y); pages.append("English")
-                try? await Task.sleep(for: .seconds(1.5))
-            }
-            if let next = found["Next"] ?? (found["English"] != nil ? nextArrow : nil) {
-                await d.tap(next.x, next.y)
-                if pick == nil { pages.append(found.filter { $0.value.y < 130.0 / 960 && $0.key != "Next" }.keys.first ?? "?") }
-            } else if pick == nil, (try? await agent.frontmost())?.name == "Lock Screen" {
-                // The welcome page (SpringBoard's lock screen) and its slider. Home first, as app-install's unlock():
-                // the S5L8920 boards power the digitizer down on the lock screen (DisablePowerForUILock), and a slide
-                // then does nothing (n88 6.0.1: 40 slides, still welcome). Only there: in Setup, Home opens a sheet.
-                d.process.link.send(.button(0, down: true)); try? await Task.sleep(for: .milliseconds(150))
-                d.process.link.send(.button(0, down: false))
-                try? await Task.sleep(for: .seconds(1.5))
-                await d.drag(0.18, 0.9, 0.92, 0.9)
-                pages.append("(slide)")
+            for step in plan(labels(shot), pages: pages) {
+                switch step {
+                case .tap(let x, let y, let log):
+                    await d.tap(x, y); if let log { pages.append(log) }
+                case .pause(let seconds):
+                    try? await Task.sleep(for: .seconds(seconds))
+                case .slideIfLockScreen:
+                    guard (try? await agent.frontmost())?.name == "Lock Screen" else { break }
+                    // The welcome page (SpringBoard's lock screen) and its slider. Home first, as app-install's unlock():
+                    // the S5L8920 boards power the digitizer down on the lock screen (DisablePowerForUILock), and a slide
+                    // then does nothing (n88 6.0.1: 40 slides, still welcome). Only there: in Setup, Home opens a sheet.
+                    d.process.link.send(.button(0, down: true)); try? await Task.sleep(for: .milliseconds(150))
+                    d.process.link.send(.button(0, down: false))
+                    try? await Task.sleep(for: .seconds(1.5))
+                    await d.drag(0.18, 0.9, 0.92, 0.9)
+                    pages.append("(slide)")
+                }
             }
         }
         return (false, "Setup still up after 40 pages: " + pages.joined(separator: ", "))

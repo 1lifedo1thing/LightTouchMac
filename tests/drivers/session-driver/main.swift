@@ -74,10 +74,11 @@ extension DeviceInstance { var paths: Paths { paths(state: Bundled.stateDirector
 struct MediaVideo: Sendable { let id: String; let video: URL }
 struct MediaSong: Sendable { let id: String; let audio: URL; var artwork: URL? = nil; static let extensions: Set<String> = ["m4a"] }
 
-// --selftest-walk: the Setup walk's retry core (Setup5.tapUntil) against fake taps, no emulator
+// --selftest-walk: the Setup walk's retry core (Setup5.tapUntil) against fake taps, and the phone walk's page plan
+// (SetupPhone.plan) against recorded labels, no emulator
 // (tests/sessions/check-setup-walk.py).
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "--selftest-walk" {
-    Task { @MainActor in exit(await Setup5.selfTest() ? 0 : 1) }
+    Task { @MainActor in let phone = SetupPhone.selfTest(); exit(await Setup5.selfTest() && phone ? 0 : 1) }
     CFRunLoopRun()
 }
 nonisolated(unsafe) let config = try! JSONDecoder().decode(Config.self, from: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1])))
