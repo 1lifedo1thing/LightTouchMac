@@ -42,7 +42,10 @@ first = next(e for e in catalog['entries'] if e['id'] == catalog['first_run'])
 assert first['status'] == 'available' and first['source']['url'].startswith('https://secure-appldnld.apple.com/'), first['id']
 hexre = re.compile(r'^[0-9a-f]+$')
 for e in catalog['entries']:
-    assert e['id'] == f"{e['board']}-{e['build']}" and e['source']['kind'] == 'ipsw', e['id']
+    assert e['id'] == f"{e['board']}-{e['build']}" and e['source']['kind'] in ('ipsw', 'rar'), e['id']
+    if e['source']['kind'] == 'rar':   # a beta's archive.org RAR: the archive's own hash and size, and the IPSW member
+        assert len(e['source']['archive_sha1']) == 40 and hexre.match(e['source']['archive_sha1']), e['id']
+        assert e['source']['archive_bytes'] > 0 and e['source']['member'].endswith('.ipsw'), e['id']
     assert len(e['source']['sha1']) == 40 and hexre.match(e['source']['sha1']) and e['source']['bytes'] > 0
     assert e['status'] == 'user_ipsw' or e['source']['url'].startswith('https://'), e['id']
     assert 'activation_hook' not in e and 'resource' not in e['source']
