@@ -3,7 +3,7 @@
   "comment": "The source checkouts the app builds against, by commit. scripts/sources.py resolves them (QEMU_IOS_DIR, USBMUXD_SOURCE_DIR, QEMU_BUILD_DIR override the paths); build-release.py records pinned vs actual and refuses a Developer ID build from another commit unless --allow-unpinned. The emulator and usbmuxd ship together (usb-zlp <-> qemu-zlp): bump both lines in one commit.",
   "qemu-ios": {
     "repository": "https://github.com/samhenrigold/qemu-ios",
-    "branch": "ipod_touch_2g",
+    "branch": "main",
     "commit": "0e4bf5a90b20b38658d02bd5706dca770adb9670",
     "path": "~/Developer/qemu-ios-ipad1",
     "build_dir": "build-w1-native",
