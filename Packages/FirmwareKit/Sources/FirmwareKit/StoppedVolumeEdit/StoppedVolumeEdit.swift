@@ -239,6 +239,10 @@ public enum StoppedVolumeEdit {
         let original = edit.root.appendingPathComponent("original.img")
         let originalHFS = try HFSPlusVolume(original)
         let oldLinks = Dictionary(grouping: try originalHFS.paths().filter { $0.record.isHardLink }, by: { $0.record.special })
+        // Only entries that had attributes have any to restore. Listing every file's would also need read
+        // access to each, which a mode-000 file (iOS 4's /.file) refuses on the mounted baseline.
+        let originalRecords = Dictionary(uniqueKeysWithValues: try originalHFS.paths().map { ($0.path, $0.record) })
+        let attributed = try originalHFS.attributeOwners()
         let editedHFS = try HFSPlusVolume(image)
         let afterRecords = Dictionary(uniqueKeysWithValues: try editedHFS.paths().map { ($0.path, $0.record) })
         for group in oldLinks.values {
@@ -254,7 +258,8 @@ public enum StoppedVolumeEdit {
         // it can recover its journal; never mount the source device's flash.
         try await VolumeMount.withMounted(original, at: edit.root.appendingPathComponent("baseline-mount")) { baseline in
             try await VolumeMount.withMounted(image, at: edit.root.appendingPathComponent("metadata-mount")) { root in
-                for entry in before where !entry.path.isEmpty && ![".journal", ".journal_info_block"].contains(entry.path) && afterRecords[entry.path] != nil {
+                for entry in before where !entry.path.isEmpty && ![".journal", ".journal_info_block"].contains(entry.path) && afterRecords[entry.path] != nil
+                        && (entry.resourceSize > 0 || originalRecords[entry.path].map { $0.isHardLink || attributed.contains($0.cnid) } ?? true) {
                     let src = baseline.appendingPathComponent(entry.path)
                     let dst = root.appendingPathComponent(entry.path)
                     do { try restoreMissingAttributes(from: src, to: dst, compressed: entry.flags & UInt32(UF_COMPRESSED) != 0) }

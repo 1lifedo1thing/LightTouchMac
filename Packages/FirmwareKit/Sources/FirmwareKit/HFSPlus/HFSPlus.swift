@@ -160,6 +160,16 @@ public final class HFSPlusVolume {
         return decmpfs?[cnid].flatMap { $0.count >= 16 && le32($0, 0) == 0x636D7066 ? $0 : nil }
     }
 
+    /// The catalog IDs that own any extended attribute (the attributes B-tree's keys).
+    public func attributeOwners() throws -> Set<UInt32> {
+        var out = Set<UInt32>()
+        guard attributesFork.logicalSize > 0 else { return out }
+        try leaves(try btree(attributesFork, fileID: Self.attributesID)) { _, buf, offs in
+            for i in 0..<(offs.count - 1) where offs[i + 1] - offs[i] >= 14 { out.insert(be32(buf, offs[i] + 4)) }
+        }
+        return out
+    }
+
     private func readDecmpfs() throws -> [UInt32: [UInt8]] {
         var out: [UInt32: [UInt8]] = [:]
         guard attributesFork.logicalSize > 0 else { return out }

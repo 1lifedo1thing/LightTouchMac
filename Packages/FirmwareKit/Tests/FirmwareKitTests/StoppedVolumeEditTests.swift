@@ -25,6 +25,7 @@ struct StoppedVolumeEditTests {
             try Data("before".utf8).write(to: mount.appendingPathComponent("Settings.plist"))
             try Data("Alpha".utf8).write(to: mount.appendingPathComponent("Alpha"))
             try Data("alpha".utf8).write(to: mount.appendingPathComponent("alpha"))
+            try Data().write(to: mount.appendingPathComponent(".file"))
             try fm.createSymbolicLink(atPath: mount.appendingPathComponent("symlink").path, withDestinationPath: "Settings.plist")
             try fm.linkItem(at: mount.appendingPathComponent("Alpha"), to: mount.appendingPathComponent("hardlink"))
             let data = Data("resource-fork".utf8)
@@ -35,6 +36,7 @@ struct StoppedVolumeEditTests {
         try hfs.setOwner(["Settings.plist"], uid: 0, gid: 0, mode: 0o640)
         try hfs.setOwner(["private/var/mobile", "private/var/mobile/Media"], uid: 501, gid: 501)
         try hfs.setOwner(["Alpha"], uid: 501, gid: 501, mode: 0o644)
+        try hfs.setOwner([".file"], uid: 0, gid: 80, mode: 0)   // iOS 4's /.file: mode 000, unreadable when mounted
         #expect(try hfs.listing(hashes: false).first(where: { $0.path == "hardlink" })?.uid == 501)
         _ = try N72NAND.write(volume: image, blocks: hfs.totalBlocks * hfs.blockSize / N72NAND.page,
                              epoch: 1, out: base.appendingPathComponent("nand"))
@@ -75,6 +77,7 @@ struct StoppedVolumeEditTests {
         #expect(try volume.record(at: "hardlink").isHardLink)
         #expect(try volume.contents(volume.record(at: "Alpha")) == Data("Alpha".utf8))
         #expect(try volume.contents(volume.record(at: "alpha")) == Data("alpha".utf8))
+        #expect(try volume.record(at: ".file").mode & 0o7777 == 0)
         #expect(!fm.fileExists(atPath: device.appendingPathComponent("work/edit.json").path))
         #expect(fm.fileExists(atPath: base.appendingPathComponent("nand").path))
     }
