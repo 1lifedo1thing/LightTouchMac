@@ -1330,11 +1330,16 @@ extension MainWindowController: NSMenuItemValidation {
         switch menuItem.action {
         case #selector(addDevice(_:)): return window?.attachedSheet == nil
         case #selector(selectDeviceBezel(_:)):
-            menuItem.state = menuItem.tag == DisplayView.bezel.rawValue ? .on : .off
+            // A device without a 3D model (the iPhone 4, the original iPhone) shows 2D for 3D: its 3D is dimmed and
+            // the check is on what it shows.
+            let hasModel = currentProfile.deviceModelName != nil
+            let shown = DisplayView.bezel == .model && !hasModel ? DisplayView.Bezel.flat : DisplayView.bezel
+            menuItem.state = menuItem.tag == shown.rawValue ? .on : .off
             // Free-form shows this device's screen alone; the setting still applies to the others and comes back here.
             let freeForm = deviceVC?.screen.isFreeForm == true
-            menuItem.toolTip = freeForm ? "Free-Form Screen shows this device’s screen without its bezel." : nil
-            return !freeForm
+            menuItem.toolTip = freeForm ? "Free-Form Screen shows this device’s screen without its bezel."
+                : menuItem.tag == DisplayView.Bezel.model.rawValue && !hasModel ? "This device has no 3D model." : nil
+            return !freeForm && (menuItem.tag != DisplayView.Bezel.model.rawValue || hasModel)
         case #selector(toggleFreeFormScreen(_:)):
             menuItem.state = deviceVC?.screen.isFreeForm == true ? .on : .off
             let profile = deviceVC?.emulator.profile

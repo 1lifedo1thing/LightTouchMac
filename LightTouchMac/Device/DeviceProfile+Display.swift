@@ -106,17 +106,17 @@ nonisolated extension DeviceProfile {
     /// model loads or where RealityKit can't: the 2G has shell.png (a product
     /// photo), the 1G shell-1g.png (its N45 model rendered face-on, screen off,
     /// by scripts/render-shell-art.py, which prints the numbers below; the 4G's shell-4g.png the same way
-    /// from N81, the 3G's shell-3g.png from N72, the chassis it shares with the 2G), and the
+    /// from N81; the 3G shows the 2G's photo, the chassis they share), and the
     /// iPad borrows the iPad chrome from the iPhone Simulator in Xcode 3.2.4
     /// (iPad.deviceinfo: portrait.png, 852x1108, with the 768x1024 screen centred in it). The two iPhones without a
     /// model take theirs from the Simulator too: the iPhone 4 Xcode 4.6.3's "iPhone (Retina 3.5-inch)" chrome
     /// (chrome_halfsize@2x.png, 730x1426 cropped, the 640x960 screen at 48,236, its hole filled with the LCD's tone),
-    /// the iPhone 2G iPhone SDK 3.1.3's frame.png (383x729 cropped, the 320x480 screen at 33,130).
+    /// the iPhone 2G iPhone SDK 3.1.3's frame.png (383x729 cropped, the 320x480 screen at 33,130), which the 3GS
+    /// shows too (Sam, 10-06).
     var shellImageName: String {
         switch self {
-        case .iPodTouch2G: "shell"; case .iPad1: "ipad-frame"; case .iPodTouch1G: "shell-1g"; case .iPodTouch4G: "shell-4g"
-        case .iPodTouch3G: "shell-3g"
-        case .iPhone4: "shell-iphone4"; case .iPhone3GS: "shell-iphone3gs"; case .iPhone2G: "shell-iphone2g"
+        case .iPodTouch2G, .iPodTouch3G: "shell"; case .iPad1: "ipad-frame"; case .iPodTouch1G: "shell-1g"; case .iPodTouch4G: "shell-4g"
+        case .iPhone4: "shell-iphone4"; case .iPhone2G, .iPhone3GS: "shell-iphone2g"
         }
     }
     /// The bundled LightTouchMac/<name>.usdz (multidevice 98eac7c). The iPhone 2G and iPhone 4 have none: they show
@@ -130,28 +130,24 @@ nonisolated extension DeviceProfile {
 
     var shellPixels: CGSize {
         switch self {
-        case .iPodTouch2G: CGSize(width: 737, height: 1318)
-        case .iPodTouch3G: CGSize(width: 736, height: 1318)   // scripts/render-shell-art.py N72 (the 2G's chassis)
+        case .iPodTouch2G, .iPodTouch3G: CGSize(width: 737, height: 1318)
         case .iPodTouch1G: CGSize(width: 734, height: 1311)
-        case .iPhone2G: CGSize(width: 383, height: 729)
+        case .iPhone2G, .iPhone3GS: CGSize(width: 383, height: 729)
         case .iPad1: CGSize(width: 852, height: 1108)
         case .iPodTouch4G: CGSize(width: 696, height: 1310)   // scripts/render-shell-art.py N81
         case .iPhone4: CGSize(width: 730, height: 1426)
-        case .iPhone3GS: CGSize(width: 731, height: 1360)     // scripts/render-shell-art.py N88
         }
     }
 
     var screenCutout: CGRect {
         switch self {
-        case .iPodTouch2G: CGRect(x: 74, y: 213, width: 594, height: 891)
-        case .iPodTouch3G: CGRect(x: 72, y: 214, width: 594, height: 892)
+        case .iPodTouch2G, .iPodTouch3G: CGRect(x: 74, y: 213, width: 594, height: 891)
         case .iPodTouch1G: CGRect(x: 70, y: 211, width: 594, height: 891)
-        case .iPhone2G: CGRect(x: 33, y: 130, width: 320, height: 480)
+        case .iPhone2G, .iPhone3GS: CGRect(x: 33, y: 130, width: 320, height: 480)
         // (852 - 768) / 2 and (1108 - 1024) / 2: the Simulator centres its screen.
         case .iPad1: CGRect(x: 42, y: 42, width: 768, height: 1024)
         case .iPodTouch4G: CGRect(x: 54, y: 213, width: 590, height: 886)
         case .iPhone4: CGRect(x: 48, y: 236, width: 640, height: 960)
-        case .iPhone3GS: CGRect(x: 71, y: 240, width: 590, height: 885)
         }
     }
 
@@ -160,16 +156,14 @@ nonisolated extension DeviceProfile {
     /// (412, 9, bottom-left origin) and its 29x31 home.png.
     var homeButtonDiameter: CGFloat {
         switch self {
-        case .iPodTouch2G: 122; case .iPodTouch3G: 117; case .iPad1: 31; case .iPodTouch1G: 112; case .iPhone2G: 70; case .iPodTouch4G: 119
+        case .iPodTouch2G, .iPodTouch3G: 122; case .iPad1: 31; case .iPodTouch1G: 112; case .iPhone2G, .iPhone3GS: 70; case .iPodTouch4G: 119
         case .iPhone4: 140
-        case .iPhone3GS: 131
         }
     }
     var homeButtonBottomInset: CGFloat {
         switch self {
-        case .iPodTouch2G: 54; case .iPodTouch3G: 55; case .iPad1: 9; case .iPodTouch1G: 59; case .iPhone2G: 34; case .iPodTouch4G: 49
+        case .iPodTouch2G, .iPodTouch3G: 54; case .iPad1: 9; case .iPodTouch1G: 59; case .iPhone2G, .iPhone3GS: 34; case .iPodTouch4G: 49
         case .iPhone4: 52
-        case .iPhone3GS: 64
         }
     }
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Every catalog board has its own flat picture (the prepare screen's art, DisplayView's fallback shell).
+"""Every catalog board has a flat picture (the prepare screen's art, DisplayView's fallback shell): its own, except the
+pairs Sam chose to share (the iPod touch 3G shows the 2G's photo, the 3GS the original iPhone's frame, 10-06).
 
 Compiles DeviceProfile(+Display) whole and asks it, for each board in the shipped firmware catalog, which asset
 (shellImageName) and shell size it uses. Fails when a board has no profile or no asset, when two boards share an
@@ -30,6 +31,8 @@ for board in CommandLine.arguments.dropFirst() {
                     str(root / 'LightTouchMac/Device/DeviceProfile+Display.swift'), str(tmp / 'main.swift'), '-o', str(tmp / 'art')], check=True)
     rows = [line.split() for line in subprocess.check_output([tmp / 'art', *boards], text=True).splitlines()]
 
+# The boards that show another's picture, and whose.
+SHARED = {'n18ap': 'n72ap', 'n88ap': 'm68ap'}
 seen = {}
 tones = {}
 for board, name, *size in rows:
@@ -40,6 +43,9 @@ for board, name, *size in rows:
     png = imageset / files[0]['filename']
     digest = hashlib.sha256(png.read_bytes()).hexdigest()
     for other, (other_name, other_digest) in seen.items():
+        if SHARED.get(board) == other or SHARED.get(other) == board:
+            assert name == other_name, f'{board} should show {other}\'s picture, not {name}'
+            continue
         assert name != other_name, f'{board} and {other} share the picture {name}'
         assert digest != other_digest, f'{board} ({name}) and {other} ({other_name}) are the same image'
     seen[board] = (name, digest)
