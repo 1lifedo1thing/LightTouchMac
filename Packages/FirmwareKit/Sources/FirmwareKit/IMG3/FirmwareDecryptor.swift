@@ -75,7 +75,8 @@ public enum FirmwareDecryptor {
         // Components no recipe reads after this (the DFU stage, the ramdisks) are skipped without a key rather
         // than failing the build: public key pages lack them for several builds (docs/matrix.md). A step that
         // does need one (the 4.x keybag's Update ramdisk) fails on the missing file with its own message.
-        // An 8900 container needs none.
+        // An 8900 container needs none. AppleLogo is only the boot splash KBoot draws when it has one, so a build
+        // whose logo key no public page lists (n90ap 11D169) boots the same without it.
         var files: [String] = []
         // An 8900 container, or an img3 without a KBAG (N18 4.3.4/4.3.5 ship their ramdisks in the clear), needs none.
         func keyed(_ p: String) -> Bool {
@@ -90,7 +91,7 @@ public enum FirmwareDecryptor {
                 continue   // 1.0: no iBEC (no update path)
             } else {
                 let p = try path(c)
-                if ["iBSS", "iBEC"].contains(c), !keyed(p), try IMG3.tags(ipsw.read(p))["KBAG"] != nil {
+                if ["iBSS", "iBEC", "AppleLogo"].contains(c), !keyed(p), try IMG3.tags(ipsw.read(p))["KBAG"] != nil {
                     FirmwareDiagnostics.write(Data("warning: \(entry.id): no key for \(c) (\(p)); skipped\n".utf8))
                     continue
                 }
