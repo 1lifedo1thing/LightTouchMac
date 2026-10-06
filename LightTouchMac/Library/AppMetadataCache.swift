@@ -10,6 +10,7 @@
 // app installed inside the guest simply falls back to the reported name.
 
 import Cocoa
+import HostRuntime
 import Subprocess
 import System
 
@@ -34,9 +35,8 @@ final class AppMetadataCache {
             state: Bundled.stateDirectory,
             caches: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0],
             isolated: ProcessInfo.processInfo.environment["LTM_STATE_DIR"] != nil)
-        if let data = try? Data(contentsOf: indexURL) {
-            entries = (try? JSONDecoder().decode([String: Entry].self, from: data)) ?? [:]
-        }
+        entries = (try? PropertyListFile.read([String: Entry].self, from: indexURL,
+                                              legacyJSON: dir.appendingPathComponent("index.json"), format: .binary)) ?? [:]
         #if DEBUG
         Self.selfCheck()
         #endif
@@ -61,7 +61,8 @@ final class AppMetadataCache {
     }
     #endif
     
-    private var indexURL: URL { dir.appendingPathComponent("index.json") }
+    /// A binary property list; earlier builds kept index.json, converted on the first read.
+    private var indexURL: URL { dir.appendingPathComponent("index.plist") }
     private func iconURL(_ bundleID: String) -> URL { dir.appendingPathComponent("\(bundleID).png") }
 
     /// A bundle id read out of an untrusted archive is about to become a path
@@ -194,7 +195,7 @@ final class AppMetadataCache {
     }
 
     private func save() {
-        guard let data = try? JSONEncoder().encode(entries) else { return }
+        guard let data = try? PropertyListFile.data(entries, format: .binary) else { return }
         try? StorageLocations.writeCacheData(data, to: indexURL)
     }
     
