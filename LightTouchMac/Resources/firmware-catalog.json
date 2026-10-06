@@ -2539,7 +2539,7 @@
   "version": "5.0",
   "build": "9A334",
   "released": "2011-10-12",
-  "status": "untested",
+  "status": "experimental",
   "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/061-9622.20111012.Evry3/iPod4,1_5.0_9A334_Restore.ipsw", "sha1": "668b3784966d829ec6007d10e38fa117d6799cf1", "bytes": 798571862, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod4,1_5.0_9A334_Restore.ipsw", "sha1": "668b3784966d829ec6007d10e38fa117d6799cf1", "bytes": 798571862}]},
   "keys": {
    "AppleLogo": {"file": "applelogo-640x960.s5l8930x.img3", "iv": "e65ce8671b58fc4c779e166eab10e8ff", "key": "9d4f781b6384b85b8b5a6cc0b33bc584163b546fca3defff21137d7dcc50d380"},
@@ -2571,7 +2571,7 @@
   "version": "5.0.1",
   "build": "9A405",
   "released": "2011-11-10",
-  "status": "untested",
+  "status": "experimental",
   "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/041-3313.20111109.Azxe3/iPod4,1_5.0.1_9A405_Restore.ipsw", "sha1": "ec4feac81de53459701e4baabb6b4534be3260ca", "bytes": 815525980, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod4,1_5.0.1_9A405_Restore.ipsw", "sha1": "ec4feac81de53459701e4baabb6b4534be3260ca", "bytes": 815525980}]},
   "keys": {
    "AppleLogo": {"file": "applelogo-640x960.s5l8930x.img3", "iv": "b7f04a12abd4d85251879d93fe522471", "key": "171bec0c8d4f8398ba1c1e791b2b49cdeb9cf5f344c9a80a29ed649ab2582ef8"},
@@ -2604,7 +2604,7 @@
   "version": "5.1",
   "build": "9B176",
   "released": "2012-03-07",
-  "status": "untested",
+  "status": "experimental",
   "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS5/041-1542.20120307.Jyknq/iPod4,1_5.1_9B176_Restore.ipsw", "sha1": "65d7ee2d2fa505ce6fe91271f84f3fc9cbcc81a1", "bytes": 786432833, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod4,1_5.1_9B176_Restore.ipsw", "sha1": "65d7ee2d2fa505ce6fe91271f84f3fc9cbcc81a1", "bytes": 786432833}]},
   "keys": {
    "AppleLogo": {"file": "applelogo@2x.s5l8930x.img3", "iv": "9d8c3366e67a76fba95288c2da08f677", "key": "b165b5f5eaa3f9c4caa1ead70db3075f80f2d9ad86be84cfa42188fac3ef3c09"},
