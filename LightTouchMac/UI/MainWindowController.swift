@@ -75,7 +75,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
     /// Today's device area, before the sidebar: 720×640 for the iPod and
     /// 1100×760 for the iPad (device plus inspector), plus the console bar.
-    private static let sidebarWidth: CGFloat = 220
+    /// Wide enough that the toolbar's sidebar section holds its toggle and + beside the window buttons.
+    private static let sidebarWidth: CGFloat = 260
     private static func contentSize(for profile: DeviceProfile) -> NSSize {
         let device = profile == .iPad1 ? NSSize(width: 1100, height: 760) : NSSize(width: 720, height: 640)
         return NSSize(width: device.width + sidebarWidth, height: device.height + ConsoleBar.height)
@@ -92,6 +93,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         sidebarItem = NSSplitViewItem(sidebarWithViewController: library)
         sidebarItem.minimumThickness = 180
         sidebarItem.maximumThickness = 320
+        // The split opens the sidebar at its view's width.
+        library.view.setFrameSize(NSSize(width: Self.sidebarWidth, height: library.view.frame.height))
         split.addSplitViewItem(sidebarItem)
 
         console = ConsoleSplitViewController(top: detail, autosaveName: "main")
