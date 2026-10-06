@@ -725,6 +725,11 @@ struct SingleConfig: Decodable {
             }
             guard let shot = await d.wakeForShot("setup\(generation)-\(n)") else { continue }
             let found = labels(shot)
+            // Setup's Home sheet (Emergency Call / Start Over) dims the page, whose labels Vision still reads and whose
+            // rows and Next it would tap in vain (n88 6.0.1: 40 pages of English): dismiss it before anything else.
+            if let cancel = found["Cancel"], found["Start Over"] != nil {
+                await d.tap(cancel.x, cancel.y); pages.append("(Cancel)"); continue
+            }
             if let yes = alertYes.first(where: { found[$0] != nil }), let p = found[yes] {
                 await d.tap(p.x, p.y); pages.append("(\(yes))"); continue
             }
@@ -751,8 +756,6 @@ struct SingleConfig: Decodable {
             if let next = found["Next"] ?? (found["English"] != nil ? nextArrow : nil) {
                 await d.tap(next.x, next.y)
                 if pick == nil { pages.append(found.filter { $0.value.y < 130.0 / 960 && $0.key != "Next" }.keys.first ?? "?") }
-            } else if pick == nil, let cancel = found["Cancel"], found["Start Over"] != nil {
-                await d.tap(cancel.x, cancel.y); pages.append("(Cancel)")   // Setup's Home sheet (Emergency Call)
             } else if pick == nil, (try? await agent.frontmost())?.name == "Lock Screen" {
                 // The welcome page (SpringBoard's lock screen) and its slider. Home first, as app-install's unlock():
                 // the S5L8920 boards power the digitizer down on the lock screen (DisablePowerForUILock), and a slide
