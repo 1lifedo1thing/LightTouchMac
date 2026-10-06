@@ -1127,6 +1127,22 @@ final class DisplayView: NSView {
     private var scrollTilt = 0.0
     private var scrollTilting = false
 
+    /// How far outside the screen, in points, a press still lands on its edge: edge swipes (Notification Center,
+    /// back swipes) start at the glass's border, where a pointer easily misses by a few points.
+    static let screenEdgeMargin: CGFloat = 14
+
+    /// A press within `screenEdgeMargin` of the screen, clamped onto its edge; nil on the screen itself or farther
+    /// out. Probes the margin around the point through the same mapping as `normalized`, so it holds for the 3D
+    /// model, the flat shell and any rotation or zoom.
+    private func nearScreenEdge(_ event: NSEvent) -> (Double, Double)? {
+        let point = event.locationInWindow, m = Self.screenEdgeMargin
+        let probes = [(-m, 0), (m, 0), (0, -m), (0, m), (-m, -m), (m, -m), (-m, m), (m, m)]
+        guard normalized(windowPoint: point) == nil,
+              probes.contains(where: { normalized(windowPoint: NSPoint(x: point.x + $0.0, y: point.y + $0.1)) != nil }),
+              let p = clampedPanelPoint(event) else { return nil }
+        return (Double(p.x), Double(p.y))
+    }
+
     /// The panel-space point under the cursor, clamped into the panel. Unlike
     /// `normalized` this does not fail when the cursor is just outside — a pinch
     /// that drifts off the edge mid-gesture should keep tracking, not stop dead.
@@ -1389,7 +1405,8 @@ final class DisplayView: NSView {
         if pressModelControl(event) { return }
         if panelResize(event) { return }
         guard touchInteractionEnabled else { return }
-        if isChassisEvent(event) {
+        // Just off the screen's edge is the screen's (an edge swipe starts there), not the chassis's.
+        if normalized(event) == nil, nearScreenEdge(event) == nil, isChassisEvent(event) {
             endTilt()
             motionRestAngle = Self.layerAngle(emulator?.rotationDegrees ?? 0)
             shellLayer.removeAnimation(forKey: "tiltSnap")
@@ -1397,7 +1414,7 @@ final class DisplayView: NSView {
             grabPoint = convert(event.locationInWindow, from: nil)
             return
         }
-        if let (nx, ny) = normalized(event) { touchPair.down(at: CGPoint(x: nx, y: ny), event.modifierFlags) }
+        if let (nx, ny) = normalized(event) ?? nearScreenEdge(event) { touchPair.down(at: CGPoint(x: nx, y: ny), event.modifierFlags) }
         emit(event, TouchPhase.begin)
     }
 
@@ -1611,7 +1628,7 @@ final class DisplayView: NSView {
     /// - an END is delivered whenever a touch is down, wherever the cursor is.
     private func emit(_ event: NSEvent, _ phase: Int32) {
         if phase == TouchPhase.begin {
-            guard let (nx, ny) = normalized(event) else { return }
+            guard let (nx, ny) = normalized(event) ?? nearScreenEdge(event) else { return }
             touchDown = true
             send(phase, nx, ny)
             return

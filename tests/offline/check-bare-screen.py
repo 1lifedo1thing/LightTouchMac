@@ -138,6 +138,24 @@ source = prefix + stub + r'''
   check(!display.canPerformSpecialTrick, "2D: the special trick is offered")
   check(shell.contents != nil && shell.shadowOpacity > 0 && !shell.isHidden && !home.isHidden, "flat: no shell art, shadow or Home button")
   touchLands(CGPoint(x: 0.5, y: 0.5))
+  // A press a few points off the screen's edge, on the bezel, is an edge touch clamped onto the edge (so edge swipes
+  // start), not a chassis grab; one well out on the bezel touches nothing.
+  func press(_ at: CGPoint) {
+   let w = display.convert(at, to: nil)
+   let down = NSEvent.mouseEvent(with: .leftMouseDown, location: w, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                                 context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+   let up = NSEvent.mouseEvent(with: .leftMouseUp, location: w, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                               context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+   touches.removeAll(); display.mouseDown(with: down); display.mouseUp(with: up)
+  }
+  let edge = box()
+  for (at, lands) in [(CGPoint(x: edge.midX, y: edge.minY - 6), CGPoint(x: 0.5, y: 0)), (CGPoint(x: edge.maxX + 6, y: edge.midY), CGPoint(x: 1, y: 0.5))] {
+   press(at)
+   check(!touches.isEmpty && abs(touches[0].0 - lands.x) < 0.01 && abs(touches[0].1 - lands.y) < 0.01 && e.attitude.angle == 0,
+         "a press \(at) just off the edge \(edge) sent \(touches), attitude \(e.attitude)")
+  }
+  press(CGPoint(x: edge.midX, y: edge.minY - 3 * DisplayView.screenEdgeMargin))
+  check(touches.isEmpty, "a press well out on the bezel touched: \(touches)")
   DisplayView.bezel = .off
   try await settle()
   check(models().isEmpty && shell.contents == nil && shell.shadowOpacity == 0 && home.isHidden, "bezel off again: model or shell left")
