@@ -403,7 +403,9 @@ final class EmulatorController {
         do {
             return try prepared.configuration(bootArgs: Self.bootArgs, usbAddress: usbSession?.guestAddress,
                 wifi: network, guestPackage: composeGuestOffer(), serial: serialCapture?.argument ?? "null",
-                audio: profile.isA4 ? [] : ["-audio", "driver=coreaudio,out.buffer-count=16"], netdev: netdev,
+                // Every board: 16 CoreAudio buffers (186 ms) ride out a busy emulator thread. The A4 boards
+                // had QEMU's default 4 (46 ms), and the iPod touch 4's sounds crackled on a slower Mac.
+                audio: ["-audio", "driver=coreaudio,out.buffer-count=16"], netdev: netdev,
                 carrier: profile.hasCellular ? carrierSettings : nil)
         } catch {
             failBoot(error)
