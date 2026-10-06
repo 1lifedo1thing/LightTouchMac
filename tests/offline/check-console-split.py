@@ -52,6 +52,11 @@ func expect(_ ok: Bool, _ what: String, line: Int = #line) { if !ok { print("FAI
   L(height: 333, isCollapsed: false).save("a", to: defaults)
   expect(L.load("a", from: defaults) == L(height: 333, isCollapsed: false), "round trip")
   expect(L.load("b", from: defaults) == L(), "other names start fresh")
+  expect((defaults.dictionary(forKey: "ConsoleSplit a")?["height"] as? NSNumber)?.doubleValue == 333, "kept as a dictionary")
+  // An earlier build's JSON data loads, and is rewritten as a dictionary.
+  defaults.set(Data(#"{"height":250,"isCollapsed":true}"#.utf8), forKey: "ConsoleSplit c")
+  expect(L.load("c", from: defaults) == L(height: 250, isCollapsed: true), "earlier JSON loads")
+  expect(defaults.dictionary(forKey: "ConsoleSplit c")?["isCollapsed"] as? Bool == true, "and is rewritten as a dictionary")
 
   // The view, offscreen.
   let top = Stage()

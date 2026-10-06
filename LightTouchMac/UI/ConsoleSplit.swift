@@ -59,12 +59,23 @@ struct ConsoleSplitLayout: Codable, Equatable {
     }
 
     /// Per-window autosave, like DVTSplitView's state token: one key per name.
+    /// A dictionary; earlier builds kept JSON data, rewritten on the first load.
     static func load(_ name: String, from defaults: UserDefaults = .standard) -> ConsoleSplitLayout {
-        defaults.data(forKey: "ConsoleSplit \(name)").flatMap { try? JSONDecoder().decode(Self.self, from: $0) } ?? Self()
+        switch defaults.object(forKey: "ConsoleSplit \(name)") {
+        case let json as Data:
+            guard let layout = try? JSONDecoder().decode(Self.self, from: json) else { return Self() }
+            layout.save(name, to: defaults)
+            return layout
+        case let object?:
+            return (try? PropertyListSerialization.data(fromPropertyList: object, format: .binary, options: 0))
+                .flatMap { try? PropertyListDecoder().decode(Self.self, from: $0) } ?? Self()
+        case nil: return Self()
+        }
     }
 
     func save(_ name: String, to defaults: UserDefaults = .standard) {
-        defaults.set(try? JSONEncoder().encode(self), forKey: "ConsoleSplit \(name)")
+        let object = (try? PropertyListEncoder().encode(self)).flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) }
+        defaults.set(object, forKey: "ConsoleSplit \(name)")
     }
 }
 
