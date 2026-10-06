@@ -1,4 +1,4 @@
-// IPSW downloads from Apple's CDN, or a mirror of the same file (docs/multi-device-plan.md, D).
+// IPSW downloads from Apple's CDN, or a mirror of the same file.
 //
 // A background URLSession, so a download goes on while the app is quit: the
 // next launch makes the session again under the same identifier and its

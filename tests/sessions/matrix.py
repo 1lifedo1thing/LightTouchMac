@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The device × firmware matrix (docs/matrix.md), run through the app's own pipeline.
+"""The device × firmware matrix (the catalog's entries), run through the app's own pipeline.
 
 For each catalog entry: the IPSW is fetched into the app's content-addressed download cache if it isn't there
 (resumable; sha1 checked), its keys are verified against the IPSW (firmwarekit verify-keys), `firmwarekit create`
@@ -359,7 +359,7 @@ def judge(entry, events, rc, serial, shots_from, shots_to, base_before, base, ti
             r["package"] = {"ok": False, "note": f"loader baked with {gp.get('family')} (jobs/hooks) but the host offered nothing, so it never reported"}
         else:
             r["package"] = {"ok": None, "note": f"stub seed {gp.get('family')} (no jobs, no hooks): nothing for the loader to run or report"}
-    # helpers (docs/fidelity-ledger.md "Fit checks", the boot side): what the prepare baked must answer. The guest
+    # helpers (the boot side of the prepare's fit checks): what the prepare baked must answer. The guest
     # agent wherever the lock has it (the seed's it-agent job, or the iPod bake's installed tools): some home event
     # names the frontmost app through it. On the iPad (its console is the serial) it_ethlink watching its service
     # where the prepare proved USB Ethernet fits, and it_prefs having run, where the seed has their jobs.
@@ -516,7 +516,7 @@ def write_md(results, catalog):
                     f"{r.get('restore', {}).get('ok', '-') if r.get('restore') else '-'} | {fftxt} |")
     RESULTS_MD.write_text(f"""# Matrix results
 
-Produced by `tests/matrix.py` (docs/matrix.md has the builds). Prepare = `firmwarekit create` as the app runs it; lit,
+Produced by `tests/matrix.py`. Prepare = `firmwarekit create` as the app runs it; lit,
 lockdown, AFC, install, package, persist and shutdown come from tests/drivers/session-driver `--single` with a second boot on
 the same overlay. Screenshots and logs per entry are outside the repo (`screenshots` in matrix-results.json).
 Home judges the home screen itself (audit gap #2): every home/installed screenshot lit (not brightness 0), SpringBoard's

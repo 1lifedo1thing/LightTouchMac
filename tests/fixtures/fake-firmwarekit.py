@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """A stand-in for `firmwarekit create` that follows the preparer contract
-(docs/multi-device-plan.md, "Preparer contract") without touching firmware.
+(JSON events on stdout, the last one done with its lock) without touching firmware.
 
     fake-firmwarekit.py create --entry ENTRY.json --ipsw IPSW --out STAGING [--seed S]
                                [--helper PATH] [--cache DIR] [--sibling-entry JSON --sibling-ipsw IPSW]

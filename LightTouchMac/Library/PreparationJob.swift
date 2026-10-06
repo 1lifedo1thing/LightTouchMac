@@ -1,8 +1,7 @@
 import HostRuntime
 // One IPSW → device preparation: runs `firmwarekit create` into
 // State/Preparing/<id>/, reads its JSON Lines, and publishes the result as
-// Devices/<id>/base plus device.plist. See "Preparer contract" in
-// docs/multi-device-plan.md.
+// Devices/<id>/base plus device.plist.
 //
 // The job id is also the new device's id and its identity seed. Staging and
 // the published device are on one volume, so the publish is a rename and the

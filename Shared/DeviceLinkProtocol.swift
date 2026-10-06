@@ -1,5 +1,5 @@
 import HostRuntime
-// The app <-> LightTouchDevice wire protocol (docs/multi-device-plan.md, section A).
+// The app <-> LightTouchDevice wire protocol.
 //
 // Control travels over a socketpair (the helper's end is fd 3) as length-framed
 // JSON: a 4-byte big-endian length, then one `AppMessage` or `HelperMessage`.

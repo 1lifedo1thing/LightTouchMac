@@ -4,7 +4,7 @@
 // decrypts to noise, so each kind is checked for what it must contain (the kernelcache's complzss checksum, an
 // HFS+ ramdisk, an iBootIm image, the device tree's first property, a boot stage's own name; the root
 // filesystem's UDIF trailer). One JSON line per key: {component, file, ok, why}; exit 1 if any is not ok.
-// This is how a key gets into the catalog (docs/matrix.md).
+// This is how a key gets into the catalog.
 
 import FirmwareKit
 import Foundation

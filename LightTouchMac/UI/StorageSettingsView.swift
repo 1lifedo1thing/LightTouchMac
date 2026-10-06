@@ -2,7 +2,7 @@ import Cocoa
 
 /// Settings > Storage: what each device and the app's stores take on disk
 /// (allocated bytes: bases and overlays are sparse), with the actions that
-/// give it back. docs/multi-device-plan.md, "Storage policy".
+/// give it back.
 final class StorageSettingsView: NSView {
     nonisolated struct DeviceUsage: Sendable {
         let instance: DeviceInstance

@@ -1,6 +1,6 @@
 // The firmware the app knows how to turn into a device: Resources/firmware-catalog.json.
 // Distinct from CatalogClient's app catalog. Field names follow qemu-ios
-// manifests/*.json; see docs/multi-device-plan.md section B.
+// manifests/*.json.
 
 import Foundation
 
@@ -14,7 +14,7 @@ nonisolated struct FirmwareCatalog: Codable, Sendable {
     enum CodingKeys: String, CodingKey { case format, entries, bundled, firstRun = "first_run" }
 
     struct Entry: Codable, Sendable, Identifiable, Equatable {
-        /// `untested`: enumerated from Apple's list with public keys, never run through the pipeline (docs/matrix.md).
+        /// `untested`: enumerated from Apple's list with public keys, never run through the pipeline.
         enum Status: String, Codable, Sendable { case available, experimental, comingSoon = "coming_soon", userIPSW = "user_ipsw", untested }
 
         typealias Source = FirmwareWire.Entry.Source

@@ -6,8 +6,8 @@
 //   let nor = try N45NOR.build(identity: id, images: ["dtre": img2Body, ...])   // IMG2 bodies (8900 payloads)
 //
 // Re-signing: the header and data hashes are SHA-1s encrypted under the IMG2 verify key, which the device
-// derives from its UID. The emulated S5L8900's UID engine (qemu-ios ipod_touch_aes.c `s5l8900-compat`, docs/
-// smoke.md #11) keeps devos50's convention: key 0123456789ABCDEF x2, and encryption run with the *decryption*
+// derives from its UID. The emulated S5L8900's UID engine (qemu-ios ipod_touch_aes.c `s5l8900-compat`)
+// keeps devos50's convention: key 0123456789ABCDEF x2, and encryption run with the *decryption*
 // key schedule (OpenSSL AES_set_decrypt_key + AES_cbc_encrypt(..., AES_ENCRYPT)), so CommonCrypto cannot do it
 // and S5L8900UID below carries a small AES core.
 

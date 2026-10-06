@@ -14,3 +14,4 @@ docs/matrix-results.json.lock
 
 # Working notes and generated reports stay local
 docs/
+*.profraw

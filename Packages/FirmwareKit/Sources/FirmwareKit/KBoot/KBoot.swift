@@ -312,7 +312,7 @@ public enum KBoot {
         var dt = try DeviceTree(deviceTree)
         let board = Board.of(dt)
         try graftNOR(&dt)
-        // Host nubs (EHCI, OHCI0) up at arbitrator start, next to device mode (docs/ipad1/usb-keyboard.md).
+        // Host nubs (EHCI, OHCI0) up at arbitrator start, next to device mode (qemu-ios docs/ipad1/usb-keyboard.md).
         if dt.contains("arm-io/usb-complex") { try dt.add("arm-io/usb-complex", "hsic-enabled") }
         let dtLen = dt.data.count
         var top = page(segs.map { Int($0.vmaddr) + Int($0.vmsize) }.max()!)

@@ -1,6 +1,6 @@
 // The sidebar: the catalog entries the user added (SidebarList), in catalog
-// order, each with a trailing accessory for its state (docs/multi-device-plan.md,
-// C). Double-click renames in place; Delete removes. Commands
+// order, each with a trailing accessory for its state.
+// Double-click renames in place; Delete removes. Commands
 // go to the window controller, which owns what they do; this view only says
 // which entry they are for (the clicked row for its context menu, the
 // selection otherwise).

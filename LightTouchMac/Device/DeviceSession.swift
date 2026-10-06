@@ -1,5 +1,5 @@
 // One device the window can show: its record, the controller that runs it,
-// and the view controllers cached for it (docs/multi-device-plan.md, C).
+// and the view controllers cached for it.
 //
 // DeviceSessionHost owns the sessions. Each running device is its own
 // LightTouchDevice helper (DeviceProcess), so any number can run at once, a

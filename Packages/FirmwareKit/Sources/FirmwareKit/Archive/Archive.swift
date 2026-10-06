@@ -8,7 +8,7 @@
 //   try ipsw.stream("018-8370-001.dmg") { handle in ... }  // or read straight off a pipe
 //
 // Errors are FirmwareError, shared by every FirmwareKit module; `code` is the preparer contract's
-// error code (docs/multi-device-plan.md, "Preparer contract").
+// error code (the `code` of firmwarekit's error event).
 
 import Foundation
 import ZIPFoundation

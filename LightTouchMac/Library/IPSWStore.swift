@@ -1,5 +1,5 @@
-// Where IPSWs live, and the checks every one passes before it is used
-// (docs/multi-device-plan.md, D): downloads in Caches/<bundle>/IPSW, imports
+// Where IPSWs live, and the checks every one passes before it is used:
+// downloads in Caches/<bundle>/IPSW, imports
 // in State/IPSW, both named by sha1, so either one satisfies an entry.
 
 import CryptoKit

@@ -1,5 +1,5 @@
 // The main pane's bottom console, after Xcode's debug area (IDEKit's
-// IDEEditorArea + IDEBottomBar; see docs/ui-console-split.md for the evidence).
+// IDEEditorArea + IDEBottomBar).
 // The device sits on top, the console below, and the bar between them is the
 // divider: drag it, double-click it, or use its toggle.
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Preserve Safari's request and the origin's status through the helper's web proxy (docs/archive/Proxy-compatibility.md:
-Google's 403 for iOS 3 Safari is the origin's own answer, passed on unchanged, never worked around)."""
+"""Preserve Safari's request and the origin's status through the helper's web proxy
+(Google's 403 for iOS 3 Safari is the origin's own answer, passed on unchanged, never worked around)."""
 from pathlib import Path
 import http.server, importlib.util, socket, subprocess, tempfile, threading
 spec = importlib.util.spec_from_file_location('check_web_proxy', Path(__file__).with_name('check-web-proxy.py'))

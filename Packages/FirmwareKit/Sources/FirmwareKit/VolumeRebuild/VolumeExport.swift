@@ -1,4 +1,4 @@
-// VolumeExport: the offline read-only path (docs/filesystem-f0-findings.md, "Export"). For a STOPPED device:
+// VolumeExport: the offline read-only path. For a STOPPED device:
 //
 //   1. clonefile the overlay into <out>/overlay (APFS clone: O(1), the source is only read);
 //   2. rebuild each volume into <out>/<name>.img (VolumeRebuild), then drop the clone;

@@ -1294,7 +1294,7 @@ final class EmulatorController {
         }
     }
 
-    // MARK: - Guest package (docs/guest-package-bootstrap.md)
+    // MARK: - Guest package
 
     /// What this boot offered the guest's loader; nil: no offer.
     private(set) var guestOffer: GuestPackage.Offer?

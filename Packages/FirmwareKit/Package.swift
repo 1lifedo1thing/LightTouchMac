@@ -1,6 +1,6 @@
 // swift-tools-version: 6.0
-// FirmwareKit: IPSW -> emulated device preparation (docs/multi-device-plan.md, section E and
-// "Preparer contract"). Swift owns device preparation. Tests use frozen reference hashes and
+// FirmwareKit: IPSW -> emulated device preparation.
+// Swift owns device preparation. Tests use frozen reference hashes and
 // optional corpus inputs; strict acceptance fails when selected prerequisites are absent. Each module lives in its own
 // subdirectory of Sources/FirmwareKit so agents can add modules without editing this file.
 //

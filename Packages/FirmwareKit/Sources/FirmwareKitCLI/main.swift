@@ -1,4 +1,4 @@
-// firmwarekit: the preparer (docs/multi-device-plan.md, "Preparer contract").
+// firmwarekit: the preparer.
 //
 //   firmwarekit create --entry ENTRY.json --ipsw IPSW --out STAGING_DIR
 //                      [--seed SEED] [--helper PATH_TO_LightTouchDevice]

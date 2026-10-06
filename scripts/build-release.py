@@ -421,7 +421,7 @@ def parse(argv=None):
     parser.add_argument('--sign-id', default=os.environ.get('SIGN_ID', '-'), help='Signing identity; defaults to ad-hoc')
     parser.add_argument('--notary-profile', default=os.environ.get('NOTARY_PROFILE'), help='Optional notarytool keychain profile')
     parser.add_argument('--stage', action='append', choices=(*STAGES, 'all'),
-                        help='Run the resumable staged build (repeatable, run in pipeline order; see "Multi-device release build" in docs/multi-device-plan.md). '
+                        help='Run the resumable staged build (repeatable, run in pipeline order). '
                              'Without it, the one-step build runs; --output may then not exist.')
     parser.add_argument('--native-deps', type=Path, help='Staged: native root whose prefix, static deps and usbmuxd are reused '
                         '(e.g. a previous release output\'s native/; with --universal, the directory holding arm64/ and x86_64/ roots)')

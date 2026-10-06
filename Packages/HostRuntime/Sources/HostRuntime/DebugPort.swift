@@ -31,7 +31,7 @@ public nonisolated enum DebugPort {
     }
 
     /// What to paste into Terminal. KERNELCACHE stays a placeholder: the decrypted kernel lives in the firmware,
-    /// not in the device (docs/guest-debug.md lists where each board's comes from).
+    /// not in the device (qemu-ios docs/guest-debug.md lists where each board's comes from).
     public static func lldbCommand(board: String, port: Int) -> String {
         "lldb -o 'target create --arch \(arch[board] ?? "armv7")-apple-ios KERNELCACHE'"
             + " -o 'gdb-remote 127.0.0.1:\(port)'"

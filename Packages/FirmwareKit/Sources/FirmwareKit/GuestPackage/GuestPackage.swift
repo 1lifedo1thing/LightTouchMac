@@ -1,5 +1,5 @@
-// GuestPackage: the guest-package loader and seed package a prepared device starts with
-// (docs/guest-package-bootstrap.md, P4). Ports qemu-ios contrib/guest-package/mkpkg.py read_pack, offer_text
+// GuestPackage: the guest-package loader and seed package a prepared device starts with.
+// Ports qemu-ios contrib/guest-package/mkpkg.py read_pack, offer_text
 // and seed.
 //
 //   let (written, record) = try GuestPackage.seed(volume: mnt, itpack: helpers/armv7.itpack, gles: true)

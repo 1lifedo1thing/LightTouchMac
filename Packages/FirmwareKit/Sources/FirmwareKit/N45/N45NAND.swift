@@ -6,7 +6,7 @@
 // - Real spares. Every page carries the 12 bytes the 1.x FTL itself writes (read off its own programs through
 //   the ADM): data  [lpn u32][write age u32 = 0][ff][0x40][ff][ff], context [age u32][index u16][ff ff][ff]
 //   [type][ff][ff] (0x43 index/meta, 0x46 map, four pages). A page never programmed reads erased (all ones), as on NAND,
-//   so every page of the volume's blocks is written, zeros included (docs/smoke.md #12).
+//   so every page of the volume's blocks is written, zeros included.
 // - The FTL's own blocks kept out of the data. The FTL context is virtual blocks 0-2 and its free pool 3-22
 //   (FTLCxt.awFreeVbList); the filesystem starts at virtual block 23. generate_nand.c mapped logical block n to
 //   virtual block n + 1, so the first log block the FTL took from its pool overwrote filesystem pages.
@@ -14,7 +14,7 @@
 //   pool and its remap of the BBT block, both checksums; without the next page the VFL's next store programs
 //   page 0 again.
 // - The FIL id (the NAND signature) the build's driver wants, read off its iBoot (filID): generate_nand.c's
-//   C002 is 3A101a-3B48b's; 4A93-4B1's driver is C003 and refuses C002 (docs/smoke.md #52).
+//   C002 is 3A101a-3B48b's; 4A93-4B1's driver is C003 and refuses C002.
 //
 //   try N45NAND.write(volume: img, out: dir, filID: N45NAND.filID(iBoot: ib))   // (filesystem pages, metadata pages)
 //   N45NAND.location(lpn:)                         // (bank, page) of a logical page

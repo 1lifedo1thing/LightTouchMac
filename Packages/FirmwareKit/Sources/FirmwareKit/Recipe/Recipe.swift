@@ -1,4 +1,4 @@
-// Recipe: the one `firmwarekit create` (docs/sweep/PLAN.md C4). Every board runs the same steps in the same
+// Recipe: the one `firmwarekit create`. Every board runs the same steps in the same
 // order; a board contributes only what differs (Board): its boot files, how its volumes are laid out, its NAND
 // writer, its keybag one-shot, whether it needs a seal, and its keys in the lock.
 //

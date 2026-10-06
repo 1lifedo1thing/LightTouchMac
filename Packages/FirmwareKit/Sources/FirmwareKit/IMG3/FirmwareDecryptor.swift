@@ -73,7 +73,7 @@ public enum FirmwareDecryptor {
         }
 
         // Components no recipe reads after this (the DFU stage, the ramdisks) are skipped without a key rather
-        // than failing the build: public key pages lack them for several builds (docs/matrix.md). A step that
+        // than failing the build: public key pages lack them for several builds. A step that
         // does need one (the 4.x keybag's Update ramdisk) fails on the missing file with its own message.
         // An 8900 container needs none. AppleLogo is only the boot splash KBoot draws when it has one, so a build
         // whose logo key no public page lists (n90ap 11D169) boots the same without it.

@@ -3,7 +3,7 @@
 // Boot files: iBoot.bin (the IPSW's iBoot-204 IMG2 payload, which the machine enters at 0x18000000) and nor.bin
 // (N45NOR over the IPSW's all_flash IMG2s). The bootrom (bootrom_s5l8900) is a boot input, like the 2G's.
 // Volume: the IPSW rootfs grown to the recipe, then the 1.x bake of devos50's qemu-ios-generate-nand
-// docs/changes.md through SystemEdits: fstab rw with no /private/var line (one partition), the kernelcache (the
+// changes through SystemEdits: fstab rw with no /private/var line (one partition), the kernelcache (the
 // IPSW's 8900 container, which the machine's 8900 engine decrypts) where iBoot loads it, SpringBoard's
 // LK_ENABLE_MBX2D=0 (no MBX 2D on this machine), the LaunchDaemons that changes.md keeps (and 1.1.3+'s lockbot), and the
 // /var/root/Library skeleton; then ipod1g_device.bake: when the stock OpenGLES exports exactly

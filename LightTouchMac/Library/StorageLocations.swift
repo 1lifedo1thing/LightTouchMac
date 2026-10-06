@@ -1,6 +1,6 @@
 import Foundation
 
-/// Where the app's state and logs live (docs/storage-layout.md). A layout
+/// Where the app's state and logs live. A layout
 /// from before the device library is not migrated: LegacyState offers to
 /// erase it once.
 nonisolated enum StorageLocations {

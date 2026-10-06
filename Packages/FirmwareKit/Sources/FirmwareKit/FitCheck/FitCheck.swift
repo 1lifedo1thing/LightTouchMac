@@ -1,5 +1,5 @@
 // FitCheck: proof, read off the firmware itself at prepare time, that a guest-side piece fits the firmware it is
-// injected into (docs/fidelity-ledger.md "Fit checks"). Every check returns a Fit: fits with the proof, or does
+// injected into. Every check returns a Fit: fits with the proof, or does
 // not fit with why. "Could not tell" is never a fit. No per-build tables: only symbols, strings and structure.
 //
 //   let fw = FitCheck.Firmware(root: mountedSystemVolume, arch: "armv7")

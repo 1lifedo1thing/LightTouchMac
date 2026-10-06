@@ -1,4 +1,4 @@
-// Preparer: the entry point of `firmwarekit create` (the preparer contract of docs/multi-device-plan.md) and the
+// Preparer: the entry point of `firmwarekit create` and the
 // helpers every board's recipe shares: the `LightTouchDevice --oneshot` boots, the ramdisk-with-helper copy,
 // cancel, hashing, the lock's bytes. The steps themselves are Recipe.create; a board (K48Board, N72Board, N45Board)
 // contributes only what differs.

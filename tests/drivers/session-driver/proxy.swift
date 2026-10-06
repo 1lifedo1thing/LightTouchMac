@@ -189,7 +189,7 @@ nonisolated enum ProxyProbe {
         d.screenshot("safari-https")
     }
     emit("safari", ["device": d.name, "launched": launched])
-    // The compatibility pages (docs/archive/Proxy-compatibility.md), each under the routing it names, as the
+    // The compatibility pages, each under the routing it names, as the
     // proxy panel writes it: page-N.png to look at. iPad only (the keyboard path).
     if ipad, launched == "Safari" {
         for (index, page) in (p.pages ?? []).enumerated() {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""U1 oracle for `firmwarekit mount` (docs/filesystem-f0-findings.md): what the guest reports, for comparison
+"""U1 oracle for `firmwarekit mount`: what the guest reports, for comparison
 with the volumes FirmwareKit rebuilds offline from base + overlay.
 
     tests/sessions/volume-rebuild-oracle.py --device IPAD_DEVICE --out OUT [--ipa IPA ...] [--kill]

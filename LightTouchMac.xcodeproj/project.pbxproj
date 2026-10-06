@@ -26,7 +26,6 @@
 		A1D0C0DE3100000000000021 /* StorageCapacity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3100000000000020 /* StorageCapacity.swift */; };
 		A1D0C0DE3100000000000002 /* LightTouchDevice in Embed Device Helper */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3100000000000001 /* LightTouchDevice */; };
 		EA17D84D3023A55900BDF83E /* Subprocess in Frameworks */ = {isa = PBXBuildFile; productRef = EA17D84C3023A55900BDF83E /* Subprocess */; };
-		EA17D8503023A56800BDF83E /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = EA17D84F3023A56800BDF83E /* ArgumentParser */; };
 		A1D0C0DE35000000000000003 = {isa = PBXBuildFile; productRef = A1D0C0DE35000000000000002; };
 		A1D0C0DE35000000000000004 = {isa = PBXBuildFile; productRef = A1D0C0DE35000000000000002; };
 		A1D0C0DE36000000000000003 = {isa = PBXBuildFile; productRef = A1D0C0DE36000000000000002; };
@@ -118,7 +117,6 @@
 			files = (
 				A1D0C0DE35000000000000003,
 				A1D0C0DE36000000000000003,
-				EA17D8503023A56800BDF83E /* ArgumentParser in Frameworks */,
 				EA17D84D3023A55900BDF83E /* Subprocess in Frameworks */,
 			);
 		};
@@ -215,7 +213,6 @@
 				A1D0C0DE35000000000000002,
 				A1D0C0DE36000000000000002,
 				EA17D84C3023A55900BDF83E /* Subprocess */,
-				EA17D84F3023A56800BDF83E /* ArgumentParser */,
 			);
 			productName = LightTouchMac;
 			productReference = EA17D83230239D9B00BDF83E /* Light Touch.app */;
@@ -252,7 +249,6 @@
 				A1D0C0DE35000000000000001,
 				A1D0C0DE36000000000000001,
 				EA17D84B3023A55900BDF83E /* XCRemoteSwiftPackageReference "swift-subprocess" */,
-				EA17D84E3023A56800BDF83E /* XCRemoteSwiftPackageReference "swift-argument-parser" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = EA17D83330239D9B00BDF83E /* Products */;
@@ -327,7 +323,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = gold.samhenri.LightTouchMac.LightTouchDevice;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
-				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/Shared/CLink";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
@@ -348,7 +343,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = gold.samhenri.LightTouchMac.LightTouchDevice;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
-				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/Shared/CLink";
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
@@ -507,8 +501,6 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/Shared/CLink";
-				SWIFT_OBJC_BRIDGING_HEADER = "LightTouchMac/Shim/LightTouchMac-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -548,8 +540,6 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/Shared/CLink";
-				SWIFT_OBJC_BRIDGING_HEADER = "LightTouchMac/Shim/LightTouchMac-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -594,14 +584,6 @@
 				minimumVersion = 1.0.0;
 			};
 		};
-		EA17D84E3023A56800BDF83E /* XCRemoteSwiftPackageReference "swift-argument-parser" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/apple/swift-argument-parser.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.8.2;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -615,11 +597,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = EA17D84B3023A55900BDF83E /* XCRemoteSwiftPackageReference "swift-subprocess" */;
 			productName = Subprocess;
-		};
-		EA17D84F3023A56800BDF83E /* ArgumentParser */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = EA17D84E3023A56800BDF83E /* XCRemoteSwiftPackageReference "swift-argument-parser" */;
-			productName = ArgumentParser;
 		};
 		A1D0C0DE36000000000000002 = {isa = XCSwiftPackageProductDependency; package = A1D0C0DE36000000000000001; productName = DeviceRuntime; };
 /* End XCSwiftPackageProductDependency section */

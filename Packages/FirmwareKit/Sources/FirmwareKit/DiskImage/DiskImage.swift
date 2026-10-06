@@ -1,4 +1,4 @@
-// DiskImage: raw disk images through the stock tools, one backend per process (docs/sweep/PLAN.md C8): hdiutil
+// DiskImage: raw disk images through the stock tools, one backend per process: hdiutil
 // while macOS ships it (deprecated on 27, functional), `diskutil image` otherwise (see `backend` for why not the
 // other way round). Every attach/detach/resize/convert of FirmwareKit goes through here; mount/unmount, newfs_hfs
 // and fsck_hfs are not disk-image operations and stay with VolumeMount.

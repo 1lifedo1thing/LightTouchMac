@@ -1,4 +1,4 @@
-// C glue for the app <-> LightTouchDevice link (docs/multi-device-plan.md, section A):
+// C glue for the app <-> LightTouchDevice link:
 // atomics on the shared status block (Swift cannot put an atomic at an arbitrary
 // address), the Mach rendezvous that moves IOSurface ports, and posix_spawn with
 // the link socket as fd 3 (Foundation's Process cannot pass an extra descriptor).

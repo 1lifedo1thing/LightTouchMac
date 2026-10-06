@@ -122,7 +122,7 @@ enum Oracle {
                     "AppleLogo.bin": "3e3d4095a241e83f651ed5c71ad40410bda936ffccb5a2448aa8ef099473b1b5",
                     "DeviceTree.bin": "ffefdaa6f0cfdb433204b9e9314fdbb3dc1d64888d9f2ae54351a4aab3fc0a38",
                     // 2.x DFU stages carry no KBAG: the payload is copied as-is (Python "decrypted" it with a
-                    // placeholder key into noise); these are the plaintext payloads' hashes (docs/matrix.md).
+                    // placeholder key into noise); these are the plaintext payloads' hashes.
                     "iBEC.bin": "b9c74d685bc8c3340ef1e8fe16895d991387f06a478a5497d98d61e1d25ed86b",
                     "iBoot.bin": "4c2ec4ea8b8c9ef93548275bfc0f44b447315b8b9631bfeeb147721a2f834b3d",
                     "iBSS.bin": "ffa508c1e88dc353ab331d1af990174ac9ed0543074cc04f6dce302648acda27",

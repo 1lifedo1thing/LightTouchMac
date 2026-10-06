@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """framecheck.py -- is a captured frame the right *picture*, not just lit?
 
-The 2026-09-29 test audit (LightTouchMac docs/test-audit-2026-09-29.md, ranked gap #1)
+The 2026-09-29 test audit (ranked gap #1)
 showed every boot leg and matrix column judges liveness -- lit-pixel counts, "nothing
 refused" -- so a frame written upside down, with red and blue swapped, or left stale
 (a previous surface) all PASS. Section 4 of the audit also showed the fix: the GL path

@@ -1,5 +1,4 @@
 // One device the user owns: State/Devices/<uuid>/device.plist (DeviceRecord).
-// See docs/multi-device-plan.md section B.
 //
 // Storage paths are relative to the state directory (so the record survives
 // the state root moving) unless absolute: a development base (LTM_DEV_BASE)

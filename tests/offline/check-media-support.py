@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Which libraries each catalog firmware may add media to (Features/MediaSupport.swift, compiled whole), against
-the builds the guest helpers have been verified on (qemu-ios contrib/it-media/README.md; the booted round trips in
-docs/STATUS.md). Fails when an unverified firmware is offered an import, a verified one is refused, or the refusal
+the builds the guest helpers have been verified on (qemu-ios contrib/it-media/README.md and its booted round trips).
+Fails when an unverified firmware is offered an import, a verified one is refused, or the refusal
 loses its plain words."""
 from pathlib import Path
 import sys

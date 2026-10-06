@@ -1,5 +1,5 @@
 import DeviceRuntime
-// Guest packages (docs/guest-package-bootstrap.md, P5): the app's side.
+// Guest packages: the app's side.
 //
 // Each boot, the app composes Devices/<uuid>/work/guest-offer/ from the
 // bundled Resources/guest/<arch>.itpack (qemu-ios contrib/guest-package/

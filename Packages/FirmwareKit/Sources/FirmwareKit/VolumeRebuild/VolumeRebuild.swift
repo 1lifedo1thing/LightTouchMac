@@ -1,5 +1,5 @@
 // VolumeRebuild: a stopped device's logical HFS+ volumes, rebuilt from its read-only base plus its NAND
-// overlay into sparse raw images (docs/filesystem-f0-findings.md, F1). Nothing here opens a store for writing.
+// overlay into sparse raw images. Nothing here opens a store for writing.
 //
 //   let vols = try VolumeRebuild.rebuild(base: nand, overlay: ovl, into: dir)          // every volume
 //   try VolumeRebuild.rebuild(base: nand, overlay: ovl, into: dir, only: ["system"])
