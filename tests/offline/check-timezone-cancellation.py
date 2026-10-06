@@ -25,6 +25,7 @@ import System
 func logEvent(_ value: String) {}
 enum DeviceToolsError: Error { case failed(String), zoneKept(String) }
 enum Timeouts { static var query: Double = 2 }
+struct ClockRegion: Sendable { var arguments: [String] }
 struct DeviceServices {
 METHODS
 }

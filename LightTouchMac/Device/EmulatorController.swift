@@ -679,6 +679,7 @@ final class EmulatorController {
         timeZoneTask?.cancel()
         timeZoneTask = nil
         timeZoneObserver = nil
+        bootScope.localeObserver = nil
     }
 
     private func startTimeZoneSync() {
@@ -687,6 +688,14 @@ final class EmulatorController {
         let scope = timeZoneScope
         timeZoneObserver = NotificationCenter.default.addObserver(forName: .NSSystemTimeZoneDidChange,
                                                object: nil, queue: nil) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, generation == self.bootGeneration, scope == self.timeZoneScope else { return }
+                self.scheduleTimeZoneSync(generation: generation)
+            }
+        }
+        // The region and the 24-hour setting follow the Mac's too.
+        bootScope.localeObserver = NotificationCenter.default.addObserver(forName: NSLocale.currentLocaleDidChangeNotification,
+                                                                         object: nil, queue: nil) { [weak self] _ in
             Task { @MainActor in
                 guard let self, generation == self.bootGeneration, scope == self.timeZoneScope else { return }
                 self.scheduleTimeZoneSync(generation: generation)
@@ -712,7 +721,7 @@ final class EmulatorController {
                 guard generation == bootGeneration, !Task.isCancelled else { return }
                 do {
                     let dated = BootRecipe.lockMachine(instance.paths.base.appendingPathComponent("device.lock.json"))["rtc-epoch"] != nil
-                    try await services.setTimeZone(TimeZone.current.identifier, keepClock: dated, guest: guest)
+                    try await services.setTimeZone(TimeZone.current.identifier, keepClock: dated, guest: guest, region: .mac)
                     return
                 } catch DeviceToolsError.zoneKept(let zone) {
                     guard generation == bootGeneration, !Task.isCancelled else { return }

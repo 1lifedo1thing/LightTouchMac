@@ -12,7 +12,7 @@ final class BootSessionScope {
     private(set) var generation = 0
     private(set) var retired = false
     private var tasks: [Work: Task<Void, Never>] = [:]
-    private var observer: NSObjectProtocol?
+    private var observers: [String: NSObjectProtocol] = [:]
 
     subscript(work: Work) -> Task<Void, Never>? {
         get { tasks[work] }
@@ -23,16 +23,22 @@ final class BootSessionScope {
         }
     }
     var timeZoneObserver: NSObjectProtocol? {
-        get { observer }
-        set {
-            if let observer { NotificationCenter.default.removeObserver(observer) }
-            guard !retired else {
-                if let newValue { NotificationCenter.default.removeObserver(newValue) }
-                observer = nil
-                return
-            }
-            observer = newValue
+        get { observers["timeZone"] }
+        set { setObserver("timeZone", newValue) }
+    }
+    /// The Mac's region and 24-hour setting (NSLocale.currentLocaleDidChangeNotification).
+    var localeObserver: NSObjectProtocol? {
+        get { observers["locale"] }
+        set { setObserver("locale", newValue) }
+    }
+    private func setObserver(_ key: String, _ newValue: NSObjectProtocol?) {
+        if let old = observers[key] { NotificationCenter.default.removeObserver(old) }
+        guard !retired else {
+            if let newValue { NotificationCenter.default.removeObserver(newValue) }
+            observers[key] = nil
+            return
         }
+        observers[key] = newValue
     }
     func retire() {
         guard !retired else { return }
@@ -41,6 +47,7 @@ final class BootSessionScope {
         for task in tasks.values { task.cancel() }
         tasks.removeAll()
         timeZoneObserver = nil
+        localeObserver = nil
     }
     func renew() {
         retire()

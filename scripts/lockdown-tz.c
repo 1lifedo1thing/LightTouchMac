@@ -1,5 +1,5 @@
 /*
- * lockdown-tz <olson zone> [epoch | keep]
+ * lockdown-tz <olson zone> [epoch | keep] [--locale <id>] [--24h 0|1]
  * lockdown-tz --finish-activation
  *
  * Point the device's lockdown TimeZone at the given zone — the same call
@@ -23,6 +23,11 @@
  * seconds since 1970 (a catalog entry's pinned `clock`, for developer builds
  * that refuse to run past their expiry) or `keep`, which leaves the time alone
  * (the zone re-sync after a pin must not jump the guest back).
+ *
+ * --locale and --24h carry the Mac's region and clock format: com.apple.international's Locale
+ * (the region formats; Language is left alone) and the root domain's Uses24HourClock, each only
+ * where the lockdownd has the key, and written only when it differs. A change redraws the lock
+ * clock the way refresh_clocks does. Best effort: the exit status follows the zone.
  *
  * Reads before writing, so a matching zone costs no set. Prints the zone in
  * effect; exits 0 only when it matches the request, 4 when lockdownd took the
@@ -184,6 +189,39 @@ static void refresh_clocks(lockdownd_client_t cli)
         fprintf(stderr, "clock refresh failed\n");
 }
 
+/* The Mac's region (Locale in com.apple.international) and 24-hour setting, where this lockdownd has
+ * them. Returns whether anything changed. */
+static int set_region(lockdownd_client_t cli, const char *locale, int h24)
+{
+    int changed = 0;
+    if (locale) {
+        plist_t v = NULL;
+        char *have = NULL;
+        if (lockdownd_get_value(cli, "com.apple.international", "Locale", &v) == LOCKDOWN_E_SUCCESS && v) {
+            if (plist_get_node_type(v) == PLIST_STRING) plist_get_string_val(v, &have);
+            plist_free(v);
+            if (!have || strcmp(have, locale)) {
+                if (lockdownd_set_value(cli, "com.apple.international", "Locale", plist_new_string(locale)) == LOCKDOWN_E_SUCCESS)
+                    changed = 1;
+                else
+                    fprintf(stderr, "locale not set\n");
+            }
+        }
+        free(have);
+    }
+    if (h24 >= 0) {
+        int have = bool_value(cli, "Uses24HourClock");
+        /* Written after a locale change too: lockdownd posts the time-preferences change that redraws the clocks. */
+        if (have >= 0 && (have != h24 || changed)) {
+            if (lockdownd_set_value(cli, NULL, "Uses24HourClock", plist_new_bool(h24)) == LOCKDOWN_E_SUCCESS)
+                changed = 1;
+            else
+                fprintf(stderr, "24-hour clock not set\n");
+        }
+    }
+    return changed;
+}
+
 /* The zone in effect after asking for `want` (caller frees). lockdownd hands
  * the zone to locationd/timed, which relinks /var/db/timezone/localtime a
  * moment later, so a changed zone is polled until it reads back; the clocks
@@ -216,13 +254,22 @@ static char *set_zone(lockdownd_client_t cli, const char *want)
 
 int main(int argc, char **argv)
 {
+    const char *locale = NULL;
+    int h24 = -1;
+    /* The region options come last; what's before them is the zone and the clock. */
+    while (argc >= 4 && (!strcmp(argv[argc - 2], "--locale") || !strcmp(argv[argc - 2], "--24h"))) {
+        if (!strcmp(argv[argc - 2], "--locale")) locale = argv[argc - 1];
+        else h24 = atoi(argv[argc - 1]) != 0;
+        argc -= 2;
+    }
     if (argc < 2 || argc > 3) {
-        fprintf(stderr, "usage: lockdown-tz <olson zone> [epoch | keep]\n");
+        fprintf(stderr, "usage: lockdown-tz <olson zone> [epoch | keep] [--locale <id>] [--24h 0|1]\n");
         return 2;
     }
     int finishing = argc == 2 && !strcmp(argv[1], "--finish-activation");
     time_t now = time(NULL);
     int keep = 0;
+    int pinned = argc == 3;
     if (argc == 3) {
         if (strcmp(argv[2], "keep") == 0)
             keep = 1;
@@ -253,7 +300,7 @@ int main(int argc, char **argv)
     if (!keep) {
         double held = set_time(cli, now);
         /* A pinned clock is the point of the call: say so when the device did not take it. */
-        if (argc == 3 && (held < 0 || held - (double)now > 300 || (double)now - held > 300)) {
+        if (pinned && (held < 0 || held - (double)now > 300 || (double)now - held > 300)) {
             fprintf(stderr, "clock not applied: device holds %.0f, wanted %lld\n", held, (long long)now);
             lockdownd_client_free(cli);
             idevice_free(dev);
@@ -262,6 +309,7 @@ int main(int argc, char **argv)
     }
 
     char *zone = set_zone(cli, argv[1]);
+    set_region(cli, locale, h24);
     printf("%s\n", zone ? zone : "(unset)");
     int status = !zone ? 1 : strcmp(zone, argv[1]) ? 4 : 0;
     free(zone);

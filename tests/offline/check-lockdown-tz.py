@@ -82,8 +82,22 @@ int main(void)
 
     fixture("US/Pacific", 0, 0); refused = 1;
     assert(set_zone(NULL, "Europe/Paris") == NULL && !strcmp(log_, "TimeZone "));
+    /* The Mac's region and clock format: written only where they differ and the key exists; a locale change
+     * rewrites Uses24HourClock too, which redraws the lock clock. */
+    fixture("Europe/London", 0, 0);
+    plist_dict_set_item(values, "Locale", plist_new_string("en_US"));
+    assert(set_region(NULL, "en_GB", 1) && !strcmp(log_, "Locale Uses24HourClock "));
+    assert(bool_value(NULL, "Uses24HourClock") == 1);
+    log_[0] = 0;
+    assert(!set_region(NULL, "en_GB", 1) && !log_[0]);
+    assert(set_region(NULL, "en_GB", 0) && !strcmp(log_, "Uses24HourClock ") && bool_value(NULL, "Uses24HourClock") == 0);
+    log_[0] = 0;
+    assert(set_region(NULL, "fr_FR", 0) && !strcmp(log_, "Locale Uses24HourClock ") && bool_value(NULL, "Uses24HourClock") == 0);
+    fixture("Europe/London", -1, 0);   /* a lockdownd with neither key */
+    assert(!set_region(NULL, "en_GB", 1) && !log_[0]);
     plist_free(values);
-    puts("PASS: lockdown-tz writes a changed zone, waits for it, then refreshes the lock clock (Uses24HourClock kept)");
+    puts("PASS: lockdown-tz writes a changed zone, waits for it, then refreshes the lock clock (Uses24HourClock kept); "
+         "the Mac's locale and 24-hour setting only where they differ");
 }
 '''
 
@@ -103,3 +117,20 @@ with tempfile.TemporaryDirectory() as work:
     sys.stdout.write(r.stdout)
     if r.returncode:
         sys.exit("FAIL: lockdown-tz zone step\n" + r.stderr[-2000:])
+
+# The Mac's side: ClockRegion turns a locale (its region override included) into lockdown's Locale id and 24-hour flag.
+with tempfile.TemporaryDirectory() as work:
+    main = Path(work, "main.swift")
+    main.write_text('''import Foundation
+func region(_ id: String) -> ClockRegion { ClockRegion(Locale(identifier: id)) }
+precondition(region("en_GB") == ClockRegion(locale: "en_GB", uses24HourClock: true), "\\(region("en_GB"))")
+precondition(region("en_US") == ClockRegion(locale: "en_US", uses24HourClock: false), "\\(region("en_US"))")
+precondition(region("en_US@hours=h23") == ClockRegion(locale: "en_US", uses24HourClock: true), "the Mac's 24-hour switch")
+precondition(region("en_GB@hours=h12").uses24HourClock == false, "the Mac's 12-hour switch")
+precondition(region("de_DE@rg=chzzzz").locale == "de_CH", "\\(region("de_DE@rg=chzzzz"))")
+precondition(region("en_US").arguments == ["--locale", "en_US", "--24h", "0"])
+print("PASS: ClockRegion: lockdown Locale ids and the 24-hour flag from the Mac's locale")
+''')
+    exe = Path(work, "region")
+    subprocess.run(["xcrun", "swiftc", str(root / "LightTouchMac/Services/ClockRegion.swift"), str(main), "-o", str(exe)], check=True)
+    subprocess.run([str(exe)], check=True)
