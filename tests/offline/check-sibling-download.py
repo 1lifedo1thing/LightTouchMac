@@ -86,8 +86,8 @@ func expect(_ ok: Bool, _ what: @autoclosure () -> String, line: Int = #line) {
         expect(done(), "timed out: \(seen)")
     }
     func downloads() -> [FirmwareJob] { seen.filter { if case .downloading = $0 { true } else { false } } }
-    func files(_ job: FirmwareJob) -> Int { if case let .downloading(_, _, n, _) = job { n } else { 0 } }
-    func fraction(_ job: FirmwareJob) -> Double { if case let .downloading(f, _, _, _) = job { f } else { -1 } }
+    func files(_ job: FirmwareJob) -> Int { if case let .downloading(_, _, n, _, _) = job { n } else { 0 } }
+    func fraction(_ job: FirmwareJob) -> Double { if case let .downloading(f, _, _, _, _) = job { f } else { -1 } }
     let argv = { (try? JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: args[2])))) as? [String] ?? [] }
 
     switch args[4] {

@@ -92,19 +92,36 @@ import Foundation
         precondition(r.allows(.start, canDownload: false), "a dead session's Start restarts it")
 
         // Jobs: downloading and preparing, with progress and Cancel.
+        // One bar for the job: the download is its first half.
         r = row(iPad32, job: .downloading(fraction: 0.425))
-        precondition(r.state == .downloading(fraction: 0.425) && r.stateDescription == "Downloading, 42%", r.stateDescription)
+        precondition(r.state == .downloading(fraction: 0.425) && r.stateDescription == "Downloading, 21%", r.stateDescription)
         precondition(r.primaryTitle == "Cancel" && allowed(r) == ["cancel"], "\(allowed(r))")
-        precondition(r.progress == 0.425 && r.progressHeadline == "Downloading…" && r.progressDetail.isEmpty, "\(r.progressDetail)")
+        precondition(r.progress == 0.2125 && r.progressHeadline == "Downloading…" && r.progressDetail.isEmpty, "\(r.progressDetail)")
+        precondition(r.progressLine == "21%", r.progressLine ?? "nil")
         r = row(iPad32, job: .downloading(fraction: 0.5, remaining: 125))
-        precondition(r.progressHeadline == "About 2 minutes remaining" && r.progressSummary == "50%", r.progressHeadline ?? "nil")
+        precondition(r.progressHeadline == "Downloading…" && r.progressSummary == "25%", r.progressHeadline ?? "nil")
+        precondition(r.progressLine == "25% · About 2 minutes remaining", r.progressLine ?? "nil")
+        // A slow download (under 2 MB/s) shows its speed; a fast, short one doesn't; a long one does.
+        r = row(iPad32, job: .downloading(fraction: 0.5, remaining: 125, speed: 1_200_000))
+        precondition(r.progressLine == "25% · About 2 minutes remaining · 1.2 MB/s", r.progressLine ?? "nil")
+        r = row(iPad32, job: .downloading(fraction: 0.5, remaining: 125, speed: 9_000_000))
+        precondition(r.progressLine == "25% · About 2 minutes remaining", r.progressLine ?? "nil")
+        r = row(iPad32, job: .downloading(fraction: 0.5, remaining: 1800, speed: 9_000_000))
+        precondition(r.progressLine == "25% · About 30 minutes remaining · 9 MB/s", r.progressLine ?? "nil")
         // A build that boots its sibling's ramdisk: one job, both IPSWs, one bar.
         r = row(iPad32, job: .downloading(fraction: 0.25, files: 2))
-        precondition(r.progressSummary == "25%" && r.progressHeadline == "Downloading…" && r.progressDetail == ["2 IPSWs"] && r.progress == 0.25, "\(r.progressDetail)")
-        precondition(r.stateDescription == "Downloading, 25%" && r.primaryTitle == "Cancel", r.stateDescription)
-        // Its first source failed: the bar's tooltip names the third-party host it now comes from.
+        precondition(r.progressSummary == "12%" && r.progressHeadline == "Downloading…" && r.progressDetail == ["2 IPSWs"] && r.progress == 0.125, "\(r.progressDetail)")
+        precondition(r.stateDescription == "Downloading, 12%" && r.primaryTitle == "Cancel", r.stateDescription)
+        // From a third-party host (archive.org, a mirror): the headline and the bar's tooltip name it.
         r = row(iPad32, job: .downloading(fraction: 0.25, mirror: "archive.org"))
+        precondition(r.progressHeadline == "Downloading from archive.org…", r.progressHeadline ?? "nil")
         precondition(r.progressDetail == ["From archive.org, a third-party mirror"], "\(r.progressDetail)")
+        precondition(FirmwareJob.thirdParty("archive.org") == "archive.org" && FirmwareJob.thirdParty("secure-appldnld.apple.com") == nil)
+        // The preparation after a download is the bar's second half: it starts at 50%, never back at 0.
+        r = row(iPad32, job: .preparing(.init(name: "Starting", startsAt: 0.5)))
+        precondition(r.progress == 0.5 && r.progressSummary == "50%" && r.accessory == .progress(0.5), "\(String(describing: r.progress))")
+        r = row(iPad32, job: .preparing(.init(step: 2, steps: 4, name: "Decrypting", fraction: 0.5, startsAt: 0.5)))
+        precondition(r.progress == 0.6875 && r.progressHeadline == "Decrypting…", "\(String(describing: r.progress))")
         r = row(iPad32, job: .preparing(.init(step: 2, steps: 5, name: "Decrypting")))
         precondition(r.stateDescription == "Preparing, 20%" && allowed(r, canDownload: true) == ["cancel"], r.stateDescription)
 
@@ -118,7 +135,7 @@ import Foundation
         r = row(iPad32, job: .preparing(p))
         precondition(r.progressSummary == "60%", r.progressSummary ?? "nil")
         // The placeholder's headline is the time left, no percent; the preparer's step and its words are the bar's tooltip.
-        precondition(r.progressHeadline == "About 50 seconds remaining", r.progressHeadline ?? "nil")
+        precondition(r.progressHeadline == "Sealing the NAND…" && r.progressLine == "60% · About 50 seconds remaining", r.progressLine ?? "nil")
         precondition(r.progressDetail == ["Step 6 of 7: Sealing the NAND", "Booting to seal the flash — 42 s"], "\(r.progressDetail)")
         p.step = 7; p.fraction = 1
         precondition(p.overall == 1)
@@ -129,7 +146,7 @@ import Foundation
         // Time remaining: nothing for the first 5 s or 2 %, then the rate so far.
         precondition(estimatedRemaining(elapsed: 4, from: 0, to: 0.5) == nil && estimatedRemaining(elapsed: 60, from: 0.3, to: 0.31) == nil)
         precondition(estimatedRemaining(elapsed: 30, from: 0, to: 0.25) == 90 && estimatedRemaining(elapsed: 10, from: 0.5, to: 0.75) == 10)
-        precondition(DeviceRow.remainingText(5) == "Almost done" && DeviceRow.remainingText(41) == "About 50 seconds remaining"
+        precondition(DeviceRow.remainingText(5) == "Almost done…" && DeviceRow.remainingText(41) == "About 50 seconds remaining"
                      && DeviceRow.remainingText(65) == "About 1 minute remaining"
                      && DeviceRow.remainingText(3000) == "About 50 minutes remaining" && DeviceRow.remainingText(7200) == "About 2 hours remaining")
         precondition(row(iPad32, instance: id).progressHeadline == nil, "no headline outside a job")
@@ -191,7 +208,7 @@ import Foundation
         precondition(downloaded.accessory == .none, "Downloaded is the normal state: nothing after the title")
         precondition(row(iPad, instance: id).accessory == .none, "ready: nothing")
         precondition(row(iPad).accessory == .notDownloaded && row(beta1).accessory == .notDownloaded, "not here yet: the download glyph")
-        precondition(row(iPad32, job: .downloading(fraction: 0.425)).accessory == .progress(0.425))
+        precondition(row(iPad32, job: .downloading(fraction: 0.425)).accessory == .progress(0.2125))
         precondition(row(iPad32, job: .preparing(p)).accessory == .progress(1))
         precondition(row(iPad, instance: id, session: .running).accessory == .running && row(iPad, instance: id, session: .stopping).accessory == .stopping)
         precondition(row(iPod, instance: id, session: .dead("x")).accessory == .error && row(soon).accessory == .text("Coming soon"))

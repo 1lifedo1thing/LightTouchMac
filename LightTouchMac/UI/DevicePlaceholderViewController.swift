@@ -12,7 +12,13 @@ final class DevicePlaceholderViewController: NSViewController {
     private let model = NSTextField(labelWithString: "")
     private let version = NSTextField(labelWithString: "")
     private let status = NSTextField(wrappingLabelWithString: "")
-    private let progress = NSProgressIndicator()
+    /// Holds the shown entry's own bar: each job keeps its bar, so switching between two jobs never animates one bar
+    /// from the other's value.
+    private let progressSlot = NSView()
+    private var bars: [String: NSProgressIndicator] = [:]
+    private var progress: NSProgressIndicator? { progressSlot.subviews.first as? NSProgressIndicator }
+    /// Under the bar: percent, time left, speed (DeviceRow.progressLine).
+    private let progressLine = NSTextField(labelWithString: "")
     private let reason = NSTextField(wrappingLabelWithString: "")
     private let showLog = NSButton(title: "Show Logs", target: nil, action: nil)
     private let primary = NSButton(title: "", target: nil, action: nil)
@@ -51,10 +57,9 @@ final class DevicePlaceholderViewController: NSViewController {
         info.contentTintColor = .secondaryLabelColor
         info.target = self
         info.action = #selector(infoClicked(_:))
-        progress.style = .bar
-        progress.isIndeterminate = false   // NSProgressIndicator starts indeterminate: a bar that never fills
-        progress.minValue = 0
-        progress.maxValue = 1
+        progressLine.textColor = .secondaryLabelColor
+        progressLine.font = .monospacedDigitSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .subheadline).pointSize, weight: .regular)
+        progressLine.alignment = .center
         for button in [showLog, prepareAgain, primary] {
             button.bezelStyle = .push
             button.controlSize = .large
@@ -67,7 +72,7 @@ final class DevicePlaceholderViewController: NSViewController {
         let versionLine = NSStackView(views: [version, info])
         versionLine.spacing = 4
         let identity = column([model, versionLine], spacing: 2)
-        let state = column([status, progress, reason], spacing: 6)
+        let state = column([status, progressSlot, progressLine, reason], spacing: 6)
         let actions = NSStackView(views: [showLog, prepareAgain, primary])
         actions.spacing = 12
         // The row keeps its height with no button (running), so the lockup doesn't move between states.
@@ -87,7 +92,8 @@ final class DevicePlaceholderViewController: NSViewController {
             stack.leadingAnchor.constraint(greaterThanOrEqualTo: guide.leadingAnchor, constant: 20),
             art.heightAnchor.constraint(lessThanOrEqualToConstant: 320),
             art.heightAnchor.constraint(lessThanOrEqualTo: guide.heightAnchor, multiplier: 0.45),
-            progress.widthAnchor.constraint(equalToConstant: 260),
+            progressSlot.widthAnchor.constraint(equalToConstant: 260),
+            progressSlot.heightAnchor.constraint(equalToConstant: Self.makeBar().fittingSize.height),
             // The state tier holds a line and a bar, or a line and a reason: the buttons stay put (a two-line reason adds one line).
             state.heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
         ])
@@ -116,8 +122,9 @@ final class DevicePlaceholderViewController: NSViewController {
         version.stringValue = "iOS \(entry.version)" + (row.badge.map { " \($0)" } ?? "") + " (\(entry.build))"
         info.isHidden = row.catalogNote == nil
 
-        progress.isHidden = true
-        progress.stopAnimation(nil)
+        progressSlot.isHidden = true
+        progressLine.isHidden = true
+        progress?.stopAnimation(nil)
         reason.isHidden = true
         showLog.isHidden = true
         prepareAgain.isHidden = true
@@ -127,11 +134,9 @@ final class DevicePlaceholderViewController: NSViewController {
             status.stringValue = row.stateDescription
             if !canDownload, let why = FirmwareJobs.shared.unavailableReason { reason.stringValue = why; reason.isHidden = false }
         case .downloading:
-            progress.setAccessibilityLabel("Download progress")
-            show(row)
+            show(row).setAccessibilityLabel("Download progress")
         case .preparing:
-            progress.setAccessibilityLabel("Preparation progress")
-            show(row)
+            show(row).setAccessibilityLabel("Preparation progress")
         case .ready:
             status.stringValue = "Ready"
             // Start stays the default: an older base still runs.
@@ -154,6 +159,8 @@ final class DevicePlaceholderViewController: NSViewController {
         case .unavailable(.requiresIPSW): status.stringValue = "Requires an IPSW"
         }
 
+        if row.progressHeadline == nil { bars[entry.id] = nil }
+
         if let action = row.primaryAction, let title = row.primaryTitle {
             primary.title = title
             // Return does the next thing; it never cancels a download (Escape does).
@@ -173,14 +180,34 @@ final class DevicePlaceholderViewController: NSViewController {
         space.isHidden = shortage == nil
     }
 
-    /// The headline (time left, else what the job is doing) over the bar (moving without a fraction yet);
-    /// the preparer's step is the bar's tooltip.
-    private func show(_ row: DeviceRow) {
+    private static func makeBar() -> NSProgressIndicator {
+        let bar = NSProgressIndicator()
+        bar.style = .bar
+        bar.isIndeterminate = false   // NSProgressIndicator starts indeterminate: a bar that never fills
+        bar.minValue = 0
+        bar.maxValue = 1
+        return bar
+    }
+
+    /// The stage over the entry's own bar (moving without a fraction yet), the percent, time left and speed under it;
+    /// the preparer's step is the bar's tooltip. Returns the bar.
+    @discardableResult private func show(_ row: DeviceRow) -> NSProgressIndicator {
         status.stringValue = row.progressHeadline ?? ""
-        progress.isIndeterminate = row.progress == nil
-        if let value = row.progress { progress.doubleValue = value } else { progress.startAnimation(nil) }
-        progress.isHidden = false
-        progress.toolTip = row.progressDetail.isEmpty ? nil : row.progressDetail.joined(separator: "\n")
+        let bar = bars[row.entry.id] ?? Self.makeBar()
+        bars[row.entry.id] = bar
+        if progress !== bar {
+            progressSlot.subviews.forEach { $0.removeFromSuperview() }
+            bar.frame = progressSlot.bounds
+            bar.autoresizingMask = [.width, .height]
+            progressSlot.addSubview(bar)
+        }
+        bar.isIndeterminate = row.progress == nil
+        if let value = row.progress { bar.doubleValue = value } else { bar.startAnimation(nil) }
+        progressSlot.isHidden = false
+        bar.toolTip = row.progressDetail.isEmpty ? nil : row.progressDetail.joined(separator: "\n")
+        progressLine.stringValue = row.progressLine ?? ""
+        progressLine.isHidden = row.progressLine == nil
+        return bar
     }
 
     @objc private func infoClicked(_ sender: NSButton) {

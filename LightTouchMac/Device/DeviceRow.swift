@@ -14,13 +14,19 @@ nonisolated enum DeviceAction: CaseIterable, Sendable {
 }
 
 /// A download or preparation in flight for a catalog entry (FirmwareJobs).
-/// `remaining` is the estimated seconds left, nil until there is one; `files` is how many
-/// IPSWs the one job fetches (2 for a build that boots its sibling's ramdisk), `fraction` all of them;
-/// `mirror` the host it comes from once a catalog source other than the first serves it.
+/// `remaining` is the estimated seconds left for the whole job (the download and the preparation after it), nil until
+/// there is one; `files` is how many IPSWs the one job fetches (2 for a build that boots its sibling's ramdisk),
+/// `fraction` all of them; `mirror` the host it comes from when that isn't Apple's (archive.org, a mirror);
+/// `speed` bytes per second, once measured.
 nonisolated enum FirmwareJob: Equatable, Sendable {
-    case downloading(fraction: Double, remaining: TimeInterval? = nil, files: Int = 1, mirror: String? = nil)
+    case downloading(fraction: Double, remaining: TimeInterval? = nil, files: Int = 1, mirror: String? = nil, speed: Double? = nil)
     case preparing(Preparation)
     case failed(String)
+
+    /// A download host the user should hear about ("archive.org"); nil for Apple's own.
+    static func thirdParty(_ host: String) -> String? {
+        host == "apple.com" || host.hasSuffix(".apple.com") ? nil : host
+    }
 }
 
 /// Where a preparation stands (the preparer contract's begin, step and progress events).
@@ -35,6 +41,8 @@ nonisolated struct Preparation: Equatable, Sendable {
     /// The preparer's words for what the step is doing now.
     var detail: String?
     var remaining: TimeInterval?
+    /// Where the preparation starts on the job's one bar: 0.5 after a download (the first half), else 0.
+    var startsAt = 0.0
 
     /// Finished steps plus this one's fraction, weighted by expected seconds; nil with no steps yet.
     var overall: Double? {
@@ -66,7 +74,7 @@ nonisolated enum DeviceRowState: Equatable, Sendable {
     case downloaded
     /// The app ships its prepared base (`entry.bundled`), not yet unpacked.
     case bundled
-    case downloading(fraction: Double, remaining: TimeInterval? = nil, files: Int = 1, mirror: String? = nil)
+    case downloading(fraction: Double, remaining: TimeInterval? = nil, files: Int = 1, mirror: String? = nil, speed: Double? = nil)
     case preparing(Preparation)
     case ready, running, stopping
     /// Its storage is being removed (DeviceDeletions); the row leaves when that's done.
@@ -115,8 +123,8 @@ nonisolated struct DeviceRow: Equatable, Sendable {
         }
         if entry.status == .comingSoon { return .unavailable(.comingSoon) }
         switch job {
-        case let .downloading(fraction, remaining, files, mirror)?:
-            return .downloading(fraction: fraction, remaining: remaining, files: files, mirror: mirror)
+        case let .downloading(fraction, remaining, files, mirror, speed)?:
+            return .downloading(fraction: fraction, remaining: remaining, files: files, mirror: mirror, speed: speed)
         case let .preparing(preparation)?: return .preparing(preparation)
         case let .failed(reason)?: return .error(reason)
         case nil: break
@@ -136,11 +144,12 @@ nonisolated struct DeviceRow: Equatable, Sendable {
     var isStartable: Bool { instanceID != nil }
     var isDimmed: Bool { if case .unavailable = state { true } else { false } }
     var isError: Bool { if case .error = state { true } else { false } }
-    /// A download's or preparation's overall progress; nil while it has no steps yet.
+    /// The job's one bar: a download fills the first half and the preparation after it the second (a preparation
+    /// with no download before it, the whole bar); nil while a job with no download has no steps yet.
     var progress: Double? {
         switch state {
-        case let .downloading(fraction, _, _, _): fraction
-        case let .preparing(preparation): preparation.overall
+        case let .downloading(fraction, _, _, _, _): fraction / 2
+        case let .preparing(p): p.overall.map { p.startsAt + (1 - p.startsAt) * $0 } ?? (p.startsAt > 0 ? p.startsAt : nil)
         default: nil
         }
     }
@@ -170,21 +179,38 @@ nonisolated struct DeviceRow: Equatable, Sendable {
         }
     }
 
-    /// The placeholder's headline over the bar: the time left ("About 2 minutes remaining", "Almost done"),
-    /// else what the job is doing ("Downloading…"); nil outside a job. The percent is the bar's (and the sidebar ring's).
+    /// The placeholder's headline over the bar: the stage ("Downloading from archive.org…", the preparer's step
+    /// "Decrypting…"); nil outside a job.
     var progressHeadline: String? {
         switch state {
-        case let .downloading(_, remaining, _, _): remaining.map(Self.remainingText) ?? "Downloading…"
-        case let .preparing(p): p.remaining.map(Self.remainingText) ?? "Preparing…"
+        case let .downloading(_, _, _, mirror, _): mirror.map { "Downloading from \($0)…" } ?? "Downloading…"
+        case let .preparing(p): p.steps > 0 && !p.name.isEmpty ? p.name + "…" : "Preparing…"
         default: nil
         }
+    }
+
+    /// The line under the bar: the percent, the time left and, for a slow or long download, its speed
+    /// ("43% · About 12 minutes remaining · 1.2 MB/s"); nil outside a job.
+    var progressLine: String? {
+        let remaining: TimeInterval?, speed: Double?
+        switch state {
+        case let .downloading(_, r, _, _, s): (remaining, speed) = (r, s)
+        case let .preparing(p): (remaining, speed) = (p.remaining, nil)
+        default: return nil
+        }
+        // Slow: under ~2 MB/s, or long: more than 10 minutes to go.
+        let showSpeed = speed.map { $0 < 2_000_000 || (remaining ?? 0) > 600 } ?? false
+        let parts = [progressSummary, remaining.map(Self.remainingText),
+                     showSpeed ? speed.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) + "/s" } : nil]
+        let line = parts.compactMap { $0 }.joined(separator: " · ")
+        return line.isEmpty ? nil : line
     }
 
     /// What the job is doing inside, for the bar's tooltip only: the preparer's step and its words, or the IPSW count
     /// and the third-party mirror it comes from.
     var progressDetail: [String] {
         switch state {
-        case let .downloading(_, _, files, mirror):
+        case let .downloading(_, _, files, mirror, _):
             (files > 1 ? ["\(files) IPSWs"] : []) + (mirror.map { ["From \($0), a third-party mirror"] } ?? [])
         case let .preparing(p) where p.steps > 0: ["Step \(p.step) of \(p.steps): \(p.name)", p.detail].compactMap { $0 }
         case let .preparing(p): [p.name]
@@ -224,7 +250,7 @@ nonisolated struct DeviceRow: Equatable, Sendable {
     }
 
     static func remainingText(_ seconds: TimeInterval) -> String {
-        guard seconds >= 10 else { return "Almost done" }
+        guard seconds >= 10 else { return "Almost done…" }
         // Rounded to tens of seconds under a minute, whole minutes under 90, then hours.
         let (rounded, unit): (TimeInterval, NSCalendar.Unit) = switch seconds {
         case ..<60: ((seconds / 10).rounded(.up) * 10, .second)
@@ -236,7 +262,7 @@ nonisolated struct DeviceRow: Equatable, Sendable {
         format.allowedUnits = unit
         format.includesApproximationPhrase = true
         format.includesTimeRemainingPhrase = true
-        return format.string(from: rounded) ?? "Almost done"
+        return format.string(from: rounded) ?? "Almost done…"
     }
 
     /// `canDownload` is FirmwareJobs.canDownload: whether the preparer is present.

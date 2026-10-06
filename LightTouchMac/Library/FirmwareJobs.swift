@@ -34,6 +34,10 @@ import Cocoa
     private let bytes: [String: Int64]
     /// The host each download comes from once its first source failed (FirmwareDownloads' fallback).
     private var mirrors: [String: String] = [:]
+    /// Each download job's last speed sample (when, bytes so far) and its measured bytes per second.
+    private var speedSamples: [String: (date: Date, bytes: Double)] = [:]
+    private var speeds: [String: Double] = [:]
+    private let firstHosts: [String: String]
 
     /// `configuration`: tests use an ephemeral session and file URLs.
     init(catalog: FirmwareCatalog = .bundled, store: IPSWStore = .shared,
@@ -53,6 +57,7 @@ import Cocoa
         let entries = Dictionary(catalog.entries.compactMap { e in e.source.sha1.map { ($0, e) } }, uniquingKeysWith: { a, _ in a })
         self.bytes = bytes
         let urls = Dictionary(catalog.entries.compactMap { e in e.source.sha1.map { ($0, e.source.urls) } }, uniquingKeysWith: { a, _ in a })
+        firstHosts = urls.compactMapValues { $0.first?.host }
         // Made at launch so a download the last launch started reports here.
         // ponytail: a task resumed at launch from a mirror shows no mirror line until the next fallback.
         let preparer = Self.preparer
@@ -207,6 +212,8 @@ import Cocoa
     }
 
     func cancel(_ entry: FirmwareCatalog.Entry) {
+        speedSamples[entry.id] = nil
+        speeds[entry.id] = nil
         if let job = preparations[entry.id] { job.cancel() }
         else if let sha1s = waiting.removeValue(forKey: entry.id) {
             // A download another job still waits for goes on.
@@ -231,8 +238,11 @@ import Cocoa
             for id in ids {
                 guard let entry = catalog.entry(id: id), case .downloading? = jobs[id], let sha1s = waiting[id] else { continue }
                 let overall = downloadFraction(id)
-                jobs[id] = .downloading(fraction: overall, remaining: remaining(entry, overall), files: sha1s.count,
-                                        mirror: sha1s.lazy.compactMap { self.mirrors[$0] }.first)
+                // The bar spans the download and the preparation: the time left is both.
+                let left = remaining(entry, overall).map { $0 + Double(entry.estimates.seconds) }
+                jobs[id] = .downloading(fraction: overall, remaining: left, files: sha1s.count,
+                                        mirror: sha1s.lazy.compactMap { self.mirrors[$0] ?? self.firstHosts[$0] }.first.flatMap(FirmwareJob.thirdParty),
+                                        speed: speed(id, bytes: overall * Double(sha1s.reduce(0) { $0 + (self.bytes[$1] ?? 0) })))
             }
         case let .mirror(url): mirrors[sha1] = url.host
         case .resumed: break
@@ -245,7 +255,7 @@ import Cocoa
                 guard let entry = catalog.entry(id: id), let sha1s = waiting[id], sha1s.allSatisfy({ inFlight[$0] == nil }) else { continue }
                 waiting[id] = nil
                 guard let own = entry.source.sha1, let ipsw = store.existing(own) else { fail(entry, FirmwareError.failed("The download of iOS \(entry.version) is missing.")); continue }
-                prepare(entry, ipsw: ipsw)
+                prepare(entry, ipsw: ipsw, afterDownload: true)
             }
             // Nobody waits (the other IPSW of a job that failed): it stays downloaded.
             if ids.isEmpty { NotificationCenter.default.post(name: Self.didChangeNotification, object: self) }
@@ -260,6 +270,20 @@ import Cocoa
             mirrors[sha1] = nil
             logEvent("firmware: download of \(name) cancelled and discarded")
         }
+    }
+
+    /// Bytes per second over the last few seconds of a job's download; nil until measured.
+    private func speed(_ id: String, bytes: Double) -> Double? {
+        let now = Date()
+        guard let sample = speedSamples[id] else { speedSamples[id] = (now, bytes); return nil }
+        let elapsed = now.timeIntervalSince(sample.date)
+        if elapsed >= 3 {
+            let rate = max(0, bytes - sample.bytes) / elapsed
+            // Smoothed, so one slow interval doesn't swing it.
+            speeds[id] = speeds[id].map { $0 * 0.6 + rate * 0.4 } ?? rate
+            speedSamples[id] = (now, bytes)
+        }
+        return speeds[id]
     }
 
     /// The entry's packed base in this bundle (a development build has none).
@@ -279,8 +303,11 @@ import Cocoa
         return entry
     }
 
-    /// `bundled`: `ipsw` is the entry's packed base, unpacked rather than prepared.
-    private func prepare(_ entry: FirmwareCatalog.Entry, ipsw: URL, bundled: Bool = false) {
+    /// `bundled`: `ipsw` is the entry's packed base, unpacked rather than prepared. `afterDownload`: the job's
+    /// download filled the first half of its bar.
+    private func prepare(_ entry: FirmwareCatalog.Entry, ipsw: URL, bundled: Bool = false, afterDownload: Bool = false) {
+        speedSamples[entry.id] = nil
+        speeds[entry.id] = nil
         guard preparations[entry.id] == nil else { return }
         if refuseExisting(entry) { jobs[entry.id] = nil; return }
         guard let preparer = Self.preparer else { return fail(entry, FirmwareError.failed(unavailableReason ?? "")) }
@@ -305,7 +332,7 @@ import Cocoa
         }
         preparations[entry.id] = job
         starts[entry.id] = (Date(), 0)
-        jobs[entry.id] = .preparing(.init(name: "Starting"))
+        jobs[entry.id] = .preparing(.init(name: "Starting", startsAt: afterDownload ? 0.5 : 0))
         logEvent("firmware: \(bundled ? "unpacking the built-in" : "preparing") \(entry.id) as \(job.id.uuidString)")
         job.start()
     }

@@ -75,6 +75,8 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
             ("not-downloaded", DeviceRow(entry: beta, instanceID: nil, session: nil, job: nil)),
             ("downloaded", DeviceRow(entry: ipad, instanceID: nil, session: nil, job: nil, downloaded: true)),
             ("downloading", DeviceRow(entry: beta, instanceID: nil, session: nil, job: .downloading(fraction: 0.43, remaining: 70))),
+            ("downloading-archive", DeviceRow(entry: beta, instanceID: nil, session: nil,
+                                              job: .downloading(fraction: 0.43, remaining: 1900, mirror: "archive.org", speed: 850_000))),
             ("preparing", DeviceRow(entry: beta, instanceID: nil, session: nil, job: .preparing(prep))),
             ("almost-done", DeviceRow(entry: beta, instanceID: nil, session: nil, job: .preparing({ var p = prep; p.remaining = 4; return p }()))),
             ("downloading-starting", DeviceRow(entry: beta, instanceID: nil, session: nil, job: .downloading(fraction: 0.01))),
@@ -139,16 +141,46 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
             if row.preparedByOlderRecipe, again?.isEnabled != true || row.primaryTitle != "Start" { fail("Prepare Again disabled or Start not the default") }
             if row.isError && !texts.contains(where: { $0.hasPrefix("Couldn’t ") || $0 == "Stopped unexpectedly" }) { fail("an error headline that doesn't say what failed: \(texts)") }
             if texts.contains("Error") { fail("a bare Error headline") }
-            // A job's headline is its status ("About 1 minute remaining", "Almost done", "Downloading…"), right under the
-            // version; nothing under the bar: no percent (the bar shows it), no middot.
+            // A job's headline is its stage ("Downloading from archive.org…", "Decrypting…"), right under the version;
+            // under the bar, the percent and the time left (and a slow download's speed).
             if let headline = row.progressHeadline {
                 if texts[safe: v + 1] != headline { fail("headline \(texts[safe: v + 1] ?? "none"), want \(headline): \(texts)") }
-                if texts.count != v + 2 { fail("a line besides the headline: \(texts)") }
+                if texts[safe: v + 2] != row.progressLine || texts.count != v + 3 { fail("the line under the bar: \(texts), want \(row.progressLine ?? "nil")") }
+                if !(row.progressLine ?? "").contains("%") { fail("no percent: \(row.progressLine ?? "nil")") }
+                if row.progress != nil, let bar = all(view).compactMap({ $0 as? NSProgressIndicator }).first(where: visible),
+                   let line = texts[safe: v + 2], let label = labels.first(where: { $0.stringValue == line }), !(frame(bar).minY > frame(label).maxY) {
+                    fail("the percent line isn't under the bar")
+                }
             }
-            if let odd = texts.first(where: { $0.contains("%") || $0.contains("·") }) { fail("percent or middot shown: \(odd)") }
+            if name == "downloading-archive", texts[safe: v + 1] != "Downloading from archive.org…" || !(texts[safe: v + 2] ?? "").hasSuffix("850 KB/s") {
+                fail("a slow archive.org download: \(texts)")
+            }
+            if name == "almost-done", !(texts[safe: v + 2] ?? "").hasSuffix("Almost done…") { fail("Almost done without its ellipsis: \(texts)") }
             if let bar = all(view).compactMap({ $0 as? NSProgressIndicator }).first(where: visible), !["Download progress", "Preparation progress"].contains(bar.accessibilityLabel() ?? "") {
                 fail("progress bar labelled \(bar.accessibilityLabel() ?? "nothing")")
             }
+        }
+
+        // Two jobs, one placeholder: each has its own bar, so switching rows never animates one bar between their values.
+        do {
+            let vc = DevicePlaceholderViewController()
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 640), styleMask: [.titled], backing: .buffered, defer: true)
+            window.contentView = vc.view
+            func shownBar() -> NSProgressIndicator? {
+                func all(_ v: NSView) -> [NSView] { v.subviews.flatMap { [$0] + all($0) } }
+                return all(vc.view).compactMap { $0 as? NSProgressIndicator }.first { bar in
+                    var p: NSView? = bar; while let q = p { if q.isHidden { return false }; p = q.superview }; return bar.window != nil
+                }
+            }
+            let a = DeviceRow(entry: beta, instanceID: nil, session: nil, job: .preparing(.init(step: 9, steps: 10, name: "x", fraction: 1)))
+            let b = DeviceRow(entry: ipad, instanceID: nil, session: nil, job: .downloading(fraction: 0.4))
+            vc.update(a, canDownload: true)
+            let barA = shownBar()
+            vc.update(b, canDownload: true)
+            let barB = shownBar()
+            if barA == nil || barB == nil || barA === barB || barB?.doubleValue != 0.2 { failures.append("switching jobs reused one bar: \(String(describing: barA)) \(String(describing: barB))") }
+            vc.update(a, canDownload: true)
+            if shownBar() !== barA || barA?.doubleValue != 0.9 { failures.append("switching back didn't show the first job's own bar at 90%") }
         }
 
         // An .ipsw dragged over the placeholder lights the drop ring; anything else doesn't (HIG p.294).

@@ -295,7 +295,7 @@ final class Delegate: DeviceLibraryDelegate {
             let cell = outline.view(atColumn: 0, row: index, makeIfNecessary: true)!
             let ring = all(cell).compactMap { $0 as? NSProgressIndicator }.first
             if texts != ["iPod touch (2nd generation)", "iOS 4.1"] { fail("a download's row reads \(texts)") }
-            if ring.map({ !visible($0) || $0.isIndeterminate || $0.doubleValue != 0.25 }) ?? true { fail("a download's row has no 25% ring") }
+            if ring.map({ !visible($0) || $0.isIndeterminate || $0.doubleValue != 0.125 }) ?? true { fail("a 25% download's row has no ring at 12.5% (the first half of the job) ") }
             outline.deselectAll(nil)
             try render(vc.view, "sidebar-progress")
         }

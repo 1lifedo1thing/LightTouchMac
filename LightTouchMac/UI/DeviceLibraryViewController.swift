@@ -617,7 +617,7 @@ final class DeviceRowCell: NSTableCellView {
         let size = row.entry.source.bytes.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
         toolTip = (["iOS \(row.entry.version) (\(row.entry.build))",
                     row.supportNote, row.accessory == .notDownloaded ? size.map { "Not downloaded, \($0)" } ?? "Not downloaded" : nil]
-                   + row.progressDetail + [row.progressHeadline]).compactMap { $0 }.joined(separator: "\n")
+                   + [row.progressHeadline] + row.progressDetail + [row.progressLine]).compactMap { $0 }.joined(separator: "\n")
 
         detail.isHidden = true
         ring.isHidden = true

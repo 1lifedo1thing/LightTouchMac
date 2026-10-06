@@ -80,7 +80,7 @@ func expect(_ ok: Bool, _ what: @autoclosure () -> String, line: Int = #line) {
     let failed = { if case .failed? = jobs.jobs[entry.id] { true } else { false } }
     jobs.downloadAndPrepare(entry)
     for _ in 0..<2000 where devices() == 0 && !failed() { try? await Task.sleep(for: .milliseconds(50)) }
-    let mirrors = Set(seen.compactMap { if case let .downloading(_, _, _, mirror) = $0 { mirror } else { nil } })
+    let mirrors = Set(seen.compactMap { if case let .downloading(_, _, _, mirror, _) = $0 { mirror } else { nil } })
     if args[2] == "success" || args[2] == "direct" {
         expect(devices() == 1 && jobs.jobs[entry.id] == nil, "prepared: \(seen)")
         expect(store.existing(entry.source.sha1!) != nil, "the IPSW is in the store")
