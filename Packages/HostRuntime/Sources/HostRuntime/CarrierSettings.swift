@@ -5,7 +5,7 @@ import Foundation
 /// the defaults are the 3GPP test network (MCC/MNC 001/01). The validators are the modem's own rules, so a value the
 /// panel accepts is one the modem accepts.
 public struct CarrierSettings: Codable, Equatable, Sendable {
-    public var carrier = "Test Network"
+    public var carrier = "LightTouch"
     /// MCC (3 digits) + MNC (2 or 3 digits).
     public var mccMNC = "00101"
     public var registered = true
