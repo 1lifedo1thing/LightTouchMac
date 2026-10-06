@@ -1,7 +1,7 @@
 // Created by Sam on 2026-08-06.
 //
 // Every .ipa this app has installed, kept once: a content-addressed store
-// (State/Library/IPAs/<sha256>.ipa + index.json) and, per device that has
+// (State/Library/IPAs/<sha256>.ipa + index.plist) and, per device that has
 // the app, a clone of the blob at Devices/<uuid>/IPAs/<bundle-id>.ipa (APFS:
 // no extra space). The device copy is what an installed row drags out as a
 // real file and what uninstall removes; the blob outlives it, for the next
@@ -12,6 +12,7 @@
 import Foundation
 import CryptoKit
 import Darwin
+import HostRuntime
 
 @MainActor
 enum IPALibrary {
@@ -46,7 +47,8 @@ enum IPALibrary {
     nonisolated static var directory: URL {
         Bundled.stateDirectory.appendingPathComponent("Library/IPAs", isDirectory: true)
     }
-    private nonisolated static var indexURL: URL { directory.appendingPathComponent("index.json") }
+    /// An XML property list; earlier builds kept index.json, converted on the first read.
+    private nonisolated static var indexURL: URL { directory.appendingPathComponent("index.plist") }
     nonisolated static func blob(_ sha256: String) -> URL { directory.appendingPathComponent("\(sha256).ipa") }
 
     // MARK: - Index
@@ -56,8 +58,8 @@ enum IPALibrary {
     /// sha256 → entry, read once per process (the app holds the library lock).
     static var index: [String: Entry] {
         if let loaded { return loaded }
-        let read = (try? Data(contentsOf: indexURL))
-            .flatMap { try? JSONDecoder().decode([String: Entry].self, from: $0) } ?? [:]
+        let read = (try? PropertyListFile.read([String: Entry].self, from: indexURL,
+                                               legacyJSON: directory.appendingPathComponent("index.json"))) ?? [:]
         loaded = read
         return read
     }
@@ -66,9 +68,7 @@ enum IPALibrary {
         loaded = index
         do {
             try StorageLocations.privateDirectory(directory)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(index).write(to: indexURL, options: .atomic)
+            try PropertyListFile.write(index, to: indexURL)
         } catch {
             logEvent("library: could not write the index: %@", error.localizedDescription)
         }

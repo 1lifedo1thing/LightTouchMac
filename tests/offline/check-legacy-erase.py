@@ -211,7 +211,7 @@ case "legacy":
     expect((try? fm.contentsOfDirectory(atPath: state.appendingPathComponent("Devices").path))?.isEmpty == true, "the legacy record's directory erased")
     let kept = Set(IPALibrary.index.values.map(\.bundleID))
     expect(kept == ["com.example.retained", "com.example.shared", "com.example.old"], "every retained IPA is in the library: \(kept)")
-    expect(fm.fileExists(atPath: state.appendingPathComponent("Library/IPAs/index.json").path), "the library index")
+    expect(fm.fileExists(atPath: state.appendingPathComponent("Library/IPAs/index.plist").path), "the library index")
     expect(LegacyState.find(state: state, applicationSupport: URL(fileURLWithPath: args[4])) == nil, "erased once: nothing legacy left")
     // A quit after the last removal but before the marker went: the next launch finishes quietly.
     fm.createFile(atPath: LegacyState.marker(state).path, contents: nil)

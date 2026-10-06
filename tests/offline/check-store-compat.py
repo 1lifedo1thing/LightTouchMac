@@ -68,13 +68,19 @@ code = r'''import Foundation
    Dictionary(uniqueKeysWithValues: apps.map { ($0.name, $0.incompatibility) })
   }
 
-  // The library already holds Enigmo 3.3-H's bytes (index.json as IPALibrary writes it).
+  // The library already holds Enigmo 3.3-H's bytes, indexed by an earlier build (index.json): the first read
+  // converts it to index.plist.
   let blob = Data("enigmo fixture bytes".utf8)
   try FileManager.default.createDirectory(at: IPALibrary.directory, withIntermediateDirectories: true)
   try blob.write(to: IPALibrary.blob("feed"))
   try JSONSerialization.data(withJSONObject: ["feed": ["bundleID": "com.pangea.Enigmo", "size": blob.count,
                                                        "md5": "1ce61d09f89df054e99b72eabffbd640"]])
    .write(to: IPALibrary.directory.appendingPathComponent("index.json"))
+  check(IPALibrary.index["feed"]?.md5 == "1ce61d09f89df054e99b72eabffbd640", "the earlier build's index is read")
+  check(!FileManager.default.fileExists(atPath: IPALibrary.directory.appendingPathComponent("index.json").path)
+        && (try? PropertyListSerialization.propertyList(from: Data(contentsOf: IPALibrary.directory.appendingPathComponent("index.plist")),
+                                                        format: nil) as? [String: Any])?["feed"] != nil,
+        "index.json became index.plist")
 
   if !new {
    // The live (2.0) API: no compat, no md5; the target parameters change nothing.

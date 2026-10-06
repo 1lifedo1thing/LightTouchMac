@@ -79,8 +79,8 @@ extension DeviceInstance {
   check(IPALibrary.index.count == 1 && entry?.bundleID == "test.fixture" && entry?.name == "Fixture App"
         && entry?.version == "1.0" && entry?.minOS == "3.0" && entry?.size == Int64(fixtureBytes.count)
         && entry?.md5 == md5 && entry?.catalogIpaID == 123, "one index entry with the install's fields: \(String(describing: entry))")
-  let onDisk = try JSONSerialization.jsonObject(with: Data(contentsOf: IPALibrary.directory.appendingPathComponent("index.json"))) as? [String: Any]
-  check(onDisk?.keys.sorted() == [sha], "index.json holds that entry")
+  let onDisk = try PropertyListSerialization.propertyList(from: Data(contentsOf: IPALibrary.directory.appendingPathComponent("index.plist")), format: nil) as? [String: Any]
+  check(onDisk?.keys.sorted() == [sha], "index.plist holds that entry")
   guard let copyA = IPALibrary.url(for: "test.fixture", device: a), let copyB = IPALibrary.url(for: "test.fixture", device: b) else {
    preconditionFailure("both devices keep a copy")
   }
@@ -158,11 +158,11 @@ extension DeviceInstance {
   check(IPALibrary.index[handSha]?.bundleID == "hand.made" && IPALibrary.index[handSha]?.size == Int64(handBytes.count)
         && IPALibrary.index[legacySha]?.bundleID == "legacy.app", "indexed by their file names")
   check(bytes(c.paths.ipas.appendingPathComponent("hand.made.ipa")) == handBytes, "C's copy is untouched")
-  let before = try fm.attributesOfItem(atPath: IPALibrary.directory.appendingPathComponent("index.json").path)[.modificationDate] as? Date
+  let before = try fm.attributesOfItem(atPath: IPALibrary.directory.appendingPathComponent("index.plist").path)[.modificationDate] as? Date
   let indexBefore = IPALibrary.index
   try await Task.sleep(for: .milliseconds(20))
   IPALibrary.sweep(devices: [a, b, c])
-  let after = try fm.attributesOfItem(atPath: IPALibrary.directory.appendingPathComponent("index.json").path)[.modificationDate] as? Date
+  let after = try fm.attributesOfItem(atPath: IPALibrary.directory.appendingPathComponent("index.plist").path)[.modificationDate] as? Date
   check(IPALibrary.index == indexBefore && blobs().count == 3 && before == after, "the second sweep changes nothing")
   print("PASS: one blob per archive with one index entry, a clone per device, uninstall per device keeps the other's copy and icon, Remove Unused spares referenced blobs, Store reuses the library without a transfer, the launch sweep is idempotent")
  }
