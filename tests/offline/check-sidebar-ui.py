@@ -391,6 +391,13 @@ final class Delegate: DeviceLibraryDelegate {
         if sheet.groups.contains(where: \.icon.isTemplate) || Set(art.filter { $0.key != "n18ap" }.values).count != sheet.groups.count - 1
             || art["n18ap"] != art["n72ap"] { fail("the sheet's headers don't show each device's artwork") }
         try renderSheet(sheet, "add-device")
+        // Only stable builds by default; Show experimental brings back the rest, every device with its own.
+        let stable = AddDeviceView.shown(sheet.groups, experimental: false).flatMap(\.entries)
+        let releases = catalog.entries.filter { $0.status == .available || ($0.status == .userIPSW && $0.prerelease == nil) }
+        if stable.isEmpty || stable.map(\.id) != releases.map(\.id) || releases.count == catalog.entries.count
+            || AddDeviceView.shown(sheet.groups, experimental: true).flatMap(\.entries).map(\.id) != catalog.entries.map(\.id) {
+            fail("Show experimental: \(stable.map(\.id))")
+        }
         // A supported build says nothing; the others keep their tag.
         let tags = FirmwareCatalog.Entry.Status.allCasesForCheck.map { AddDeviceRow.statusText($0) }
         if tags != [nil, "Experimental", "Untested", "Coming Soon", "Requires an IPSW"] { fail("the sheet's tags: \(tags)") }

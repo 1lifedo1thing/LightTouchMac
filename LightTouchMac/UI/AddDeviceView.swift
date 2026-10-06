@@ -1,5 +1,6 @@
 // The Add Device sheet: the firmware catalog by device, in version order, each build's support status and
 // whether its IPSW is here (no download glyph). Entries already in the sidebar are checked and can't be picked again.
+// Only stable builds show until Show experimental is on (remembered).
 // A sheet, not a window: it belongs to the one main window and is done before the user goes on (HIG, Sheets).
 
 import SwiftUI
@@ -18,6 +19,7 @@ struct AddDeviceView: View {
     let onAdd: ([String]) -> Void
     let onCancel: () -> Void
     @State private var selection: Set<String>
+    @AppStorage("addDeviceShowsExperimental") private var showsExperimental = false
 
     init(catalog: FirmwareCatalog, added: Set<String>, downloaded: Set<String>, selection: Set<String> = [],
          onAdd: @escaping ([String]) -> Void, onCancel: @escaping () -> Void) {
@@ -37,15 +39,29 @@ struct AddDeviceView: View {
         _selection = State(initialValue: selection)
     }
 
-    /// Only what can still be added, in catalog order.
+    /// Stable: supported (`available`), or a release supported from the user's own IPSW (not a beta or GM).
+    static func isStable(_ entry: FirmwareCatalog.Entry) -> Bool {
+        entry.status == .available || (entry.status == .userIPSW && entry.prerelease == nil)
+    }
+
+    /// `groups` with only their stable builds unless `experimental`; a device left with none goes.
+    static func shown(_ groups: [Group], experimental: Bool) -> [Group] {
+        experimental ? groups : groups.compactMap { group in
+            let entries = group.entries.filter(isStable)
+            return entries.isEmpty ? nil : Group(id: group.id, name: group.name, icon: group.icon, entries: entries)
+        }
+    }
+    private var shownGroups: [Group] { Self.shown(groups, experimental: showsExperimental) }
+
+    /// Only what can still be added and is shown, in catalog order.
     private var picked: [String] {
-        groups.flatMap(\.entries).map(\.id).filter { selection.contains($0) && !added.contains($0) }
+        shownGroups.flatMap(\.entries).map(\.id).filter { selection.contains($0) && !added.contains($0) }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             List(selection: $selection) {
-                ForEach(groups) { group in
+                ForEach(shownGroups) { group in
                     Section {
                         ForEach(group.entries) { entry in
                             AddDeviceRow(entry: entry, added: added.contains(entry.id), downloaded: downloaded.contains(entry.id))
@@ -62,10 +78,12 @@ struct AddDeviceView: View {
             }
             .contextMenu(forSelectionType: String.self, menu: { _ in }, primaryAction: { ids in
                 let ids = ids.filter { !added.contains($0) }
-                if !ids.isEmpty { onAdd(groups.flatMap(\.entries).map(\.id).filter(ids.contains)) }
+                if !ids.isEmpty { onAdd(shownGroups.flatMap(\.entries).map(\.id).filter(ids.contains)) }
             })
             Divider()
             HStack {
+                Toggle("Show experimental", isOn: $showsExperimental)
+                    .toggleStyle(.checkbox)
                 Spacer()
                 Button("Cancel", role: .cancel, action: onCancel)
                     .keyboardShortcut(.cancelAction)
