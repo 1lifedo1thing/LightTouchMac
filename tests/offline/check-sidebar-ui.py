@@ -228,6 +228,21 @@ final class Delegate: DeviceLibraryDelegate {
         } else { fail("Rename didn't start an edit on the iPod row") }
         seen = rows(vc)
         if seen.last != ["Test iPod", "iPod2,1, iOS 4.2.1"] { fail("renamed iPod: \(seen)") }
+        // Renaming a row whose preparation is moving: its progress updates don't end the edit or lose the typing.
+        vc.select(catalog.entry(id: "n45ap-4B1")!)
+        vc.perform(NSSelectorFromString("renameFromMenu:"), with: nil)
+        if let editor = w.firstResponder as? NSTextView {
+            editor.string = "Prep iPod"
+            for step in 1...3 {
+                FirmwareJobs.shared.jobs["n45ap-4B1"] = .preparing(Preparation(step: step, steps: 4, name: "Step \(step)", fraction: 0.5))
+            }
+            if w.firstResponder !== editor || editor.string != "Prep iPod" {
+                fail("a preparing row's progress ended the rename: \(String(describing: w.firstResponder)), \(editor.string)")
+            }
+            w.makeFirstResponder(nil)
+            if (defaults.dictionary(forKey: SidebarList.namesKey) as? [String: String])?["n45ap-4B1"] != "Prep iPod" { fail("rename during preparation not saved") }
+        } else { fail("Rename didn't start an edit on a preparing row") }
+        FirmwareJobs.shared.jobs = [:]
         // Offscreen, a selected source-list row draws its material black: render unselected.
         all(vc.view).compactMap { $0 as? NSOutlineView }.first!.deselectAll(nil)
         try render(vc.view, "sidebar-renamed")

@@ -318,7 +318,12 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
             changed.insert(index)
         }
         guard !changed.isEmpty else { return }
-        outline.reloadData(forRowIndexes: changed, columnIndexes: [0])
+        // In place, not reloadData: a reload replaces the cell and ends a rename in progress (a preparing row changes
+        // every second).
+        for index in changed {
+            let entry = items[index].entry
+            (outline.view(atColumn: 0, row: index, makeIfNecessary: false) as? DeviceRowCell)?.update(row(for: entry), label: list.label(for: entry))
+        }
         // The placeholder and menus read the same rows.
         delegate?.libraryRowsDidChange(self)
     }
@@ -598,7 +603,7 @@ final class DeviceRowCell: NSTableCellView {
     }
 
     func update(_ row: DeviceRow, label: SidebarList.Label) {
-        title.stringValue = label.title
+        if !title.isEditable { title.stringValue = label.title }
         title.textColor = row.isDimmed ? .disabledControlTextColor : .labelColor
         subtitle.stringValue = label.subtitle
         icon.image = row.entry.profile?.icon
