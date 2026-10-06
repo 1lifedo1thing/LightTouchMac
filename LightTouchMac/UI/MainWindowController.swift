@@ -133,7 +133,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         }
         placeholder.onShowLog = { [weak self] in self?.showDeviceLogs(nil) }
         placeholder.onDropIPSW = { [weak self] url in self?.handOffIPSW(url, for: self?.selectedEntry) }
-        detail.show(placeholder)
+        showDetail(placeholder)
         noInspector.shortName = profile.shortName
         inspectorContainer.show(noInspector)
         
@@ -242,6 +242,12 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     }
 
     /// Shows the entry's workspace when it has a session, else its placeholder.
+    /// The detail pane's content; the console bar is dark only under the device's gradient.
+    private func showDetail(_ child: NSViewController) {
+        detail.show(child)
+        console.split.bar.overGradient = child is DeviceViewController
+    }
+
     private func show(_ entry: FirmwareCatalog.Entry?) {
         selectedEntry = entry
         let next = entry.flatMap(host.session(for:))
@@ -254,7 +260,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         }
         let count = library.selectedEntries.count
         multipleSelected.text = "\(count) Devices"
-        if session == nil { detail.show(entry != nil ? placeholder : count > 1 ? multipleSelected : nothingSelected) }
+        if session == nil { showDetail(entry != nil ? placeholder : count > 1 ? multipleSelected : nothingSelected) }
         if let entry, session == nil { placeholder.update(host.row(for: entry), canDownload: FirmwareJobs.shared.canDownload) }
         // The console's picker: the same logs as Device Logs, without the rotated
         // copies, the device's serial log first.
@@ -270,12 +276,12 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         deadOverlay?.removeFromSuperview()
         deadOverlay = nil
         guard let workspace = session?.workspace else {
-            detail.show(placeholder)
+            showDetail(placeholder)
             inspectorContainer.show(noInspector)
             MainMenuBuilder.resetAppsMenu()
             return
         }
-        detail.show(workspace.deviceVC)
+        showDetail(workspace.deviceVC)
         inspectorContainer.show(workspace.inspectorVC)
         for status in [startupStatus, fileStatus, captureStatus] { workspace.deviceVC.addStatus(status) }
         workspace.deviceVC.screen.onPhysicalSizeUnavailable = { [weak self] in self?.apply(.fit) }

@@ -82,8 +82,10 @@ func expect(_ ok: Bool, _ what: String, line: Int = #line) { if !ok { print("FAI
   expect(bar.source.titleOfSelectedItem == "USB" && log.url?.path == "/elsewhere/usbmuxd.log", "choice follows the log")
   split.sources = [log1, log1.deletingLastPathComponent().appendingPathComponent("usbmuxd.log")]
   bar.source.selectItem(at: 0); bar.source.sendAction(bar.source.action, to: bar.source.target)
-  // The bar is dark in a light window; the console under it is not.
-  expect(bar.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua, "bar is always dark")
+  // Over the device's gradient the bar is dark in a light window, the console under it is not; elsewhere it follows the system.
+  expect(bar.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua, "no gradient: the bar follows the system")
+  bar.overGradient = true
+  expect(bar.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua, "over the gradient the bar is dark")
   expect(log.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua, "only the bar is dark")
   func settle() async throws { try await Task.sleep(for: .milliseconds(400)); split.layoutSubtreeIfNeeded() }
   render(split, "collapsed")

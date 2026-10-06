@@ -215,6 +215,12 @@ final class ConsoleBar: NSView {
     var onDrag: ((CGFloat) -> Void)?
     var onDragEnded: (() -> Void)?
 
+    /// Dark, whatever the system appearance, while it borders the device's gradient: just this strip, not
+    /// the console under it. Otherwise (a placeholder above) it follows the system.
+    var overGradient = false {
+        didSet { appearance = overGradient ? NSAppearance(named: .darkAqua) : nil }
+    }
+
     var isExpanded = false {
         didSet {
             toggleButton.state = isExpanded ? .on : .off
@@ -231,8 +237,6 @@ final class ConsoleBar: NSView {
 
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: 600, height: 36))
-        // Always dark, whatever the system appearance: just this strip, not the console under it.
-        appearance = NSAppearance(named: .darkAqua)
         toggleButton.setButtonType(.pushOnPushOff)
         toggleButton.bezelStyle = .toolbar
         toggleButton.isBordered = false
