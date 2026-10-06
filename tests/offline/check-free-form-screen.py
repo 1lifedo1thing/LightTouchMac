@@ -221,7 +221,8 @@ source = prefix + stub + r'''
   b = box(d)
   d.mouseDown(with: event(.leftMouseDown, d, CGPoint(x: b.maxX + 4, y: b.midY)))
   d.mouseUp(with: event(.leftMouseUp, d, CGPoint(x: b.maxX + 4, y: b.midY)))
-  check(!d.isFreeForm && d.panelReadoutText == nil && touches.isEmpty, "a shipped device grabbed")
+  // No grab band: the press just off the edge is an edge touch (DisplayView.screenEdgeMargin), not a resize.
+  check(!d.isFreeForm && d.panelReadoutText == nil && touches.first.map { abs($0.0 - 1) < 0.01 } == true, "a shipped device grabbed: \(touches)")
   d.setFreeForm(true); try await settle(d)
   check(d.isFreeForm && requests.count == 1 && requests[0].0 == size(320, 480) && !requests[0].1 && near(box(d), 320, 480),
         "on: \(requests) \(box(d))")
