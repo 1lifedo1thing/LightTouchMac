@@ -59,7 +59,7 @@ struct FakeLink { func send(_ c: LinkCommand) {} }
  func deviceReady() async -> Bool {onReady?();return usbAnswers}
  var springBoardReady=true
  var springBoardChecks=0
- func waitForSpringBoard() async throws {
+ func waitForSpringBoard(agentCounts: Bool = false) async throws {
   springBoardChecks+=1
   while !springBoardReady { try await Task.sleep(for:.milliseconds(10)) }
  }
