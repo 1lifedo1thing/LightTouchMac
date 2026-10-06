@@ -1666,7 +1666,7 @@
   "build": "7C145",
   "released": "2009-09-04",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPod/SBML/osx/bundles/061-7163.20090909.NtstR/iPod3,1_3.1.1_7C145_Restore.ipsw", "sha1": "a3eddbe2cf77858bae7087dc8b2035f0d3097e57", "bytes": 311702789},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPod/SBML/osx/bundles/061-7163.20090909.NtstR/iPod3,1_3.1.1_7C145_Restore.ipsw", "sha1": "a3eddbe2cf77858bae7087dc8b2035f0d3097e57", "bytes": 311702789, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod3,1_3.1.1_7C145_Restore.ipsw", "sha1": "a3eddbe2cf77858bae7087dc8b2035f0d3097e57", "bytes": 311702789}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8922x.img3", "iv": "a0477fb8cc00e9109b53b628370c3cdb", "key": "944f693cea373bc909edf482a0a1f2f749c8cb7658e6b2e790678605dbddfce2"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8922x.img3", "iv": "ed78c1f5719eca2b224712e0bdd53cd5", "key": "45a47f8214984cafa9ca3ce530256f1b2f4fa705472efd1596c8ff285102352e"},
@@ -1734,7 +1734,7 @@
   "build": "7D11",
   "released": "2009-10-05",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone/061-7271.20091008.Tch23/iPod3,1_3.1.2_7D11_Restore.ipsw", "sha1": "02dcee28d788d594a2939ab564f4f183af6ccdf2", "bytes": 311740034},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone/061-7271.20091008.Tch23/iPod3,1_3.1.2_7D11_Restore.ipsw", "sha1": "02dcee28d788d594a2939ab564f4f183af6ccdf2", "bytes": 311740034, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod3,1_3.1.2_7D11_Restore.ipsw", "sha1": "02dcee28d788d594a2939ab564f4f183af6ccdf2", "bytes": 311740034}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8922x.img3", "iv": "ce865926395b4a1ee6a0e7ec4f2afbba", "key": "6abc741203d55013fd1b20f09c14aed5ba961942ba70118fc44cab65b0d83afc"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8922x.img3", "iv": "f7087009bc7d875272155b62738decbd", "key": "0463d0764bd5c34659f1fb4e771839b1741555814b440feebec3d8a6a5803b68"},
@@ -1768,7 +1768,7 @@
   "build": "7E18",
   "released": "2010-01-22",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone/061-7473.20100202.4i44t/iPod3,1_3.1.3_7E18_Restore.ipsw", "sha1": "375fd469b18bfc0b74c7cfa5b4d5945197b1d106", "bytes": 295870806},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone/061-7473.20100202.4i44t/iPod3,1_3.1.3_7E18_Restore.ipsw", "sha1": "375fd469b18bfc0b74c7cfa5b4d5945197b1d106", "bytes": 295870806, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod3,1_3.1.3_7E18_Restore.ipsw", "sha1": "375fd469b18bfc0b74c7cfa5b4d5945197b1d106", "bytes": 295870806}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8922x.img3", "iv": "a47d5407fddde5cd91d6ae7130ee36fc", "key": "4f130fada5567b6c48051a285df7d92df230a042710c1e5bb5a1f62fd91a3b7f"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8922x.img3", "iv": "a406eac12fe8e074820c9d17cfa2b8be", "key": "239adf7856029649cd0bc2f1d1fab2c0c5dcde710748fce63327a0af769c3e2b"},
@@ -1802,7 +1802,7 @@
   "build": "8A293",
   "released": "2010-06-17",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/061-7381.20100621.AzSP9/iPod3,1_4.0_8A293_Restore.ipsw", "sha1": "36fe02b83f87d6305db572e1644841e3cd64cc7d", "bytes": 384178784},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/061-7381.20100621.AzSP9/iPod3,1_4.0_8A293_Restore.ipsw", "sha1": "36fe02b83f87d6305db572e1644841e3cd64cc7d", "bytes": 384178784, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod3,1_4.0_8A293_Restore.ipsw", "sha1": "36fe02b83f87d6305db572e1644841e3cd64cc7d", "bytes": 384178784}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8922x.img3", "iv": "603fe27dd408d7ef3813f5c9750431c1", "key": "673eeb9ebca0c1cee531a3cc3934f034ce2e93d153d70e49ba97a1b9b8a06e62"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8922x.img3", "iv": "9bec1adb1814757c0fdf540883dd05d2", "key": "448a5766a4e7b1e1c0d8c395bdd7711f3f1c84015fffe39e4ef93bcb34adc223"},
@@ -1835,7 +1835,7 @@
   "build": "8A400",
   "released": "2010-08-09",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/061-8554.20100811.Bgt54/iPod3,1_4.0.2_8A400_Restore.ipsw", "sha1": "481b21044130125b117d53207f725b70fb061855", "bytes": 384203993},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/061-8554.20100811.Bgt54/iPod3,1_4.0.2_8A400_Restore.ipsw", "sha1": "481b21044130125b117d53207f725b70fb061855", "bytes": 384203993, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod3,1_4.0.2_8A400_Restore.ipsw", "sha1": "481b21044130125b117d53207f725b70fb061855", "bytes": 384203993}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8922x.img3", "iv": "603fe27dd408d7ef3813f5c9750431c1", "key": "673eeb9ebca0c1cee531a3cc3934f034ce2e93d153d70e49ba97a1b9b8a06e62"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8922x.img3", "iv": "9bec1adb1814757c0fdf540883dd05d2", "key": "448a5766a4e7b1e1c0d8c395bdd7711f3f1c84015fffe39e4ef93bcb34adc223"},
@@ -1868,7 +1868,7 @@
   "build": "8B117",
   "released": "2010-09-03",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/061-7941.20100908.sV9KE/iPod3,1_4.1_8B117_Restore.ipsw", "sha1": "3162bad4060b7a58c9942ddb483e5bd9bcc5269f", "bytes": 388255189},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/061-7941.20100908.sV9KE/iPod3,1_4.1_8B117_Restore.ipsw", "sha1": "3162bad4060b7a58c9942ddb483e5bd9bcc5269f", "bytes": 388255189, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod3,1_4.1_8B117_Restore.ipsw", "sha1": "3162bad4060b7a58c9942ddb483e5bd9bcc5269f", "bytes": 388255189}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8922x.img3", "iv": "ca973250685c36b6844616be183b5c60", "key": "3bec85837804013e98dba2048e4bd281c613aa6dc783186da72f32415a1caa7f"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8922x.img3", "iv": "df7b53a97bcf3b0079a9913905cb8a49", "key": "8e5c2227e2ecac7e8f4349e183345b25f56da0b650d0c5de4b49c96ff87ba956"},
@@ -1934,7 +1934,7 @@
   "build": "8F190",
   "released": "2011-03-03",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/061-8366.20110311.Fr45t/iPod3,1_4.3_8F190_Restore.ipsw", "sha1": "3df936f2caf0759e6ac7f2339d663f3cad8b95f9", "bytes": 433166165},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/061-8366.20110311.Fr45t/iPod3,1_4.3_8F190_Restore.ipsw", "sha1": "3df936f2caf0759e6ac7f2339d663f3cad8b95f9", "bytes": 433166165, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod3,1_4.3_8F190_Restore.ipsw", "sha1": "3df936f2caf0759e6ac7f2339d663f3cad8b95f9", "bytes": 433166165}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8922x.img3", "iv": "234bfca138ef6641bb4b7747269e881e", "key": "52210dc087cd55a65955156748e592fb4c6c8bbfe4271c3adaeed1d45e79a4ab"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8922x.img3", "iv": "ebf6b37787e93e048749aea213190f35", "key": "278c5a9f0c8ca50b63861146996018d048b4de7dcd1a170758fd5b72003499ba"},
@@ -1967,7 +1967,7 @@
   "build": "8G4",
   "released": "2011-03-24",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/041-0552.20110325.Yt67u/iPod3,1_4.3.1_8G4_Restore.ipsw", "sha1": "6879818321fd18267a15b91afbb1758dddd5dd5e", "bytes": 429132326},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/041-0552.20110325.Yt67u/iPod3,1_4.3.1_8G4_Restore.ipsw", "sha1": "6879818321fd18267a15b91afbb1758dddd5dd5e", "bytes": 429132326, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod3,1_4.3.1_8G4_Restore.ipsw", "sha1": "6879818321fd18267a15b91afbb1758dddd5dd5e", "bytes": 429132326}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8922x.img3", "iv": "8875c011197ae8c0294ad5effd62343e", "key": "b2e2d635139ee181528464a58d8caf7087113c9056e7d64989519a563a1e34e9"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8922x.img3", "iv": "2e429036b4b2bef9ed015437723e6efd", "key": "b19ddbdf6cd93b45a33b6cc44aaadff06304c1b8fecba04c7472912fb9781210"},
@@ -1998,7 +1998,7 @@
   "build": "8H7",
   "released": "2011-04-12",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/041-0667.20110414.95hVL/iPod3,1_4.3.2_8H7_Restore.ipsw", "sha1": "cac5436f85d9b42a5d2e9e495d34bd4ec2e4cf7f", "bytes": 429339223},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/041-0667.20110414.95hVL/iPod3,1_4.3.2_8H7_Restore.ipsw", "sha1": "cac5436f85d9b42a5d2e9e495d34bd4ec2e4cf7f", "bytes": 429339223, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod3,1_4.3.2_8H7_Restore.ipsw", "sha1": "cac5436f85d9b42a5d2e9e495d34bd4ec2e4cf7f", "bytes": 429339223}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8922x.img3", "iv": "a1a00217be79d8e6b8cf3406f66f2c67", "key": "595dc4fa476e300c836d9b333933ac3f4426f5b41c5f0369142998d84cbd4c90"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8922x.img3", "iv": "9ba36096d5296c3910caec40de3ac966", "key": "d9aba3b1b3f13d01953d3294fee992935b6416579aa74d60506c9f7323187db7"},
@@ -2029,7 +2029,7 @@
   "build": "8J2",
   "released": "2011-05-02",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/041-1021.20110503.8Lfs1/iPod3,1_4.3.3_8J2_Restore.ipsw", "sha1": "b67300ebdc32b1e55b7212b937a3d4df83463d20", "bytes": 429343499},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/041-1021.20110503.8Lfs1/iPod3,1_4.3.3_8J2_Restore.ipsw", "sha1": "b67300ebdc32b1e55b7212b937a3d4df83463d20", "bytes": 429343499, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod3,1_4.3.3_8J2_Restore.ipsw", "sha1": "b67300ebdc32b1e55b7212b937a3d4df83463d20", "bytes": 429343499}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8922x.img3", "iv": "a1a00217be79d8e6b8cf3406f66f2c67", "key": "595dc4fa476e300c836d9b333933ac3f4426f5b41c5f0369142998d84cbd4c90"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8922x.img3", "iv": "9ba36096d5296c3910caec40de3ac966", "key": "d9aba3b1b3f13d01953d3294fee992935b6416579aa74d60506c9f7323187db7"},
@@ -2060,7 +2060,7 @@
   "build": "8K2",
   "released": "2011-07-14",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/041-1919.20110715.ShHh4/iPod3,1_4.3.4_8K2_Restore.ipsw", "sha1": "ca20f1565d1255866677935811339ce056181da3", "bytes": 429458297},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/041-1919.20110715.ShHh4/iPod3,1_4.3.4_8K2_Restore.ipsw", "sha1": "ca20f1565d1255866677935811339ce056181da3", "bytes": 429458297, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod3,1_4.3.4_8K2_Restore.ipsw", "sha1": "ca20f1565d1255866677935811339ce056181da3", "bytes": 429458297}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8922x.img3", "iv": "f2b82e309b4086eab1ab45b8a33ac9f4", "key": "df1dbdcd3075dd849b7a2eaa327a0702e1f104e65c2e9f76178438144fd40f46"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8922x.img3", "iv": "b6203dbc2cf01c1089846f3d6d30aeee", "key": "13f99c4dcd3b930f4f31458d9296ccadc6e3e945eff4ccc989b33fd83206c004"},
@@ -2122,7 +2122,7 @@
   "build": "9A334",
   "released": "2011-10-12",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/061-8360.20111012.New3w/iPod3,1_5.0_9A334_Restore.ipsw", "sha1": "c98ca0fd2de4271c8ffcf6f585796456c6b8fc32", "bytes": 668193167},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/061-8360.20111012.New3w/iPod3,1_5.0_9A334_Restore.ipsw", "sha1": "c98ca0fd2de4271c8ffcf6f585796456c6b8fc32", "bytes": 668193167, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod3,1_5.0_9A334_Restore.ipsw", "sha1": "c98ca0fd2de4271c8ffcf6f585796456c6b8fc32", "bytes": 668193167}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8922x.img3", "iv": "c435e272dda369cc4b7092c62aadad1d", "key": "4170df432022215513338d91f6eebb65eff9c7e420a3b1b62916747dabe09c89"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8922x.img3", "iv": "dad577585717559a199eb3a59f059934", "key": "230a35f83e25f535f8d4bc2a0616ad9c6d23b87d9c25c08b3bb143f01154d682"},
@@ -2154,7 +2154,7 @@
   "build": "9A405",
   "released": "2011-11-08",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/041-3314.20111109.Mbgh6/iPod3,1_5.0.1_9A405_Restore.ipsw", "sha1": "7e963f3a1775fa4ec9ae5efeb96945d1619d2e26", "bytes": 685093259},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone4/041-3314.20111109.Mbgh6/iPod3,1_5.0.1_9A405_Restore.ipsw", "sha1": "7e963f3a1775fa4ec9ae5efeb96945d1619d2e26", "bytes": 685093259, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod3,1_5.0.1_9A405_Restore.ipsw", "sha1": "7e963f3a1775fa4ec9ae5efeb96945d1619d2e26", "bytes": 685093259}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8922x.img3", "iv": "5ba188301df7d8057b2b9adbebd9b473", "key": "1074308cff33c81ce3af0a329571fc77eedce590dbf566972dcb493da3b986fd"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8922x.img3", "iv": "8b3c8792587b8dfe028da050c7c0b908", "key": "cb0f00f61276282c4e7e903169f04aea704a6daeeeb667c8ab21f50e484fa0bc"},
@@ -2187,7 +2187,7 @@
   "build": "9B176",
   "released": "2012-02-29",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS5/041-1547.20120307.KerHy/iPod3,1_5.1_9B176_Restore.ipsw", "sha1": "590f68b528e2ce04030528d112df6f958c333e4b", "bytes": 687571706},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS5/041-1547.20120307.KerHy/iPod3,1_5.1_9B176_Restore.ipsw", "sha1": "590f68b528e2ce04030528d112df6f958c333e4b", "bytes": 687571706, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod3,1_5.1_9B176_Restore.ipsw", "sha1": "590f68b528e2ce04030528d112df6f958c333e4b", "bytes": 687571706}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8922x.img3", "iv": "f18fae5e9e3d61526ca13418291fbbb0", "key": "1d7d7d6f4bc2e275a1e5e80def296c5785042bf4c83b9d0eb72b1a2274f92fa1"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8922x.img3", "iv": "13ea6ef48a59035d845cb441a26cccd1", "key": "d5c2e090b083dd3386cb1609b3255111b768beacc40c348ad6e6450db32e032e"},
@@ -2220,7 +2220,7 @@
   "build": "9B206",
   "released": "2012-05-07",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS5.1.1/041-4300.20120427.WvgGq/iPod3,1_5.1.1_9B206_Restore.ipsw", "sha1": "a0be8559d32c2553a5ec66c6f745214fdc686fec", "bytes": 687617414},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS5.1.1/041-4300.20120427.WvgGq/iPod3,1_5.1.1_9B206_Restore.ipsw", "sha1": "a0be8559d32c2553a5ec66c6f745214fdc686fec", "bytes": 687617414, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod3,1_5.1.1_9B206_Restore.ipsw", "sha1": "a0be8559d32c2553a5ec66c6f745214fdc686fec", "bytes": 687617414}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8922x.img3", "iv": "f18fae5e9e3d61526ca13418291fbbb0", "key": "1d7d7d6f4bc2e275a1e5e80def296c5785042bf4c83b9d0eb72b1a2274f92fa1"},
    "BatteryCharging0": {"file": "batterycharging0.s5l8922x.img3", "iv": "13ea6ef48a59035d845cb441a26cccd1", "key": "d5c2e090b083dd3386cb1609b3255111b768beacc40c348ad6e6450db32e032e"},
@@ -2938,7 +2938,7 @@
   "build": "1A543a",
   "released": "2007-06-29",
   "status": "experimental",
-  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone/061-3538.20070629.B7vXa/iPhone1,1_1.0_1A543a_Restore.ipsw", "sha1": "fb8bb3ee2e9a997affbb97868599f2995c78209c", "bytes": 95604348},
+  "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPhone/061-3538.20070629.B7vXa/iPhone1,1_1.0_1A543a_Restore.ipsw", "sha1": "fb8bb3ee2e9a997affbb97868599f2995c78209c", "bytes": 95604348, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPhone1,1_1.0_1A543a_Restore.ipsw", "sha1": "fb8bb3ee2e9a997affbb97868599f2995c78209c", "bytes": 95604348}]},
   "keys": {
    "rootfs": {"file": "694-5262-39.dmg", "key": "28c909fc6d322fa18940f03279d70880e59a4507998347c70d5b8ca7ef090ecccc15e82d"}
   },
