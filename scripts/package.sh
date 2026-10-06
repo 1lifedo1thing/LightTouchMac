@@ -317,6 +317,8 @@ for checkouts in ${SWIFT_CHECKOUTS[@]+"${SWIFT_CHECKOUTS[@]}"}; do
         texts=("$package"LICENSE* "$package"LICENCE* "$package"COPYING* "$package"NOTICE*)
         mkdir -p "$LICENSES/swift/$name"
         for text in "${texts[@]}"; do [ -f "$text" ] && cp -f "$text" "$LICENSES/swift/$name/"; done
+        # Unrar.swift bundles RARLAB's UnRAR source, whose licence is its own (extraction only; must ship with it)
+        [ ! -f "$package"Sources/Cunrar/license.txt ] || cp -f "$package"Sources/Cunrar/license.txt "$LICENSES/swift/$name/UnRAR-license.txt"
     done
 done
 if [ -d "$DEPS/share/licenses" ]; then

@@ -44,12 +44,26 @@ nonisolated public enum FirmwareWire {
             public var resource: String?
             /// Copies of the same file elsewhere (scripts/catalog-mirrors.py), tried in order after `url`.
             public var mirrors: [Mirror]?
+            /// kind "rar": `url` is a RAR archive (a developer beta's only public copy) holding the IPSW as `member`.
+            /// The download is checked against archive_sha1/archive_bytes, the extracted IPSW against sha1/bytes.
+            public var archiveSHA1: String?
+            public var archiveBytes: Int64?
+            public var member: String?
+            enum CodingKeys: String, CodingKey {
+                case kind, url, sha1, bytes, resource, mirrors, member
+                case archiveSHA1 = "archive_sha1", archiveBytes = "archive_bytes"
+            }
 
             public struct Mirror: Codable, Sendable, Equatable {
                 public var url: URL
                 public var sha1: String
                 public var bytes: Int64
             }
+
+            public var isArchive: Bool { kind == "rar" }
+            /// What a download of `urls` must hash to and weigh: the archive's for a "rar" source, else the IPSW's.
+            public var downloadSHA1: String? { isArchive ? archiveSHA1 : sha1 }
+            public var downloadBytes: Int64? { isArchive ? archiveBytes : bytes }
 
             /// Where to download from, in order: `url`, then each mirror that records this sha1 and size.
             public var urls: [URL] {

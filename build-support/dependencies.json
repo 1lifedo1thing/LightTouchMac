@@ -239,6 +239,19 @@
       "sha256": "16dccc16e162f043999078fc8be36938ef723188518d3d4d9f734775bb593c8d",
       "license": "Apache-2.0",
       "checksum_source": "SHA-256 calculated from this GitHub archive on 2026-09-28. Pinned exact in Packages/FirmwareKit/Package.swift (the app pins the same version through Xcode). FirmwareKit's DiskImage runs diskutil/hdiutil through it."
+    },
+    {
+      "name": "Unrar.swift",
+      "version": "0.5.4",
+      "groups": [
+        "swiftpm"
+      ],
+      "archive": "Unrar.swift-0.5.4.tar.gz",
+      "directory": "Unrar.swift-0.5.4",
+      "url": "https://github.com/mtgto/Unrar.swift/archive/refs/tags/0.5.4.tar.gz",
+      "sha256": "0a66f9f000e0a7e4d20fb84a9297547a3d18fc9ae655a7beca6183e8965f4a7f",
+      "license": "MIT AND UnRAR",
+      "checksum_source": "SHA-256 calculated from this GitHub archive on 2026-10-05. Pinned exact in Packages/FirmwareKit/Package.swift. FirmwareKit's RARSource extracts a \"rar\" catalog source's IPSW through it (developer betas' only public copies); it bundles RARLAB's UnRAR 7.23 source under the UnRAR licence (extraction only; redistribution allowed with the licence text, which package.sh ships as UnRAR-license.txt)."
     }
   ]
 }
