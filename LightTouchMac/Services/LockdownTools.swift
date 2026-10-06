@@ -32,21 +32,23 @@ extension DeviceServices {
     /// from a child process is clean (scripts/lockdown-tz.c). The tool reads
     /// first, sets only on mismatch, and prints the zone in effect. Dev builds
     /// without the bundled tool skip quietly — the zone is cosmetic.
-    func setTimeZone(_ identifier: String, guest: GuestServices?) async throws {
+    func setTimeZone(_ identifier: String, keepClock: Bool = false, guest: GuestServices?) async throws {
         guard let tool = Bundled.tool("lockdown-tz") ?? Self.developmentHelper("lockdown-tz") else {
             logEvent("timezone: no bundled lockdown-tz (dev build) — leaving the guest's zone alone")
             return
         }
-        let zone = try await Self.setTimeZone(identifier, tool: tool, socket: clientSocket, guest: guest)
+        let zone = try await Self.setTimeZone(identifier, keepClock: keepClock, tool: tool, socket: clientSocket, guest: guest)
         logEvent("timezone: guest zone now \(zone)")
     }
 
     /// The lockdown-tz child itself (memory lockdown-setvalue-trap); the zone in effect. When the
     /// guest kept its own zone (4.x's locationd applies only the first external one) and there is
     /// a guest agent, once more after it clears locationd's record of that one.
-    static func setTimeZone(_ identifier: String, tool: String, socket: String, guest: GuestServices? = nil) async throws -> String {
+    /// keepClock: leave the guest's clock alone (a dated device, lock machine rtc-epoch: the Mac's clock would expire it).
+    static func setTimeZone(_ identifier: String, keepClock: Bool = false, tool: String, socket: String,
+                            guest: GuestServices? = nil) async throws -> String {
         try Task.checkCancellation()
-        do { return try await lockdownTZ(identifier, tool: tool, socket: socket) }
+        do { return try await lockdownTZ(identifier, keepClock: keepClock, tool: tool, socket: socket) }
         catch DeviceToolsError.zoneKept(let zone) {
             try Task.checkCancellation()
             guard let guest, await guest.agent.waitAlive(seconds: 60) else {
@@ -59,12 +61,12 @@ extension DeviceServices {
             }
             try Task.checkCancellation()
             logEvent("timezone: the device kept \(zone); cleared locationd's first zone, setting again")
-            return try await lockdownTZ(identifier, tool: tool, socket: socket)
+            return try await lockdownTZ(identifier, keepClock: keepClock, tool: tool, socket: socket)
         }
     }
 
-    private static func lockdownTZ(_ identifier: String, tool: String, socket: String) async throws -> String {
-        let result = try await lockdownChild(tool, [identifier], socket: socket)
+    private static func lockdownTZ(_ identifier: String, keepClock: Bool, tool: String, socket: String) async throws -> String {
+        let result = try await lockdownChild(tool, [identifier] + (keepClock ? ["keep"] : []), socket: socket)
         let zone = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
         if result.status == 4 { throw DeviceToolsError.zoneKept(zone) }
         guard result.status == 0 else {

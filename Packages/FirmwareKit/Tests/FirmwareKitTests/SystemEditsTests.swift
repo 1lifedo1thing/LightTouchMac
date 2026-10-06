@@ -63,6 +63,15 @@ enum K48Oracle {
         #expect(SystemEdits.fstabRO == "/dev/disk0s1 / hfs ro 0 1\n/dev/disk0s2 /private/var hfs rw,nosuid,nodev 0 2\n")
     }
 
+    /// A pinned clock (recipe rtc_epoch, a developer beta) makes the build dated: timed's NTP off, ark unbricked.
+    @Test func datedFromRTCEpoch() throws {
+        func recipe(_ extra: String) throws -> FirmwareEntry.Recipe {
+            try JSONDecoder().decode(FirmwareEntry.Recipe.self, from: Data(#"{"name": "n90", "version": 1, "storage": "16g", "system_mib": 1664, "data_size": "partition", "boot": "kboot", "options": {}\#(extra)}"#.utf8))
+        }
+        #expect(SystemEdits.Options(recipe: try recipe(#", "rtc_epoch": 1371297600"#)).dated)
+        #expect(!SystemEdits.Options(recipe: try recipe("")).dated)
+    }
+
     @Test func plistEdits() throws {
         let real = NSMutableDictionary(dictionary: ["CurrentSet": "/Sets/S", "NetworkServices": ["W": ["Interface": ["DeviceName": "en0"]]],
                                                     "Sets": ["S": ["Network": ["Global": ["IPv4": ["ServiceOrder": ["W"]]], "Service": ["W": [:]]]]]])
