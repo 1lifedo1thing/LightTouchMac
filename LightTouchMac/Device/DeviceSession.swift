@@ -210,7 +210,6 @@ import Cocoa
     func delete(_ instance: DeviceInstance) -> Task<Void, Error> {
         precondition(!sessions.contains { $0.instance.id == instance.id })
         let state = library.state, logs = instance.paths.logs
-        for name in DeviceInstance.perDeviceDefaults { UserDefaults.standard.removeObject(forKey: instance.defaultsKey(name)) }
         return deletions.run(instance.firmware) {
             try DeviceStateStorage.removeDevice(instance.id, state: state)
             try? DeviceStateStorage.removeTree(logs)

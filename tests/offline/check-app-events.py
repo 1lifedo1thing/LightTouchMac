@@ -4,10 +4,10 @@ from pathlib import Path
 import os, subprocess, tempfile
 root=Path(__file__).resolve().parents[2]
 controller=(root/'LightTouchMac/Device/EmulatorController.swift').read_text()
-notice=controller[controller.index('    enum NoticeOperation:'):controller.index('    private var foregroundTask:')].replace('UserDefaults.standard','defaults')
+notice=controller[controller.index('    enum NoticeOperation:'):controller.index('    private var foregroundTask:')]
 with tempfile.TemporaryDirectory(prefix='ltm-events-') as temp:
  p=Path(temp)
- (p/'check.swift').write_text('import Foundation\nlet domain=UUID().uuidString\nlet defaults=UserDefaults(suiteName:domain)!\n@MainActor final class NoticeDevice { var storageFailed=false; var onStatusChange:(()->Void)?\n struct Instance { func defaultsKey(_ name:String)->String { name } }\n let instance=Instance()\n struct Profile { let shortName=\"iPod\" }\n let profile=Profile()\n'+notice+'}\n'+r'''
+ (p/'check.swift').write_text('import Foundation\nstruct DeviceSettings { struct Notice { var message:String; var operation:String? }; var deviceNotice:Notice? }\nvar stored=DeviceSettings()\n@MainActor final class NoticeDevice { var storageFailed=false; var onStatusChange:(()->Void)?\n lazy var settings=stored\n func changeSettings(_ change:(inout DeviceSettings)->Void){change(&settings);stored=settings}\n struct Profile { let shortName=\"iPod\" }\n let profile=Profile()\n'+notice+'}\n'+r'''
 @main struct Check {
  static func main() async throws {
   let device=NoticeDevice();var changes=0;device.onStatusChange={changes+=1}
@@ -19,7 +19,6 @@ with tempfile.TemporaryDirectory(prefix='ltm-events-') as temp:
   precondition(device.deviceNotice!.hasPrefix("Couldn’t save to disk, so the iPod stopped"))
   device.dismissDeviceNotice();precondition(device.deviceNotice != nil)
   device.storageFailed=false;device.dismissDeviceNotice()
-  defaults.removePersistentDomain(forName:domain)
   let directory=URL(fileURLWithPath:CommandLine.arguments[1],isDirectory:true)
   let log=AppEventLog(directory:directory)
   await withTaskGroup(of:Void.self){group in

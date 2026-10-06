@@ -80,7 +80,6 @@ nonisolated struct LegacyState {
         }
         for directory in ipaDirectories { await IPALibrary.adopt(copies: directory) }
         for record in records {
-            for name in DeviceInstance.perDeviceDefaults { UserDefaults.standard.removeObject(forKey: "\(name).\(record.uuidString)") }
             try DeviceStateStorage.removeDevice(record, state: state)
         }
         for item in items {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Production keyboard preference and power-state gate, with an isolated defaults domain."""
+"""Production keyboard preference and power-state gate."""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
@@ -11,17 +11,16 @@ s=(root/'LightTouchMac/Device/EmulatorController.swift').read_text()
 a=s.index('    var keyboardInputEnabled: Bool {');b=s.index('    // MARK: - Machine control',a)
 source=r"""import Foundation
 @MainActor final class Check {
- let defaults=UserDefaults(suiteName:"ltm-keyboard-check-"+UUID().uuidString)!
+ struct Settings { var keyboardInputEnabled:Bool? }
+ var settings=Settings()
+ func changeSettings(_ change:(inout Settings)->Void){change(&settings)}
  var acceptsInput=true,isSleeping=false
  var onStatusChange:(()->Void)?
- struct Instance { func defaultsKey(_ name:String)->String { name+".device" } }
- let instance=Instance()
- func perDeviceSetting(_ name:String)->Bool { defaults.object(forKey:instance.defaultsKey(name)) as? Bool ?? defaults.object(forKey:name) as? Bool ?? true }
  final class FakeLink { var commands:[LinkCommand]=[]; func send(_ c:LinkCommand){commands.append(c)} }
  let fake=FakeLink()
  var link:FakeLink? {fake}
  var sent:[Bool] { fake.commands.compactMap { if case let .key(_,down)=$0 {down} else {nil} } }
-"""+s[a:b].replace('UserDefaults.standard','defaults')+r"""
+"""+s[a:b]+r"""
  func run() {
   precondition(keyboardInputEnabled)
   var changes=0;onStatusChange={changes+=1}

@@ -53,9 +53,15 @@ final class EmulatorController {
         webProxyStatus = .waiting
         onStatusChange?()
     }
+    /// This device's settings.plist (DeviceSettings), read once and written on every change.
+    private lazy var settings = DeviceSettings.load(instance.paths.directory)
+    private func changeSettings(_ change: (inout DeviceSettings) -> Void) {
+        change(&settings)
+        do { try settings.save(instance.paths.directory) } catch { logEvent("settings: could not save: \(error.localizedDescription)") }
+    }
     enum NoticeOperation: String { case storage, preparation, erase, powerOff, lowSpace, activation, files }
-    private(set) lazy var deviceNotice = UserDefaults.standard.dictionary(forKey: instance.defaultsKey("deviceNotice"))?["message"] as? String
-    private lazy var noticeOperation = UserDefaults.standard.dictionary(forKey: instance.defaultsKey("deviceNotice"))?["operation"] as? String
+    private(set) lazy var deviceNotice = settings.deviceNotice?.message
+    private lazy var noticeOperation = settings.deviceNotice?.operation
     func reportDeviceNotice(_ message: String, for operation: NoticeOperation) {
         let value = storageFailed
             ? "Couldn’t save to disk, so the \(profile.shortName) stopped and recent changes were lost. Free up space, then reopen Light Touch."
@@ -64,7 +70,7 @@ final class EmulatorController {
         deviceNotice = value
         let kind = (storageFailed ? .storage : operation).rawValue
         noticeOperation = kind
-        UserDefaults.standard.set(["message": value, "operation": kind], forKey: instance.defaultsKey("deviceNotice"))
+        changeSettings { $0.deviceNotice = .init(message: value, operation: kind) }
         onStatusChange?()
     }
     /// The notice's remedy is Erase All Content and Settings (a refused
@@ -79,7 +85,7 @@ final class EmulatorController {
         guard !storageFailed else { return }
         deviceNotice = nil
         noticeOperation = nil
-        UserDefaults.standard.removeObject(forKey: instance.defaultsKey("deviceNotice"))
+        changeSettings { $0.deviceNotice = nil }
         onStatusChange?()
     }
 
@@ -1032,10 +1038,10 @@ final class EmulatorController {
         }
     }
     enum MotionPose: Int { case upright, flat }
-    private(set) lazy var motionPose = MotionPose(rawValue: UserDefaults.standard.integer(forKey: instance.defaultsKey("motionPose"))) ?? .upright
+    private(set) lazy var motionPose = settings.motionPose.flatMap(MotionPose.init(rawValue:)) ?? .upright
     func setMotionPose(_ pose: MotionPose) {
         motionPose = pose
-        UserDefaults.standard.set(pose.rawValue, forKey: instance.defaultsKey("motionPose"))
+        changeSettings { $0.motionPose = pose.rawValue }
         onStatusChange?()
     }
 
@@ -1104,13 +1110,12 @@ final class EmulatorController {
 
     // MARK: Carrier (radio boards)
     //
-    // The fake network's settings are the device's (UserDefaults "carrier.<uuid>"): every boot starts the modem
+    // The fake network's settings are the device's (DeviceSettings.carrier): every boot starts the modem
     // with them (BootRecipe, -global ios-baseband.*), and a change while it runs is written to the modem too.
 
     var hasCellular: Bool { profile.hasCellular }
 
-    private(set) lazy var carrierSettings: CarrierSettings = UserDefaults.standard.data(forKey: instance.defaultsKey("carrier"))
-        .flatMap { try? JSONDecoder().decode(CarrierSettings.self, from: $0) }.flatMap { $0.isValid ? $0 : nil } ?? CarrierSettings()
+    private(set) lazy var carrierSettings: CarrierSettings = settings.carrier.flatMap { $0.isValid ? $0 : nil } ?? CarrierSettings()
 
     /// Saves valid settings and writes what changed to the running modem; false (nothing saved) for invalid ones.
     @discardableResult
@@ -1118,9 +1123,7 @@ final class EmulatorController {
         guard hasCellular, settings.isValid else { return false }
         let old = Dictionary(carrierSettings.properties.map { ($0.name, $0.value) }, uniquingKeysWith: { a, _ in a })
         carrierSettings = settings
-        if let data = try? JSONEncoder().encode(settings) {
-            UserDefaults.standard.set(data, forKey: instance.defaultsKey("carrier"))
-        }
+        changeSettings { $0.carrier = settings }
         for p in settings.properties where old[p.name] != p.value { modem(p.name, p.value) }
         return true
     }
@@ -1173,33 +1176,25 @@ final class EmulatorController {
     // loses their manual angle when the front app actually changes what it wants,
     // which is the moment they asked us to follow.
 
-    /// Off switch, for anyone who would rather the device never move on its own.
-    /// Per device (`autoRotateWithGuest.<uuid>`), seeded from the app-wide value
-    /// of earlier builds; on by default — it is only ever driven by an explicit
-    /// change on the guest's side.
-    /// Debug port, per device (`debugPort.<uuid>`), off by default; read at each start. QEMU's gdbstub on a free
-    /// loopback port, `debugPort` while this boot has one (qemu-ios docs/guest-debug.md).
-    static let debugPortDefaultsKey = "debugPort"
-    var debugPortEnabled: Bool {
-        UserDefaults.standard.object(forKey: instance.defaultsKey(Self.debugPortDefaultsKey)) as? Bool ?? false
-    }
+    /// Debug port, per device (DeviceSettings.debugPort), off by default; read at each start. QEMU's gdbstub on a
+    /// free loopback port, `debugPort` while this boot has one (qemu-ios docs/guest-debug.md).
+    var debugPortEnabled: Bool { settings.debugPort ?? false }
     func toggleDebugPort() {
-        UserDefaults.standard.set(!debugPortEnabled, forKey: instance.defaultsKey(Self.debugPortDefaultsKey))
+        let enabled = !debugPortEnabled
+        changeSettings { $0.debugPort = enabled }
         onStatusChange?()
     }
     private(set) var debugPort: Int?
     var lldbAttachCommand: String? { debugPort.map { DebugPort.lldbCommand(board: instance.board, port: $0) } }
 
-    static let autoRotateDefaultsKey = "autoRotateWithGuest"
-    var autoRotateEnabled: Bool { perDeviceSetting(Self.autoRotateDefaultsKey) }
+    /// Off switch, for anyone who would rather the device never move on its own. Per device
+    /// (DeviceSettings.autoRotateWithGuest); on by default — it is only ever driven by an explicit change on the
+    /// guest's side.
+    var autoRotateEnabled: Bool { settings.autoRotateWithGuest ?? true }
     func toggleAutoRotate() {
-        UserDefaults.standard.set(!autoRotateEnabled, forKey: instance.defaultsKey(Self.autoRotateDefaultsKey))
+        let enabled = !autoRotateEnabled
+        changeSettings { $0.autoRotateWithGuest = enabled }
         onStatusChange?()
-    }
-    /// A per-device on/off setting, falling back to the app-wide key it replaced, then on.
-    private func perDeviceSetting(_ name: String) -> Bool {
-        let defaults = UserDefaults.standard
-        return defaults.object(forKey: instance.defaultsKey(name)) as? Bool ?? defaults.object(forKey: name) as? Bool ?? true
     }
 
     /// The last value SpringBoard reported, in SpringBoard's degrees (0, 90,
@@ -1427,11 +1422,11 @@ final class EmulatorController {
     // MARK: - Keyboard passthrough
     
     /// Forward a host key by its macOS virtual keycode; the shim maps it to a
-    /// QKeyCode exactly as ui/cocoa.m does. Per device (`keyboardInputEnabled.<uuid>`),
-    /// seeded from the app-wide value of earlier builds.
-    var keyboardInputEnabled: Bool { perDeviceSetting("keyboardInputEnabled") }
+    /// QKeyCode exactly as ui/cocoa.m does. Per device (DeviceSettings.keyboardInputEnabled), on by default.
+    var keyboardInputEnabled: Bool { settings.keyboardInputEnabled ?? true }
     func toggleKeyboardInput() {
-        UserDefaults.standard.set(!keyboardInputEnabled, forKey: instance.defaultsKey("keyboardInputEnabled"))
+        let enabled = !keyboardInputEnabled
+        changeSettings { $0.keyboardInputEnabled = enabled }
         onStatusChange?()
     }
 
