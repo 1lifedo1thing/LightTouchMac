@@ -41,7 +41,7 @@ import Foundation
         guard case .notDownloaded = r.state else { fatalError("first run: \(r.state)") }
         precondition(r.primaryTitle == "Download and Prepare" && allowed(r, canDownload: true) == ["importIPSW", "downloadAndPrepare"])
         // iPod 3.1.3 ships prepared (the catalog's `bundled`): with no record it is "Built in" and Prepare unpacks it,
-        // which needs the preparer like any preparation. Without the packed base it is a user_ipsw entry like any other.
+        // which needs the preparer like any preparation. Without the packed base it downloads like any other entry.
         precondition(catalog.bundledEntry?.id == iPod.id && iPod.bundled == "device/n72ap-7E18.itbase")
         r = row(iPod)
         precondition(r.state == .bundled && r.primaryTitle == "Prepare" && r.stateDescription == "Built in" && !r.isStartable, "\(r.state)")
@@ -49,6 +49,11 @@ import Foundation
         precondition(r.accessory == .none && row(iPod, job: .failed("x")).primaryAction == .downloadAndPrepare, "a failed unpack offers Prepare again")
         var unpacked = iPod
         unpacked.bundled = nil
+        r = row(unpacked)
+        guard case .notDownloaded = r.state else { fatalError("unpacked: \(r.state)") }
+        precondition(r.primaryTitle == "Download and Prepare" && allowed(r, canDownload: true) == ["importIPSW", "downloadAndPrepare"])
+        // A user_ipsw entry (no public download) asks for the user's IPSW.
+        unpacked.status = .userIPSW
         r = row(unpacked)
         precondition(r.state == .unavailable(.requiresIPSW) && r.primaryTitle == "Import IPSW…" && !r.isStartable, "\(r.state)")
         precondition(allowed(r, canDownload: true) == ["importIPSW"], "\(allowed(r, canDownload: true))")
