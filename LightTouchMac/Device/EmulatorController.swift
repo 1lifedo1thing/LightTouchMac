@@ -611,8 +611,8 @@ final class EmulatorController {
                 noteBoot(.usbAttached)
                 preparationStatus = "Waiting for the Home screen…"
                 // A framebuffer and lockdown can both respond while SpringBoard
-                // is still starting. Do not enable input until its service answers.
-                try await waitForSpringBoard()
+                // is still starting. Do not enable input until SpringBoard answers.
+                try await waitForSpringBoard(agentCounts: true)
                 try Task.checkCancellation()
                 guard generation == bootGeneration else { return }
                 // Read the emulated backlight, not sblaunch's optional lock
@@ -1974,12 +1974,20 @@ final class EmulatorController {
     /// on every try), so there lockdown answering is as ready as the Home screen gets.
     var hasSpringBoardServices: Bool { iosVersion.compare("3.1", options: .numeric) != .orderedAscending }
 
-    private func waitForSpringBoard() async throws {
+    /// `agentCounts`: the guest agent naming SpringBoard's screen (or Setup Assistant) frontmost is an answer too.
+    /// A device in Setup is up and takes input, yet its springboardservices may refuse the layout (n81 9A334 on a
+    /// slow Mac: every connection reset for the whole wait). Not after a respring, where the agent can still name
+    /// the screen of the SpringBoard that is going away.
+    private func waitForSpringBoard(agentCounts: Bool = false) async throws {
         guard hasSpringBoardServices else { return }
         let deadline = ContinuousClock.now + .seconds(45 * DeviceProfile.hostSlowdown)
         while ContinuousClock.now < deadline {
             try Task.checkCancellation()
             if (try? await services.homeScreenOrder()) != nil { return }
+            if agentCounts, guestAgent.isAlive, SpringBoardAnswer.up(frontmost: try? await guest.foreground().bundleID) {
+                logEvent("boot: SpringBoard answers through the guest agent (its layout service did not)")
+                return
+            }
             try await Task.sleep(for: .seconds(1))
         }
         throw DeviceToolsError.failed("The Home screen didn’t come back. Restart the \(profile.shortName); your apps are kept.")

@@ -74,3 +74,11 @@ nonisolated enum ReadinessDeadline: Equatable, Sendable {
         "Apps and files will be available when the \(shortName) connects."
     }
 }
+
+/// Whether SpringBoard is up by what the guest agent names frontmost: its own screens (lock, Home, Setup's
+/// slide) or Setup Assistant over it. An app in front, or no answer, says nothing about readiness at boot.
+nonisolated enum SpringBoardAnswer {
+    static func up(frontmost bundleID: String?) -> Bool {
+        bundleID == "com.apple.springboard" || bundleID == "com.apple.purplebuddy"
+    }
+}
