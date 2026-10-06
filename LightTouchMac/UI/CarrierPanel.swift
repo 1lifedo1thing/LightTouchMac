@@ -172,14 +172,14 @@ struct CarrierPanel: View {
     }
 }
 
-/// A Carrier panel per running device, a floating utility window like Device Logs.
+/// A Carrier panel per running device: a utility panel that floats above the device window.
 @MainActor final class CarrierWindowController: NSWindowController {
     init(emulator: EmulatorController) {
         let hosting = NSHostingController(rootView: CarrierPanel(model: CarrierPanelModel(backend: emulator)))
         let panel = NSPanel(contentViewController: hosting)
         panel.styleMask = [.titled, .closable, .resizable, .utilityWindow]
         panel.title = "Carrier — \(emulator.instance.name)"
-        panel.isFloatingPanel = false
+        panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
         panel.setFrameAutosaveName("CarrierPanel")
         super.init(window: panel)
