@@ -62,14 +62,14 @@ enum MainMenuBuilder {
     }
     
     private static func captureMenu() -> NSMenu {
-        let menu = NSMenu(title: "Capture")
+        let menu = CaptureMenu(title: "Capture")
         menu.addItem(item("Save Screenshot", #selector(MainWindowController.saveScreenshot(_:)), "s"))
         menu.addItem(item("Save Screenshot As…", #selector(MainWindowController.saveScreenshotAs(_:)), "s", [.shift, .command]))
         menu.addItem(item("Copy Screenshot", #selector(MainWindowController.copyScreen(_:))))
         menu.addItem(item("Open Screenshot in Preview", #selector(MainWindowController.openScreenshot(_:))))
         menu.addItem(.separator())
         menu.addItem(item("Start Recording", #selector(MainWindowController.toggleRecording(_:)), "r"))
-        menu.addItem(item("Discard Recording…", #selector(MainWindowController.discardRecording(_:)), ".", [.option, .command]))
+        menu.addItem(item("Discard Recording…", #selector(MainWindowController.discardRecording(_:)), "\u{1b}", []))
         menu.addItem(.separator())
         menu.addItem(item("Capture Screen Only", #selector(MainWindowController.toggleCaptureScreenOnly(_:))))
         menu.addItem(.separator())
@@ -300,4 +300,24 @@ enum MainMenuBuilder {
         return item
     }
     
+}
+
+/// The Capture menu. Escape is Discard Recording's (which asks first) only while a recording can be discarded in the
+/// key device window, with no sheet on it and no text being edited; otherwise the key passes on to text fields,
+/// sheets, alerts and the rest. A plain NSMenu takes a matching key equivalent even from a disabled item.
+final class CaptureMenu: NSMenu {
+    /// `window` is the key window.
+    static func escapeDiscards(in window: NSWindow?) -> Bool {
+        guard let window, window.windowController is MainWindowController else { return false }
+        return window.attachedSheet == nil && !(window.firstResponder is NSText)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.keyCode == 53 {
+            guard Self.escapeDiscards(in: NSApp.keyWindow) else { return false }
+            update()
+            guard items.contains(where: { $0.keyEquivalent == "\u{1b}" && $0.isEnabled }) else { return false }
+        }
+        return super.performKeyEquivalent(with: event)
+    }
 }

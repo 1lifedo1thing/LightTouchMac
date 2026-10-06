@@ -154,7 +154,7 @@ Capture/Copy Screenshot
 Capture/Open Screenshot in Preview
 Capture/-
 Capture/Start Recording  ⌘r
-Capture/Discard Recording…  ⌥⌘.
+Capture/Discard Recording…  ⎋
 Capture/-
 Capture/Capture Screen Only
 Capture/-
@@ -226,7 +226,7 @@ struct Instance { let id=UUID() }
   var mods=""
   let m=item.keyEquivalentModifierMask
   if m.contains(.control){mods+="⌃"}; if m.contains(.option){mods+="⌥"}; if m.contains(.shift){mods+="⇧"}; if m.contains(.command){mods+="⌘"}
-  let arrows:[Int:String]=[NSLeftArrowFunctionKey:"←",NSRightArrowFunctionKey:"→",NSUpArrowFunctionKey:"↑",NSDownArrowFunctionKey:"↓"]
+  let arrows:[Int:String]=[NSLeftArrowFunctionKey:"←",NSRightArrowFunctionKey:"→",NSUpArrowFunctionKey:"↑",NSDownArrowFunctionKey:"↓",0x1b:"⎋"]
   let key=item.keyEquivalent.unicodeScalars.first.flatMap{arrows[Int($0.value)]} ?? item.keyEquivalent
   var line=path+"/"+item.title+(item.submenu != nil ? " ▸" : "")+(key.isEmpty ? "" : "  "+mods+key)
   if item.isHidden {line+=" hidden"}; if item.isAlternate {line+=" alternate"}
@@ -302,13 +302,27 @@ struct Instance { let id=UUID() }
   precondition(capture.items.allSatisfy{ $0.submenu==nil },"Capture stays flat")
   precondition(capture.items.filter{ !$0.isSeparatorItem }.map(\.title)==["Save Screenshot","Save Screenshot As…","Copy Screenshot","Open Screenshot in Preview","Start Recording","Discard Recording…","Capture Screen Only","Show Unfinished Recordings"])
   precondition(find("Open Screenshot in Preview",in:capture)?.keyEquivalent.isEmpty==true,"⌘O is Open’s, not a new screenshot’s")
-  for (name,key,modifiers) in [("Save Screenshot As…","s",NSEvent.ModifierFlags([.shift,.command])),("Start Recording","r",[.command]),("Discard Recording…",".",[.option,.command])] {
+  for (name,key,modifiers) in [("Save Screenshot As…","s",NSEvent.ModifierFlags([.shift,.command])),("Start Recording","r",[.command]),("Discard Recording…","\u{1b}",[])] {
    precondition(find(name,in:capture)?.keyEquivalent==key && find(name,in:capture)?.keyEquivalentModifierMask==modifiers)
   }
   precondition(find("Copy Screenshot",in:capture)?.keyEquivalent.isEmpty==true)
   precondition(find("Copy",in:root.item(withTitle:"Edit")!.submenu!)?.keyEquivalent=="c")
   precondition(find("Show Finger Dots",in:root.item(withTitle:"View")!.submenu!) != nil)
   precondition(find("Discard Recording…",in:capture)?.isHidden==false)
+  // Escape is Discard's only in the device window, with no sheet and no text being edited; else it passes on.
+  let esc=NSEvent.keyEvent(with:.keyDown,location:.zero,modifierFlags:[],timestamp:0,windowNumber:0,context:nil,
+                           characters:"\u{1b}",charactersIgnoringModifiers:"\u{1b}",isARepeat:false,keyCode:53)!
+  precondition(!capture.performKeyEquivalent(with:esc),"with no device window key, Escape passes on")
+  let deviceWindow=NSWindow(contentRect:NSRect(x:0,y:0,width:200,height:200),styleMask:[.titled],backing:.buffered,defer:false)
+  let owner=MainWindowController(window:deviceWindow)
+  precondition(CaptureMenu.escapeDiscards(in:deviceWindow) && !CaptureMenu.escapeDiscards(in:NSWindow()) && !CaptureMenu.escapeDiscards(in:nil))
+  let field=NSTextField(frame:NSRect(x:0,y:0,width:100,height:20));deviceWindow.contentView!.addSubview(field)
+  precondition(deviceWindow.makeFirstResponder(field) && deviceWindow.firstResponder is NSText)
+  precondition(!CaptureMenu.escapeDiscards(in:deviceWindow),"Escape stays the text field's")
+  deviceWindow.makeFirstResponder(nil)
+  deviceWindow.beginSheet(NSWindow(contentRect:NSRect(x:0,y:0,width:50,height:50),styleMask:[.titled],backing:.buffered,defer:false))
+  precondition(!CaptureMenu.escapeDiscards(in:deviceWindow),"Escape stays the sheet's")
+  withExtendedLifetime(owner){}
   precondition(find("Save Screenshot As…",in:file)==nil)
   precondition(find("Rotate Left",in:device)?.keyEquivalent==String(UnicodeScalar(NSLeftArrowFunctionKey)!))
   precondition(find("Rotate Right",in:device)?.keyEquivalent==String(UnicodeScalar(NSRightArrowFunctionKey)!))
