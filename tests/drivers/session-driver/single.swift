@@ -729,10 +729,13 @@ struct SingleConfig: Decodable {
                 await d.tap(p.x, p.y); pages.append("(\(yes))"); continue
             }
             var pick = picks.first { found[$0] != nil }
-            // The country list without Australia/United States on screen (the 3GS's 480-line panel): its first row
-            // (7.x's walk takes the first country too); Next stays disabled until one is chosen.
-            if pick == nil, found.keys.contains(where: { $0.hasPrefix("Country") }),
-               let first = found.filter({ $0.value.y > 0.15 && $0.value.y < 0.6 }).min(by: { $0.value.y < $1.value.y }) {
+            // The country list without Australia/United States on screen (the 3GS's 480-line panel, 7.x's "Select Your
+            // Country or Region" with "MORE COUNTRIES AND REGIONS" over Afghanistan): the first row below the page's
+            // last country heading in its top 60 %. Next stays disabled until one is chosen.
+            let headings = found.filter { $0.key.localizedCaseInsensitiveContains("countr") && $0.value.y < 0.6 }
+            if pick == nil, let below = headings.map({ $0.value.y }).max(),
+               let first = found.filter({ $0.value.y > max(below, 0.15) && $0.value.y < 0.9 && !["Next", "Back"].contains($0.key) })
+                                .min(by: { $0.value.y < $1.value.y }) {
                 pick = first.key
             }
             if let pick, let p = found[pick] {
