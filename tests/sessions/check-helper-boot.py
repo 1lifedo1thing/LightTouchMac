@@ -177,7 +177,15 @@ def iphone_boot(device, ovl, serial):
     if not nor.exists():
         shutil.copy(device / "nor.bin", nor)
         nor.chmod(0o600)
-    options = "".join(f",{k}={esc(v)}" for k, v in sorted(lock.get("machine", {}).items()))
+    machine_opts = dict(lock.get("machine", {}))
+    if "imei" not in machine_opts and lock["board"] in ("n90ap", "n88ap"):
+        # a recipe-1 base: the seed's IMEI, as BootRecipe.lockMachine derives it (IPhoneIdentity.imei)
+        import hashlib
+        seed = json.loads((device / "identity.json").read_text())["seed"]
+        body = "00000000" + "".join(str(b % 10) for b in hashlib.sha256(("imei:" + seed).encode()).digest()[:6])
+        total = sum((d * 2 - 9 if d * 2 > 9 else d * 2) if k % 2 == 0 else d for k, d in enumerate(int(c) for c in reversed(body)))
+        machine_opts["imei"] = body + str((10 - total % 10) % 10)
+    options = "".join(f",{k}={esc(v)}" for k, v in sorted(machine_opts.items()))
     if board == "iPhone-2G":   # BootRecipe.iPod1G: the S5L8900 ROM, the base's iBoot, the NOR as pflash; the modem is built in
         rom = HOME / "Developer/qemu-ios-files/ipod1g/bootrom_s5l8900"
         machine = f"{board},bootrom={esc(rom)},iboot={esc(device / 'iBoot.bin')},nand={esc(device / 'nand')},nand-overlay={esc(ovl)}" + options
@@ -365,7 +373,7 @@ def main():
             ovl = work / "carrier/overlay"
             boot = iphone_boot(args.iphone_device, ovl, work / "carrier/serial.log")
             d = Driver(args, bin_dir, helper, work, "carrier", {"machine": boot["machine"], "boot": boot,
-                       "steps": ["boot", "lit 0.1 300", "wait 60", "modemStatus",
+                       "steps": ["boot", "lit 0.1 300", "wait 60", "dump registered", "modemStatus",
                                  "modem carrier Cell Panel", "modem signal-dbm -97", "modem mcc-mnc 001", "wait 1", "modemStatus",
                                  "modem incoming-sms +15555550100|hello from the panel", "wait 2", "modemStatus",
                                  "modem incoming-call 15555550100", "wait 3", "modemStatus",
