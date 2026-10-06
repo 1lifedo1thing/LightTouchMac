@@ -55,5 +55,4 @@ It stands on a lot of other work:
 Each bundled component's licence (and, for GPL and LGPL components, where to get its source) is in
 the app under `Contents/Resources/licenses` and in **About Light Touch**.
 
-Apple firmware is never part of this repository or the app download. iPhone, iPod touch and iPad are
-trademarks of Apple Inc. Light Touch is not affiliated with Apple.
+iPhone, iPod touch and iPad are trademarks of Apple Inc. Light Touch is not affiliated with Apple.
