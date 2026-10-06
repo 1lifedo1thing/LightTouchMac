@@ -30,6 +30,14 @@ source = r'''import Foundation
   for dir in ["nand/cs0", "nand", ""] { try fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: base.appendingPathComponent(dir).path) }
   DeviceStateStorage.lockBase(base)
   DeviceStateStorage.lockBase(base)   // idempotent
+  // A locked base is finished (the base is locked last): another call returns without walking the tree,
+  // which is what every launch's sweep does. A directory unlocked behind its back stays unlocked.
+  let nand = base.appendingPathComponent("nand")
+  chflags(nand.path, 0)
+  DeviceStateStorage.lockBase(base)
+  var info = stat()
+  precondition(lstat(nand.path, &info) == 0 && info.st_flags & UInt32(UF_IMMUTABLE) == 0, "lockBase walked a locked base")
+  chflags(nand.path, UInt32(UF_IMMUTABLE))
   func refused(_ what: String, _ body: () throws -> Void) {
    do { try body(); preconditionFailure("\(what) was allowed on a locked base") } catch {}
   }

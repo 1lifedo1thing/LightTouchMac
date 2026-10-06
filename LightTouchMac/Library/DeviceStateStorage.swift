@@ -82,8 +82,14 @@ nonisolated enum DeviceStateStorage {
     /// A published base is immutable (chflags uchg on it and every directory
     /// in it): the Finder refuses to delete, rename or add to it with a system
     /// dialog, and nothing here writes into it. Idempotent; removeTree undoes it.
+    ///
+    /// The base itself is locked last, so its flag means the whole tree is
+    /// done: a locked base returns at once instead of walking a root
+    /// filesystem's worth of directories (seconds, at every launch).
     static func lockBase(_ base: URL) {
-        for directory in directories(under: base) { chflags(directory.path, UInt32(UF_IMMUTABLE)) }
+        var info = stat()
+        if lstat(base.path, &info) == 0, info.st_flags & UInt32(UF_IMMUTABLE) != 0 { return }
+        for directory in directories(under: base).reversed() { chflags(directory.path, UInt32(UF_IMMUTABLE)) }
     }
 
     /// Delete Device: Devices/<uuid> is renamed to Devices/.deleting-<uuid>

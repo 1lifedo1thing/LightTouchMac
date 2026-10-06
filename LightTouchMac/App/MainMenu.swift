@@ -153,7 +153,11 @@ enum MainMenuBuilder {
         menu.addItem(unshiftedZoomIn)
         menu.addItem(item("Zoom Out", #selector(MainWindowController.zoomOut(_:)), "-"))
         menu.addItem(.separator())
-        menu.addItem(item("Hide Device Bezel", #selector(MainWindowController.toggleDeviceBezel(_:))))
+        let bezel = NSMenu(title: "Device Bezels")
+        for (tag, title) in ["3D", "2D", "Off"].enumerated() {
+            bezel.addItem(item(title, #selector(MainWindowController.selectDeviceBezel(_:)), tag: tag))
+        }
+        menu.addItem(submenu(bezel, title: "Device Bezels"))
         menu.addItem(item("Show Finger Dots", #selector(MainWindowController.toggleTouchOverlay(_:))))
         menu.addItem(item("Show Hidden Files", #selector(DeviceFilesViewController.toggleHidden(_:))))
         menu.addItem(.separator())

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""View ▸ Hide Device Bezel: the production DisplayView with the bezel off shows the screen alone, and input,
+"""View ▸ Device Bezels ▸ Off: the production DisplayView with the bezel off shows the screen alone, and input,
 rotation and zoom still work on it. Windows are built but never ordered in; nothing appears on screen.
 
-Bezel off (DisplayView.showsBezel, persisted): no 3D model is loaded or shown, the flat shell draws nothing and
+Bezels Off (DisplayView.bezel, persisted; the old showsDeviceBezel=false carries over): no 3D model is loaded or shown, the flat shell draws nothing and
 casts no shadow, there is no Home button, and the LCD alone fills the pane (inset) at its centre, in portrait and
 landscape. A click at a point of the LCD sends that point as a touch in both orientations; a click just off the
 LCD sends nothing and doesn't grab a chassis to tilt. Zoom ▸ 2x shows two display pixels per guest pixel. Turning
-the bezel back on restores the shell art, its shadow and the model; turning it off again drops the model.
+the bezel back on restores the shell art, its shadow and the model; 2D keeps the art and Home button but
+loads no model; Off again drops both.
 --out DIR writes bare-portrait.png, bare-landscape.png and bezel.png there (the flat shell; the stub model draws nothing),
 composed from the layer tree's geometry."""
 import argparse, ast, subprocess, sys, tempfile
@@ -34,11 +35,14 @@ source = prefix + stub + r'''
   NSApp.setActivationPolicy(.prohibited)
   let out = CommandLine.arguments.count > 1 ? URL(fileURLWithPath: CommandLine.arguments[1]) : nil
   // A crashed run can leave the key behind (this binary's own defaults domain): start clean.
+  for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] { UserDefaults.standard.removeObject(forKey: key) }
+  defer { for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] { UserDefaults.standard.removeObject(forKey: key) } }
+  precondition(DisplayView.bezel == .model, "the 3D model shows by default")
+  UserDefaults.standard.set(false, forKey: DisplayView.showsBezelKey)
+  precondition(DisplayView.bezel == .off, "the old bezel-off preference didn't carry over")
   UserDefaults.standard.removeObject(forKey: DisplayView.showsBezelKey)
-  defer { UserDefaults.standard.removeObject(forKey: DisplayView.showsBezelKey) }
-  precondition(DisplayView.showsBezel, "the bezel shows by default")
-  DisplayView.showsBezel = false
-  precondition(UserDefaults.standard.object(forKey: DisplayView.showsBezelKey) as? Bool == false, "not persisted")
+  DisplayView.bezel = .off
+  precondition(UserDefaults.standard.object(forKey: DisplayView.bezelKey) as? Int == DisplayView.Bezel.off.rawValue, "not persisted")
   DeviceModelView.loadingDelay = .zero; DeviceModelView.preparationDelay = .milliseconds(50)
 
   let display = DisplayView(frame: NSRect(x: 0, y: 0, width: 800, height: 800), profile: .iPodTouch2G)
@@ -57,6 +61,7 @@ source = prefix + stub + r'''
   check(models().isEmpty && DeviceModelView.framesPrepared == 0, "bare loads no model")
   check(shell.contents == nil && shell.shadowOpacity == 0 && !shell.isHidden, "bare shell draws nothing, casts no shadow")
   check(home.isHidden, "no Home button bare")
+  check(!display.canPerformSpecialTrick, "the special trick is offered with no model")
   // The LCD's on-screen box, centred, filling the pane less the inset in its long dimension.
   func box() -> CGRect { lcd.convert(lcd.bounds, to: display.layer!) }
   func fills(_ landscape: Bool) {
@@ -119,13 +124,21 @@ source = prefix + stub + r'''
   display.zoom = .fit
 
   // Back on: the shell art, its shadow and (with the stub renderer) the model; off again drops it.
-  DisplayView.showsBezel = true
+  DisplayView.bezel = .model
   try await settle()
   check(shell.contents != nil && shell.shadowOpacity > 0, "bezel on: no shell art or shadow")
   check(models().count == 1 && DeviceModelView.framesPrepared == 1, "bezel on: the model didn't load")
+  check(display.canPerformSpecialTrick, "3D: the special trick isn't offered")
   models().forEach { $0.isHidden = true }; shell.isHidden = false; home.isHidden = false
   try render("bezel")
-  DisplayView.showsBezel = false
+  // 2D: the shell art, its shadow and the Home button, with no model loaded or kept.
+  DisplayView.bezel = .flat
+  try await settle()
+  check(models().isEmpty && DeviceModelView.framesPrepared == 1, "flat: a model is loaded or shown")
+  check(!display.canPerformSpecialTrick, "2D: the special trick is offered")
+  check(shell.contents != nil && shell.shadowOpacity > 0 && !shell.isHidden && !home.isHidden, "flat: no shell art, shadow or Home button")
+  touchLands(CGPoint(x: 0.5, y: 0.5))
+  DisplayView.bezel = .off
   try await settle()
   check(models().isEmpty && shell.contents == nil && shell.shadowOpacity == 0 && home.isHidden, "bezel off again: model or shell left")
   fills(false)

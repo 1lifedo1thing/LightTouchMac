@@ -147,19 +147,26 @@ final class DisplayView: NSView {
         if emulator.isPoweredOff { emulator.powerOn() } else { emulator.pressLock() }
     }
 
-    /// View ▸ Show Device Bezel, app-wide. Off is the screen alone: no 3D model and no flat shell; input,
-    /// rotation and zoom work on the screen as they do inside the device.
+    /// View ▸ Device Bezels, app-wide: 3D (the model), 2D (the flat shell art, no RealityKit at all), or Off — the
+    /// screen alone, where input, rotation and zoom work as they do inside the device.
+    enum Bezel: Int { case model, flat, off }
+    static let bezelKey = "deviceBezel"
+    /// The earlier on/off preference; off carries over as `.off`.
     static let showsBezelKey = "showsDeviceBezel"
     static let bezelDidChange = Notification.Name("DisplayViewBezelDidChange")
-    static var showsBezel: Bool {
-        get { UserDefaults.standard.object(forKey: showsBezelKey) as? Bool ?? true }
+    static var bezel: Bezel {
+        get {
+            let defaults = UserDefaults.standard
+            if let raw = defaults.object(forKey: bezelKey) as? Int, let bezel = Bezel(rawValue: raw) { return bezel }
+            return defaults.object(forKey: showsBezelKey) as? Bool == false ? .off : .model
+        }
         set {
-            UserDefaults.standard.set(newValue, forKey: showsBezelKey)
+            UserDefaults.standard.set(newValue.rawValue, forKey: bezelKey)
             NotificationCenter.default.post(name: bezelDidChange, object: nil)
         }
     }
     private var bare = false
-    private var bezelApplied = false
+    private var appliedBezel: Bezel?
 
     private var modelView: DeviceModelView?
     private var pendingModelView: DeviceModelView?
@@ -254,7 +261,7 @@ final class DisplayView: NSView {
         homeButton.target = self
         homeButton.action = #selector(homeTapped)
         addSubview(homeButton)
-        applyBezel(shown: Self.showsBezel)
+        applyBezel(Self.bezel)
         NotificationCenter.default.addObserver(self, selector: #selector(bezelPreferenceChanged), name: Self.bezelDidChange, object: nil)
         attitudeIndicator.target = self
         attitudeIndicator.action = #selector(levelAttitude(_:))
@@ -276,14 +283,15 @@ final class DisplayView: NSView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    @objc private func bezelPreferenceChanged() { applyBezel(shown: Self.showsBezel) }
+    @objc private func bezelPreferenceChanged() { applyBezel(Self.bezel) }
 
-    /// The device around the screen, or the screen alone. Bare drops the model (and its load) and empties the
-    /// shell layer, which stays as the screen's transform: rotation, zoom and touch mapping are unchanged.
-    private func applyBezel(shown: Bool) {
-        guard bare == shown || !bezelApplied else { return }
-        bezelApplied = true
-        bare = !shown
+    /// The device around the screen, its flat art, or the screen alone. Flat and bare drop the model (and its
+    /// load); bare also empties the shell layer, which stays as the screen's transform: rotation, zoom and touch
+    /// mapping are unchanged.
+    private func applyBezel(_ bezel: Bezel) {
+        guard bezel != appliedBezel else { return }
+        appliedBezel = bezel
+        bare = bezel == .off
         modelLoadTask?.cancel()
         modelFallbackTask?.cancel()
         modelLoadTask = nil
@@ -303,7 +311,7 @@ final class DisplayView: NSView {
         CATransaction.commit()
         modelPresentationFinished = true
         // macOS 14 keeps the photo shell; RealityKit texture rotation requires 15.
-        if !bare, #available(macOS 15, *), let name = profile.deviceModelName,
+        if bezel == .model, #available(macOS 15, *), let name = profile.deviceModelName,
            let url = Bundle.main.url(forResource: name, withExtension: "usdz") {
             modelPresentationFinished = false
             // Give RealityKit one second to present the device itself. Slower
@@ -607,10 +615,9 @@ final class DisplayView: NSView {
             lastShakeGeneration = generation
             modelView?.shake()
         }
-        if let modelView, let rect = modelView.homeButtonRect {
+        if let modelView, modelView.advanceAnimations(), let rect = modelView.homeButtonRect {
             homeButton.frame = convert(rect, from: modelView)
         }
-        modelView?.advanceAnimations()
         updateTouchOverlay()
         updateKeyboardPointer()
         _ = currentFrame()
@@ -1315,6 +1322,8 @@ final class DisplayView: NSView {
         }
     }
 
+    /// The trick is the 3D model's: 2D, Off, or a model still loading has nothing to flip.
+    var canPerformSpecialTrick: Bool { modelView != nil }
     func specialTrick() { modelView?.specialTrick() }
 
     func resetMotion() {

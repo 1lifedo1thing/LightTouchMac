@@ -106,7 +106,12 @@ final class DevicePlaceholderViewController: NSViewController {
         self.row = row
         let entry = row.entry
         let profile = entry.profile
-        art.image = profile.flatMap { NSImage(named: $0.shellImageName) }
+        // The sidebar's thumbnail (Finder's artwork for the model), at the size of the lockup.
+        art.image = profile.map { profile in
+            let image = profile.icon.copy() as! NSImage
+            image.size = NSSize(width: 256, height: 256)
+            return image
+        }
         model.stringValue = profile?.marketingName ?? entry.productType
         version.stringValue = "iOS \(entry.version)" + (row.badge.map { " \($0)" } ?? "") + " (\(entry.build))"
         info.isHidden = row.catalogNote == nil
