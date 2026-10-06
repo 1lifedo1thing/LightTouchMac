@@ -4306,7 +4306,7 @@
   "version": "7.0.6",
   "build": "11B651",
   "released": "2014-02-21",
-  "status": "untested",
+  "status": "experimental",
   "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS7/031-3020.20140221.8j5GW/iPhone3,1_7.0.6_11B651_Restore.ipsw", "sha1": "7fee14771f451dbb5c64d536b521ff199f6c6cd9", "bytes": 1201645522},
   "keys": {
    "AppleLogo": {"file": "applelogo@2x~iphone.s5l8930x.img3", "iv": "37e3909dfb8d38d4c0cd070c12180b39", "key": "98fd6c5260d2fbc2a4356d949668fb63a41b8caf5f44cde34a0437a48e4b152c"},
@@ -4338,7 +4338,7 @@
   "version": "7.1",
   "build": "11D169",
   "released": "2014-03-10",
-  "status": "untested",
+  "status": "experimental",
   "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS7.1/031-4639.20140310.Pvdbt/iPhone3,1_7.1_11D169_Restore.ipsw", "sha1": "c657505db208a73a5e27708816b87e8be3997d9a", "bytes": 1204820437},
   "keys": {
    "BatteryCharging0": {"file": "batterycharging0@2x~iphone.s5l8930x.img3", "iv": "12c6df1a6876213f0e95acf3a0c936a6", "key": "d6c44f41e6bf83bb2b2c46e5ea3839b97f454b62de3b1028dcef88cb45ef4168"},
@@ -4369,7 +4369,7 @@
   "version": "7.1.1",
   "build": "11D201",
   "released": "2014-04-22",
-  "status": "untested",
+  "status": "experimental",
   "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS7.1/031-00357.20140425.ZFJJw/iPhone3,1_7.1.1_11D201_Restore.ipsw", "sha1": "49469a01e7c3ffbbd0432610f4b44741623527a4", "bytes": 1204690621},
   "keys": {
    "AppleLogo": {"file": "applelogo@2x~iphone.s5l8930x.img3", "iv": "4f66381c0df73a7977c70c82ef039e6a", "key": "1eef36f8b99d39e1f84898e0e4dd32cdeac37aedc4b954fae8ffdcb3c55df9d6"},
