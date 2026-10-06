@@ -252,6 +252,10 @@ public enum KBoot {
         if let id = board.productID, dt.props["product"]?["product-id"]?.length == id.count {
             try dt.set("product", "product-id", .bytes(Data(id)))
         }
+        // iBoot-1940 also copies syscfg's MACs to /chosen; 7.x's MobileGestalt reads them there (and hashes them into the UDID).
+        for (k, node) in [("mac-address-wifi0", "arm-io/sdio"), ("mac-address-bluetooth0", "bluetooth")] where dt.props["chosen"]?[k] != nil {
+            if let mac = macs.first(where: { $0.0 == node })?.1 { try dt.set("chosen", k, .bytes(mac)) }
+        }
         for (k, hz) in [("clock-frequency", cpuHz), ("memory-frequency", memHz), ("bus-frequency", busHz),
                         ("peripheral-frequency", periphHz), ("fixed-frequency", fixedHz), ("timebase-frequency", timebaseHz)] {
             try dt.set("cpus/cpu0", k, .u32(hz))

@@ -58,6 +58,11 @@ enum K48Oracle {
 }
 
 @Suite(.serialized) struct SystemEditsTests {
+    /// ipad1_rootfs FSTAB_RO: only the root line turns ro (7.x), /private/var stays rw.
+    @Test func fstabRO() {
+        #expect(SystemEdits.fstabRO == "/dev/disk0s1 / hfs ro 0 1\n/dev/disk0s2 /private/var hfs rw,nosuid,nodev 0 2\n")
+    }
+
     @Test func plistEdits() throws {
         let real = NSMutableDictionary(dictionary: ["CurrentSet": "/Sets/S", "NetworkServices": ["W": ["Interface": ["DeviceName": "en0"]]],
                                                     "Sets": ["S": ["Network": ["Global": ["IPv4": ["ServiceOrder": ["W"]]], "Service": ["W": [:]]]]]])
