@@ -89,7 +89,7 @@ func installBootStorageAuthority(_ host: DeviceHost) {
             throw StorageBootProof.Failure.missingLease
         }
         let record = URL(fileURLWithPath: path).deletingLastPathComponent()
-            .deletingLastPathComponent().appendingPathComponent("device.json")
+            .deletingLastPathComponent().appendingPathComponent(DeviceRecord.name)
         try proof.verify(record: record, lease: lease)
     }
 }

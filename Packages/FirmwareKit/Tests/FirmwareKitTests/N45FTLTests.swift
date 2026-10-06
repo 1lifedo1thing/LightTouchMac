@@ -1,4 +1,5 @@
 import Foundation
+import HostRuntime
 import Testing
 @testable import FirmwareKit
 
@@ -138,7 +139,7 @@ struct N45FTLTests {
         let record: [String: Any] = ["id": UUID().uuidString, "board": "m68ap", "firmware": "test",
             "base": ["kind": "prepared", "path": base.path],
             "storage": ["key": "old", "overlay": overlay.path, "snapshot": "old-snapshot"]]
-        try JSONSerialization.data(withJSONObject: record).write(to: device.appendingPathComponent("device.json"))
+        try DeviceRecord.data(record).write(to: device.appendingPathComponent(DeviceRecord.name))
         let before = try Self.tree(overlay)
 
         let session = try await StoppedVolumeEdit.begin(device: device)
@@ -149,7 +150,7 @@ struct N45FTLTests {
         }
         try await StoppedVolumeEdit.commit(device: device, id: session.id)
 
-        let published = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: device.appendingPathComponent("device.json"))) as? [String: Any])
+        let published = try DeviceRecord.object(Data(contentsOf: device.appendingPathComponent(DeviceRecord.name)))
         let newBase = URL(fileURLWithPath: try #require((published["base"] as? [String: Any])?["path"] as? String))
         let newOverlay = URL(fileURLWithPath: try #require((published["storage"] as? [String: Any])?["overlay"] as? String))
         #expect(newOverlay != overlay && newBase != base)

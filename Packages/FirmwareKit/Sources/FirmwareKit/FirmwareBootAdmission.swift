@@ -17,9 +17,7 @@ public nonisolated enum FirmwareBootAdmission {
             guard var output = try JSONSerialization.jsonObject(with: header) as? [String: Any] else {
                 throw StorageRecordPaths.Failure.invalidRecord
             }
-            output["record"] = NSNull()
             output["paths"] = NSNull()
-            if let record { output["record"] = try JSONSerialization.jsonObject(with: record) }
             if let paths {
                 var selected = ["base": paths.base.path, "overlay": paths.overlay.path]
                 if let nor = paths.writableNOR { selected["writableNOR"] = nor.path }
@@ -44,7 +42,7 @@ public nonisolated enum FirmwareBootAdmission {
 
     @Sendable static func migrate(_ owner: StoppedRecordOwner) throws -> Bool {
         guard let bytes = owner.bytes, let paths = owner.paths,
-              let record = try JSONSerialization.jsonObject(with: bytes) as? [String: Any] else { return false }
+              let record = try? DeviceRecord.object(bytes) else { return false }
         if let board = record["board"] as? String, IPhoneIdentity.a4Boards.contains(board) {
             return try iPhoneIMEI(base: paths.base, marker: owner.device.appendingPathComponent(FirmwareWire.migratedRecipeFile))
         }
@@ -87,7 +85,7 @@ public nonisolated enum FirmwareBootAdmission {
         try Task.checkCancellation()
         // Keep the stopped authority across the reread and ownership validation.
         // Publication invalidates the original owner's path snapshot.
-        let current = try Data(contentsOf: owner.device.appendingPathComponent("device.json"))
+        let current = try Data(contentsOf: DeviceRecord.url(owner.device))
         let selected = try StorageRecordPaths(bytes: current, relativeRoot: paths.relativeRoot)
         try selected.validate(policy, device: owner.device)
         return Result(changed: changed, record: current, paths: selected)

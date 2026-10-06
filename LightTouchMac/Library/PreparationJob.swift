@@ -1,7 +1,7 @@
 import HostRuntime
 // One IPSW → device preparation: runs `firmwarekit create` into
 // State/Preparing/<id>/, reads its JSON Lines, and publishes the result as
-// Devices/<id>/base plus device.json. See "Preparer contract" in
+// Devices/<id>/base plus device.plist. See "Preparer contract" in
 // docs/multi-device-plan.md.
 //
 // The job id is also the new device's id and its identity seed. Staging and
@@ -251,7 +251,7 @@ nonisolated final class PreparationJob: @unchecked Sendable {
         try Self.publish(staging: staging, entry: request.entry, id: id, state: request.state, lock: lockName)
     }
 
-    /// Assembles Preparing/<id>.publish/{base, device.json} (the staging
+    /// Assembles Preparing/<id>.publish/{base, device.plist} (the staging
     /// directory renamed to base) and renames it to Devices/<id> in one
     /// step. Any failure before that rename leaves Devices/ untouched. Also
     /// a development base's record (`staging` absolute, kept in place: `keep`).

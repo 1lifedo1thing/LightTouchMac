@@ -8,6 +8,7 @@
 // (into the library).
 
 import Foundation
+import HostRuntime
 
 nonisolated struct LegacyState {
     let state: URL
@@ -49,8 +50,8 @@ nonisolated struct LegacyState {
         let devices = state.appendingPathComponent("Devices", isDirectory: true)
         for name in (try? fm.contentsOfDirectory(atPath: devices.path)) ?? [] {
             guard let id = UUID(uuidString: name),
-                  let data = try? Data(contentsOf: devices.appendingPathComponent("\(name)/\(DeviceInstance.recordName)")),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let data = try? Data(contentsOf: DeviceRecord.url(devices.appendingPathComponent(name))),
+                  let json = try? DeviceRecord.object(data),
                   let kind = (json["base"] as? [String: Any])?["kind"] as? String, kind != "prepared" else { continue }
             records.append(id)
         }

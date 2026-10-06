@@ -1,6 +1,7 @@
 import CryptoKit
 import Darwin
 import Foundation
+import HostRuntime
 import Testing
 @testable import FirmwareKit
 
@@ -44,7 +45,7 @@ struct StoppedVolumeEditTests {
             "storage": ["key": "old", "overlay": device.appendingPathComponent("overlay").path,
                         "snapshot": "old-snapshot", "writableNOR": device.appendingPathComponent("nor.bin").path,
                         "usbmuxConf": "conf"]]
-        try JSONSerialization.data(withJSONObject: record).write(to: device.appendingPathComponent("device.json"))
+        try DeviceRecord.data(record).write(to: device.appendingPathComponent(DeviceRecord.name))
         // A mounted/exported copy must not keep the stopped owner alive merely
         // because the declarative selection remains retained by its caller.
         let selection = try VolumeExport.Source(device: device)
@@ -60,7 +61,7 @@ struct StoppedVolumeEditTests {
             try Data("new-mobile-file".utf8).write(to: mount.appendingPathComponent("private/var/mobile/Media/new.plist"))
         }
         try await StoppedVolumeEdit.commit(device: device, id: session.id)
-        let published = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: device.appendingPathComponent("device.json"))) as? [String: Any])
+        let published = try DeviceRecord.object(Data(contentsOf: device.appendingPathComponent(DeviceRecord.name)))
         let generationBase = URL(fileURLWithPath: try #require((published["base"] as? [String: String])?["path"]))
         let logical = try #require(try VolumeRebuild.rebuild(base: generationBase.appendingPathComponent("nand"), overlay: nil,
             into: root.appendingPathComponent("verify")).first)

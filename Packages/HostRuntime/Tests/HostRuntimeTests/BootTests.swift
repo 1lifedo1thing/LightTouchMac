@@ -117,7 +117,7 @@ extension BootTests {
         #expect(config == expected)
     }
 
-    /// device.json `panel` (issue #21) reaches the machine as panel=WxH; unset, the machine line has no panel.
+    /// device.plist `panel` (issue #21) reaches the machine as panel=WxH; unset, the machine line has no panel.
     @Test(arguments: [PreparedDeviceBoot.Board.n72, .k48])
     func panelOption(board: PreparedDeviceBoot.Board) throws {
         let f = try Fixture(board: board, strategy: "iboot")

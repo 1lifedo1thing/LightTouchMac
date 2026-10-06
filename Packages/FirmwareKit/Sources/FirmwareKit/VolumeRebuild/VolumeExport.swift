@@ -20,7 +20,7 @@ public enum VolumeExport {
 
         /// Raw sources must already be isolated or retained by an explicit owner.
         public init(base: URL, overlay: URL?) { self = .raw(base: base, overlay: overlay) }
-        /// Declarative selection: device.json is never inspected before exclusion.
+        /// Declarative selection: the device record is never inspected before exclusion.
         public init(device: URL, policy: StorageRecordPolicy = .standalone) throws {
             self = .device(device, policy: policy)
         }

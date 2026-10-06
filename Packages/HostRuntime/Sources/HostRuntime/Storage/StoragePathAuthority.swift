@@ -20,12 +20,12 @@ public nonisolated enum StoragePathAuthority {
         return tail.reduce(URL(fileURLWithPath: resolved)) { $0.appendingPathComponent($1) }.path
     }
 
-    /// The record directories under Devices/ (a UUID name with a device.json), but `owner`'s.
+    /// The record directories under Devices/ (a UUID name with a record, DeviceRecord), but `owner`'s.
     private static func otherRecordDirectories(state: URL, owner: UUID?) -> [String] {
         let devices = state.appendingPathComponent("Devices", isDirectory: true)
         return ((try? FileManager.default.contentsOfDirectory(atPath: devices.path)) ?? []).filter { name in
             UUID(uuidString: name) != nil && UUID(uuidString: name) != owner
-                && FileManager.default.fileExists(atPath: devices.appendingPathComponent("\(name)/device.json").path)
+                && [DeviceRecord.name, DeviceRecord.legacyName].contains { FileManager.default.fileExists(atPath: devices.appendingPathComponent("\(name)/\($0)").path) }
         }.map { canonicalPath(devices.appendingPathComponent($0)) }
     }
 

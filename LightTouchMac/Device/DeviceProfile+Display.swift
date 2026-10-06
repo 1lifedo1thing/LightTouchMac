@@ -87,7 +87,7 @@ nonisolated extension DeviceProfile {
         guestTurn(scan: scan) != 0 ? CGSize(width: scan.height, height: scan.width) : scan
     }
 
-    /// device.json `panel` ("WxH" as the panel scans) for an upright guest size, and back.
+    /// device.plist `panel` ("WxH" as the panel scans) for an upright guest size, and back.
     func panelOption(upright size: CGSize) -> String {
         let scan = scan(upright: size)
         return "\(Int(scan.width))x\(Int(scan.height))"

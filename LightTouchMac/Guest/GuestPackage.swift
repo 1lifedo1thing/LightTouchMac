@@ -7,7 +7,7 @@ import DeviceRuntime
 // guest-package= property. The baked loader it_boot pulls the offer over
 // QC_PKG_*, installs or reverts, and REPORTs the serial now current; the
 // helper publishes that in the status block. The app judges the session
-// (good/bad) and records it in device.json `guest`, and the next offer
+// (good/bad) and records it in device.plist `guest`, and the next offer
 // carries those verdicts. No report: the image has no loader (legacy baked
 // tools), and the app keeps them current itself (GuestServices).
 //

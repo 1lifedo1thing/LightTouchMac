@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix="ltm-maintenance-") as temporary:
  work=device/'work';work.mkdir(parents=True)
  overlay=device/'overlay';overlay.mkdir()
  marker=overlay/'keep';marker.write_bytes(b'unchanged')
- (device/'device.json').write_text('{}')
+ (device/'device.plist').write_text('<plist><dict/></plist>')
  main=folder/'main.swift';main.write_text(SOURCE)
  executable=folder/'probe'
  subprocess.run(['xcrun','swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]),'-parse-as-library',str(ROOT/'LightTouchMac/Library/DeviceStateStorage.swift'),str(main),'-o',str(executable)],check=True)

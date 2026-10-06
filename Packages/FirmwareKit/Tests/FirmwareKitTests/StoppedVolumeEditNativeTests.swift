@@ -1,4 +1,5 @@
 import Foundation
+import HostRuntime
 import Testing
 @testable import FirmwareKit
 
@@ -23,7 +24,7 @@ struct StoppedVolumeEditNativeTests {
                         "snapshot": device.appendingPathComponent("snapshot").path,
                         "writableNOR": device.appendingPathComponent("nor.bin").path,
                         "usbmuxConf": device.appendingPathComponent("conf").path]]
-        try JSONSerialization.data(withJSONObject: record).write(to: device.appendingPathComponent("device.json"))
+        try DeviceRecord.data(record).write(to: device.appendingPathComponent(DeviceRecord.name))
         let edit = try await StoppedVolumeEdit.begin(device: device, policy: try .managedDeviceDirectory(device), log: { print($0) })
         let marker = Data("<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>probe</key><string>published-storage-generation</string></dict></plist>".utf8)
         try await VolumeMount.withMounted(edit.image, at: out.appendingPathComponent("edit")) { root in
@@ -34,7 +35,7 @@ struct StoppedVolumeEditNativeTests {
             try marker.write(to: root.appendingPathComponent("private/var/mobile/Media/ltm-stopped-edit.plist"), options: .atomic)
         }
         try await StoppedVolumeEdit.commit(device: device, id: edit.id, policy: try .managedDeviceDirectory(device), log: { print($0) })
-        let published = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: device.appendingPathComponent("device.json"))) as? [String: Any])
+        let published = try DeviceRecord.object(Data(contentsOf: device.appendingPathComponent(DeviceRecord.name)))
         let generation = try #require((published["base"] as? [String: String])?["path"])
         try marker.write(to: out.appendingPathComponent("expected-marker.plist"))
         try Data(generation.utf8).write(to: out.appendingPathComponent("published-base.txt"))

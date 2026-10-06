@@ -26,9 +26,9 @@ public actor StorageGeneration {
     private let original: Data
     private var operationActive = false
     private var intent: Intent
-    private var recordURL: URL { device.appendingPathComponent("device.json") }
+    private var recordURL: URL { device.appendingPathComponent(DeviceRecord.name) }
     private var intentURL: URL { device.appendingPathComponent("work/edit.json") }
-    private var candidateURL: URL { root.appendingPathComponent("device.json") }
+    private var candidateURL: URL { root.appendingPathComponent(DeviceRecord.name) }
 
     /// Existing app records only. Format-specific editing is a separate adapter.
     public static func begin(device: URL, policy: StorageRecordPolicy = .standalone) throws -> StorageGeneration {
@@ -47,7 +47,7 @@ public actor StorageGeneration {
         let device = owner.device
         guard !owner.lease.isClosed else { throw FirmwareError(.internal, "storage transaction is closed") }
         guard let snapshot = owner.bytes,
-              let object = try JSONSerialization.jsonObject(with: snapshot) as? [String: Any],
+              let object = try? DeviceRecord.object(snapshot),
               object["id"] is String, object["base"] is [String: Any], object["storage"] is [String: Any] else {
             throw FirmwareError(.unsupported, "storage transactions require a valid device record")
         }
@@ -69,7 +69,7 @@ public actor StorageGeneration {
         if resume == nil {
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true,
                                                   attributes: [.posixPermissions: 0o700])
-            try Self.write(snapshot, to: root.appendingPathComponent("original-device.json"))
+            try Self.write(snapshot, to: root.appendingPathComponent("original-\(DeviceRecord.name)"))
             try Self.write(JSONEncoder().encode(intent), to: device.appendingPathComponent("work/edit.json"))
             try Self.sync(root.deletingLastPathComponent())
             try Self.sync(device)
@@ -129,7 +129,7 @@ public actor StorageGeneration {
     public func candidateRecord(provenance: sending [String: Any]? = nil) throws -> Data {
         try requireOwner()
         guard !operationActive else { throw FirmwareError(.internal, "storage transaction operation is already in progress") }
-        let data = try Data(contentsOf: root.appendingPathComponent("original-device.json"))
+        let data = try Data(contentsOf: root.appendingPathComponent("original-\(DeviceRecord.name)"))
         var record = try Self.object(data)
         var base = record["base"] as! [String: Any]
         var storage = record["storage"] as! [String: Any]
@@ -140,7 +140,7 @@ public actor StorageGeneration {
         if storage["writableNOR"] != nil { storage["writableNOR"] = try recordPath(root.appendingPathComponent("nor.bin")) }
         record["base"] = base; record["storage"] = storage
         if let provenance { record["provenance"] = provenance }
-        return try JSONSerialization.data(withJSONObject: record, options: [.prettyPrinted, .sortedKeys])
+        return try DeviceRecord.data(record)
     }
 
     /// Preserve the record's state-root-relative convention so a device library
@@ -254,7 +254,7 @@ public actor StorageGeneration {
 
     private func validate(_ data: Data) throws {
         let record = try Self.object(data)
-        let previous = try Self.object(Data(contentsOf: root.appendingPathComponent("original-device.json")))
+        let previous = try Self.object(Data(contentsOf: root.appendingPathComponent("original-\(DeviceRecord.name)")))
         guard ["id", "board", "firmware", "identity", "created"].allSatisfy({ key in
                   NSDictionary(dictionary: ["value": record[key] ?? NSNull()]).isEqual(to: ["value": previous[key] ?? NSNull()])
               }),
@@ -328,9 +328,7 @@ public actor StorageGeneration {
     }
     private func saveIntent() throws { try Self.write(JSONEncoder().encode(intent), to: intentURL) }
     private static func object(_ data: Data) throws -> [String: Any] {
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw FirmwareError(.internal, "invalid device record")
-        }
+        guard let object = try? DeviceRecord.object(data) else { throw FirmwareError(.internal, "invalid device record") }
         return object
     }
     static func hash(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }

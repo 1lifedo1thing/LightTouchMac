@@ -4,7 +4,7 @@ display and touch mapping. Windows are built but never ordered in; nothing appea
 
 - Sizes: DeviceProfile.snappedPanel clamps and snaps an upright size to what the board's panel= accepts (iPod even
   width 64…1024 by 64…511 rows; iPad landscape width a multiple of 16, 64…2047, within iBoot's 9 MB display
-  region); panelOption/uprightPanel turn it into device.json's "WxH" as the panel scans (the iPad's landscape).
+  region); panelOption/uprightPanel turn it into device.plist's "WxH" as the panel scans (the iPad's landscape).
 - Display: an iPod at 320x504 shows its LCD alone at one point per guest pixel, centred; 2x zoom doubles it; a
   click at a point of the LCD is a touch at that fraction. An iPad at 1280x768 (portrait 768x1280) likewise.
 - Drag: a press just outside the LCD's edge grabs it; dragging stretches the LCD (the frame squishes live) and the

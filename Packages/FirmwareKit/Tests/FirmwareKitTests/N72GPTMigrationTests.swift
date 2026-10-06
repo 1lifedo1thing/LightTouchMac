@@ -37,7 +37,7 @@ struct N72GPTMigrationTests {
         try FileManager.default.createDirectory(at: overlay, withIntermediateDirectories: true)
         let record: [String: Any] = ["id": UUID().uuidString, "board": "n72ap", "firmware": "n72ap-7E18",
             "base": ["kind": "prepared", "path": base.path], "storage": ["key": "base-7E18", "overlay": overlay.path]]
-        try JSONSerialization.data(withJSONObject: record).write(to: device.appendingPathComponent("device.json"))
+        try DeviceRecord.data(record).write(to: device.appendingPathComponent(DeviceRecord.name))
         return (root, device, base, overlay)
     }
 

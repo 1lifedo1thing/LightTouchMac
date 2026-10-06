@@ -99,11 +99,11 @@ public enum TrustStore1x {
                                                      log: (String) -> Void = { _ in }) async throws -> Bool {
         let sha1 = Insecure.SHA1.hash(data: certificate).map { String(format: "%02x", $0) }.joined()
         func storageKey() throws -> String? {
-            let record = try JSONSerialization.jsonObject(with: Data(contentsOf: device.appendingPathComponent("device.json"))) as? [String: Any]
-            guard ["n45ap", "m68ap"].contains(record?["board"] as? String ?? "") else {
+            let record = try DeviceRecord.object(Data(contentsOf: DeviceRecord.url(device)))
+            guard ["n45ap", "m68ap"].contains(record["board"] as? String ?? "") else {
                 throw FirmwareError(.unsupported, "trust anchors are written into 1.x devices only")
             }
-            return (record?["storage"] as? [String: Any])?["key"] as? String
+            return (record["storage"] as? [String: Any])?["key"] as? String
         }
         // The anchor lives in the overlay, which Erase removes while the key stays: the overlay's stamp says it holds it.
         func overlayStamp() throws -> URL? {

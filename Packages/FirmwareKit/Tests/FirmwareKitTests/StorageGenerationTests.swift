@@ -1,4 +1,5 @@
 import Foundation
+import HostRuntime
 import Testing
 @testable import FirmwareKit
 
@@ -11,7 +12,7 @@ struct StorageGenerationTests {
             "base": ["path": "original", "kind": "prepared"],
             "storage": ["key": "original", "overlay": "overlay", "snapshot": "old-snapshot",
                         "writableNOR": "nor.bin", "usbmuxConf": "conf"]]
-        try JSONSerialization.data(withJSONObject: record).write(to: device.appendingPathComponent("device.json"))
+        try DeviceRecord.data(record).write(to: device.appendingPathComponent(DeviceRecord.name))
         return device
     }
     private func candidate(_ edit: StorageGeneration) async throws -> Data {
@@ -38,7 +39,7 @@ struct StorageGenerationTests {
         try await resumed.discard()
         try await resumed.close()
         #expect(!FileManager.default.fileExists(atPath: device.appendingPathComponent("work/edit.json").path))
-        #expect(try String(contentsOf: device.appendingPathComponent("device.json"), encoding: .utf8).contains("original"))
+        #expect(try String(contentsOf: device.appendingPathComponent(DeviceRecord.name), encoding: .utf8).contains("original"))
     }
 
     @Test(arguments: [StorageGeneration.Checkpoint.ready, .recordPublished])
@@ -53,7 +54,7 @@ struct StorageGenerationTests {
             await #expect(throws: Interrupted.crash) {
                 try await edit.publish(record: expected) { if $0 == interruption { throw Interrupted.crash } }
             }
-            let current = try Data(contentsOf: device.appendingPathComponent("device.json"))
+            let current = try Data(contentsOf: device.appendingPathComponent(DeviceRecord.name))
             #expect((StorageGeneration.hash(current) == StorageGeneration.hash(expected)) == (interruption == .recordPublished))
             try await edit.close()
         }
@@ -62,11 +63,11 @@ struct StorageGenerationTests {
             try await recovery.recoverPublication()
             try await recovery.close()
         }
-        #expect(try Data(contentsOf: device.appendingPathComponent("device.json")) == expected)
+        #expect(try Data(contentsOf: device.appendingPathComponent(DeviceRecord.name)) == expected)
         #expect(!FileManager.default.fileExists(atPath: device.appendingPathComponent("work/edit.json").path))
         let lease = try OwnedStorageRecord.acquire(device: device)
         withExtendedLifetime(lease) {}
-        let json = try #require(try JSONSerialization.jsonObject(with: expected) as? [String: Any])
+        let json = try DeviceRecord.object(expected)
         #expect(((json["base"] as? [String: String])?["path"]?.hasPrefix("/") == false))
         #expect((json["unknown"] as? [String: Bool])?["preserved"] == true)
         #expect((json["storage"] as? [String: String])?["snapshot"]?.contains(id.uuidString) == true)
@@ -77,10 +78,10 @@ struct StorageGenerationTests {
         defer { try? FileManager.default.removeItem(at: device) }
         let edit = try StorageGeneration.begin(device: device)
         let data = try await candidate(edit)
-        var record = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var record = try DeviceRecord.object(data)
         record["identity"] = ["udid": "another-device"]
-        await #expect(throws: FirmwareError.self) { try await edit.publish(record: JSONSerialization.data(withJSONObject: record)) }
-        try Data("changed".utf8).write(to: device.appendingPathComponent("device.json"))
+        await #expect(throws: FirmwareError.self) { try await edit.publish(record: DeviceRecord.data(record)) }
+        try Data("changed".utf8).write(to: device.appendingPathComponent(DeviceRecord.name))
         await #expect(throws: FirmwareError.self) { try await edit.publish(record: data) }
         await #expect(throws: FirmwareError.self) { try await edit.discard() }
     }
@@ -100,7 +101,7 @@ struct StorageGenerationTests {
         }
         let resumed = try StorageGeneration.resume(device: device, id: id)
         await #expect(throws: FirmwareError.self) { try await resumed.recoverPublication() }
-        #expect(try String(contentsOf: device.appendingPathComponent("device.json"), encoding: .utf8).contains("original"))
+        #expect(try String(contentsOf: device.appendingPathComponent(DeviceRecord.name), encoding: .utf8).contains("original"))
         try await resumed.discard()
         try await resumed.close()
     }
@@ -108,7 +109,7 @@ struct StorageGenerationTests {
     @Test func wrongResumeCannotBypassPendingIntent() async throws {
         let device = try fixture()
         defer { try? FileManager.default.removeItem(at: device) }
-        let original = try Data(contentsOf: device.appendingPathComponent("device.json"))
+        let original = try Data(contentsOf: device.appendingPathComponent(DeviceRecord.name))
         func start() async throws -> UUID {
             let edit = try StorageGeneration.begin(device: device)
             try await edit.close(); return edit.id
@@ -116,7 +117,7 @@ struct StorageGenerationTests {
         let id = try await start()
         #expect(throws: FirmwareError.self) { _ = try StorageGeneration.resume(device: device, id: UUID()) }
         #expect(throws: FirmwareError.self) { _ = try OwnedStorageRecord.acquire(device: device) }
-        #expect(try Data(contentsOf: device.appendingPathComponent("device.json")) == original)
+        #expect(try Data(contentsOf: device.appendingPathComponent(DeviceRecord.name)) == original)
         let resumed = try StorageGeneration.resume(device: device, id: id)
         try await resumed.discard()
         try await resumed.close()
@@ -141,7 +142,7 @@ struct StorageGenerationTests {
     func publicationSuspensionRetainsLeaseAndRevalidates(_ cancel: Bool) async throws {
         let device = try fixture()
         defer { try? FileManager.default.removeItem(at: device) }
-        let original = try Data(contentsOf: device.appendingPathComponent("device.json"))
+        let original = try Data(contentsOf: device.appendingPathComponent(DeviceRecord.name))
         let edit = try StorageGeneration.begin(device: device)
         let candidate = try await candidate(edit)
         let gate = PublicationGate()
@@ -157,12 +158,12 @@ struct StorageGenerationTests {
         if cancel { operation.cancel(); expected = original }
         else {
             expected = original + Data(" \n".utf8)
-            try expected.write(to: device.appendingPathComponent("device.json"))
+            try expected.write(to: device.appendingPathComponent(DeviceRecord.name))
         }
         await gate.open()
         await #expect(throws: (any Error).self) { try await operation.value }
-        #expect(try Data(contentsOf: device.appendingPathComponent("device.json")) == expected)
-        #expect(FileManager.default.fileExists(atPath: edit.root.appendingPathComponent("device.json").path))
+        #expect(try Data(contentsOf: device.appendingPathComponent(DeviceRecord.name)) == expected)
+        #expect(FileManager.default.fileExists(atPath: edit.root.appendingPathComponent(DeviceRecord.name).path))
         #expect(FileManager.default.fileExists(atPath: device.appendingPathComponent("work/edit.json").path))
         try await edit.close()
         let retained = try OwnedStorageRecord.acquire(device: device, resume: true)
@@ -188,13 +189,13 @@ struct StorageGenerationTests {
         defer { try? FileManager.default.removeItem(at: device) }
         let owner = try OwnedStorageRecord.acquire(device: device)
         let edit = try StorageGeneration.begin(owner: owner)
-        let original = try Data(contentsOf: device.appendingPathComponent("device.json"))
+        let original = try Data(contentsOf: device.appendingPathComponent(DeviceRecord.name))
         owner.lease.close()
         #expect(owner.lease.isClosed)
         await #expect(throws: FirmwareError.self) { _ = try await edit.candidateRecord() }
         await #expect(throws: FirmwareError.self) { try await edit.discard() }
         #expect(throws: FirmwareError.self) { _ = try StorageGeneration.begin(owner: owner) }
-        #expect(try Data(contentsOf: device.appendingPathComponent("device.json")) == original)
+        #expect(try Data(contentsOf: device.appendingPathComponent(DeviceRecord.name)) == original)
         try await edit.close()
     }
 

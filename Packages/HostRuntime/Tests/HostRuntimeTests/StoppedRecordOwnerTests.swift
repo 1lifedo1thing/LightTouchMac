@@ -12,12 +12,12 @@ struct StoppedRecordOwnerTests {
         try body(state, device, id)
     }
     private func bytes(_ id: UUID, base: String, overlay: String) throws -> Data {
-        try JSONSerialization.data(withJSONObject: ["id": id.uuidString, "unknown": ["retained": true],
+        try DeviceRecord.data(["id": id.uuidString, "unknown": ["retained": true],
             "base": ["path": base], "storage": ["overlay": overlay]])
     }
     @Test func exclusionPrecedesRecordReadAndFailureReleasesDescriptor() throws {
         try fixture { _, device, _ in
-            let record = device.appendingPathComponent("device.json")
+            let record = device.appendingPathComponent(DeviceRecord.name)
             try Data("not-json".utf8).write(to: record)
             do {
                 let held = try StorageLease(device.appendingPathComponent("work/lease"))
@@ -33,7 +33,7 @@ struct StoppedRecordOwnerTests {
     @Test func immutableSnapshotAndLegacyRelativeRootShareOneOwner() throws {
         try fixture { state, device, id in
             let original = try bytes(id, base: "external-base", overlay: "standalone-overlay")
-            let record = device.appendingPathComponent("device.json")
+            let record = device.appendingPathComponent(DeviceRecord.name)
             try original.write(to: record)
             do {
                 let owner = try StoppedRecordOwner(device: device)
@@ -52,7 +52,7 @@ struct StoppedRecordOwnerTests {
     }
     @Test func explicitManagedPolicyPreservesExternalBaseAndPrivateGenerations() throws {
         try fixture { state, device, id in
-            let record = device.appendingPathComponent("device.json")
+            let record = device.appendingPathComponent(DeviceRecord.name)
             let original = try bytes(id, base: state.appendingPathComponent("external-base").path,
                 overlay: "Devices/\(id.uuidString)/generations/new/overlay")
             try original.write(to: record)
@@ -74,10 +74,10 @@ struct StoppedRecordOwnerTests {
     @Test(arguments: ["snapshot", "writableNOR", "usbmuxConf"])
     func presentMalformedMutablePathCannotEscapeValidation(_ field: String) throws {
         try fixture { state, device, id in
-            var object = try JSONSerialization.jsonObject(with: bytes(id, base: "external", overlay: "Devices/\(id.uuidString)/overlay")) as! [String: Any]
+            var object = try DeviceRecord.object(bytes(id, base: "external", overlay: "Devices/\(id.uuidString)/overlay"))
             var storage = object["storage"] as! [String: Any]
             storage[field] = 42; object["storage"] = storage
-            try JSONSerialization.data(withJSONObject: object).write(to: device.appendingPathComponent("device.json"))
+            try DeviceRecord.data(object).write(to: device.appendingPathComponent(DeviceRecord.name))
             #expect(throws: StorageRecordPaths.Failure.self) { _ = try StoppedRecordOwner(device: device, policy: .managed(state: state, id: id)) }
             let held = try StorageLease(device.appendingPathComponent("work/lease"))
             withExtendedLifetime(held) {}
@@ -88,7 +88,7 @@ struct StoppedRecordOwnerTests {
     func managedMutableAuthorityCannotOverlapImmutableBase(_ directory: String) throws {
         try fixture { state, device, id in
             try bytes(id, base: device.appendingPathComponent(directory).path,
-                overlay: device.appendingPathComponent("overlay").path).write(to: device.appendingPathComponent("device.json"))
+                overlay: device.appendingPathComponent("overlay").path).write(to: device.appendingPathComponent(DeviceRecord.name))
             #expect(throws: StoragePathAuthority.Failure.self) { _ = try StoppedRecordOwner(device: device, policy: .managed(state: state, id: id)) }
             let held = try StorageLease(device.appendingPathComponent("work/lease"))
             withExtendedLifetime(held) {}
@@ -103,7 +103,7 @@ struct StoppedRecordOwnerTests {
             try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
             try FileManager.default.createDirectory(at: overlay, withIntermediateDirectories: true)
             let record = try bytes(id, base: base.path, overlay: overlay.path)
-            try record.write(to: device.appendingPathComponent("device.json"))
+            try record.write(to: device.appendingPathComponent(DeviceRecord.name))
             let owner = try StoppedRecordOwner(device: device, policy: .managed(state: state, id: id))
             #expect(owner.paths?.base.path == base.path)
             #expect(owner.paths?.overlay.path == overlay.path)
@@ -117,7 +117,7 @@ struct StoppedRecordOwnerTests {
             let generation = device.appendingPathComponent("generations/published")
             let base = generation.appendingPathComponent("base")
             try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-            let recordURL = device.appendingPathComponent("device.json")
+            let recordURL = device.appendingPathComponent(DeviceRecord.name)
             try bytes(id, base: base.path, overlay: base.appendingPathComponent("overlay").path).write(to: recordURL)
             #expect(throws: StoragePathAuthority.Failure.self) {
                 _ = try StoppedRecordOwner(device: device, policy: .managed(state: state, id: id))
@@ -139,7 +139,7 @@ struct StoppedRecordOwnerTests {
             let generation = device.appendingPathComponent("generations/published")
             let data = try bytes(id, base: generation.appendingPathComponent("base").path,
                 overlay: generation.appendingPathComponent("overlay").path)
-            try data.write(to: device.appendingPathComponent("device.json"))
+            try data.write(to: device.appendingPathComponent(DeviceRecord.name))
             try FileManager.default.createDirectory(at: device.appendingPathComponent("work"), withIntermediateDirectories: true)
             try Data("pending".utf8).write(to: device.appendingPathComponent("work/edit.json"))
             #expect(throws: StorageLease.Failure.pendingEdit) {
@@ -152,4 +152,18 @@ struct StoppedRecordOwnerTests {
         }
     }
 
+    /// A device made before device.plist: admission converts its device.json once (dates, no nulls) and reads the plist.
+    @Test func legacyJSONRecordMigratesOnRead() throws {
+        try fixture { state, device, id in
+            let json = #"{"id":"\#(id.uuidString)","created":"2026-10-01T12:00:00Z","panel":null,"base":{"path":"base"},"storage":{"overlay":"overlay","key":"k"}}"#
+            try Data(json.utf8).write(to: device.appendingPathComponent(DeviceRecord.legacyName))
+            let owner = try StoppedRecordOwner(device: device)
+            let record = try DeviceRecord.object(#require(owner.bytes))
+            #expect(record["created"] as? Date == ISO8601DateFormatter().date(from: "2026-10-01T12:00:00Z"))
+            #expect(record["panel"] == nil && (record["storage"] as? [String: String])?["key"] == "k")
+            #expect(owner.paths?.overlay == state.appendingPathComponent("overlay"))
+            #expect(!FileManager.default.fileExists(atPath: device.appendingPathComponent(DeviceRecord.legacyName).path))
+            withExtendedLifetime(owner) {}
+        }
+    }
 }

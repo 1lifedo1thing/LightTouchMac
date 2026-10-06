@@ -7,7 +7,7 @@ import FirmwareSchema
 /// Boot admission moves a recipe-1 M68 (and a recipe-2 N45) to the SystemConfiguration path 1.x reads.
 struct N45MigrationTests {
     static func record(_ device: URL) throws -> [String: Any] {
-        try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: device.appendingPathComponent("device.json"))) as? [String: Any])
+        try DeviceRecord.object(Data(contentsOf: device.appendingPathComponent(DeviceRecord.name)))
     }
     static func storage(_ device: URL) throws -> (base: URL, overlay: URL, key: String) {
         let r = try record(device), s = try #require(r["storage"] as? [String: Any])
@@ -49,7 +49,7 @@ struct N45MigrationTests {
         let record: [String: Any] = ["id": UUID().uuidString, "board": "m68ap", "firmware": "m68ap-1A543a",
             "base": ["kind": "prepared", "path": base.path],
             "storage": ["key": "old", "overlay": overlay.path, "snapshot": "old-snapshot"]]
-        try JSONSerialization.data(withJSONObject: record).write(to: device.appendingPathComponent("device.json"))
+        try DeviceRecord.data(record).write(to: device.appendingPathComponent(DeviceRecord.name))
         #expect(try N45Migration.pending(device: device, policy: .standalone) == 2)
 
         #expect(try await FirmwareBootAdmission.admit(device: device).changed)

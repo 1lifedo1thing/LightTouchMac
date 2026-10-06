@@ -157,13 +157,13 @@ extension String {
     var webProxy: WebProxyEndpoint?
     init(name: String, profile: DeviceProfile) { self.name = name; self.profile = profile }
     var dir: URL { work.appendingPathComponent(name) }
-    /// When `dir` is an app state's device (a link to Devices/<uuid> with its device.json): its storage key, and the
+    /// When `dir` is an app state's device (a link to Devices/<uuid> with its device.plist): its storage key, and the
     /// boot is admitted and pinned as the app's (EmulatorController: managed admission, instance.storage.key).
     var managedKey: String? {
         let device = dir.resolvingSymlinksInPath()
         guard device.deletingLastPathComponent().lastPathComponent == "Devices", UUID(uuidString: device.lastPathComponent) != nil,
-              let data = try? Data(contentsOf: device.appendingPathComponent("device.json")),
-              let record = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+              let data = try? Data(contentsOf: DeviceRecord.url(device)),
+              let record = try? DeviceRecord.object(data) else { return nil }
         return (record["storage"] as? [String: Any])?["key"] as? String
     }
 
@@ -256,7 +256,7 @@ extension String {
     }
 
     /// EmulatorController.composeGuestOffer for any prepared base: the itpack, the base's lock record, and the
-    /// device's verdicts (guestRecord), as the app offers device.json `guest`. Without them it_boot reverts a
+    /// device's verdicts (guestRecord), as the app offers device.plist `guest`. Without them it_boot reverts a
     /// package it was never told is good after MAX_TRIES boots.
     func offer(base: URL, board: String, itpack: String) throws -> String? {
         let lockURL = base.appendingPathComponent("device.lock.json")
@@ -272,7 +272,7 @@ extension String {
         return offer == nil ? nil : dir.path
     }
 
-    /// The driver's device.json `guest`: kept beside the overlay, so a device's later driver runs offer its verdicts.
+    /// The driver's device.plist `guest`: kept beside the overlay, so a device's later driver runs offer its verdicts.
     var guestRecord: DeviceInstance.Guest {
         get { (try? Data(contentsOf: dir.appendingPathComponent("guest-record.json"))).flatMap { try? JSONDecoder().decode(DeviceInstance.Guest.self, from: $0) } ?? .init() }
         set { try? JSONEncoder().encode(newValue).write(to: dir.appendingPathComponent("guest-record.json")) }

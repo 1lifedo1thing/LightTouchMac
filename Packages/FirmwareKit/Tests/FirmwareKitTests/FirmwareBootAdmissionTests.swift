@@ -44,8 +44,8 @@ struct FirmwareBootAdmissionTests {
             "base": ["kind": "prepared", "path": base.path],
             "storage": ["key": "current", "overlay": overlay.path,
                         "writableNOR": device.appendingPathComponent("nor.bin").path]]
-        let bytes = try JSONSerialization.data(withJSONObject: record)
-        try bytes.write(to: device.appendingPathComponent("device.json"))
+        let bytes = try DeviceRecord.data(record)
+        try bytes.write(to: device.appendingPathComponent(DeviceRecord.name))
         return (root, device, bytes)
     }
 
@@ -83,7 +83,7 @@ struct FirmwareBootAdmissionTests {
         })
         #expect(result.changed)
         #expect(result.paths?.base != f.device.appendingPathComponent("base"))
-        #expect(result.record == (try Data(contentsOf: f.device.appendingPathComponent("device.json"))))
+        #expect(result.record == (try Data(contentsOf: f.device.appendingPathComponent(DeviceRecord.name))))
         let next = try StoppedRecordOwner(device: f.device)
         #expect(next.paths?.base == result.paths?.base)
     }
@@ -95,7 +95,7 @@ struct FirmwareBootAdmissionTests {
         lease.close()
         try Data("unfinished".utf8).write(to: f.device.appendingPathComponent("work/edit.json"))
         await #expect(throws: (any Error).self) { try await FirmwareBootAdmission.admit(device: f.device, allowRaw: true) }
-        #expect(try Data(contentsOf: f.device.appendingPathComponent("device.json")) == f.record)
+        #expect(try Data(contentsOf: f.device.appendingPathComponent(DeviceRecord.name)) == f.record)
     }
 
     @Test func cancellationLeavesRecordAndIntentUntouched() async throws {
@@ -105,7 +105,7 @@ struct FirmwareBootAdmissionTests {
             return try await FirmwareBootAdmission.admit(device: f.device)
         }
         await #expect(throws: CancellationError.self) { try await task.value }
-        #expect(try Data(contentsOf: f.device.appendingPathComponent("device.json")) == f.record)
+        #expect(try Data(contentsOf: f.device.appendingPathComponent(DeviceRecord.name)) == f.record)
         #expect(!FileManager.default.fileExists(atPath: f.device.appendingPathComponent("work/edit.json").path))
     }
 }

@@ -1,7 +1,7 @@
 // Notices a running device's files being pulled out from under its helper:
 // base/, overlay/ and the overlay's files (the pages and NOR QEMU has open)
 // deleted, renamed or replaced. Only what the guest owns: never Devices/<uuid>
-// itself, where the app rewrites device.json, web-proxy.*, work/ and IPAs/ while
+// itself, where the app rewrites device.plist, web-proxy.*, work/ and IPAs/ while
 // the device runs (those fired the notice on every boot and proxy toggle). The
 // helper keeps running on the unlinked inodes and the guest never notices; the
 // app says so, and Stop skips flushing into a dead inode. Foundation only:

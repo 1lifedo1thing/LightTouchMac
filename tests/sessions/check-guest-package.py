@@ -3,7 +3,7 @@
 
 A package tree with a manifest is packed with mkpkg.pack; mkpkg.py `offer` composes the
 reference offer directory; the app's compose must write the same `offer` text and the same
-payload files. Also: verdict lines from device.json `guest`, the built-in (serial 0) offer,
+payload files. Also: verdict lines from device.plist `guest`, the built-in (serial 0) offer,
 hooks dropped by the preparer's lock (no GL shim installed, a target the device lacks), stub and
 foreign-build packages, a host protocol the app doesn't speak, a payload that doesn't match its
 manifest, the UI status for each report, and a tolerant `guest` record decode.
@@ -178,7 +178,7 @@ func check(_ ok: Bool, _ message: String = "", line: Int = #line) { precondition
   check(GuestPackage.verdict(report: .init(serial: 5, result: 0), healthyFor: .zero, elapsed: .seconds(300), record: seen, restored: false) == V.undecided, "the last good package is not judged bad")
   check(GuestPackage.verdict(report: .init(serial: 1, result: 3), healthyFor: .zero, elapsed: .seconds(300), record: seen, restored: false) == V.undecided, "the seed is the floor")
   check(GuestPackage.verdict(report: nil, healthyFor: .zero, elapsed: .seconds(300), record: seen, restored: false) == V.undecided)
-  // device.json `guest`: missing keys decode; nil guest is omitted from the record.
+  // device.plist `guest`: missing keys decode; nil guest is omitted from the record.
   let g = try JSONDecoder().decode(DeviceInstance.Guest.self, from: Data("{\"active\": 3}".utf8))
   check(g.active == 3 && g.bad == [] && g.seed == nil)
   let round = try JSONDecoder().decode(DeviceInstance.Guest.self, from: try JSONEncoder().encode(record))

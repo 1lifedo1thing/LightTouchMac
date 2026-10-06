@@ -15,7 +15,7 @@ public nonisolated enum StorageRecordPolicy: Sendable {
     }
 }
 
-/// A path view decoded from one immutable byte snapshot. Unknown JSON remains
+/// A path view decoded from one immutable byte snapshot. Unknown fields remain
 /// in the snapshot and is preserved by publication; this is not a device schema.
 public nonisolated struct StorageRecordPaths: Sendable {
     public enum Failure: Error { case invalidRecord }
@@ -29,7 +29,7 @@ public nonisolated struct StorageRecordPaths: Sendable {
     public let absoluteStyle: Bool
 
     public init(bytes: Data, relativeRoot: URL) throws {
-        guard let record = try JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+        guard let record = try? DeviceRecord.object(bytes),
               let base = record["base"] as? [String: Any], let path = base["path"] as? String,
               let storage = record["storage"] as? [String: Any], let overlay = storage["overlay"] as? String else {
             throw Failure.invalidRecord
@@ -74,7 +74,7 @@ public nonisolated struct StorageRecordPaths: Sendable {
     }
 }
 
-/// Acquires exclusion before inspecting device.json and retains the exact
+/// Acquires exclusion before inspecting the device record and retains the exact
 /// snapshot and descriptor through reconstruction or generation publication.
 public nonisolated struct StoppedRecordOwner: Sendable {
     /// Retain this shared descriptor owner when transferring the snapshot into
@@ -96,7 +96,7 @@ public nonisolated struct StoppedRecordOwner: Sendable {
         }
         self.device = device.standardizedFileURL.resolvingSymlinksInPath()
         lease = try StorageLease(self.device.appendingPathComponent("work/lease"), allowPendingEdit: allowPendingEdit)
-        let record = self.device.appendingPathComponent("device.json")
+        let record = DeviceRecord.url(self.device)
         if allowRaw && !FileManager.default.fileExists(atPath: record.path), case .standalone = policy {
             bytes = nil; paths = nil
         } else {

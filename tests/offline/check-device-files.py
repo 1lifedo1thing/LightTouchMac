@@ -5,7 +5,7 @@ DeviceStateStorage.lockBase makes base/ and every directory in it uchg: nothing 
 deleted, renamed or added to (the Finder shows a system dialog), and removeTree still removes the
 whole tree afterwards. DeviceFileWatch on a directory reports its files being unlinked or renamed,
 and the directory itself being renamed, once each. Wired as EmulatorController wires it (overlay/,
-base/, a NOR outside the overlay), the app's own boot-time writes under Devices/<uuid> (device.json,
+base/, a NOR outside the overlay), the app's own boot-time writes under Devices/<uuid> (device.plist,
 web-proxy.*, work/guest-offer, IPAs/) fire nothing; an outside unlink of overlay/bus0-ce0.pages does.
 """
 import sys
@@ -76,14 +76,14 @@ source = r'''import Foundation
   for dir in [dOverlay, dBase, dWork, device.appendingPathComponent("IPAs")] { try fm.createDirectory(at: dir, withIntermediateDirectories: true) }
   for name in ["bus0-ce0.pages", "bus0-ce1.pages"] { try Data(name.utf8).write(to: dOverlay.appendingPathComponent(name)) }
   try Data("nor".utf8).write(to: dNOR)
-  try Data("{}".utf8).write(to: device.appendingPathComponent("device.json"))
+  try Data("{}".utf8).write(to: device.appendingPathComponent("device.plist"))
   let quiet = Seen()
   let appWatch = DeviceFileWatch(directories: [dOverlay], files: [dNOR], base: dBase) { quiet.add($0) }
   precondition(appWatch.count == 5, "\(appWatch.count)")
   // Boot: the guest offer, the record, proxy routing + preferences + CA, usbmuxd conf, logs, an IPA copy; each atomic (rename over).
   try fm.createDirectory(at: dWork.appendingPathComponent("guest-offer"), withIntermediateDirectories: true)
   try Data("ltpkg".utf8).write(to: dWork.appendingPathComponent("guest-offer/offer.txt"), options: .atomic)
-  for _ in 0..<3 { try Data("{\"guest\":1}".utf8).write(to: device.appendingPathComponent("device.json"), options: .atomic) }
+  for _ in 0..<3 { try Data("guest".utf8).write(to: device.appendingPathComponent("device.plist"), options: .atomic) }
   for name in ["web-proxy.conf", "web-proxy.json", "web-proxy.conf.ca.der", "web-proxy.conf.ca.pem", "usbmuxd-conf", "usbmuxd.log"] {
    try Data(name.utf8).write(to: device.appendingPathComponent(name), options: .atomic)
   }

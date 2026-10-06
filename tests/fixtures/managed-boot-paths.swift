@@ -23,7 +23,7 @@ import Foundation
         let external = root.appendingPathComponent("external-base")
         try fm.createDirectory(at: external, withIntermediateDirectories: true)
         try Data("external-sentinel".utf8).write(to: external.appendingPathComponent("sentinel"))
-        let originalRecord = try Data(contentsOf: own.appendingPathComponent("device.json"))
+        let originalRecord = try Data(contentsOf: own.appendingPathComponent(DeviceInstance.recordName))
         func validate(_ i: DeviceInstance, in selectedState: URL = state) throws {
             let p = i.paths(state: selectedState, logs: logs)
             try DeviceStateStorage.checkBootPaths(base: p.base,
@@ -37,7 +37,7 @@ import Foundation
             precondition(!fm.fileExists(atPath: own.appendingPathComponent("work").path))
             precondition(!fm.fileExists(atPath: own.appendingPathComponent("overlay").path))
             precondition(!fm.fileExists(atPath: own.appendingPathComponent("nor.bin").path))
-            let recordAfter = try Data(contentsOf: own.appendingPathComponent("device.json"))
+            let recordAfter = try Data(contentsOf: own.appendingPathComponent(DeviceInstance.recordName))
             let baseAfter = try String(contentsOf: own.appendingPathComponent("base/sentinel"), encoding: .utf8)
             let externalAfter = try String(contentsOf: external.appendingPathComponent("sentinel"), encoding: .utf8)
             precondition(recordAfter == originalRecord && baseAfter == "base-sentinel" && externalAfter == "external-sentinel")

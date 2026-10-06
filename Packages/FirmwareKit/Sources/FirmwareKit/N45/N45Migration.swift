@@ -42,7 +42,7 @@ public nonisolated enum N45Migration {
         let owner = try OwnedStorageRecord.acquire(device: device, policy: policy, allowRaw: allowRaw)
         defer { withExtendedLifetime(owner) {} }
         guard let bytes = owner.bytes, let paths = owner.paths,
-              let board = (try JSONSerialization.jsonObject(with: bytes) as? [String: Any])?["board"] as? String,
+              let board = (try? DeviceRecord.object(bytes))?["board"] as? String,
               ["n45ap", "m68ap"].contains(board) else { return nil }
         let lock = (try? Data(contentsOf: paths.base.appendingPathComponent("device.lock.json")))
             .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }

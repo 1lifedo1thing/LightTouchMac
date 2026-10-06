@@ -242,7 +242,7 @@ case "unit":
     expect(leftovers().isEmpty, "Preparing/ is empty after a publish: \(leftovers())")
     expect(fm.fileExists(atPath: cache.appendingPathComponent("decrypted-v2/\(iPad32.source.sha1!)").path), "verified decrypt cache remains available after a publish")
     let publishedListing = try fm.subpathsOfDirectory(atPath: DeviceInstance.directory(device.id, state: state).path).sorted()
-    let publishedRecord = try Data(contentsOf: DeviceInstance.directory(device.id, state: state).appendingPathComponent("device.json"))
+    let publishedRecord = try Data(contentsOf: DeviceInstance.directory(device.id, state: state).appendingPathComponent(DeviceInstance.recordName))
 
     // A writable-NOR recipe publishes its nor.bin.
     run = prepare(catalog.entry(id: "k48ap-8C148")!, state: state, cache: cache, mode: "ok")
@@ -283,7 +283,7 @@ case "unit":
     expect(!fm.fileExists(atPath: run.job.staging.path) && leftovers().isEmpty, "cancel removes staging: \(leftovers())")
     expect(Set(devices()) == before, "cancel publishes nothing")
     expect(try fm.subpathsOfDirectory(atPath: DeviceInstance.directory(device.id, state: state).path).sorted() == publishedListing
-           && (try Data(contentsOf: DeviceInstance.directory(device.id, state: state).appendingPathComponent("device.json"))) == publishedRecord,
+           && (try Data(contentsOf: DeviceInstance.directory(device.id, state: state).appendingPathComponent(DeviceInstance.recordName))) == publishedRecord,
            "the published device is untouched by later failures and cancels")
 
     // Publish is one rename: when it can't happen (Devices/ is a file here),
@@ -314,7 +314,7 @@ case "unit":
         try DeviceStateStorage.erase(overlay: otherDevice, snapshots: [mine.appendingPathComponent("snapshot")], state: state, owner: device.id)
         expect(false, "erase reached another record")
     } catch {}
-    expect(fm.fileExists(atPath: otherDevice.appendingPathComponent("device.json").path) && fm.fileExists(atPath: outside.path), "nothing was removed")
+    expect(fm.fileExists(atPath: otherDevice.appendingPathComponent(DeviceInstance.recordName).path) && fm.fileExists(atPath: outside.path), "nothing was removed")
     try fm.removeItem(at: mine.appendingPathComponent("escape"))
 
     // Delete Device: Devices/<uuid> -> .deleting-<uuid>, then removed with its read-only base.
@@ -329,11 +329,19 @@ case "unit":
     try fm.createDirectory(at: torn.appendingPathComponent("base/nand"), withIntermediateDirectories: true)
     let ghost = String(decoding: try DeviceInstance.encoder.encode(device4), as: UTF8.self)
         .replacingOccurrences(of: device4.id.uuidString, with: tornID.uuidString)
-    try Data(ghost.utf8).write(to: torn.appendingPathComponent("device.json"))
+    try Data(ghost.utf8).write(to: torn.appendingPathComponent(DeviceInstance.recordName))
     chmod(torn.appendingPathComponent("base/nand").path, 0o555)
     expect(!DeviceInstance.all(state: state).contains { $0.id == tornID }, "a .deleting- directory is no device, even with a valid record")
     DeviceStateStorage.sweepDeleting(state: state)
     expect(!fm.fileExists(atPath: torn.path), "the sweep finishes the delete")
+    // A device recorded before device.plist: listed from its device.json, converted once, the JSON gone.
+    let oldDevice = DeviceInstance.directory(device4.id, state: state)
+    let json = JSONEncoder(); json.dateEncodingStrategy = .iso8601
+    try fm.removeItem(at: oldDevice.appendingPathComponent(DeviceInstance.recordName))
+    try json.encode(device4).write(to: oldDevice.appendingPathComponent("device.json"))
+    expect(DeviceInstance.all(state: state).contains(device4), "a device.json device is still listed, unchanged")
+    expect(fm.fileExists(atPath: oldDevice.appendingPathComponent("device.plist").path)
+           && !fm.fileExists(atPath: oldDevice.appendingPathComponent("device.json").path), "device.json became device.plist")
 
     // Launch sweeps: Preparing/ (read-only leftovers included), .partial downloads, .importing copies.
     let stale = preparing.appendingPathComponent("\(UUID().uuidString)/nand")

@@ -63,7 +63,7 @@ public enum StoppedVolumeEdit {
     private static func admit(device: URL, policy: StorageRecordPolicy) throws
         -> (StorageGeneration, VolumeExport.ResolvedSource, StorageRecordPaths, Data) {
         let owner = try OwnedStorageRecord.acquire(device: device, policy: policy)
-        guard let bytes = owner.bytes, let record = try JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+        guard let bytes = owner.bytes, let record = try? DeviceRecord.object(bytes),
               let paths = owner.paths else { throw FirmwareError(.unsupported, "invalid device metadata") }
         defer { withExtendedLifetime(owner) {} }
         let source = VolumeExport.ResolvedSource(owner: owner)
@@ -93,9 +93,7 @@ public enum StoppedVolumeEdit {
 
     }
     private static func object(_ bytes: Data) throws -> [String: Any] {
-        guard let record = try JSONSerialization.jsonObject(with: bytes) as? [String: Any] else {
-            throw FirmwareError(.unsupported, "invalid device metadata")
-        }
+        guard let record = try? DeviceRecord.object(bytes) else { throw FirmwareError(.unsupported, "invalid device metadata") }
         return record
     }
 

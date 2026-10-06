@@ -1,4 +1,4 @@
-// One device the user owns: State/Devices/<uuid>/device.json.
+// One device the user owns: State/Devices/<uuid>/device.plist (DeviceRecord).
 // See docs/multi-device-plan.md section B.
 //
 // Storage paths are relative to the state directory (so the record survives
@@ -6,6 +6,7 @@
 // is named by its absolute path.
 
 import Foundation
+import HostRuntime
 
 nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Sendable {
     struct Base: Codable, Equatable, Sendable {
@@ -39,7 +40,7 @@ nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Sendable {
         var sha256: String?
     }
 
-    /// device.json `guest`: the guest package serials this device has run.
+    /// The record's `guest`: the guest package serials this device has run.
     struct Guest: Codable, Equatable, Sendable {
         /// Baked at prepare time (device.lock.json), when known.
         var seed: Int64?
@@ -76,16 +77,16 @@ nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Sendable {
     var provenance: Provenance?
     /// Guest-package serials and verdicts (GuestPackage).
     var guest: Guest?
-    /// device.json `panel`: an opt-in display of another size, "WxH" as the
+    /// The record's `panel`: an opt-in display of another size, "WxH" as the
     /// panel scans (iPad landscape), passed to the machine as panel=WxH
     /// (issue #21). Absent: the shipped panel.
     var panel: String?
 
     var profile: DeviceProfile? { DeviceProfile(boardID: board) }
 
-    static let recordName = "device.json"
+    static let recordName = DeviceRecord.name
 
-    /// `created` is stored as ISO 8601 whole seconds; a record made with a
+    /// `created` is stored as a plist date, whole seconds; a record made with a
     /// finer date would not equal itself read back.
     static var now: Date { Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down)) }
 
@@ -157,18 +158,13 @@ nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Sendable {
 
     // MARK: - Record I/O
 
-    static let encoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        encoder.dateEncodingStrategy = .iso8601
+    static let encoder: PropertyListEncoder = {
+        let encoder = PropertyListEncoder()
+        encoder.outputFormat = .xml
         return encoder
     }()
 
-    static let decoder: JSONDecoder = {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return decoder
-    }()
+    static let decoder = PropertyListDecoder()
 
     /// Atomic: a crash leaves the old record or the new one, never half.
     func write(state: URL) throws {
@@ -177,8 +173,10 @@ nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Sendable {
         try Self.encoder.encode(self).write(to: directory.appendingPathComponent(Self.recordName), options: .atomic)
     }
 
+    /// `url` is the record or, converting a device.json first, its device directory.
     static func read(_ url: URL) throws -> DeviceInstance {
-        try decoder.decode(DeviceInstance.self, from: Data(contentsOf: url))
+        let record = url.lastPathComponent == recordName ? url : DeviceRecord.url(url)
+        return try decoder.decode(DeviceInstance.self, from: Data(contentsOf: record))
     }
 
     /// Every readable record under State/Devices, oldest first. A directory
@@ -188,7 +186,7 @@ nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Sendable {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: devices.path)) ?? []
         return names.compactMap { name in
             guard let id = UUID(uuidString: name),
-                  let record = try? read(devices.appendingPathComponent("\(name)/\(recordName)")),
+                  let record = try? read(devices.appendingPathComponent(name, isDirectory: true)),
                   record.id == id else { return nil }
             return record
         }.sorted { ($0.created, $0.id.uuidString) < ($1.created, $1.id.uuidString) }

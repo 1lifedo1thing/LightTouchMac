@@ -1,6 +1,6 @@
 import Foundation
 
-/// The admitted storage portion of device.json. Guest package/UI metadata may
+/// The admitted storage portion of the device record (DeviceRecord). Guest package/UI metadata may
 /// change independently; boot identity, base and storage must name this generation
 /// after the helper takes its lease. This is authority checking, not migration.
 public nonisolated struct StorageBootProof: Codable, Sendable, Equatable {
@@ -23,13 +23,13 @@ public nonisolated struct StorageBootProof: Codable, Sendable, Equatable {
     }
 
     private static func storageBytes(_ data: Data) throws -> Data {
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let object = try? DeviceRecord.object(data),
               let base = object["base"] as? [String: Any], let storage = object["storage"] as? [String: Any],
               let key = storage["key"] as? String, !key.isEmpty else { throw Failure.malformedRecord }
         var bound: [String: Any] = ["base": base, "storage": storage]
         for key in ["id", "board", "firmware", "identity"] {
             if let value = object[key] { bound[key] = value }
         }
-        return try JSONSerialization.data(withJSONObject: bound, options: [.sortedKeys])
+        return try DeviceRecord.data(bound)
     }
 }

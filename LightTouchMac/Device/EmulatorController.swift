@@ -310,7 +310,7 @@ final class EmulatorController {
             _ = try await FirmwareTool.admitBoot(device: self.instance.paths.directory,
                                                  managed: true, executable: executable)
             try Task.checkCancellation()
-            let recordBytes = try Data(contentsOf: self.instance.paths.directory.appendingPathComponent(DeviceInstance.recordName))
+            let recordBytes = try Data(contentsOf: DeviceRecord.url(self.instance.paths.directory))
             let refreshed = try DeviceInstance.decoder.decode(DeviceInstance.self, from: recordBytes)
             guard refreshed.id == self.instance.id, refreshed.board == self.instance.board else {
                 throw DeviceToolsError.failed("The device identity changed while preparing to start.")
@@ -1320,7 +1320,7 @@ final class EmulatorController {
     }
     private var guestRecord: DeviceInstance.Guest? { (try? DeviceInstance.read(recordURL))?.guest }
 
-    /// device.json `guest`, read fresh and written back (never the whole cached record).
+    /// The record's `guest`, read fresh and written back (never the whole cached record).
     private func updateGuestRecord(_ change: (inout DeviceInstance.Guest) -> Void) {
         guard var record = try? DeviceInstance.read(recordURL) else { return }
         var guest = record.guest ?? DeviceInstance.Guest()
@@ -1334,7 +1334,7 @@ final class EmulatorController {
         } catch { logEvent("guest package: could not record \(guest): \(error.localizedDescription)") }
     }
 
-    /// View ▸ Free-Form Screen (issue #21): device.json `panel`, read fresh and written back ("WxH" as the panel
+    /// View ▸ Free-Form Screen (issue #21): the record's `panel`, read fresh and written back ("WxH" as the panel
     /// scans; nil, the shipped panel). With `restart`, a running device stops (Stop's hard halt) and a fresh helper
     /// boots on it, since the guest takes its screen size at boot. Returns whether that restart is under way.
     func setPanel(_ panel: String?, restart: Bool) -> Bool {

@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import HostRuntime
 import SQLite3
 import Testing
 @testable import FirmwareKit
@@ -95,18 +96,18 @@ struct TrustStore1xTests {
         let record: [String: Any] = ["id": UUID().uuidString, "board": "m68ap", "firmware": "test",
             "base": ["kind": "prepared", "path": base.path],
             "storage": ["key": "old", "overlay": overlay.path, "snapshot": "old-snapshot"]]
-        try JSONSerialization.data(withJSONObject: record).write(to: device.appendingPathComponent("device.json"))
+        try DeviceRecord.data(record).write(to: device.appendingPathComponent(DeviceRecord.name))
 
         #expect(try await TrustStore1x.trust(device: device, certificate: Self.certificate))
         #expect(try await TrustStore1x.trust(device: device, certificate: Self.certificate) == false)   // the marker
 
         // Erase (DeviceStateStorage.erase) removes the overlay the anchor went into and keeps the storage key:
         // the next start writes the anchor again.
-        let erased = try #require((try JSONSerialization.jsonObject(with: Data(contentsOf: device.appendingPathComponent("device.json"))) as? [String: Any])?["storage"] as? [String: Any])
+        let erased = try #require(try DeviceRecord.object(Data(contentsOf: device.appendingPathComponent(DeviceRecord.name)))["storage"] as? [String: Any])
         try fm.removeItem(at: URL(fileURLWithPath: try #require(erased["overlay"] as? String)))
         #expect(try await TrustStore1x.trust(device: device, certificate: Self.certificate))
 
-        let published = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: device.appendingPathComponent("device.json"))) as? [String: Any])
+        let published = try DeviceRecord.object(Data(contentsOf: device.appendingPathComponent(DeviceRecord.name)))
         let newBase = URL(fileURLWithPath: try #require((published["base"] as? [String: Any])?["path"] as? String))
         let newOverlay = URL(fileURLWithPath: try #require((published["storage"] as? [String: Any])?["overlay"] as? String))
         let rebuilt = try VolumeRebuild.rebuild(base: newBase.appendingPathComponent("nand"), overlay: newOverlay,

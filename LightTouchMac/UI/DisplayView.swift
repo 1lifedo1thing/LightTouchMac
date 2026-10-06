@@ -639,7 +639,7 @@ final class DisplayView: NSView {
     private var freeFormActive: Bool { freeFormPanel != nil || freeFormTarget != nil }
     /// The running scan's scan-to-upright turn (DeviceProfile.guestTurn): the shipped panel's, or the free-form one's.
     private var guestTurn: CGFloat { runningScan.map(DeviceProfile.guestTurn(scan:)) ?? profile.panelRotation }
-    /// The free-form panel as it scans (device.json `panel`); nil, the shipped one.
+    /// The free-form panel as it scans (the record's `panel`); nil, the shipped one.
     private var runningScan: CGSize?
     var isFreeForm: Bool { freeFormPanel != nil }
     var canToggleFreeForm: Bool { profile.supportsFreeForm && !restartingAtPanel }
