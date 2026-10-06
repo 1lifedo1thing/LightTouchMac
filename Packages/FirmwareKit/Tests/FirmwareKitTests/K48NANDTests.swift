@@ -3,6 +3,14 @@ import Testing
 @testable import FirmwareKit
 
 struct K48NANDTests {
+    /// 7.x's launchd starts it_seal minutes into the boot: its one-shots get 900 s, earlier releases 300 s.
+    @Test func oneshotTimeoutByVersion() {
+        #expect(K48Board.oneshotTimeout(productVersion: "7.1.2") == 900)
+        #expect(K48Board.oneshotTimeout(productVersion: "7.0") == 900)
+        #expect(K48Board.oneshotTimeout(productVersion: "6.1.3") == 300)
+        #expect(K48Board.oneshotTimeout(productVersion: "3.2.2") == 300)
+    }
+
     static let storeFiles = ["geometry.json"] + (0..<2).flatMap { b in (0..<4).map { "bus\(b)-ce\($0).pages" } }
 
     @Test(arguments: ["nand-xor-ff-v2", "future-format", ""])
