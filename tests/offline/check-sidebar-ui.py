@@ -94,10 +94,11 @@ import SwiftUI
 
 final class Delegate: DeviceLibraryDelegate {
     var deletes: [String] = []
+    var allowed: Set<DeviceAction> = Set(DeviceAction.allCases)
     var selected: [FirmwareCatalog.Entry?] = []
     func library(_ library: DeviceLibraryViewController, didSelect entry: FirmwareCatalog.Entry?) { selected.append(entry) }
     func libraryRowsDidChange(_ library: DeviceLibraryViewController) {}
-    func library(_ library: DeviceLibraryViewController, canPerform action: DeviceAction, for entry: FirmwareCatalog.Entry) -> Bool { true }
+    func library(_ library: DeviceLibraryViewController, canPerform action: DeviceAction, for entry: FirmwareCatalog.Entry) -> Bool { allowed.contains(action) }
     func library(_ library: DeviceLibraryViewController, perform action: DeviceAction, for entry: FirmwareCatalog.Entry) {
         if action == .delete { deletes.append(entry.id) }
     }
@@ -235,6 +236,16 @@ final class Delegate: DeviceLibraryDelegate {
         let delegate = Delegate()
         vc.delegate = delegate
         let outline = all(vc.view).compactMap { $0 as? NSOutlineView }.first!
+        // The context menu lists every command; what the row can't do now is dimmed, not left out.
+        vc.select(catalog.entry(id: "n72ap-8C148")!)
+        delegate.allowed = [.start]
+        let context = NSMenu()
+        vc.menuNeedsUpdate(context)
+        let commands = context.items.filter { !$0.isSeparatorItem && $0.title != "Rename" }
+        let live = commands.filter { vc.validateMenuItem($0) }.map(\.title)
+        if !["Stop", "Show File System in Finder", "Erase All Content and Settings…"].allSatisfy({ t in commands.contains { $0.title == t } })
+            || !live.contains("Start") || live.contains("Stop") { fail("context menu: \(commands.map(\.title)), enabled \(live)") }
+        delegate.allowed = Set(DeviceAction.allCases)
         let delete = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: w.windowNumber,
                                       context: nil, characters: "\u{7f}", charactersIgnoringModifiers: "\u{7f}", isARepeat: false, keyCode: 51)!
         vc.select(catalog.entry(id: "n72ap-8C148")!)

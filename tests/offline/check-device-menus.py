@@ -108,6 +108,11 @@ Device/Motion/Reset Tilt
 Device/Motion/-
 Device/Motion/Shake
 Device/Motion/Special Trick
+Device/Compass Heading ▸
+Device/Compass Heading/North
+Device/Compass Heading/East
+Device/Compass Heading/South
+Device/Compass Heading/West
 Device/Input ▸
 Device/Input/Volume Up  ⌥⌘↑
 Device/Input/Volume Down  ⌥⌘↓
@@ -117,6 +122,7 @@ Device/Network ▸
 Device/Network/Connect to the Internet
 Device/Network/-
 Device/Network/Proxy…
+Device/Carrier…
 Device/Battery ▸
 Device/Battery/100%
 Device/Battery/80%
@@ -165,9 +171,9 @@ Help/Light Touch Help  ⌘?
 Help/-
 Help/Export Diagnostics…
 '''.strip()
-# The iPad's differences: its name and a compass. Battery is the same: levels, then one Charging switch.
-IPAD_BAR=(IPOD_BAR.replace('iPod','iPad')
-    .replace('Device/Input ▸','Device/Compass Heading ▸\nDevice/Compass Heading/North\nDevice/Compass Heading/East\nDevice/Compass Heading/South\nDevice/Compass Heading/West\nDevice/Input ▸'))
+# The iPad's difference: its name. Every board lists every item (Compass Heading, Carrier…); what its
+# hardware lacks is dimmed by validation, never left out.
+IPAD_BAR=IPOD_BAR.replace('iPod','iPad')
 source=r'''import Cocoa
 struct Instance { let id=UUID() }
 @MainActor final class Emulator {

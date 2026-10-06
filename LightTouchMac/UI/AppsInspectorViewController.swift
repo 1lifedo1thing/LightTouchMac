@@ -1164,6 +1164,13 @@ extension AppsInspectorViewController: NSMenuDelegate {
             media.isEnabled = emulator.canQueueInstall
             menu.addItem(.separator())
         }
+        // The Apps menu always lists Resume Transfers (dimmed unless paused); a row's menu only when paused.
+        if isMainMenu || AppInstaller.isPaused(emulator.instance.id) {
+            let resume = menu.addItem(withTitle: "Resume Transfers", action: #selector(resumeInstallsClicked(_:)), keyEquivalent: "")
+            resume.target = self
+            resume.isEnabled = AppInstaller.isPaused(emulator.instance.id)
+            menu.addItem(.separator())
+        }
         appendAppActions(to: menu, row: isMainMenu ? tableView.selectedRow : tableView.clickedRow)
         if isMainMenu, tableView.selectedRow < 0 {
             for title in ["Open", "Uninstall…"] {
@@ -1184,11 +1191,6 @@ extension AppsInspectorViewController: NSMenuDelegate {
     }
 
     private func appendAppActions(to menu: NSMenu, row: Int) {
-        if AppInstaller.isPaused(emulator.instance.id) {
-            menu.addItem(withTitle: "Resume Transfers", action: #selector(resumeInstallsClicked(_:)),
-                         keyEquivalent: "").target = self
-            menu.addItem(.separator())
-        }
         if searching {
             guard catalogResults.indices.contains(row) else { return }
             let app = catalogResults[row]

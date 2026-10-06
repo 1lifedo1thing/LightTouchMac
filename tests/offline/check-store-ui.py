@@ -79,10 +79,11 @@ import SwiftUI
   let defaults = UserDefaults(suiteName: suite)!
   defer { defaults.removePersistentDomain(forName: suite) }
 
-  // iPod: no family choice; the default shows unavailable apps greyed, the toggle hides them.
+  // iPod: the family choice dimmed (never hidden); the default shows unavailable apps greyed, the toggle hides them.
   let podButton = CatalogFilterButton(isIPad: false, defaults: defaults)
   let items = podButton.menu!.items
-  check(items[1...3].allSatisfy(\.isHidden) && !items[4].isHidden && items[4].title == "Show Unavailable Apps", "iPod menu is the toggle alone")
+  check(items[1...4].allSatisfy { !$0.isHidden } && !items[1].isEnabled && !items[2].isEnabled && items[4].isEnabled
+        && items[4].title == "Show Unavailable Apps", "iPod: family choice dimmed, the toggle live")
   check(items[4].state == .on && podButton.apply(ipod).count == 4, "default: every app, unavailable ones greyed")
   var changes = 0
   podButton.onChange = { changes += 1 }
@@ -94,7 +95,7 @@ import SwiftUI
   let padButton = CatalogFilterButton(isIPad: true, defaults: defaults)
   let padItems = padButton.menu!.items
   check(!padButton.filter.showUnavailable, "Show Unavailable persisted")
-  check(!padItems[1].isHidden && !padItems[2].isHidden && padItems[1].state == .on, "iPad offers both families, all apps by default")
+  check(padItems[1].isEnabled && padItems[2].isEnabled && padItems[1].state == .on, "iPad offers both families, all apps by default")
   check(names(padButton.apply(ipad)) == ["Hotel Dash", "Hotel Dash Deluxe", "Diner Dash"], "iPad, all families, runnable")
   try render(strip(padButton), "filter-ipad-all.png")
   padButton.menu!.performActionForItem(at: 2)

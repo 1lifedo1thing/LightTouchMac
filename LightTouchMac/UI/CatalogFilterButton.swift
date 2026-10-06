@@ -1,8 +1,7 @@
 import Cocoa
 
 /// The standard filter pull-down beside Installed/Store, over CatalogFilter.
-/// The family choice appears only on an iPad; an iPod's menu is just
-/// Show Unavailable Apps. Each choice is saved as it's made.
+/// The family choice applies only on an iPad; an iPod's is dimmed. Each choice is saved as it's made.
 final class CatalogFilterButton: NSPopUpButton {
     private(set) var filter: CatalogFilter
     let isIPad: Bool
@@ -26,6 +25,7 @@ final class CatalogFilterButton: NSPopUpButton {
         menu!.addItem(.separator())
         menu!.addItem(withTitle: "Show Unavailable Apps", action: #selector(unavailableToggled(_:)), keyEquivalent: "")
         for item in menu!.items { item.target = self }
+        menu!.autoenablesItems = false
         update()
     }
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -39,7 +39,7 @@ final class CatalogFilterButton: NSPopUpButton {
             .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))
         items[1].state = filter.iPadOnly ? .off : .on
         items[2].state = filter.iPadOnly ? .on : .off
-        for item in items[1...3] { item.isHidden = !isIPad }
+        for item in items[1...2] { item.isEnabled = isIPad }
         items[4].state = filter.showUnavailable ? .on : .off
     }
 

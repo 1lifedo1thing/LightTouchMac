@@ -429,7 +429,6 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
                 if menu.items.last?.isSeparatorItem == false { menu.addItem(.separator()) }
                 continue
             }
-            guard delegate?.library(self, canPerform: action, for: entry) == true else { continue }
             let item = NSMenuItem(title: title, action: #selector(contextAction(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = action
@@ -439,18 +438,19 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         let rename = NSMenuItem(title: "Rename", action: #selector(renameFromMenu(_:)), keyEquivalent: "")
         rename.target = self
         menu.addItem(rename)
-        let row = row(for: entry)
-        if row.canRemoveFromSidebar {
-            let remove = NSMenuItem(title: row.removeTitle, action: #selector(removeFromMenu(_:)), keyEquivalent: "")
-            remove.target = self
-            menu.addItem(remove)
-        }
+        let remove = NSMenuItem(title: row(for: entry).removeTitle, action: #selector(removeFromMenu(_:)), keyEquivalent: "")
+        remove.target = self
+        menu.addItem(remove)
     }
 
     @objc private func removeFromMenu(_ sender: Any?) { removeTargets() }
 
+    /// Every command is listed; what doesn't apply now is dimmed, never hidden.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        [#selector(delete(_:)), #selector(removeFromMenu(_:))].contains(item.action) ? canRemoveTargets : true
+        if item.action == #selector(contextAction(_:)), let action = item.representedObject as? DeviceAction {
+            return targetEntry.map { delegate?.library(self, canPerform: action, for: $0) == true } ?? false
+        }
+        return [#selector(delete(_:)), #selector(removeFromMenu(_:))].contains(item.action) ? canRemoveTargets : true
     }
 
     /// The several-row Delete's title: Delete N Devices… when any is prepared (it asks), else Remove N Devices.

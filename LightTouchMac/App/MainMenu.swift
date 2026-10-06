@@ -184,13 +184,12 @@ enum MainMenuBuilder {
         let motion = motionMenu()
         motion.addItem(item("Special Trick", #selector(MainWindowController.specialTrick(_:))))
         menu.addItem(submenu(motion, title: "Motion"))
-        if profile.hasCompass {
-            let compass = NSMenu(title: "Compass Heading")
-            for (degrees, title) in [(0, "North"), (90, "East"), (180, "South"), (270, "West")] {
-                compass.addItem(item(title, #selector(MainWindowController.setCompassHeading(_:)), tag: degrees))
-            }
-            menu.addItem(submenu(compass, title: "Compass Heading"))
+        // Every device has every item; what its hardware lacks is dimmed (MainWindowController.validateMenuItem).
+        let compass = NSMenu(title: "Compass Heading")
+        for (degrees, title) in [(0, "North"), (90, "East"), (180, "South"), (270, "West")] {
+            compass.addItem(item(title, #selector(MainWindowController.setCompassHeading(_:)), tag: degrees))
         }
+        menu.addItem(submenu(compass, title: "Compass Heading"))
         let input = NSMenu(title: "Input")
         input.addItem(item("Volume Up", #selector(MainWindowController.deviceVolumeUp(_:)), String(UnicodeScalar(NSUpArrowFunctionKey)!), [.option, .command]))
         input.addItem(item("Volume Down", #selector(MainWindowController.deviceVolumeDown(_:)), String(UnicodeScalar(NSDownArrowFunctionKey)!), [.option, .command]))
@@ -202,7 +201,7 @@ enum MainMenuBuilder {
         network.addItem(.separator())
         network.addItem(item("Proxy…", #selector(MainWindowController.configureWebProxy(_:))))
         menu.addItem(submenu(network, title: "Network"))
-        if profile.hasCellular { menu.addItem(item("Carrier…", #selector(MainWindowController.showCarrier(_:)))) }
+        menu.addItem(item("Carrier…", #selector(MainWindowController.showCarrier(_:))))
         let battery = NSMenu(title: "Battery")
         for level in [100, 80, 50, 20, 5] {
             battery.addItem(item("\(level)%", #selector(MainWindowController.setBatteryLevel(_:)), tag: level))
