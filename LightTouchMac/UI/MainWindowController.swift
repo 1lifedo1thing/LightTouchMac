@@ -179,6 +179,11 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         capture.profile = { [weak self] in self?.currentProfile ?? profile }
         capture.onChange = { [weak self] in self?.validateCaptureToolbar() }
         capture.terminate = { AppDelegate.requestTermination() }
+        CaptureNotifications.shared.onShowDevice = { [weak self] id in
+            guard let self, let entry = host.catalog.entry(id: id) else { return }
+            showWindow(nil)
+            library.select(entry)
+        }
         installFileStatus()
         modifierMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             self?.syncRotationControls(optionPressed: event.modifierFlags.contains(.option))
@@ -214,10 +219,14 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         if canPerform(.start, for: entry) { start(entry) }
     }
 
-    /// A device finished preparing: show it and start it, as if the user had clicked Start.
+    /// A device finished preparing. The one on screen starts, as if the user had clicked Start; one in the
+    /// background never takes over the window: a notification says it's ready (clicking it selects it).
     @objc private func preparationDidPublish(_ notification: Notification) {
         guard let entry = host.catalog.entries.first(where: { $0.id == notification.object as? String }) else { return }
-        library.select(entry)
+        guard entry.id == selectedEntry?.id else {
+            Task { await CaptureNotifications.shared.notifyReady(name(entry), entryID: entry.id) }
+            return
+        }
         if canPerform(.start, for: entry) { start(entry) }
     }
 

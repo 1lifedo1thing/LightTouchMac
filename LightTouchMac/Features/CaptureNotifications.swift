@@ -7,12 +7,15 @@ final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate {
     static let shared = CaptureNotifications()
     enum RecordingAction { case stopAndSave, stopAndDelete }
     var onRecordingAction: ((UUID, RecordingAction) -> Void)?
+    /// A "ready to use" notification was clicked: its catalog entry id.
+    var onShowDevice: ((String) -> Void)?
 
     private let center: UNUserNotificationCenter
     private var reminderRevision = 0
     private var reminderIdentifier: String?
     private nonisolated static let recoveryCategory = "CAPTURE_RECORDING_RECOVERED"
     private nonisolated static let reminderCategory = "CAPTURE_STILL_RECORDING"
+    private nonisolated static let readyCategory = "DEVICE_READY"
     private nonisolated static let revealAction = "SHOW_CAPTURE_IN_FINDER"
     private nonisolated static let stopSaveAction = "STOP_SAVE_CAPTURE"
     private nonisolated static let stopDeleteAction = "STOP_DELETE_CAPTURE"
@@ -48,6 +51,25 @@ final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate {
             try await center.add(request)
             return true
         } catch { return false }
+    }
+
+    /// A device finished preparing while another was selected. Asks for permission the first time it has news.
+    func notifyReady(_ name: String, entryID: String) async {
+        var settings = await center.notificationSettings()
+        if settings.authorizationStatus == .notDetermined {
+            _ = await requestAuthorization()
+            settings = await center.notificationSettings()
+        }
+        guard Self.canPresent(settings) else { return }
+        try? await center.add(UNNotificationRequest(identifier: "device-ready-\(entryID)", content: Self.readyContent(name, entryID: entryID), trigger: nil))
+    }
+
+    static func readyContent(_ name: String, entryID: String) -> UNNotificationContent {
+        let content = UNMutableNotificationContent()
+        content.title = "\(name) is ready to use"
+        content.categoryIdentifier = readyCategory
+        content.userInfo = ["entry": entryID]
+        return content
     }
 
     func scheduleReminder(after seconds: TimeInterval, recordingID: UUID, profile: DeviceProfile) async {
@@ -105,7 +127,7 @@ final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                             willPresent notification: UNNotification,
                                             withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        completionHandler(notification.request.content.categoryIdentifier == Self.recoveryCategory ? [.banner, .list] : [])
+        completionHandler([Self.recoveryCategory, Self.readyCategory].contains(notification.request.content.categoryIdentifier) ? [.banner, .list] : [])
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
@@ -116,12 +138,16 @@ final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate {
            action == Self.revealAction || action == UNNotificationDefaultActionIdentifier,
            let bookmark = content.userInfo["recordingBookmark"] as? Data {
             await revealRecoveredRecording(bookmark)
+        } else if content.categoryIdentifier == Self.readyCategory, let id = content.userInfo["entry"] as? String {
+            await showDevice(id)
         } else if content.categoryIdentifier == Self.reminderCategory,
                   let rawID = content.userInfo["recordingID"] as? String, let id = UUID(uuidString: rawID) {
             if action == Self.stopSaveAction { await recordingAction(id, action: .stopAndSave) }
             else if action == Self.stopDeleteAction { await recordingAction(id, action: .stopAndDelete) }
         }
     }
+
+    private func showDevice(_ id: String) { onShowDevice?(id) }
 
     private func recordingAction(_ id: UUID, action: RecordingAction) { onRecordingAction?(id, action) }
 

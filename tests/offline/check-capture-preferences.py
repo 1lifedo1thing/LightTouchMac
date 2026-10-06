@@ -142,6 +142,8 @@ func render(_ view: NSView, _ name: String) throws {
   let id = UUID()
   let notification = CaptureNotifications.reminderContent(recordingID: id, profile: .iPodTouch2G)
   precondition(notification.userInfo["recordingID"] as? String == id.uuidString)
+  let ready = CaptureNotifications.readyContent("iPod touch (2nd generation) iOS 3.1.3", entryID: "n72ap-7E18")
+  precondition(ready.title == "iPod touch (2nd generation) iOS 3.1.3 is ready to use" && ready.userInfo["entry"] as? String == "n72ap-7E18", ready.title)
   let content = CaptureNotifications.recoveryContent(filename: "Recovered.mov", bookmark: Data([1,2,3]))
   precondition(content.body == "Recovered.mov" && content.userInfo["recordingBookmark"] as? Data == Data([1,2,3]))
   try FileManager.default.removeItem(at: app)
