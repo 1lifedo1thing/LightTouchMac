@@ -103,6 +103,9 @@ nonisolated struct FirmwareCatalog: Codable, Sendable {
 
         var profile: DeviceProfile? { DeviceProfile(boardID: board) }
 
+        /// iPhone OS 1.x has no installation service (it came with 2.0): no apps to manage.
+        var managesApps: Bool { (Int(version.prefix { $0 != "." }) ?? 2) >= 2 }
+
         /// The sidebar's badge, always numbered: "beta 1", "beta 3", "GM 1", "GM 2"; nil for a release.
         var prereleaseBadge: String? {
             prerelease.map { "\($0 == .beta ? "beta" : "GM") \(prereleaseNumber ?? 1)" }

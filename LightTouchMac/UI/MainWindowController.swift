@@ -262,6 +262,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
             session = next
             attachWorkspace()
         }
+        noInspector.managesApps = entry?.managesApps ?? true
         let count = library.selectedEntries.count
         multipleSelected.text = "\(count) Devices"
         if session == nil { showDetail(entry != nil ? placeholder : count > 1 ? multipleSelected : nothingSelected) }
@@ -1494,7 +1495,10 @@ private final class ContainerViewController: NSViewController {
 private final class PaneLabelViewController: NSViewController {
     private let label = NSTextField(labelWithString: "")
     var text = "" { didSet { label.stringValue = text } }
-    var shortName = "device" { didSet { text = "Start the \(shortName) to manage apps." } }
+    var shortName = "device" { didSet { update() } }
+    /// False for a device with no apps to manage (Entry.managesApps): then it says nothing.
+    var managesApps = true { didSet { update() } }
+    private func update() { text = managesApps ? "Start the \(shortName) to manage apps." : "" }
 
     override func loadView() {
         label.stringValue = text

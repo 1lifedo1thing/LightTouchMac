@@ -21,6 +21,11 @@ source = r'''import Foundation
    precondition(actual==expected,"flat wire field was lost")
   }
   precondition(gui.profile == .iPad1 && gui.prereleaseBadge == "beta 3" && gui.status == .experimental)
+  // Apps to manage from iPhone OS 2.0 on (installation_proxy); none on 1.x.
+  precondition(gui.managesApps)
+  for (version, manages) in [("1.0", false), ("1.1.5", false), ("2.0", true), ("10.3", true)] {
+   var other=gui;other.version=version;precondition(other.managesApps==manages,version)
+  }
   gui.recipe?.boot="kboot";gui.source.resource="other.ipsw";gui.status = .available
   let changed=try decoder.decode(FirmwareWire.Entry.self,from:encoder.encode(gui))
   precondition(changed.recipe?.boot=="kboot" && changed.source.resource=="other.ipsw" && changed.status=="available")
