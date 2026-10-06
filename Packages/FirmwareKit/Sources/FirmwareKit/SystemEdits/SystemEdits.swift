@@ -289,10 +289,15 @@ public enum SystemEdits {
             try seedPlist(sc.appendingPathComponent("preferences.plist"), usbNetPrefs)
         }
         if o.webProxy { try seedPlist(sc.appendingPathComponent("preferences.plist"), wifiProxyPrefs) }
-        if o.dated {   // Settings' "Set Automatically", in timed's own domain (timed runs as mobile)
+        if o.dated {   // timed's own domain (it runs as mobile)
             try seedPlist(skeleton.appendingPathComponent("mobile/Library/Preferences/com.apple.timed.plist")) { d in
-                d["TMAutomaticTimeEnabled"] = false       // 6.x's timed reads this key
-                d["TMAutomaticTimeOnlyEnabled"] = false   // 7.x's
+                // Settings' "Set Automatically" (6.x's key; 7.x's). timed honours it only once the clock has been set
+                // (its cache's TMSystemTimeSet): a fresh unit takes NTP whatever the switch says.
+                d["TMAutomaticTimeEnabled"] = false
+                d["TMAutomaticTimeOnlyEnabled"] = false
+                // What timed checks before every system-time change, set or not (6.0b1 CoreTime-77: the switch only
+                // when TMSystemTimeSet, then !DisableAutomaticTime). Without it a fresh unit's timed took 2026 from NTP.
+                d["DisableAutomaticTime"] = true
             }
         }
         if let ark = result.activation?.dataArk {
