@@ -50,15 +50,17 @@ import Cocoa
         // Keyed by the IPSW's sha1 (a task's name); what is downloaded and weighed is the archive for a "rar" source.
         let bytes = Dictionary(catalog.entries.compactMap { e in e.source.sha1.map { ($0, e.source.downloadBytes ?? 0) } },
                                uniquingKeysWith: { a, _ in a })
-        let archives = Dictionary(catalog.entries.filter(\.source.isArchive).compactMap { e in e.source.sha1.map { ($0, e) } },
-                                  uniquingKeysWith: { a, _ in a })
+        let entries = Dictionary(catalog.entries.compactMap { e in e.source.sha1.map { ($0, e) } }, uniquingKeysWith: { a, _ in a })
         self.bytes = bytes
         let urls = Dictionary(catalog.entries.compactMap { e in e.source.sha1.map { ($0, e.source.urls) } }, uniquingKeysWith: { a, _ in a })
         // Made at launch so a download the last launch started reports here.
         // ponytail: a task resumed at launch from a mirror shows no mirror line until the next fallback.
         let preparer = Self.preparer
-        let install: @Sendable (String, URL) throws -> URL = { sha1, file in
-            guard let entry = archives[sha1] else { return try store.install(file, sha1: sha1, bytes: bytes[sha1]) }
+        // The source or mirror the file came from decides how it is checked: a "rar" one is unwrapped.
+        let install: @Sendable (String, URL, URL?) throws -> URL = { sha1, file, from in
+            guard var entry = entries[sha1] else { return try store.install(file, sha1: sha1, bytes: bytes[sha1]) }
+            entry.source = entry.source.alternative(for: from)
+            guard entry.source.isArchive else { return try store.install(file, sha1: sha1, bytes: entry.source.bytes) }
             return try store.installArchive(file, entry: entry, preparer: preparer)
         }
         downloads = FirmwareDownloads(store: store, configuration: configuration, expectedBytes: { bytes[$0] },

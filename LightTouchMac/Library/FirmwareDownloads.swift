@@ -29,7 +29,7 @@ nonisolated final class FirmwareDownloads: NSObject, URLSessionDownloadDelegate,
     let store: IPSWStore
     private let expectedBytes: @Sendable (String) -> Int64?
     private let sources: @Sendable (String) -> [URL]
-    private let install: (@Sendable (String, URL) throws -> URL)?
+    private let install: (@Sendable (String, URL, URL?) throws -> URL)?
     private let onEvent: @Sendable (String, Event) -> Void
     private let lock = NSLock()
     private var cancelling: Set<String> = []
@@ -37,11 +37,12 @@ nonisolated final class FirmwareDownloads: NSObject, URLSessionDownloadDelegate,
 
     /// `expectedBytes` gives the catalog's size for a sha1, also for a task
     /// a previous launch started; `sources` its URLs in the order to try them. `install` turns a finished
-    /// download into the IPSW when it isn't one itself (a "rar" source); nil for the rest: size and sha1 checked.
+    /// download (sha1, file, the URL it came from) into the IPSW: a "rar" source or mirror is unwrapped; nil: size and
+    /// sha1 checked.
     /// Events arrive on a private serial queue.
     init(store: IPSWStore, configuration: URLSessionConfiguration = .background(withIdentifier: identifier),
          expectedBytes: @escaping @Sendable (String) -> Int64?, sources: @escaping @Sendable (String) -> [URL] = { _ in [] },
-         install: (@Sendable (String, URL) throws -> URL)? = nil,
+         install: (@Sendable (String, URL, URL?) throws -> URL)? = nil,
          onEvent: @escaping @Sendable (String, Event) -> Void) {
         self.store = store
         self.expectedBytes = expectedBytes
@@ -138,7 +139,8 @@ nonisolated final class FirmwareDownloads: NSObject, URLSessionDownloadDelegate,
             try FileManager.default.moveItem(at: location, to: partial)
             // ponytail: an archive's extraction (about 30 s for 900 MB) holds the delegate queue; a job of its own if
             // several archive downloads ever finish together.
-            onEvent(sha1, .finished(try install.map { try $0(sha1, partial) } ?? store.install(partial, sha1: sha1, bytes: expectedBytes(sha1))))
+            onEvent(sha1, .finished(try install.map { try $0(sha1, partial, downloadTask.originalRequest?.url) }
+                                    ?? store.install(partial, sha1: sha1, bytes: expectedBytes(sha1))))
         } catch {
             try? FileManager.default.removeItem(at: partial)
             // An HTTP error or other bytes than the catalog's: the next source, if any.
