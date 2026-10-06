@@ -69,7 +69,7 @@ enum MainMenuBuilder {
         menu.addItem(item("Open Screenshot in Preview", #selector(MainWindowController.openScreenshot(_:))))
         menu.addItem(.separator())
         menu.addItem(item("Start Recording", #selector(MainWindowController.toggleRecording(_:)), "r"))
-        menu.addItem(item("Discard Recording…", #selector(MainWindowController.discardRecording(_:)), "."))
+        menu.addItem(item("Discard Recording…", #selector(MainWindowController.discardRecording(_:)), ".", [.option, .command]))
         menu.addItem(.separator())
         menu.addItem(item("Capture Screen Only", #selector(MainWindowController.toggleCaptureScreenOnly(_:))))
         menu.addItem(.separator())
@@ -217,7 +217,7 @@ enum MainMenuBuilder {
         menu.addItem(item("Pause", #selector(MainWindowController.toggleDevicePause(_:))))
         menu.addItem(.separator())
         menu.addItem(item("Restart…", #selector(MainWindowController.deviceReset(_:))))
-        menu.addItem(item("Power Off", #selector(MainWindowController.devicePowerOff(_:))))
+        menu.addItem(item("Power Off…", #selector(MainWindowController.devicePowerOff(_:)), "."))
         // Kept at the bottom, away from routine input.
         menu.addItem(.separator())
         menu.addItem(item("Erase All Content and Settings…", #selector(MainWindowController.eraseDevice(_:))))

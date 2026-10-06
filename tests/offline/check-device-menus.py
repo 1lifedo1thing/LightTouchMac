@@ -138,7 +138,7 @@ Device/-
 Device/Pause
 Device/-
 Device/Restart…
-Device/Power Off
+Device/Power Off…  ⌘.
 Device/-
 Device/Erase All Content and Settings…
 Apps/Install App…  ⇧⌘i
@@ -154,7 +154,7 @@ Capture/Copy Screenshot
 Capture/Open Screenshot in Preview
 Capture/-
 Capture/Start Recording  ⌘r
-Capture/Discard Recording…  ⌘.
+Capture/Discard Recording…  ⌥⌘.
 Capture/-
 Capture/Capture Screen Only
 Capture/-
@@ -301,7 +301,7 @@ struct Instance { let id=UUID() }
   precondition(capture.items.allSatisfy{ $0.submenu==nil },"Capture stays flat")
   precondition(capture.items.filter{ !$0.isSeparatorItem }.map(\.title)==["Save Screenshot","Save Screenshot As…","Copy Screenshot","Open Screenshot in Preview","Start Recording","Discard Recording…","Capture Screen Only","Show Unfinished Recordings"])
   precondition(find("Open Screenshot in Preview",in:capture)?.keyEquivalent.isEmpty==true,"⌘O is Open’s, not a new screenshot’s")
-  for (name,key,modifiers) in [("Save Screenshot As…","s",NSEvent.ModifierFlags([.shift,.command])),("Start Recording","r",[.command]),("Discard Recording…",".",[.command])] {
+  for (name,key,modifiers) in [("Save Screenshot As…","s",NSEvent.ModifierFlags([.shift,.command])),("Start Recording","r",[.command]),("Discard Recording…",".",[.option,.command])] {
    precondition(find(name,in:capture)?.keyEquivalent==key && find(name,in:capture)?.keyEquivalentModifierMask==modifiers)
   }
   precondition(find("Copy Screenshot",in:capture)?.keyEquivalent.isEmpty==true)
@@ -334,7 +334,7 @@ struct Instance { let id=UUID() }
     precondition(submenu.items.allSatisfy{$0.submenu==nil},"Avoid nested submenus")
    }
   }
-  for name in ["Volume Up","Volume Down","Power Off","Rotate Automatically","Connect to the Internet"] {
+  for name in ["Volume Up","Volume Down","Power Off…","Rotate Automatically","Connect to the Internet"] {
    precondition(find(name,in:device) != nil,name)
   }
   for name in ["Volume Up","Volume Down"] {

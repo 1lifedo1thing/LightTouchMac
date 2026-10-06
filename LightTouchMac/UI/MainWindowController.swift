@@ -978,7 +978,19 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
             emulator.reset()
         }
     }
-    @objc func devicePowerOff(_ sender: Any?) { emulator.map(powerOff) }
+    /// Power Off… (⌘.): Stop's hard halt, after asking.
+    @objc func devicePowerOff(_ sender: Any?) {
+        guard let emulator, let window else { return }
+        let alert = NSAlert()
+        alert.messageText = "Power off this \(emulator.profile.shortName)?"
+        alert.informativeText = "It stops at once, as if its battery were removed. Anything an app hasn’t saved is lost."
+        alert.addButton(withTitle: "Power Off")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { [weak self, weak emulator] response in
+            guard response == .alertFirstButtonReturn, let self, let emulator else { return }
+            powerOff(emulator)
+        }
+    }
 
     private func powerOff(_ emulator: EmulatorController) {
         emulator.powerOff { [weak emulator] confirmed in

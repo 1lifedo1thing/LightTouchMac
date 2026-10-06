@@ -2,7 +2,7 @@
 The sidebar lists your devices. File → Add Device (⌘N) chooses iPod and iPad versions to add. Select one and choose Download and Prepare to get its IPSW from Apple, or Import IPSW to use one you have; you can also drop an IPSW onto the window. When it’s ready, Start runs it. File also has Show in Finder and Delete Device. Light Touch → Settings → Storage shows what each device and IPSW takes on disk.
 
 # Using the device
-Click and drag on the screen as you would with a finger. Pinch on a trackpad, or Option-drag on the screen, to use two fingers. Home Screen is ⇧⌘H; Lock is ⌘L. Device → Power Off shuts down the [Device] and leaves Light Touch open. Choose Power On to start it again.
+Click and drag on the screen as you would with a finger. Pinch on a trackpad, or Option-drag on the screen, to use two fingers. Home Screen is ⇧⌘H; Lock is ⌘L. Device → Power Off (⌘.) asks, then stops the [Device] at once, and leaves Light Touch open. Choose Power On to start it again.
 
 The toolbar provides Home Screen, Lock, Rotate, Zoom, and capture actions. View → Customize Toolbar lets you rearrange controls or add Files, Motion, and Capture Options. View also shows and hides the sidebar (⌃⌘S), the inspector (⌥⌘I), and the console (⇧⌘Y).
 
@@ -30,7 +30,7 @@ Capture → Save Screenshot (⌘S) saves immediately. Save Screenshot As (⇧⌘
 
 Captures include the device, its motion, and the gradient. Turn on Capture → Capture Screen Only to capture just the screen. View → Show/Hide Finger Dots controls touch indicators on the device and in captures.
 
-Recordings include device audio. Start/Stop Recording is ⌘R; Discard Recording is ⌘. (period). The toolbar shows elapsed time while recording and progress while saving. If saving fails, choose another location. On launch, Light Touch recovers playable unfinished recordings; Capture → Show Unfinished Recordings opens retained files. Hiding or minimizing the app stops recording.
+Recordings include device audio. Start/Stop Recording is ⌘R; Discard Recording is ⌥⌘. (period). The toolbar shows elapsed time while recording and progress while saving. If saving fails, choose another location. On launch, Light Touch recovers playable unfinished recordings; Capture → Show Unfinished Recordings opens retained files. Hiding or minimizing the app stops recording.
 
 Captures save directly to the Desktop by default. Light Touch → Settings → Capture changes the save folder, screenshot app, automatic copying, Finder reveal, and sounds. You can also choose a Space shortcut, recording reminders, and recovery notifications. Space goes to the device unless you choose a capture action. Drag a saved capture’s thumbnail into another app or the Finder. Click its arrow to reveal the file.
 
