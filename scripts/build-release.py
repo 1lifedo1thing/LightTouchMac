@@ -598,6 +598,11 @@ def write_build_record(args, sources, native_root, qemu_build, guest, blob):
     patcher = json.loads((native_root / PATCHER).with_name('build.json').read_text())
     package = json.loads((guest.parent / 'manifest.json').read_text())['guest_package']
     pinned = pin_status(args)
+    # The usbmuxd that shipped is the one in `sources` (staged: the pinned commit the native stage built), not
+    # whatever the loose --usbmuxd-source checkout happens to be at.
+    built = sources['usbmuxd']
+    pinned['usbmuxd'].update(actual=built['revision'], dirty=built['dirty'],
+                             matches=built['revision'] == pinned['usbmuxd']['pinned'] and not built['dirty'])
     # What About Light Touch lists: each bundled component and its version (commits shortened).
     components = {'qemu-ios': (sources['qemu']['revision'] or '')[:10], 'usbmuxd': (sources['usbmuxd']['revision'] or '')[:10],
                   'guest tools': f"{package['version']} (serial {package['serial']})",

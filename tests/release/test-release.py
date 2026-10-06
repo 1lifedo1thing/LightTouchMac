@@ -236,6 +236,14 @@ class ReleaseTests(unittest.TestCase):
         self.assertNotIn(str(self.root), text)
         self.assertEqual(json.loads(text)['native_artifacts']['iboot32patcher'], {'commit': 'c' * 40, 'sha256': 'd' * 64})
         self.assertEqual(set(json.loads(text)['pin']['qemu-ios']), {'pinned', 'actual', 'dirty', 'matches'})
+        # usbmuxd's actual is the revision built (sources), never the loose checkout's HEAD.
+        self.assertEqual(json.loads(text)['pin']['usbmuxd']['actual'], None)
+        pinned = json.loads(text)['pin']['usbmuxd']['pinned']
+        sources['usbmuxd'].update(revision=pinned, dirty=False)
+        built = json.loads(release.write_build_record(self.args, sources, self.native, self.native / 'qemu-build',
+                                                      self.guest, blob).read_text())['pin']['usbmuxd']
+        self.assertEqual((built['actual'], built['matches']), (pinned, True))
+        sources['usbmuxd'].update(revision=None, dirty=True)
         # About Light Touch's list: the guest package and each pinned dependency with its version.
         components = json.loads(text)['components']
         self.assertEqual(components['guest tools'], f'1.1.5 (serial {release.GUEST_PACKAGE_MIN_SERIAL})')
