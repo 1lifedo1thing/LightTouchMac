@@ -32,10 +32,19 @@ QEMU="$(cd "$QEMU" && pwd)"
 USB="$(cd "$USB" && pwd)"
 mkdir -p "$ROOT/src" "$ROOT/build" "$ROOT/prefix"
 ROOT="$(cd "$ROOT" && pwd)"
-python3 "$SRC/scripts/dependency-sources.py" stage-git --source "$USB" \
+# usbmuxd from its pinned commit (build-support/sources.json) through a temporary worktree, as build-release.py's
+# staged native stage does, never the checkout's working tree (10-06: a one-step build shipped the checkout's
+# 41631a7 while the pin was e19fac2, and only recorded it).
+USB_COMMIT="$(python3 "$SRC/scripts/sources.py" commit usbmuxd)"
+USB_TREE="$ROOT/usbmuxd-worktree"
+git -C "$USB" worktree add --detach "$USB_TREE" "$USB_COMMIT"
+python3 "$SRC/scripts/dependency-sources.py" stage-git --source "$USB_TREE" \
     --destination "$ROOT/build/usbmuxd" --record "$ROOT/usbmuxd-source.json"
 # Autotools requires a source version even though the staged tree omits .git.
-git -C "$USB" describe --tags --always --dirty > "$ROOT/build/usbmuxd/.tarball-version"
+git -C "$USB_TREE" describe --tags --always --dirty > "$ROOT/build/usbmuxd/.tarball-version"
+git -C "$USB" worktree remove --force "$USB_TREE"
+STAGED="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["commit"])' "$ROOT/usbmuxd-source.json")"
+[ "$STAGED" = "$USB_COMMIT" ] || { echo "usbmuxd staged at $STAGED, pinned $USB_COMMIT" >&2; exit 1; }
 if [ -n "${LTM_STATIC_DEPS:-}" ]; then
     STATIC="$(cd "$LTM_STATIC_DEPS" && pwd)"
 else
@@ -209,6 +218,7 @@ record = {
     'deployment_target': '14.0', 'architecture': sys.argv[6],
     'sources': json.loads((root / 'src/native-sources.json').read_text()),
     'usbmuxd': json.loads((root / 'usbmuxd-source.json').read_text()),
+    'usbmuxd_commit': json.loads((root / 'usbmuxd-source.json').read_text())['commit'],
     'iboot32patcher': json.loads((root / 'build/iBoot32Patcher/build.json').read_text()),
     'qemu_commit': git('rev-parse', 'HEAD').decode().strip(),
     'qemu_tracked_diff_sha256': hashlib.sha256(git('diff', '--binary', 'HEAD')).hexdigest(),

@@ -45,6 +45,8 @@ class ReleaseTests(unittest.TestCase):
             self.put(self.sdk / name)
         self.addCleanup(mock.patch.stopall)
         mock.patch.object(release, 'ROOT', self.product).start()
+        # the fixture usbmuxd checkout's HEAD stands in for the pin
+        mock.patch.object(release, 'USBMUXD_COMMIT', self.git(self.usb, 'rev-parse', 'HEAD').decode().strip()).start()
         mock.patch.object(release, 'SCRIPTS', self.product / 'scripts').start()
         mock.patch.object(release, 'CATALOG', self.product / 'LightTouchMac/Resources/firmware-catalog.json').start()
         self.argv = ['--output', str(self.root / 'output'), '--qemu-source', str(self.qemu),
@@ -367,6 +369,14 @@ class ReleaseTests(unittest.TestCase):
         self.put(self.usb / 'configure.ac', 'new configure source')
         with self.assertRaisesRegex(ValueError, 'usbmuxd source has changed'):
             release.validate_native(self.args, self.native)
+
+    def test_off_pin_usbmuxd_is_rejected(self):
+        # 10-06: a one-step build staged the usbmuxd checkout at 41631a7 while the pin was e19fac2 and only recorded it
+        self.native_fixture()
+        release.validate_native(self.args, self.native)
+        with mock.patch.object(release, 'USBMUXD_COMMIT', 'e' * 40):
+            with self.assertRaisesRegex(ValueError, 'not the pinned'):
+                release.validate_native(self.args, self.native)
 
     def test_missing_iboot32patcher_is_rejected(self):
         self.native_fixture()

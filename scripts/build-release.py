@@ -272,6 +272,10 @@ def validate_native(args, root, deps_only=False, arch='arm64'):
         raise ValueError('Native build was configured for a different QEMU checkout')
     if Path(native.get('usbmuxd_source', '')).resolve() != args.usbmuxd_source:
         raise ValueError('Native build used a different usbmuxd checkout')
+    # Every native root's usbmuxd must be the pinned commit, signed or ad-hoc: the app ships it with the emulator.
+    built = native.get('usbmuxd', {}).get('commit')
+    if built != USBMUXD_COMMIT or native.get('usbmuxd_commit', USBMUXD_COMMIT) != USBMUXD_COMMIT:
+        raise ValueError(f'Native build has usbmuxd {built}, not the pinned {USBMUXD_COMMIT}; rebuild native')
     static = Path(native.get('static_deps', '')).resolve()
     if args.static_deps and args.static_deps != static:
         raise ValueError('--static-deps differs from the prefix configured into the native build')
