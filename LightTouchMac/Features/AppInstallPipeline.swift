@@ -14,11 +14,10 @@ struct AppInstallPipeline: Sendable {
     let agent: GuestAgent
     /// The device's iOS version (its catalog entry), which MinimumOSVersion is checked against.
     var deviceOS = "3.1.3"
-    /// Whether this boot's guest tools have reported in (the guest-package report). On iOS 7 they report
-    /// 1-3 minutes after lockdown answers, and until then creating a file on the data volume can stall:
-    /// an AFC upload in that window went unanswered for 60 s and failed. nil: never wait.
-    var guestReady: (@Sendable () async -> Bool)? = nil
-    var guestReadyTimeout: Duration = .seconds(300)
+    /// iOS 7 only: how long the first AFC request may keep timing out before the install gives up. 7.x
+    /// starts afcd in launchd's throttled band, and early in a boot it can sit unscheduled behind ~100
+    /// runnable daemon threads for minutes (qemu-ios docs/n90 debt 6); a request sent then goes unanswered.
+    var afcReadyTimeout: Duration = .seconds(300)
 
     /// Install a decrypted .ipa: AFC stage + instproxy, in-process, no shell.
     /// Every supported image carries its GL engine shim. `progress` gets
@@ -90,9 +89,8 @@ struct AppInstallPipeline: Sendable {
             defer { if let repaired { try? FileManager.default.removeItem(at: repaired) } }
             let ipa = repaired ?? ipa
             try Task.checkCancellation()
-            try await waitForGuestTools(progress)
             let bytes = (try? FileManager.default.attributesOfItem(atPath: ipa.path)[.size] as? Int) ?? 0
-            let free = try await services.freeSpaceBytes()
+            let free = try await freeSpaceOnceAFCAnswers(progress)
             let needed = Int64(bytes) * 2 + (16 << 20)
             guard free >= needed else { throw DeviceError.diskFull(free: free, needed: needed) }
 
@@ -123,16 +121,21 @@ struct AppInstallPipeline: Sendable {
         }
     }
 
-    /// iOS 7 only: hold the first AFC request until the guest tools report, bounded.
-    private func waitForGuestTools(_ progress: @Sendable (String) -> Void) async throws {
-        guard let guestReady, (Int(deviceOS.prefix { $0.isNumber }) ?? 0) >= 7, !(await guestReady()) else { return }
-        progress("Waiting for iOS to finish starting…")
-        let deadline = ContinuousClock.now + guestReadyTimeout
-        while !(await guestReady()) {
-            guard ContinuousClock.now < deadline else {
-                throw DeviceError.failed("iOS didn’t finish starting in time, so the app wasn’t sent. Try again in a minute.")
+    /// The free-space query is the install's first AFC request, so it doubles as the readiness probe: on
+    /// iOS 7 a timeout is retried (each try has Timeouts.query) until afcd answers, at most afcReadyTimeout,
+    /// before anything is sent. Other errors, and every error on other versions, fail as before.
+    private func freeSpaceOnceAFCAnswers(_ progress: @Sendable (String) -> Void) async throws -> Int64 {
+        guard (Int(deviceOS.prefix { $0.isNumber }) ?? 0) >= 7 else { return try await services.freeSpaceBytes() }
+        let deadline = ContinuousClock.now + afcReadyTimeout
+        while true {
+            do { return try await services.freeSpaceBytes() }
+            catch DeviceError.timedOut {
+                guard ContinuousClock.now < deadline else {
+                    throw DeviceError.failed("The device’s file service didn’t answer while iOS was starting, so the app wasn’t sent. Try again in a minute.")
+                }
+                progress("Waiting for iOS to finish starting…")
+                try await Task.sleep(for: .seconds(1))
             }
-            try await Task.sleep(for: .seconds(1))
         }
     }
 
