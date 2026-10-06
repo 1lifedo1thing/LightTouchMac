@@ -172,7 +172,8 @@ struct GuestConfig: Decodable {
 
         // Time zone through the lockdown-tz child process (never an in-process lockdown write).
         let zone = await step("time zone") {
-            try await DeviceServices.setTimeZone(guest.timeZone, tool: guest.lockdownTZ, socket: device.mux.clientSocket)
+            try await DeviceServices.setTimeZone(guest.timeZone, keepClock: device.ipod?.machine["rtc-epoch"] != nil,   // a dated device, as the app
+                                                 tool: guest.lockdownTZ, socket: device.mux.clientSocket)
         }
         emit("timezone", ["device": name, "zone": zone])
 

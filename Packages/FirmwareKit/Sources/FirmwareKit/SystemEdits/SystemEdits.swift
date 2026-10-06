@@ -42,6 +42,10 @@ public enum SystemEdits {
         /// Bake the guest helpers, their jobs and the guest-package seed. Off for firmware whose dyld predates
         /// LC_DYLD_INFO (3.0, as the iPod 2G's 7A341): such a device gets no it_seal either, so no seal boot.
         public var guestTools = true
+        /// A dated build (recipe rtc_epoch: a developer beta pinned inside its release window). Date & Time's
+        /// "Set Automatically" starts off, so timed's NTP over Wi-Fi cannot move the clock past the expiry, and
+        /// the data ark says unbricked (see bake).
+        public var dated = false
         public init() {}
         public init(recipe: FirmwareEntry.Recipe) {
             let o = recipe.options
@@ -50,6 +54,7 @@ public enum SystemEdits {
             glTest = o["gl_test"] ?? false; dataJournal = o["data_journal"] ?? true
             bluetooth = o["bluetooth"] ?? false
             guestTools = o["guest_tools"] ?? true
+            dated = recipe.rtcEpoch != nil
         }
     }
 
@@ -284,8 +289,20 @@ public enum SystemEdits {
             try seedPlist(sc.appendingPathComponent("preferences.plist"), usbNetPrefs)
         }
         if o.webProxy { try seedPlist(sc.appendingPathComponent("preferences.plist"), wifiProxyPrefs) }
+        if o.dated {   // Settings' "Set Automatically", in timed's own domain (timed runs as mobile)
+            try seedPlist(skeleton.appendingPathComponent("mobile/Library/Preferences/com.apple.timed.plist")) { d in
+                d["TMAutomaticTimeEnabled"] = false       // 6.x's timed reads this key
+                d["TMAutomaticTimeOnlyEnabled"] = false   // 7.x's
+            }
+        }
         if let ark = result.activation?.dataArk {
-            try seedPlist(skeleton.appendingPathComponent("root/Library/Lockdown/data_ark.plist")) { d in d.addEntries(from: ark) }
+            // 7.0 beta 1's lockdownd turns the brick state on for an ark without one and lifts it only for a valid
+            // activation record, which this route has none of (Setup then insists on activating online). A dated
+            // build says unbricked, as lockdownd's own "factoryactivation unbricks by default".
+            try seedPlist(skeleton.appendingPathComponent("root/Library/Lockdown/data_ark.plist")) { d in
+                d.addEntries(from: ark)
+                if o.dated { d["-BrickState"] = false }
+            }
         }
         try? fm.removeItem(at: data)
         try await VolumeMount.makeHFS(data, size: dataBytes, journaled: o.dataJournal)

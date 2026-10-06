@@ -124,7 +124,8 @@ struct SingleConfig: Decodable {
             let guest = agent || (a4 && offered)
                 ? GuestServices(agent: GuestAgent(link: d.process.link, cache: GuestAgentCache()), packaged: offered) : nil
             for _ in 0..<12 where zone == nil {   // services come up after lockdown answers; the app retries every 5 s
-                do { zone = try await DeviceServices.setTimeZone(TimeZone.current.identifier, tool: tool, socket: d.mux.clientSocket, guest: guest) }
+                do { zone = try await DeviceServices.setTimeZone(TimeZone.current.identifier, keepClock: d.ipod?.machine["rtc-epoch"] != nil,
+                                                                tool: tool, socket: d.mux.clientSocket, guest: guest) }
                 catch DeviceToolsError.zoneKept(let kept) { emit("timezoneKept", ["device": d.name, "generation": generation, "zone": kept]); break }
                 catch {}
                 if zone == nil { try? await Task.sleep(for: .seconds(5)) }

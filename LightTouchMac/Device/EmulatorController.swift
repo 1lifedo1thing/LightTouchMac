@@ -701,7 +701,8 @@ final class EmulatorController {
             if state == .running, !preparingDevice, canManageApps, await deviceReady() {
                 guard generation == bootGeneration, !Task.isCancelled else { return }
                 do {
-                    try await services.setTimeZone(TimeZone.current.identifier, guest: guest)
+                    let dated = BootRecipe.lockMachine(instance.paths.base.appendingPathComponent("device.lock.json"))["rtc-epoch"] != nil
+                    try await services.setTimeZone(TimeZone.current.identifier, keepClock: dated, guest: guest)
                     return
                 } catch DeviceToolsError.zoneKept(let zone) {
                     guard generation == bootGeneration, !Task.isCancelled else { return }
