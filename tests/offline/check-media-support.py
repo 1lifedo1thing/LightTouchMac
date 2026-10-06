@@ -25,11 +25,12 @@ EXPECTED = {
 code = r'''import Foundation
 @main struct Check {
  static func main() throws {
-  let entries = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]))) as! [[String: String]]
+  let entries = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]))) as! [[String: Any]]
   var out: [String: Any] = [:]
   for e in entries {
-   let firmware = MediaSupport.Firmware(board: e["board"]!, version: e["version"]!, build: e["build"]!, name: e["name"]!)
-   out[e["id"]!] = ["supported": ["Music", "Videos", "Photos"].filter { MediaSupport.supports($0, on: firmware) },
+   let firmware = MediaSupport.Firmware(board: e["board"] as! String, version: e["version"] as! String, build: e["build"] as! String,
+                                        name: e["name"] as! String, prerelease: e["prerelease"] as! Bool)
+   out[e["id"] as! String] = ["supported": ["Music", "Videos", "Photos"].filter { MediaSupport.supports($0, on: firmware) },
                     "any": MediaSupport.supportsAny(firmware),
                     "refusals": ["Music", "Videos", "Photos"].map { MediaSupport.refusal($0, on: firmware) ?? "" }]
   }
@@ -41,7 +42,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-media-support-') as directory:
     work = Path(directory)
     (work / 'check.swift').write_text(code)
     entries = [{'id': e['id'], 'board': e['board'], 'version': e['version'], 'build': e['build'],
-                'name': f"iOS {e['version']}"} for e in catalog]
+                'name': f"iOS {e['version']}", 'prerelease': 'prerelease' in e} for e in catalog]
     (work / 'entries.json').write_text(json.dumps(entries))
     subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(root), '-swift-version', '6', '-parse-as-library',
                     '-module-cache-path', str(work / 'modules'), str(root / 'LightTouchMac/Features/MediaSupport.swift'),
