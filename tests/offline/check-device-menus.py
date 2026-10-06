@@ -170,7 +170,7 @@ struct Instance { let id=UUID() }
  var isPaused=false,isRunning=true,isInstalling=false,acceptsInput=true,isSleeping=false
  let instance=Instance()
  var batteryLevel=100,batteryCharging=true
- var compassHeading:Int?=nil,hasCompass=false
+ var compassHeading:Int?=nil,hasCompass=false,hasCellular=false
  func pause(){isPaused=true;isRunning=false}
  func resume(){isPaused=false;isRunning=true}
 }

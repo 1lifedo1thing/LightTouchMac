@@ -159,6 +159,13 @@ Thread.detachNewThread {
             link.send(.button(Int(v[0]), down: false))
         case "battery":
             emit("reply", ["reply": "\(request(.battery(level: Int(v[0]), charging: Int(v[1]))))"])
+        case "modem":       // modem <property> <value…>: qemu_ios_ui_modem_set through the link
+            let value = p.dropFirst(2).joined(separator: " ")
+            emit("reply", ["reply": "\(request(.modemSet(property: p[1], value: value)))", "modem": p[1]])
+        case "modemStatus": // the status as of the previous poll: poll twice, a beat apart
+            _ = request(.modemStatus); usleep(300_000)
+            if case .success(.modemStatus(let json)) = request(.modemStatus) { emit("modemStatus", ["json": json ?? ""]) }
+            else { emit("modemStatus", ["json": ""]) }
         case "orientation":
             emit("reply", ["reply": "\(request(.orientation(Int(v[0]))))"])
         case "agent":

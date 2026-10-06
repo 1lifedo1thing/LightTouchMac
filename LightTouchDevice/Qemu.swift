@@ -87,6 +87,10 @@ final class Qemu: @unchecked Sendable {
     lazy var usbConnection = sym("qemu_ios_ui_usb_connection", (@convention(c) (Bool) -> Bool).self)
     lazy var compass = sym("qemu_ios_ui_compass", (@convention(c) (Int32) -> Bool).self)
     lazy var usbCharger = sym("qemu_ios_ui_usb_charger", (@convention(c) (Bool) -> Bool).self)
+    /// Optional: dylibs before the Carrier panel lack them.
+    lazy var modemSet = optionalSym("qemu_ios_ui_modem_set", (@convention(c) (UnsafePointer<CChar>, UnsafePointer<CChar>) -> Bool).self)
+    lazy var modemStatus = optionalSym("qemu_ios_ui_modem_status", (@convention(c) () -> UnsafeMutablePointer<CChar>?).self)
+    lazy var modemFree = optionalSym("qemu_ios_ui_modem_free", (@convention(c) (UnsafeMutablePointer<CChar>?) -> Void).self)
     lazy var orientation = sym("qemu_ios_ui_orientation", (@convention(c) (Int32) -> Bool).self)
     lazy var pause = sym("qemu_ios_ui_pause", VoidFn.self)
     lazy var resume = sym("qemu_ios_ui_resume", VoidFn.self)

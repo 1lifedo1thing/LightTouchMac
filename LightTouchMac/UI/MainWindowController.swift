@@ -923,6 +923,17 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     @objc func setBatteryLevel(_ sender: NSMenuItem)    { emulator?.setBattery(level: sender.tag) }
     @objc func toggleBatteryCharging(_ sender: Any?)   { emulator.map { $0.setCharging(!$0.batteryCharging) } }
     @objc func setCompassHeading(_ sender: NSMenuItem)  { emulator?.setCompassHeading(sender.tag) }
+
+    /// Device ▸ Carrier…: the running iPhone's fake network, calls and SMS (CarrierPanel), one window per device.
+    private var carrierWindows: [UUID: CarrierWindowController] = [:]
+    @objc func showCarrier(_ sender: Any?) {
+        guard let emulator, emulator.hasCellular else { return }
+        let id = emulator.instance.id
+        if carrierWindows[id] == nil || carrierWindows[id]?.window == nil {
+            carrierWindows[id] = CarrierWindowController(emulator: emulator)
+        }
+        carrierWindows[id]?.showWindow(sender)
+    }
     @objc func specialTrick(_ sender: Any?) {
         deviceVC?.screen.specialTrick()
         // The chime lands on the pop, a beat after the crouch starts.
@@ -1357,6 +1368,8 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(setCompassHeading(_:)):
             menuItem.state = menuItem.tag == emulator.compassHeading ? .on : .off
             return emulator.acceptsInput && emulator.hasCompass
+        case #selector(showCarrier(_:)):
+            return emulator.hasCellular && (emulator.isRunning || emulator.isPaused)
         case #selector(deviceHome(_:)), #selector(deviceShake(_:)),
              #selector(deviceVolumeUp(_:)), #selector(deviceVolumeDown(_:)):
             return emulator.acceptsInput

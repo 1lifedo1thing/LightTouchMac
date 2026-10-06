@@ -26,6 +26,19 @@ struct BootTests {
         }
     }
 
+    /// The Carrier panel's saved settings start the modem on radio boards only.
+    @Test func carrierSettingsReachRadioBoards() throws {
+        var carrier = CarrierSettings()
+        carrier.carrier = "Panel"
+        for board in [PreparedDeviceBoot.Board.n90, .n88, .m68, .k48, .n81] {
+            let f = try Fixture(board: board, strategy: board == .m68 ? "iboot" : "kboot")
+            defer { try? FileManager.default.removeItem(at: f.root) }
+            let config = try f.prepare(board).configuration(bootArgs: "", usbAddress: nil, wifi: true, guestPackage: nil,
+                serial: "null", audio: [], netdev: "user,id=wifi0", carrier: carrier)
+            #expect(config.argv.contains("ios-baseband.carrier=Panel") == board.hasRadio)
+        }
+    }
+
     @Test func legacyWireDefaults() throws {
         let boot = try JSONDecoder().decode(BootConfig.self, from: Data(#"{"argv":["LightTouchMac"],"machine":"ipad1"}"#.utf8))
         #expect(boot.environment == [:])

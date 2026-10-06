@@ -12,6 +12,8 @@ public struct PreparedDeviceBoot {
 
         /// The A4 boards (the ipad1 machine family) and the S5L8920 iPhone 3GS, which FirmwareKit prepares
         /// the same way: kboot/iboot via BootRecipe.iPad.
+        /// The boards with a cellular modem (qemu-ios ios-baseband): the original iPhone, the 3GS and the iPhone 4.
+        public var hasRadio: Bool { self == .m68 || self == .n88 || self == .n90 }
         public var isA4: Bool { self == .k48 || self == .n81 || self == .n90 || self == .n88 || self == .n18 }
         /// An A4 board's -M name.
         var a4Machine: String { [.n81: "iPod-Touch-4G", .n90: "iPhone-4", .n88: "n88", .n18: "n18"][self] ?? "ipad1" }
@@ -133,7 +135,7 @@ public struct PreparedDeviceBoot {
     public func configuration(bootArgs: String, usbAddress: String?, wifi: Bool,
                               guestPackage: String?, serial: String, audio: [String],
                               netdev: String?, restore: [String] = [], webProxy: WebProxyEndpoint? = nil,
-                              cellular: BootRecipe.Cellular = .on) throws -> BootConfig {
+                              cellular: BootRecipe.Cellular = .on, carrier: CarrierSettings? = nil) throws -> BootConfig {
         var config: BootConfig
         switch board {
         case .n45, .m68:
@@ -159,6 +161,8 @@ public struct PreparedDeviceBoot {
                         serial: serial, audio: audio, netdev: netdev, restore: restore,
                         board: board.a4Machine)
         }
+        // The device's saved Carrier panel settings: the modem starts with them (radio boards only).
+        if let carrier, board.hasRadio { config.argv += carrier.globals }
         config.webProxy = webProxy
         return config
     }
