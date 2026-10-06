@@ -24,6 +24,8 @@ status block, frame ring, framed link). Cases:
              qemu_ios_ui_modem_set/_status -> the modem: booted with saved settings (-global), carrier renamed, a bad
              MCC/MNC refused (error in the next status), signal moved, an incoming SMS delivered, a call
              rung (incoming) and hung up (idle), quit
+  rotate     --iphone-device: lit, unlocked, Safari opened, then the app's rotation (the orientation request, no other input):
+             within 1 s a new frame is published and it differs from the Home screen (the guest turned its UI)
 
     tests/sessions/check-helper-boot.py --ipad-device DIR [--helper PATH] [--dylib PATH] [--work DIR] [--only a,b]
 
@@ -228,14 +230,14 @@ def main():
     ap.add_argument("--work", type=Path)
     ap.add_argument("--only")
     args = ap.parse_args()
-    cases = ["reject", "lease", "ipod", "ipad", "restore", "ipad-orphan", "oneshot", "headless", "meddle", "carrier"]
+    cases = ["reject", "lease", "ipod", "ipad", "restore", "ipad-orphan", "oneshot", "headless", "meddle", "carrier", "rotate"]
     if args.only:
         cases = [c for c in cases if c in args.only.split(",")]
     if not args.ipad_device:
         cases = [c for c in cases if not c.startswith(("ipad", "restore", "oneshot"))]
         print("no --ipad-device: skipping the iPad cases")
-    if not args.iphone_device and "carrier" in cases:
-        cases.remove("carrier")
+    if not args.iphone_device:
+        cases = [c for c in cases if c not in ("carrier", "rotate")]
         print("no --iphone-device: skipping the carrier case")
     work = args.work or Path(tempfile.mkdtemp(prefix="ltm-helper-boot-"))
     work.mkdir(parents=True, exist_ok=True)
@@ -399,6 +401,26 @@ def main():
                 check(st[3].get("call-state") == "incoming", f"ringing: {st[3].get('call-state')}", "carrier", results)
                 check(st[4].get("call-state") == "idle", f"hung up: {st[4].get('call-state')}", "carrier", results)
             check("ok(false)" in replies.get("no-such-property", ""), "an unknown property is refused at the link", "carrier", results)
+
+        if "rotate" in cases:
+            print("rotate", flush=True)
+            boot = iphone_boot(args.iphone_device, work / "rotate/overlay", work / "rotate/serial.log")
+            d = Driver(args, bin_dir, helper, work, "rotate", {"machine": boot["machine"], "boot": boot,
+                       "steps": ["boot", "lit 0.03 300", "wait 8", "dump lock", IPOD_UNLOCK, "wait 4", "tap 0.617 0.9", "wait 8", "dump home", "status",
+                                 "orientation 4", "wait 1", "dump turned", "status", "wait 4", "dump turned5", "status",
+                                 "quit", "expectExit 60"]})
+            rc = d.wait(600)
+            check(rc == 0, "scenario completed", "rotate", results) or print(d.tail())
+            st = [e.get("status", e) for e in d.find("status")]
+            dumps = {e["name"]: e for e in d.find("dump")}
+            serials = [s.get("frameSerial") for s in st]
+            check(len(serials) == 3 and serials[1] is not None and serials[1] > serials[0],
+                  f"a new frame within 1 s of the rotation (frame serials {serials})", "rotate", results)
+            home, turned = work / "rotate/home.png", work / "rotate/turned.png"
+            same = home.exists() and turned.exists() and home.read_bytes() == turned.read_bytes()
+            check(dumps.get("turned", {}).get("ok") and not same,
+                  f"the turned frame differs from portrait Safari (brightness {dumps.get('home', {}).get('brightness', 0):.2f} -> "
+                  f"{dumps.get('turned', {}).get('brightness', 0):.2f})", "rotate", results)
 
         if "headless" in cases:
             print("headless", flush=True)
