@@ -55,7 +55,8 @@ source = prefix + stub + r'''
         "iPad display region: \(big)")
   check(pad.panelOption(upright: size(768, 1280)) == "1280x768" && pad.uprightPanel("1280x768") == size(768, 1280), "iPad panel=")
   check(pod.panelOption(upright: size(320, 504)) == "320x504" && pod.uprightPanel("320x504") == size(320, 504), "iPod panel=")
-  check(!DeviceProfile.iPodTouch1G.supportsFreeForm && pod.supportsFreeForm && pad.supportsFreeForm, "boards")
+  let boards: [DeviceProfile] = [.iPodTouch2G, .iPad1, .iPodTouch1G, .iPodTouch4G, .iPhone4, .iPhone3GS, .iPodTouch3G, .iPhone2G]
+  check(boards.filter(\.supportsFreeForm) == [pod, pad] && boards.allSatisfy { ($0.freeFormUnavailableReason == nil) == $0.supportsFreeForm }, "boards")
 
   DisplayView.panelCommitDelay = .milliseconds(50)
   var requests: [(CGSize?, Bool)] = []
@@ -291,12 +292,12 @@ source = prefix + stub + r'''
    }
   }
 
-  // Back at the shipped panel the bezel follows View ▸ Show Device Bezel again, live: Free-Form on, a resize,
+  // Back at the shipped panel the bezel follows View ▸ Device Bezels again, live: Free-Form on, a resize,
   // Free-Form off (a restart), then the next session's view (shown, swapped out and back as the window does)
   // takes the toggle both ways. A free-form screen ignores it.
-  UserDefaults.standard.removeObject(forKey: DisplayView.showsBezelKey)
-  defer { UserDefaults.standard.removeObject(forKey: DisplayView.showsBezelKey) }
-  DisplayView.showsBezel = false
+  UserDefaults.standard.removeObject(forKey: DisplayView.bezelKey)
+  defer { UserDefaults.standard.removeObject(forKey: DisplayView.bezelKey) }
+  DisplayView.bezel = .off
   requests.removeAll(); restarts = true
   frameWidth = 1104; frameHeight = 768
   let key = UUID()
@@ -307,7 +308,7 @@ source = prefix + stub + r'''
    let lcd = all(v.layer!).first { $0.backgroundColor == NSColor.black.cgColor && $0.contentsGravity == .resize }!
    return lcd.superlayer!.contents != nil && lcd.superlayer!.shadowOpacity > 0
   }
-  DisplayView.showsBezel = true; try await settle(d)
+  DisplayView.bezel = .flat; try await settle(d)
   check(!shellShown(d), "a free-form screen took the bezel")
   w.contentView = nil
   frameWidth = 1024; frameHeight = 768
@@ -315,11 +316,11 @@ source = prefix + stub + r'''
   let holder = nw.contentView!
   nw.contentView = nil; try await Task.sleep(for: .milliseconds(50)); nw.contentView = holder   // the session swap
   try await settle(next)
-  DisplayView.showsBezel = false; try await settle(next)
+  DisplayView.bezel = .off; try await settle(next)
   check(!next.isFreeForm && !shellShown(next), "bezel off: the shipped iPad still shows it")
-  DisplayView.showsBezel = true; try await settle(next)
+  DisplayView.bezel = .flat; try await settle(next)
   check(shellShown(next), "bezel on: the shipped iPad stayed bare")
-  DisplayView.showsBezel = false; try await settle(next)
+  DisplayView.bezel = .off; try await settle(next)
   check(!shellShown(next), "bezel off again: the shipped iPad kept it")
   nw.contentView = nil
   print("PASS: panel sizes clamp and snap per board (never wider than tall upright); a non-native panel draws at N points per guest pixel, Fit and Nx in both orientations, edge drags converting through the zoom; window and sidebar changes never touch the panel; square, wider and taller scans give the upright picture and touch mapping in all four rotations; the drag status and restart go to the notice stack; back at the shipped panel the bezel follows the toggle live")

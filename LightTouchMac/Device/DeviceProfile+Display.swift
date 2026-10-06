@@ -41,11 +41,16 @@ nonisolated extension DeviceProfile {
 
     // MARK: - Free-form screen (machine panel=WxH, issue #21)
 
-    /// Boards whose guest lays out for a panel of another size. The 1G's machine takes panel= too (qemu-ios
-    /// 1819a0d6cf), but iPhone OS 1.1's SpringBoard keeps its icons and dock at 320x480.
-    var supportsFreeForm: Bool { self != .iPodTouch1G }
+    /// Boards whose guest lays out for a panel of another size and whose panel= limits snappedPanel knows. The
+    /// 1G's machine takes panel= too, but iPhone OS 1.1's SpringBoard keeps its icons and dock at 320x480 (the
+    /// iPhone 2G runs the same OS); the other boards' machines have no panel=.
+    var supportsFreeForm: Bool { self == .iPodTouch2G || self == .iPad1 }
     var freeFormUnavailableReason: String? {
-        supportsFreeForm ? nil : "iPhone OS 1 keeps its Home screen at 320 × 480, whatever size the screen is."
+        switch self {
+        case .iPodTouch2G, .iPad1: nil
+        case .iPodTouch1G, .iPhone2G: "iPhone OS 1 keeps its Home screen at 320 × 480, whatever size the screen is."
+        default: "Free-Form Screen works on the iPod touch (2nd generation) and the iPad."
+        }
     }
 
     /// iBoot's iPad display region, 0x4f700000 up to DRAM's end: 9 MB at 4 bytes a pixel.
