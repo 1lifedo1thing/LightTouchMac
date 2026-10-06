@@ -97,6 +97,8 @@ struct SingleConfig: Decodable {
     // The lock says whether the bake installed it_agent, including a fitted legacy build.
     let lock = (try? JSONSerialization.jsonObject(with: Data(contentsOf: b.appendingPathComponent("device.lock.json")))) as? [String: Any]
     let identity = (try? JSONSerialization.jsonObject(with: Data(contentsOf: b.appendingPathComponent("identity.json")))) as? [String: Any]
+    // 7.x boots, pairs and walks Setup far slower (qemu-ios e7ec3ded6a: about 1400 s of QEMU for app-install).
+    let slow = Double((lock?["product_version"] as? String ?? "").split(separator: ".").first ?? "").map { $0 >= 7 ? 2.5 : 1 } ?? 1
     let lockAgent = ((lock?["guest_package"] as? [String: Any])?["jobs"] as? [String])?.contains("com.qemu.it-agent.plist") ?? false
     let agent = d.profile.hasGuestTools && (((lock?["derived"] as? [String: Any])?["guest_tools"] as? String)?.hasPrefix("installed") ?? true)
     // 2.x reboot(RB_HALT) unmounts then halts the CPU without writing PMU standby.
@@ -106,8 +108,8 @@ struct SingleConfig: Decodable {
 
     func boot(_ generation: Int) async {
         do { try d.boot(generation: generation, guestPackage: offer()) } catch { fail("boot \(generation): \(error)") }
-        await waitLit(d, ipad ? 0.2 : 0.03, d.profile.bootBudget)   // the app's own boot budget (iPad 300 s)
-        await waitUSB(d, expecting: d.profile.productType, 300)
+        await waitLit(d, ipad ? 0.2 : 0.03, d.profile.bootBudget * slow)   // the app's own boot budget (iPad 300 s)
+        await waitUSB(d, expecting: d.profile.productType, 300 * slow)
         if let tool = s.lockdownTZ {
             var completed = false, lastError = ""
             for attempt in 0..<3 where !completed {
@@ -689,16 +691,16 @@ struct SingleConfig: Decodable {
     emit("upgraded", event)
 }
 
-/// A phone's Setup Assistant (6.x on the iPod touch 4G, iPhone 4 and 3GS), walked as qemu-ios
+/// A phone's Setup Assistant (6.x and 7.x on the iPod touch 4G, iPhone 4 and 3GS), walked as qemu-ios
 /// tests/ipad1/app-install.py walk_setup does: Vision reads each page's labels off a screenshot; an alert's
 /// button labelled exactly as one of `alertYes` goes first, then the first of `picks` the page shows, then its
 /// Next (the language page's is an arrow, top right). The welcome page (SpringBoard's "slide to set up", in a
 /// rotating language) has none of those and is slid. Done when the agent says the home screen is up.
 @MainActor enum SetupPhone {
-    static let picks = ["Start Using iPod touch", "Start Using iPod", "Start Using iPhone", "Set Up as New iPod touch",
+    static let picks = ["Start Using iPod touch", "Start Using iPod", "Start Using iPhone", "Get Started", "Set Up as New iPod touch",
                         "Set Up as New iPod", "Set Up as New iPhone", "Disable Location Services", "Skip This Step", "Agree",
-                        "Don't Send", "Australia", "United States"]
-    static let alertYes = ["OK", "Skip", "Agree", "Continue"]
+                        "Don't Add Passcode", "Don't Use iCloud", "Don't Send", "Australia", "United States"]
+    static let alertYes = ["OK", "Skip", "Agree", "Continue", "Don't Use", "Don't Add"]
     static let nextArrow = (x: 587.0 / 640, y: 84.0 / 960)
 
     /// Each label Vision reads on the screenshot, at its centre as a touch point (top-left origin, 0...1).
@@ -732,7 +734,12 @@ struct SingleConfig: Decodable {
                 let again = pages.filter { $0 == pick }.count
                 await d.tap(p.x, p.y + [0, -14, 14, -24, 24][again % 5] / 960)
                 pages.append(pick)
-                if pick.hasPrefix("Start Using") { continue }
+                if pick.hasPrefix("Start Using") || pick == "Get Started" { continue }
+                try? await Task.sleep(for: .seconds(1.5))
+            }
+            // The language page: 7.x moves on when its English row is tapped; 6.x needs its arrow after (top right).
+            if pick == nil, let english = found["English"] {
+                await d.tap(english.x, english.y); pages.append("English")
                 try? await Task.sleep(for: .seconds(1.5))
             }
             if let next = found["Next"] ?? (found["English"] != nil ? nextArrow : nil) {

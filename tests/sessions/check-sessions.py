@@ -294,6 +294,10 @@ def main():
                          "install": not args.no_install}
         if args.upgrade_ipa:
             cfg["single"]["upgradeIPA"] = str(args.upgrade_ipa)
+        # 7.x: a slower boot, pairing and Setup walk (qemu-ios app-install's 1400 s cap; one boot per --reboot leg)
+        major = str(json.loads((args.single / "device.lock.json").read_text()).get("product_version", "0")).split(".")[0]
+        if major.isdigit() and int(major) >= 7:
+            cfg["timeout"] = 1400 * (2 if args.reboot else 1)
         if args.afc_race:
             cfg["single"] |= {"raceBoots": args.afc_race, "raceDirty": args.afc_race_dirty}
             cfg["timeout"] = 200 * args.afc_race
