@@ -45,6 +45,11 @@ extension EmulatorController: CarrierBackend {}
     var typedPLMN: String { mcc + mnc }
     var networkValid: Bool { CarrierSettings.carrierOK(carrierName) && mcc.count == 3 && CarrierSettings.plmnOK(typedPLMN) }
     var networkEdited: Bool { carrierName != settings.carrier || typedPLMN != settings.mccMNC }
+    /// An applied carrier or PLMN the modem doesn't report yet.
+    var applyingNetwork: Bool {
+        guard let status else { return false }
+        return status.carrier != settings.carrier || status.mccMNC != settings.mccMNC
+    }
 
     func applyNetwork() {
         guard networkValid else { return message = "Carrier names are 1–32 characters without quotes; MCC is 3 digits and MNC 2 or 3." }
@@ -115,6 +120,12 @@ struct CarrierPanel: View {
                             .disabled(!model.networkEdited || !model.networkValid)
                     }
                 }
+                if model.applyingNetwork {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Applying…").foregroundStyle(.secondary)
+                    }
+                }
                 Toggle("Registered", isOn: Binding(get: { model.settings.registered }, set: { model.set(registered: $0) }))
                 Toggle("SIM Present", isOn: Binding(get: { model.settings.simPresent }, set: { model.set(simPresent: $0) }))
                 LabeledContent("Signal") {
@@ -141,8 +152,9 @@ struct CarrierPanel: View {
             }
             Section("SMS") {
                 TextField("From", text: $model.smsNumber)
-                HStack {
-                    TextField("Message", text: $model.smsText).onSubmit { model.sendSMS() }
+                HStack(alignment: .bottom) {
+                    TextField("Message", text: $model.smsText, prompt: Text("Message"), axis: .vertical)
+                        .labelsHidden().lineLimit(3...6).onSubmit { model.sendSMS() }
                     Button("Send") { model.sendSMS() }.disabled(!model.smsValid)
                 }
                 if model.sent.isEmpty {
