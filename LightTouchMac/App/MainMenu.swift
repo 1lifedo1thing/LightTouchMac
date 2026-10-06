@@ -210,7 +210,7 @@ enum MainMenuBuilder {
         battery.addItem(item("Charging", #selector(MainWindowController.toggleBatteryCharging(_:))))
         menu.addItem(submenu(battery, title: "Battery"))
         let debug = NSMenu(title: "Debugging")
-        debug.addItem(item("Debug Port", #selector(AppDelegate.toggleDebugPort(_:))))
+        debug.addItem(item("Debug Port…", #selector(AppDelegate.showDebugPort(_:))))
         debug.addItem(item("Copy lldb Command", #selector(AppDelegate.copyLLDBCommand(_:))))
         menu.addItem(submenu(debug, title: "Debugging"))
         menu.addItem(.separator())

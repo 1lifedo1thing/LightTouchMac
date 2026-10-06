@@ -47,12 +47,16 @@ fixture=r'''import Cocoa
   delegate.emulator!.network=false
   defaults.removeObject(forKey:NetworkAccessPreference.key)
   precondition(delegate.validateMenuItem(network) && network.state == .off && network.toolTip == nil)
-  let debug=NSMenuItem(title:"Debug Port",action:#selector(AppDelegate.toggleDebugPort(_:)),keyEquivalent:"")
+  let debug=NSMenuItem(title:"Debug Port…",action:#selector(AppDelegate.showDebugPort(_:)),keyEquivalent:"")
   let copy=NSMenuItem(title:"Copy lldb Command",action:#selector(AppDelegate.copyLLDBCommand(_:)),keyEquivalent:"")
   precondition(delegate.validateMenuItem(debug) && debug.state == .off && debug.toolTip == nil && !delegate.validateMenuItem(copy))
-  delegate.toggleDebugPort(nil)
+  precondition(AppDelegate.debugPortText(shortName:"iPod",enabled:false,port:nil).hasPrefix("Off.\n"))
+  delegate.emulator!.toggleDebugPort()
   precondition(delegate.validateMenuItem(debug) && debug.state == .on && debug.toolTip == "Takes effect the next time the iPod starts.")
   delegate.emulator!.debugPort=4321
+  let text=AppDelegate.debugPortText(shortName:"iPod",enabled:true,port:4321)
+  precondition(text.hasPrefix("On, at 127.0.0.1:4321.") && text.contains("gdb-remote 127.0.0.1:4321") && text.contains("target remote 127.0.0.1:4321"))
+  precondition(AppDelegate.debugPortText(shortName:"iPod",enabled:false,port:4321).hasPrefix("Off from the next start."))
   precondition(delegate.validateMenuItem(debug) && debug.toolTip == nil && delegate.validateMenuItem(copy) && copy.toolTip!.contains("127.0.0.1:4321"))
   print("PASS: the debug port follows the next start and offers its lldb command only while a boot has one")
   print("PASS: menu preferences apply rotation immediately and show pending internet changes in the tooltip, never the title")

@@ -36,7 +36,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func showFilesWindow(_ sender: Any?) { windowController?.toggleFiles(sender) }
 
     @objc func toggleAutomaticRotation(_ sender: Any?) { emulator?.toggleAutoRotate() }
-    @objc func toggleDebugPort(_ sender: Any?) { emulator?.toggleDebugPort() }
+    /// Device ▸ Debugging ▸ Debug Port…: what the port is, how to attach to it and whether it's on, with its switch.
+    @objc func showDebugPort(_ sender: Any?) {
+        guard let emulator else { return }
+        let alert = NSAlert()
+        alert.messageText = "Debug Port"
+        alert.informativeText = Self.debugPortText(shortName: emulator.profile.shortName, enabled: emulator.debugPortEnabled,
+                                                   port: emulator.debugPort)
+        alert.addButton(withTitle: emulator.debugPortEnabled ? "Turn Off" : "Turn On")
+        alert.addButton(withTitle: "Done")
+        if emulator.lldbAttachCommand != nil { alert.addButton(withTitle: "Copy lldb Command") }
+        let respond = { [weak self, weak emulator] (response: NSApplication.ModalResponse) in
+            switch response {
+            case .alertFirstButtonReturn: emulator?.toggleDebugPort()
+            case .alertThirdButtonReturn: self?.copyLLDBCommand(nil)
+            default: break
+            }
+        }
+        if let window = NSApp.mainWindow { alert.beginSheetModal(for: window, completionHandler: respond) } else { respond(alert.runModal()) }
+    }
+    static func debugPortText(shortName: String, enabled: Bool, port: Int?) -> String {
+        let state = switch (enabled, port) {
+        case (true, let port?): "On, at 127.0.0.1:\(port)."
+        case (true, nil): "On from the next time the \(shortName) starts."
+        case (false, let port?): "Off from the next start. Until then it's at 127.0.0.1:\(port)."
+        case (false, nil): "Off."
+        }
+        let address = port.map { "127.0.0.1:\($0)" } ?? "127.0.0.1:PORT"
+        return """
+            \(state)
+
+            The debug port is the emulator's GDB remote stub (QEMU's gdbstub). A debugger attached to it runs the \(shortName)'s \
+            CPU: it pauses the whole device and reads or changes its kernel and apps. Only this Mac can reach it; it has no password.
+
+            lldb: lldb -o 'gdb-remote \(address)'
+            GDB: gdb-multiarch -ex 'target remote \(address)'
+
+            Copy lldb Command adds the kernel's symbols and XNU macros.
+            """
+    }
     @objc func copyLLDBCommand(_ sender: Any?) {
         guard let command = emulator?.lldbAttachCommand else { return }
         NSPasteboard.general.clearContents()
@@ -50,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if item.action == #selector(toggleAutomaticRotation(_:)) {
             item.state = emulator?.autoRotateEnabled ?? true ? .on : .off
             return emulator != nil
-        } else if item.action == #selector(toggleDebugPort(_:)) {
+        } else if item.action == #selector(showDebugPort(_:)) {
             let enabled = emulator?.debugPortEnabled ?? false
             item.state = enabled ? .on : .off
             item.toolTip = emulator.map { enabled != ($0.debugPort != nil) ? "Takes effect the next time the \($0.profile.shortName) starts." : nil } ?? nil
