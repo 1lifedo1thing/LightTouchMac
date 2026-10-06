@@ -77,7 +77,7 @@ in the source tree or tests. Real-firmware hashes and exact observed patches are
 ## Artifacts and next work
 
 Preserved local evidence and the working iPod image live at:
-`/Users/shg/Developer/qemu-ios-files/activation-native/`.
+`~/Developer/qemu-ios-files/activation-native/`.
 The two iPad experiments remain in `ipad1/offline-activation/` and `ipad1/offline-activation-8C148/`.
 
 Next useful checks are further 1.x point releases and iOS 5/6 UI + pairing
