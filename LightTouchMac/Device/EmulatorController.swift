@@ -1808,7 +1808,10 @@ final class EmulatorController {
     /// The install pipeline for this device (AppInstaller runs it, and raises
     /// a catalog download's placeholder through it).
     var installPipeline: AppInstallPipeline {
-        get throws { AppInstallPipeline(services: try services, agent: guestAgent, deviceOS: iosVersion) }
+        get throws {
+            AppInstallPipeline(services: try services, agent: guestAgent, deviceOS: iosVersion,
+                               guestReady: { @MainActor [weak self] in self?.status?.guestPackage != nil })
+        }
     }
 
     /// The guest's orientation in degrees; nil when this image has no agent.

@@ -14,6 +14,11 @@ struct AppInstallPipeline: Sendable {
     let agent: GuestAgent
     /// The device's iOS version (its catalog entry), which MinimumOSVersion is checked against.
     var deviceOS = "3.1.3"
+    /// Whether this boot's guest tools have reported in (the guest-package report). On iOS 7 they report
+    /// 1-3 minutes after lockdown answers, and until then creating a file on the data volume can stall:
+    /// an AFC upload in that window went unanswered for 60 s and failed. nil: never wait.
+    var guestReady: (@Sendable () async -> Bool)? = nil
+    var guestReadyTimeout: Duration = .seconds(300)
 
     /// Install a decrypted .ipa: AFC stage + instproxy, in-process, no shell.
     /// Every supported image carries its GL engine shim. `progress` gets
@@ -85,6 +90,7 @@ struct AppInstallPipeline: Sendable {
             defer { if let repaired { try? FileManager.default.removeItem(at: repaired) } }
             let ipa = repaired ?? ipa
             try Task.checkCancellation()
+            try await waitForGuestTools(progress)
             let bytes = (try? FileManager.default.attributesOfItem(atPath: ipa.path)[.size] as? Int) ?? 0
             let free = try await services.freeSpaceBytes()
             let needed = Int64(bytes) * 2 + (16 << 20)
@@ -114,6 +120,19 @@ struct AppInstallPipeline: Sendable {
                 }
             }
             return "installed" + sdkMarker
+        }
+    }
+
+    /// iOS 7 only: hold the first AFC request until the guest tools report, bounded.
+    private func waitForGuestTools(_ progress: @Sendable (String) -> Void) async throws {
+        guard let guestReady, (Int(deviceOS.prefix { $0.isNumber }) ?? 0) >= 7, !(await guestReady()) else { return }
+        progress("Waiting for iOS to finish starting…")
+        let deadline = ContinuousClock.now + guestReadyTimeout
+        while !(await guestReady()) {
+            guard ContinuousClock.now < deadline else {
+                throw DeviceError.failed("iOS didn’t finish starting in time, so the app wasn’t sent. Try again in a minute.")
+            }
+            try await Task.sleep(for: .seconds(1))
         }
     }
 
