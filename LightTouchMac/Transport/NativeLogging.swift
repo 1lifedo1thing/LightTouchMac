@@ -2,13 +2,19 @@ import Foundation
 import OSLog
 
 /// Synchronous low-level writer shared by pipe readers. The lock protects the
-/// entire rotate/write operation; a writer never holds a descriptor across a
-/// rename. This bounds disk usage without truncating a live subprocess's file.
+/// entire rotate/write operation. The file stays open between appends and its
+/// size is tracked here (an append is one write, not a stat, open, chmod and
+/// close); it is reopened after a rotation, or when the path no longer names
+/// the open file (deleted or replaced under it). This bounds disk usage without
+/// truncating a live subprocess's file.
 nonisolated final class RotatingLog: @unchecked Sendable {
     let url: URL
     private let limit: Int
     private let lock = NSLock()
     private var failed = false
+    private var fd: Int32 = -1
+    private var size = 0
+    private var device: dev_t = 0, inode: ino_t = 0
     private static let logger = Logger(subsystem: StorageLocations.bundleIdentifier, category: "log-storage")
 
     init(url: URL, limit: Int = StorageLocations.logLimit) {
@@ -16,29 +22,70 @@ nonisolated final class RotatingLog: @unchecked Sendable {
         self.limit = limit
     }
 
+    deinit { if fd >= 0 { close(fd) } }
+
     func append(_ data: Data) {
         lock.lock()
         defer { lock.unlock() }
         guard !failed, !data.isEmpty else { return }
         do {
-            try StorageLocations.privateDirectory(url.deletingLastPathComponent())
-            let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
-            if let type = attributes?[.type] as? FileAttributeType, type != .typeRegular {
-                throw CocoaError(.fileWriteUnknown)
-            }
-            let size = (attributes?[.size] as? NSNumber)?.intValue ?? 0
             let bounded = data.suffix(limit)
-            if size + bounded.count > limit { try Self.rotate(url) }
-            let fd = open(url.path, O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0o600)
-            guard fd >= 0 else { throw StorageLocations.posixError() }
-            let file = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-            defer { try? file.close() }
-            guard fchmod(fd, 0o600) == 0 else { throw StorageLocations.posixError() }
-            try file.write(contentsOf: bounded)
+            if fd >= 0, !pathNamesOpenFile() { closeFile() }
+            if fd < 0 { try openFile() }
+            if size + bounded.count > limit {
+                closeFile()
+                try Self.rotate(url)
+                try openFile()
+            }
+            try bounded.withUnsafeBytes { buffer in
+                var offset = 0
+                while offset < buffer.count {
+                    let n = write(fd, buffer.baseAddress! + offset, buffer.count - offset)
+                    if n < 0 {
+                        if errno == EINTR { continue }
+                        throw StorageLocations.posixError()
+                    }
+                    offset += n
+                }
+            }
+            size += bounded.count
         } catch {
+            closeFile()
             failed = true
             Self.logger.error("Cannot write diagnostic log: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    /// Open (create) the file for appending: a regular file only, never through a symlink, owner-only.
+    private func openFile() throws {
+        try StorageLocations.privateDirectory(url.deletingLastPathComponent())
+        // Checked before open: opening a FIFO for writing would block here.
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        if let type = attributes?[.type] as? FileAttributeType, type != .typeRegular {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        let descriptor = open(url.path, O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0o600)
+        guard descriptor >= 0 else { throw StorageLocations.posixError() }
+        var st = stat()
+        guard fstat(descriptor, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG, fchmod(descriptor, 0o600) == 0 else {
+            let error = StorageLocations.posixError()
+            close(descriptor)
+            throw error
+        }
+        fd = descriptor
+        size = Int(st.st_size)
+        device = st.st_dev
+        inode = st.st_ino
+    }
+
+    private func closeFile() {
+        if fd >= 0 { close(fd) }
+        fd = -1
+    }
+
+    private func pathNamesOpenFile() -> Bool {
+        var st = stat()
+        return lstat(url.path, &st) == 0 && st.st_dev == device && st.st_ino == inode
     }
 
     static func rotate(_ url: URL) throws {
