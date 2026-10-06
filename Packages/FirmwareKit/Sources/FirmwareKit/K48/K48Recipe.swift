@@ -43,9 +43,17 @@ final class K48Board: Board {
     /// what the seal boot decides is what the store keeps.
     var modem: String { IPhoneIdentity.a4Boards.contains(board) ? ",baseband=on" + (ident["imei"].map { ",imei=\($0)" } ?? "") : "" }
     var ident: UnitIdentity!
+    /// The keybag and seal one-shots' limit. 7.x's launchd starts our RunAtLoad daemons (it_seal among them) about
+    /// 170 s into the boot, and it_seal halts 40 s later: modem-on 7.0-7.0.6 seals took 118-229 s, 7.1.2's about
+    /// 300 s, longer under host load. Earlier releases seal well inside 300 s.
+    var oneshotTimeout: Double = 300
+    static func oneshotTimeout(productVersion: String) -> Double {
+        (Int(productVersion.split(separator: ".").first ?? "") ?? 0) >= 7 ? 900 : 300
+    }
 
     init(_ o: Preparer.Options) throws {
         recipe = o.entry.recipe!
+        oneshotTimeout = Self.oneshotTimeout(productVersion: o.entry.version)
         board = o.entry.board
         let kbootOnly = o.entry.board != "k48ap"
         strategy = recipe.boot ?? (kbootOnly ? "kboot" : "iboot")
@@ -179,7 +187,7 @@ final class K48Board: Board {
         for attempt in 1...attempts {
             let serial = work.appendingPathComponent("keybag-\(attempt).log")
             let (r, text) = try Preparer.oneshot(helper, boot: "kboot=\(Preparer.esc(kboot))", machine: "nand=\(Preparer.esc(store)),nor-rw=\(Preparer.esc(nor)),die-id=\(dieID)" + modem,
-                                                 serial: serial, stop: "panic(", timeout: 300, work: work, log: c.log, board: machine)
+                                                 serial: serial, stop: "panic(", timeout: oneshotTimeout, work: work, log: c.log, board: machine)
             for line in text.split(separator: "\n") where line.contains("it_keybag:") { c.log(String(line)) }
             if r.exited, text.contains(Preparer.keybagDone) { break }
             let why = text.split(separator: "\n").first { $0.contains("panic(") }
@@ -210,7 +218,7 @@ final class K48Board: Board {
         }
         let serial = work.appendingPathComponent("seal.log")
         let (r, text) = try Preparer.oneshot(helper, boot: boot, machine: "nand=\(Preparer.esc(store))" + extra, serial: serial, stop: nil,
-                                             timeout: 300, work: work, log: c.log, board: machine)
+                                             timeout: oneshotTimeout, work: work, log: c.log, board: machine)
         guard r.exited, text.contains(Preparer.halting) else {
             throw FirmwareError(.oneshotFailed, "seal boot: \(r.exited ? "QEMU exited without it_seal" : "no clean halt") after \(Int(r.seconds)) s")
         }
