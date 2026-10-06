@@ -91,6 +91,9 @@ nonisolated struct WebProxyCA: @unchecked Sendable {
         var serial = Data((0..<16).map { _ in UInt8.random(in: 0...255) })
         serial[0] &= 0x7f
         let now = Date()
+        // Valid from 2000, not from today: a dated device (a developer beta pinned inside its release window,
+        // recipe rtc_epoch) checks notBefore against its own 2012-2013 clock.
+        let validFrom = Date(timeIntervalSince1970: 946_684_800)
         let rsa = DER.seq(DER.oid("1.2.840.113549.1.1.1"), DER.null)
         let spki = DER.seq(rsa, DER.bitString(try external(publicKey)))
         var extensions: [Data]
@@ -112,7 +115,7 @@ nonisolated struct WebProxyCA: @unchecked Sendable {
         }
         let sha1RSA = DER.seq(DER.oid("1.2.840.113549.1.1.5"), DER.null)
         let tbs = DER.seq(DER.tlv(0xa0, DER.integer(Data([2]))), DER.integer(serial), sha1RSA, issuer,
-                          DER.seq(DER.time(now - 86400), DER.time(now + Double(days) * 86400)), subject, spki,
+                          DER.seq(DER.time(validFrom), DER.time(now + Double(days) * 86400)), subject, spki,
                           DER.tlv(0xa3, DER.seq(extensions.reduce(Data(), +))))
         guard let signature = SecKeyCreateSignature(issuerKey, .rsaSignatureMessagePKCS1v15SHA1, tbs as CFData, nil) as Data?
         else { throw Failure.signing }

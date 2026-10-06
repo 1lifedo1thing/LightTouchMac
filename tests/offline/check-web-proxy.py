@@ -248,6 +248,11 @@ def main():
             text = subprocess.run(['openssl', 'x509', '-inform', 'der', '-noout', '-text'], input=leaf, capture_output=True).stdout.decode()
             assert 'sha1WithRSAEncryption' in text and 'IP Address:127.0.0.1' in text and 'TLS Web Server Authentication' in text \
                 and 'CA:FALSE' in text and 'Issuer: CN=Light Touch Device Proxy' in text, text
+            # A dated device (a beta pinned to 2012-2013) checks notBefore against its own clock: CA and leaf both.
+            for cert in (der, leaf):
+                checked = subprocess.run(['openssl', 'x509', '-inform', 'der', '-noout', '-checkend', '0'], input=cert, capture_output=True)
+                before = subprocess.run(['openssl', 'x509', '-inform', 'der', '-noout', '-startdate'], input=cert, capture_output=True).stdout.decode()
+                assert checked.returncode == 0 and before.strip().endswith('2000 GMT'), before
             for trust, hostname in [(False, '127.0.0.1'), (True, 'wrong.invalid')]:
                 try:
                     tunnel(target, b'GET / HTTP/1.0\r\n\r\n', trust, hostname)
