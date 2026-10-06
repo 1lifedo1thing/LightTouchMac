@@ -42,6 +42,13 @@ func descendants(_ view: NSView) -> [NSView] {
   let saved = WebProxyConfiguration(mode: .archive, archiveDate: "20100101")
   try! saved.save(in: own)
   precondition(WebProxyConfiguration.load(from: own) == saved)
+  // An earlier build's web-proxy.json is read once and becomes web-proxy.plist.
+  let earlier = own.appendingPathComponent("earlier")
+  try! FileManager.default.createDirectory(at: earlier, withIntermediateDirectories: true)
+  try! Data(#"{"mode":"direct","archiveDate":"20080808"}"#.utf8).write(to: earlier.appendingPathComponent("web-proxy.json"))
+  precondition(WebProxyConfiguration.load(from: earlier) == WebProxyConfiguration(mode: .direct, archiveDate: "20080808"))
+  precondition(!FileManager.default.fileExists(atPath: earlier.appendingPathComponent("web-proxy.json").path)
+               && FileManager.default.fileExists(atPath: WebProxyConfiguration.preferencesFile(in: earlier).path), "web-proxy.json became web-proxy.plist")
   precondition((try? String(contentsOf: WebProxyConfiguration.file(in: own), encoding: .utf8)) == "archive\n20100101\n")
   let endpoint = WebProxyConfiguration.endpoint(directory: own)
   precondition(endpoint.config == WebProxyConfiguration.file(in: own).path && endpoint.socket.utf8.count < 104)

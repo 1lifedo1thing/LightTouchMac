@@ -39,7 +39,7 @@ struct WebProxyConfiguration: Codable, Equatable {
         return formatter
     }
     var dateValue: Date { Self.dateFormatter.date(from: archiveDate) ?? Date() }
-    /// Where a device's routing (web-proxy.conf), preferences (web-proxy.json)
+    /// Where a device's routing (web-proxy.conf), preferences (web-proxy.plist)
     /// and proxy CA (web-proxy.conf.ca.*) live. The device that kept the
     /// legacy pairing conf keeps the legacy state-directory files too, so the
     /// CA its guest already trusts is unchanged; every other device has its own.
@@ -47,11 +47,11 @@ struct WebProxyConfiguration: Codable, Equatable {
         instance.storage.usbmuxConf == "work/usbmuxd-conf" ? Bundled.stateDirectory : instance.paths.directory
     }
     static func file(in directory: URL) -> URL { directory.appendingPathComponent("web-proxy.conf") }
-    static func preferencesFile(in directory: URL) -> URL { directory.appendingPathComponent("web-proxy.json") }
+    /// An XML property list; earlier builds kept web-proxy.json, converted on the first load.
+    static func preferencesFile(in directory: URL) -> URL { directory.appendingPathComponent("web-proxy.plist") }
     static func load(from directory: URL) -> Self {
-        guard let data = try? Data(contentsOf: preferencesFile(in: directory)),
-              let value = try? JSONDecoder().decode(Self.self, from: data) else { return Self() }
-        return value
+        (try? PropertyListFile.read(Self.self, from: preferencesFile(in: directory),
+                                    legacyJSON: directory.appendingPathComponent("web-proxy.json"))) ?? Self()
     }
     func validate() throws {
         if mode == .archive {
@@ -69,7 +69,7 @@ struct WebProxyConfiguration: Codable, Equatable {
     }
     func save(in directory: URL) throws {
         try writeRouting(in: directory)
-        try JSONEncoder().encode(self).write(to: Self.preferencesFile(in: directory), options: .atomic)
+        try PropertyListFile.write(self, to: Self.preferencesFile(in: directory))
     }
     /// What the helper serves (BootConfig.webProxy): this directory's routing, and a socket in the temporary
     /// directory named for it (a Unix socket path stays under 104 bytes; the device directory may not).

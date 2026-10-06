@@ -84,7 +84,7 @@ source = r'''import Foundation
   try fm.createDirectory(at: dWork.appendingPathComponent("guest-offer"), withIntermediateDirectories: true)
   try Data("ltpkg".utf8).write(to: dWork.appendingPathComponent("guest-offer/offer.txt"), options: .atomic)
   for _ in 0..<3 { try Data("guest".utf8).write(to: device.appendingPathComponent("device.plist"), options: .atomic) }
-  for name in ["web-proxy.conf", "web-proxy.json", "web-proxy.conf.ca.der", "web-proxy.conf.ca.pem", "usbmuxd-conf", "usbmuxd.log"] {
+  for name in ["web-proxy.conf", "web-proxy.plist", "web-proxy.conf.ca.der", "web-proxy.conf.ca.pem", "usbmuxd-conf", "usbmuxd.log"] {
    try Data(name.utf8).write(to: device.appendingPathComponent(name), options: .atomic)
   }
   try Data("ipa".utf8).write(to: device.appendingPathComponent("IPAs/com.example.ipa"), options: .atomic)
