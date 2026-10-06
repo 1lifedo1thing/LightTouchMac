@@ -4382,7 +4382,7 @@
   "version": "7.1.2",
   "build": "11D257",
   "released": "2014-06-30",
-  "status": "untested",
+  "status": "experimental",
   "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS7.1/031-4812.20140627.cq6y8/iPhone3,1_7.1.2_11D257_Restore.ipsw", "sha1": "81da17b3e893a61508fe203849b7e1f60e2127b1", "bytes": 1204958925},
   "keys": {
    "AppleLogo": {"file": "applelogo@2x~iphone.s5l8930x.img3", "iv": "2287b716b833ba84566cf365e3368d37", "key": "73f0cef0f12ed5e43b53c87373a2be672481c4fc0f1f542c5e8da8b7d518611f"},
