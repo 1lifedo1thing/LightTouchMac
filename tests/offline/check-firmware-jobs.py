@@ -447,7 +447,7 @@ def main():
     try:
         check = build(tmp)
         zip_with_restore(tmp / 'known.ipsw', 'iPad1,1', '7B367')
-        zip_with_restore(tmp / 'other.ipsw', 'iPhone1,1', '1C25')
+        zip_with_restore(tmp / 'other.ipsw', 'iPhone1,2', '5A347')   # iPhone 3G: no board for it
         subprocess.run([str(check), 'unit', catalog, str(tmp), str(FAKE), str(tmp / 'known.ipsw'), str(tmp / 'other.ipsw')],
                        check=True, env=env)
         if not download:

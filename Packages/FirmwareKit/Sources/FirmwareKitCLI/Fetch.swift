@@ -2,11 +2,10 @@
 //   A "rar" source's downloaded archive -> its checked IPSW (RARSource.unwrap); the app runs this when such a
 //   download finishes. The archive is left to the caller.
 // firmwarekit fetch --entry ENTRY.json --out IPSW
-//   The entry's IPSW from its source (url, then mirrors): checked as the catalog says, and for a "rar" source
-//   unwrapped, the archive deleted afterwards. For scripts and end-to-end checks; the app downloads itself.
+//   The entry's IPSW from its source, then each mirror (SourceFetch): checked as the catalog says, a "rar" one
+//   unwrapped, the archive deleted afterwards; any failure moves on to the next, each attempt logged on stderr. For scripts and end-to-end checks; the app downloads itself.
 // One JSON line {ipsw, sha1, bytes} on success; {"error": ...} and exit 1 otherwise.
 
-import CryptoKit
 import FirmwareKit
 import Foundation
 
@@ -41,26 +40,9 @@ func fetchCommand(_ argv: [String]) -> Never {
     let out = f["--out"]!
     do {
         let source = try FirmwareEntry.load(from: f["--entry"]!).source
-        guard let want = source.downloadSHA1, !source.urls.isEmpty else { throw FirmwareError(.unsupported, "the entry's source has no URL and SHA-1") }
-        let download = out.deletingLastPathComponent().appendingPathComponent(".\(out.lastPathComponent).download")
-        defer { try? FileManager.default.removeItem(at: download) }   // done() exits: it removes the archive itself
-        var last: Error = FirmwareError(.internal, "no source tried")
-        for url in source.urls {
-            do {
-                try fetch(url, to: download)
-                let got = try sha1(download)
-                guard got == want else { throw FirmwareError(.shaMismatch, "\(url.absoluteString): SHA-1 \(got), not \(want)") }
-                if source.isArchive {
-                    try RARSource.unwrap(download, source: source, to: out)
-                } else {
-                    try? FileManager.default.removeItem(at: out)
-                    try FileManager.default.moveItem(at: download, to: out)
-                }
-                try? FileManager.default.removeItem(at: download)
-                done(["ipsw": out.path, "sha1": source.sha1 ?? "", "bytes": source.bytes ?? 0, "from": url.absoluteString], 0)
-            } catch { last = error; FileHandle.standardError.write(Data("fetch: \(url.absoluteString): \(error)\n".utf8)) }
-        }
-        throw last
+        guard source.sha1 != nil, !source.urls.isEmpty else { throw FirmwareError(.unsupported, "the entry's source has no URL and SHA-1") }
+        let from = try SourceFetch.fetch(source, to: out, download: fetch) { FileHandle.standardError.write(Data("fetch: \($0)\n".utf8)) }
+        done(["ipsw": out.path, "sha1": source.sha1 ?? "", "bytes": source.bytes ?? 0, "from": from.absoluteString], 0)
     } catch {
         done(["error": "\(error)"], 1)
     }
@@ -84,12 +66,4 @@ private func fetch(_ url: URL, to file: URL) throws {
     }.resume()
     finished.wait()
     try result.get()
-}
-
-private func sha1(_ url: URL) throws -> String {
-    let h = try FileHandle(forReadingFrom: url)
-    defer { try? h.close() }
-    var hash = Insecure.SHA1()
-    while let chunk = try h.read(upToCount: 1 << 22), !chunk.isEmpty { hash.update(data: chunk) }
-    return hash.finalize().map { String(format: "%02x", $0) }.joined()
 }

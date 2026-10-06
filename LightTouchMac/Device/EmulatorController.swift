@@ -1849,7 +1849,8 @@ final class EmulatorController {
     var mediaFirmware: MediaSupport.Firmware {
         MediaSupport.Firmware(board: instance.board, version: iosVersion,
                               build: catalogEntry?.build ?? instance.firmware.split(separator: "-").last.map(String.init) ?? "",
-                              name: (["iOS \(iosVersion)"] + [catalogEntry?.prereleaseBadge].compactMap { $0 }).joined(separator: " "))
+                              name: (["iOS \(iosVersion)"] + [catalogEntry?.prereleaseBadge].compactMap { $0 }).joined(separator: " "),
+                              prerelease: catalogEntry?.prerelease != nil)
     }
     
     /// Cheap in-process check that the USB bridge sees the guest (bounded and

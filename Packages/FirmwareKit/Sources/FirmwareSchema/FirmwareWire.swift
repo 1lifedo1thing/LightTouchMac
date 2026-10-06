@@ -54,10 +54,20 @@ nonisolated public enum FirmwareWire {
                 case archiveSHA1 = "archive_sha1", archiveBytes = "archive_bytes"
             }
 
+            /// Another copy of the same IPSW (sha1/bytes are the IPSW's). `kind` "rar": `url` is an archive holding it as
+            /// `member`, checked like a "rar" source; nil or "ipsw": the IPSW itself.
             public struct Mirror: Codable, Sendable, Equatable {
                 public var url: URL
                 public var sha1: String
                 public var bytes: Int64
+                public var kind: String?
+                public var archiveSHA1: String?
+                public var archiveBytes: Int64?
+                public var member: String?
+                enum CodingKeys: String, CodingKey {
+                    case url, sha1, bytes, kind, member
+                    case archiveSHA1 = "archive_sha1", archiveBytes = "archive_bytes"
+                }
             }
 
             public var isArchive: Bool { kind == "rar" }
@@ -65,10 +75,18 @@ nonisolated public enum FirmwareWire {
             public var downloadSHA1: String? { isArchive ? archiveSHA1 : sha1 }
             public var downloadBytes: Int64? { isArchive ? archiveBytes : bytes }
 
-            /// Where to download from, in order: `url`, then each mirror that records this sha1 and size.
-            public var urls: [URL] {
-                [url].compactMap { $0 } + (mirrors ?? []).filter { $0.sha1 == sha1 && $0.bytes == bytes }.map(\.url)
+            /// What to download, in order: this source, then each mirror that records this sha1 and size as a source of
+            /// its own (its kind, URL and archive fields; the same IPSW sha1 and bytes).
+            public var alternatives: [Source] {
+                (url == nil ? [] : [self]) + (mirrors ?? []).filter { $0.sha1 == sha1 && $0.bytes == bytes }.map {
+                    Source(kind: $0.kind ?? "ipsw", url: $0.url, sha1: sha1, bytes: bytes, archiveSHA1: $0.archiveSHA1,
+                           archiveBytes: $0.archiveBytes, member: $0.member)
+                }
             }
+            /// Where to download from, in order (`alternatives`' URLs).
+            public var urls: [URL] { alternatives.compactMap(\.url) }
+            /// The alternative a download from `url` came from; this source when none matches.
+            public func alternative(for url: URL?) -> Source { alternatives.first { $0.url == url } ?? self }
         }
 
         /// An img3's IV/key, or a root filesystem's VFDecrypt key (no IV). `file` is the name inside the IPSW.

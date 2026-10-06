@@ -13,6 +13,8 @@ nonisolated enum MediaSupport {
         var build: String
         /// "iOS 5.0 beta 1"
         var name: String
+        /// A beta or GM: the helpers were qualified on releases only.
+        var prerelease = false
     }
 
     /// Whether this firmware's helpers can add to `destination` ("Music", "Videos", "Photos").
@@ -21,7 +23,7 @@ nonisolated enum MediaSupport {
             firmware.version.compare(low, options: .numeric) != .orderedAscending
                 && firmware.version.compare(high, options: .numeric) == .orderedAscending
         }
-        guard ["n72ap", "k48ap"].contains(firmware.board) else { return false }
+        guard ["n72ap", "k48ap"].contains(firmware.board), !firmware.prerelease else { return false }
         switch destination {
         // MusicLibrary's purchase-folder insert over the iTunes Library.itlp library and PLCameraAlbum's save
         // with the saved path: 3.x. Music on 5.x through ML3's importer, round-tripped on the iPad's 5.1.1 alone.
