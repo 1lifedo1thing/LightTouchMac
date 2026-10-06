@@ -471,9 +471,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         }
         updateDeviceNotice()
         updateStartupStatus()
-        refreshLockItem()
-        window?.toolbar?.validateVisibleItems()
-        validateCaptureToolbar()
+        validateCaptureToolbar()        // validates the toolbar once, the lock item included
         updateDeadOverlay()
         guard let emulator, let deviceVC else {
             window?.subtitle = selectedEntry.map { library.label(for: $0).subtitle } ?? ""
@@ -488,14 +486,6 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         if emulator.isPoweredOff || emulator.isDead { deviceVC.screen.endLiveText() }
         deviceVC.screen.updatePowerPresentation()
         if emulator.isDead || emulator.isPoweredOff { recording.stop() }
-    }
-
-    private func refreshLockItem() {
-        guard let item = window?.toolbar?.items.first(where: { $0.itemIdentifier == .lock }) else { return }
-        let poweredOff = emulator?.isPoweredOff ?? false
-        item.label = poweredOff ? "Power On" : emulator?.isSleeping == true ? "Wake" : "Lock"
-        item.image = NSImage(systemSymbolName: poweredOff ? "power" : "lock", accessibilityDescription: item.label)
-        item.toolTip = item.label + " (⌘L)"
     }
 
     private func updateStartupStatus() {
@@ -863,11 +853,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
     private func syncRotationControls(optionPressed: Bool) {
         let action = RotationControlAction(rotationDegrees: emulator?.rotationDegrees ?? 0, optionPressed: optionPressed)
-        if let item = window?.toolbar?.items.first(where: { $0.itemIdentifier == .rotate }) {
-            item.label = action.title
-            item.image = NSImage(systemSymbolName: action.symbol, accessibilityDescription: action.title)
-            item.toolTip = action.help
-        }
+        window?.toolbar?.items.first(where: { $0.itemIdentifier == .rotate })?
+            .show(label: action.title, toolTip: action.help, symbol: action.symbol)
     }
 
     @objc func configureWebProxy(_ sender: Any?) {
@@ -1134,7 +1121,6 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     @objc func showLiveText(_ sender: Any?) {
         guard let deviceVC, !recording.isActive, deviceVC.screen.isShowingLiveText || canTakeScreenshot else { return }
         deviceVC.screen.toggleLiveText()
-        window?.toolbar?.validateVisibleItems()
         validateCaptureToolbar()
     }
 
@@ -1152,7 +1138,6 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
     @objc func toggleTouchOverlay(_ sender: Any?) {
         deviceVC?.screen.showsTouches.toggle()
-        window?.toolbar?.validateVisibleItems()
         validateCaptureToolbar()
     }
 
@@ -1256,6 +1241,7 @@ extension MainWindowController: NSToolbarItemValidation {
         }
         guard let emulator, let deviceVC else {
             (item.view as? NSControl)?.isEnabled = false
+            if item.itemIdentifier == .lock { item.show(label: "Lock", toolTip: "Lock (⌘L)", symbol: "lock") }
             if item.itemIdentifier == .recording {
                 (item.view as? RecordingToolbarButton)?.update(recording.needsRecovery ? .recovery : .idle, elapsed: recording.elapsed, enabled: canToggleRecording)
                 return canToggleRecording
@@ -1272,46 +1258,47 @@ extension MainWindowController: NSToolbarItemValidation {
         case .screenshot:
             return canTakeScreenshot
         case .copyScreen:
-            item.image = NSImage(systemSymbolName: capture.copiedScreenshot ? "checkmark.circle" : "document.on.document",
-                                 accessibilityDescription: "Copy Screenshot")
+            item.show(symbol: capture.copiedScreenshot ? "checkmark.circle" : "document.on.document",
+                      symbolDescription: "Copy Screenshot")
             return canTakeScreenshot
         case .recording:
             let phase: RecordingToolbarButton.Phase = recording.phase == .saving ? .saving
                 : recording.needsRecovery ? .recovery : recording.canStop ? .recording : .idle
             (item.view as? RecordingToolbarButton)?.update(phase, elapsed: recording.elapsed, enabled: canToggleRecording)
-            item.label = "Record"
-            item.toolTip = (item.view as? NSButton)?.toolTip
+            item.show(label: "Record", toolTip: (item.view as? NSButton)?.toolTip)
             return canToggleRecording
         case .openScreenshot:
-            item.label = "Open Screenshot"
-            item.toolTip = "Open Screenshot in \(capturePreferences.openInApplicationName)"
+            item.show(label: "Open Screenshot", toolTip: "Open Screenshot in \(capturePreferences.openInApplicationName)")
             return canTakeScreenshot
         case .saveScreenshotAs:
             return canTakeScreenshot
         case .captureOptions:
             return true
         case .liveText:
+            let label = deviceVC.screen.isShowingLiveText ? "Done Selecting Text" : "Select Text on Screen"
             (item.view as? NSButton)?.state = deviceVC.screen.isShowingLiveText ? .on : .off
-            item.label = deviceVC.screen.isShowingLiveText ? "Done Selecting Text" : "Select Text on Screen"
-            item.toolTip = item.label
-            (item.view as? NSButton)?.toolTip = item.label
-            (item.view as? NSButton)?.setAccessibilityLabel(item.label)
+            if item.label != label {
+                item.show(label: label, toolTip: label)
+                (item.view as? NSButton)?.toolTip = label
+                (item.view as? NSButton)?.setAccessibilityLabel(label)
+            }
             let enabled = !recording.isActive && (deviceVC.screen.isShowingLiveText || canTakeScreenshot)
             (item.view as? NSButton)?.isEnabled = enabled
             return enabled
         case .fingerDots:
+            let label = deviceVC.screen.showsTouches ? "Hide Finger Dots" : "Show Finger Dots"
             (item.view as? NSButton)?.state = deviceVC.screen.showsTouches ? .on : .off
-            item.label = deviceVC.screen.showsTouches ? "Hide Finger Dots" : "Show Finger Dots"
-            item.toolTip = item.label
-            (item.view as? NSButton)?.toolTip = item.label
-            (item.view as? NSButton)?.setAccessibilityLabel(item.label)
+            if item.label != label {
+                item.show(label: label, toolTip: label)
+                (item.view as? NSButton)?.toolTip = label
+                (item.view as? NSButton)?.setAccessibilityLabel(label)
+            }
             return true
         case .installApp:
             return emulator.canQueueInstall
         case .lock:
-            item.label = emulator.isPoweredOff ? "Power On" : emulator.isSleeping ? "Wake" : "Lock"
-            item.image = NSImage(systemSymbolName: emulator.isPoweredOff ? "power" : "lock", accessibilityDescription: item.label)
-            item.toolTip = item.label + " (⌘L)"
+            let label = emulator.isPoweredOff ? "Power On" : emulator.isSleeping ? "Wake" : "Lock"
+            item.show(label: label, toolTip: label + " (⌘L)", symbol: emulator.isPoweredOff ? "power" : "lock")
             return emulator.acceptsInput || (emulator.isPoweredOff && !emulator.shuttingDown)
         case .home, .rotate:
             return emulator.acceptsInput

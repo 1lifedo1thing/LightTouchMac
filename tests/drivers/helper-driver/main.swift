@@ -166,6 +166,8 @@ Thread.detachNewThread {
             _ = request(.modemStatus); usleep(300_000)
             if case .success(.modemStatus(let json)) = request(.modemStatus) { emit("modemStatus", ["json": json ?? ""]) }
             else { emit("modemStatus", ["json": ""]) }
+        case "rotate":      // rotate cw|ccw: the app's ⌘-arrow (LinkCommand.rotate)
+            link.send(.rotate(clockwise: p[1] == "cw"))
         case "orientation":
             emit("reply", ["reply": "\(request(.orientation(Int(v[0]))))"])
         case "agent":

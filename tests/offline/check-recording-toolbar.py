@@ -42,7 +42,18 @@ source=r'''import Cocoa
   precondition(button.accessibilityLabel()=="Save Recording As…" && button.isEnabled)
   button.update(.idle,elapsed:"0:00",enabled:false)
   precondition(button.intrinsicContentSize.width==idleWidth && button.title.isEmpty && !button.isEnabled)
-  print("PASS: native record/stop action, elapsed sizing, saving progress, accessible phase labels, recovery and idle reset")
+  // An unchanged update touches nothing (it runs on every validation); a changed one redraws.
+  let image=button.image
+  button.update(.idle,elapsed:"0:00",enabled:false);precondition(button.image === image,"unchanged update re-made the image")
+  button.update(.idle,elapsed:"0:01",enabled:false);precondition(button.image === image,"idle ignores the clock")
+  button.update(.idle,elapsed:"0:00",enabled:true);precondition(button.image !== image && button.isEnabled)
+  // Toolbar items: label, tooltip and symbol assigned only on change.
+  let item=NSToolbarItem(itemIdentifier:.init("lock"))
+  item.show(label:"Lock",toolTip:"Lock (⌘L)",symbol:"lock");let lockImage=item.image
+  item.show(label:"Lock",toolTip:"Lock (⌘L)",symbol:"lock");precondition(item.image === lockImage)
+  item.show(label:"Power On",toolTip:"Power On (⌘L)",symbol:"power")
+  precondition(item.image !== lockImage && item.label=="Power On" && item.toolTip=="Power On (⌘L)")
+  print("PASS: native record/stop action, elapsed sizing, saving progress, accessible phase labels, recovery and idle reset; unchanged updates touch nothing")
  }
 }
 '''

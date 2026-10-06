@@ -31,14 +31,20 @@ with tempfile.TemporaryDirectory(prefix='ltm-events-') as temp:
   for i in 0..<200{precondition(lines.contains{$0.hasSuffix(" event-\(i)")})}
   let permissions=try FileManager.default.attributesOfItem(atPath:file.path)[.posixPermissions] as! NSNumber
   precondition(permissions.intValue & 0o777 == 0o600)
-  try Data(repeating:65,count:999_999).write(to:file)
-  log.append("after rotation");await log.flush()
-  precondition(try! Data(contentsOf:file.appendingPathExtension("1")).count==999_999)
+  // Filled through the log itself (it tracks the size it wrote), then a line past the limit rotates it.
+  var before=0
+  repeat { log.append(String(repeating:"A",count:31_000));await log.flush();before=try! Data(contentsOf:file).count } while before+31_100<=1_000_000
+  log.append("after rotation"+String(repeating:"B",count:31_986));await log.flush()
+  precondition(try! Data(contentsOf:file.appendingPathExtension("1")).count==before)
   precondition(try! String(contentsOf:file,encoding:.utf8).contains("after rotation"))
+  try FileManager.default.removeItem(at:file)          // deleted under the open log: the next line recreates it
+  log.append("after removal");await log.flush()
+  precondition(try! String(contentsOf:file,encoding:.utf8).contains("after removal"))
+  let rotated=try! Data(contentsOf:file).count
   log.append(String(repeating:"🦋",count:100_000));await log.flush()
-  precondition(try! Data(contentsOf:file).count<33_000)
+  precondition(try! Data(contentsOf:file).count-rotated<33_000)
   log.append("a"+String(repeating:"\u{301}",count:100_000));await log.flush()
-  precondition(try! Data(contentsOf:file).count<66_000)
+  precondition(try! Data(contentsOf:file).count-rotated<66_000)
   let blocked=directory.appendingPathComponent("blocked")
   try Data("keep".utf8).write(to:blocked)
   let broken=AppEventLog(directory:blocked)

@@ -8,7 +8,8 @@ status block, frame ring, framed link). Cases:
   lease      two helpers on one device's work/lease (temp state dir): the second is refused
              ("in use by another copy of Light Touch"), another device's lease is not; after the
              holder's parent dies and its helper exits, the lease is taken again. No boot.
-  ipod       iPod nand-current: lit, unlock drag, battery request, agent RPC, then the
+  ipod       iPod nand-current: lit, unlock drag, rotate (the landscape Home screen is shown),
+             battery request, agent RPC, then the
              parent is SIGKILLed: the helper hard-halts (pause, flush, quit) and exits
   ipad       iPad 3.2.2: lit, unlock, snapshot, resume, snapshot, quit -> qemuExited(0)
   restore    -incoming the second snapshot: lit, tap Settings, Home; then SIGKILL the
@@ -281,13 +282,20 @@ def main():
         if "ipod" in cases:
             print("ipod", flush=True)
             d = Driver(args, bin_dir, helper, work, "ipod", {"machine": "iPod-Touch", "boot": ipod_boot(files, work / "ipod/overlay"),
-                       "steps": ["boot", "lit 0.03 240", "dump lock", IPOD_UNLOCK, "wait 4", "dump home", "battery 50 0",
+                       "steps": ["boot", "lit 0.03 240", "dump lock", IPOD_UNLOCK, "wait 4", "dump home",
+                                 "rotate cw", "wait 2", "dump rotated", "rotate ccw", "wait 2", "battery 50 0",
                                  "wait 20", "agent echo agent-ok", "status", "hold"]})
             parent_kill(d, "ipod", results, 10)
             ev = {e["event"]: e for e in d.events()}
             check("lit" in ev, f"lit through the ring after {ev.get('lit', {}).get('seconds', 0):.1f} s", "ipod", results)
             dumps = {e["name"]: e for e in d.find("dump")}
             check(dumps.get("home", {}).get("ok") and dumps.get("lock", {}).get("ok"), "lock + home dumps", "ipod", results)
+            # The rotated Home screen is one new frame: the guest repaints nothing, so a frame the ring
+            # dropped (a new ring's surfaces are in use until the app takes them) would stay black.
+            rotated, home = dumps.get("rotated", {}), dumps.get("home", {})
+            check(rotated.get("width") == 480 and rotated.get("brightness", 0) > 0.5 * home.get("brightness", 1),
+                  f"rotated Home screen shown ({rotated.get('width')}x{rotated.get('height')}, brightness "
+                  f"{rotated.get('brightness', 0):.2f} vs {home.get('brightness', 0):.2f})", "ipod", results)
             check(any("ok(true)" in e.get("reply", "") for e in d.find("reply")), "battery request -> ok(true)", "ipod", results)
             check(any("agent-ok" in e.get("output", "") for e in d.find("agent")), "agent RPC round trip", "ipod", results)
 

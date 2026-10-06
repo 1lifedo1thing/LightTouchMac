@@ -6,7 +6,8 @@ the watch a recorded iPad 4.2.1 serial log (tests/fixtures/serial-k48ap-8C148.lo
 small writes, with the app's marker list; then the recorded boot's other two events (the guest tools
 reporting in, USB attaching). The stages must come out in order with their words, move only forward, and
 not move at all for lines that prove nothing. The readiness rule for a boot whose USB never answers is
-here too: a picture from a running iOS keeps the device running; no picture, or only iBoot's, stops it.
+here too: a picture from a running iOS keeps the device running; no picture, or only iBoot's, stops it. So is the
+Home-screen wait's second answer: the guest agent naming SpringBoard or Setup Assistant frontmost.
 """
 from pathlib import Path
 import os, subprocess, tempfile
@@ -79,6 +80,10 @@ final class Seen: @unchecked Sendable {
                      "iBoot lights the display too: its logo alone is not iOS")
         precondition(stage == .usb && ReadinessDeadline.verdict(painted: true, stage: recorded.prefix(4).map(BootStage.Event.serial)
             .reduce(.poweringOn) { $0.after($1) }) == .keepRunning, "the recorded boot, had USB never come: kept")
+        // SpringBoard up by the agent's frontmost (a device in Setup whose layout service refuses): its screens or Setup.
+        precondition(SpringBoardAnswer.up(frontmost: "com.apple.springboard") && SpringBoardAnswer.up(frontmost: "com.apple.purplebuddy"),
+                     "slide to set up / Setup Assistant: SpringBoard is up")
+        precondition(!SpringBoardAnswer.up(frontmost: nil) && !SpringBoardAnswer.up(frontmost: ""), "no answer is not ready")
         let notice = ReadinessDeadline.notice(shortName: "iPad")
         precondition(notice == "Apps and files will be available when the iPad connects.", notice)
         print("PASS: the recorded boot's serial lines, guest tools and USB give the toast's stages in order, only forward; iOS on screen without USB keeps running, no picture stops")
