@@ -13,7 +13,7 @@ simulated cellular network for calls and texts.
 Get the latest notarized build from [Releases](https://github.com/samhenrigold/LightTouchMac/releases),
 unzip it, and move **Light Touch.app** to Applications.
 
-- macOS 14 or later, on Apple silicon or Intel.
+- macOS 14.4 or later, on Apple silicon or Intel.
 - Light Touch includes a ready-to-use iPod touch (2nd gen) on iOS 3.1.3. For every other device and
   version it downloads Apple's original firmware (from Apple, or from public archives for builds Apple
   no longer hosts), checks it against its published hash, and prepares the device on your Mac. You can
