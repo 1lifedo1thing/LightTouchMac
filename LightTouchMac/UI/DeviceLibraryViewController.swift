@@ -409,8 +409,9 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
 
     // MARK: - Context menu
 
+    /// `.start` stands for the Start/Stop toggle; `.cancel` is listed only while there is something to cancel.
     private static let menuActions: [(DeviceAction?, String)] = [
-        (.start, "Start"), (.stop, "Stop"), (nil, ""),
+        (.start, "Start"), (nil, ""),
         (.downloadAndPrepare, "Download and Prepare"), (.importIPSW, "Import IPSW…"), (.cancel, "Cancel"), (nil, ""),
         (.showInFinder, "Show in Finder"),
         (.openFilesystem, "Show File System in Finder"), (.commitFilesystem, "Save Filesystem Edits"),
@@ -434,9 +435,13 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
                 if menu.items.last?.isSeparatorItem == false { menu.addItem(.separator()) }
                 continue
             }
-            let item = NSMenuItem(title: title, action: #selector(contextAction(_:)), keyEquivalent: "")
+            if action == .cancel, delegate?.library(self, canPerform: .cancel, for: entry) != true { continue }
+            // One item whose title follows the row: Stop while it runs, Start otherwise.
+            let running = [.running, .stopping].contains(row(for: entry).state)
+            let (command, label) = action == .start && running ? (DeviceAction.stop, "Stop") : (action, title)
+            let item = NSMenuItem(title: label, action: #selector(contextAction(_:)), keyEquivalent: "")
             item.target = self
-            item.representedObject = action
+            item.representedObject = command
             menu.addItem(item)
         }
         if menu.items.last?.isSeparatorItem == false { menu.addItem(.separator()) }
@@ -450,7 +455,7 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
 
     @objc private func removeFromMenu(_ sender: Any?) { removeTargets() }
 
-    /// Every command is listed; what doesn't apply now is dimmed, never hidden.
+    /// Every command is listed (Cancel only when there is something to cancel); what doesn't apply now is dimmed.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(contextAction(_:)), let action = item.representedObject as? DeviceAction {
             return targetEntry.map { delegate?.library(self, canPerform: action, for: $0) == true } ?? false

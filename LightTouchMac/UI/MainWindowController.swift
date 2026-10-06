@@ -1340,7 +1340,10 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(cancelFirmwareJob(_:)):
             if let entry = selectedEntry, case .preparing = host.row(for: entry).state { menuItem.title = "Cancel Preparation" }
             else { menuItem.title = "Cancel Download" }
-            return selectedEntry.map { canPerform(.cancel, for: $0) } ?? false
+            // The one item that comes and goes: there only while a download or preparation can be cancelled.
+            let cancellable = selectedEntry.map { canPerform(.cancel, for: $0) } ?? false
+            menuItem.isHidden = !cancellable
+            return cancellable
         case #selector(showDeviceInFinder(_:)): return selectedEntry.map { canPerform(.showInFinder, for: $0) } ?? false
         case #selector(deleteDevice(_:)):
             let selected = library.selectedEntries

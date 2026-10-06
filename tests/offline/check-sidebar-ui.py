@@ -258,9 +258,24 @@ final class Delegate: DeviceLibraryDelegate {
         vc.menuNeedsUpdate(context)
         let commands = context.items.filter { !$0.isSeparatorItem && $0.title != "Rename" }
         let live = commands.filter { vc.validateMenuItem($0) }.map(\.title)
-        if !["Stop", "Show File System in Finder", "Erase All Content and Settings…"].allSatisfy({ t in commands.contains { $0.title == t } })
-            || !live.contains("Start") || live.contains("Stop") { fail("context menu: \(commands.map(\.title)), enabled \(live)") }
+        // Start/Stop is one item whose title follows the row; Cancel is there only while something can be cancelled.
+        if !["Start", "Show File System in Finder", "Erase All Content and Settings…"].allSatisfy({ t in commands.contains { $0.title == t } })
+            || commands.contains(where: { ["Stop", "Cancel"].contains($0.title) }) || !live.contains("Start") {
+            fail("context menu: \(commands.map(\.title)), enabled \(live)")
+        }
+        delegate.allowed = Set(DeviceAction.allCases).subtracting([.cancel])
+        host.running = ["n72ap-8C148"]
+        NotificationCenter.default.post(name: DeviceSessionHost.didChangeNotification, object: nil)
+        vc.menuNeedsUpdate(context)
+        var titles = context.items.map(\.title)
+        if !titles.contains("Stop") || titles.contains("Start") || titles.contains("Cancel") { fail("a running row's context menu: \(titles)") }
+        host.running = []
         delegate.allowed = Set(DeviceAction.allCases)
+        FirmwareJobs.shared.jobs["n72ap-8C148"] = .preparing(Preparation(step: 1, steps: 2, name: "x"))
+        vc.menuNeedsUpdate(context)
+        titles = context.items.map(\.title)
+        if !titles.contains("Cancel") || !titles.contains("Start") { fail("a preparing row's context menu: \(titles)") }
+        FirmwareJobs.shared.jobs = [:]
         let delete = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: w.windowNumber,
                                       context: nil, characters: "\u{7f}", charactersIgnoringModifiers: "\u{7f}", isARepeat: false, keyCode: 51)!
         vc.select(catalog.entry(id: "n72ap-8C148")!)
