@@ -10,13 +10,17 @@ public nonisolated enum DeveloperConnectionProfile {
         public let inetcat: String
         public let udid: String?
     }
-    private static func file(_ instance: UUID) -> URL {
-        GuestDeveloperTools.state.appendingPathComponent(instance.uuidString.lowercased()).appendingPathComponent("connection.json")
+    private static func file(_ instance: UUID, state: URL) -> URL {
+        state.appendingPathComponent(instance.uuidString.lowercased()).appendingPathComponent("connection.json")
     }
-    public static func publish(instance: UUID, session: UUID, socket: String, udid: String?) throws {
-        let destination = file(instance)
+    /// `state` is GuestDeveloperTools.state and `tools` the app's executable directory (where inetcat is bundled),
+    /// both overridable for tests.
+    public static func publish(instance: UUID, session: UUID, socket: String, udid: String?,
+                               state: URL = GuestDeveloperTools.state,
+                               tools: URL? = Bundle.main.executableURL?.deletingLastPathComponent()) throws {
+        let destination = file(instance, state: state)
         guard FileManager.default.fileExists(atPath: destination.deletingLastPathComponent().appendingPathComponent("enabled").path) else { return }
-        let candidates = [Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("inetcat").path,
+        let candidates = [tools?.appendingPathComponent("inetcat").path,
                           "/opt/homebrew/bin/inetcat", "/usr/local/bin/inetcat"].compactMap { $0 }
         guard let inetcat = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
             throw CocoaError(.fileNoSuchFile, userInfo: [NSLocalizedDescriptionKey: "The developer USB forwarding tool is unavailable."])
@@ -26,8 +30,8 @@ public nonisolated enum DeveloperConnectionProfile {
         try bytes.write(to: destination, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
     }
-    public static func retire(instance: UUID, session: UUID) {
-        let path = file(instance)
+    public static func retire(instance: UUID, session: UUID, state: URL = GuestDeveloperTools.state) {
+        let path = file(instance, state: state)
         guard let data = try? Data(contentsOf: path), let profile = try? JSONDecoder().decode(Connection.self, from: data),
               profile.instance == instance, profile.session == session else { return }
         try? FileManager.default.removeItem(at: path)

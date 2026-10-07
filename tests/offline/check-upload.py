@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Exercise the production AFC streaming loop with short writes and failures, and the staging names a late
-startup sweep may remove. Compiles the helper's Engine/AFC.swift and Engine/DeviceExecution.swift whole, against a fake
+"""Exercise the production AFC streaming loop with short writes and failures (the staging names a late startup sweep
+may remove are HostServiceWireTests' StagingNamesTests). Compiles the helper's Engine/AFC.swift and Engine/DeviceExecution.swift whole, against a fake
 libimobiledevice and a DeviceServices whose run kernel calls straight through."""
 from pathlib import Path
 from host_service_fixtures import engine, leaves, local_engine_stub
@@ -64,23 +64,6 @@ extension DeviceServices {
   try await Task.detached { try body(OpaquePointer(bitPattern: 1)!) }.value
  }
 }
-func stagingNames() {
-  let file=URL(fileURLWithPath:"/tmp/Temple Run.ipa")
-  let first=DeviceServices.stagingName(file), second=DeviceServices.stagingName(file)
-  precondition(first != second)
-  let old="Temple_Run-01234567.ipa"
-  // Simulate the directory listing returning after both new uploads started.
-  let removed=[old,first,second,".","..","../escape",""].filter(DeviceServices.isOrphanedStagingName)
-  precondition(removed == [old])
-  precondition(!first.contains("/"))
-  let uuid=UUID().uuidString
-  precondition(DeviceServices.isOrphanedMediaUpload("audio.m4a.upload-"+uuid))
-  precondition(DeviceServices.isOrphanedMediaUpload("image.jpg.upload-"+uuid+"-"+UUID().uuidString))
-  precondition(!DeviceServices.isOrphanedMediaUpload("audio.m4a.upload-"+DeviceServices.stagingSession+"-"+uuid))
-  for name in ["audio.m4a","image.jpg",".photo-receipt","song.json","audio.m4a.upload-invalid","../image.jpg.upload-"+uuid] {
-   precondition(!DeviceServices.isOrphanedMediaUpload(name),name)
-  }
-}
 @main struct Check {
  static func main() async throws {
   let path = URL(fileURLWithPath: CommandLine.arguments[1])
@@ -137,7 +120,6 @@ func stagingNames() {
    catch let e as DeviceError { precondition(e.shouldPauseInstallQueue) }
    precondition(state.removed && state.closeCalls == 1)
   }
-  stagingNames()
   print("PASS: app/media AFC uploads, safe destination validation, short writes and failure cleanup; late sweeps preserve active uploads, canonical media and receipts")
  }
 }

@@ -48,18 +48,31 @@ public nonisolated final class GuestAgentCache: @unchecked Sendable {
     public func reset() { capabilities = nil }
 }
 
+/// What the agent needs of a device's link: DeviceLink's agent status, request and send. Tests stand a fake guest
+/// behind it.
+public nonisolated protocol GuestAgentLink: AnyObject, Sendable {
+    /// 0 absent or not running, 1 alive, 2 stale; nil before the helper published a status.
+    var agentStatus: Int? { get }
+    func request(_ request: LinkRequest, timeout: TimeInterval) async throws -> LinkReply
+    func send(_ command: LinkCommand)
+}
+
+nonisolated extension DeviceLink: GuestAgentLink {
+    public var agentStatus: Int? { status?.agentStatus }
+}
+
 /// The guest agent of one device, through its helper (LinkRequest.agent). A
 /// submitted request is never retried: a lost reply may follow a mutation.
 public nonisolated struct GuestAgent: Sendable {
-    public init(link: DeviceLink? = nil, cache: GuestAgentCache) {
+    public init(link: (any GuestAgentLink)? = nil, cache: GuestAgentCache) {
         self.link = link
         self.cache = cache
     }
-    public let link: DeviceLink?
+    public let link: (any GuestAgentLink)?
     public let cache: GuestAgentCache
 
     /// 0 absent or not running, 1 alive, 2 stale.
-    public var status: Int { link?.status?.agentStatus ?? 0 }
+    public var status: Int { link?.agentStatus ?? 0 }
     public var isAlive: Bool { status == 1 }
 
     // MARK: Wire

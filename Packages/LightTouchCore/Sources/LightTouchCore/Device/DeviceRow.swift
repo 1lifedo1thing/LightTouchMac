@@ -1,6 +1,5 @@
 // What the sidebar row, its context menu, the Device menu and the placeholder show for one catalog entry,
-// from the record and what the sessions say about it. Pure Foundation, so tests/offline/check-device-rows.py
-// compiles it whole.
+// from the record and what the sessions say about it. Pure Foundation; DeviceRowTests covers it.
 
 import FirmwareSchema
 import HostRuntime
@@ -116,7 +115,7 @@ public nonisolated enum DeviceRowState: Equatable, Sendable {
 }
 
 /// One sidebar row: a catalog entry and what the library, the jobs and the
-/// sessions say about it. Pure, so tests/offline/check-device-rows.py can run it.
+/// sessions say about it.
 public nonisolated struct DeviceRow: Equatable, Sendable {
     public let entry: FirmwareCatalog.Entry
     public let instanceID: UUID?

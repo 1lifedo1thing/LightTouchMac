@@ -1,5 +1,5 @@
 // Which catalog entries the sidebar shows, and the names the user gave them. Persisted in user defaults;
-// pure Foundation, so tests/offline/check-sidebar-list.py compiles it whole.
+// pure Foundation; SidebarListTests covers it.
 
 import LightTouchCore
 import Foundation
