@@ -7,7 +7,8 @@ import Testing
 @Suite(.serialized) enum SharedState {}
 
 /// The repository, for the recorded fixtures under tests/fixtures.
-nonisolated let repositoryRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+/// (#filePath through any symlink: tests/offline links this file in.)
+nonisolated let repositoryRoot = URL(fileURLWithPath: #filePath).resolvingSymlinksInPath().deletingLastPathComponent().deletingLastPathComponent()
     .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 
 nonisolated func fixture(_ path: String) -> URL { repositoryRoot.appendingPathComponent("tests/fixtures/" + path) }

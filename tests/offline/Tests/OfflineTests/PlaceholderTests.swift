@@ -1,7 +1,8 @@
 import AppKit
 import Testing
-@testable import LightTouchCore
+
 @testable import AppViews
+@testable import LightTouchCore
 
 /// The prepare screen (DevicePlaceholderViewController) in every state and its build-info popover, with the real
 /// catalog and DeviceRow, in windows never ordered in. The name, version and state lines stack in that order; the
@@ -28,8 +29,10 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
         func slideDraggedImage(to screenPoint: NSPoint) {}
         override nonisolated func namesOfPromisedFilesDropped(atDestination dropDestination: URL) -> [String]? { nil }
         func resetSpringLoading() {}
-        func enumerateDraggingItems(options: NSDraggingItemEnumerationOptions = [], for view: NSView?, classes classArray: [AnyClass],
-                                    searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:], using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
+        func enumerateDraggingItems(
+            options: NSDraggingItemEnumerationOptions = [], for view: NSView?, classes classArray: [AnyClass],
+            searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:], using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void
+        ) {}
         func files(_ names: [String]) {
             draggingPasteboard.clearContents()
             precondition(draggingPasteboard.writeObjects(names.map { URL(fileURLWithPath: "/tmp/" + $0) as NSURL }))
@@ -39,11 +42,14 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
     @Test func everyState() throws {
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.prohibited)
-        let catalog = try FirmwareCatalog.load(from: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-            .appendingPathComponent("../../../../LightTouchMac/Resources/firmware-catalog.json").standardizedFileURL)
+        let catalog = try FirmwareCatalog.load(
+            from: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+                .appendingPathComponent("../../../../LightTouchMac/Resources/firmware-catalog.json").standardizedFileURL)
         func entry(_ id: String) -> FirmwareCatalog.Entry { catalog.entry(id: id)! }
         let id = UUID()
-        let beta = entry("k48ap-9A5220p"), ipad = entry("k48ap-7B500"), ipod = entry("n72ap-7E18")
+        let beta = entry("k48ap-9A5220p")
+        let ipad = entry("k48ap-7B500")
+        let ipod = entry("n72ap-7E18")
         var prep = Preparation(step: 3, steps: 7, name: "Decrypting", fraction: 0.4)
         prep.remaining = 95
         let unsupported = "Light Touch can’t prepare this beta yet: its graphics library isn’t supported."
@@ -51,10 +57,24 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
             ("not-downloaded", DeviceRow(entry: beta, instanceID: nil, session: nil, job: nil)),
             ("downloaded", DeviceRow(entry: ipad, instanceID: nil, session: nil, job: nil, downloaded: true)),
             ("downloading", DeviceRow(entry: beta, instanceID: nil, session: nil, job: .downloading(fraction: 0.43, remaining: 70))),
-            ("downloading-archive", DeviceRow(entry: beta, instanceID: nil, session: nil,
-                                              job: .downloading(fraction: 0.43, remaining: 1900, mirror: "archive.org", speed: 850_000))),
+            (
+                "downloading-archive",
+                DeviceRow(
+                    entry: beta, instanceID: nil, session: nil,
+                    job: .downloading(fraction: 0.43, remaining: 1900, mirror: "archive.org", speed: 850_000))
+            ),
             ("preparing", DeviceRow(entry: beta, instanceID: nil, session: nil, job: .preparing(prep))),
-            ("almost-done", DeviceRow(entry: beta, instanceID: nil, session: nil, job: .preparing({ var p = prep; p.remaining = 4; return p }()))),
+            (
+                "almost-done",
+                DeviceRow(
+                    entry: beta, instanceID: nil, session: nil,
+                    job: .preparing(
+                        {
+                            var p = prep
+                            p.remaining = 4
+                            return p
+                        }()))
+            ),
             ("downloading-starting", DeviceRow(entry: beta, instanceID: nil, session: nil, job: .downloading(fraction: 0.01))),
             ("error", DeviceRow(entry: beta, instanceID: nil, session: nil, job: .failed(unsupported))),
             ("ready", DeviceRow(entry: ipad, instanceID: id, session: nil, job: nil)),
@@ -73,7 +93,14 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
             let view = vc.view
 
             func all(_ v: NSView) -> [NSView] { v.subviews.flatMap { [$0] + all($0) } }
-            func visible(_ v: NSView) -> Bool { var p: NSView? = v; while let q = p { if q.isHidden { return false }; p = q.superview }; return v.window != nil }
+            func visible(_ v: NSView) -> Bool {
+                var p: NSView? = v
+                while let q = p {
+                    if q.isHidden { return false }
+                    p = q.superview
+                }
+                return v.window != nil
+            }
             func frame(_ v: NSView) -> NSRect { v.convert(v.alignmentRect(forFrame: v.frame).offsetBy(dx: -v.frame.minX, dy: -v.frame.minY), to: view) }
             let labels = all(view).compactMap { $0 as? NSTextField }.filter { visible($0) && !$0.stringValue.isEmpty }
             let buttons = all(view).compactMap { $0 as? NSButton }.filter { visible($0) && $0.isBordered }
@@ -81,24 +108,36 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
             // The art is the sidebar's thumbnail for the model, dimmed, not the shell.
             if let profile = row.entry.profile {
                 let art = all(view).compactMap { $0 as? NSImageView }.first { $0.alphaValue < 1 }
-                if art?.image?.tiffRepresentation != { let i = profile.icon.copy() as! NSImage; i.size = NSSize(width: 256, height: 256); return i.tiffRepresentation }() {
+                if art?.image?.tiffRepresentation
+                    != {
+                        let i = profile.icon.copy() as! NSImage
+                        i.size = NSSize(width: 256, height: 256)
+                        return i.tiffRepresentation
+                    }()
+                {
                     fail("the art isn't the device's icon")
                 }
             }
             for l in labels {
                 let f = frame(l)
                 if !view.bounds.contains(f) { fail("\(l.stringValue) outside the view") }
-                if l.maximumNumberOfLines != 0 || l.cell?.wraps == false, l.intrinsicContentSize.width > l.frame.width + 0.5 { fail("\(l.stringValue) clipped") }
+                if l.maximumNumberOfLines != 0 || l.cell?.wraps == false, l.intrinsicContentSize.width > l.frame.width + 0.5 {
+                    fail("\(l.stringValue) clipped")
+                }
             }
             // Top to bottom: name, version, state.
             let texts = labels.sorted { frame($0).midY > frame($1).midY }.map(\.stringValue)
             guard let n = texts.firstIndex(of: row.entry.profile!.marketingName), let v = texts.firstIndex(where: { $0.hasPrefix("iOS ") }) else {
-                fail("no name or version: \(texts)"); continue
+                fail("no name or version: \(texts)")
+                continue
             }
             if !(n < v && v + 1 < texts.count) { fail("order: \(texts)") }
             if texts.count < 3 { fail("no state line: \(texts)") }
             if let primary = row.primaryTitle {
-                guard let p = buttons.first(where: { $0.title == primary }) else { fail("no \(primary)"); continue }
+                guard let p = buttons.first(where: { $0.title == primary }) else {
+                    fail("no \(primary)")
+                    continue
+                }
                 for b in buttons where b !== p {
                     if abs(frame(b).midY - frame(p).midY) > 0.5 { fail("\(b.title) not on \(primary)'s row") }
                     if frame(b).maxX > frame(p).minX { fail("\(b.title) after the default button") }
@@ -112,16 +151,21 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
             if (name == "older-recipe") != (again != nil) { fail("Prepare Again shown: \(again != nil)") }
             if let note = row.olderRecipeNote, !texts.contains(note) { fail("no older-recipe line: \(texts)") }
             if row.preparedByOlderRecipe, again?.isEnabled != true || row.primaryTitle != "Start" { fail("Prepare Again disabled or Start not the default") }
-            if row.isError && !texts.contains(where: { $0.hasPrefix("Couldn’t ") || $0 == "Stopped unexpectedly" }) { fail("an error headline that doesn't say what failed: \(texts)") }
+            if row.isError && !texts.contains(where: { $0.hasPrefix("Couldn’t ") || $0 == "Stopped unexpectedly" }) {
+                fail("an error headline that doesn't say what failed: \(texts)")
+            }
             if texts.contains("Error") { fail("a bare Error headline") }
             // A job's headline is its stage ("Downloading from archive.org…", "Decrypting…"), right under the version;
             // under the bar, the percent and the time left (and a slow download's speed).
             if let headline = row.progressHeadline {
                 if texts[safe: v + 1] != headline { fail("headline \(texts[safe: v + 1] ?? "none"), want \(headline): \(texts)") }
-                if texts[safe: v + 2] != row.progressLine || texts.count != v + 3 { fail("the line under the bar: \(texts), want \(row.progressLine ?? "nil")") }
+                if texts[safe: v + 2] != row.progressLine || texts.count != v + 3 {
+                    fail("the line under the bar: \(texts), want \(row.progressLine ?? "nil")")
+                }
                 if !(row.progressLine ?? "").contains("%") { fail("no percent: \(row.progressLine ?? "nil")") }
                 if row.progress != nil, let bar = all(view).compactMap({ $0 as? NSProgressIndicator }).first(where: visible),
-                   let line = texts[safe: v + 2], let label = labels.first(where: { $0.stringValue == line }), !(frame(bar).minY > frame(label).maxY) {
+                    let line = texts[safe: v + 2], let label = labels.first(where: { $0.stringValue == line }), !(frame(bar).minY > frame(label).maxY)
+                {
                     fail("the percent line isn't under the bar")
                 }
             }
@@ -129,7 +173,9 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
                 fail("a slow archive.org download: \(texts)")
             }
             if name == "almost-done", !(texts[safe: v + 2] ?? "").hasSuffix("Almost done…") { fail("Almost done without its ellipsis: \(texts)") }
-            if let bar = all(view).compactMap({ $0 as? NSProgressIndicator }).first(where: visible), !["Download progress", "Preparation progress"].contains(bar.accessibilityLabel() ?? "") {
+            if let bar = all(view).compactMap({ $0 as? NSProgressIndicator }).first(where: visible),
+                !["Download progress", "Preparation progress"].contains(bar.accessibilityLabel() ?? "")
+            {
                 fail("progress bar labeled \(bar.accessibilityLabel() ?? "nothing")")
             }
         }
@@ -141,7 +187,14 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
             window.appearance = NSAppearance(named: .aqua)
             window.contentView = vc.view
             func all(_ v: NSView) -> [NSView] { v.subviews.flatMap { [$0] + all($0) } }
-            func visible(_ v: NSView) -> Bool { var p: NSView? = v; while let q = p { if q.isHidden { return false }; p = q.superview }; return true }
+            func visible(_ v: NSView) -> Bool {
+                var p: NSView? = v
+                while let q = p {
+                    if q.isHidden { return false }
+                    p = q.superview
+                }
+                return true
+            }
             let ready = DeviceRow(entry: ipad, instanceID: id, session: nil, job: nil)
             vc.update(ready, canDownload: true, activity: "Reading the file system…")
             vc.view.layoutSubtreeIfNeeded()
@@ -165,7 +218,12 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
             func shownBar() -> NSProgressIndicator? {
                 func all(_ v: NSView) -> [NSView] { v.subviews.flatMap { [$0] + all($0) } }
                 return all(vc.view).compactMap { $0 as? NSProgressIndicator }.first { bar in
-                    var p: NSView? = bar; while let q = p { if q.isHidden { return false }; p = q.superview }; return bar.window != nil
+                    var p: NSView? = bar
+                    while let q = p {
+                        if q.isHidden { return false }
+                        p = q.superview
+                    }
+                    return bar.window != nil
                 }
             }
             let a = DeviceRow(entry: beta, instanceID: nil, session: nil, job: .preparing(.init(step: 9, steps: 10, name: "x", fraction: 1)))
@@ -174,7 +232,9 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
             let barA = shownBar()
             vc.update(b, canDownload: true)
             let barB = shownBar()
-            if barA == nil || barB == nil || barA === barB || barB?.doubleValue != 0.2 { failures.append("switching jobs reused one bar: \(String(describing: barA)) \(String(describing: barB))") }
+            if barA == nil || barB == nil || barA === barB || barB?.doubleValue != 0.2 {
+                failures.append("switching jobs reused one bar: \(String(describing: barA)) \(String(describing: barB))")
+            }
             vc.update(a, canDownload: true)
             if shownBar() !== barA || barA?.doubleValue != 0.9 { failures.append("switching back didn't show the first job's own bar at 90%") }
         }
@@ -202,12 +262,17 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
         // The ⓘ popover: a real size and the build's words, for experimental, untested and beta builds.
         for e in [entry("k48ap-7B405"), entry("n45ap-3B48b"), beta, entry("n72ap-8C5091e"), entry("n72ap-7E18")] {
             let row = DeviceRow(entry: e, instanceID: nil, session: nil, job: nil)
-            guard let content = DevicePlaceholderViewController.infoContent(for: row) else { failures.append("\(e.id): no popover"); continue }
+            guard let content = DevicePlaceholderViewController.infoContent(for: row) else {
+                failures.append("\(e.id): no popover")
+                continue
+            }
             let size = content.preferredContentSize
             content.view.layoutSubtreeIfNeeded()
             let words = content.view.subviews.compactMap { $0 as? NSTextField }.filter { !$0.stringValue.isEmpty && $0.frame.width > 20 && $0.frame.height > 8 }
             let text = words.map(\.stringValue).joined(separator: "\n")
-            if size.width < 100 || size.height < 40 || content.view.frame.size != size { failures.append("\(e.id): popover size \(size), view \(content.view.frame.size)") }
+            if size.width < 100 || size.height < 40 || content.view.frame.size != size {
+                failures.append("\(e.id): popover size \(size), view \(content.view.frame.size)")
+            }
             if let tag = row.supportNote, !words.contains(where: { $0.stringValue == tag }) || !text.contains(row.supportExplanation ?? "?") {
                 failures.append("\(e.id): no \(tag) and its explanation: \(text)")
             }
@@ -216,5 +281,5 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
             for w in words where !content.view.bounds.contains(w.frame) { failures.append("\(e.id): \(w.stringValue) outside the popover") }
         }
         #expect(failures.isEmpty, "\(failures.joined(separator: "\n"))")
-}
+    }
 }
