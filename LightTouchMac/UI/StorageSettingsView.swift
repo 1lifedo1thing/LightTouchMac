@@ -1,11 +1,74 @@
 import LightTouchCore
 import FirmwareSchema
 import Cocoa
+import SwiftUI
 
-/// Settings > Storage: what each device and the app's stores take on disk
+/// Settings ▸ Storage: what each device and the app's stores take on disk
 /// (allocated bytes: bases and overlays are sparse), with the actions that
 /// give it back.
-final class StorageSettingsView: NSView {
+struct StorageSettingsView: View {
+    let model: StorageUsage
+
+    var body: some View {
+        let usage = model.usage
+        Form {
+            Section("Devices") {
+                if usage.devices.isEmpty { Text("No devices").foregroundStyle(.secondary) }
+                ForEach(usage.devices, id: \.instance.id) { device in
+                    let entry = model.catalog.entry(id: device.instance.firmware)
+                    StorageRow(title: model.name(device.instance.firmware),
+                               detail: "System \(size(device.base)) · Data \(size(device.data + device.snapshot))",
+                               action: "Delete Device…", enabled: entry.map(model.canDelete) ?? false) { entry.map(model.delete) }
+                }
+            }
+            Section("Firmware") {
+                if usage.ipsws.isEmpty { Text("No downloaded or imported IPSWs").foregroundStyle(.secondary) }
+                ForEach(usage.ipsws, id: \.url) { ipsw in
+                    let busy = FirmwareJobs.shared.jobs[ipsw.entry].map { if case .failed = $0 { false } else { true } } ?? false
+                    let kind = ipsw.url.path.hasPrefix(IPSWStore.shared.imports.path) ? "Imported" : "Downloaded"
+                    StorageRow(title: model.name(ipsw.entry), detail: "\(kind) · \(size(ipsw.bytes))",
+                               action: "Remove IPSW", enabled: !busy) { model.removeIPSW(ipsw.url) }
+                }
+            }
+            Section("Caches and Logs") {
+                let preparing = FirmwareJobs.shared.jobs.values.contains { if case .preparing = $0 { true } else { false } }
+                StorageRow(title: "Decrypted firmware", detail: size(usage.decrypted),
+                           action: "Clear Caches", enabled: usage.decrypted > 0 && !preparing) { model.clearCaches() }
+                StorageRow(title: "Logs", detail: size(usage.logs))
+            }
+            Section("Apps") {
+                let unused = IPALibrary.unused(devices: DeviceLibrary.shared.instances)
+                let unusedBytes = unused.values.reduce(0) { $0 + $1.size }
+                StorageRow(title: "Library",
+                           detail: "\(IPALibrary.index.count) IPAs · \(size(usage.library))" + (unused.isEmpty ? "" : " · \(size(unusedBytes)) unused"),
+                           action: "Remove Unused Apps", enabled: !unused.isEmpty) { model.removeUnusedIPAs() }
+            }
+        }
+    }
+
+    private func size(_ bytes: Int64) -> String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
+}
+
+/// One row: what it is and its size, and the button that gives the space back.
+private struct StorageRow: View {
+    let title: String
+    let detail: String
+    var action: String?
+    var enabled = true
+    var perform: () -> Void = {}
+
+    var body: some View {
+        LabeledContent {
+            if let action { Button(action, action: perform).disabled(!enabled) }
+        } label: {
+            Text(title)
+            Text(detail)
+        }
+    }
+}
+
+/// What Storage shows, measured off the main thread; measured again when the devices or the firmware jobs change.
+@Observable final class StorageUsage {
     nonisolated struct DeviceUsage: Sendable {
         let instance: DeviceInstance
         let base: Int64, data: Int64, snapshot: Int64
@@ -20,42 +83,32 @@ final class StorageSettingsView: NSView {
         var library: Int64 = 0
     }
 
-    private let catalog: FirmwareCatalog
+    private(set) var usage = Usage()
+    @ObservationIgnored let catalog: FirmwareCatalog
     /// MainWindowController's Delete Device (its confirmation included), and whether it may run now.
-    private let delete: (FirmwareCatalog.Entry) -> Void
-    private let canDelete: (FirmwareCatalog.Entry) -> Bool
-    private let stack = NSStackView()
-    private var loading: Task<Void, Never>?
-    var onResize: (() -> Void)?
+    @ObservationIgnored let delete: (FirmwareCatalog.Entry) -> Void
+    @ObservationIgnored let canDelete: (FirmwareCatalog.Entry) -> Bool
+    @ObservationIgnored private var loading: Task<Void, Never>?
+    @ObservationIgnored private var observers: [NSObjectProtocol] = []
+    /// Whether Storage is on screen: changes measure again only then (a download changes its job many times a second).
+    @ObservationIgnored var isShown: () -> Bool = { false }
 
     init(catalog: FirmwareCatalog = .bundled, delete: @escaping (FirmwareCatalog.Entry) -> Void,
          canDelete: @escaping (FirmwareCatalog.Entry) -> Bool) {
         self.catalog = catalog
         self.delete = delete
         self.canDelete = canDelete
-        super.init(frame: .zero)
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 12
-        stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.widthAnchor.constraint(equalToConstant: 520),
-        ])
-        for name in [DeviceLibrary.didChangeNotification, FirmwareJobs.didChangeNotification] {
-            NotificationCenter.default.addObserver(self, selector: #selector(changed(_:)), name: name, object: nil)
+        observers = [DeviceLibrary.didChangeNotification, FirmwareJobs.didChangeNotification].map {
+            NotificationCenter.default.addObserver(forName: $0, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { if self?.isShown() == true { self?.reload() } }
+            }
         }
         reload()
     }
 
-    required init?(coder: NSCoder) { fatalError("not used") }
-
-    override var fittingSize: NSSize { stack.fittingSize }
-
-    @objc private func changed(_ note: Notification) { if window?.isVisible == true { reload() } }
+    func name(_ id: String) -> String {
+        catalog.entry(id: id).map { "\($0.marketingName) iOS \($0.version)" } ?? id
+    }
 
     func reload() {
         loading?.cancel()
@@ -63,7 +116,7 @@ final class StorageSettingsView: NSView {
         loading = Task { [weak self] in
             let usage = await Task.detached { Self.measure(instances, catalog: catalog, store: store) }.value
             guard !Task.isCancelled else { return }
-            self?.show(usage)
+            self?.usage = usage
         }
     }
 
@@ -102,78 +155,9 @@ final class StorageSettingsView: NSView {
         return usage
     }
 
-    // MARK: - Showing
-
-    private func show(_ usage: Usage) {
-        stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let size = { (bytes: Int64) in ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
-        func name(_ id: String) -> String {
-            catalog.entry(id: id).map { "\($0.marketingName) iOS \($0.version)" } ?? id
-        }
-        func heading(_ text: String) -> NSTextField {
-            let label = NSTextField(labelWithString: text)
-            label.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
-            return label
-        }
-        func detail(_ text: String) -> NSTextField {
-            let label = NSTextField(labelWithString: text)
-            label.textColor = .secondaryLabelColor
-            return label
-        }
-        func button(_ title: String, enabled: Bool = true, _ action: @escaping () -> Void) -> NSButton {
-            let button = InlineActionButton(title: title, perform: action)
-            button.isEnabled = enabled
-            return button
-        }
-        func grid(_ rows: [[NSView]]) -> NSGridView {
-            let grid = NSGridView(views: rows)
-            grid.column(at: 0).width = 180
-            grid.columnSpacing = 12
-            grid.rowSpacing = 8
-            grid.yPlacement = .center
-            return grid
-        }
-
-        stack.addArrangedSubview(heading("Devices"))
-        stack.addArrangedSubview(usage.devices.isEmpty ? detail("No devices.") : grid(usage.devices.map { device in
-            let entry = catalog.entry(id: device.instance.firmware)
-            return [NSTextField(labelWithString: name(device.instance.firmware)),
-                    detail("System \(size(device.base)) · Data \(size(device.data + device.snapshot))"),
-                    button("Delete Device…", enabled: entry.map(canDelete) ?? false) { [weak self] in entry.map { self?.delete($0) } }]
-        }))
-
-        stack.addArrangedSubview(heading("Firmware"))
-        let jobs = FirmwareJobs.shared.jobs
-        stack.addArrangedSubview(usage.ipsws.isEmpty ? detail("No downloaded or imported IPSWs.") : grid(usage.ipsws.map { ipsw in
-            let busy = jobs[ipsw.entry].map { if case .failed = $0 { false } else { true } } ?? false
-            let kind = ipsw.url.path.hasPrefix(IPSWStore.shared.imports.path) ? "Imported" : "Downloaded"
-            return [NSTextField(labelWithString: name(ipsw.entry)), detail("\(kind) IPSW · \(size(ipsw.bytes))"),
-                    button("Remove IPSW", enabled: !busy) { [weak self] in self?.removeIPSW(ipsw.url) }]
-        }))
-
-        stack.addArrangedSubview(heading("Caches and Logs"))
-        let preparing = jobs.values.contains { if case .preparing = $0 { true } else { false } }
-        stack.addArrangedSubview(grid([
-            [NSTextField(labelWithString: "Decrypted firmware"), detail(size(usage.decrypted)),
-             button("Clear Caches", enabled: usage.decrypted > 0 && !preparing) { [weak self] in self?.clearCaches() }],
-            [NSTextField(labelWithString: "Logs"), detail(size(usage.logs)), NSView()],
-        ]))
-
-        stack.addArrangedSubview(heading("Apps"))
-        let unused = IPALibrary.unused(devices: DeviceLibrary.shared.instances)
-        let unusedBytes = unused.values.reduce(0) { $0 + $1.size }
-        stack.addArrangedSubview(grid([
-            [NSTextField(labelWithString: "Library"),
-             detail("\(IPALibrary.index.count) IPAs · \(size(usage.library))" + (unused.isEmpty ? "" : " · \(size(unusedBytes)) unused")),
-             button("Remove Unused Apps", enabled: !unused.isEmpty) { [weak self] in self?.removeUnusedIPAs() }],
-        ]))
-        layoutSubtreeIfNeeded()
-        onResize?()
-    }
-
     // MARK: - Actions
 
-    private func removeIPSW(_ url: URL) {
+    func removeIPSW(_ url: URL) {
         do {
             let sha1 = url.deletingPathExtension().lastPathComponent
             try IPSWStore.shared.remove(sha1)
@@ -182,7 +166,7 @@ final class StorageSettingsView: NSView {
         reload()
     }
 
-    private func removeUnusedIPAs() {
+    func removeUnusedIPAs() {
         do {
             try IPALibrary.removeUnused(devices: DeviceLibrary.shared.instances)
             logEvent("storage: removed the IPAs no device has")
@@ -191,7 +175,7 @@ final class StorageSettingsView: NSView {
     }
 
     /// Only between preparations: a running one reads its decrypt cache.
-    private func clearCaches() {
+    func clearCaches() {
         guard let executable = FirmwareJobs.preparer else { return }
         Task {
             do {
@@ -202,5 +186,3 @@ final class StorageSettingsView: NSView {
         }
     }
 }
-
-extension StorageSettingsView: SettingsPane {}
