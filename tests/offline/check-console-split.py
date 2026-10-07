@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The main pane's console split (UI/ConsoleSplit.swift), compiled from the real sources, never on screen:
-snap detents and the collapse threshold, the show/hide state machine, drags and double-clicks on the bar,
-window resizes that squeeze and give back the console, per-name persistence, Clear and Filter on the log.
+the show/hide state machine through the view, drags and double-clicks on the bar,
+window resizes that squeeze and give back the console, per-name persistence, Clear and Filter on the log. The layout's numbers are ConsoleSplitLayoutTests'.
 LTM_CONSOLE_SPLIT_PNGS=<dir> also renders the view offscreen at a few positions into PNGs there."""
 from pathlib import Path
 import os, subprocess, tempfile
@@ -22,42 +22,9 @@ func expect(_ ok: Bool, _ what: String, line: Int = #line) { if !ok { print("FAI
   let replacement = imp_implementationWithBlock(motionless)
   let previous = method_setImplementation(motionGetter, replacement)
   defer { method_setImplementation(motionGetter, previous); imp_removeBlock(replacement) }
-  // Detents: available 600 -> range 100...440, middle 270, default 200; tolerance 10 (strict).
-  let cases: [(CGFloat, CGFloat?)] = [(265, 270), (279.5, 270), (261, 270), (280, 280), (260, 260),
-      (195, 200), (209, 200), (210, 210), (191, 200), (190, 190),
-      (99, 100), (50, 100), (49.9, nil), (0, nil), (1000, 440), (433.7, 433)]
-  for (proposed, want) in cases {
-   let got = L.resolve(proposed, in: 600)
-   expect(got == want, "resolve(\(proposed)) = \(String(describing: got)), want \(String(describing: want))")
-  }
-  // A short pane: range 100...195, so the 200 detent is out of reach and must not pull past the maximum.
-  expect(L.resolve(195, in: 355) == 195 && L.resolve(300, in: 355) == 195, "detent beyond the maximum")
-  expect(L.resolve(150, in: 355) == 148, "middle of a short range snaps")   // (100+195)/2 = 147.5 -> 148
-
-  // Show/hide: a fresh window starts collapsed at the default height; hiding keeps the height.
-  var l = L()
-  expect(l.isCollapsed && l.height == 200, "fresh state")
-  l.toggle(); expect(!l.isCollapsed && l.height == 200, "show restores")
-  l.height = 320; l.toggle(); expect(l.isCollapsed && l.height == 320, "hide keeps the height")
-  l.toggle(); expect(!l.isCollapsed && l.height == 320, "show brings it back")
-  l = L(height: 40, isCollapsed: true); l.toggle(); expect(!l.isCollapsed && l.height == 200, "too-short height reopens at default")
-  // Drags: collapsing by drag keeps the height the drag started from.
-  let start = L(height: 320, isCollapsed: false)
-  l = start; l.drag(from: start, to: 30, in: 600); expect(l.isCollapsed && l.height == 320, "drag collapse keeps start height")
-  l.drag(from: start, to: 120, in: 600); expect(!l.isCollapsed && l.height == 120, "drag back open")
-
   // Persistence round trip, per name.
   let suite = "ltm-console-split-check-\(getpid())", defaults = UserDefaults(suiteName: suite)!
   defer { defaults.removePersistentDomain(forName: suite) }
-  L(height: 333, isCollapsed: false).save("a", to: defaults)
-  expect(L.load("a", from: defaults) == L(height: 333, isCollapsed: false), "round trip")
-  expect(L.load("b", from: defaults) == L(), "other names start fresh")
-  expect((defaults.dictionary(forKey: "ConsoleSplit a")?["height"] as? NSNumber)?.doubleValue == 333, "kept as a dictionary")
-  // An earlier build's JSON data loads, and is rewritten as a dictionary.
-  defaults.set(Data(#"{"height":250,"isCollapsed":true}"#.utf8), forKey: "ConsoleSplit c")
-  expect(L.load("c", from: defaults) == L(height: 250, isCollapsed: true), "earlier JSON loads")
-  expect(defaults.dictionary(forKey: "ConsoleSplit c")?["isCollapsed"] as? Bool == true, "and is rewritten as a dictionary")
-
   // The view, offscreen.
   let top = Stage()
   let split = ConsoleSplitView(top: top, autosaveName: "view", defaults: defaults)
@@ -187,5 +154,5 @@ with tempfile.TemporaryDirectory(prefix='ltm-console-split-') as tmp:
     (tmp / 'check.swift').write_text(check)
     subprocess.run(['xcrun', 'swiftc', '-swift-version', '5', '-default-isolation', 'MainActor', '-module-cache-path', str(tmp / 'modules'),
                     str(root / 'LightTouchMac/App/WindowRestorationPolicy.swift'), str(root / 'LightTouchMac/UI/LogWindowController.swift'),
-                    str(root / 'LightTouchMac/UI/ConsoleSplit.swift'), str(tmp / 'check.swift'), '-o', str(tmp / 'check')], check=True)
+                    str(root / 'LightTouchMac/UI/ConsoleSplit.swift'), str(root / 'LightTouchMac/UI/ConsoleSplitLayout.swift'), str(tmp / 'check.swift'), '-o', str(tmp / 'check')], check=True)
     subprocess.run([str(tmp / 'check')], check=True, timeout=60, env=os.environ)
