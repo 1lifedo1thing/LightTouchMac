@@ -1,17 +1,8 @@
 import Cocoa
 
-/// Every launch builds a new Mac interface. This does not govern guest snapshots
-/// or the explicit capture/toolbar preferences stored by the app.
+/// Every launch builds a new Mac interface (and RestorationDefaults turns AppKit's saved state off for the
+/// process). This does not govern guest snapshots or the explicit capture/toolbar preferences stored by the app.
 enum WindowRestorationPolicy {
-    static func configureDefaults(_ defaults: UserDefaults = .standard) {
-        // Apply before NSApplication is created, including after an unclean exit.
-        // A volatile override cannot become a sticky preference for other apps.
-        var arguments = defaults.volatileDomain(forName: UserDefaults.argumentDomain)
-        arguments["NSQuitAlwaysKeepsWindows"] = false
-        arguments["ApplePersistenceIgnoreState"] = true
-        defaults.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
-    }
-
     /// No restoration. `frameAutosaveName` keeps just the window's frame in the
     /// defaults (not its contents); returns true when a saved frame was applied.
     @discardableResult
