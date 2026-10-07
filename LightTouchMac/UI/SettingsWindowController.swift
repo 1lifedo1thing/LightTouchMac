@@ -32,12 +32,13 @@ final class SettingsWindowController: NSWindowController {
         window.styleMask = [.titled, .closable]
         window.toolbarStyle = .preference
         window.isReleasedWhenClosed = false
-        WindowRestorationPolicy.configure(window)
+        // Where it was left; each pane sizes it (fit).
+        let restored = WindowRestorationPolicy.configure(window, frameAutosaveName: "Settings")
         super.init(window: window)
         for pane in [general, capture, storage] { pane.onResize = { [weak self] in self?.fit() } }
         tabs.onSelect = { [weak self] in self?.fit() }
         fit()
-        window.center()
+        if !restored { window.center() }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }

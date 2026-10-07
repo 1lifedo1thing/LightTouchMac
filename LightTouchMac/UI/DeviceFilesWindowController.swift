@@ -12,8 +12,7 @@ final class DeviceFilesWindowController: NSWindowController {
         window.contentMinSize = NSSize(width: 360, height: 280)
         window.isReleasedWhenClosed = false
         window.isExcludedFromWindowsMenu = false
-        WindowRestorationPolicy.configure(window)
-        window.center()
+        if !WindowRestorationPolicy.configure(window, frameAutosaveName: "Files") { window.center() }
         super.init(window: window)
     }
     required init?(coder: NSCoder) { fatalError("not used") }

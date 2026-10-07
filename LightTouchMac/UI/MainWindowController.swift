@@ -109,6 +109,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         inspectorItem.maximumThickness = 400
 
         split.addSplitViewItem(inspectorItem)
+        // The sidebar's width and the inspector's, and whether each is shown, as the user left them.
+        split.splitView.autosaveName = "Main"
         
         let window = NSWindow(contentViewController: split)
         window.title = profile.displayName
