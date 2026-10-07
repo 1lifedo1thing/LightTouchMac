@@ -605,9 +605,9 @@ final class EmulatorController {
     var isRunning: Bool { state == .running && !storageFailed && !preparingDevice && readinessFailure == nil && !restartingSpringBoard && !shuttingDown && !isErasing }
     var isPaused:  Bool { state == .paused }
     var isDead:    Bool { if case .dead = state { return true } else { return false } }
-    /// The guest takes input while it executes and its screen is up: a startup that judged failure never holds it
-    /// back (a live screen must take input).
-    var acceptsInput: Bool { state == .running && !storageFailed && !preparingDevice && !restartingSpringBoard && !shuttingDown && !isErasing }
+    /// The guest takes input whenever its screen is live (state == .running: the display paints). Readiness —
+    /// SpringBoard answering, a startup that judged failure — never holds it back.
+    var acceptsInput: Bool { state == .running && !storageFailed && !restartingSpringBoard && !shuttingDown && !isErasing }
 
     /// One line for the window's status area.
     var statusLine: String {
