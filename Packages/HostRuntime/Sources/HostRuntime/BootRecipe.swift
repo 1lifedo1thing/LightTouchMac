@@ -224,8 +224,9 @@ public nonisolated enum BootRecipe {
         let argv = ["LightTouchMac", "-M", machine, "-drive", "if=pflash,format=raw,file=\(escape(d.writableNOR))",
                     "-display", "none", "-no-shutdown"] + audio + ["-serial", serial] + (netdev.map { ["-netdev", $0] } ?? [])
             // The iPhone's modem carries its EDGE data (raw IP over a mux DLCI) to its own slirp, cell0, with the web
-            // proxy's guestfwd as Wi-Fi's (the image routes cellular through the proxy too).
-            + (hardware.hasCellular ? ["-netdev", netdev.map { $0.replacingOccurrences(of: "id=wifi0", with: "id=cell0") } ?? "user,id=cell0"] : [])
+            // proxy's guestfwd as Wi-Fi's (the image routes cellular through the proxy too) and its lan= setting; with
+            // no wifi0 given, off the LAN like the machine's own default wifi0.
+            + (hardware.hasCellular ? ["-netdev", netdev.map { $0.replacingOccurrences(of: "id=wifi0", with: "id=cell0") } ?? "user,id=cell0,lan=off"] : [])
         return BootConfig(argv: argv, machine: hardware.machine)
     }
 
