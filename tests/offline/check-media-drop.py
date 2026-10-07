@@ -1,26 +1,29 @@
 #!/usr/bin/env python3
-"""Native file-drop acceptance on the device screen. The file kinds are UI/DroppedFiles.swift, compiled whole; the
-drag handling is the device screen's (DisplayView). Revealing a dropped file's transfer in the Apps inspector is
+"""Native file-drop acceptance on the device screen, through the production DisplayView compiled whole (check-model's
+fixture, check-model-startup's stub model, the 2D bezel; no window): a synthetic NSDraggingInfo into its dragging
+handlers. The file kinds are UI/DroppedFiles.swift's. Revealing a dropped file's transfer in the Apps inspector is
 AppsInspectorRowsTests' (AppsInspector.revealsTransfer)."""
+import ast, subprocess, sys, tempfile
 from pathlib import Path
-import subprocess, tempfile
-
 root = Path(__file__).resolve().parents[2]
-display = (root / 'LightTouchMac/UI/DisplayView.swift').read_text()
-drop = display[display.index('    override func draggingEntered('):display.index('\n}\n\n/// The shell\'s home button:')]
-code = r'''import Cocoa
-nonisolated let device = UUID()
-struct DeviceInstance { let id = device }
-@MainActor final class EmulatorController { var canQueueInstall = true; let instance = DeviceInstance() }
-struct CatalogApp: Codable { let id: Int }
-enum PreparedMedia { nonisolated static let extensions: Set<String> = ["png", "jpg", "mp3", "m4a", "mp4", "mov", "m4v"] }
-extension NSPasteboard.PasteboardType { static let ltmCatalogApp = Self("test.catalog.app") }
-@MainActor final class DropView: NSView {
- let emulator: EmulatorController? = EmulatorController()
- var onDropIPA: ((URL) -> Void)?, onDropMedia: ((URL) -> Void)?, onDropCatalogApp: ((CatalogApp) -> Void)?
- var onDropIPSW: ((URL) -> Void)?
-''' + drop + r'''
-}
+sys.path.insert(0, str(root / "scripts"))
+import device_runtime
+
+node = ast.parse((root / 'tests/offline/check-model.py').read_text())
+fixture = next(ast.literal_eval(n.value) for n in node.body if isinstance(n, ast.Assign)
+               and any(isinstance(t, ast.Name) and t.id == 'display_source' for t in n.targets))
+prefix = fixture[:fixture.index('@main struct Check')]
+# Store rows carry a catalog id; media kinds are the app's (PreparedMedia's own list is ported with it).
+for old, new in [('struct CatalogApp: Decodable {}', 'struct CatalogApp: Codable { let id: Int }'),
+                 ('enum PreparedMedia { nonisolated static let extensions: Set<String> = [] }',
+                  'enum PreparedMedia { nonisolated static let extensions: Set<String> = ["png", "jpg", "mp3", "m4a", "mp4", "mov", "m4v"] }')]:
+    assert old in prefix, 'check-model fixture changed: update this check'
+    prefix = prefix.replace(old, new)
+startup = (root / 'tests/offline/check-model-startup.py').read_text()
+start = startup.index('@MainActor final class DeviceModelView')
+stub = startup[start:startup.index('@main struct Check', start)]
+
+source = prefix + stub + r'''
 @MainActor final class Drag: NSObject, NSDraggingInfo {
  let draggingPasteboard = NSPasteboard.withUniqueName()
  var draggingSource: Any?
@@ -48,7 +51,13 @@ extension NSPasteboard.PasteboardType { static let ltmCatalogApp = Self("test.ca
 @main struct Check {
  @MainActor static func main() throws {
   _ = NSApplication.shared
-  let view = DropView(), drag = Drag()
+  _ = fixtureMachines
+  for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] { UserDefaults.standard.removeObject(forKey: key) }
+  defer { for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] { UserDefaults.standard.removeObject(forKey: key) } }
+  DisplayView.bezel = .flat
+  let view = DisplayView(frame: NSRect(x: 0, y: 0, width: 800, height: 800), profile: .n72), drag = Drag()
+  let emulator = EmulatorController(); view.emulator = emulator   // weak: held here
+  defer { withExtendedLifetime(emulator) {} }
   defer { drag.draggingPasteboard.releaseGlobally() }
   var apps: [String] = [], media: [String] = [], catalog: [Int] = [], ipsws: [String] = []
   view.onDropIPSW = { ipsws.append($0.lastPathComponent) }
@@ -73,19 +82,19 @@ extension NSPasteboard.PasteboardType { static let ltmCatalogApp = Self("test.ca
   // The install queue remains an acceptable destination while another job
   // owns the device; readiness is rechecked if it goes away during a drag.
   precondition(view.draggingEntered(drag) == .copy)
-  view.emulator!.canQueueInstall = false
+  emulator.canQueueInstall = false
   precondition(view.draggingUpdated(drag).isEmpty && !view.performDragOperation(drag))
   precondition(apps.count == 1 && media.count == 3)
-  view.emulator!.canQueueInstall = true
+  emulator.canQueueInstall = true
   view.onDropMedia = nil
   drag.files(["Photo.png"])
   precondition(view.draggingEntered(drag).isEmpty && !view.performDragOperation(drag))
   // An IPSW goes to the library (matched by its SHA1), whatever the device is doing.
-  view.emulator!.canQueueInstall = false
+  emulator.canQueueInstall = false
   drag.files(["iPad1,1_3.2.2_7B500_Restore.IPSW", "Notes.txt"])
   precondition(view.draggingEntered(drag) == .copy && drag.numberOfValidItemsForDrop == 1)
   precondition(view.performDragOperation(drag) && ipsws == ["iPad1,1_3.2.2_7B500_Restore.IPSW"])
-  view.emulator!.canQueueInstall = true
+  emulator.canQueueInstall = true
   drag.files(["App.ipa"])
   drag.draggingSource = NSTableView()
   precondition(view.draggingEntered(drag).isEmpty && !view.performDragOperation(drag))
@@ -101,10 +110,11 @@ extension NSPasteboard.PasteboardType { static let ltmCatalogApp = Self("test.ca
  }
 }
 '''
-with tempfile.TemporaryDirectory(prefix='ltm-media-drop-') as directory:
-    work = Path(directory)
-    (work / 'check.swift').write_text(code)
-    subprocess.run(['xcrun', 'swiftc', '-parse-as-library', '-swift-version', '6', '-default-isolation', 'MainActor',
-                    '-module-cache-path', str(work / 'modules'), str(root / 'LightTouchMac/UI/DroppedFiles.swift'), str(root / 'LightTouchMac/UI/DropHighlight.swift'),
-                    str(work / 'check.swift'), '-o', str(work / 'check')], check=True)
-    subprocess.run([str(work / 'check')], check=True, timeout=25)
+with tempfile.TemporaryDirectory(prefix='ltm-media-drop-') as tmp:
+    work = Path(tmp)
+    (work / 'check.swift').write_text(source)
+    sources = ['UI/DisplayView', 'Input/MouseTouchPair', 'Device/Board+App', '../tests/fixtures/machines', 'UI/DisplayMeasurements', 'UI/ZoomMode', 'Capture/PanelCapture', 'Input/KeyboardPointer', 'Session/ChassisTilt', 'UI/KeyModifiers+AppKit', 'UI/AttitudeIndicatorButton',
+               'UI/InlineLiveTextView', 'UI/DroppedFiles', 'UI/DropHighlight', 'UI/GuestKeyboard']
+    subprocess.run(['swiftc', *device_runtime.swift_flags(root), '-module-cache-path', str(work / 'modules'), '-default-isolation', 'MainActor',
+                    *[str(root / 'LightTouchMac' / f'{s}.swift') for s in sources], str(work / 'check.swift'), '-o', str(work / 'check')], check=True)
+    subprocess.run([str(work / 'check')], check=True, timeout=60)
