@@ -1,30 +1,18 @@
 #!/usr/bin/env python3
-"""Compile the actual small boundary/locking helpers, without loading QEMU."""
+"""The helper engine's ResumeOnce (LightTouchServices/Engine/DeviceExecution.swift, compiled whole): a timed-out
+request's accounting finishes before the losing worker returns. The engine is the helper target's, so this stays
+here; the archive-root and freshness halves are IPAMembersTests and AppsInspectorRowsTests."""
 from pathlib import Path
 import subprocess, tempfile
 import sys as _sys, pathlib as _pl; _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[2] / "scripts"))
 root = Path(__file__).resolve().parents[2]
-def block(source, start, end):
-    return source[source.index(start):source.index(end, source.index(start))]
 once = (root/'LightTouchServices/Engine/DeviceExecution.swift').read_text()   # ResumeOnce is file-private, so the whole file goes in
-inspector = (root/'LightTouchMac/UI/AppsInspectorViewController.swift').read_text()
-freshness = block(inspector, '    static func freshnessText(', '    private func showStaleBanner')
 source = '''import Foundation
 nonisolated func logEvent(_ message: String) {}
 import Dispatch
-enum Archive {\n''' + freshness + '''}\n''' + once + '''
+''' + once + '''
 @main struct Check {
  static func main() async throws {
-  precondition(IPAMembers.appRoot(["Payload/One.app/Info.plist", "Payload/One.app/Nested.app/Info.plist"]) == "Payload/One.app/")
-  precondition(IPAMembers.appRoot(["Payload/One.app/Info.plist", "Payload/Two.app/Info.plist"]) == nil)
-  precondition(IPAMembers.appRoot(["Elsewhere.app/Info.plist"]) == nil)
-  precondition(IPAMembers.appRoot(["Payload/One.app/Info.plist", "Payload/One.app/Info.plist"]) == nil)
-  let now = Date()
-  precondition(Archive.freshnessText(since: nil, now: now) == "not yet refreshed")
-  for offset in [0.0, -0.5, -59, 1] {
-   precondition(Archive.freshnessText(since: now.addingTimeInterval(offset), now: now) == "last updated just now")
-  }
-  precondition(!Archive.freshnessText(since: now.addingTimeInterval(-120), now: now).contains("in "))
   let once = ResumeOnce<Int>()
   let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
   let counter = Counter()
@@ -38,7 +26,7 @@ enum Archive {\n''' + freshness + '''}\n''' + once + '''
   precondition(counter.value == 0)
   let result = try await withCheckedThrowingContinuation { once.attach($0) }
   precondition(result == 1)
-  print("PASS: unique root IPA identity and timeout accounting serialized before losing worker returns")
+  print("PASS: timeout accounting serialized before losing worker returns")
  }
 }
 func blockingWait(_ semaphore: DispatchSemaphore) { semaphore.wait() }
@@ -52,6 +40,5 @@ final class Counter: @unchecked Sendable {
 with tempfile.TemporaryDirectory() as work:
     swift=Path(work)/'check.swift';swift.write_text(source)
     executable=Path(work)/'check'
-    subprocess.run(['swiftc', *__import__('host_service').wire_flags(__import__('pathlib').Path(__file__).resolve().parents[2]),'-parse-as-library','-module-cache-path','/tmp/ltm-module-cache',str(root/'LightTouchMac/Library/IPAMembers.swift'),
-                    str(swift),'-o',str(executable)],check=True)
+    subprocess.run(['swiftc', *__import__('host_service').wire_flags(__import__('pathlib').Path(__file__).resolve().parents[2]),'-parse-as-library','-module-cache-path','/tmp/ltm-module-cache',str(swift),'-o',str(executable)],check=True)
     subprocess.run([str(executable)],check=True)

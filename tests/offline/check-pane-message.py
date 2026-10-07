@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""The Apps pane keeps its width whatever its message says, and Legacy Store's errors read plainly.
+"""The Apps pane keeps its width whatever its message says.
 
-Compiles UI/PaneMessage.swift (the pane's message and caption) and CatalogClient.swift's CatalogError. Each
+Compiles UI/PaneMessage.swift (the pane's message and caption). Each
 message sits in a pane pinned like the inspector's (16 pt margins, the split view holding the pane's width at
 a lower priority than the content, 280-400 pt) with a Retry button under it, in a window never ordered front.
 At 280, 320 and 400 pt, for empty, loading and error strings: the pane keeps its width, the message wraps
 (nothing clipped or truncated) and stays inside the pane; the caption truncates instead of widening it.
-A server error (HTTP 502) reads "Legacy Store isn’t responding. Try again in a moment.", no status code.
+The messages are Legacy Store's error words (CatalogError, whose wording is CatalogWordsTests') and the pane's own.
 Renders <out>/pane-<width>-<n>.png (--out DIR).
 """
 from pathlib import Path
@@ -18,10 +18,6 @@ ap = argparse.ArgumentParser()
 ap.add_argument('--out')
 args = ap.parse_args()
 
-client = (app / 'Features/CatalogClient.swift').read_text()
-start = client.index('nonisolated enum CatalogError')
-catalog_error = 'import Foundation\n' + client[start:client.index('\n}\n', start) + 3]
-
 check = r'''
 import Cocoa
 @main struct Check {
@@ -29,13 +25,7 @@ import Cocoa
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.prohibited)
         let out = URL(fileURLWithPath: CommandLine.arguments[1])
-        let server = CatalogError.badStatus(502).localizedDescription
-        precondition(server == "Legacy Store isn’t responding. Try again in a moment.", server)
-        for code in [404, 500, 0] {
-            let text = CatalogError.badStatus(code).localizedDescription
-            precondition(!text.contains("HTTP"), text)
-        }
-        let messages = ["No apps installed", "Waiting for the device…", server,
+        let messages = ["No apps installed", "Waiting for the device…", "Legacy Store isn’t responding. Try again in a moment.",
                         "Couldn’t reach Legacy Store — The Internet connection appears to be offline.",
                         "Couldn’t reach Legacy Store — A server with the specified hostname could not be found.",
                         "Legacy Store sent a response Light Touch couldn’t read."]
@@ -84,7 +74,7 @@ import Cocoa
             }
         }
         precondition(failures.isEmpty, failures.joined(separator: "\n"))
-        print("PASS: the Apps pane keeps 280/320/400 pt with every message wrapped inside it; Legacy Store's server errors read plainly")
+        print("PASS: the Apps pane keeps 280/320/400 pt with every message wrapped inside it")
     }
 }
 '''
@@ -93,8 +83,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-pane-message-') as tmp:
     tmp = Path(tmp)
     out = Path(args.out) if args.out else tmp / 'out'
     out.mkdir(parents=True, exist_ok=True)
-    (tmp / 'error.swift').write_text(catalog_error)
     (tmp / 'main.swift').write_text(check)
     subprocess.run(['xcrun', 'swiftc', '-parse-as-library', '-swift-version', '5', '-module-cache-path', str(tmp / 'modules'),
-                    str(app / 'UI/PaneMessage.swift'), str(tmp / 'error.swift'), str(tmp / 'main.swift'), '-o', str(tmp / 'check')], check=True)
+                    str(app / 'UI/PaneMessage.swift'), str(tmp / 'main.swift'), '-o', str(tmp / 'check')], check=True)
     subprocess.run([str(tmp / 'check'), str(out)], check=True, timeout=60)
