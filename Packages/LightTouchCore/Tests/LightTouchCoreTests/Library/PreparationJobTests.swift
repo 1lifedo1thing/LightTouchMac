@@ -113,7 +113,7 @@ import Testing
             let f = try Fixture(tmp), state = f.state, cache = f.cache
             var run = try await f.prepare(iPad32, mode: "ok")
             guard case let .published(device)? = run.events.last else { Issue.record("not published: \(run.events)"); return }
-            #expect(run.events.contains(.step(1, of: 3, name: "Decrypting")) && run.events.contains(.step(3, of: 3, name: "Sealing")))
+            #expect(run.events.contains(.step(1, of: 3, name: "Decrypting")) && run.events.contains(.step(3, of: 3, name: "Finishing setup")))
             // begin's seconds first; per step a monotonic fraction with a detail, ending at 1.
             #expect(run.events.first == .begin(seconds: [5, 10, 70]))
             var sealing: [Double] = [], inSeal = false
