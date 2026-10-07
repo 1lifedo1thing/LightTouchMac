@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The main pane's console split (UI/ConsoleSplit.swift), compiled from the real sources, never on screen:
 the show/hide state machine through the view, drags and double-clicks on the bar,
-window resizes that squeeze and give back the console, per-name persistence, Clear and Filter on the log. The layout's numbers are ConsoleSplitLayoutTests'.
+window resizes that squeeze and give back the console, per-name persistence. The layout's numbers are ConsoleSplitLayoutTests', Clear and Filter on the log LogTailTests'.
 LTM_CONSOLE_SPLIT_PNGS=<dir> also renders the view offscreen at a few positions into PNGs there."""
 from pathlib import Path
 import os, subprocess, tempfile
@@ -101,19 +101,6 @@ func expect(_ ok: Bool, _ what: String, line: Int = #line) { if !ok { print("FAI
   let again = ConsoleSplitView(top: NSView(), autosaveName: "view", defaults: defaults)
   expect(again.layout == L(height: 400, isCollapsed: false) && again.bar.toggleButton.state == .on, "restored")
 
-  // Clear and Filter.
-  try Data("old 1\nold 2\n".utf8).write(to: log1)
-  let size = UInt64(try FileManager.default.attributesOfItem(atPath: log1.path)[.size] as! Int)
-  try FileHandle(forWritingTo: log1).then { try $0.seekToEnd(); try $0.write(contentsOf: Data("new 3\n".utf8)); try $0.close() }
-  let cleared = LogWindowController.tail(log1, from: size)
-  expect(cleared.text == "new 3\n" && !cleared.rotated, "clear shows only what came after, got \(cleared.text)")
-  expect(LogWindowController.tail(log1, from: size + 6).text == "", "cleared and nothing new: empty, not the placeholder")
-  try Data("rotated\n".utf8).write(to: log1, options: .atomic)
-  let rotated = LogWindowController.tail(log1, from: size)
-  expect(rotated.rotated && rotated.text == "rotated\n", "a shorter file was replaced: read it all")
-  expect(LogTextView.filtered("usb up\nkernel\nUSB down", by: "usb") == "usb up\nUSB down", "filter is case-insensitive per line")
-  expect(LogTextView.filtered("a\nb", by: "") == "a\nb", "empty filter shows all")
-
   if let dir = ProcessInfo.processInfo.environment["LTM_CONSOLE_SPLIT_PNGS"] {
    for (name, image) in rendered { try image.write(to: URL(fileURLWithPath: dir).appendingPathComponent("console-\(name).png")) }
    print("wrote \(rendered.count) PNGs to \(dir)")
@@ -154,5 +141,5 @@ with tempfile.TemporaryDirectory(prefix='ltm-console-split-') as tmp:
     (tmp / 'check.swift').write_text(check)
     subprocess.run(['xcrun', 'swiftc', '-swift-version', '5', '-default-isolation', 'MainActor', '-module-cache-path', str(tmp / 'modules'),
                     str(root / 'LightTouchMac/App/WindowRestorationPolicy.swift'), str(root / 'LightTouchMac/UI/LogWindowController.swift'),
-                    str(root / 'LightTouchMac/UI/ConsoleSplit.swift'), str(root / 'LightTouchMac/UI/ConsoleSplitLayout.swift'), str(tmp / 'check.swift'), '-o', str(tmp / 'check')], check=True)
+                    str(root / 'LightTouchMac/UI/ConsoleSplit.swift'), str(root / 'LightTouchMac/UI/ConsoleSplitLayout.swift'), str(root / 'LightTouchMac/UI/LogTail.swift'), str(tmp / 'check.swift'), '-o', str(tmp / 'check')], check=True)
     subprocess.run([str(tmp / 'check')], check=True, timeout=60, env=os.environ)

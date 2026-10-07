@@ -1,3 +1,4 @@
+import LightTouchCore
 import Cocoa
 
 /// A live, selectable tail of one log file: the Device Logs window's view and
@@ -55,7 +56,7 @@ final class LogTextView: NSScrollView {
     func refresh() async {
         guard window?.isVisible == true, !isPaused, text.selectedRange().length == 0, let url else { return }
         let from = origin
-        let value = await Task.detached(priority: .utility) { LogWindowController.tail(url, from: from) }.value
+        let value = await Task.detached(priority: .utility) { LogTail.read(url, from: from) }.value
         guard !Task.isCancelled, self.url == url, origin == from, !isPaused, text.selectedRange().length == 0 else { return }
         if value.rotated { origin = 0 }
         guard value.text != raw else { return }
@@ -63,13 +64,8 @@ final class LogTextView: NSScrollView {
         show(raw)
     }
 
-    nonisolated static func filtered(_ value: String, by filter: String) -> String {
-        filter.isEmpty ? value : value.split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { $0.localizedCaseInsensitiveContains(filter) }.joined(separator: "\n")
-    }
-
     private func show(_ value: String) {
-        let shown = Self.filtered(value, by: filter)
+        let shown = LogTail.filtered(value, by: filter)
         guard text.string != shown else { return }
         let atBottom = text.visibleRect.maxY >= text.bounds.maxY - 8
         text.string = shown
@@ -133,26 +129,6 @@ final class LogWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc private func pauseChanged(_ sender: Any?) { log.isPaused = pause.state == .on }
-
-    nonisolated static func tail(_ url: URL) -> String { tail(url, from: 0).text }
-
-    /// The file's last 64 KB after `from` (a Clear point), whole lines only.
-    /// `rotated` when the file is now shorter than `from`: it was replaced, so read it all.
-    nonisolated static func tail(_ url: URL, from: UInt64) -> (text: String, rotated: Bool) {
-        do {
-            let file = try FileHandle(forReadingFrom: url)
-            defer { try? file.close() }
-            let size = try file.seekToEnd(), limit: UInt64 = 65536
-            let rotated = size < from, start = max(rotated ? 0 : from, size > limit ? size - limit : 0)
-            try file.seek(toOffset: start)
-            var data = try file.read(upToCount: Int(limit)) ?? Data()
-            if start > (rotated ? 0 : from), let newline = data.firstIndex(of: 10) { data = Data(data.suffix(from: data.index(after: newline))) }
-            if data.isEmpty { return (from > 0 && !rotated ? "" : "No log output yet.", rotated) }
-            return (String(decoding: data, as: UTF8.self), rotated)
-        } catch {
-            return ("Cannot read \(url.lastPathComponent): \(error.localizedDescription)", false)
-        }
-    }
 }
 
 @MainActor

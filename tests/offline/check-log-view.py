@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded production log reads and native window polling/selection behavior."""
+"""Native log window polling/selection behavior. The bounded reads are LogTailTests'."""
 from pathlib import Path
 import subprocess,tempfile
 root=Path(__file__).resolve().parents[2]
@@ -11,16 +11,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-logs-') as tmp:
   _ = NSApplication.shared
   NSApp.setActivationPolicy(.regular)
   let file=URL(fileURLWithPath:CommandLine.arguments[1])
-  try Data("first\n".utf8).write(to:file)
-  precondition(LogWindowController.tail(file)=="first\n")
-  var large=Data(repeating:65,count:70000);large.append(Data("\nlast line\n".utf8))
-  try large.write(to:file)
-  precondition(LogWindowController.tail(file)=="last line\n")
-  try Data([255,10]).write(to:file)
-  precondition(LogWindowController.tail(file).contains("\u{fffd}"))
-  try Data().write(to:file);precondition(LogWindowController.tail(file)=="No log output yet.")
   let missing=file.appendingPathExtension("missing")
-  precondition(LogWindowController.tail(missing).hasPrefix("Cannot read"))
   try Data("visible\n".utf8).write(to:file)
   let controller=LogWindowController(logs:[file,missing])
   controller.showWindow(nil)
@@ -81,9 +72,9 @@ with tempfile.TemporaryDirectory(prefix='ltm-logs-') as tmp:
    precondition(!notice.view.isHidden && notice.view.superview != nil && !label.isHidden)
   }
   window.orderOut(nil)
-  print("PASS: bounded UTF-8 tail, empty/missing files, native polling, rotation, selection/pause, close/reopen and native status actions/narrow layout")
+  print("PASS: native polling, rotation, selection/pause, close/reopen and native status actions/narrow layout")
  }
 }
 """)
- subprocess.run(['xcrun','swiftc','-swift-version','5','-default-isolation','MainActor',str(root/'LightTouchMac/App/WindowRestorationPolicy.swift'),str(root/'LightTouchMac/UI/LogWindowController.swift'),str(tmp/'check.swift'),'-o',str(tmp/'check')],check=True)
+ subprocess.run(['xcrun','swiftc','-swift-version','5','-default-isolation','MainActor',str(root/'LightTouchMac/App/WindowRestorationPolicy.swift'),str(root/'LightTouchMac/UI/LogWindowController.swift'),str(root/'LightTouchMac/UI/LogTail.swift'),str(tmp/'check.swift'),'-o',str(tmp/'check')],check=True)
  subprocess.run([str(tmp/'check'),str(tmp/'serial.log')],check=True)
