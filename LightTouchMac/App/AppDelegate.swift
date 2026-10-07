@@ -58,8 +58,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let current = UserDefaults.standard.object(forKey: NetworkAccessPreference.key) as? Bool ?? emulator?.network ?? true
         UserDefaults.standard.set(!current, forKey: NetworkAccessPreference.key)
     }
+    @objc func toggleLocalNetwork(_ sender: Any?) { emulator?.toggleLocalNetwork() }
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        if item.action == #selector(toggleAutomaticRotation(_:)) {
+        if item.action == #selector(toggleLocalNetwork(_:)) {
+            item.title = emulator.map { "Attach \($0.profile.marketingName) to Local Network" } ?? "Attach to Local Network"
+            item.state = emulator?.localNetworkEnabled ?? false ? .on : .off
+            return emulator != nil
+        } else if item.action == #selector(toggleAutomaticRotation(_:)) {
             item.state = emulator?.autoRotateEnabled ?? true ? .on : .off
             return emulator != nil
         } else if item.action == #selector(showDebugPort(_:)) {

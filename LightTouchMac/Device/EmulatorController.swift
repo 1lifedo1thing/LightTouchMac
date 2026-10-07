@@ -401,10 +401,13 @@ final class EmulatorController {
         if profile.isA4 {
             let setupDone = FileManager.default.fileExists(atPath: BootRecipe.setupDoneMark(overlay: overlayURL).path)
             let restrict = network && BootRecipe.setupPhonesHome(iosVersion: iosVersion) && !setupDone
-            netdev = network ? proxyForward().map { BootRecipe.wifiNetdev(guestForward: $0, restricted: restrict) } : nil
+            netdev = network ? proxyForward().map {
+                BootRecipe.wifiNetdev(guestForward: $0, restricted: restrict, localNetwork: localNetworkEnabled)
+            } : nil
             setupGate = netdev != nil && restrict ? BootRecipe.SetupNetworkGate() : nil
         } else {
-            netdev = network ? "user,id=wifi0" + (proxyForward() ?? "") : nil
+            netdev = network ? BootRecipe.wifiNetdev(guestForward: proxyForward() ?? "", restricted: false,
+                                                     localNetwork: localNetworkEnabled) : nil
         }
         do {
             return try prepared.configuration(bootArgs: Self.bootArgs, usbAddress: usbSession?.guestAddress,
@@ -1187,6 +1190,18 @@ final class EmulatorController {
     // the orientation we already moved to, so it lands on a no-op. The user only
     // loses their manual angle when the front app actually changes what it wants,
     // which is the moment they asked us to follow.
+
+    /// Attach to Local Network, per device (DeviceSettings.localNetwork), off by default: while off the
+    /// emulator refuses the guest's LAN traffic (BootRecipe.wifiNetdev), so macOS never asks on its own.
+    /// Turning it on asks macOS for Local Network access right then and opens the running device in place.
+    var localNetworkEnabled: Bool { settings.localNetwork ?? false }
+    func toggleLocalNetwork() {
+        let enabled = !localNetworkEnabled
+        changeSettings { $0.localNetwork = enabled }
+        if enabled { LocalNetworkAccess.request() }
+        link?.send(.netLocalNetwork(enabled))
+        onStatusChange?()
+    }
 
     /// Debug port, per device (DeviceSettings.debugPort), off by default; read at each start. QEMU's gdbstub on a
     /// free loopback port, `debugPort` while this boot has one (qemu-ios docs/guest-debug.md).

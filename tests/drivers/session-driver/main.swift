@@ -155,6 +155,8 @@ extension String {
     /// EmulatorController.proxyForward's guestfwd, appended to the wifi netdev, and the proxy the helper serves (proxy.swift).
     var netdevExtra: String?
     var webProxy: WebProxyEndpoint?
+    /// The device's Attach to Local Network, off as the app's default (BootRecipe.wifiNetdev's lan=off).
+    var localNetwork = false
     init(name: String, profile: DeviceProfile) { self.name = name; self.profile = profile }
     var dir: URL { work.appendingPathComponent(name) }
     /// When `dir` is an app state's device (a link to Devices/<uuid> with its device.plist): its storage key, and the
@@ -201,8 +203,8 @@ extension String {
                     nor: URL(fileURLWithPath: files.nor), iBoot: files.iBoot, gidBlobs: files.gidBlobs,
                     machine: files.machine, overlay: overlay, bootrom: Self.files + "/bootrom_240_4")
             }
-            let netdev = profile.isA4 ? netdevExtra.map { "user,id=wifi0" + $0 }
-                : "user,id=wifi0" + (netdevExtra ?? "")
+            let netdev = profile.isA4 ? netdevExtra.map { BootRecipe.wifiNetdev(guestForward: $0, restricted: false, localNetwork: localNetwork) }
+                : BootRecipe.wifiNetdev(guestForward: netdevExtra ?? "", restricted: false, localNetwork: localNetwork)
             return try prepared.configuration(bootArgs: "amfi_allow_any_signature=1 cs_enforcement_disable=1",
                 usbAddress: mux.guestAddress, wifi: true, guestPackage: offer, serial: serial!.argument,
                 audio: ["-audio", config.single?.audioWAV.map { "driver=wav,path=\($0)" } ?? "driver=none"], netdev: netdev, webProxy: webProxy)

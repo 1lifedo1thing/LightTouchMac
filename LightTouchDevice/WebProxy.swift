@@ -43,6 +43,13 @@ final class WebProxy: @unchecked Sendable {
         set { lock.lock(); _offline = newValue; lock.unlock() }
     }
     private var _offline = false
+    /// The device's Attach to Local Network, as slirp's lan= has it: off, a destination on the Mac's local
+    /// networks gets a 502 rather than a connection that would make macOS ask for Local Network access.
+    var localNetwork: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return _localNetwork }
+        set { lock.lock(); _localNetwork = newValue; lock.unlock() }
+    }
+    private var _localNetwork = true
 
     /// LTM_WEB_PROXY_TRACE set: one stderr line per request (tests/sessions/check-proxy-trust.py: did Safari's page come here).
     static let trace = ProcessInfo.processInfo.environment["LTM_WEB_PROXY_TRACE"] != nil
@@ -149,6 +156,7 @@ final class WebProxy: @unchecked Sendable {
                 var host = String(target[..<colon])
                 if host.count > 2, host.hasPrefix("["), host.hasSuffix("]") { host = String(host.dropFirst().dropLast()) }
                 if mode == .direct, WebProxyAdapters.retired(host: host) { throw Reply(410, "This online service has been retired") }
+                if !localNetwork, Self.isLocalNetwork(host: host) { throw Reply(502, "Local network access is off") }
                 if mode != .off, FileManager.default.fileExists(atPath: config.path + ".ca.pem") {
                     guard let identity = try? leaf(host) else { throw Reply(503, "Local TLS certificate unavailable") }
                     guard guest.write("HTTP/1.0 200 Connection established\r\n\r\n"), guest.startTLS(identity) else { return }
@@ -175,6 +183,7 @@ final class WebProxy: @unchecked Sendable {
             guard tunnel != nil || url.hasPrefix("http://") else { throw Reply(400, "An absolute HTTP URL is required") }
             guard let components = URLComponents(string: url), let host = components.host, components.url != nil else { throw Reply(400, "Invalid URL") }
             if mode == .direct, WebProxyAdapters.retired(host: host) { throw Reply(410, "This online service has been retired") }
+            if !localLocation, !localNetwork, Self.isLocalNetwork(host: host) { throw Reply(502, "Local network access is off") }
             if case .archive(let date) = mode, !localLocation {
                 guard components.user == nil, components.password == nil else { throw Reply(400, "Archive URLs cannot contain credentials") }
                 _ = guest.write(try archived(url, date: date, head: method == "HEAD"))
@@ -409,6 +418,30 @@ final class WebProxy: @unchecked Sendable {
         let identity = try WebProxyCA.load(config: config).identity(for: host, key: key)
         leaves[host] = (identity, Date())
         return identity
+    }
+
+    /// A .local name (resolving it would itself be a local-network operation), or a host any of whose
+    /// addresses is private, link-local or multicast: the ranges slirp's lan=off refuses.
+    static func isLocalNetwork(host: String) -> Bool {
+        let name = host.lowercased()
+        if name.hasSuffix(".local") || name.hasSuffix(".local.") { return true }
+        var hints = addrinfo(), list: UnsafeMutablePointer<addrinfo>?
+        hints.ai_socktype = SOCK_STREAM
+        guard getaddrinfo(host, nil, &hints, &list) == 0 else { return false }
+        defer { freeaddrinfo(list) }
+        for entry in sequence(first: list, next: { $0?.pointee.ai_next }) {
+            guard let a = entry?.pointee.ai_addr else { continue }
+            if a.pointee.sa_family == AF_INET {
+                let ip = UInt32(bigEndian: UnsafeRawPointer(a).load(as: sockaddr_in.self).sin_addr.s_addr)
+                if ip >> 24 == 10 || ip >> 20 == 0xac1 || ip >> 16 == 0xc0a8 || ip >> 16 == 0xa9fe || ip >> 28 == 0xe || ip == .max {
+                    return true
+                }
+            } else if a.pointee.sa_family == AF_INET6 {
+                let b = UnsafeRawPointer(a).load(as: sockaddr_in6.self).sin6_addr.__u6_addr.__u6_addr8
+                if b.0 & 0xfe == 0xfc || (b.0 == 0xfe && b.1 & 0xc0 == 0x80) || b.0 == 0xff { return true }
+            }
+        }
+        return false
     }
 
     // MARK: - Raw tunnel (off, or no CA)

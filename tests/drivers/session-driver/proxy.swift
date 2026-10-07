@@ -23,6 +23,10 @@ struct ProxyConfig: Decodable {
     /// Extra pages for Safari after the trust: "ADDRESS" (direct), "archive:yyyyMMdd ADDRESS" (archive), "search:WORDS"
     /// (Safari's Google field); an address without a scheme (typeURL); iPad only.
     var pages: [String]?
+    /// tests/sessions/check-local-network.py: after the route, httpget `internet` and `lan` (a Mac listener on its
+    /// LAN address) with Attach to Local Network off, then `lan` again once `.netLocalNetwork(true)` opens it; then stop.
+    var lan: String?
+    var internet: String?
 }
 
 /// The host the proof fetches ask for: one that cannot resolve (RFC 6761 `.invalid`), so only the proxy answers it, with
@@ -148,6 +152,23 @@ nonisolated enum ProxyProbe {
         emit("front", ["device": d.name, "label": label, "name": name, "bundleID": id])
     }
 
+    /// httpget `url` once Wi-Fi is up ("offline" -1009 retried): its status and first output.
+    func get(_ label: String, _ url: String) async {
+        guard let httpget = p.httpget, let bytes = try? Data(contentsOf: URL(fileURLWithPath: httpget)) else { return }
+        var status = -1, text = ""
+        for attempt in 0..<8 {
+            if attempt > 0 { try? await Task.sleep(for: .seconds(10)) }
+            do {
+                try await agent.put("/tmp/ltm-httpget", mode: 0o755, bytes)
+                text = String(decoding: try await agent.spawn(["/tmp/ltm-httpget", url]).prefix(300), as: UTF8.self); status = 0
+            } catch let error as GuestAgentError {
+                status = error.status; text = String(decoding: error.output.prefix(300), as: UTF8.self)
+            } catch { status = -1; text = "\(error)" }
+            if !text.contains("-1009") { break }
+        }
+        emit("get", ["device": d.name, "label": label, "status": status, "output": text])
+    }
+
     await boot(1)
     // Routing first (the app does it in the same step as the trust), so the untrusted fetch below reaches
     // the proxy: without it an image lacking the PAC goes straight to the origin, and its -1200 is only
@@ -156,6 +177,19 @@ nonisolated enum ProxyProbe {
         try await GuestServices(agent: agent, packaged: d.process.status?.guestPackage != nil).routeThroughProxy(localTool: localTool)
         emit("route", ["device": d.name, "ok": true])
     } catch { emit("route", ["device": d.name, "ok": false, "error": "\(error)"]) }
+    if let lan = p.lan {
+        if let internet = p.internet { await get("internet", internet) }
+        await get("lan-off", lan)
+        d.process.link.send(.netLocalNetwork(true))
+        try? await Task.sleep(for: .seconds(1))
+        await get("lan-on", lan)
+        d.process.terminate()
+        _ = await d.process.waitForExit(timeout: 30)
+        d.mux.stop()
+        d.serial?.finish()
+        emit("done")
+        exit(0)
+    }
     // Plain HTTP through the proxy first: whether the guest has a network at all (no certificate involved).
     await fetch("http", scheme: "http")
     await fetch("untrusted")

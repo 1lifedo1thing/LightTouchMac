@@ -24,6 +24,12 @@ case "serve-offline":   // as the helper boots a restricted 5.x (DeviceHost): of
     try! proxy.listen(socket: args[3])
     print("listening"); fflush(stdout)
     while let line = readLine(), line == "open" { proxy.offline = false; print("open"); fflush(stdout) }
+case "serve-lan-off":   // a device whose Attach to Local Network is off (DeviceHost, BootConfig.wifiLocalNetwork)
+    let proxy = WebProxy(config: URL(fileURLWithPath: args[2]))
+    proxy.localNetwork = false
+    try! proxy.listen(socket: args[3])
+    print("listening"); fflush(stdout)
+    while true { sleep(3600) }
 case "adapters":
     adapters()
     print("PASS: adapters")
