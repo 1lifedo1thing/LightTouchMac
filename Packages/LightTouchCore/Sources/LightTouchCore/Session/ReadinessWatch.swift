@@ -1,0 +1,144 @@
+// From the boot until SpringBoard answers over lockdown: the startup status the window shows, how far the boot has
+// provably got (BootStage), and the one display wake a boot gets before input is enabled.
+
+import Foundation
+import HostRuntime
+import HostServiceWire
+import DeviceRuntime
+
+/// What the readiness watch reads and does on the session.
+public protocol ReadinessHost: AnyObject {
+    var bootScope: BootSessionScope { get }
+    var profile: Board { get }
+    var shuttingDown: Bool { get }
+    var isDead: Bool { get }
+    var storageFailed: Bool { get }
+    /// The display has painted frames this boot (state == .running).
+    var isPainting: Bool { get }
+    /// The helper's status block, read now.
+    var status: SharedStatus? { get }
+    /// The USB bridge sees the guest.
+    func deviceReady() async -> Bool
+    /// SpringBoard answers (its layout service, or with `agentCounts` the agent naming its screen frontmost).
+    func waitForSpringBoard(agentCounts: Bool) async throws
+    func pressHome()
+    /// SpringBoard answered over lockdown: a real round trip, so the device is reachable.
+    func readyForInput()
+}
+
+public final class ReadinessWatch {
+    private unowned let host: ReadinessHost
+    private let notices: DeviceNotices
+    /// Fired with the old value when `preparingDevice` is set; `onChange` for the rest.
+    public var onPreparingChange: ((Bool) -> Void)?
+    public var onChange: (() -> Void)?
+    /// The board's boot budget (shorter in tests).
+    var budget: Duration
+
+    public init(host: ReadinessHost, notices: DeviceNotices) {
+        self.host = host
+        self.notices = notices
+        budget = .seconds(host.profile.bootBudget)
+    }
+
+    /// From the boot until SpringBoard answers; the status line says where it is.
+    public internal(set) var preparingDevice = false { didSet { onPreparingChange?(oldValue) } }
+    public private(set) var preparationStatus = "Starting iOS…" { didSet { onChange?() } }
+    /// How far this boot has provably got (BootStage): the boot toast's subtitle.
+    public private(set) var bootStage = BootStage.poweringOn {
+        didSet { if oldValue != bootStage { logEvent("boot: \(bootStage.text)"); onChange?() } }
+    }
+    public func noteBoot(_ event: BootStage.Event) { bootStage = bootStage.after(event) }
+    /// The loader's report when this boot began: a reset keeps the last boot's, which proves nothing now.
+    public private(set) var reportAtBootStart: GuestPackageReport?
+    public private(set) var readinessFailure: String?
+
+    /// The readiness deadline's verdict now (ReadinessDeadline): frames painted, and how far the boot got.
+    public var deadlineVerdict: ReadinessDeadline { ReadinessDeadline.verdict(painted: host.isPainting, stage: bootStage) }
+
+    public func setStatus(_ status: String) { preparationStatus = status }
+
+    private var task: Task<Void, Never>? {
+        get { host.bootScope[.readiness] }
+        set { host.bootScope[.readiness] = newValue }
+    }
+    public var isWatching: Bool { task != nil }
+    public func cancel() { task?.cancel() }
+    /// Waits for this boot's watch (a restart lets it finish first).
+    public var current: Task<Void, Never>? { task }
+
+    /// The boot's readiness steps, shown as the startup status until the Home screen answers: lockdown, then
+    /// SpringBoard.
+    public func start() {
+        guard !host.shuttingDown else { return }
+        task?.cancel()
+        preparingDevice = true
+        preparationStatus = "Starting iOS…"
+        bootStage = .poweringOn
+        reportAtBootStart = host.status?.guestPackage
+        readinessFailure = nil
+        let generation = host.bootScope.generation
+        let budget = budget
+        task = Task { [weak self] in
+            guard let self else { return }
+            let host = host
+            defer { if generation == host.bootScope.generation { self.preparingDevice = false } }
+            do {
+                var deadline: ContinuousClock.Instant? = ContinuousClock.now + budget
+                while true {
+                    try Task.checkCancellation()
+                    guard generation == host.bootScope.generation else { return }
+                    guard !host.isDead, !host.storageFailed else { throw DeviceToolsError.failed("The \(host.profile.shortName) didn’t become ready in time.") }
+                    if let due = deadline, ContinuousClock.now >= due {
+                        guard deadlineVerdict == .keepRunning else {
+                            throw DeviceToolsError.failed("The \(host.profile.shortName) didn’t become ready in time.")
+                        }
+                        // iOS is on screen without USB: the screen is the user's; keep waiting for USB, quietly.
+                        deadline = nil
+                        preparingDevice = false
+                        notices.report(ReadinessDeadline.notice(shortName: host.profile.shortName), for: .preparation)
+                    }
+                    if host.isPainting, await host.deviceReady() { break }
+                    try await Task.sleep(for: .milliseconds(250))
+                }
+                try Task.checkCancellation()
+                guard generation == host.bootScope.generation else { return }
+                noteBoot(.usbAttached)
+                preparationStatus = "Waiting for the Home screen…"
+                // A framebuffer and lockdown can both respond while SpringBoard
+                // is still starting. Do not enable input until SpringBoard answers.
+                try await host.waitForSpringBoard(agentCounts: true)
+                try Task.checkCancellation()
+                guard generation == host.bootScope.generation else { return }
+                // Read the emulated backlight, not sblaunch's optional lock
+                // query: older bundled images do not implement that command.
+                // Home is safe while the display is off; an awake Home screen
+                // must not receive it (that would open Spotlight). Once per boot.
+                guard !host.isDead, !host.shuttingDown else { return }
+                if host.status?.displaySleeping == true {
+                    logEvent("boot: waking the display after device preparation")
+                    host.pressHome()
+                    for _ in 0..<20 {
+                        try await Task.sleep(for: .milliseconds(100))
+                        guard generation == host.bootScope.generation, !host.isDead, !host.shuttingDown else { return }
+                        if host.status?.displaySleeping != true { break }
+                    }
+                }
+                try Task.checkCancellation()
+                guard generation == host.bootScope.generation, !host.isDead, !host.shuttingDown else { return }
+                logEvent("boot: ready for input")
+                // SpringBoard answered over lockdown: a real round trip, so the device is reachable
+                // without waiting for the Apps inspector's poll (the foreground watch, web proxy and
+                // guest-package verdict key off it).
+                host.readyForInput()
+                notices.resolve(.preparation)
+            } catch {
+                if !Task.isCancelled, generation == host.bootScope.generation {
+                    readinessFailure = error.localizedDescription
+                    notices.report("The \(host.profile.shortName) didn’t finish starting. Restart it to try again.", for: .preparation)
+                    logEvent("boot: readiness failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+}

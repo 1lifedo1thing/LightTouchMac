@@ -1,60 +1,30 @@
 #!/usr/bin/env python3
-"""Drive production Mac input through the production mounted gravity model.
+"""Drive the production tilt gestures through the production mounted gravity model.
 
-The C shim replaces only QEMU's asynchronous dispatch. It uses the same
-ipod_attitude_vector function as the real bridge and LIS302DL, so a gesture
-that moves the rendered shell without changing guest gravity fails here.
-No app, emulator, saved device state, or preferences are opened.
+Compiles LightTouchCore's Session/ChassisTilt.swift whole (the tilt gestures' state and math: drag, scroll and
+twist, and the attitude command EmulatorController.setTilt sends) against qemu-ios's
+ipod_attitude_vector, the same function the real bridge and the LIS302DL use, so a gesture that moves the shell
+without changing guest gravity fails here. The gesture math alone is LightTouchCoreTests' ChassisTiltTests; this
+is what the guest's accelerometer reads for it: upright and flat, every quarter turn, direction, diagonal 1 g,
+clamps and the release to rest. No app, emulator, saved device state or preferences are opened.
 """
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-import host_runtime
 import argparse
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
-
+from pathlib import Path
 
 root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(root / "scripts"))
+import device_runtime
 import sources  # the pinned checkouts (build-support/sources.json)
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--qemu-source", type=Path, default=sources.path("qemu-ios"))
 args = parser.parse_args()
 qemu = args.qemu_source.resolve()
 if not (qemu / "include/hw/arm/ipod-attitude.h").is_file():
     parser.error("--qemu-source must contain include/hw/arm/ipod-attitude.h")
-
-display = (root / "LightTouchMac/UI/DisplayView.swift").read_text()
-emulator = (root / "LightTouchMac/Device/EmulatorController.swift").read_text()
-
-
-def method(source, signature):
-    start = source.index(signature)
-    end = source.index("\n    }", start) + len("\n    }")
-    return source[start:end]
-
-
-methods = "\n".join(method(display, signature) for signature in (
-    "    override func mouseDown(",
-    "    override func mouseDragged(",
-    "    override func mouseUp(",
-    "    override func scrollWheel(",
-    "    private func beginScrollTilt(",
-    "    private func scrollTiltChanged(",
-    "    private static func scrollMovement(",
-    "    private static func layerAngle(",
-    "    private func sendAttitude(",
-    "    func resetMotion(",
-    "    private func endTilt(",
-))
-methods = methods.replace("private ", "").replace("CACurrentMediaTime()", "testTime")
-rest_angle = next(line for line in display.splitlines() if "private var restAngle:" in line)
-methods += "\n" + rest_angle.replace("private ", "")
-set_tilt = method(emulator, "    func setTilt(")
-scroll_gain = next(line for line in display.splitlines() if "private static let scrollTiltGain:" in line)
 
 header = r'''
 #include <stdint.h>
@@ -78,79 +48,20 @@ void tilt_test_vector(int8_t out[3]) { memcpy(out, latest, sizeof latest); }
 int tilt_test_samples(void) { return samples; }
 '''
 
-swift = r'''import Cocoa
-import QuartzCore
+swift = r'''import Foundation
+import CoreGraphics
 
-enum TouchPhase { static let begin: Int32 = 0, update: Int32 = 1, end: Int32 = 2 }
-
-@MainActor class EventSink {
-    func mouseDown(with event: NSEvent) {}
-    func mouseDragged(with event: NSEvent) {}
-    func mouseUp(with event: NSEvent) {}
-    func scrollWheel(with event: NSEvent) {}
-}
-
-final class ScrollEvent: NSEvent {
-    var eventPhase: NSEvent.Phase = .began
-    var momentum: NSEvent.Phase = []
-    var dx = 0.0, dy = 0.0
-    var precise = true, inverted = false
-    override var phase: NSEvent.Phase { eventPhase }
-    override var momentumPhase: NSEvent.Phase { momentum }
-    override var scrollingDeltaX: CGFloat { dx }
-    override var scrollingDeltaY: CGFloat { dy }
-    override var hasPreciseScrollingDeltas: Bool { precise }
-    override var isDirectionInvertedFromDevice: Bool { inverted }
-}
-
-@MainActor final class Check: EventSink {
-    enum MotionPose: Int, CaseIterable { case upright, flat }
-    final class Emulator {
-        var motionPose = MotionPose.upright, rotationDegrees = 0
-        var acceptsInput = true, isSleeping = false
-        var keyboardTiltRate = 90.0
-        /// The helper's link: the attitude command reaches the same C model.
-        struct Link { func send(_ c: LinkCommand) { if case let .attitude(p, r, pose) = c { qemu_ios_ui_attitude(p, r, Int32(pose)) } } }
-        var link: Link? = Link()
-''' + set_tilt + r'''
+/// DisplayView's tilt path: the gesture, then sendAttitude (ChassisTilt.attitude) and setTilt's command, whose
+/// attitude reaches the C model as the helper's link would deliver it.
+@MainActor final class Check {
+    var tilt = ChassisTilt()
+    var pose = 0, rotation = 0
+    func send() {
+        let attitude = tilt.attitude(rotation: rotation, flat: pose == 1)
+        if case let .attitude(p, r, pose) = ChassisTilt.attitudeCommand(angle: attitude.angle, pitch: attitude.pitch, pose: pose) {
+            qemu_ios_ui_attitude(p, r, Int32(pose))
+        }
     }
-    final class Window {
-        var isKeyWindow = true
-        func makeFirstResponder(_ responder: Any) {}
-    }
-    final class Indicator {
-        var isHidden = true
-        func update(pitch: CGFloat, roll: CGFloat) {}
-    }
-    var emulator: Emulator? = Emulator()
-    var window: Window? = Window()
-    var tiltAngle = 0.0, pitchAngle = 0.0, yawAngle = 0.0
-    var scrollTilt = 0.0, scrollPitch = 0.0
-    var tiltKeys = Set<UInt16>()
-    var lastTiltTick = 0.0, testTime = 0.0, motionWasEnabled = false
-    var motionRestAngle: CGFloat?, scrollPoint: CGPoint?
-    var tilting = false, scrollTilting = false, rotatingChassis = false
-    var pinchingGuest = false, touchInteractionEnabled = true
-    struct TouchPair { mutating func down(at: CGPoint, _ f: NSEvent.ModifierFlags) {}; mutating func up() {} }
-    var touchPair = TouchPair()
-    func normalized(_ event: NSEvent) -> (Double, Double)? { nil }
-    func updatePairRings(_ flags: NSEvent.ModifierFlags) {}
-    var grabPoint = CGPoint.zero
-    var wheelTiltResetTask: Task<Void, Never>?
-    let shellLayer = CALayer(), attitudeIndicator = Indicator()
-    var guestTouches = 0, guestScrolls = 0
-''' + scroll_gain.replace("private ", "") + r'''
-    func convert(_ point: CGPoint, from: NSView?) -> CGPoint { point }
-    func isChassisEvent(_ event: NSEvent) -> Bool { true }
-    func nearScreenEdge(_ event: NSEvent) -> (Double, Double)? { nil }   // check-bare-screen's
-    func pressModelControl(_ event: NSEvent) -> Bool { false }
-    func panelResize(_ event: NSEvent) -> Bool { false }
-    func cursorOverPanel(_ event: NSEvent) -> Bool { false }
-    func emit(_ event: NSEvent, _ phase: Int32) { guestTouches += 1 }
-    func guestScrollDrag(_ event: NSEvent) { guestScrolls += 1 }
-    func setShellAngle(_ angle: CGFloat, animated: Bool = false) {}
-''' + methods + r'''
-
     func vector() -> [Int] {
         var result = [Int8](repeating: 0, count: 3)
         tilt_test_vector(&result)
@@ -163,31 +74,17 @@ final class ScrollEvent: NSEvent {
         let magnitude = sqrt(vector().reduce(0.0) { $0 + Double($1 * $1) })
         precondition(abs(magnitude - 64) < 1, "\(context): magnitude \(magnitude)")
     }
-    func event(_ type: NSEvent.EventType, _ point: CGPoint) -> NSEvent {
-        NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
-            timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0,
-            clickCount: 1, pressure: 1)!
-    }
-    func configure(_ pose: MotionPose, _ rotation: Int) {
-        emulator!.motionPose = pose
-        emulator!.rotationDegrees = rotation
-        tiltKeys.removeAll()
-        motionWasEnabled = false
-        endTilt()
-    }
-    func beginMouse(_ point: CGPoint = CGPoint(x: 37, y: 91)) {
-        mouseDown(with: event(.leftMouseDown, point))
-    }
+    func reset() { tilt.reset(); send() }
+    var grab = CGPoint.zero
     func drag(horizontal: Double, vertical: Double) {
-        // Inputs are degrees to the right/up; AppKit's flipped mouse Y is down.
-        let gain = 0.004 * 180 / Double.pi
-        let point = CGPoint(x: grabPoint.x + horizontal / gain,
-                            y: grabPoint.y - vertical / gain)
-        mouseDragged(with: event(.leftMouseDragged, point))
+        // Degrees to the right/up; the view is flipped, so up is a smaller y.
+        let gain = Double(ChassisTilt.dragGain) * 180 / Double.pi
+        tilt.drag(to: CGPoint(x: grab.x + horizontal / gain, y: grab.y - vertical / gain))
+        send()
     }
-    func releaseMouse() {
-        mouseUp(with: event(.leftMouseUp, grabPoint))
-        precondition(!tilting)
+    func scroll(dx: Double, dy: Double, precise: Bool = true) {
+        tilt.scroll(by: ChassisTilt.scrollMovement(dx: dx, dy: dy, precise: precise))
+        send()
     }
 
     func run() {
@@ -199,25 +96,28 @@ final class ScrollEvent: NSEvent {
         let flatRight = [[32,0,-55], [0,32,-55], [-32,0,-55], [0,-32,-55]]
         let flatUp = [[0,32,-55], [-32,0,-55], [0,-32,-55], [32,0,-55]]
 
-        for pose in MotionPose.allCases {
+        for pose in [0, 1] {
             for (index, rotation) in rotations.enumerated() {
-                let context = "\(pose) rotation=\(rotation)"
-                let baseline = pose == .flat ? [0,0,-64] : uprightRest[index]
-                configure(pose, rotation)
+                let context = "pose \(pose) rotation=\(rotation)"
+                let baseline = pose == 1 ? [0,0,-64] : uprightRest[index]
+                self.pose = pose; self.rotation = rotation
+                reset()
                 expect(baseline, context + " rest")
-                for anchor in [CGPoint(x: 37,y: 91), CGPoint(x: -200,y: 300)] {
-                    beginMouse(anchor)
+                for anchor in [CGPoint(x: 37, y: 91), CGPoint(x: -200, y: 300)] {
+                    tilt.reset()
+                    tilt.beginDrag(at: anchor, rotation: rotation)
+                    grab = anchor
                     let count = tilt_test_samples()
                     drag(horizontal: 30, vertical: 0)
                     precondition(tilt_test_samples() > count)
-                    expect(pose == .flat ? flatRight[index] : uprightRight[index], context + " right")
+                    expect(pose == 1 ? flatRight[index] : uprightRight[index], context + " right")
                     drag(horizontal: -30, vertical: 0)
                     let flatLeft = flatRight[index].enumerated().map { $0.offset < 2 ? -$0.element : $0.element }
-                    expect(pose == .flat ? flatLeft : uprightLeft[index], context + " left")
+                    expect(pose == 1 ? flatLeft : uprightLeft[index], context + " left")
                     drag(horizontal: 0, vertical: 30)
-                    expect(pose == .flat ? flatUp[index] : uprightUp[index], context + " up")
-                    for horizontal in [-45.0,-20,20,45] {
-                        for vertical in [-45.0,-20,20,45] {
+                    expect(pose == 1 ? flatUp[index] : uprightUp[index], context + " up")
+                    for horizontal in [-45.0, -20, 20, 45] {
+                        for vertical in [-45.0, -20, 20, 45] {
                             drag(horizontal: horizontal, vertical: vertical)
                             expectMagnitude(context + " diagonal")
                             precondition(vector() != baseline, context + " diagonal lost gravity")
@@ -227,61 +127,43 @@ final class ScrollEvent: NSEvent {
                     let clamped = vector()
                     drag(horizontal: 45, vertical: 45)
                     expect(clamped, context + " mouse clamp")
-                    releaseMouse()
+                    reset()
                     expect(baseline, context + " mouse-up reset")
                 }
-
-
-
-                // AppKit has already applied Natural Scrolling. Test both
-                // delivered signs and flag values without applying it twice.
-                for sign in [-1.0,1.0] {
-                    for precise in [false,true] {
-                        for inverted in [false,true] {
-                            let scroll = ScrollEvent()
-                            scroll.precise = precise
-                            scroll.inverted = inverted
-                            let points = sign * Double.pi / 6 / Self.scrollTiltGain
-                            scroll.dx = points / (precise ? 1 : 10)
-                            scrollWheel(with: scroll)
-                            let expected: [Int]
-                            if pose == .flat {
-                                expected = flatRight[index].enumerated().map {
-                                    $0.offset < 2 ? Int(sign) * $0.element : $0.element
-                                }
-                            } else {
-                                expected = sign > 0 ? uprightRight[index] : uprightLeft[index]
-                            }
-                            expect(expected, context + " scroll horizontal")
-                            scroll.eventPhase = .ended
-                            scrollWheel(with: scroll)
-                            expect(baseline, context + " scroll ended reset")
+                // AppKit has already applied Natural Scrolling: both delivered signs, points and lines.
+                for sign in [-1.0, 1.0] {
+                    for precise in [false, true] {
+                        tilt.reset()
+                        tilt.beginScroll(rotation: rotation)
+                        let points = sign * Double.pi / 6 / Double(ChassisTilt.scrollTiltGain)
+                        scroll(dx: points / (precise ? 1 : 10), dy: 0, precise: precise)
+                        let expected: [Int]
+                        if pose == 1 {
+                            expected = flatRight[index].enumerated().map { $0.offset < 2 ? Int(sign) * $0.element : $0.element }
+                        } else {
+                            expected = sign > 0 ? uprightRight[index] : uprightLeft[index]
                         }
+                        expect(expected, context + " scroll horizontal")
+                        reset()
+                        expect(baseline, context + " scroll ended reset")
                     }
                 }
-                let diagonal = ScrollEvent()
-                diagonal.dx = Double.pi / 6 / Self.scrollTiltGain
-                diagonal.dy = diagonal.dx
-                scrollWheel(with: diagonal)
+                tilt.beginScroll(rotation: rotation)
+                let diagonal = Double.pi / 6 / Double(ChassisTilt.scrollTiltGain)
+                scroll(dx: diagonal, dy: diagonal)
                 expectMagnitude(context + " scroll diagonal")
                 precondition(vector() != baseline)
-                diagonal.eventPhase = .cancelled
-                scrollWheel(with: diagonal)
+                reset()
                 expect(baseline, context + " scroll cancellation reset")
-
-                let clamp = ScrollEvent()
-                clamp.dx = 1_000_000
-                clamp.dy = -1_000_000
-                scrollWheel(with: clamp)
-                precondition(abs(tiltAngle - .pi / 3) < 1e-12 && abs(pitchAngle + .pi / 3) < 1e-12)
+                tilt.beginScroll(rotation: rotation)
+                scroll(dx: 1_000_000, dy: -1_000_000)
+                precondition(abs(tilt.tiltAngle - .pi / 3) < 1e-12 && abs(tilt.pitchAngle + .pi / 3) < 1e-12)
                 expectMagnitude(context + " scroll clamp")
-                clamp.eventPhase = .ended
-                scrollWheel(with: clamp)
+                reset()
                 expect(baseline, context + " scroll clamp reset")
             }
         }
-        precondition(guestTouches == 0 && guestScrolls == 0, "Chassis gestures leaked to guest touches")
-        print("PASS: production mouse/scroll → Swift attitude bridge → LIS302DL gravity; upright/flat, every quarter-turn, direction, diagonal 1g, clamps and release")
+        print("PASS: production tilt gestures → attitude command → LIS302DL gravity; upright/flat, every quarter-turn, direction, diagonal 1g, clamps and release")
     }
 }
 @main struct Main {
@@ -294,13 +176,10 @@ with tempfile.TemporaryDirectory(prefix="ltm-tilt-game-") as directory:
     (work / "bridge.h").write_text(header)
     (work / "bridge.c").write_text(c_source)
     (work / "check.swift").write_text(swift)
-    subprocess.run([
-        "clang", "-Wall", "-Wextra", "-Werror", "-I" + str(qemu / "include"),
-        "-c", str(work / "bridge.c"), "-o", str(work / "bridge.o"),
-    ], check=True)
-    subprocess.run([
-        "swiftc", *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), "-parse-as-library", "-module-cache-path", str(work / "module-cache"),
-        "-import-objc-header", str(work / "bridge.h"), str(root / "Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceLinkProtocol.swift"), str(work / "check.swift"),
-        str(work / "bridge.o"), "-o", str(work / "check"),
-    ], check=True)
+    subprocess.run(["clang", "-Wall", "-Wextra", "-Werror", "-I" + str(qemu / "include"),
+                    "-c", str(work / "bridge.c"), "-o", str(work / "bridge.o")], check=True)
+    subprocess.run(["swiftc", *device_runtime.swift_flags(root), "-parse-as-library", "-module-cache-path", str(work / "module-cache"),
+                    "-import-objc-header", str(work / "bridge.h"),
+                    str(root / "Packages/LightTouchCore/Sources/LightTouchCore/Session/ChassisTilt.swift"), str(work / "check.swift"),
+                    str(work / "bridge.o"), "-o", str(work / "check")], check=True)
     subprocess.run([str(work / "check")], check=True)

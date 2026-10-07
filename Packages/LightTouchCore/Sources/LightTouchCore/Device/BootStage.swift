@@ -1,5 +1,5 @@
 // Where a boot stands, from what the device has shown: serial lines, the guest tools reporting in, USB.
-// Never a timer. Pure Foundation, so tests/offline/check-boot-stage.py compiles it whole.
+// Never a timer. Pure Foundation; LightTouchCoreTests' BootStageTests.
 
 import Foundation
 

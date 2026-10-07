@@ -1,0 +1,110 @@
+import Foundation
+import Testing
+import HostServiceWire
+import DeviceRuntime
+import HostRuntime
+@testable import LightTouchCore
+
+/// The boot's readiness watch: one display wake for a backlight that's off, nothing for an awake one or a stale,
+/// cancelled or stopping boot; at the deadline iOS on screen keeps running without USB, no picture fails.
+struct ReadinessWatchTests {
+    func session(_ directory: URL, sleeping: Bool = false) -> FakeSession {
+        let s = FakeSession(directory: directory)
+        s.state = .running
+        s.status = helperStatus(displaySleeping: sleeping)
+        return s
+    }
+
+    @Test(arguments: [true, false])
+    func wakesTheDisplayOnlyWhenItSleeps(_ sleeping: Bool) async throws {
+        try await withScratchDirectory { directory in
+            let c = session(directory, sleeping: sleeping)
+            c.readiness.start()
+            #expect(c.preparingDevice && c.readiness.preparationStatus == "Starting iOS…" && c.bootStage == .poweringOn)
+            await c.readiness.current?.value
+            #expect(c.homes == (sleeping ? 1 : 0) && !c.preparingDevice)
+            #expect(c.preparingAtHome == (sleeping ? [true] : []), "Home only while input is still held back")
+            #expect(c.readiness.bootStage == .usb, "USB answered: the toast moves on to the Home screen")
+            #expect(c.deviceReachable == true && c.readiness.readinessFailure == nil)
+        }
+    }
+
+    @Test func waitsForSpringBoardBeforeInput() async throws {
+        try await withScratchDirectory { directory in
+            let c = session(directory)
+            c.springBoardReady = false
+            c.readiness.start()
+            await eventually("SpringBoard asked") { c.springBoardChecks > 0 }
+            #expect(c.preparingDevice && c.readiness.preparationStatus == "Waiting for the Home screen…" && c.deviceReachable == nil)
+            c.springBoardReady = true
+            await c.readiness.current?.value
+            #expect(!c.preparingDevice && c.deviceReachable == true)
+        }
+    }
+
+    @Test func staleCancelledAndStoppingBootsAreLeftAlone() async throws {
+        try await withScratchDirectory { directory in
+            let stale = session(directory, sleeping: true)
+            stale.onDeviceReady = { stale.bootScope.retire() }
+            stale.readiness.start()
+            let staleTask = stale.readiness.current
+            await staleTask?.value
+            #expect(stale.preparingDevice && stale.homes == 0, "a later boot owns the flag")
+
+            let cancelled = session(directory, sleeping: true)
+            cancelled.onDeviceReady = { cancelled.readiness.cancel() }
+            cancelled.readiness.start()
+            await cancelled.readiness.current?.value
+            #expect(cancelled.homes == 0 && !cancelled.preparingDevice && cancelled.readiness.readinessFailure == nil)
+
+            let quitting = session(directory, sleeping: true)
+            quitting.onDeviceReady = { quitting.ladder.halt { _ in } }
+            quitting.readiness.start()
+            await quitting.readiness.current?.value
+            #expect(quitting.homes == 0)
+
+            let stopping = session(directory)
+            stopping.ladder.halt { _ in }
+            stopping.readiness.start()
+            #expect(stopping.readiness.current == nil && !stopping.preparingDevice, "a stopping device starts no watch")
+        }
+    }
+
+    @Test func theDeadlineKeepsIOSOnScreenRunningWithoutUSB() async throws {
+        try await withScratchDirectory { directory in
+            let noUSB = session(directory)
+            noUSB.readiness.budget = .milliseconds(100)
+            noUSB.usbAnswers = false
+            noUSB.readiness.start()
+            noUSB.readiness.noteBoot(.serial("launchd[1] has started up"))
+            #expect(noUSB.bootStage == .system)
+            await eventually("the deadline passed") { noUSB.notices.message != nil }
+            #expect(!noUSB.preparingDevice && noUSB.readiness.readinessFailure == nil, "kept running, not a startup failure")
+            #expect(noUSB.notices.message == ReadinessDeadline.notice(shortName: "iPod"))
+            noUSB.usbAnswers = true
+            await noUSB.readiness.current?.value
+            #expect(noUSB.deviceReachable == true && noUSB.notices.message == nil && noUSB.bootStage == .usb, "USB came: ready, notice gone")
+
+            // No picture from iOS by the deadline: the startup fails.
+            let dark = session(directory)
+            dark.readiness.budget = .milliseconds(100)
+            dark.usbAnswers = false
+            dark.readiness.start()
+            dark.readiness.noteBoot(.serial("Darwin Kernel Version"))
+            await dark.readiness.current?.value
+            #expect(dark.readiness.readinessFailure != nil && !dark.preparingDevice)
+            #expect(dark.notices.message == "The iPod didn’t finish starting. Restart it to try again.")
+        }
+    }
+
+    @Test func aDeadDeviceFailsItsStartup() async throws {
+        try await withScratchDirectory { directory in
+            let c = session(directory)
+            c.usbAnswers = false
+            c.readiness.start()
+            c.state = .dead(exitCode: nil)
+            await c.readiness.current?.value
+            #expect(c.readiness.readinessFailure != nil && !c.preparingDevice)
+        }
+    }
+}
