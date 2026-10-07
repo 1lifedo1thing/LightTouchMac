@@ -11,6 +11,9 @@ let settings: [SwiftSetting] = [
     .enableUpcomingFeature("InferIsolatedConformances"),
 ]
 
+/// Where the libimobiledevice and libplist headers are (Homebrew's), for the modules that import the engine.
+let imobiledevice = ["-Xcc", "-I/opt/homebrew/include", "-Xcc", "-I/usr/local/include"]
+
 let package = Package(name: "OfflineChecks", platforms: [.macOS("14.4")],
     dependencies: [
         .package(path: "../../Packages/LightTouchCore"),
@@ -40,9 +43,14 @@ let package = Package(name: "OfflineChecks", platforms: [.macOS("14.4")],
         // The helper's (LightTouchDevice's) own code that stands alone: the libqemu binding.
         .target(name: "Helper", dependencies: [.product(name: "DeviceRuntime", package: "DeviceRuntime"), .product(name: "HostRuntime", package: "HostRuntime")],
                 swiftSettings: settings),
+        // The services helper's engine (LightTouchServices/Engine) over a libimobiledevice of the tests' own
+        // (tests/fixtures/imobiledevice-fake.swift), with the real headers from Homebrew's libimobiledevice.
+        .target(name: "CIMobileDevice", cSettings: [.unsafeFlags(["-I/opt/homebrew/include", "-I/usr/local/include"])]),
+        .target(name: "Engine", dependencies: ["CIMobileDevice", .product(name: "HostServiceWire", package: "DeviceServices")],
+                swiftSettings: settings + [.unsafeFlags(imobiledevice + ["-Xfrontend", "-import-module", "-Xfrontend", "CIMobileDevice"])]),
         // A private home and app state for the test process (LightTouchCore's own, Tests/TestIsolation).
         .target(name: "TestIsolation"),
-        .testTarget(name: "OfflineTests", dependencies: ["AppViews", "Display", "Helper", "Menus", "Model", "Sidebar", "TestIsolation",
-                                                         .product(name: "DeviceRuntime", package: "DeviceRuntime")], swiftSettings: settings),
+        .testTarget(name: "OfflineTests", dependencies: ["AppViews", "Display", "Engine", "Helper", "Menus", "Model", "Sidebar", "TestIsolation",
+                                                         .product(name: "DeviceRuntime", package: "DeviceRuntime")], swiftSettings: settings + [.unsafeFlags(imobiledevice)]),
     ],
     swiftLanguageModes: [.v5])
