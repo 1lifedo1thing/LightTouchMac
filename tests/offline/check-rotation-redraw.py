@@ -2,9 +2,9 @@
 """A rotation shows without a new frame (Sam 10-06: the iPhone 4 only redrew its rotation when something else did).
 
 The production DisplayView with the flat shell (the iPhone 4 has no 3D model), check-model's fake link and emulator,
-in a window never ordered in. The emulator publishes the turned picture first; the app learns the new orientation
-(SpringBoard's) a moment later, while the screen is static and no new frame comes. Checks: the display's own tick
-lays the device out landscape then, without another frame."""
+in a window never ordered in. The A4 publishes its portrait panel as is; the app learns the new orientation a moment later, while the screen is
+static and no new frame comes. Checks: the display's own tick lays the device out landscape then, without another
+frame, and the portrait picture turns with the chassis instead of stretching to landscape (Sam 10-07, iOS 7 Settings)."""
 import ast, subprocess, sys, tempfile
 from pathlib import Path
 root = Path(__file__).resolve().parents[2]
@@ -48,17 +48,24 @@ source = prefix + stub + r'''
   let lcd = all(display.layer!).first { $0.backgroundColor == NSColor.black.cgColor && $0.contentsGravity == .resize }!
   func box() -> CGRect { lcd.convert(lcd.bounds, to: display.layer!) }
   precondition(box().height > box().width, "not portrait at rest: \(box())")
-  // The emulator turns its picture first; the app hears of the orientation later, with nothing new on screen.
-  frameWidth = Int32(profile.screenPixels.height); frameHeight = Int32(profile.screenPixels.width)
-  try await tick()
+  // The A4's display pipe scans its portrait panel out as is (s5l8930_display.c): the frame stays 640x960. The
+  // app hears of the orientation with nothing new on screen.
   frozen = true
   e.rotationDegrees = 90
   for _ in 0..<4 { try await tick() }
   // Animations off the screen: the model layer is where the layout put it.
   let b = box()
   precondition(b.width > b.height * 1.2, "the rotation didn't show without a new frame: LCD \(b)")
+  // Sam 10-07: the guest stays portrait (Settings), so the picture turns with the chassis and keeps its shape.
+  // The layer stretches its contents to its bounds (.resize): bounds of another shape stretch the picture.
+  let aspect = lcd.bounds.width / lcd.bounds.height, frameAspect = CGFloat(frameWidth) / CGFloat(frameHeight)
+  precondition(abs(aspect - frameAspect) < 0.01, "the portrait picture is stretched: layer \(lcd.bounds.size), frame \(frameWidth)x\(frameHeight)")
+  // The picture's top edge (its status bar) follows the chassis to the side, not the top of the window.
+  let top = lcd.convert(CGPoint(x: lcd.bounds.midX, y: 0), to: display.layer!)
+  precondition(abs(top.x - b.midX) > b.width * 0.4 && abs(top.y - b.midY) < b.height * 0.1,
+               "the picture didn't turn with the chassis: its top edge is at \(top) in \(b)")
   window.contentView = nil
-  print("PASS: an iPhone 4 rotation lays out landscape on the display's own tick, with no new frame")
+  print("PASS: an iPhone 4 rotation lays out landscape on the display's own tick, the portrait picture turned with the chassis, not stretched")
  }
 }
 '''
