@@ -25,10 +25,15 @@ public nonisolated enum Bundled {
 
     /// Resources/Guest/guest.aar unpacked (FirmwareKit GuestArchive): guest-tools/, developer-tools/ and tools/;
     /// nil in a build without it.
-    public static let guestRoot: URL? = Bundle.main.resourceURL.flatMap { (resources: URL) -> URL? in
-        do { return try GuestArchive.unpacked(resources: resources) } catch {
-            NSLog("guest tools: couldn’t unpack %@/Guest/guest.aar: %@", resources.path, "\(error)")
-            return nil
+    public static let guestRoot: URL? = guestRoot(resources: Bundle.main.resourceURL)
+
+    /// `resources`' Guest/guest.aar, unpacked once into the user's caches.
+    public static func guestRoot(resources: URL?) -> URL? {
+        resources.flatMap { (resources: URL) -> URL? in
+            do { return try GuestArchive.unpacked(resources: resources) } catch {
+                NSLog("guest tools: couldn’t unpack %@/Guest/guest.aar: %@", resources.path, "\(error)")
+                return nil
+            }
         }
     }
 
@@ -36,21 +41,23 @@ public nonisolated enum Bundled {
     public static var toolsDirectory: String? { guestRoot?.appendingPathComponent("tools", isDirectory: true).path }
 
     /// Native helper executables share the standard executable directory.
-    public static let hostToolsDirectory = Bundle.main.executableURL?.deletingLastPathComponent().path
+    public static let hostToolsDirectory = hostToolsDirectory(of: .main)
+    public static func hostToolsDirectory(of bundle: Bundle) -> String? { bundle.executableURL?.deletingLastPathComponent().path }
 
     /// Dylibs shipped with the app (scripts/vendor sets their @rpath install names).
     public static let frameworksDirectory = Bundle.main.privateFrameworksPath
 
     /// The device assets (the iPod SecureROMs): LTM_FILES,
     /// then the bundle's Resources/Device, then the dev checkout's qemu-ios-files.
-    public static let filesRoot: String = {
-        if let env = ProcessInfo.processInfo.environment["LTM_FILES"] { return env }
-        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("Device").path,
+    public static let filesRoot: String = filesRoot(environment: ProcessInfo.processInfo.environment, resources: Bundle.main.resourceURL)
+    public static func filesRoot(environment: [String: String], resources: URL?) -> String {
+        if let env = environment["LTM_FILES"] { return env }
+        if let bundled = resources?.appendingPathComponent("Device").path,
            FileManager.default.fileExists(atPath: bundled) {
             return bundled
         }
         return "\(NSHomeDirectory())/Developer/qemu-ios-files"
-    }()
+    }
 
     /// Prepare once before the app constructs controllers or opens any device
     /// files. On error the caller must stop startup instead of creating a new
@@ -122,15 +129,21 @@ public nonisolated enum Bundled {
 
     /// A shipped executable or script, or nil when this build has none — in
     /// which case the caller falls back to a checkout path.
-    public static func tool(_ name: String) -> String? {
-        [hostToolsDirectory, toolsDirectory].compactMap { $0 }
+    public static func tool(_ name: String) -> String? { tool(name, in: [hostToolsDirectory, toolsDirectory]) }
+
+    /// The first executable `name` in `directories` (nil ones skipped), in order.
+    public static func tool(_ name: String, in directories: [String?]) -> String? {
+        directories.compactMap { $0 }
             .map { "\($0)/\(name)" }
             .first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
     /// The first of `candidates` that exists, bundle copy first.
     public static func resolve(_ name: String, fallbacks candidates: [String]) -> String? {
-        tool(name) ?? candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+        resolve(name, fallbacks: candidates, in: [hostToolsDirectory, toolsDirectory])
+    }
+    public static func resolve(_ name: String, fallbacks candidates: [String], in directories: [String?]) -> String? {
+        tool(name, in: directories) ?? candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
     /// Directories to search for command-line tools, ours before anyone's.
