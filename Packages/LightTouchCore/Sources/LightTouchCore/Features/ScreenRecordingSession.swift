@@ -1,52 +1,70 @@
-import LightTouchCore
-import Cocoa
 import AVFoundation
+import CoreGraphics
+import Foundation
+
+/// What a recording session writes its take with: ScreenMovieWriter.
+nonisolated public protocol ScreenMovieRecording: AnyObject, Sendable {
+    func start(url: URL, audio: GuestAudioCapture?, canvasSize: CGSize?, background: CGImage?, screenSide: CGFloat) async throws
+    func append(_ image: CGImage?, seconds: Double) async throws
+    func finish(seconds: Double) async throws
+    func cancel() async
+}
+
+extension ScreenMovieWriter: ScreenMovieRecording {}
 
 /// Owns one recording from its first frame through a durable save. A failed
 /// destination leaves the completed movie available for another save attempt.
 @MainActor
-final class ScreenRecordingSession {
-    enum Phase: Equatable {
+public final class ScreenRecordingSession {
+    public enum Phase: Equatable {
         case idle, starting, recording, saving, saved(URL), recovery(URL)
     }
-    enum Completion: Equatable {
+    public enum Completion: Equatable {
         case saved(URL), discarded, recovery(URL), failed
     }
-    struct RecoveryReport {
-        var saved: [URL] = []
-        var remaining: [URL] = []
+    public struct RecoveryReport {
+        public var saved: [URL] = []
+        public var remaining: [URL] = []
         /// Unplayable takes: deleted, since nothing can recover them.
-        var deleted: [URL] = []
+        public var deleted: [URL] = []
     }
 
-    private(set) var phase: Phase = .idle { didSet { activity.held = isActive; onChange?() } }
+    public private(set) var phase: Phase = .idle { didSet { activity.held = isActive; onChange?() } }
     private var activity = UserActivity("Recording a device's screen")
-    private(set) var elapsedSeconds = 0
-    private(set) var failure: Error?
-    private(set) var previewImage: CGImage?
-    var onChange: (() -> Void)?
-    var onFinished: ((Bool) -> Void)?
-    var onCompleted: ((Completion) -> Void)?
+    public private(set) var elapsedSeconds = 0
+    public private(set) var failure: Error?
+    public private(set) var previewImage: CGImage?
+    public var onChange: (() -> Void)?
+    public var onFinished: ((Bool) -> Void)?
+    public var onCompleted: ((Completion) -> Void)?
     /// A failed preferred location falls back to a per-file save panel. The
     /// completed source remains durable if the panel is cancelled or fails.
-    var chooseSaveDestination: ((Error) async -> URL?)?
-    var onBeganRecording: (() -> Void)?
-    var onStoppedRecording: (() -> Void)?
+    public var chooseSaveDestination: ((Error) async -> URL?)?
+    public var onBeganRecording: (() -> Void)?
+    public var onStoppedRecording: (() -> Void)?
     private var didBeginRecording = false
-    private let writer = ScreenMovieWriter()
+    private let writer: any ScreenMovieRecording
+    /// Where takes are written until they're saved (recoveryDirectory).
+    private let folder: URL
+
+    /// `folder`: recoveryDirectory unless given.
+    public init(writer: any ScreenMovieRecording = ScreenMovieWriter(), folder: URL? = nil) {
+        self.writer = writer
+        self.folder = folder ?? Self.recoveryDirectory
+    }
     private var producer: Task<Void, Never>?
     private var output: URL?
-    private var startedAt: CFTimeInterval = 0
+    private var startedAt: TimeInterval = 0
     private var writerStarted = false
-    private(set) var id = UUID()
+    public private(set) var id = UUID()
     private var stopRequested = false
     private var discardRequested = false
     private var destination: (() throws -> URL)?
 
-    var isActive: Bool { phase == .starting || phase == .recording || phase == .saving }
-    var needsRecovery: Bool { if case .recovery = phase { true } else { false } }
-    var canStop: Bool { phase == .starting || phase == .recording }
-    var elapsed: String {
+    public var isActive: Bool { phase == .starting || phase == .recording || phase == .saving }
+    public var needsRecovery: Bool { if case .recovery = phase { true } else { false } }
+    public var canStop: Bool { phase == .starting || phase == .recording }
+    public var elapsed: String {
         let seconds = elapsedSeconds % 60
         let minutes = (elapsedSeconds / 60) % 60
         let hours = elapsedSeconds / 3600
@@ -54,21 +72,21 @@ final class ScreenRecordingSession {
         return hours > 0 ? "\(hours):\(minutes < 10 ? "0" : "")\(minutes):\(tail)"
             : "\(minutes):\(tail)"
     }
-    static var recoveryDirectory: URL {
+    public static var recoveryDirectory: URL {
         Bundled.stateDirectory.appendingPathComponent("Recordings", isDirectory: true)
     }
 
     /// Recordings/ is out of backups while a take is being written into it
     /// (a large, changing file), and back in once it's idle.
-    private static func excludeRecordingsFromBackup(_ excluded: Bool) {
-        var folder = recoveryDirectory
+    private func excludeRecordingsFromBackup(_ excluded: Bool) {
+        var folder = folder
         var values = URLResourceValues()
         values.isExcludedFromBackup = excluded
         try? folder.setResourceValues(values)
     }
 
     /// `audio` starts the device's guest audio capture (nil: a silent movie).
-    func start(frame: @escaping () throws -> CGImage?, audio: @escaping () async throws -> GuestAudioCapture? = { nil }, prepare: @escaping () async throws -> CGSize? = { nil }, cleanup: @escaping () async -> Void = {}, background: CGImage? = nil, screenSide: CGFloat = 480, destination: @escaping () throws -> URL) {
+    public func start(frame: @escaping () throws -> CGImage?, audio: @escaping () async throws -> GuestAudioCapture? = { nil }, prepare: @escaping () async throws -> CGSize? = { nil }, cleanup: @escaping () async -> Void = {}, background: CGImage? = nil, screenSide: CGFloat = 480, destination: @escaping () throws -> URL) {
         guard !isActive else { return }
         if case .recovery = phase { return }
         begin(frame: frame, audio: audio, prepare: prepare, cleanup: cleanup, background: background, screenSide: screenSide, destination: destination)
@@ -88,9 +106,8 @@ final class ScreenRecordingSession {
         producer = Task { [weak self] in
             guard let self else { return }
             do {
-                let folder = Self.recoveryDirectory
                 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                Self.excludeRecordingsFromBackup(true)
+                excludeRecordingsFromBackup(true)
                 let url = folder.appendingPathComponent("Recording \(UUID().uuidString).mov")
                 output = url
                 let canvasSize = try await prepare()
@@ -98,7 +115,7 @@ final class ScreenRecordingSession {
                 do { try await writer.start(url: url, audio: capture, canvasSize: canvasSize, background: background, screenSide: screenSide) }
                 catch { capture?.stop(); throw error }
                 writerStarted = true
-                startedAt = CACurrentMediaTime()
+                startedAt = ProcessInfo.processInfo.systemUptime
                 // A stop during startup still produces a playable first frame.
                 let firstFrame = try frame()
                 previewImage = firstFrame
@@ -111,8 +128,8 @@ final class ScreenRecordingSession {
                 while !stopRequested {
                     try await Task.sleep(for: .milliseconds(canvasSize == nil ? 33 : 16))
                     guard !stopRequested else { break }
-                    try await writer.append(try frame(), seconds: CACurrentMediaTime() - startedAt)
-                    let seconds = Int(CACurrentMediaTime() - startedAt)
+                    try await writer.append(try frame(), seconds: ProcessInfo.processInfo.systemUptime - startedAt)
+                    let seconds = Int(ProcessInfo.processInfo.systemUptime - startedAt)
                     if elapsedSeconds != seconds { elapsedSeconds = seconds; onChange?() }
                 }
             } catch {
@@ -124,7 +141,7 @@ final class ScreenRecordingSession {
         }
     }
 
-    func stop(discard: Bool = false) {
+    public func stop(discard: Bool = false) {
         guard canStop else { return }
         if didBeginRecording {
             didBeginRecording = false
@@ -136,7 +153,7 @@ final class ScreenRecordingSession {
     }
 
     private func complete() async {
-        defer { Self.excludeRecordingsFromBackup(false) }
+        defer { excludeRecordingsFromBackup(false) }
         // Also announce an interrupted take, once, if frames had started.
         if didBeginRecording {
             didBeginRecording = false
@@ -152,11 +169,11 @@ final class ScreenRecordingSession {
             if let failure {
                 // An audio-source error can leave valid video in a healthy
                 // writer. Finalize that partial take before offering recovery.
-                if writerStarted { try? await writer.finish(seconds: max(CACurrentMediaTime() - startedAt, 0.034)) }
+                if writerStarted { try? await writer.finish(seconds: max(ProcessInfo.processInfo.systemUptime - startedAt, 0.034)) }
                 await writer.cancel()
                 throw failure
             }
-            try await writer.finish(seconds: max(CACurrentMediaTime() - startedAt, 0.034))
+            try await writer.finish(seconds: max(ProcessInfo.processInfo.systemUptime - startedAt, 0.034))
             guard let output, let destination else { throw CaptureError.failed("No recording file is available.") }
             let saved: URL
             do {
@@ -186,7 +203,7 @@ final class ScreenRecordingSession {
         }
     }
 
-    func retrySave(to url: URL) {
+    public func retrySave(to url: URL) {
         guard case let .recovery(source) = phase else { return }
         phase = .saving
         Task {
@@ -205,7 +222,7 @@ final class ScreenRecordingSession {
     }
 
     /// Called only after the user confirms discarding an unsaved take.
-    func discardRecovery() {
+    public func discardRecovery() {
         guard case let .recovery(source) = phase else { return }
         output = source
         discardOutput()
@@ -244,9 +261,9 @@ final class ScreenRecordingSession {
 
     /// Recover only older, playable recordings. An unplayable one is deleted
     /// (report.deleted, for the log); new takes and unrelated files are never swept up.
-    static func recoverRecordings(createdBefore cutoff: Date,
+    public static func recoverRecordings(in folder: URL? = nil, createdBefore cutoff: Date,
                                   destination: (URL) throws -> URL) async throws -> RecoveryReport {
-        let folder = recoveryDirectory
+        let folder = folder ?? recoveryDirectory
         guard FileManager.default.fileExists(atPath: folder.path) else { return RecoveryReport() }
         let keys: Set<URLResourceKey> = [.creationDateKey, .isRegularFileKey, .isSymbolicLinkKey]
         let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: Array(keys),
@@ -276,7 +293,7 @@ final class ScreenRecordingSession {
         return report
     }
 
-    func dismiss() {
+    public func dismiss() {
         guard !isActive else { return }
         // Recovery files remain on disk, including across application launches.
         output = nil
