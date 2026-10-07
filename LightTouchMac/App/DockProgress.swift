@@ -1,8 +1,10 @@
 import Cocoa
 
-/// Downloads and preparations on the Dock icon: one bar under the icon while any runs (FirmwareJob.dockProgress).
+/// Downloads and preparations on the Dock icon: one bar under the icon while any runs (FirmwareJob.dockProgress),
+/// and no idle sleep meanwhile.
 @MainActor final class DockProgress {
     private var bar: NSProgressIndicator?
+    private var activity = UserActivity("Downloading and preparing firmware")
     private var observer: NSObjectProtocol?
 
     func start() {
@@ -14,7 +16,9 @@ import Cocoa
 
     private func update() {
         let tile = NSApp.dockTile
-        guard let fraction = FirmwareJob.dockProgress(FirmwareJobs.shared.jobs.values) else {
+        let fraction = FirmwareJob.dockProgress(FirmwareJobs.shared.jobs.values)
+        activity.held = fraction != nil
+        guard let fraction else {
             if bar != nil { bar = nil; tile.contentView = nil; tile.display() }
             return
         }

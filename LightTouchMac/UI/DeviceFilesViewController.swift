@@ -24,7 +24,8 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
     private var directories: [String: [DeviceFile]] = [:]
     private var loading = Set<String>()
     private var tasks: [Task<Void, Never>] = []
-    private var transfer: Task<Void, Never>?
+    private var transfer: Task<Void, Never>? { didSet { activity.held = transfer != nil } }
+    private var activity = UserActivity("Copying files to or from a device")
     private var revision = 0
     private var transferID = UUID()
     /// Quick Look's copies of the selected files, in a private temporary folder removed when the panel closes.
