@@ -20,7 +20,9 @@
 // (MA501: the four chip enables its DT's flash disk names, reg 0x0f, of the same chips), an iPhone identity (an IMEI,
 // a Bluetooth MAC; the UDID hashes both), btaddr beside wifiaddr in the nvram (iBoot fills arm-io/uart3/bluetooth from
 // it), the NAND signature its iBoot-159 carries (C000). The LaunchDaemons kept are the same list (1.0 ships no
-// AddressBook job); CommCenter stays, BTServer and iapd go (no Bluetooth or accessory model).
+// AddressBook job), plus BTServer (qemu-ios models the M68's Bluetooth chip on UART3; without BTServer SpringBoard's
+// BluetoothManager sleeps on its main thread through MobileBluetooth's attach retries, seconds per app launch);
+// iapd goes (no accessory model).
 
 import Foundation
 
@@ -44,9 +46,11 @@ final class N45Board: Board {
     /// them) through lockbot ("spawn_service_agent: Could not spawn service agent via lockbot" without it); 1.1-1.1.2
     /// have no lockbot and spawn their own.
     static let keptWhenShipped: Set = ["com.apple.mobile.lockbot.plist"]
+    /// Kept on the iPhone (m68ap) only: the machine answers BTServer's HCI there; the iPod touch has no Bluetooth.
+    static let iPhoneDaemons: Set = ["com.apple.BTServer.plist"]
     /// The jobs the bake removes from this firmware's LaunchDaemons.
-    static func removedDaemons(_ jobs: [String]) -> [String] {
-        jobs.filter { !keptDaemons.contains($0) && !keptWhenShipped.contains($0) }.sorted()
+    static func removedDaemons(_ jobs: [String], iPhone: Bool = false) -> [String] {
+        jobs.filter { !keptDaemons.contains($0) && !keptWhenShipped.contains($0) && !(iPhone && iPhoneDaemons.contains($0)) }.sorted()
     }
     static let rootLibrary = "private/var/root/Library"
     static let openGLESExports = "opengles-1x.exports"
@@ -186,7 +190,7 @@ final class N45Board: Board {
             let jobs = try fm.contentsOfDirectory(atPath: at(SystemEdits.daemons).path).filter { $0.hasSuffix(".plist") }
             try c.fit.check(Self.keptDaemonsFit(jobs), required: false, outcome: "the rest removed as planned")
             c.fit.notInstalled("AppSync", recipe.options["appsync"] == true ? "the 1.x recipe has no AppSync" : "appsync off")
-            let removed = Self.removedDaemons(jobs)
+            let removed = Self.removedDaemons(jobs, iPhone: iPhone)
             for n in removed { try fm.removeItem(at: at(SystemEdits.daemons + "/" + n)) }
             for d in ["", "/AddressBook", "/Lockdown", "/Preferences"] {
                 try SystemEdits.mkdirs(at(Self.rootLibrary + d))

@@ -288,6 +288,8 @@ import Testing
         #expect(!removed.contains("com.apple.mDNSResponder.plist"), "\(removed)")
         #expect(removed == ["com.apple.BTServer.plist", "com.apple.DumpPanic.plist", "com.apple.crashreporterd.plist",
                             "com.apple.daily.plist", "com.apple.iapd.plist", "com.apple.syslogd.plist", "com.apple.update.plist"])
+        // The iPhone keeps BTServer (the M68's Bluetooth chip answers; without it SpringBoard stalls app launches).
+        #expect(N45Board.removedDaemons(jobs, iPhone: true) == removed.filter { $0 != "com.apple.BTServer.plist" })
     }
     /// 1.1.3+ (4A93, 4B1) ship com.apple.mobile.lockbot, through which their lockdownd starts every service (AFC):
     /// the bake keeps it; 1.1.1 (3A110a) has none. Read off the real system volumes.
