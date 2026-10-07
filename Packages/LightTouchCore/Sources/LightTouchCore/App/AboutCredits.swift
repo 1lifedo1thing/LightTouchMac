@@ -37,6 +37,7 @@ public enum AboutCredits {
         Project("PCRE2", "https://github.com/PCRE2Project/pcre2", "BSD-3-Clause", "pcre2"),
         Project("pixman", "https://pixman.org", "MIT", "pixman"),
         Project("OpenSSL", "https://www.openssl.org", "Apache-2.0", "openssl"),
+        Project("Nettle", "https://www.lysator.liu.se/~nisse/nettle/", "LGPL-3.0-or-later or GPL-2.0-or-later", "nettle"),
         Project("PowerVR SDK", "https://github.com/powervr-graphics/Native_SDK", "MIT", "powervr"),
         Project("iBoot32Patcher", "https://github.com/LukeZGD/iBoot32Patcher", "GPL-3.0", "iBoot32Patcher"),
         Project("Unrar.swift", "https://github.com/mtgto/Unrar.swift", "MIT", "swift/Unrar.swift"),

@@ -153,6 +153,18 @@
       "checksum_source": "https://github.com/openssl/openssl/releases/download/openssl-3.6.3/openssl-3.6.3.tar.gz.sha256"
     },
     {
+      "name": "nettle",
+      "version": "3.10.2",
+      "groups": [
+        "static"
+      ],
+      "archive": "nettle-3.10.2.tar.gz",
+      "directory": "nettle-3.10.2",
+      "url": "https://ftp.gnu.org/gnu/nettle/nettle-3.10.2.tar.gz",
+      "sha256": "fe9ff51cb1f2abb5e65a6b8c10a92da0ab5ab6eaf26e7fc2b675c45f1fb519b5",
+      "checksum_source": "nettle-3.10.2.tar.gz.sig verified against the GNU keyring (Niels Möller, RSA 343C2FF0FBEE5EC2EDBEF399F3599FF828C67298) on 2026-10-07"
+    },
+    {
       "name": "libimobiledevice-glue",
       "version": "1.3.2",
       "groups": [

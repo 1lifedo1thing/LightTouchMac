@@ -1,6 +1,7 @@
 #!/bin/bash
 # Build the static libraries from the product's pinned recipes: OpenSSL (the emulator's AES/SHA, the
-# web proxy's TLS) and the libimobiledevice stack the native shared libimobiledevice links against.
+# web proxy's TLS), Nettle (QEMU's cipher backend: QEMU 11 dropped its built-in AES) and the
+# libimobiledevice stack the native shared libimobiledevice links against.
 # inetcat is the stock stdin/stdout USB port bridge used by host OpenSSH.
 # Usage: build-static-deps.sh NEW-WORK-DIRECTORY (output: WORK-DIRECTORY/prefix)
 # LTM_SOURCE_CACHE optionally names a directory of source archives; each is verified.
@@ -94,6 +95,10 @@ autobuild() {
         make install > "$LOG/$directory.install.log" 2>&1
     )
 }
+# Symmetric ciphers and hashes only (no hogweed, so no GMP); QEMU's qcrypto_cipher (the 8900 and A4 CDMA AES) needs it.
+autobuild nettle-3.10.2.tar.gz nettle-3.10.2 --disable-public-key --disable-openssl --disable-documentation --libdir="$PREFIX/lib"
+license nettle nettle-3.10.2 COPYINGv2 COPYINGv3 COPYING.LESSERv3
+"$SRC/scripts/ltm-build" sources note nettle > "$PREFIX/share/licenses/nettle/SOURCE.txt"
 autobuild libplist-2.7.0.tar.bz2 libplist-2.7.0 --without-cython
 autobuild libimobiledevice-glue-1.3.2.tar.bz2 libimobiledevice-glue-1.3.2
 autobuild libusbmuxd-2.1.1.tar.bz2 libusbmuxd-2.1.1

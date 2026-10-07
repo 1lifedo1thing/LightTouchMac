@@ -53,6 +53,13 @@ struct ReleaseAppStaticTests {
         }
     }
 
+    /// QEMU 11 has no built-in AES: built without a crypto library, its cipher API is the stub, and the iPod touch 1G's
+    /// 8900 engine and the A4 CDMA engine fail every decrypt, so those devices never reach USB (10-07).
+    @Test func theEmulatorHasACipherBackend() throws {
+        let dylib = try Data(contentsOf: contents.appendingPathComponent("Frameworks/libqemu-arm.dylib"))
+        #expect(dylib.range(of: Data("no crypto library enabled in build".utf8)) == nil, "libqemu-arm.dylib has QEMU's stub cipher backend")
+    }
+
     @Test func theBundledHelperWorkerAndBridgeRunFromTheBundle() throws {
         let helper = contents.appendingPathComponent("MacOS/LightTouchDevice")
         let details = try run(["codesign", "-dvv", helper.path])

@@ -187,11 +187,11 @@ printf '%s\n' 'FFmpeg 9.0.1: https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz' \
     > "$P/share/licenses/ffmpeg/SOURCE.txt"
 cp "$SRC/scripts/build-package-native.sh" "$QEMU/contrib/ffmpeg/h264-chunk-er.patch" "$QEMU/contrib/ffmpeg/h264-cavlc-pcm-offset.patch" "$P/share/licenses/ffmpeg/"
 # Retain the native UI, CGL renderer, CoreAudio and Wi-Fi/slirp; avoid accidental optional
-# Homebrew dependencies. Board AES/SHA use the declared static libcrypto.
-export PKG_CONFIG_LIBDIR="$P/lib/pkgconfig"
+# Homebrew dependencies. Board AES/SHA use the declared static libcrypto; QEMU's own cipher API, the static Nettle.
+export PKG_CONFIG_LIBDIR="$P/lib/pkgconfig:$STATIC/lib/pkgconfig"
 mkdir "$ROOT/qemu-build"
 cd "$ROOT/qemu-build"
-"$QEMU/configure" ${QEMU_CROSS[@]+"${QEMU_CROSS[@]}"} --target-list=arm-softmmu --without-default-features --enable-cocoa --enable-coreaudio --enable-pixman --enable-slirp --disable-pie \
+"$QEMU/configure" ${QEMU_CROSS[@]+"${QEMU_CROSS[@]}"} --target-list=arm-softmmu --without-default-features --enable-cocoa --enable-coreaudio --enable-pixman --enable-slirp --enable-nettle --disable-pie \
     --python="${QEMU_PYTHON:-python3.12}" \
     --extra-cflags="-I$STATIC/include -mmacosx-version-min=14.0 -fmacro-prefix-map=$QEMU/= -fmacro-prefix-map=$ROOT/qemu-build/=" \
     --extra-ldflags="-L$STATIC/lib -lcrypto -mmacosx-version-min=14.0"

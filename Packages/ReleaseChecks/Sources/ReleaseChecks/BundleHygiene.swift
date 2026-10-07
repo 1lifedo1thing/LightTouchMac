@@ -16,7 +16,7 @@ public enum BundleHygiene {
         "libplist": ("libplist", "libplist", true), "glib": ("glib", "GLib", true),
         "proxy-libintl": ("proxy-libintl", "proxy-libintl", true), "ffmpeg": ("ffmpeg", "FFmpeg", true),
         "iBoot32Patcher": ("iBoot32Patcher", "iBoot32Patcher", true), "libslirp": ("libslirp", "libslirp", true),
-        "openssl": ("openssl", "OpenSSL", false), "pcre2": ("pcre2", "PCRE2", false), "pixman": ("pixman", "pixman", false),
+        "openssl": ("openssl", "OpenSSL", false), "nettle": ("nettle", "Nettle", true), "pcre2": ("pcre2", "PCRE2", false), "pixman": ("pixman", "pixman", false),
     ]
     /// Where each shipped Mach-O comes from (bundle-relative glob: the components linked into it). Light Touch's own
     /// binaries list only what they link in; their Swift packages are checked against the Package.resolved files.
@@ -26,7 +26,7 @@ public enum BundleHygiene {
         ("Contents/MacOS/firmwarekit", []), ("Contents/MacOS/ipod-helper", ["qemu"]),
         ("Contents/MacOS/usbmuxd", ["usbmuxd", "glib", "proxy-libintl", "pcre2", "libslirp", "libimobiledevice-glue"]),
         ("Contents/MacOS/iBoot32Patcher", ["iBoot32Patcher"]),
-        ("Contents/Frameworks/libqemu-arm.dylib", ["qemu", "glib", "proxy-libintl", "pcre2", "pixman", "libslirp", "openssl"]),
+        ("Contents/Frameworks/libqemu-arm.dylib", ["qemu", "glib", "proxy-libintl", "pcre2", "pixman", "libslirp", "openssl", "nettle"]),
         ("Contents/Frameworks/libavcodec*.dylib", ["ffmpeg"]), ("Contents/Frameworks/libavutil*.dylib", ["ffmpeg"]),
         ("Contents/Frameworks/libimobiledevice-1.0*.dylib", ["libimobiledevice", "openssl", "libimobiledevice-glue", "libusbmuxd", "libtatsu"]),
         ("Contents/Frameworks/libplist-2.0*.dylib", ["libplist"]),
