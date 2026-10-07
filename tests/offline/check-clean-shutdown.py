@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Execute the production Stop (EmulatorController.halt) against fake helpers: a hard halt, never a guest shutdown."""
+"""Execute the production Stop (EmulatorController.halt) against fake helpers: a hard halt, never a guest shutdown.
+And Shut Down (shutDown): it asks the guest (.machine(.shutdown)) and waits for it to power off, gives up after its
+budget, and Force Stop can take over while it waits."""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
@@ -13,6 +15,8 @@ retire = s[s.index("    private func retireBoot()"):s.index("    func stop()", s
 halt = s[a:b].replace('haltBudget: TimeInterval = 10', 'haltBudget: TimeInterval = 0.3')
 assert 'serviceTeardownBudget: TimeInterval = 2' in halt, 'Stop bounds the services worker teardown'
 halt = halt.replace('serviceTeardownBudget: TimeInterval = 2', 'serviceTeardownBudget: TimeInterval = 0.3')
+assert 'shutdownBudget: TimeInterval = 90 * DeviceProfile.hostSlowdown' in halt
+halt = halt.replace('shutdownBudget: TimeInterval = 90 * DeviceProfile.hostSlowdown', 'shutdownBudget: TimeInterval = 0.5')
 source = r'''import Foundation
 nonisolated func logEvent(_ s: String) {}
 /// DeviceProcess's surface: SIGTERM exits it (or not, when hung); SIGKILL always does.
@@ -26,7 +30,12 @@ nonisolated func logEvent(_ s: String) {}
   return isDead
  }
 }
+@MainActor enum AppInstaller { static func discard(for id: UUID) {} }
 @MainActor final class Controller {
+ struct Instance { let id = UUID() }
+ let instance = Instance()
+ var storageFailed = false
+ var sent: [LinkCommand] = []
  enum State { case notStarted, booting, running, paused, poweredOff }
  var state = State.booting, isDead = false, isErasing = false, shuttingDown = false, halting = false
  var isPoweredOff: Bool { state == .poweredOff }
@@ -42,9 +51,12 @@ nonisolated func logEvent(_ s: String) {}
  var haltCompletions: [(Bool) -> Void] = []
  var process: FakeProcess? = FakeProcess()
  var filesMeddled = false
- @MainActor struct FakeLink { let process: FakeProcess?; func send(_ c: LinkCommand) { if case .machine(.quit) = c { process?.quits += 1; process?.terminate() } } }
- var link: FakeLink? { FakeLink(process: process) }
-''' + retire + halt + r'''}
+ @MainActor struct FakeLink { let process: FakeProcess?; let record: (LinkCommand) -> Void
+  func send(_ c: LinkCommand) { record(c); if case .machine(.quit) = c { process?.quits += 1; process?.terminate() } } }
+ var link: FakeLink? { FakeLink(process: process, record: { self.sent.append($0) }) }
+''' + retire + halt + r'''
+ func powerOffForCheck(_ done: @escaping (Bool) -> Void) { guard canForceStop else { return done(false) }; halt(completion: done) }
+}
 @main struct Main {
  @MainActor static func main() async throws {
   // Mid-boot (never lit, no guest services): Stop still halts, and requests join.
@@ -80,6 +92,29 @@ nonisolated func logEvent(_ s: String) {}
   let stuckHung = Controller(); stuckHung.hangWorker = true; stuckHung.process!.hung = true
   let stuckKilled = await withCheckedContinuation { done in stuckHung.halt { done.resume(returning: $0) } }
   precondition(stuckKilled && stuckHung.process!.kills == 1)
+  // Shut Down: the guest is asked, and it's done once the guest has powered itself off (the helper stays).
+  let clean = Controller(); clean.state = .running
+  precondition(clean.canShutDown)
+  var cleanResult: Bool?
+  clean.shutDown { cleanResult = $0 }
+  precondition(clean.sent.contains(.machine(.shutdown)) && clean.shuttingDown && clean.isShuttingDownCleanly && !clean.canShutDown && clean.canForceStop)
+  try await Task.sleep(for: .milliseconds(100))
+  precondition(cleanResult == nil, "finished before the guest powered off")
+  clean.state = .poweredOff
+  try await Task.sleep(for: .milliseconds(400))
+  precondition(cleanResult == true && !clean.shuttingDown && clean.process!.terms == 0, "shut down: \(String(describing: cleanResult))")
+  // A guest that never powers off: false after the budget, the device left running.
+  let stubborn = Controller(); stubborn.state = .running
+  let gaveUp = await withCheckedContinuation { done in stubborn.shutDown { done.resume(returning: $0) } }
+  precondition(!gaveUp && !stubborn.shuttingDown && stubborn.state == .running && stubborn.canShutDown)
+  // Force Stop while a Shut Down waits: the halt takes over and the Shut Down ends without clearing its flag early.
+  let forced = Controller(); forced.state = .running
+  var forcedShutDown: Bool?
+  forced.shutDown { forcedShutDown = $0 }
+  let halted = await withCheckedContinuation { done in forced.powerOffForCheck { done.resume(returning: $0) } }
+  try await Task.sleep(for: .milliseconds(300))
+  precondition(halted && forced.process!.terms == 1 && forcedShutDown == true && !forced.shuttingDown, "force stop over a shut down: \(String(describing: forcedShutDown))")
+  print("PASS: Shut Down asks the guest and waits for it to power off, gives up after its budget, Force Stop takes over")
   print("PASS: Stop mid-boot halts at once, joined requests, a hung helper is killed, meddled files skip the flush, a stuck services worker can't hold Stop")
  }
 }

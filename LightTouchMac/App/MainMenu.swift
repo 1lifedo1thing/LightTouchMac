@@ -222,7 +222,8 @@ enum MainMenuBuilder {
         menu.addItem(item("Pause", #selector(MainWindowController.toggleDevicePause(_:))))
         menu.addItem(.separator())
         menu.addItem(item("Restart…", #selector(MainWindowController.deviceReset(_:))))
-        menu.addItem(item("Power Off…", #selector(MainWindowController.devicePowerOff(_:)), "."))
+        menu.addItem(item("Shut Down…", #selector(MainWindowController.deviceShutDown(_:)), "."))
+        menu.addItem(item("Force Stop…", #selector(MainWindowController.deviceForceStop(_:))))
         // Kept at the bottom, away from routine input.
         menu.addItem(.separator())
         menu.addItem(item("Erase All Content and Settings…", #selector(MainWindowController.eraseDevice(_:))))

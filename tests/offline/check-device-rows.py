@@ -82,9 +82,9 @@ import Foundation
         // Sessions outrank everything else.
         r = row(iPad, instance: id, session: .running, job: .failed("x"))
         precondition(r.state == .running && r.primaryAction == nil && r.stateDescription == "Running")
-        precondition(allowed(r) == ["stop", "erase", "showInFinder"], "no delete while running: \(allowed(r))")
+        precondition(allowed(r) == ["stop", "forceStop", "erase", "showInFinder"], "no delete while running: \(allowed(r))")
         r = row(iPad, instance: id, session: .stopping)
-        precondition(r.state == .stopping && allowed(r) == ["showInFinder"], "\(allowed(r))")
+        precondition(r.state == .stopping && allowed(r) == ["forceStop", "showInFinder"], "a Shut Down the guest never finishes can be forced: " + "\(allowed(r))")
         r = row(iPad, instance: id, session: .stopped)
         precondition(r.state == .ready && allowed(r) == ["start", "erase", "showInFinder", "openFilesystem", "commitFilesystem", "discardFilesystem", "recoverFilesystem"], "powered off starts again: \(allowed(r))")
         r = row(iPod, instance: id, session: .dead("The iPod stopped."))

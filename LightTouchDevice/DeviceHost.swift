@@ -184,6 +184,8 @@ final class DeviceHost: @unchecked Sendable {
         case .resume: qemu.resume()
         case .reset: qemu.reset()
         case .powerdown: qemu.powerdown()
+        case .shutdown:
+            if let shutdown = qemu.shutdown { helperLog("shutdown: path \(shutdown())") } else { qemu.powerdown() }
         case .quit: qemu.quit()
         }
     }

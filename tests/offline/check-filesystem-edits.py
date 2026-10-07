@@ -7,7 +7,8 @@ for the read-only view). Checks:
 - while an operation runs, the device's activity says so ("Reading the file system…") and Start is held;
 - an edit left open in Finder (phase editing) doesn't hold Start: Start saves or discards it first (release), and
   then nothing holds it; an edit stuck mid-commit still does;
-- a read-only view (a board without stopped edits) is detached by release, and doesn't hold Start either.
+- a read-only view (a board without stopped edits) is detached by release, and doesn't hold Start either;
+- a 1.x device that wasn't shut down cleanly gets the offer to shut it down first, not firmwarekit's error.
 """
 from pathlib import Path
 import subprocess, tempfile
@@ -47,6 +48,9 @@ enum FirmwareJobs { static var preparer: URL? = URL(fileURLWithPath: "/usr/bin/t
         func value(_ flag: String) -> String? { arguments.firstIndex(of: flag).map { arguments[$0 + 1] } }
         let work = value("--device").map { URL(fileURLWithPath: $0).appendingPathComponent("work") }
         let session = "6F8B1C8E-2D8E-4F0E-9C1A-3A3B0E7F5D11"
+        if value("--device")?.hasSuffix("unclean") == true {
+            throw DeviceToolsError.failed("unsupported: the 1.x FTL was not shut down cleanly (virtual block 3 does not end in its context); power the device off from the guest first")
+        }
         switch (arguments[0], value("--action")) {
         case ("edit", "begin"?):
             try FileManager.default.createDirectory(at: work!, withIntermediateDirectories: true)
@@ -115,6 +119,15 @@ import Cocoa
         precondition(FileManager.default.fileExists(atPath: view.path) && !edits.blocksStart(phone), "no read-only view, or it holds Start")
         try await edits.release(phone, entry: entry, host: host, commit: nil)
         precondition(!FileManager.default.fileExists(atPath: view.path) && FirmwareTool.calls.last!.hasPrefix("unmount"), "Start left the view attached")
+        // A 1.x device stopped without shutting down: no raw error, the offer to shut it down first.
+        let old = DeviceInstance(board: "m68ap", paths: .init(directory: dir.appendingPathComponent("unclean")))
+        try FileManager.default.createDirectory(at: old.paths.work, withIntermediateDirectories: true)
+        host.device = old
+        var offered: [String] = []
+        edits.onUncleanShutdown = { offered.append($0.id) }
+        edits.perform(.openFilesystem, entry: FirmwareCatalog.Entry(id: "m68ap-1A543a"), host: host)
+        await settle()
+        precondition(offered == ["m68ap-1A543a"] && edits.activity.isEmpty, "unclean 1.x: offered \(offered)")
         print("PASS: activity while reading, Start held only while busy or mid-commit, an open edit saved or discarded before Start, the read-only view detached")
     }
 }

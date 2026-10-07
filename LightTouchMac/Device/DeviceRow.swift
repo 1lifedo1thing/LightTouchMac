@@ -8,8 +8,9 @@ import Foundation
 
 /// A command the sidebar, its context menu, the Device menu and the
 /// placeholder offer for one catalog entry.
+/// `stop` is Shut Down (the guest powers itself off); `forceStop` the hard halt.
 nonisolated enum DeviceAction: CaseIterable, Sendable {
-    case start, stop, downloadAndPrepare, importIPSW, cancel, erase, showInFinder, delete, prepareAgain
+    case start, stop, forceStop, downloadAndPrepare, importIPSW, cancel, erase, showInFinder, delete, prepareAgain
     case openFilesystem, commitFilesystem, discardFilesystem, recoverFilesystem
 }
 
@@ -280,6 +281,8 @@ nonisolated struct DeviceRow: Equatable, Sendable {
         // A dead session's Start is a restart (DeviceSessionHost.restart).
         case .start: return isStartable && (state == .ready || isError)
         case .stop: return state == .running
+        // Also while stopping: a Shut Down the guest doesn't finish.
+        case .forceStop: return state == .running || state == .stopping
         case .downloadAndPrepare:
             return canDownload && !isStartable && !working && !isDimmed
         case .importIPSW:

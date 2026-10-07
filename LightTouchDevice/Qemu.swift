@@ -106,6 +106,8 @@ final class Qemu: @unchecked Sendable {
     lazy var resume = sym("qemu_ios_ui_resume", VoidFn.self)
     lazy var reset = sym("qemu_ios_ui_reset", VoidFn.self)
     lazy var powerdown = sym("qemu_ios_ui_powerdown", VoidFn.self)
+    /// API 1.1: the guest agent's halt, else the board's power-off gesture; 0 when nothing started.
+    lazy var shutdown = optionalSym("qemu_ios_ui_shutdown", (@convention(c) () -> Int32).self)
     lazy var quit = sym("qemu_ios_ui_quit", VoidFn.self)
     // optionalSym: an older dylib without this symbol just leaves networking
     // restricted (safe) rather than trapping.

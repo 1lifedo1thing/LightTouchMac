@@ -39,7 +39,8 @@ nonisolated public enum HelperMessage: Codable, Sendable {
 }
 
 nonisolated public enum MachineOp: String, Codable, Sendable {
-    case pause, resume, reset, powerdown, quit
+    /// `shutdown`: the guest powers itself off (qemu_ios_ui_shutdown; an older dylib: powerdown's gesture).
+    case pause, resume, reset, powerdown, quit, shutdown
 }
 
 nonisolated public enum LinkCommand: Codable, Sendable, Equatable {

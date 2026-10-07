@@ -139,7 +139,8 @@ Device/-
 Device/Pause
 Device/-
 Device/Restart…
-Device/Power Off…  ⌘.
+Device/Shut Down…  ⌘.
+Device/Force Stop…
 Device/-
 Device/Erase All Content and Settings…
 Apps/Install App…  ⇧⌘i
@@ -350,7 +351,7 @@ struct Instance { let id=UUID() }
     precondition(submenu.items.allSatisfy{$0.submenu==nil},"Avoid nested submenus")
    }
   }
-  for name in ["Volume Up","Volume Down","Power Off…","Rotate Automatically","Connect to the Internet"] {
+  for name in ["Volume Up","Volume Down","Shut Down…","Force Stop…","Rotate Automatically","Connect to the Internet"] {
    precondition(find(name,in:device) != nil,name)
   }
   for name in ["Volume Up","Volume Down"] {

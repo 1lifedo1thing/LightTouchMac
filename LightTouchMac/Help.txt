@@ -2,7 +2,7 @@
 The sidebar lists your devices. File → Add Device (⌘N) chooses iPod and iPad versions to add. Select one and choose Download and Prepare to get its IPSW from Apple, or Import IPSW to use one you have; you can also drop an IPSW onto the window. When it’s ready, Start runs it. File also has Show in Finder and Delete Device. Light Touch → Settings → Storage shows what each device and IPSW takes on disk.
 
 # Using the device
-Click and drag on the screen as you would with a finger. Pinch on a trackpad, or Option-drag on the screen, to use two fingers. Home Screen is ⇧⌘H; Lock is ⌘L. Device → Power Off (⌘.) asks, then stops the [Device] at once, and leaves Light Touch open. Choose Power On to start it again.
+Click and drag on the screen as you would with a finger. Pinch on a trackpad, or Option-drag on the screen, to use two fingers. Home Screen is ⇧⌘H; Lock is ⌘L. Device → Shut Down (⌘.) asks, then turns the [Device] off the way sliding to power off does; Force Stop stops it at once. Choose Power On to start it again.
 
 The toolbar provides Home Screen, Lock, Rotate, Zoom, and capture actions. View → Customize Toolbar lets you rearrange controls or add Files, Motion, and Capture Options. View also shows and hides the sidebar (⌃⌘S), the inspector (⌥⌘I), and the console (⇧⌘Y).
 
@@ -54,7 +54,7 @@ During startup, progress stays visible until the Home screen responds. If startu
 
 Window → Device Logs shows app events, available device console output, and USB logs, including retained previous files. Help → Export Diagnostics collects the complete retained logs for a bug report.
 
-Use Power Off or Quit when you can, so the device finishes saving. Restart and Erase All Content and Settings ask first. Erase removes installed apps, media, and settings.
+Use Shut Down or Quit when you can, so the device finishes saving. Restart and Erase All Content and Settings ask first. Erase removes installed apps, media, and settings.
 
 # Licenses
 Light Touch includes open-source software. Each component’s license, and for GPL and LGPL components where to get its source, is in Light Touch.app/Contents/Resources/licenses: QEMU and the guest tools (qemu-ios, GPL-2.0), usbmuxd (GPL-3.0), inetcat (GPL-2.0-or-later), iBoot32Patcher (GPL-3.0), libimobiledevice, libimobiledevice-glue, libusbmuxd, libtatsu and libplist (LGPL-2.1), GLib (LGPL-2.1), proxy-libintl (LGPL-2.0), FFmpeg (LGPL-2.1), libslirp (BSD-3-Clause), PCRE2 (BSD-3-Clause), pixman (MIT), OpenSSL (Apache-2.0), and Swift packages from Apple and others (Apache-2.0, MIT) in licenses/swift, among them Unrar.swift (MIT), which includes RARLAB’s UnRAR source under the UnRAR license (licenses/swift/Unrar.swift/UnRAR-license.txt).

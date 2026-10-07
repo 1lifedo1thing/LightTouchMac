@@ -15,6 +15,8 @@ final class DeviceFilesystemEdits {
         didSet { NotificationCenter.default.post(name: Self.didChangeNotification, object: self) }
     }
     private var busy: Set<UUID> { Set(activity.keys) }
+    /// A 1.x device whose storage wasn't shut down cleanly can't be opened; this offers to shut it down first.
+    var onUncleanShutdown: ((FirmwareCatalog.Entry) -> Void)?
     struct Intent: Decodable { let id: UUID; let phase: String }
     struct Mounted: Decodable { let id: UUID; let mountPoint: String? }
     func pending(_ instance: DeviceInstance) -> Intent? {
@@ -88,7 +90,10 @@ final class DeviceFilesystemEdits {
                 if action == .openFilesystem, let path = try JSONDecoder().decode(Mounted.self, from: result).mountPoint {
                     NSWorkspace.shared.open(URL(fileURLWithPath: path))
                 }
-            } catch { NSApp.presentError(error) }
+            } catch {
+                if "\(error)".contains("was not shut down cleanly"), let onUncleanShutdown { onUncleanShutdown(entry) }
+                else { NSApp.presentError(error) }
+            }
         }
     }
 

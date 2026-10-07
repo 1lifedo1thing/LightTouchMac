@@ -893,7 +893,7 @@ final class EmulatorController {
     var statusLine: String {
         if isErasing { return "Erasing \(profile.shortName)…" }
         if storageFailed { return "Couldn’t save to disk — \(profile.shortName) stopped; recent changes weren’t saved" }
-        if shuttingDown, !isPoweredOff { return "Stopping…" }
+        if shuttingDown, !isPoweredOff { return isShuttingDownCleanly ? "Shutting down…" : "Stopping…" }
         switch state {
         case .poweredOff: return "Powered off"
         case .notStarted: return "Starting…"
@@ -1523,7 +1523,7 @@ final class EmulatorController {
     /// Retain the QEMU main loop at guest power-off; a reset can cold boot it
     /// again without reinitializing QEMU or opening a second NAND writer.
     func powerOff(completion: @escaping (Bool) -> Void) {
-        guard canStop else { completion(false); return }
+        guard canForceStop else { completion(false); return }
         AppInstaller.discard(for: instance.id)
         stopTimeZoneSync()
         halt(completion: completion)
@@ -1695,6 +1695,38 @@ final class EmulatorController {
 
     /// A live helper whose VM can be stopped, including mid-boot.
     var canStop: Bool { !isDead && !isPoweredOff && !shuttingDown && !isErasing && state != .notStarted }
+    /// Force Stop: Stop's hard halt, also while a Shut Down is under way (one the guest never finishes).
+    var canForceStop: Bool { canStop || (cleanShutdown != nil && haltTask == nil && !isPoweredOff && !isDead) }
+
+    /// Shut Down: the guest powers itself off, as the slider does (qemu_ios_ui_shutdown: the guest agent's halt,
+    /// or 1.x's power-off gesture), so its storage is left clean; the helper stays, powered off, as after the slider.
+    /// `completion(true)` once the guest is off (or a Force Stop took over), false when it didn't get there in
+    /// `shutdownBudget` (the device keeps running).
+    private var cleanShutdown: Task<Void, Never>?
+    static let shutdownBudget: TimeInterval = 90 * DeviceProfile.hostSlowdown
+    var canShutDown: Bool { state == .running && !shuttingDown && !isErasing && !storageFailed && process?.isDead == false }
+    var isShuttingDownCleanly: Bool { cleanShutdown != nil && haltTask == nil }
+    func shutDown(completion: @escaping (Bool) -> Void) {
+        guard canShutDown else { return completion(false) }
+        AppInstaller.discard(for: instance.id)
+        stopTimeZoneSync()
+        shuttingDown = true
+        logEvent("shut down: asking the guest")
+        link?.send(.machine(.shutdown))
+        cleanShutdown = Task { [weak self] in
+            let deadline = ContinuousClock.now + .seconds(Self.shutdownBudget)
+            while let self, ContinuousClock.now < deadline, !self.isPoweredOff, !self.isDead, self.haltTask == nil {
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            guard let self else { return }
+            // A Force Stop that took over owns the flag until its halt ends, and counts as stopped.
+            let forced = haltTask != nil, off = isPoweredOff || isDead
+            cleanShutdown = nil
+            if !forced { shuttingDown = false }
+            logEvent(off ? "shut down: the guest powered off" : forced ? "shut down: force stopped" : "shut down: the guest didn't power off")
+            completion(off || forced)
+        }
+    }
 
     func halt(completion: @escaping (Bool) -> Void) {
         if isPoweredOff || process?.isDead != false { completion(true); return }

@@ -258,9 +258,9 @@ final class Delegate: DeviceLibraryDelegate {
         vc.menuNeedsUpdate(context)
         let commands = context.items.filter { !$0.isSeparatorItem && $0.title != "Rename" }
         let live = commands.filter { vc.validateMenuItem($0) }.map(\.title)
-        // Start/Stop is one item whose title follows the row; Cancel is there only while something can be cancelled.
+        // Start/Shut Down is one item whose title follows the row (Force Stop beside it, dimmed while stopped); Cancel is there only while something can be cancelled.
         if !["Start", "Show File System in Finder", "Erase All Content and Settings…"].allSatisfy({ t in commands.contains { $0.title == t } })
-            || commands.contains(where: { ["Stop", "Cancel"].contains($0.title) }) || !live.contains("Start") {
+            || commands.contains(where: { ["Shut Down", "Cancel"].contains($0.title) }) || !live.contains("Start") || live.contains("Force Stop") {
             fail("context menu: \(commands.map(\.title)), enabled \(live)")
         }
         delegate.allowed = Set(DeviceAction.allCases).subtracting([.cancel])
@@ -268,7 +268,9 @@ final class Delegate: DeviceLibraryDelegate {
         NotificationCenter.default.post(name: DeviceSessionHost.didChangeNotification, object: nil)
         vc.menuNeedsUpdate(context)
         var titles = context.items.map(\.title)
-        if !titles.contains("Stop") || titles.contains("Start") || titles.contains("Cancel") { fail("a running row's context menu: \(titles)") }
+        if !titles.contains("Shut Down") || !titles.contains("Force Stop") || titles.contains("Start") || titles.contains("Cancel") {
+            fail("a running row's context menu: \(titles)")
+        }
         host.running = []
         delegate.allowed = Set(DeviceAction.allCases)
         FirmwareJobs.shared.jobs["n72ap-8C148"] = .preparing(Preparation(step: 1, steps: 2, name: "x"))

@@ -181,6 +181,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         capture.profile = { [weak self] in self?.currentProfile ?? profile }
         capture.onChange = { [weak self] in self?.validateCaptureToolbar() }
         capture.terminate = { AppDelegate.requestTermination() }
+        DeviceFilesystemEdits.shared.onUncleanShutdown = { [weak self] entry in self?.offerShutDownFirst(entry) }
         CaptureNotifications.shared.onShowDevice = { [weak self] id in
             guard let self, let entry = host.catalog.entry(id: id) else { return }
             showWindow(nil)
@@ -370,7 +371,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         }
         switch action {
         case .start: return emulator.map { $0.isDead || ($0.isPoweredOff && !$0.shuttingDown) } ?? true
-        case .stop: return emulator?.canStop == true
+        case .stop: return emulator?.canShutDown == true
+        case .forceStop: return emulator?.canForceStop == true
         case .erase: return emulator?.isErasing != true && !hasFileTransfer && !recording.isActive
         default: return true
         }
@@ -382,7 +384,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         case .openFilesystem, .commitFilesystem, .discardFilesystem, .recoverFilesystem:
             DeviceFilesystemEdits.shared.perform(action, entry: entry, host: host)
         case .start: start(entry)
-        case .stop: if let emulator = host.session(for: entry)?.emulator { powerOff(emulator) }
+        case .stop: if let emulator = host.session(for: entry)?.emulator { shutDown(emulator) }
+        case .forceStop: if let emulator = host.session(for: entry)?.emulator { powerOff(emulator) }
         case .downloadAndPrepare: FirmwareJobs.shared.downloadAndPrepare(entry)
         case .importIPSW: chooseIPSW(for: entry)
         case .cancel: FirmwareJobs.shared.cancel(entry)
@@ -427,6 +430,33 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         }
     }
 
+    /// Show File System on a 1.x device stopped without shutting down (its FTL is mid-write): start it, shut it down
+    /// from iOS, then open it, after asking.
+    private func offerShutDownFirst(_ entry: FirmwareCatalog.Entry) {
+        guard let window, window.attachedSheet == nil else { return }
+        let alert = NSAlert()
+        alert.messageText = "\(name(entry)) wasn’t shut down"
+        alert.informativeText = "Its file system can be shown once it has been shut down. Light Touch can start it, shut it down, and then show it."
+        alert.addButton(withTitle: "Shut Down First")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            start(entry)
+            Task { [weak self] in
+                // Up to the boot's own budget for iOS to come up, then Shut Down, then the file system.
+                let deadline = Date().addingTimeInterval(entry.profile?.bootBudget ?? 240)
+                while Date() < deadline {
+                    try? await Task.sleep(for: .seconds(1))
+                    guard let self, let emulator = self.host.session(for: entry)?.emulator else { continue }
+                    if emulator.isDead || emulator.isPoweredOff { return }
+                    guard emulator.isRunning, emulator.canShutDown else { continue }
+                    self.shutDown(emulator) { [weak self] in self?.perform(.openFilesystem, for: entry) }
+                    return
+                }
+            }
+        }
+    }
+
     private func launch(_ entry: FirmwareCatalog.Entry) {
         if let session = host.session(for: entry) {
             if session.emulator.isDead { host.restart(session) } else { session.emulator.powerOn() }
@@ -437,7 +467,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
     @objc func toggleDeviceRunning(_ sender: Any?) {
         guard let entry = selectedEntry else { return }
-        perform(host.row(for: entry).state == .running ? .stop : .start, for: entry)
+        perform([.running, .stopping].contains(host.row(for: entry).state) ? .stop : .start, for: entry)
     }
     @objc func downloadAndPrepare(_ sender: Any?) { selectedEntry.map { perform(.downloadAndPrepare, for: $0) } }
     @objc func importIPSW(_ sender: Any?) { selectedEntry.map { perform(.importIPSW, for: $0) } }
@@ -1016,17 +1046,40 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
             emulator.reset()
         }
     }
-    /// Power Off… (⌘.): Stop's hard halt, after asking.
-    @objc func devicePowerOff(_ sender: Any?) {
+    /// Shut Down… (⌘.): the guest powers itself off, after asking.
+    @objc func deviceShutDown(_ sender: Any?) {
         guard let emulator, let window else { return }
         let alert = NSAlert()
-        alert.messageText = "Power off this \(emulator.profile.shortName)?"
-        alert.informativeText = "It stops at once, as if its battery were removed. Anything an app hasn’t saved is lost."
-        alert.addButton(withTitle: "Power Off")
+        alert.messageText = "Shut down this \(emulator.profile.shortName)?"
+        alert.informativeText = "It turns off the way it does when you slide to power off."
+        alert.addButton(withTitle: "Shut Down")
         alert.addButton(withTitle: "Cancel")
         alert.beginSheetModal(for: window) { [weak self, weak emulator] response in
             guard response == .alertFirstButtonReturn, let self, let emulator else { return }
+            shutDown(emulator)
+        }
+    }
+
+    /// Force Stop…: the hard halt, after asking.
+    @objc func deviceForceStop(_ sender: Any?) {
+        guard let emulator, let window else { return }
+        let alert = NSAlert()
+        alert.messageText = "Force stop this \(emulator.profile.shortName)?"
+        alert.informativeText = "It stops at once, as if its battery were removed. Anything an app hasn’t saved is lost."
+        alert.addButton(withTitle: "Force Stop")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons.first?.hasDestructiveAction = true
+        alert.beginSheetModal(for: window) { [weak self, weak emulator] response in
+            guard response == .alertFirstButtonReturn, let self, let emulator else { return }
             powerOff(emulator)
+        }
+    }
+
+    private func shutDown(_ emulator: EmulatorController, then: (() -> Void)? = nil) {
+        emulator.shutDown { [weak emulator] off in
+            guard let emulator else { return }
+            if off { emulator.resolveDeviceNotice(for: .powerOff); then?(); return }
+            emulator.reportDeviceNotice("The \(emulator.profile.shortName) didn’t shut down. Force Stop stops it at once.", for: .powerOff)
         }
     }
 
@@ -1381,8 +1434,8 @@ extension MainWindowController: NSMenuItemValidation {
             menuItem.toolTip = profile?.supportsFreeForm == false ? profile?.freeFormUnavailableReason : nil
             return deviceVC?.screen.canToggleFreeForm ?? false
         case #selector(toggleDeviceRunning(_:)):
-            let running = selectedEntry.map { host.row(for: $0).state == .running } ?? false
-            menuItem.title = running ? "Stop" : "Start"
+            let running = selectedEntry.map { [.running, .stopping].contains(host.row(for: $0).state) } ?? false
+            menuItem.title = running ? "Shut Down" : "Start"
             return selectedEntry.map { canPerform(running ? .stop : .start, for: $0) } ?? false
         case #selector(downloadAndPrepare(_:)): return selectedEntry.map { canPerform(.downloadAndPrepare, for: $0) } ?? false
         case #selector(importIPSW(_:)): return selectedEntry.map { canPerform(.importIPSW, for: $0) } ?? false
@@ -1475,7 +1528,8 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(toggleKeyboardInput(_:)):
             menuItem.state = emulator.keyboardInputEnabled ? .on : .off
             return true
-        case #selector(devicePowerOff(_:)): return emulator.canStop
+        case #selector(deviceShutDown(_:)): return emulator.canShutDown
+        case #selector(deviceForceStop(_:)): return emulator.canForceStop
         case #selector(deviceReset(_:)):  return !emulator.isDead
         case #selector(toggleTouchOverlay(_:)):
             menuItem.title = deviceVC.screen.showsTouches ? "Hide Finger Dots" : "Show Finger Dots"

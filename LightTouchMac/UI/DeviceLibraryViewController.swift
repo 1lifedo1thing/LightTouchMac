@@ -411,7 +411,7 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
 
     /// `.start` stands for the Start/Stop toggle; `.cancel` is listed only while there is something to cancel.
     private static let menuActions: [(DeviceAction?, String)] = [
-        (.start, "Start"), (nil, ""),
+        (.start, "Start"), (.forceStop, "Force Stop"), (nil, ""),
         (.downloadAndPrepare, "Download and Prepare"), (.importIPSW, "Import IPSW…"), (.cancel, "Cancel"), (nil, ""),
         (.showInFinder, "Show in Finder"),
         (.openFilesystem, "Show File System in Finder"), (.commitFilesystem, "Save Filesystem Edits"),
@@ -436,9 +436,9 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
                 continue
             }
             if action == .cancel, delegate?.library(self, canPerform: .cancel, for: entry) != true { continue }
-            // One item whose title follows the row: Stop while it runs, Start otherwise.
+            // One item whose title follows the row: Shut Down while it runs, Start otherwise.
             let running = [.running, .stopping].contains(row(for: entry).state)
-            let (command, label) = action == .start && running ? (DeviceAction.stop, "Stop") : (action, title)
+            let (command, label) = action == .start && running ? (DeviceAction.stop, "Shut Down") : (action, title)
             let item = NSMenuItem(title: label, action: #selector(contextAction(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = command
