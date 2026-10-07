@@ -150,18 +150,8 @@ struct SingleConfig: Decodable {
             }
             emit("timezone", ["device": d.name, "generation": generation, "zone": zone ?? ""])
             if s.region != nil {
-                // What lockdown holds now (Homebrew's ideviceinfo over this device's usbmuxd), and the screen it shows.
-                func info(_ args: [String]) -> String {
-                    let p = Process(), out = Pipe()
-                    p.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/ideviceinfo")
-                    p.arguments = args
-                    p.environment = ProcessInfo.processInfo.environment.merging(["USBMUXD_SOCKET_ADDRESS": d.mux.clientSocket]) { $1 }
-                    p.standardOutput = out
-                    p.standardError = FileHandle.nullDevice
-                    guard (try? p.run()) != nil else { return "" }
-                    p.waitUntilExit()
-                    return String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-                }
+                // What lockdown holds now, and the screen it shows.
+                func info(_ args: [String]) -> String { lockdownInfo(d.mux.clientSocket, args) }
                 try? await Task.sleep(for: .seconds(10))
                 d.process.link.send(.button(0, down: true)); try? await Task.sleep(for: .milliseconds(150))
                 d.process.link.send(.button(0, down: false))
@@ -264,7 +254,9 @@ struct SingleConfig: Decodable {
                 if setupFront == nil { try? await Task.sleep(for: .seconds(3)) }
             }
         }
+        var walkedSetup = false
         if let setupFront, setupFront.bundleID == Setup5.bundleID {
+            walkedSetup = true
             let (ok, detail) = await Setup5.walk(d)
             let after = try? await GuestAgent(link: d.process.link, cache: GuestAgentCache()).frontmost().bundleID
             emit("setup", ["device": d.name, "generation": generation, "ok": ok && after != Setup5.bundleID, "detail": detail,
@@ -282,9 +274,19 @@ struct SingleConfig: Decodable {
             }
         }
         if let front = phoneFront, front.bundleID == Setup5.bundleID || front.name == "Lock Screen" {
+            walkedSetup = true
             let (ok, detail) = await SetupPhone.walk(d, agent: guestAgent, generation: generation)
             emit("setup", ["device": d.name, "generation": generation, "ok": ok, "detail": detail])
             try? await Task.sleep(for: .seconds(5))
+        }
+        // Setup's country page sets the locale (7.x's list starts at Afghanistan: fa_AF, Persian digits); the app
+        // applies the Mac's region again once Setup is over (EmulatorController's Setup gate), and so does this.
+        if let region = s.region, let tool = s.lockdownTZ, walkedSetup {
+            _ = try? await DeviceServices.setTimeZone(TimeZone.current.identifier, keepClock: true, tool: tool,
+                                                      socket: d.mux.clientSocket, guest: nil,
+                                                      region: ClockRegion(locale: region.locale, uses24HourClock: region.uses24HourClock))
+            emit("regionAfterSetup", ["device": d.name, "generation": generation,
+                                      "locale": lockdownInfo(d.mux.clientSocket, ["-q", "com.apple.international", "-k", "Locale"])])
         }
         let hp = await d.wakeForShot(generation == 1 ? "home" : "home\(generation)")
         // Judge the home screen, not just a lit boot: the panel sleeps ~12 s after `lit` (audit
@@ -722,6 +724,19 @@ struct SingleConfig: Decodable {
 }
 
 /// installd's own record of where each app lives (iOS 2-5): the container an upgrade must keep.
+/// What lockdown holds (Homebrew's ideviceinfo over the device's usbmuxd).
+func lockdownInfo(_ socket: String, _ args: [String]) -> String {
+    let p = Process(), out = Pipe()
+    p.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/ideviceinfo")
+    p.arguments = args
+    p.environment = ProcessInfo.processInfo.environment.merging(["USBMUXD_SOCKET_ADDRESS": socket]) { $1 }
+    p.standardOutput = out
+    p.standardError = FileHandle.nullDevice
+    guard (try? p.run()) != nil else { return "" }
+    p.waitUntilExit()
+    return String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
 @MainActor func container(_ agent: GuestAgent, _ id: String) async -> String? {
     guard let data = try? await agent.get("/var/mobile/Library/Caches/com.apple.mobile.installation.plist"),
           let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],

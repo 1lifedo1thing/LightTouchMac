@@ -1658,6 +1658,9 @@ final class EmulatorController {
                                 link.send(.netRestrict(false))
                                 try? Data().write(to: BootRecipe.setupDoneMark(overlay: self.overlayURL))
                                 logEvent("networking: Setup finished, lifting slirp restrict on wifi0")
+                                // Setup's country page set its own locale (7.x lists Afghanistan first: fa_AF);
+                                // the Mac's region again, as every later boot applies it.
+                                self.scheduleTimeZoneSync(generation: generation)
                             } else {
                                 self.setupGate = gate
                             }

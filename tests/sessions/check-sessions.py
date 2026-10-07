@@ -382,6 +382,8 @@ def main():
             locale, hours = args.region.split(":")
             region = (find("region", device=d) or [{}])[0]
             check(region.get("locale") == locale, f"{d}: region {region.get('locale')} (zone {region.get('zone')})")
+            for after in find("regionAfterSetup", device=d):   # Setup's country page set its own: the Mac's again
+                check(after.get("locale") == locale, f"{d}: region after Setup {after.get('locale')}")
             # The lock clock in the asked format: the Mac's time as H:mm or h:mm (the same before 1 p.m.: no verdict then).
             want, other = (region.get("mac24"), region.get("mac12")) if hours == "24" else (region.get("mac12"), region.get("mac24"))
             text = region.get("text") or []
