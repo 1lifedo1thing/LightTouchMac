@@ -31,6 +31,11 @@ status block, frame ring, framed link). Cases:
   shutdown   --iphone-device: lit, then Shut Down (MachineOp.shutdown, qemu_ios_ui_shutdown: the agent's halt, or 1.x's
              power-off gesture): the guest confirms its power-off within 120 s, then quit
   keyboard   --iphone-device (n90ap): lit, Connect Hardware Keyboard off then on: both accepted (ok(true)), quit
+  power      before boot, the pump runs at 60 Hz, 30 with the host constrained (LTM_HOST_CONSTRAINED=1 for thermal
+             pressure or Low Power Mode). iPod, lit: shown, 60 Hz and an idle-sleep assertion (pmset); hidden
+             (LinkCommand.screenVisible false), at most 5 Hz and none; shown again, 3 ticks within 100 ms
+             (5 times, 40-240 ms before the next slow tick); the guest's display asleep (power button), at most 5 Hz and none; woken, 60 Hz. Prints
+             CPU, wakeups and energy (proc_pid_rusage) per state.
 
     tests/sessions/check-helper-boot.py --ipad-device DIR [--helper PATH] [--dylib PATH] [--work DIR] [--only a,b]
 
@@ -95,7 +100,7 @@ def build(args, out):
 
 
 class Driver:
-    def __init__(self, args, bin_dir, helper, work, name, scenario, extra=()):
+    def __init__(self, args, bin_dir, helper, work, name, scenario, extra=(), env=None):
         self.name, self.dir = name, work / name
         self.dir.mkdir(parents=True, exist_ok=True)
         scenario.setdefault("dylib", args.dylib)
@@ -104,7 +109,8 @@ class Driver:
         self.log = self.dir / "native.log"
         self.p = subprocess.Popen([bin_dir / "helper-driver", "--helper", helper, "--scenario", self.dir / "scenario.json",
                                    "--dump", self.dir, "--log", self.log, "--requirement", TEAM_REQ, *extra],
-                                  stdout=open(self.out, "w"), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+                                  stdout=open(self.out, "w"), stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                  env=dict(os.environ, **(env or {})))
         started.append(self.p.pid)
 
     def events(self):
@@ -221,7 +227,7 @@ def main():
     ap.add_argument("--only")
     args = ap.parse_args()
     cases = ["reject", "lease", "ipod", "ipad", "restore", "ipad-orphan", "oneshot", "headless", "meddle", "carrier", "rotate",
-             "shutdown", "keyboard"]
+             "shutdown", "keyboard", "power"]
     if args.only:
         cases = [c for c in cases if c in args.only.split(",")]
     if not args.ipad_device:
@@ -454,6 +460,41 @@ def main():
             kinds = {e["event"] for e in events}
             check(rc == 0 and {"ring", "lit", "dump", "exit"} <= kinds and any(e["event"] == "status" for e in events),
                   "headless: ring, lit, dump, status lines, exit 0", "headless", results)
+        if "power" in cases:
+            print("power", flush=True)
+            for name, env, low, high in (("power-free", {}, 50, 65), ("power-constrained", {"LTM_HOST_CONSTRAINED": "1"}, 25, 33)):
+                d = Driver(args, bin_dir, helper, work, name, {"steps": ["wait 1", "sample preboot 3"]}, env=env)
+                hz = d.find("sample")[0]["hz"] if d.wait(60) == 0 and d.find("sample") else -1
+                check(low <= hz <= high, f"{name}: pump {hz:.1f} Hz before boot", "power", results)
+            # Unlocked first: the lock screen's display sleeps within seconds, the Home screen's not for a minute.
+            # Samples start 3 s after any input (input keeps the pump live for 2 s).
+            steps = ["boot", "lit 0.03 300", "wait 2", "button 0", "wait 2", IPOD_UNLOCK, "wait 3",
+                     "sample shown 5", "visible off", "sample hidden 5"]
+            # Shown again at 40-240 ms before the next 4 Hz tick (hidden starts its ticks when the command lands).
+            for gap in (0.51, 0.56, 0.61, 0.66, 0.71):
+                steps += ["visible on", "wait 0.5", "visible off", f"wait {gap}"]
+            steps += ["visible on", "button 1", "waitSleep 20", "wait 3", "sample asleep 5", "button 1", "wait 1",
+                      "sample woken 2", "quit", "expectExit 60"]
+            d = Driver(args, bin_dir, helper, work, "power", {"machine": "iPod-Touch", "boot": ipod_boot(files, work / "power/overlay"),
+                                                              "steps": steps})
+            check(d.wait(500) == 0, "scenario completed", "power", results) or print(d.tail())
+            s = {e["label"]: e for e in d.find("sample")}
+            for label in ("shown", "hidden", "asleep", "woken"):
+                e = s.get(label, {})
+                print(f"   {label:7} {e.get('hz', -1):5.1f} Hz {e.get('fps', -1):5.1f} fps {e.get('cpuPercent', -1):6.1f}% CPU "
+                      f"{e.get('wakeupsPerSecond', -1):7.1f} wakeups/s {e.get('milliwatts', -1):7.1f} mW "
+                      f"idle-sleep assertion {e.get('preventsIdleSleep')} display asleep {e.get('displaySleeping')}")
+            ok = lambda label, low, high, holds: label in s and low <= s[label]["hz"] <= high and s[label]["preventsIdleSleep"] == holds
+            check(ok("shown", 50, 65, True), "shown: 60 Hz, holds off idle sleep", "power", results)
+            check(ok("hidden", 0.5, 5, False), "hidden: at most 5 Hz, lets the Mac idle-sleep", "power", results)
+            check(s.get("asleep", {}).get("displaySleeping") and ok("asleep", 0.5, 5, False),
+                  "guest display asleep: at most 5 Hz, lets the Mac idle-sleep", "power", results)
+            check(ok("woken", 50, 65, True), "woken by the power button: 60 Hz again", "power", results)
+            shown = [e for e in d.find("visible") if e["on"]][:5]
+            ticks = [e["tickMs"] for e in shown]
+            print(f"   shown again: 3 ticks after {ticks} ms, frame {[e['frameMs'] for e in shown]} ms (-1: none pending)")
+            check(len(ticks) == 5 and all(0 <= t < 100 for t in ticks), "shown again: back at 60 Hz within 100 ms", "power", results)
+
     finally:
         for pid in started:
             if alive(pid):

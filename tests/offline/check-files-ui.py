@@ -178,5 +178,5 @@ final class Sink: NSResponder {
  }
 }
 ''')
- subprocess.run(['xcrun','swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]),'-default-isolation','MainActor',str(root/'LightTouchMac/App/WindowRestorationPolicy.swift'),str(root/'LightTouchMac/UI/DeviceFilesViewController.swift'),str(root/'LightTouchMac/UI/DeviceFilesWindowController.swift'),str(root/'LightTouchMac/Library/UnusedURL.swift'),str(root/'LightTouchMac/Device/Board+App.swift'),str(tmp/'check.swift'),'-o',str(tmp/'check')],check=True)
+ subprocess.run(['xcrun','swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]),'-default-isolation','MainActor',str(root/'LightTouchMac/App/WindowRestorationPolicy.swift'),str(root/'LightTouchMac/UI/DeviceFilesViewController.swift'),str(root/'LightTouchMac/App/UserActivity.swift'),str(root/'LightTouchMac/UI/DeviceFilesWindowController.swift'),str(root/'LightTouchMac/Library/UnusedURL.swift'),str(root/'LightTouchMac/Device/Board+App.swift'),str(tmp/'check.swift'),'-o',str(tmp/'check')],check=True)
  subprocess.run([str(tmp/'check')],check=True,timeout=120)  # hang guard only

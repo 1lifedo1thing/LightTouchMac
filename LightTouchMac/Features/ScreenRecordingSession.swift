@@ -18,7 +18,8 @@ final class ScreenRecordingSession {
         var deleted: [URL] = []
     }
 
-    private(set) var phase: Phase = .idle { didSet { onChange?() } }
+    private(set) var phase: Phase = .idle { didSet { activity.held = isActive; onChange?() } }
+    private var activity = UserActivity("Recording a device's screen")
     private(set) var elapsedSeconds = 0
     private(set) var failure: Error?
     private(set) var previewImage: CGImage?

@@ -240,6 +240,40 @@ final class EmulatorController {
         self.profile = profile
         self.network = network
         usbmux.onUnexpectedExit = { [weak self] in self?.onStatusChange?() }
+        let center = NSWorkspace.shared.notificationCenter
+        hostSleepObservers = [
+            center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.hostWillSleep() }
+            },
+            center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.hostDidWake() }
+            },
+        ]
+    }
+
+    deinit { hostSleepObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver) }
+
+    // MARK: - Mac sleep
+
+    nonisolated(unsafe) private var hostSleepObservers: [NSObjectProtocol] = []
+    private var pausedForHostSleep = false
+
+    /// The Mac is going to sleep: pause the VM, so the guest's timers don't all come due at once on wake
+    /// (QEMU's clock counts the sleep). A device the user paused stays paused through it.
+    func hostWillSleep() {
+        guard state == .running, !shuttingDown else { return }
+        pause()
+        pausedForHostSleep = true
+        logEvent("host sleep: paused")
+    }
+
+    /// Awake: resume, then set the guest's clock again through lockdown (lockdown-tz, as at boot).
+    func hostDidWake() {
+        guard pausedForHostSleep else { return }
+        pausedForHostSleep = false
+        resume()
+        logEvent("host wake: resumed")
+        scheduleTimeZoneSync(generation: bootGeneration)
     }
 
     /// Per-user machine state (the NAND copy-on-write overlay, logs).
@@ -342,6 +376,7 @@ final class EmulatorController {
     /// `hardware`: the helper's hello's DeviceInfo, the emulator's facts about this board.
     private func bootConfiguration(hardware: DeviceInfo?) -> BootConfig? {
         guard !isDead, !releasing else { return nil }
+        link?.send(.screenVisible(screenVisible))
         proxyEndpoint = nil
         var config = preparedBootConfiguration(hardware: hardware)
         config?.webProxy = proxyEndpoint
@@ -562,13 +597,26 @@ final class EmulatorController {
     /// Status is read from the helper's shared block: the old per-frame poll,
     /// now on its own timer so a hidden device (no display link) still flips
     /// booting -> running, notices storage failures and its power-off.
+    /// 30 Hz while the screen is on show, 4 Hz otherwise.
     private func startStatusPoll() {
         statusTimer?.invalidate()
-        let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
+        let interval = screenVisible ? 1.0 / 30 : 0.25
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.pollStorageFailure() }
         }
+        timer.tolerance = interval / 5
         RunLoop.main.add(timer, forMode: .common)
         statusTimer = timer
+    }
+
+    /// The window shows this device's screen (DisplayView: on screen, not occluded, minimized or hidden).
+    /// Hidden, the helper publishes a few frames a second and lets the Mac idle-sleep, and the status poll slows.
+    var screenVisible = false {
+        didSet {
+            guard screenVisible != oldValue else { return }
+            link?.send(.screenVisible(screenVisible))
+            if statusTimer != nil { startStatusPoll() }
+        }
     }
 
     /// For a restart: stop this device's tasks and usbmuxd, kill its helper if

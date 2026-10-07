@@ -30,6 +30,15 @@ final class DeviceHost: @unchecked Sendable {
     private var exited = false
     private var shuttingDown = false
     private var activity: NSObjectProtocol?
+    // pumpQueue: what paces the pump (pace()).
+    private var activityLive = false
+    private var screenVisible = true
+    private var displayOn = true
+    private var lastInput: UInt64 = 0
+    private var constrained = DeviceHost.hostConstrained()
+    private var live = false
+    private var pumpInterval = 0.0
+    private var powerObservers: [NSObjectProtocol] = []
     private lazy var agents = AgentDispatcher(qemu: qemu)
     private lazy var audio = AudioPump(qemu: qemu) { [weak self] in self?.onEvent?($0) }
 
@@ -52,20 +61,72 @@ final class DeviceHost: @unchecked Sendable {
 
     // MARK: Pump
 
-    /// 60 Hz frames, 20 Hz status, heartbeat on every tick (also before boot).
+    /// Frames at 60 Hz (30 under serious thermal pressure or Low Power Mode) while the app shows the screen
+    /// and the guest's display is on (or was just touched); otherwise 4 Hz, enough for the status block and a
+    /// hidden device's first frames. Status at 20 Hz live, every tick otherwise; the heartbeat on every tick
+    /// (also before boot). A new rate starts with a tick at once, so a screen shown again gets its frame then.
     func startPump() {
-        let timer = DispatchSource.makeTimerSource(flags: .strict, queue: pumpQueue)
-        timer.schedule(deadline: .now(), repeating: 1.0 / 60, leeway: .milliseconds(2))
+        let timer = DispatchSource.makeTimerSource(queue: pumpQueue)
         timer.setEventHandler { [weak self] in self?.tick() }
         pump = timer
+        for name in [ProcessInfo.thermalStateDidChangeNotification, Notification.Name.NSProcessInfoPowerStateDidChange] {
+            powerObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: nil) { [weak self] _ in
+                self?.pumpQueue.async { self?.constrained = DeviceHost.hostConstrained(); self?.pace() }
+            })
+        }
+        pumpQueue.sync { pace(force: true) }
         timer.resume()
+    }
+
+    /// LTM_HOST_CONSTRAINED=1 stands in for either (tests).
+    static func hostConstrained() -> Bool {
+        ProcessInfo.processInfo.environment["LTM_HOST_CONSTRAINED"] == "1"
+            || ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
+            || ProcessInfo.processInfo.isLowPowerModeEnabled
+    }
+
+    /// The app shows (or stopped showing) this device's screen.
+    func setScreenVisible(_ visible: Bool) {
+        pumpQueue.async { [self] in screenVisible = visible; pace() }
+    }
+
+    /// Input wakes a dark display: run live at once, so the lit screen's first frames are not 250 ms late.
+    private func noteInput() {
+        pumpQueue.async { [self] in lastInput = DispatchTime.now().uptimeNanoseconds; pace() }
+    }
+
+    /// pumpQueue: pick the pump's rate and the process activity for the current state.
+    private func pace(force: Bool = false) {
+        let now = DispatchTime.now().uptimeNanoseconds
+        let next = screenVisible && (displayOn || now &- lastInput < 2_000_000_000)
+        let interval = next ? (constrained ? 1.0 / 30 : 1.0 / 60) : 0.25
+        holdActivity(live: next)
+        guard force || interval != pumpInterval else { return }
+        live = next
+        pumpInterval = interval
+        pump?.schedule(deadline: .now(), repeating: interval, leeway: next ? .milliseconds(2) : .milliseconds(50))
+    }
+
+    /// pumpQueue. A booted VM keeps App Nap off for good (its timers are the guest's clock); only while
+    /// live does it also keep the Mac from idle sleep and turn off timer coalescing.
+    private func holdActivity(live: Bool) {
+        guard let machine = stateLock.withLock({ exited ? nil : bootConfig?.machine }) else { return }
+        guard activity == nil || live != activityLive else { return }
+        let next = ProcessInfo.processInfo.beginActivity(
+            options: live ? [.userInitiated, .latencyCritical] : .userInitiatedAllowingIdleSystemSleep,
+            reason: "Running an emulated device (\(machine))")
+        if let activity { ProcessInfo.processInfo.endActivity(activity) }
+        activity = next
+        activityLive = live
     }
 
     private func tick() {
         ticks += 1
         status.bumpHeartbeat()
         guard booted else { return }
-        if ticks % 3 == 0 { refreshStatus() }
+        if !live || ticks % 3 == 0 { refreshStatus() }
+        let on = !qemu.displaySleeping()
+        if on != displayOn || (live && !on) { displayOn = on; pace() }   // the latter: input's 2 s running out
         var pixels: UnsafeRawPointer?
         var w: Int32 = 0, h: Int32 = 0
         var serial = frameSerial
@@ -126,8 +187,7 @@ final class DeviceHost: @unchecked Sendable {
             proxy.localNetwork = config.wifiLocalNetwork
             do { try proxy.listen(socket: endpoint.socket); webProxy = proxy } catch { helperLog("web proxy: \(error)") }
         }
-        activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical],
-                                                         reason: "Running an emulated device")
+        pumpQueue.async { [self] in pace() }
         qemu.attach(nil, nil)
         status[.qemuState] = QemuState.running.rawValue
         let argv = config.argv
@@ -140,7 +200,7 @@ final class DeviceHost: @unchecked Sendable {
             status[.exitCode] = UInt64(bitPattern: Int64(rc))
             status[.qemuState] = QemuState.exited.rawValue
             stateLock.withLock { exited = true }
-            if let activity { ProcessInfo.processInfo.endActivity(activity) }
+            pumpQueue.async { [self] in if let activity { ProcessInfo.processInfo.endActivity(activity); self.activity = nil } }
             DispatchQueue.main.async { [self] in
                 if let onExit { onExit(rc) } else { exit(rc) }
             }
@@ -157,10 +217,11 @@ final class DeviceHost: @unchecked Sendable {
 
     func perform(_ command: LinkCommand) {
         switch command {
-        case let .touch(slot, phase, x, y): qemu.touch(Int32(slot), Int32(phase), x, y)
-        case let .touch2(phase, x, y): qemu.touch2(Int32(phase), x, y)
-        case let .button(button, down): qemu.button(Int32(button), down)
-        case let .key(code, down): qemu.keyMac(Int32(code), down)
+        case let .touch(slot, phase, x, y): noteInput(); qemu.touch(Int32(slot), Int32(phase), x, y)
+        case let .touch2(phase, x, y): noteInput(); qemu.touch2(Int32(phase), x, y)
+        case let .button(button, down): noteInput(); qemu.button(Int32(button), down)
+        case let .key(code, down): noteInput(); qemu.keyMac(Int32(code), down)
+        case let .screenVisible(visible): setScreenVisible(visible)
         case let .rotate(clockwise): qemu.rotate(clockwise)
         case .shake: qemu.shake()
         case let .attitude(pitch, roll, pose): qemu.attitude(pitch, roll, Int32(pose))

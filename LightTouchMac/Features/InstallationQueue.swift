@@ -3,7 +3,8 @@ import Foundation
 /// Serializes ready installs, media imports and confirmed removals.
 /// Network downloads never reserve the device.
 @MainActor final class InstallationQueue {
-    private(set) var isBusy = false
+    private(set) var isBusy = false { didSet { activity.held = isBusy } }
+    private var activity = UserActivity("Installing on a device")
     private(set) var isPaused = false
     private var waiters: [(UUID, CheckedContinuation<Void, Error>)] = []
 

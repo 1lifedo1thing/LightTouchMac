@@ -65,6 +65,10 @@ nonisolated public enum LinkCommand: Codable, Sendable, Equatable {
     case netRestrict(Bool)
     /// qemu_ios_ui_net_lan on wifi0: allow (true) or refuse the guest's traffic to the Mac's local networks.
     case netLocalNetwork(Bool)
+    /// Whether the app shows this device's screen (its window on screen: not occluded, minimized or hidden).
+    /// Hidden, or with the guest's display asleep, the helper publishes frames at a few Hz and lets the Mac
+    /// idle-sleep; shown again, the next frame goes at once. Until the first one, shown.
+    case screenVisible(Bool)
 }
 
 nonisolated public enum LinkRequest: Codable, Sendable, Equatable {

@@ -228,6 +228,7 @@ def main():
     ap.add_argument("--read-file", help="--single: a guest path the agent reads back at home (a driver.jsonl fileRead event)")
     ap.add_argument("--launch", action="store_true", help="--single: launch the installed IPA through the app’s guest agent and verify its foreground identity")
     ap.add_argument("--reboot", action="store_true", help="--single: cold boot the same overlay and verify file/app persistence, identity and shutdown again")
+    ap.add_argument("--second-zone", help="--single --reboot: boot 2 asks for this time zone instead of the Mac's and must end in it")
     ap.add_argument("--upgrade-ipa", type=Path, help="--single: after the install, the same bundle id at a newer version: "
                     "it must install as an upgrade, keeping the app's data (issue #22)")
     ap.add_argument("--media", type=Path, nargs="+", help="--single: after the install, these files through the app's media import "
@@ -256,6 +257,8 @@ def main():
         ap.error("--launch/--reboot need --single without --afc-race")
     if args.host_power_gesture and (not args.single or args.board not in ("ipod", "ipod1g") or args.afc_race):
         ap.error("--host-power-gesture needs --single --board ipod/ipod1g without --afc-race")
+    if args.second_zone and not args.reboot:
+        ap.error("--second-zone needs --reboot")
     if args.single and not args.board:
         ap.error("--single needs --board")
     if not args.guest and not args.ipad_device and not args.single:
@@ -280,7 +283,7 @@ def main():
         # the services worker's lockdown-tz operation (LightTouchServices/Lockdown), as the app runs it
         cfg["single"] = {"board": args.board, "base": str(args.single), "lockdownTZ": str(work / "LightTouchServices"),
                          "launch": args.launch, "reboot": args.reboot, "hostPowerGesture": args.host_power_gesture,
-                         "install": not args.no_install}
+                         "install": not args.no_install, "secondZone": args.second_zone}
         if args.region:
             locale, hours = args.region.split(":")
             cfg["single"]["region"] = {"locale": locale, "uses24HourClock": hours == "24"}
@@ -428,6 +431,13 @@ def main():
             gestures = find("hostPowerGesture", device=d)
             check(len(gestures) == boots and all(g.get("confirmed") and not g.get("error") for g in gestures),
                   f"{d}: {len(gestures)}/{boots} shared host gestures confirmed by guest PMU")
+        zones = find("timezone", device=d)
+        if zones and args.board not in ("ipod1g", "iphone2g"):   # 1.x: NITZ (the M68's modem) or nothing
+            check(all(e.get("zone") == e.get("want") for e in zones),
+                  f"{d}: lockdown holds the zone asked for each boot: {[(e.get('want'), e.get('zone')) for e in zones]}")
+        if args.second_zone:
+            check(any(e.get("generation") == 2 and e.get("zone") == args.second_zone for e in zones),
+                  f"{d}: the zone follows the Mac's change between boots")
         if args.reboot:
             persisted = find("persist", device=d)
             restarted = find("restartedApps", device=d)
