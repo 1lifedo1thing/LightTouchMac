@@ -280,6 +280,9 @@ def main():
 
     env = dict(os.environ)
     env['QEMU_IOS_DIR'] = str(sources.path('qemu-ios'))
+    if args.tier == 'offline':
+        # The app's state and logs (Bundled) under the run's own directory, never the real library.
+        env.setdefault('LTM_STATE_DIR', str(args.out / 'state'))
     env['PATH'] = f"{module_cache_shims(args.out)}:{env['PATH']}"
     if display_asleep():
         env.pop('LTM_DISPLAY_CHECKS', None)   # windowed halves would wait forever for a frame
