@@ -73,6 +73,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     private var recording: ScreenRecordingSession { capture.recording }
     private var capturePreferences: CapturePreferences { capture.capturePreferences }
     private var settingsWindow: SettingsWindowController?
+    private var storageUsage: StorageUsage?
     private var canTakeScreenshot: Bool { capture.canTakeScreenshot }
     private var canToggleRecording: Bool { capture.canToggleRecording }
     private let fileStatus = CaptureStatusView()
@@ -1220,18 +1221,19 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
     private func openSettings(at pane: SettingsWindowController.Pane?) {
         if settingsWindow == nil {
-            let capture = CaptureOptionsView(preferences: capturePreferences, profile: currentProfile)
-            capture.onChange = { [weak self] in self?.validateCaptureToolbar() }
-            let storage = StorageSettingsView(catalog: host.catalog,
-                                              delete: { [weak self] entry in self?.perform(.delete, for: entry) },
-                                              canDelete: { [weak self] entry in self?.canPerform(.delete, for: entry) ?? false })
-            settingsWindow = SettingsWindowController(general: GeneralSettingsView(), capture: capture, storage: storage)
+            let capture = CaptureOptionsView(preferences: capturePreferences, profile: currentProfile,
+                                             onChange: { [weak self] in self?.validateCaptureToolbar() })
+            let storage = StorageUsage(catalog: host.catalog,
+                                       delete: { [weak self] entry in self?.perform(.delete, for: entry) },
+                                       canDelete: { [weak self] entry in self?.canPerform(.delete, for: entry) ?? false })
+            let settings = SettingsWindowController(general: GeneralSettingsView(), capture: capture, storage: StorageSettingsView(model: storage))
+            storage.isShown = { [weak settings] in settings?.window?.isVisible == true && settings?.pane == .storage }
+            storageUsage = storage
+            settingsWindow = settings
         }
         guard let settingsWindow else { return }
         if let pane { settingsWindow.pane = pane }
-        (settingsWindow.view(for: .general) as? GeneralSettingsView)?.reload()
-        (settingsWindow.view(for: .capture) as? CaptureOptionsView)?.reload()
-        (settingsWindow.view(for: .storage) as? StorageSettingsView)?.reload()
+        storageUsage?.reload()
         settingsWindow.showWindow(nil)
         settingsWindow.window?.makeKeyAndOrderFront(nil)
     }

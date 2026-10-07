@@ -1,26 +1,23 @@
 import LightTouchCore
 import Cocoa
-
-/// A Settings pane: sized by its `fittingSize`, and says when that changes.
-protocol SettingsPane: NSView {
-    var onResize: (() -> Void)? { get set }
-}
-
-extension GeneralSettingsView: SettingsPane {}
+import SwiftUI
 
 /// Settings…: one window, a toolbar button per pane, the window sized to the
-/// pane and titled after it (HIG, "Preferences Windows").
+/// pane and titled after it (HIG, "Settings"). Each pane is a grouped Form.
 final class SettingsWindowController: NSWindowController {
     enum Pane: Int { case general, capture, storage }
 
     private let tabs = SettingsTabViewController()
+    private let panes: [NSView]
 
-    init(general: SettingsPane, capture: SettingsPane, storage: SettingsPane) {
+    init(general: some View, capture: some View, storage: some View) {
+        let resize = SettingsResize()
+        panes = [NSHostingView(rootView: general.settingsPane(resize)),
+                 NSHostingView(rootView: capture.settingsPane(resize)),
+                 NSHostingView(rootView: storage.settingsPane(resize, maxHeight: 560))]
         tabs.tabStyle = .toolbar
         tabs.canPropagateSelectedChildViewControllerTitle = true
-        for (view, title, symbol) in [(general, "General", "gearshape"),
-                                      (capture, "Capture", "camera"),
-                                      (storage, "Storage", "internaldrive")] {
+        for (view, (title, symbol)) in zip(panes, [("General", "gearshape"), ("Capture", "camera"), ("Storage", "internaldrive")]) {
             let pane = NSViewController()
             pane.view = view
             pane.title = title
@@ -36,7 +33,7 @@ final class SettingsWindowController: NSWindowController {
         // Where it was left; each pane sizes it (fit).
         let restored = WindowRestorationPolicy.configure(window, frameAutosaveName: "Settings")
         super.init(window: window)
-        for pane in [general, capture, storage] { pane.onResize = { [weak self] in self?.fit() } }
+        resize.action = { [weak self] in self?.fit() }
         tabs.onSelect = { [weak self] in self?.fit() }
         fit()
         if !restored { window.center() }
@@ -49,7 +46,7 @@ final class SettingsWindowController: NSWindowController {
         set { tabs.selectedTabViewItemIndex = newValue.rawValue }
     }
 
-    func view(for pane: Pane) -> NSView { tabs.tabViewItems[pane.rawValue].viewController!.view }
+    func view(for pane: Pane) -> NSView { panes[pane.rawValue] }
 
     /// The window takes the selected pane's size, keeping its top edge.
     private func fit() {
@@ -63,6 +60,42 @@ final class SettingsWindowController: NSWindowController {
     }
 }
 
+/// A pane's content changed height: the window refits.
+final class SettingsResize {
+    var action: (() -> Void)?
+}
+
+/// A Settings pane: a grouped Form at a fixed width and its whole height; one taller than `maxHeight` scrolls
+/// inside that. The window is told when the height changes.
+private struct SettingsPane<Content: View>: View {
+    let content: Content
+    let resize: SettingsResize
+    var maxHeight: CGFloat = .infinity
+    @State private var height: CGFloat = 0
+
+    var body: some View {
+        ScrollView {
+            content
+                .formStyle(.grouped)
+                .scrollDisabled(true)
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self, of: \.size.height) { height = $0 }
+        }
+        .scrollDisabled(height <= maxHeight)
+        .frame(width: 500, height: min(height, maxHeight))
+        .onChange(of: height) {
+            // After this layout pass, so the hosting view's fitting size is the new one.
+            DispatchQueue.main.async { resize.action?() }
+        }
+    }
+}
+
+extension View {
+    func settingsPane(_ resize: SettingsResize, maxHeight: CGFloat = .infinity) -> some View {
+        SettingsPane(content: self, resize: resize, maxHeight: maxHeight)
+    }
+}
+
 private final class SettingsTabViewController: NSTabViewController {
     var onSelect: (() -> Void)?
     override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
@@ -72,48 +105,17 @@ private final class SettingsTabViewController: NSTabViewController {
 }
 
 /// Settings ▸ General: what every device starts with.
-final class GeneralSettingsView: NSView {
+struct GeneralSettingsView: View {
     /// Connect, Use Offline, or no saved answer (the device asks when it starts).
-    private let internet = NSPopUpButton(frame: .zero, pullsDown: false)
-    private let grid: NSGridView
-    var onResize: (() -> Void)?
+    @AppStorage(NetworkAccessPreference.key) private var internet: Bool?
 
-    init() {
-        for (title, tag) in [("Connect", 1), ("Use Offline", 0), ("Ask When a Device Starts", -1)] {
-            internet.addItem(withTitle: title)
-            internet.lastItem?.tag = tag
-        }
-        internet.setAccessibilityLabel("Internet access")
-        grid = NSGridView(views: [[NSTextField(labelWithString: "Internet access:"), internet]])
-        grid.column(at: 0).xPlacement = .trailing
-        grid.columnSpacing = 8
-        grid.yPlacement = .center
-        super.init(frame: .zero)
-        internet.target = self
-        internet.action = #selector(internetChanged(_:))
-        grid.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(grid)
-        NSLayoutConstraint.activate([
-            grid.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
-            grid.topAnchor.constraint(equalTo: topAnchor, constant: 20),
-            widthAnchor.constraint(greaterThanOrEqualToConstant: 430),
-        ])
-        reload()
-    }
-
-    required init?(coder: NSCoder) { fatalError("not used") }
-
-    override var fittingSize: NSSize { NSSize(width: max(430, grid.fittingSize.width + 40), height: grid.fittingSize.height + 40) }
-
-    func reload() {
-        let saved = UserDefaults.standard.object(forKey: NetworkAccessPreference.key) as? Bool
-        internet.selectItem(withTag: saved.map { $0 ? 1 : 0 } ?? -1)
-    }
-
-    @objc private func internetChanged(_ sender: NSPopUpButton) {
-        switch sender.selectedTag() {
-        case -1: UserDefaults.standard.removeObject(forKey: NetworkAccessPreference.key)
-        case let tag: UserDefaults.standard.set(tag == 1, forKey: NetworkAccessPreference.key)
+    var body: some View {
+        Form {
+            Picker("Internet access", selection: $internet) {
+                Text("Connect").tag(Bool?.some(true))
+                Text("Use Offline").tag(Bool?.some(false))
+                Text("Ask When a Device Starts").tag(Bool?.none)
+            }
         }
     }
 }
