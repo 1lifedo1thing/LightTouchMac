@@ -1,70 +1,46 @@
-#!/usr/bin/env python3
-"""The prepare screen (DevicePlaceholderViewController) in every state, and its build-info popover.
+import AppKit
+import Testing
+@testable import LightTouchCore
+@testable import AppViews
 
-Compiles the real view controller with the real catalog and DeviceRow, stubs for the app singletons it asks
-(FirmwareJobs, IPSWStore, Bundled, DroppedFiles), and lays it out in a window that is never ordered front:
-nothing appears on screen. Each state renders to <out>/placeholder-<state>.png (--out DIR, default a temp dir).
-
-Checks: the name, version and state lines stack in that order in one column; the buttons share one row with the
-default button last (Show Logs to its left); an error's state line says what failed; an accepted IPSW drag
-rings the screen until it leaves; no label is clipped; every state shows a state line. The info
-popover (ⓘ) has a real size (RC1's was 0×0 and showed nothing) and shows the support status and its
-explanation, the source note and the release date for experimental, untested, beta and paid-update builds.
-"""
-from pathlib import Path
-import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-import host_runtime
-from firmwarekit_leaf import schema_sources
-import argparse, subprocess, tempfile
-
-root = Path(__file__).resolve().parents[2]
-app = root / 'LightTouchMac'
-ap = argparse.ArgumentParser()
-ap.add_argument('--out')
-args = ap.parse_args()
-
-stubs = r'''
-import Cocoa
-final class FirmwareJobs { static let shared = FirmwareJobs(); var unavailableReason: String? = nil; var canDownload = true }
-enum IPSWStore { static func availableSpace(at url: URL) throws -> Int64 { 1 << 40 } }
-enum Bundled { static let stateDirectory = URL(fileURLWithPath: NSTemporaryDirectory()) }
-enum DroppedFiles { case ipsw; static func files(_ urls: [URL], _ kind: DroppedFiles) -> [URL] { urls.filter { $0.pathExtension.lowercased() == "ipsw" } } }
-'''
-
-check = r'''
-import Cocoa
-@MainActor final class Drag: NSObject, NSDraggingInfo {
-    let draggingPasteboard = NSPasteboard.withUniqueName()
-    var draggingSource: Any? { nil }
-    var draggingDestinationWindow: NSWindow? { nil }
-    var draggingSourceOperationMask: NSDragOperation { .copy }
-    var draggingLocation: NSPoint { .zero }
-    var draggedImageLocation: NSPoint { .zero }
-    nonisolated var draggedImage: NSImage? { nil }
-    var draggingSequenceNumber: Int { 1 }
-    var draggingFormation = NSDraggingFormation.default
-    var animatesToDestination = false
-    var numberOfValidItemsForDrop = 0
-    var springLoadingHighlight: NSSpringLoadingHighlight { .none }
-    func slideDraggedImage(to screenPoint: NSPoint) {}
-    override nonisolated func namesOfPromisedFilesDropped(atDestination dropDestination: URL) -> [String]? { nil }
-    func resetSpringLoading() {}
-    func enumerateDraggingItems(options: NSDraggingItemEnumerationOptions = [], for view: NSView?, classes classArray: [AnyClass],
-                                searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:], using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
-    func files(_ names: [String]) {
-        draggingPasteboard.clearContents()
-        precondition(draggingPasteboard.writeObjects(names.map { URL(fileURLWithPath: "/tmp/" + $0) as NSURL }))
-    }
-}
+/// The prepare screen (DevicePlaceholderViewController) in every state and its build-info popover, with the real
+/// catalog and DeviceRow, in windows never ordered in. The name, version and state lines stack in that order; the
+/// buttons share one row with the default last (Show Logs to its left); an error's state line says what failed; a
+/// file system operation shows its words and a spinner and holds Start; two jobs never share one bar; an accepted
+/// IPSW drag rings the screen until it leaves; no label is clipped. The popover (ⓘ) has a real size (RC1's was 0x0)
+/// and shows the support status and its explanation, the source note and the release date.
 extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil } }
-@main struct Check {
-    static func main() throws {
+
+@Suite struct PlaceholderTests {
+    @MainActor final class Drag: NSObject, NSDraggingInfo {
+        let draggingPasteboard = NSPasteboard.withUniqueName()
+        var draggingSource: Any? { nil }
+        var draggingDestinationWindow: NSWindow? { nil }
+        var draggingSourceOperationMask: NSDragOperation { .copy }
+        var draggingLocation: NSPoint { .zero }
+        var draggedImageLocation: NSPoint { .zero }
+        nonisolated var draggedImage: NSImage? { nil }
+        var draggingSequenceNumber: Int { 1 }
+        var draggingFormation = NSDraggingFormation.default
+        var animatesToDestination = false
+        var numberOfValidItemsForDrop = 0
+        var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+        func slideDraggedImage(to screenPoint: NSPoint) {}
+        override nonisolated func namesOfPromisedFilesDropped(atDestination dropDestination: URL) -> [String]? { nil }
+        func resetSpringLoading() {}
+        func enumerateDraggingItems(options: NSDraggingItemEnumerationOptions = [], for view: NSView?, classes classArray: [AnyClass],
+                                    searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:], using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
+        func files(_ names: [String]) {
+            draggingPasteboard.clearContents()
+            precondition(draggingPasteboard.writeObjects(names.map { URL(fileURLWithPath: "/tmp/" + $0) as NSURL }))
+        }
+    }
+
+    @Test func everyState() throws {
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.prohibited)
-        let args = CommandLine.arguments
-        let catalog = try FirmwareCatalog.load(from: URL(fileURLWithPath: args[1]))
-        let out = URL(fileURLWithPath: args[2])
+        let catalog = try FirmwareCatalog.load(from: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../../../../LightTouchMac/Resources/firmware-catalog.json").standardizedFileURL)
         func entry(_ id: String) -> FirmwareCatalog.Entry { catalog.entry(id: id)! }
         let id = UUID()
         let beta = entry("k48ap-9A5220p"), ipad = entry("k48ap-7B500"), ipod = entry("n72ap-7E18")
@@ -95,9 +71,6 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
             vc.update(row, canDownload: true)
             vc.view.layoutSubtreeIfNeeded()
             let view = vc.view
-            let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)!
-            view.cacheDisplay(in: view.bounds, to: rep)
-            try rep.representation(using: .png, properties: [:])!.write(to: out.appendingPathComponent("placeholder-\(name).png"))
 
             func all(_ v: NSView) -> [NSView] { v.subviews.flatMap { [$0] + all($0) } }
             func visible(_ v: NSView) -> Bool { var p: NSView? = v; while let q = p { if q.isHidden { return false }; p = q.superview }; return v.window != nil }
@@ -178,9 +151,6 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
             if !texts.contains("Reading the file system…") || texts.contains("Ready") || spinner == nil || start?.isEnabled != false {
                 failures.append("activity: \(texts), spinner \(spinner != nil), Start enabled \(start?.isEnabled ?? false)")
             }
-            let rep = vc.view.bitmapImageRepForCachingDisplay(in: vc.view.bounds)!
-            vc.view.cacheDisplay(in: vc.view.bounds, to: rep)
-            try rep.representation(using: .png, properties: [:])!.write(to: out.appendingPathComponent("placeholder-filesystem.png"))
             vc.update(ready, canDownload: true)
             if all(vc.view).contains(where: { ($0 as? NSProgressIndicator)?.style == .spinning && visible($0) }) || start?.isEnabled != true {
                 failures.append("the spinner stays or Start stays held after the operation")
@@ -225,9 +195,6 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
             drag.files(["iPad1,1_3.2.2_7B500_Restore.ipsw"])
             if drop.draggingEntered?(drag) != .copy || ring()?.isHidden != false { failures.append("drop: an IPSW drag isn't highlighted") }
             vc.view.layoutSubtreeIfNeeded()
-            let rep = vc.view.bitmapImageRepForCachingDisplay(in: vc.view.bounds)!
-            vc.view.cacheDisplay(in: vc.view.bounds, to: rep)
-            try rep.representation(using: .png, properties: [:])!.write(to: out.appendingPathComponent("placeholder-drop.png"))
             drop.draggingExited?(drag)
             if ring()?.isHidden != true { failures.append("drop: the ring stays after the drag leaves") }
         }
@@ -247,27 +214,7 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
             if !text.contains("Released ") { failures.append("\(e.id): no release date: \(text)") }
             if let note = e.statusNote, !text.contains(note) { failures.append("\(e.id): no source note: \(text)") }
             for w in words where !content.view.bounds.contains(w.frame) { failures.append("\(e.id): \(w.stringValue) outside the popover") }
-            let rep = content.view.bitmapImageRepForCachingDisplay(in: content.view.bounds)!
-            content.view.cacheDisplay(in: content.view.bounds, to: rep)
-            try rep.representation(using: .png, properties: [:])!.write(to: out.appendingPathComponent("popover-\(e.id).png"))
         }
-        precondition(failures.isEmpty, failures.joined(separator: "\n"))
-        print("PASS: the prepare screen in every state (name, version, state; one button row) and the build popover's words")
-    }
+        #expect(failures.isEmpty, "\(failures.joined(separator: "\n"))")
 }
-'''
-
-with tempfile.TemporaryDirectory(prefix='ltm-placeholder-') as tmp:
-    tmp = Path(tmp)
-    out = Path(args.out) if args.out else tmp / 'out'
-    out.mkdir(parents=True, exist_ok=True)
-    # The art is the sidebar's device icon (macOS's own artwork), which needs no app bundle.
-    (tmp / 'placeholder.swift').write_text((app / 'UI/DevicePlaceholderViewController.swift').read_text())
-    (tmp / 'stubs.swift').write_text(stubs)
-    (tmp / 'main.swift').write_text(check)
-    subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), *schema_sources(), '-parse-as-library', '-swift-version', '5', '-module-cache-path', str(tmp / 'modules'),
-                    str(app / 'Library/FirmwareCatalog.swift'), str(app / 'Device/Board+App.swift'),
-                    str(app / 'Device/DeviceRow.swift'), str(app / 'UI/DropHighlight.swift'),
-                    str(app / 'UI/Board+Icon.swift'), str(app / 'UI/AppleDeviceType.swift'),
-                    str(tmp / 'placeholder.swift'), str(tmp / 'stubs.swift'), str(tmp / 'main.swift'), '-o', str(tmp / 'check')], check=True)
-    subprocess.run([str(tmp / 'check'), str(app / 'Resources/firmware-catalog.json'), str(out)], check=True, timeout=60)
+}

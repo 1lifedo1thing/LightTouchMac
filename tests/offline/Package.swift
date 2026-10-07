@@ -24,6 +24,8 @@ let package = Package(name: "OfflineChecks", platforms: [.macOS("14.4")],
         .target(name: "AppViews", dependencies: [.product(name: "LightTouchCore", package: "LightTouchCore"), .product(name: "HostRuntime", package: "HostRuntime"),
                                                  .product(name: "HostServiceClient", package: "DeviceServices"), .product(name: "HostServiceWire", package: "DeviceServices")],
                 swiftSettings: settings),
-        .testTarget(name: "OfflineTests", dependencies: ["AppViews"], swiftSettings: settings),
+        // A private home and app state for the test process (LightTouchCore's own, Tests/TestIsolation).
+        .target(name: "TestIsolation"),
+        .testTarget(name: "OfflineTests", dependencies: ["AppViews", "TestIsolation"], swiftSettings: settings),
     ],
     swiftLanguageModes: [.v5])
