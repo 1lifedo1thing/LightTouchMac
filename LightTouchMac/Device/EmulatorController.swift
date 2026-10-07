@@ -37,7 +37,9 @@ final class EmulatorController {
     private func trackStartup(was: Bool) { if isStartingUp, !was { startupBegan = Date() } }
 
     private(set) var isSleeping = false
-    private(set) var foregroundAppName: String?
+    /// The guest's front app, the web proxy reaching the guest, the end of Setup (ForegroundWatch).
+    @ObservationIgnored private(set) lazy var foreground = ForegroundWatch(host: self)
+    var foregroundAppName: String? { foreground.appName }
     /// This device's web proxy (DeviceWebProxy): its routing and certificate beside the device's own state.
     @ObservationIgnored private(set) lazy var proxy = DeviceWebProxy(directory: { [unowned self] in
         WebProxyConfiguration.directory(for: instance)
@@ -68,13 +70,6 @@ final class EmulatorController {
     func dismissDeviceNotice() { notices.dismiss() }
     func resolveDeviceNotice(for operation: NoticeOperation) { notices.resolve(operation) }
 
-    private var foregroundTask: Task<Void, Never>? {
-        get { bootScope[.foreground] }
-        set { bootScope[.foreground] = newValue }
-    }
-    /// Set when this boot came up with slirp restrict=on (5.x, Setup not yet done on this overlay):
-    /// the foreground watch feeds it frontmost and lifts restrict in place once Setup is over.
-    @ObservationIgnored private var setupGate: BootRecipe.SetupNetworkGate?
     let bootScope = BootSessionScope()
     private var bootGeneration: Int { bootScope.generation }
     /// Retired boots' services workers (Stop waits for them only so long).
@@ -336,7 +331,7 @@ final class EmulatorController {
             netdev = network ? proxy.forward().map {
                 BootRecipe.wifiNetdev(guestForward: $0, restricted: restrict, localNetwork: localNetworkEnabled)
             } : nil
-            setupGate = netdev != nil && restrict ? BootRecipe.SetupNetworkGate() : nil
+            foreground.setupGate = netdev != nil && restrict ? BootRecipe.SetupNetworkGate() : nil
         } else {
             netdev = network ? BootRecipe.wifiNetdev(guestForward: proxy.forward() ?? "", restricted: false,
                                                      localNetwork: localNetworkEnabled) : nil
@@ -582,7 +577,7 @@ final class EmulatorController {
             // must never render a stale running/sleeping subtitle mid-shutdown.
             state = .poweredOff
             retireBoot()
-            foregroundAppName = nil
+            foreground.forget()
             isSleeping = false
             deviceReachable = false
         }
@@ -829,7 +824,7 @@ final class EmulatorController {
         recovery.isReconnecting = false
     }
     func forgetGuestFacts() {
-        foregroundAppName = nil
+        foreground.forget()
         isSleeping = false
     }
     func forgetReachability() {
@@ -838,52 +833,18 @@ final class EmulatorController {
     }
     func forgetEthlink() { ethlinkUp = false }
 
-    func startForegroundWatch() {
-        foregroundTask?.cancel()
-        let generation = bootGeneration
-        foregroundTask = Task { [weak self] in
-            var appliedProxyRevision: Int?
-            while !Task.isCancelled {
-                guard let self else { return }
-                if self.canReachDevice, !self.isSleeping, !self.isInstalling, !AppInstaller.hasPendingWork(for: self.instance.id) {
-                    do {
-                        appliedProxyRevision = try await self.proxy.apply(since: appliedProxyRevision,
-                                                                          isCurrent: { generation == self.bootGeneration }) { enabled in
-                            try await WebProxySetup(services: self.services, guest: self.guest, proxyDirectory: self.proxyDirectory,
-                                    stoppedTrust: self.trustsStopped ? (self.instance.paths.directory, self.instance.storage.key) : nil)
-                                .configure(enabled: enabled)
-                        }
-                    } catch { return }
-                    do {
-                        let fg = self.guestAgent.isAlive ? try await self.guest.foreground() : nil
-                        try Task.checkCancellation()
-                        guard generation == self.bootGeneration else { return }
-                        self.foregroundAppName = fg?.name
-                        // Setup over (unlocked, purplebuddy gone): open networking once, in
-                        // place -- the Wi-Fi association and DHCP lease stay (no reboot, no re-join).
-                        if var gate = self.setupGate, let link = self.link {
-                            if gate.observe(bundleID: fg?.bundleID, name: fg?.name) {
-                                self.setupGate = nil
-                                link.send(.netRestrict(false))
-                                try? Data().write(to: BootRecipe.setupDoneMark(overlay: self.overlayURL))
-                                logEvent("networking: Setup finished, lifting slirp restrict on wifi0")
-                                // Setup's country page set its own locale (7.x lists Afghanistan first: fa_AF);
-                                // the Mac's region again, as every later boot applies it.
-                                self.timeZone.schedule(generation: generation)
-                            } else {
-                                self.setupGate = gate
-                            }
-                        }
-                    } catch {
-                        if Task.isCancelled { return }
-                        self.foregroundAppName = nil
-                        _ = self.setupGate?.observe(bundleID: nil, name: nil)   // a failed poll breaks the streak
-                    }
-                }
-                do { try await Task.sleep(for: .seconds(3)) } catch { return }
-            }
+    func startForegroundWatch() { foreground.start() }
+    var hasPendingInstallWork: Bool { AppInstaller.hasPendingWork(for: instance.id) }
+    var overlay: URL { overlayURL }
+    func foregroundApp() async throws -> (bundleID: String, name: String?) { try await guest.foreground() }
+    func applyWebProxy(since applied: Int?, generation: Int) async throws -> Int? {
+        try await proxy.apply(since: applied, isCurrent: { generation == self.bootGeneration }) { enabled in
+            try await WebProxySetup(services: self.services, guest: self.guest, proxyDirectory: self.proxyDirectory,
+                    stoppedTrust: self.trustsStopped ? (self.instance.paths.directory, self.instance.storage.key) : nil)
+                .configure(enabled: enabled)
         }
     }
+    func setupFinished(generation: Int) { timeZone.schedule(generation: generation) }
 
 
     /// Guest audio for a recording (ScreenMovieWriter). Its clock is the
@@ -942,7 +903,7 @@ final class EmulatorController {
     }
     func discardInstalls() { AppInstaller.discard(for: instance.id) }
     func stopGuestWatches() {
-        foregroundTask?.cancel()
+        foreground.stop()
         rotation.stopWatching()
     }
     func restart() { onRestartRequested?() }
@@ -1028,7 +989,8 @@ final class EmulatorController {
 // The session's state machines (LightTouchCore/Session) run against the controller through these.
 extension EmulatorController: MachineHost, ConnectionHost, ActivationServices, ReadinessHost, BootWatchHost,
                               ShutdownHost, EraseHost, BootCycleHost, AppLaunchHost, RotationHost,
-                              InputHost, GuestPackageHost, TimeZoneHost, AppsHost {
+                              InputHost, GuestPackageHost, TimeZoneHost, AppsHost,
+                              ForegroundHost {
     var helper: DeviceHelper? { process }
     var helperLink: HelperLink? { link }
     var isPainting: Bool { state == .running }
