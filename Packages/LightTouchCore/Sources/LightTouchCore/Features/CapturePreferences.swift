@@ -101,10 +101,6 @@ public struct CapturePreferences {
             defaults.set(CaptureReminderDuration(rawValue: newValue)?.rawValue ?? 0, forKey: "reminderAfterDuration")
         }
     }
-    public var spaceBarAction: CaptureSpaceBarAction {
-        get { CaptureSpaceBarAction(rawValue: defaults.integer(forKey: "spaceBarAction")) ?? .none }
-        nonmutating set { defaults.set(newValue.rawValue, forKey: "spaceBarAction") }
-    }
 
     /// A new capture's file in the save location (created if need be): named for now, " 2" and on when that's taken.
     public func captureDestination(_ kind: String, extension suffix: String, at date: Date = Date()) throws -> URL {
@@ -123,19 +119,6 @@ public struct CapturePreferences {
 
     private func bool(_ key: String, default fallback: Bool) -> Bool {
         (defaults.object(forKey: key) as? NSNumber)?.boolValue ?? fallback
-    }
-}
-
-nonisolated public enum CaptureSpaceBarAction: Int, CaseIterable, Sendable {
-    case none = 0, copyScreenshot = 2, saveScreenshot = 3, saveScreenshotAs = 4, toggleRecording = 5
-    public func title(for profile: Board) -> String {
-        switch self {
-        case .none: "Send to \(profile.shortName)"
-        case .copyScreenshot: "Copy Screenshot"
-        case .saveScreenshot: "Save Screenshot"
-        case .saveScreenshotAs: "Save Screenshot As…"
-        case .toggleRecording: "Start/Stop Recording"
-        }
     }
 }
 

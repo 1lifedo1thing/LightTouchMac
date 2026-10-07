@@ -1,7 +1,7 @@
 // A device window's screenshots and screen recordings: the screenshot
 // pipeline (copy, save, save as, open), the recording session with its status
-// banner, reminder notifications and recovery, where captures are saved, and
-// the Space-bar shortcut. The window controller owns the menus and toolbar and
+// banner, reminder notifications and recovery, and where captures are saved.
+// The window controller owns the menus and toolbar and
 // asks this for what they enable; the device (its screen and canvas capture)
 // comes from the selected session.
 
@@ -28,9 +28,6 @@ import UniformTypeIdentifiers
     private(set) var screenshotBusy = false
     private(set) var copiedScreenshot = false
     private var copyConfirmation: Task<Void, Never>?
-    // nonisolated(unsafe): set on the main actor; deinit reads it again only after the last use.
-    nonisolated(unsafe) private var captureKeyMonitor: Any?
-    private var spaceBar = SpaceBarCapture()
     private var quitAfterRecording = false
     private var closeAfterRecording = false
 
@@ -59,7 +56,6 @@ import UniformTypeIdentifiers
         capturePreferences = preferences
         super.init()
         installCaptureStatus()
-        installCaptureKeyboardShortcuts()
         installCaptureNotifications()
         recoverUnfinishedRecordings()
         NotificationCenter.default.addObserver(self, selector: #selector(stopHiddenRecording), name: NSApplication.didHideNotification, object: nil)
@@ -99,10 +95,6 @@ import UniformTypeIdentifiers
             quitAfterRecording = false
             closeAfterRecording = false
         }
-    }
-
-    deinit {
-        if let captureKeyMonitor { NSEvent.removeMonitor(captureKeyMonitor) }
     }
 
     // MARK: - Screenshots
@@ -226,34 +218,6 @@ import UniformTypeIdentifiers
     }
 
     func captureName(_ kind: String, at date: Date = Date()) -> String { CapturePreferences.captureName(kind, at: date) }
-
-    // MARK: - Space bar
-
-    private func installCaptureKeyboardShortcuts() {
-        captureKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
-            guard let self else { return event }
-            guard event.type == .keyDown || event.type == .keyUp else { return event }
-            let eligible: Bool = { [self] in
-                guard let window = self.window, event.window === window, window.isKeyWindow, window.attachedSheet == nil, NSApp.modalWindow == nil,
-                      let screen = self.deviceVC?.screen, window.firstResponder === screen else { return false }
-                return !screen.isShowingLiveText
-            }()
-            switch spaceBar.key(event.keyCode, down: event.type == .keyDown, isRepeat: event.type == .keyDown && event.isARepeat,
-                                modifiers: KeyModifiers(event.modifierFlags), eligible: eligible, action: capturePreferences.spaceBarAction) {
-            case .pass: return event
-            case .swallow: return nil
-            case .capture(let action):
-                switch action {
-                case .none: break
-                case .copyScreenshot: copyScreen()
-                case .saveScreenshot: saveScreenshot()
-                case .saveScreenshotAs: saveScreenshotAs()
-                case .toggleRecording: toggleRecording()
-                }
-            }
-            return nil
-        }
-    }
 
     // MARK: - Recording
 

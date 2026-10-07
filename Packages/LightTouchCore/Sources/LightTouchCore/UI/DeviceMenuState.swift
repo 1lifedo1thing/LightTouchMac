@@ -66,7 +66,7 @@ public struct DeviceMenuState {
     }
 }
 
-/// Which captures the Capture menu, toolbar and Space bar offer now.
+/// Which captures the Capture menu and toolbar offer now.
 public struct CaptureAvailability {
     public var isRunning = false
     public var isPaused = false

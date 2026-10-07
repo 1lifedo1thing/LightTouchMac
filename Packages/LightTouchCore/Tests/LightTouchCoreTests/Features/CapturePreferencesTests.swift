@@ -20,9 +20,9 @@ struct CapturePreferencesTests {
             #expect(preferences.saveLocation == CapturePreferences.desktopDirectory)
             #expect(preferences.openFinderAfterCapture && preferences.soundEffectsEnabled)
             #expect(!preferences.copyOnCapture && !preferences.notifyOnRecordingRecovery)
-            #expect(preferences.reminderAfterDuration == 0 && preferences.spaceBarAction == .none)
+            #expect(preferences.reminderAfterDuration == 0)
             _ = preferences.saveLocations; _ = preferences.openInApplicationURL
-            #expect(defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("capture") || ["copyOnCapture", "spaceBarAction",
+            #expect(defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("capture") || ["copyOnCapture",
                     "openFinderAfterCapture", "soundEffectsEnabled", "reminderAfterDuration", "openInApplicationPath"].contains($0) }.isEmpty,
                     "reading writes nothing")
         }
@@ -72,18 +72,15 @@ struct CapturePreferencesTests {
     @Test func outOfRangeValuesReadAsDefaults() throws {
         try withDefaults { defaults in
             let preferences = CapturePreferences(defaults: defaults)
-            defaults.set(999, forKey: "spaceBarAction")
             defaults.set(-60, forKey: "reminderAfterDuration")
-            #expect(preferences.spaceBarAction == .none && preferences.reminderAfterDuration == 0)
+            #expect(preferences.reminderAfterDuration == 0)
             preferences.reminderAfterDuration = 301
             #expect(preferences.reminderAfterDuration == 0, "only the listed durations")
             preferences.reminderAfterDuration = 300
             preferences.copyOnCapture = true; preferences.openFinderAfterCapture = false; preferences.soundEffectsEnabled = false
-            preferences.spaceBarAction = .saveScreenshot
             let restored = CapturePreferences(defaults: defaults)
             #expect(restored.copyOnCapture && !restored.openFinderAfterCapture && !restored.soundEffectsEnabled)
-            #expect(restored.spaceBarAction == .saveScreenshot && restored.reminderAfterDuration == 300)
-            #expect(CaptureSpaceBarAction.none.title(for: .k48) == "Send to iPad")
+            #expect(restored.reminderAfterDuration == 300)
         }
     }
 

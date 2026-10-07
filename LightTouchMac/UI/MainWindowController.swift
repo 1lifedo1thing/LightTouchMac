@@ -345,8 +345,6 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         MainMenuBuilder.install(profile: profile)
         attachInspectorMenus()
         if !hasFileTransfer { filesWindow?.close(); filesWindow = nil }
-        // The Capture pane names the board (its Space bar choices).
-        if settingsWindow?.window?.isVisible != true { settingsWindow = nil }
         if let item = window?.toolbar?.items.first(where: { $0.itemIdentifier == .files }) {
             item.label = "\(profile.shortName) Files"
             item.paletteLabel = item.label
@@ -1221,7 +1219,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
     private func openSettings(at pane: SettingsWindowController.Pane?) {
         if settingsWindow == nil {
-            let capture = CaptureOptionsView(preferences: capturePreferences, profile: currentProfile,
+            let capture = CaptureOptionsView(preferences: capturePreferences,
                                              onChange: { [weak self] in self?.validateCaptureToolbar() })
             let storage = StorageUsage(catalog: host.catalog,
                                        delete: { [weak self] entry in self?.perform(.delete, for: entry) },

@@ -7,7 +7,6 @@ import UniformTypeIdentifiers
 /// Settings ▸ Capture: capture-specific choices, shared with the toolbar's Save/Open actions.
 struct CaptureOptionsView: View {
     let preferences: CapturePreferences
-    let profile: Board
     var authorizeNotifications: () async -> Bool = { await CaptureNotifications.shared.requestAuthorization() }
     /// After any change (the toolbar's Open Screenshot names the app).
     var onChange: () -> Void = {}
@@ -48,9 +47,6 @@ struct CaptureOptionsView: View {
                 Toggle("Show captures in Finder", isOn: binding(\.openFinderAfterCapture))
                 Toggle("Copy screenshots to the clipboard", isOn: binding(\.copyOnCapture))
                 Toggle("Play sound effects", isOn: binding(\.soundEffectsEnabled))
-                Picker("Space bar captures", selection: binding(\.spaceBarAction)) {
-                    ForEach(CaptureSpaceBarAction.allCases, id: \.self) { Text($0.title(for: profile)).tag($0) }
-                }
             }
             Section {
                 Toggle("Notify when a recording is recovered", isOn: notifying(\.notifyOnRecordingRecovery) { !$0 })
