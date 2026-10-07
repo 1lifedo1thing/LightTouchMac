@@ -291,6 +291,10 @@ final class Delegate: DeviceLibraryDelegate {
         titles = context.items.map(\.title)
         if !titles.contains("Cancel") || !titles.contains("Start") { fail("a preparing row's context menu: \(titles)") }
         FirmwareJobs.shared.jobs = [:]
+        // The Dock's bar: running jobs averaged, each as its row's bar; nothing running, no bar.
+        let dock = FirmwareJob.dockProgress([.downloading(fraction: 0.5), .preparing(Preparation(step: 1, steps: 2, name: "x", fraction: 0.5, startsAt: 0.5)), .failed("x")])
+        if dock.map({ abs($0 - 0.4375) > 0.0001 }) ?? true { fail("Dock progress: \(String(describing: dock))") }
+        if FirmwareJob.dockProgress([FirmwareJob.failed("x")]) != nil || FirmwareJob.dockProgress([FirmwareJob]()) != nil { fail("a Dock bar with nothing running") }
         let delete = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: w.windowNumber,
                                       context: nil, characters: "\u{7f}", charactersIgnoringModifiers: "\u{7f}", isARepeat: false, keyCode: 51)!
         vc.select(catalog.entry(id: "n72ap-8C148")!)

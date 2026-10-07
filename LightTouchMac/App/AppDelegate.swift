@@ -6,6 +6,7 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     
     private var windowController: MainWindowController?
+    private let dockProgress = DockProgress()
     private var host: DeviceSessionHost?
     /// Every device this launch started; quitting shuts each one down.
     private var emulators: [EmulatorController] { host?.sessions.map(\.emulator) ?? [] }
@@ -195,6 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         self.host = host
         self.windowController = controller
         controller.selectLaunchDevice()
+        dockProgress.start()
         if !pendingOpen.isEmpty { controller.open(pendingOpen); pendingOpen = [] }
     }
 
