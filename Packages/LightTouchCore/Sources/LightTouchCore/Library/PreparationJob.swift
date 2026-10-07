@@ -1,4 +1,3 @@
-import LightTouchCore
 import HostRuntime
 // One IPSW → device preparation: runs `firmwarekit create` into
 // State/Preparing/<id>/, reads its JSON Lines, and publishes the result as

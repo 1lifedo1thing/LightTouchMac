@@ -2,7 +2,6 @@
 // downloads in Caches/<bundle>/IPSW, imports
 // in State/IPSW, both named by sha1, so either one satisfies an entry.
 
-import LightTouchCore
 import FirmwareSchema
 import CryptoKit
 import Foundation

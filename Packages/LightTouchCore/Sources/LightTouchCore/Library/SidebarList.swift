@@ -1,7 +1,6 @@
 // Which catalog entries the sidebar shows, and the names the user gave them. Persisted in user defaults;
 // pure Foundation; SidebarListTests covers it.
 
-import LightTouchCore
 import Foundation
 
 public nonisolated struct SidebarList: Equatable {

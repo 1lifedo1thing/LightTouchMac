@@ -8,8 +8,8 @@ import Testing
     var reported = ModemStatus()
     var actions: [String] = []
     func setCarrierSettings(_ settings: CarrierSettings) -> Bool { carrierSettings = settings; return true }
-    func modem(_ property: String, _ value: String, done: @escaping (Bool) -> Void) { actions.append("\(property)=\(value)"); done(true) }
-    func modemStatus(_ done: @escaping (ModemStatus?) -> Void) { done(reported) }
+    func modem(_ property: String, _ value: String, done: @escaping @MainActor (Bool) -> Void) { actions.append("\(property)=\(value)"); done(true) }
+    func modemStatus(_ done: @escaping @MainActor (ModemStatus?) -> Void) { done(reported) }
 }
 
 /// The Carrier panel's model against a fake modem: Applying… until the modem reports the applied carrier and PLMN,

@@ -29,7 +29,7 @@ struct AppInstallPipelineTests {
         var isAlive: Bool { false }
         func placeholder(_ action: String, id: String, bundleID: String?) async throws -> Bool { false }
     }
-    final class Phrases: @unchecked Sendable {
+    nonisolated final class Phrases: @unchecked Sendable {   // lock-protected
         private let lock = NSLock(); private var all: [String] = []
         func add(_ s: String) { lock.withLock { all.append(s) } }
         var list: [String] { lock.withLock { all } }

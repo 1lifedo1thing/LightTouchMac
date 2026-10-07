@@ -20,7 +20,7 @@ public enum IPALibrary {
     /// One stored archive; the optional fields are what the install that
     /// stored it knew.
     public struct Entry: Codable, Equatable, Sendable {
-        public init(bundleID: String, name: String? = nil, version: String? = nil, minOS: String? = nil, size: Int64, md5: String, catalogIpaID: Int? = nil) {
+        nonisolated public init(bundleID: String, name: String? = nil, version: String? = nil, minOS: String? = nil, size: Int64, md5: String, catalogIpaID: Int? = nil) {
             self.bundleID = bundleID
             self.name = name
             self.version = version
@@ -41,7 +41,7 @@ public enum IPALibrary {
 
     /// What an install knows about the archive it just landed.
     public struct Metadata: Sendable {
-        public init(bundleID: String, name: String? = nil, version: String? = nil, minOS: String? = nil, catalogIpaID: Int? = nil) {
+        nonisolated public init(bundleID: String, name: String? = nil, version: String? = nil, minOS: String? = nil, catalogIpaID: Int? = nil) {
             self.bundleID = bundleID
             self.name = name
             self.version = version
@@ -62,6 +62,7 @@ public enum IPALibrary {
 
     /// The state directory the library and the device copies live under; nil is Bundled's. Tests point it at a
     /// temporary directory.
+    // nonisolated(unsafe): set by tests before any library work starts; read-only otherwise.
     public nonisolated(unsafe) static var stateRoot: URL?
 
     public nonisolated static var directory: URL {

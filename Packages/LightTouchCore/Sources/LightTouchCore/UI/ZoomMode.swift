@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 
 /// The device window's zoom: Fit, Physical Size, or N display pixels per guest pixel (Pixel Accurate is 1).
-public enum ZoomMode: Equatable {
+nonisolated public enum ZoomMode: Equatable, Sendable {
     case fit
     case physical
     case pixels(Int)

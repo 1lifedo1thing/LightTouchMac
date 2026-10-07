@@ -83,7 +83,7 @@ public final class BootCycle {
                 host.halt { [weak host] _ in host?.restart() }
                 return
             }
-            let synced = await withSoftDeadline(syncBudget) {
+            let synced = await withSoftDeadline(syncBudget) { @MainActor in
                 do { try await host.syncGuest(); return true }
                 catch { return false }
             }

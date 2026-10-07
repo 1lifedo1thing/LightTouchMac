@@ -12,7 +12,7 @@ struct StorageLocationsTests {
         try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(text.utf8).write(to: url)
     }
-    func text(_ url: URL) throws -> String { try String(contentsOf: url, encoding: .utf8) }
+    nonisolated func text(_ url: URL) throws -> String { try String(contentsOf: url, encoding: .utf8) }
     func exists(_ url: URL) -> Bool { fm.fileExists(atPath: url.path) }
     func mode(_ url: URL) throws -> Int { try (fm.attributesOfItem(atPath: url.path)[.posixPermissions] as! NSNumber).intValue }
 

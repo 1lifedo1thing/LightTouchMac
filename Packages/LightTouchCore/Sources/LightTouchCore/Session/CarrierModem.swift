@@ -34,13 +34,13 @@ import DeviceRuntime
 
     /// One modem property or action (incoming-call, remote-answer, remote-hangup, incoming-sms); `done` gets whether
     /// the helper queued it. The modem's own refusal shows in the next status's `error`.
-    public func modem(_ property: String, _ value: String, done: @escaping (Bool) -> Void = { _ in }) {
+    public func modem(_ property: String, _ value: String, done: @escaping @MainActor (Bool) -> Void = { _ in }) {
         guard hasCellular else { return done(false) }
         scope.control(.modemSet(property: property, value: value), on: link(), done)
     }
 
     /// The modem's state as of the previous poll (the helper refreshes it per call); nil when it isn't running.
-    public func modemStatus(_ done: @escaping (ModemStatus?) -> Void) {
+    public func modemStatus(_ done: @escaping @MainActor (ModemStatus?) -> Void) {
         guard hasCellular, let link = link(), !scope.retired else { return done(nil) }
         let session = scope.id
         link.request(.modemStatus, timeout: 10) { [weak self] reply in

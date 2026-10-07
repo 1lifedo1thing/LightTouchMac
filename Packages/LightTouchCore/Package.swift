@@ -34,6 +34,8 @@ let package = Package(name: "LightTouchCore", platforms: [.macOS("14.4")],
         ], swiftSettings: settings),
         // Gives each test process a private home and app state before any test runs.
         .target(name: "TestIsolation", path: "Tests/TestIsolation"),
-        .testTarget(name: "LightTouchCoreTests", dependencies: ["LightTouchCore", "TestIsolation"], swiftSettings: settings),
+        // The tests stay in the Swift 5 language mode for now (their fixtures share state across threads by design).
+        .testTarget(name: "LightTouchCoreTests", dependencies: ["LightTouchCore", "TestIsolation"],
+                    swiftSettings: settings + [.swiftLanguageMode(.v5)]),
     ],
-    swiftLanguageModes: [.v5])
+    swiftLanguageModes: [.v6])

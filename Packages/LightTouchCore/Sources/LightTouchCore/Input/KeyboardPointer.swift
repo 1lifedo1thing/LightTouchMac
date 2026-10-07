@@ -1,7 +1,7 @@
 import CoreGraphics
 
 /// The keys' modifiers, as the screen reads them (NSEvent.ModifierFlags' four).
-public struct KeyModifiers: OptionSet {
+nonisolated public struct KeyModifiers: OptionSet, Sendable {
     public let rawValue: Int
     public init(rawValue: Int) { self.rawValue = rawValue }
     public static let shift = KeyModifiers(rawValue: 1)

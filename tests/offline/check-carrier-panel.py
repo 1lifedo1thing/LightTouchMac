@@ -25,15 +25,15 @@ final class EmulatorController {
     let instance = Instance()
     var carrierSettings = CarrierSettings()
     func setCarrierSettings(_ settings: CarrierSettings) -> Bool { true }
-    func modem(_ property: String, _ value: String, done: @escaping (Bool) -> Void) {}
-    func modemStatus(_ done: @escaping (ModemStatus?) -> Void) {}
+    func modem(_ property: String, _ value: String, done: @escaping @MainActor (Bool) -> Void) {}
+    func modemStatus(_ done: @escaping @MainActor (ModemStatus?) -> Void) {}
 }
 @MainActor final class Modem: CarrierBackend {
     var carrierSettings = CarrierSettings()
     var reported = CarrierSettings()
     func setCarrierSettings(_ settings: CarrierSettings) -> Bool { carrierSettings = settings; return true }
-    func modem(_ property: String, _ value: String, done: @escaping (Bool) -> Void) { done(true) }
-    func modemStatus(_ done: @escaping (ModemStatus?) -> Void) {
+    func modem(_ property: String, _ value: String, done: @escaping @MainActor (Bool) -> Void) { done(true) }
+    func modemStatus(_ done: @escaping @MainActor (ModemStatus?) -> Void) {
         done(ModemStatus(json: #"{"carrier": "\#(reported.carrier)", "mcc-mnc": "\#(reported.mccMNC)", "registered": true, "sim-present": true}"#))
     }
 }

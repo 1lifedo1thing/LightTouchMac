@@ -38,6 +38,7 @@ public protocol InputHost: AnyObject {
         link.send(.button(button.rawValue, down: true))
         // Release off the main queue (send is thread-safe and ordered), so a
         // stalled main runloop must not be what holds a hardware button down.
+        // nonisolated(unsafe): the link's send is thread-safe and ordered (DeviceLink writes on its own queue).
         nonisolated(unsafe) let release = link
         DispatchQueue.global().asyncAfter(deadline: .now() + Self.holdInterval) {
             release.send(.button(button.rawValue, down: false))

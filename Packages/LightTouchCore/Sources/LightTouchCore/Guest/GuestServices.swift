@@ -13,7 +13,6 @@
 //
 // Foundation only, so tests/drivers/session-driver compiles it as the app does.
 
-import LightTouchCore
 import HostServiceWire
 import HostRuntime
 import Foundation

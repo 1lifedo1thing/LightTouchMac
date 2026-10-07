@@ -686,7 +686,7 @@ final class EmulatorController {
 
     /// A control request; `done(true)` when the machine applied it (false on a
     /// machine without the control, the iPod, or from a helper that's gone).
-    private func control(_ request: LinkRequest, _ done: @escaping (Bool) -> Void = { _ in }) {
+    private func control(_ request: LinkRequest, _ done: @escaping @MainActor (Bool) -> Void = { _ in }) {
         bootScope.control(request, on: link, done)
     }
 
@@ -743,8 +743,8 @@ final class EmulatorController {
     var carrierSettings: CarrierSettings { carrier.carrierSettings }
     @discardableResult
     func setCarrierSettings(_ settings: CarrierSettings) -> Bool { carrier.setCarrierSettings(settings) }
-    func modem(_ property: String, _ value: String, done: @escaping (Bool) -> Void = { _ in }) { carrier.modem(property, value, done: done) }
-    func modemStatus(_ done: @escaping (ModemStatus?) -> Void) { carrier.modemStatus(done) }
+    func modem(_ property: String, _ value: String, done: @escaping @MainActor (Bool) -> Void = { _ in }) { carrier.modem(property, value, done: done) }
+    func modemStatus(_ done: @escaping @MainActor (ModemStatus?) -> Void) { carrier.modemStatus(done) }
 
     // MARK: - Options
 

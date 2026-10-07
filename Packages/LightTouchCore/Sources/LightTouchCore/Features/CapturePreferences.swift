@@ -126,7 +126,7 @@ public struct CapturePreferences {
     }
 }
 
-public enum CaptureSpaceBarAction: Int, CaseIterable {
+nonisolated public enum CaptureSpaceBarAction: Int, CaseIterable, Sendable {
     case none = 0, copyScreenshot = 2, saveScreenshot = 3, saveScreenshotAs = 4, toggleRecording = 5
     public func title(for profile: Board) -> String {
         switch self {

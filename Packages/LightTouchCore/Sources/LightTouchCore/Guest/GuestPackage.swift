@@ -1,4 +1,3 @@
-import LightTouchCore
 import HostServiceWire
 import DeviceRuntime
 // Guest packages: the app's side.
@@ -38,7 +37,7 @@ public nonisolated enum GuestPackage {
     public static let glesProtocols = 0...1
 
     /// it_boot's R_* report codes.
-    public enum ReportCode: Int32 {
+    public enum ReportCode: Int32, Sendable {
         case unchanged = 0, installed, switched, revertedBad, revertedTries, refused
     }
 

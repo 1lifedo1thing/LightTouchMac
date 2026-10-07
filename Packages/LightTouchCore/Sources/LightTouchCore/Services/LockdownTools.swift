@@ -4,7 +4,6 @@
 // operation for the time zone, lockdown-mcinstall for the proxy's profile
 // (LightTouchServices/Lockdown).
 
-import LightTouchCore
 import HostServiceWire
 import Foundation
 import Subprocess

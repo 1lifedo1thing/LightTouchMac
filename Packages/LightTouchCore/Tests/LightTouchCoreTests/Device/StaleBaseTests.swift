@@ -9,13 +9,14 @@ import Testing
 /// change them knowingly. N72 recipe-1 bases are not flagged because boot admission migrates n72 1 -> 2 in place
 /// (FirmwareWire.admissionRecipeSteps); an N72 lock below every declared step (recipe 0) still is.
 struct StaleBaseTests {
-    static let raw: [String: [String: Any]] = {
+    // nonisolated(unsafe): an immutable fixture read from the shipped catalog once.
+    nonisolated(unsafe) static let raw: [String: [String: Any]] = {
         let json = try! JSONSerialization.jsonObject(with: Data(contentsOf: LibraryFixtures.shippedCatalog)) as! [String: Any]
         return Dictionary(uniqueKeysWithValues: (json["entries"] as! [[String: Any]]).map { ($0["id"] as! String, $0) })
     }()
     static let catalog = try! FirmwareCatalog.load(from: LibraryFixtures.shippedCatalog)
 
-    enum Lock: Sendable, CustomStringConvertible {
+    nonisolated enum Lock: Sendable, CustomStringConvertible {
         case firmwarekit(String, recipe: Int?, tool: String)
         case raw(String)
         var description: String { switch self { case let .firmwarekit(id, r, t): "\(id) recipe \(r.map(String.init) ?? "-") tool \(t)"; case let .raw(s): s } }
@@ -31,15 +32,15 @@ struct StaleBaseTests {
             }
         }
     }
-    static func lock(_ id: String, recipe: Int? = nil, tool: String = "0.2.0") -> Lock { .firmwarekit(id, recipe: recipe, tool: tool) }
+    nonisolated static func lock(_ id: String, recipe: Int? = nil, tool: String = "0.2.0") -> Lock { .firmwarekit(id, recipe: recipe, tool: tool) }
 
-    struct Case: Sendable, CustomTestStringConvertible {
+    nonisolated struct Case: Sendable, CustomTestStringConvertible {
         let name: String, entry: String, lock: Lock, flagged: Bool
         var marker: [String: Sendable]? = nil
         var testDescription: String { name }
     }
-    static let migrated: [String: Sendable] = ["recipe": 2, "step": "n72-exact-gpt"]
-    static let cases: [Case] = [
+    nonisolated static let migrated: [String: Sendable] = ["recipe": 2, "step": "n72-exact-gpt"]
+    nonisolated static let cases: [Case] = [
         .init(name: "n45-old", entry: "n45ap-4B1", lock: lock("n45ap-4B1", recipe: 1), flagged: true),
         .init(name: "n45-old-3A101a", entry: "n45ap-3A101a", lock: lock("n45ap-3A101a", recipe: 1), flagged: true),
         .init(name: "n45-current", entry: "n45ap-4B1", lock: lock("n45ap-4B1"), flagged: false),

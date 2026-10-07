@@ -50,7 +50,7 @@ import Testing
     }
 
     /// Collects a job's events until its last one.
-    final class Run: @unchecked Sendable {
+    nonisolated final class Run: @unchecked Sendable {   // lock-protected
         private let lock = NSLock()
         private var events: [PreparationJob.Event] = []
         private var done: CheckedContinuation<Void, Never>?

@@ -11,7 +11,7 @@ struct DeviceNoticesTests {
     @Test func noticesPersistResolveByOperationAndHoldWhileStorageFailed() throws {
         try withTemporaryDirectory { directory in
             var failed = false
-            func open() -> DeviceNotices {
+            @MainActor func open() -> DeviceNotices {
                 DeviceNotices(settings: DeviceSettingsFile(directory: directory), shortName: "iPod") { failed }
             }
             let notices = open()

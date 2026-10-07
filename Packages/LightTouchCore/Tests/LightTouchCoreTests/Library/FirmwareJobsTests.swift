@@ -87,7 +87,7 @@ import Testing
         ["kind": "rar", "url": base + "/media_ipsw.rar", "archive_sha1": archiveSHA1, "archive_bytes": rar.count, "member": "README.md",
          "sha1": IPSWStoreTests.sha1Hex(member), "bytes": member.count]
     }
-    static let sources: [Source] = [
+    nonisolated static let sources: [Source] = [
         .init(name: "404: the mirror's copy", source: { b, s in ipsw(b + "/gone.ipsw", mirrors: [(b + "/good.ipsw", s)], sha1: s) },
               outcome: .success, paths: ["/gone.ipsw", "/good.ipsw"]),
         .init(name: "hash: other bytes rejected, the mirror's copy", source: { b, s in ipsw(b + "/bad.ipsw", mirrors: [(b + "/good.ipsw", s)], sha1: s) },

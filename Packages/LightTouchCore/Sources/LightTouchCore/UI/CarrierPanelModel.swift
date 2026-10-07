@@ -8,8 +8,8 @@ import Observation
 @MainActor public protocol CarrierBackend: AnyObject {
     var carrierSettings: CarrierSettings { get }
     @discardableResult func setCarrierSettings(_ settings: CarrierSettings) -> Bool
-    func modem(_ property: String, _ value: String, done: @escaping (Bool) -> Void)
-    func modemStatus(_ done: @escaping (ModemStatus?) -> Void)
+    func modem(_ property: String, _ value: String, done: @escaping @MainActor (Bool) -> Void)
+    func modemStatus(_ done: @escaping @MainActor (ModemStatus?) -> Void)
 }
 
 

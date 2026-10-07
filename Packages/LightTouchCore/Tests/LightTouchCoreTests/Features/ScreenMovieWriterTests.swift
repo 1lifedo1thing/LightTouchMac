@@ -7,7 +7,7 @@ import Testing
 
 /// The guest's audio as the helper delivers it: 440 Hz left, 880 Hz right, 44.1 kHz S16LE in 10 ms packets on the
 /// capture's own clock, with a one-second pause (1 s to 2 s) and 3 s in all. `now` is the clock the test advances.
-private final class ToneSource: @unchecked Sendable {
+nonisolated private final class ToneSource: @unchecked Sendable {   // lock-protected
     private let lock = NSLock()
     private var now = 0.0, frame = 0
     var time: Double { get { lock.withLock { now } } set { lock.withLock { now = newValue } } }
@@ -31,7 +31,7 @@ private final class ToneSource: @unchecked Sendable {
     /// LightTouchDevice's AudioPump, in process: drains the source into the GuestAudioCapture the recorder reads,
     /// as the helper's `.audio` and `.audioEnded` events would.
     func capture() -> GuestAudioCapture {
-        final class Flag: @unchecked Sendable { let lock = NSLock(); var stopped = false }
+        nonisolated final class Flag: @unchecked Sendable { let lock = NSLock(); var stopped = false }   // lock-protected
         let flag = Flag()
         let capture = GuestAudioCapture(clock: { [self] in time }, stop: { _ in flag.lock.withLock { flag.stopped = true } })
         capture.begin(generation: 1)

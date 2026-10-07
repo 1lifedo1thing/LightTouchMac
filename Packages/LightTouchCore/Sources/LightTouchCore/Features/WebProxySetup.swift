@@ -3,7 +3,6 @@
 // PAC) and the trust; lockdown's MCInstall profile only for a guest without an
 // agent (LockdownTools).
 
-import LightTouchCore
 import HostServiceWire
 import FirmwareSchema
 import CryptoKit

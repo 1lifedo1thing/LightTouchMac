@@ -8,8 +8,8 @@ import Testing
 struct DiagnosticsExportTests {
     let fm = FileManager.default
 
-    func text(_ url: URL) throws -> String { try String(contentsOf: url, encoding: .utf8) }
-    func children(_ url: URL) throws -> [URL] { try fm.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) }
+    nonisolated func text(_ url: URL) throws -> String { try String(contentsOf: url, encoding: .utf8) }
+    nonisolated func children(_ url: URL) throws -> [URL] { try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) }
 
     @Test func crashReportsAreTheAppsOwnNewestFirstWithinThirtyDays() throws {
         try withTemporaryDirectory { reports in

@@ -109,8 +109,8 @@ struct CarrierPanel: View {
 @MainActor private final class PreviewBackend: CarrierBackend {
     var carrierSettings = CarrierSettings()
     func setCarrierSettings(_ settings: CarrierSettings) -> Bool { carrierSettings = settings; return true }
-    func modem(_ property: String, _ value: String, done: @escaping (Bool) -> Void) { done(true) }
-    func modemStatus(_ done: @escaping (ModemStatus?) -> Void) {
+    func modem(_ property: String, _ value: String, done: @escaping @MainActor (Bool) -> Void) { done(true) }
+    func modemStatus(_ done: @escaping @MainActor (ModemStatus?) -> Void) {
         done(ModemStatus(json: #"{"carrier": "LightTouch", "mcc-mnc": "00101", "call-state": "incoming", "last-dialed": "15555550123", "#
             + #""last-mo-sms": "15555550100|On my way", "registered": true, "sim-present": true, "signal-dbm": -63, "mo-sms-count": 1}"#))
     }

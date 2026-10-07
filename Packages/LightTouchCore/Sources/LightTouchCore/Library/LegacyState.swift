@@ -7,7 +7,6 @@
 // launch, to erase it and continue. What survives: every retained .ipa
 // (into the library).
 
-import LightTouchCore
 import Foundation
 import HostRuntime
 

@@ -6,7 +6,7 @@ import HostRuntime
 import DeviceRuntime
 
 /// The helper's link as the session uses it: ordered commands, and requests whose reply runs on the main queue.
-public protocol HelperLink: AnyObject {
+nonisolated public protocol HelperLink: AnyObject {
     func send(_ command: LinkCommand)
     func request(_ request: LinkRequest, timeout: TimeInterval, reply: @escaping DeviceLink.Reply)
 }
@@ -27,7 +27,7 @@ extension BootSessionScope {
     /// A control request for this boot; `done(true)` when the machine applied it (false on a machine without the
     /// control, the iPod, or from a helper that's gone). A reply that lands after this boot retired, or in a later
     /// boot, is dropped: it must not change the next boot.
-    public func control(_ request: LinkRequest, on link: HelperLink?, _ done: @escaping (Bool) -> Void = { _ in }) {
+    public func control(_ request: LinkRequest, on link: HelperLink?, _ done: @escaping @MainActor (Bool) -> Void = { _ in }) {
         guard let link, !retired else { return done(false) }
         let session = id
         link.request(request, timeout: 10) { [weak self] reply in

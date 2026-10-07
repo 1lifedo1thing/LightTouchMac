@@ -1,7 +1,7 @@
 import Foundation
 
 /// Shared helpers for the Library and Storage tests: the checkout's files, child processes and fake tools.
-enum LibraryFixtures {
+nonisolated enum LibraryFixtures {
     /// The repository checkout this test file is in.
     static let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

@@ -3,17 +3,17 @@ import Observation
 import Testing
 import HostServiceWire
 import HostRuntime
+import os
 import DeviceRuntime
 @testable import LightTouchCore
 
 
 /// Whether `body` changes anything `read` reads, as Observation reports it (at the change, synchronously).
 func observes(_ read: () -> Void, during body: () throws -> Void) rethrows -> Bool {
-    final class Flag: @unchecked Sendable { var raised = false }
-    let flag = Flag()
-    withObservationTracking(read) { flag.raised = true }
+    let raised = OSAllocatedUnfairLock(initialState: false)
+    withObservationTracking(read) { raised.withLock { $0 = true } }
     try body()
-    return flag.raised
+    return raised.withLock { $0 }
 }
 
 /// A fresh directory under the temporary directory for an async body, removed afterwards.
