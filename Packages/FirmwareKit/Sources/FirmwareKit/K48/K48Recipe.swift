@@ -140,8 +140,9 @@ final class K48Board: Board {
 
     nonisolated(nonsending) func volumes(_ c: Recipe.Context) async throws {
         mbr = c.work.appendingPathComponent("mbr.bin")
-        // At least what a restore gives this unit (MinimumSystemPartition + padding): 6.x's rootfs fills the
-        // catalog's 1280 MiB on an iPhone 4, and a system volume under 10 % free raises "Storage Almost Full".
+        // At least what a restore gives this unit (MinimumSystemPartition + padding). The catalog's 1280 MiB left an
+        // iPhone 4 6.1.3 (a 1212 MiB rootfs) 5.0 % free on its writable root, at HFS's root very-low-disk limit
+        // (5 %): a fresh unit showed "Storage Almost Full". The restore's 1372 MiB leaves 11.4 %.
         let stockMiB = try RestoreInfo(c.ipsw).systemPartitionMiB(storage: recipe.storage) ?? 0
         let systemMiB = max(recipe.systemMiB, stockMiB)
         c.log("system partition \(systemMiB) MiB (catalog \(recipe.systemMiB), restore \(stockMiB))")
