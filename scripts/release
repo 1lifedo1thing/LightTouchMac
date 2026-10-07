@@ -1,0 +1,68 @@
+#!/bin/bash
+# An archive to the release download, the command-line route (Organizer's is Distribute, then scripts/check-export):
+#
+#     scripts/release path/to/X.xcarchive [--dry-run]
+#
+# 1. export the app for Developer ID (Configuration/ExportOptions.plist)   2. zip it   3. notarize the zip
+# (notarytool, keychain profile ltm-notary; on Invalid, print the log)   4. staple the app and validate the ticket
+# 5. zip the stapled app: LightTouchMac-universal.zip and SHA256SUMS naming it, beside the exported app
+# 6. the Release plan's static checks on the stapled app (as an export: Gatekeeper and the ticket too).
+# --dry-run skips 3 and 4 (and the export-only checks). Run from a shell that sees the ltm-notary profile.
+set -euo pipefail
+ARCHIVE="${1:?usage: scripts/release path/to/X.xcarchive [--dry-run]}"
+DRY=0; [[ "${2:-}" == "--dry-run" ]] && DRY=1
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ARCHIVE="$(cd "$(dirname "$ARCHIVE")" && pwd)/$(basename "$ARCHIVE")"
+OUT="$(dirname "$ARCHIVE")/$(basename "$ARCHIVE" .xcarchive)-export"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/ltm-release.XXXXXX")"
+trap 'rm -rf "$WORK"' EXIT
+fail() { echo "FAILED: $*" >&2; exit 1; }
+step() { echo "== $*"; }
+
+step "export"
+rm -rf "$OUT"
+xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportPath "$OUT" \
+    -exportOptionsPlist "$ROOT/Configuration/ExportOptions.plist" > "$WORK/export.log" 2>&1 \
+    || { tail -20 "$WORK/export.log" >&2; fail "xcodebuild -exportArchive"; }
+APP="$(find "$OUT" -maxdepth 1 -name '*.app' | head -1)"
+[[ -d "$APP" ]] || fail "no app in $OUT"
+
+step "zip for notarization"
+ditto -c -k --keepParent "$APP" "$WORK/submit.zip"
+
+if (( DRY )); then
+    echo "== notarize, staple: skipped (--dry-run)"
+else
+    step "notarize"
+    xcrun notarytool submit "$WORK/submit.zip" --keychain-profile ltm-notary --wait --output-format json > "$WORK/submit.json" \
+        || true
+    ID="$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id",""))' "$WORK/submit.json" 2>/dev/null || true)"
+    STATUS="$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("status",""))' "$WORK/submit.json" 2>/dev/null || true)"
+    echo "submission $ID: $STATUS"
+    if [[ "$STATUS" != "Accepted" ]]; then
+        [[ -n "$ID" ]] && xcrun notarytool log "$ID" --keychain-profile ltm-notary >&2
+        fail "notarization ${STATUS:-did not complete} ($(cat "$WORK/submit.json"))"
+    fi
+    step "staple"
+    xcrun stapler staple "$APP" > /dev/null || fail "stapler staple"
+    xcrun stapler validate "$APP" > /dev/null || fail "stapler validate"
+fi
+
+step "release zip"
+ZIP="$OUT/LightTouchMac-universal.zip"
+rm -f "$ZIP"
+ditto -c -k --keepParent "$APP" "$ZIP"
+(cd "$OUT" && shasum -a 256 "$(basename "$ZIP")" > SHA256SUMS)
+
+step "static checks"
+EXPORTED=1; (( DRY )) && EXPORTED=0
+TEST_RUNNER_LTM_RELEASE_APP="$APP" TEST_RUNNER_LTM_RELEASE_EXPORTED=$EXPORTED \
+    xcodebuild -quiet -workspace "$ROOT/LightTouchMac.xcworkspace" -scheme LightTouchMac -testPlan Release \
+    -only-testing:ReleaseChecksTests/ReleaseAppStaticTests -derivedDataPath "$WORK/dd" test > "$WORK/test.log" 2>&1 \
+    || { grep -E "recorded an issue|error:" "$WORK/test.log" | head -20 >&2; fail "Release static checks"; }
+if (( ! DRY )); then
+    spctl -a -vv -t exec "$APP" 2>&1 | grep -q 'source=Notarized Developer ID' || fail "Gatekeeper: $(spctl -a -vv -t exec "$APP" 2>&1)"
+fi
+
+echo "$ZIP"
+cat "$OUT/SHA256SUMS"

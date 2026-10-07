@@ -87,11 +87,17 @@ A release is an Xcode archive; nothing edits the bundle after Xcode.
    bundled `firmwarekit` unpacks the built-in iPod, which `tests/sessions/check-sessions.py --single` boots through
    the bundled helper, dylib, services worker and usbmuxd. `TEST_RUNNER_LTM_RELEASE_FULL=1` also prepares and boots
    every release entry (minutes each).
-4. **Organizer ▸ Distribute App ▸ Direct Distribution** notarizes and exports the app.
-5. **`scripts/check-export "path/to/Light Touch.app"`** makes the release download, since Xcode has no hook after
-   notarization: `LightTouchMac-universal.zip` (`ditto -c -k --keepParent`) and `SHA256SUMS` naming it, beside the
-   exported app. It runs the Release plan on the zip's unzipped copy as an export (adding the stapled ticket and
-   Gatekeeper's "Notarized Developer ID") before it writes `SHA256SUMS`.
+4. **Notarize and make the download**, either way; both write `LightTouchMac-universal.zip` (`ditto -c -k
+   --keepParent` of the stapled app) and `SHA256SUMS` naming it beside the exported app, since Xcode has no hook
+   after notarization:
+   - **`scripts/release path/to/X.xcarchive`** (from a shell that sees the `ltm-notary` notarytool keychain
+     profile): exports for Developer ID (`Configuration/ExportOptions.plist`), notarizes a zip of the app
+     (`notarytool submit --wait`; on Invalid it prints the log), staples and validates the ticket, writes the
+     download, then runs the Release plan's static checks on the stapled app as an export and `spctl -a -vv`.
+     It prints the steps, the zip's path and its SHA-256, or the failure. `--dry-run` skips notarizing and stapling.
+   - **Organizer ▸ Distribute App ▸ Direct Distribution**, then **`scripts/check-export "path/to/Light Touch.app"`**:
+     it writes the download and runs the Release plan on the zip's unzipped copy as an export (the stapled ticket
+     and Gatekeeper's "Notarized Developer ID" besides the static checks and the built-in iPod's boot).
 
 ## Gates
 
@@ -171,7 +177,7 @@ those two places; its firmware is catalog entries, and preparing it is a Firmwar
 | `Packages/ReleaseChecks/` | The checks of a built app (`Release.xctestplan`): signatures, entitlements, slices and load closure, bundle hygiene, the bundled tools, boots through the bundle |
 | `Packages/DeviceServices/` | One device's stock lockdown services: `HostServiceWire` (the request/event protocol, errors, timeouts, device paths, the Home screen layout) and `HostServiceClient` (the app's `DeviceServices` calls, `HostServiceWorkers`, `NotificationProxy`) |
 | `Packages/FirmwareKit/` | `FirmwareKit` (IPSW → device), `FirmwareSchema` (the wire types, `StorageCapacity`, `DeveloperTools`, `GuestArchive`: what the app links), the `firmwarekit` CLI (`Sources/FirmwareKitCLI`), `CActivation` |
-| `scripts/` | `vendor` (with `build-package-native.sh`, `build-static-deps.sh`, `merge-native.py`, `build-iboot32patcher.sh`, `build-guest-tools.sh`), `check-export`, `gate.sh`, `sources.py`, `check-macho.py`, `test-glib-compat.py` |
+| `scripts/` | `vendor` (with `build-package-native.sh`, `build-static-deps.sh`, `merge-native.py`, `build-iboot32patcher.sh`, `build-guest-tools.sh`), `release`, `check-export`, `gate.sh`, `sources.py`, `check-macho.py`, `test-glib-compat.py` |
 | `tests/` | `run.py` and the tiers `offline/`, `sessions/`, `release/`; `drivers/` (helper-driver, session-driver), `fixtures/` (fake-firmwarekit.py, catalog-server.py, the Swift fixtures); `SLICED.md` |
 | `build-support/` | `dependencies.json` (pinned archives) and build patches |
 | `Configuration/` | `Shared.xcconfig` (with the gitignored `Vendor.xcconfig` and `Local.xcconfig`), `LightTouchDevice.entitlements` |
