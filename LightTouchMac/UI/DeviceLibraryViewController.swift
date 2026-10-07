@@ -45,8 +45,9 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
     init(host: DeviceSessionHost, defaults: UserDefaults = .standard) {
         self.host = host
         self.defaults = defaults
+        // A cached IPSW isn't a device: Caches outlives a reset, and listing every download floods a fresh sidebar.
         list = SidebarList.load(defaults, catalog: host.catalog) { entry in
-            host.instance(for: entry) != nil || host.row(for: entry).state == .downloaded || FirmwareJobs.shared.jobs[entry.id] != nil
+            host.instance(for: entry) != nil || FirmwareJobs.shared.jobs[entry.id] != nil
         }
         super.init(nibName: nil, bundle: nil)
         items = list.entries(in: host.catalog).map { Entry($0) }

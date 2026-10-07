@@ -15,7 +15,7 @@ public nonisolated struct SidebarList: Equatable {
     public init(ids: [String] = [], names: [String: String] = [:]) { self.ids = ids; self.names = names }
 
     /// The saved list; the first launch after updating saves one from what the user already has (`owned`:
-    /// a prepared device, a downloaded IPSW or a job in flight), and a fresh install starts with `first_run`.
+    /// a prepared device or a job in flight), and a fresh install starts with `first_run`.
     public static func load(_ defaults: UserDefaults, catalog: FirmwareCatalog, owned: (FirmwareCatalog.Entry) -> Bool) -> SidebarList {
         let known = Set(catalog.entries.map(\.id))
         if let saved = defaults.stringArray(forKey: entriesKey) {
