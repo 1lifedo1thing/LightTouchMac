@@ -17,7 +17,7 @@ import Testing
             (.begin(steps: 2, seconds: [1.5, 70]), ["event": "begin", "steps": 2, "seconds": [1.5, 70.0] as [Double]]),
             (.step(index: 3, name: "Building \"the\"/system\nvolume"), ["event": "step", "index": 3, "name": "Building \"the\"/system\nvolume"]),
             (.progress(0.42), ["event": "progress", "fraction": 0.42]),
-            (.progress(0.5, detail: "Booting to seal the flash — 42 s"), ["event": "progress", "fraction": 0.5, "detail": "Booting to seal the flash — 42 s"]),
+            (.progress(0.5, detail: "Starting iOS — 42 s"), ["event": "progress", "fraction": 0.5, "detail": "Starting iOS — 42 s"]),
             (.warning("w"), ["event": "warning", "message": "w"]),
             (.done(lock: "device.lock.json"), ["event": "done", "lock": "device.lock.json"]),
             (.error(code: "activation_failed", message: "m"), ["event": "error", "code": "activation_failed", "message": "m"]),
@@ -30,18 +30,30 @@ import Testing
         }
     }
 
-    /// A plan's time estimate: monotonic, held short of a milestone not yet seen, and never 1 by itself.
+    /// A plan's time estimate: monotonic, on by time past milestones a release never prints, and never to the
+    /// last milestone (the halt) or 1 by itself.
     @Test func planFraction() throws {
-        let seal = StepPlan.plan("Sealing the NAND"), first = seal.milestones[0].at / seal.seconds
+        let seal = StepPlan.plan(StepPlan.sealStep), end = seal.milestones.last!.at / seal.seconds
         let unseen = [Double?](repeating: nil, count: seal.milestones.count)
         let early = stride(from: 0.0, through: 600, by: 0.5).map { seal.fraction(elapsed: $0, seen: unseen) }
-        #expect(zip(early, early.dropFirst()).allSatisfy { $0 <= $1 } && early.last! < first && early.last! > 0.9 * first)
+        #expect(zip(early, early.dropFirst()).allSatisfy { $0 <= $1 } && early.last! < end && early.last! > 0.9 * end)
         var seen = unseen
         seen[2] = 3   // launchd already up at 3 s (a fast 4.x boot): jumps to its milestone, then on by time
         #expect(abs(seal.fraction(elapsed: 3, seen: seen) - 19 / 72) < 1e-9 && seal.fraction(elapsed: 13, seen: seen) > 19 / 72)
-        #expect(seal.fraction(elapsed: 1e6, seen: seen) < seal.milestones[3].at / seal.seconds)
+        #expect(seal.fraction(elapsed: 1e6, seen: seen) < end)
         let lock = StepPlan.plan("Writing the lock")
         #expect(abs(lock.fraction(elapsed: 1e6, seen: []) - 0.95) < 1e-9 && StepPlan.plan("no such step").seconds > 0)
+    }
+
+    /// Sam 10-07: the seal of an iOS 7 iPhone sat at ~83% for minutes. Its boot prints launchd at 8 s and nothing
+    /// the plan knows for minutes after; the step keeps moving all the while, and its weight is its real length.
+    @Test func iOS7SealKeepsMoving() throws {
+        let seal = StepPlan.plan(StepPlan.sealStep, major: 7)
+        #expect(seal.seconds > 300 && StepPlan.plan(StepPlan.sealStep, major: 6).seconds < 100)
+        var seen = [Double?](repeating: nil, count: seal.milestones.count)
+        seen[0] = 4; seen[1] = 8   // FTL_Open, launchd; no Wi-Fi line (a boot without it), no SpringBoard yet
+        let at = stride(from: 10.0, through: 320, by: 30).map { seal.fraction(elapsed: $0, seen: seen) }
+        #expect(zip(at, at.dropFirst()).allSatisfy { $1 - $0 > 0.05 }, "every 30 s moves the step on: \(at)")
     }
 
     /// StepProgress's stream: every step's progress is monotonic, has a detail and ends with exactly one 1.0;
@@ -55,7 +67,7 @@ import Testing
             p.next(index: 1, name: "Verifying the IPSW")
             p.measure = { bytes.fraction }
             for _ in 0..<3 { bytes.add(30); Thread.sleep(forTimeInterval: 0.6) }
-            p.next(index: 2, name: "Sealing the NAND")
+            p.next(index: 2, name: StepPlan.sealStep)
             try Data("iBoot version: iBoot-817.29\n[FTL:MSG] FTL_Open            [OK]\n".utf8).write(to: work.appendingPathComponent("seal.log"))
             Thread.sleep(forTimeInterval: 1.5)
             try Data("*** launchd[1] has started up. ***\n".utf8).write(to: work.appendingPathComponent("seal.log"))
@@ -81,9 +93,9 @@ import Testing
             }
             #expect(steps[0].dropLast().contains { $0.0 >= 0.6 }, "bytes measured: \(steps[0])")
             let details = steps[1].map(\.1)
-            #expect(details.first == "Booting to seal the flash — 0 s")
-            #expect(details.contains { $0.hasPrefix("Booting to seal the flash: opening the flash — ") })
-            #expect(details.last!.hasPrefix("Booting to seal the flash: starting iOS — "), "\(details)")
+            #expect(details.first == "Starting iOS — 0 s")
+            #expect(details.contains { $0.hasPrefix("Opening the flash — ") })
+            #expect(details.last!.hasPrefix("Starting iOS — "), "\(details)")
         }
     }
 

@@ -162,9 +162,16 @@ final class FakeSession: MachineHost, ConnectionHost, ActivationServices, Readin
     var onDeviceReady: (() -> Void)?
     func deviceReady() async -> Bool { onDeviceReady?(); return usbAnswers }
     var springBoardReady = true, springBoardChecks = 0
+    /// As DeviceApps.waitForSpringBoard's deadline: one wait gives up after this (nil: never).
+    var springBoardWait: Duration?
+    var expectsSetup = false
     func waitForSpringBoard(agentCounts: Bool) async throws {
         springBoardChecks += 1
-        while !springBoardReady { try await Task.sleep(for: .milliseconds(5)) }
+        let deadline = springBoardWait.map { ContinuousClock.now + $0 }
+        while !springBoardReady {
+            if let deadline, ContinuousClock.now >= deadline { throw DeviceToolsError.failed("The Home screen didn’t come back.") }
+            try await Task.sleep(for: .milliseconds(5))
+        }
     }
     var homes = 0
     /// Home lights the display (the emulated backlight), and the device keeps taking input after it.

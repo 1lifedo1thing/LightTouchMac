@@ -127,6 +127,21 @@ struct SingleConfig: Decodable {
         do { try d.boot(generation: generation, guestPackage: offer()) } catch { fail("boot \(generation): \(error)") }
         await waitLit(d, ipad ? 0.2 : 0.03, d.profile.bootBudget * slow)   // the app's own boot budget (iPad 300 s)
         await waitUSB(d, expecting: d.profile.productType, 300 * slow)
+        // The app's readiness answer (ReadinessWatch through DeviceApps.waitForSpringBoard): SpringBoard's layout
+        // service, or the agent naming SpringBoard or Setup frontmost. Until wave 2.5 the app gave up after one 45 s
+        // wait and refused input on a live screen (Sam 10-07, iOS 7's Setup); `seconds` past 45 is that case.
+        do {
+            let t0 = Date(), probe = GuestAgent(link: d.process.link, cache: GuestAgentCache())
+            var by = ""
+            while by.isEmpty, Date().timeIntervalSince(t0) < 600 {
+                if (try? await d.services.homeScreenOrder()) != nil { by = "layout"; break }
+                if let front = try? await probe.frontmost(), front.bundleID == "com.apple.springboard" || front.bundleID == "com.apple.purplebuddy" {
+                    by = "agent: \(front.bundleID)"; break
+                }
+                try? await Task.sleep(for: .seconds(1))
+            }
+            emit("springBoard", ["device": d.name, "generation": generation, "seconds": Date().timeIntervalSince(t0), "by": by])
+        }
         if let tool = s.lockdownTZ {
             var completed = false, lastError = ""
             for attempt in 0..<3 where !completed {

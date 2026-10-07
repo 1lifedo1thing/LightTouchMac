@@ -18,6 +18,8 @@ public protocol ReadinessHost: AnyObject {
     var isPainting: Bool { get }
     /// The helper's status block, read now.
     var status: SharedStatus? { get }
+    /// This boot ends in Setup (iOS 5+, not yet set up), not the Home screen.
+    var expectsSetup: Bool { get }
     /// The USB bridge sees the guest.
     func deviceReady() async -> Bool
     /// SpringBoard answers (its layout service, or with `agentCounts` the agent naming its screen frontmost).
@@ -57,6 +59,11 @@ public protocol ReadinessHost: AnyObject {
     public var deadlineVerdict: ReadinessDeadline { ReadinessDeadline.verdict(painted: host.isPainting, stage: bootStage) }
 
     public func setStatus(_ status: String) { preparationStatus = status }
+
+    /// SpringBoard didn't answer within one wait: the screen is the user's, the apps and files wait.
+    public static func springBoardNotice(shortName: String) -> String {
+        "Apps and files will be available when the \(shortName) finishes starting."
+    }
 
     private var task: Task<Void, Never>? {
         get { host.bootScope[.readiness] }
@@ -104,10 +111,30 @@ public protocol ReadinessHost: AnyObject {
                 try Task.checkCancellation()
                 guard generation == host.bootScope.generation else { return }
                 noteBoot(.usbAttached)
-                preparationStatus = "Waiting for the Home screen…"
+                preparationStatus = host.expectsSetup ? "Waiting for Setup…" : "Waiting for the Home screen…"
                 // A framebuffer and lockdown can both respond while SpringBoard
-                // is still starting. Do not enable input until SpringBoard answers.
-                try await host.waitForSpringBoard(agentCounts: true)
+                // is still starting. Do not enable input until SpringBoard answers,
+                // unless it takes longer than one wait: then the screen is live and
+                // the user's (7.x's first boot: Setup's springboardservices refuses and
+                // the guest agent starts in launchd's throttled band, minutes late
+                // on a loaded Mac). Keep asking; the answer makes the device ready.
+                while true {
+                    do {
+                        try await host.waitForSpringBoard(agentCounts: true)
+                        break
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        try Task.checkCancellation()
+                        guard generation == host.bootScope.generation, !host.isDead, !host.shuttingDown else { return }
+                        guard !host.storageFailed else { throw error }
+                        if preparingDevice {
+                            logEvent("boot: SpringBoard hasn’t answered yet; input enabled, still waiting")
+                            preparingDevice = false
+                            notices.report(Self.springBoardNotice(shortName: host.profile.shortName), for: .preparation)
+                        }
+                    }
+                }
                 try Task.checkCancellation()
                 guard generation == host.bootScope.generation else { return }
                 // Read the emulated backlight, not sblaunch's optional lock

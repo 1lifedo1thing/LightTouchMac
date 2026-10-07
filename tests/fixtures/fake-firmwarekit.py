@@ -67,9 +67,9 @@ if mode == "slow":
     emit(event="warning", message="waiting to be cancelled")
     time.sleep(60)
     sys.exit(4)
-emit(event="step", index=3, name="Sealing")
+emit(event="step", index=3, name="Finishing setup")
 for i, f in enumerate([0, 0.25, 0.5, 0.75, 1]):
-    emit(event="progress", fraction=f, detail=f"Booting to seal the flash — {i * 10} s")
+    emit(event="progress", fraction=f, detail=f"Starting iOS — {i * 10} s")
 die = ["0x00000123", "0x00000456"]
 ident = {"udid": hashlib.sha1((a.seed or "").encode()).hexdigest(), "die-id": die}
 fd = os.open(os.path.join(out, "identity.json"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)

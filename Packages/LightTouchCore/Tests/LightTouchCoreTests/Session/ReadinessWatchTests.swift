@@ -42,6 +42,39 @@ struct ReadinessWatchTests {
         }
     }
 
+    @Test func aBootThatEndsInSetupWaitsForSetup() async throws {
+        try await withScratchDirectory { directory in
+            let c = session(directory)
+            c.expectsSetup = true
+            c.springBoardReady = false
+            c.readiness.start()
+            await eventually("SpringBoard asked") { c.springBoardChecks > 0 }
+            #expect(c.readiness.preparationStatus == "Waiting for Setup…")
+            #expect(c.bootStage.text(expectingSetup: true) == "Waiting for Setup")
+            c.springBoardReady = true
+            await c.readiness.current?.value
+        }
+    }
+
+    /// Sam 10-07: an iPhone 4 on iOS 7 showed Setup's slide but the app said it hadn't finished starting and refused
+    /// input. SpringBoard answering late is not a failed startup: the screen is live, so input is the user's, and the
+    /// late answer makes the device ready with no restart.
+    @Test func aLateSpringBoardNeverLocksInput() async throws {
+        try await withScratchDirectory { directory in
+            let c = session(directory)
+            c.springBoardReady = false
+            c.springBoardWait = .milliseconds(30)
+            c.readiness.start()
+            await eventually("one wait gave up") { c.springBoardChecks > 1 }
+            #expect(!c.preparingDevice && c.readiness.readinessFailure == nil, "input enabled, no startup failure")
+            #expect(c.notices.message == ReadinessWatch.springBoardNotice(shortName: "iPod"))
+            #expect(c.readiness.isWatching && c.deviceReachable == nil, "still asking")
+            c.springBoardReady = true
+            await c.readiness.current?.value
+            #expect(c.deviceReachable == true && c.notices.message == nil, "the late answer: ready, notice gone")
+        }
+    }
+
     @Test func staleCancelledAndStoppingBootsAreLeftAlone() async throws {
         try await withScratchDirectory { directory in
             let stale = session(directory, sleeping: true)

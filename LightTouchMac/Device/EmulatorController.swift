@@ -329,13 +329,17 @@ final class EmulatorController {
         let usbSession = usbmux.start(paths: instance.paths)
         openSerialLog()
         let netdev: String?
+        let setupDone = FileManager.default.fileExists(atPath: BootRecipe.setupDoneMark(overlay: overlayURL).path)
+        expectsSetup = BootRecipe.setupPhonesHome(iosVersion: iosVersion) && !setupDone
+        // Setup's end is watched on every boot that shows it (the mark, the readiness text), networked or not.
+        foreground.setupGate = expectsSetup ? BootRecipe.SetupNetworkGate() : nil
+        foreground.liftsRestrict = false
         if profile.isKBoot {
-            let setupDone = FileManager.default.fileExists(atPath: BootRecipe.setupDoneMark(overlay: overlayURL).path)
-            let restrict = network && BootRecipe.setupPhonesHome(iosVersion: iosVersion) && !setupDone
+            let restrict = network && expectsSetup
             netdev = network ? proxy.forward().map {
                 BootRecipe.wifiNetdev(guestForward: $0, restricted: restrict, localNetwork: localNetworkEnabled)
             } : nil
-            foreground.setupGate = netdev != nil && restrict ? BootRecipe.SetupNetworkGate() : nil
+            foreground.liftsRestrict = netdev != nil && restrict
         } else {
             netdev = network ? BootRecipe.wifiNetdev(guestForward: proxy.forward() ?? "", restricted: false,
                                                      localNetwork: localNetworkEnabled) : nil
@@ -601,8 +605,9 @@ final class EmulatorController {
     var isRunning: Bool { state == .running && !storageFailed && !preparingDevice && readinessFailure == nil && !restartingSpringBoard && !shuttingDown && !isErasing }
     var isPaused:  Bool { state == .paused }
     var isDead:    Bool { if case .dead = state { return true } else { return false } }
-    /// The guest can take input only while actually executing.
-    var acceptsInput: Bool { isRunning }
+    /// The guest takes input whenever its screen is live (state == .running: the display paints). Readiness —
+    /// SpringBoard answering, a startup that judged failure — never holds it back.
+    var acceptsInput: Bool { state == .running && !storageFailed && !restartingSpringBoard && !shuttingDown && !isErasing }
 
     /// One line for the window's status area.
     var statusLine: String {
@@ -647,6 +652,8 @@ final class EmulatorController {
     @ObservationIgnored private var reachableSince: Date?
     /// it_ethlink reported LinkStatus 0 -> 1 on serial (the iPad's guest package).
     private(set) var ethlinkUp = false
+    /// This boot ends in Setup, not the Home screen: iOS 5 or later on an overlay that hasn't finished it.
+    private(set) var expectsSetup = false
     private var inRecovery = false
 
     /// Which libqemu-arm.dylib this device's helper loaded, and when it was
@@ -999,4 +1006,5 @@ extension EmulatorController: MachineHost, ConnectionHost, ActivationServices, R
     var helperLink: HelperLink? { link }
     var isPainting: Bool { state == .running }
     func readyForInput() { deviceReachable = true }
+    var bootStageText: String { bootStage.text(expectingSetup: expectsSetup) }
 }

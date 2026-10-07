@@ -71,9 +71,10 @@ nonisolated extension Board {
     /// §1.4). The host mirrors that one rule; it gives the shipped iPad π/2 and the iPods 0.
     public static func guestTurn(scan: CGSize) -> CGFloat { scan.width > scan.height ? .pi / 2 : 0 }
 
-    /// The CLCD boards' LCD model turns the picture it publishes with the device (ipod_touch_lcd.c); a
-    /// landscape-mounted panel (the iPad's pipe) scans out as is and the guest turns its UI inside it.
-    public var surfaceFollowsRotation: Bool { (hardware?.defaultOrientation ?? 0) == 0 }
+    /// The CLCD boards' LCD model turns the picture it publishes with the device (ipod_touch_lcd.c). The A4's
+    /// display pipe (s5l8930_display.c: the iPad, iPod touch 4, iPhone 4) scans its panel out as is, whatever way
+    /// the device is held, and the guest turns its UI inside it.
+    public var surfaceFollowsRotation: Bool { soc != .s5l8930 }
 
     /// The screen as it sits in the upright shell.
     public var uprightScreenPixels: CGSize {

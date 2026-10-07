@@ -19,7 +19,7 @@ import Testing
         #expect(L(#"{"event":"begin","steps":2,"seconds":[1.5,70]}"#) == .begin(steps: 2, seconds: [1.5, 70]))
         #expect(L(#"{"event":"step","index":3,"name":"Building the system volume"}"#) == .step(index: 3, name: "Building the system volume"))
         #expect(L(#"{"event":"progress","fraction":0.42}"#) == .progress(0.42))
-        #expect(L(#"{"event":"progress","fraction":0.5,"detail":"Booting to seal the flash — 42 s"}"#) == .progress(0.5, detail: "Booting to seal the flash — 42 s"))
+        #expect(L(#"{"event":"progress","fraction":0.5,"detail":"Starting iOS — 42 s"}"#) == .progress(0.5, detail: "Starting iOS — 42 s"))
         #expect(L(#"{"event":"warning","message":"slow disk"}"#) == .warning("slow disk"))
         #expect(L(#"{"event":"done","lock":"device.lock.json"}"#) == .done(lock: "device.lock.json"))
         #expect(L(#"{"event":"error","code":"activation_failed","message":"exit 2"}"#) == .error(code: "activation_failed", message: "exit 2"))
@@ -113,14 +113,14 @@ import Testing
             let f = try Fixture(tmp), state = f.state, cache = f.cache
             var run = try await f.prepare(iPad32, mode: "ok")
             guard case let .published(device)? = run.events.last else { Issue.record("not published: \(run.events)"); return }
-            #expect(run.events.contains(.step(1, of: 3, name: "Decrypting")) && run.events.contains(.step(3, of: 3, name: "Sealing")))
+            #expect(run.events.contains(.step(1, of: 3, name: "Decrypting")) && run.events.contains(.step(3, of: 3, name: "Finishing setup")))
             // begin's seconds first; per step a monotonic fraction with a detail, ending at 1.
             #expect(run.events.first == .begin(seconds: [5, 10, 70]))
             var sealing: [Double] = [], inSeal = false
             for event in run.events {
                 if case let .step(index, _, _) = event { inSeal = index == 3 }
                 if inSeal, case let .progress(fraction, detail) = event {
-                    #expect(detail?.hasPrefix("Booting to seal the flash — ") == true)
+                    #expect(detail?.hasPrefix("Starting iOS — ") == true)
                     sealing.append(fraction)
                 }
             }

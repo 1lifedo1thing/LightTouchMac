@@ -620,7 +620,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         // The subtitle is the boot's real stage (BootStage, from the device's own signals) and the session's counter.
         startupStatus.update(title: emulator.isErasing ? "Erasing \(emulator.profile.shortName)…"
                                 : deviceVC?.screen.restartTitle ?? "Starting iOS…",
-                             detail: (emulator.isErasing ? "" : emulator.bootStage.text + " · ") + "\(elapsed) s",
+                             detail: (emulator.isErasing ? "" : emulator.bootStageText + " · ") + "\(elapsed) s",
                              busy: true, primary: elapsed >= Int(emulator.profile.bootBudget) ? "Show Logs" : nil)
         if startupTask == nil {
             startupTask = Task { [weak self] in
