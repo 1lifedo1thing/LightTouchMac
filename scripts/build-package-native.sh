@@ -4,7 +4,7 @@
 # Usage: build-package-native.sh NEW-WORK-DIRECTORY
 # Builds static dependencies from pinned sources unless LTM_STATIC_DEPS is explicit.
 # LTM_ARCH=x86_64 cross-compiles the Intel slice (default arm64, built exactly as before);
-# build-release.py --universal builds both and merges them with merge-native.py.
+# scripts/vendor builds both and merges them with merge-native.py.
 set -euo pipefail
 ROOT="${1:?usage: build-package-native.sh new-work-directory}"
 [ ! -e "$ROOT" ] || { echo "use a new build directory: $ROOT" >&2; exit 1; }
@@ -32,8 +32,8 @@ QEMU="$(cd "$QEMU" && pwd)"
 USB="$(cd "$USB" && pwd)"
 mkdir -p "$ROOT/src" "$ROOT/build" "$ROOT/prefix"
 ROOT="$(cd "$ROOT" && pwd)"
-# usbmuxd from its pinned commit (build-support/sources.json) through a temporary worktree, as build-release.py's
-# staged native stage does, never the checkout's working tree (10-06: a one-step build shipped the checkout's
+# usbmuxd from its pinned commit (build-support/sources.json) through a temporary worktree,
+# never the checkout's working tree (10-06: a one-step build shipped the checkout's
 # 41631a7 while the pin was e19fac2, and only recorded it).
 USB_COMMIT="$(python3 "$SRC/scripts/sources.py" commit usbmuxd)"
 USB_TREE="$ROOT/usbmuxd-worktree"
@@ -165,7 +165,7 @@ source_note libimobiledevice libimobiledevice libimobiledevice-sslv3-ios1.patch
 (cd usbmuxd && glibtoolize --copy --force && autoreconf -fi)
 (cd usbmuxd && LDFLAGS="$LDFLAGS -framework IOKit -framework CoreFoundation -framework Security" ./configure --prefix="$P" ${HOST[@]+"${HOST[@]}"} --without-systemd && make -j"$JOBS")
 # iBoot32Patcher (GPL-3.0, the "tools" group of the manifest): firmwarekit runs it for the k48 real-iBoot
-# recipe. Built into build/iBoot32Patcher with its LICENSE, our patch and a SOURCE.txt; package.sh ships them.
+# recipe. Built into build/iBoot32Patcher with its LICENSE, our patch and a SOURCE.txt; scripts/vendor ships them.
 fetch_group tools
 LTM_ARCH="$ARCH" bash "$SRC/scripts/build-iboot32patcher.sh" "$ROOT/src" "$ROOT/build/iBoot32Patcher"
 # AMC audio and incremental H.264 slices use libavcodec/libavutil. Keep the closure native
@@ -242,4 +242,3 @@ else:
     record['static_build'] = {'origin': 'explicit LTM_STATIC_DEPS override'}
 (root / 'native-build.json').write_text(json.dumps(record, indent=2) + '\n')
 PY
-printf '\nPackage with:\nQEMU_BUILD_DIR=%q LTM_DEPS_PREFIX=%q LTM_STATIC_DEPS=%q USBMUXD_BIN=%q bash %q /path/to/LightTouchMac.app\n' "$ROOT/qemu-build" "$P" "$STATIC" "$ROOT/build/usbmuxd/src/usbmuxd" "$SRC/scripts/package.sh"

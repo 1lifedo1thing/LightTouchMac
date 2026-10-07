@@ -189,7 +189,7 @@ public enum K48IBoot {
     // MARK: iBoot patching
 
     /// Locate iBoot32Patcher: the bundled copy first (next to firmwarekit itself, then next to the helper; both are
-    /// the app's Contents/MacOS, where package.sh ships it), then FIRMWAREKIT_IBOOT_PATCHER / IBOOT32PATCHER
+    /// the app's Contents/MacOS, where the archive ships it), then FIRMWAREKIT_IBOOT_PATCHER / IBOOT32PATCHER
     /// (development runs), then a bare name on PATH.
     public static func patcher(helper: URL?) -> URL {
         for dir in [Bundle.main.executableURL, helper].compactMap({ $0?.resolvingSymlinksInPath().deletingLastPathComponent() }) {

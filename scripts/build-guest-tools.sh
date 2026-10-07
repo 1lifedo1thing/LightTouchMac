@@ -6,7 +6,7 @@
 # LDID the existing signer. The export writes NEW-WORK-DIRECTORY/guest-tools (the flat iPod set the app uploads),
 # NEW-WORK-DIRECTORY/ipad-guest-tools (the flat directory firmwarekit reads: helpers, the public OpenGLES front end and the 1.x front end
 # OpenGLES-1x with gles-names.h, armv6.itpack and armv7.itpack) and manifest.json (source commit, dirty flag, sha256 per input and output),
-# which build-release.py validates. Nothing is written into the checkout.
+# which scripts/vendor checks. Nothing is written into the checkout.
 set -euo pipefail
 
 fail() { echo "build-guest-tools: $*" >&2; exit 1; }

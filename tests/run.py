@@ -137,7 +137,7 @@ def offline_checks():
 def release_checks(network):
     checks = [[p] for p in sorted((TESTS / 'release').glob('*.py'))
               if network or p.name != 'test-dependency-sources.py']
-    checks.append([ROOT / 'scripts/test-glib-compat.py'])   # stays in scripts/: a native-recipe input (build-release.py)
+    checks.append([ROOT / 'scripts/test-glib-compat.py'])   # stays in scripts/: a native-recipe input
     skips = [] if network else [('release/test-dependency-sources.py', 'fetches every dependency; --network runs it')]
     return checks, skips
 

@@ -1,7 +1,7 @@
 import Cocoa
 
 /// About Light Touch: the standard panel, its credits the bundled components with their versions (build-inputs.json
-/// `components`, written by scripts/build-release.py; a development build has none) and the licences (Help.txt's
+/// `components`, written by scripts/vendor; a development build has none) and the licences (Help.txt's
 /// Licenses section, with a link to Resources/licenses).
 enum AboutCredits {
     @MainActor static func show() {

@@ -33,43 +33,60 @@ The emulator side's own entry point is qemu-ios `README.md`.
 
 ## Building
 
-Open `LightTouchMac.xcodeproj` in Xcode and build the `LightTouchMac` scheme. The project has no shell
-build phases: an Xcode build compiles the app and the helper, nothing else.
+Open `LightTouchMac.xcodeproj` in Xcode and build the `LightTouchMac` scheme: the app, the device helper
+(`LightTouchDevice`), the services helper (`LightTouchServices`) and the preparer (`firmwarekit`, from
+`Packages/FirmwareKit/Sources/FirmwareKitCLI`). The app's one script phase stamps the build number
+(`CFBundleVersion`, the commit count).
 
-Debug and Release share `Configuration/Shared.xcconfig`, which expects a qemu-ios checkout and a build
-directory holding `libqemu-arm.dylib`:
+Debug and Release share `Configuration/Shared.xcconfig`. A Debug helper loads `libqemu-arm.dylib` from a
+qemu-ios development build:
 
 ```
-QEMU_IOS_DIR   = $(HOME)/Developer/qemu-ios-ipad1        # headers: contrib/ios-app, contrib/macos-app; helper entitlements
-QEMU_BUILD_DIR = $(QEMU_IOS_DIR)/build-w1-native          # libqemu-arm.dylib the helper links and loads
+QEMU_IOS_DIR   = $(HOME)/Developer/qemu-ios-ipad1
+QEMU_BUILD_DIR = $(QEMU_IOS_DIR)/build-w1-native          # libqemu-arm.dylib, on a Debug helper's rpath
 ```
 
-These two lines repeat **the pin**, `build-support/sources.json`: the qemu-ios commit, its expected checkout
-path and development build directory, and the usbmuxd commit; iBoot32Patcher is pinned in `build-support/dependencies.json`.
+These repeat **the pin**, `build-support/sources.json`: the qemu-ios commit, its expected checkout path and
+development build directory, and the usbmuxd commit; iBoot32Patcher is pinned in `build-support/dependencies.json`.
 `scripts/sources.py` resolves the pin for every script and check (`sources.py qemu-ios | usbmuxd | qemu-build`,
-`sources.py check` for pinned vs actual; `QEMU_IOS_DIR`, `USBMUXD_SOURCE_DIR` and `QEMU_BUILD_DIR` override),
-and `tests/release/test-release.py` checks that the xcconfig agrees with it. To produce the dylib, build
-`qemu-system-arm` in that checkout and run `contrib/macos-app/make-dylib-macos.sh BUILD_DIR`.
+`sources.py check` for pinned vs actual; `QEMU_IOS_DIR`, `USBMUXD_SOURCE_DIR` and `QEMU_BUILD_DIR` override).
+To produce the dylib, build `qemu-system-arm` in that checkout and run `contrib/macos-app/make-dylib-macos.sh BUILD_DIR`.
+The services helper links libimobiledevice and libplist: from the vendor directory (below) when there is one,
+else Homebrew's. Put local overrides of any of these in `Configuration/Local.xcconfig` (gitignored).
 
-Development knobs: `LTM_FIRMWAREKIT=/path/to/firmwarekit` makes a Debug app run that preparer instead of
-the bundled one (for example `swift build` output from `Packages/FirmwareKit`); `LTM_STATE_DIR=/dir`
-keeps all writable state and logs inside one directory.
+Debug-only knobs (compiled out of Release): `LTM_FIRMWAREKIT=/path/to/firmwarekit` (another preparer),
+`LTM_QEMU_DYLIB` (another emulator library), `LTM_USBMUXD` (another usbmuxd). `LTM_STATE_DIR=/dir` keeps all
+writable state and logs inside one directory.
 
-The product build is `scripts/build-release.py` (see its `--help`). Its resumable `--stage` pipeline is
-`native, qemu, dylib, guest, app, package, notarize, staple, verify`. Its `--qemu-source` and `--usbmuxd-source`
-default to the pin; it records pinned vs actual commits in `build-inputs.json` and refuses a Developer ID build
-whose checkout is not at the pinned commit unless `--allow-unpinned` (an ad-hoc build only records it). The
-guest stage runs qemu-ios's export and validates the staged tree against its `manifest.json` (every file at its
-hash, the names the app and firmwarekit need, the catalog's GL tables, the sources unchanged). Dependency
-archives are pinned in `build-support/dependencies.json`. Firmware and the iPhoneOS SDK are external inputs;
-nothing downloads or redistributes them.
+## Releases
 
-The product build supports macOS 14.4 or later, on Apple Silicon by default or as a universal app for Intel
-too: add `--universal`. The build still runs on an Apple Silicon Mac: it cross-compiles every native
-dependency and QEMU a second time for x86_64 (`LTM_ARCH=x86_64`), keeps one complete native root per
-architecture under `native/arm64` and `native/x86_64`, merges them into `native-universal/` with
-`scripts/merge-native.py`, and builds the app with both slices. The x86_64 FFmpeg build uses NASM for its
-decoder assembly. With `--native-build`, pass the directory that holds the `arm64` and `x86_64` roots.
+A release is an Xcode archive; nothing edits the bundle after Xcode.
+
+1. **`scripts/vendor`**, once per pin change (`build-support/sources.json`, `dependencies.json`, the patches or the
+   native recipes). It builds what Xcode can't, from the pins, into `~/Developer/ltm-vendor/<pin-hash>/`
+   (`LTM_VENDOR_ROOT` moves it; nothing deletes it) and points `Configuration/Vendor.xcconfig` (`VENDOR_DIR`) at it:
+   the native dependencies, usbmuxd and QEMU for arm64 and x86_64, merged universal with final install names
+   (`Frameworks/`, `MacOS/`), the guest tools and the developer SSH payload packed into
+   `Resources/Guest/guest.aar`, the SecureROMs and the built-in iPod (`Resources/Device/`), the licenses and
+   `build-inputs.json`. A rerun with nothing changed does nothing; one after a FirmwareKit or helper change only
+   prepares the built-in iPod again. Inputs: `ARMV6_SDK` (default
+   `~/Developer/ipod2g-re/OldSDK/iPhoneOS3.1.3.sdk`), `LTM_ASSETS` (the SecureROMs, default
+   `~/Developer/qemu-ios-files`), the n72ap-7E18 IPSW in the app's IPSW cache, and the network for the pinned
+   source archives. Firmware and the iPhoneOS SDK are never downloaded or redistributed.
+2. **Xcode ▸ Product ▸ Archive** (scheme `LightTouchMac`, Release, arm64 + x86_64, Developer ID). The archive's
+   Copy Files phases bring in the vendor directory (Code Sign On Copy signs its binaries with the app's identity
+   and the hardened runtime); only `LightTouchDevice` carries entitlements (`Configuration/LightTouchDevice.entitlements`).
+   The scheme's Archive post-action, `scripts/verify-archive`, then checks the archived app: the vendor directory
+   matches the pins; every Mach-O signed, hardened, universal, with the declared entitlements and an in-bundle load
+   closure; `tests/release/test-package.py` and `test-bundle-hygiene.py`; no code loose under `Resources`; the
+   identity scan; and, in-bundle, the bundled `firmwarekit` prepares (or unpacks) each `VERIFY_ENTRIES` device and
+   `tests/sessions/check-sessions.py --single` boots it through the bundled helper, dylib, services helper and
+   usbmuxd. The verdict is in the archive's Organizer comment and `verify.log`; a failed archive's name ends
+   "(VERIFY FAILED)". Xcode does not fail an archive for its post-action, so read the comment before distributing.
+3. **Organizer ▸ Distribute App ▸ Direct Distribution** notarizes and exports the app.
+4. **`scripts/check-export "path/to/Light Touch.app"`** zips the exported app (ditto) and checks the unzipped copy:
+   `codesign --deep --strict`, the stapled ticket, Gatekeeper ("Notarized Developer ID"), slices, entitlements and
+   the identity scan. It writes `Light Touch.zip` and `SHA256SUMS` beside the app.
 
 ## Gates
 
@@ -97,11 +114,11 @@ through `scripts/sources.py` (the pin in `build-support/sources.json`).
 | Directory | What is there |
 |---|---|
 | `tests/offline/` | One check per topic. Each is standalone; its docstring names what it compiles and its flags. Most compile whole production files with a small fixture; the ones that still cut a section out of a hub file by marker are listed with the reason in [tests/SLICED.md](tests/SLICED.md) |
-| `tests/sessions/` | `check-sessions.py` boots two devices at once through the app's own session code (`tests/drivers/session-driver`); `--single DIR --board ipod|ipad` boots one prepared base the way the app does and is what the release verify stage runs; `--guest` runs the guest-services scenario. `check-helper-boot.py` drives the helper directly (`tests/drivers/helper-driver`). `matrix.py`, `install-durability.py` and `volume-rebuild-oracle.py` are tools run by hand (`tests/matrix.py` still works) |
-| `tests/release/` | Build and packaging checks: dependency sources, guest build, release, package, signing, package layout. `scripts/check-macho.py` and `scripts/test-glib-compat.py` stay in `scripts/` because the native recipe hash includes them |
+| `tests/sessions/` | `check-sessions.py` boots two devices at once through the app's own session code (`tests/drivers/session-driver`); `--single DIR --board ipod|ipad` boots one prepared base the way the app does and is what `scripts/verify-archive` runs; `--guest` runs the guest-services scenario. `check-helper-boot.py` drives the helper directly (`tests/drivers/helper-driver`). `matrix.py`, `install-durability.py` and `volume-rebuild-oracle.py` are tools run by hand (`tests/matrix.py` still works) |
+| `tests/release/` | Build and packaging checks: dependency sources, guest build, the native merge, Mach-O closures (`test-package.py`, which also checks an app given as its argument), bundle hygiene. `scripts/check-macho.py` and `scripts/test-glib-compat.py` stay in `scripts/` because the native recipe hash includes them |
 | `tests/drivers/`, `tests/fixtures/` | The Swift drivers the session checks compile; the fake preparer, the catalog server and the Swift fixtures the checks share |
 | `swift test --package-path Packages/FirmwareKit` | FirmwareKit's synthetic unit tests and fixed legacy reference hashes. Optional corpus tests report real skips unless `FK_TEST_CORPUS=1` or `FK_REQUIRE_FIXTURES=1` selects them; selected missing inputs fail. Format/bake oracle checks resolve qemu-ios through `FIRMWAREKIT_QEMU_IOS` |
-| `scripts/build-release.py --stage verify` | The bundled `firmwarekit` prepares each entry in `VERIFY_ENTRIES`, then `tests/sessions/check-sessions.py --single` boots it through the bundle: lit, lockdown, AFC round trips past 16 KiB, an IPA install, a clean shutdown |
+| `scripts/verify-archive` | The Archive post-action (Releases, step 2); `--static APP` runs its signature, slice and scan checks alone |
 
 Every headless boot passes `-audio driver=none`. The checks are headless; none of them launch the app.
 
@@ -120,9 +137,9 @@ Every headless boot passes `-audio driver=none`. The checks are headless; none o
 
 | Path | What |
 |---|---|
-| `LightTouchMac/` | The app, one directory per layer (below), plus `Resources/firmware-catalog.json` (its `bundled` names the built-in iPod, `Resources/device/n72ap-7E18.itbase`, which a fresh install unpacks and selects; `first_run` is what a first launch selects without it: an `available` build Apple still serves), `Assets.xcassets`, `Shim/` |
+| `LightTouchMac/` | The app, one directory per layer (below), plus `Resources/firmware-catalog.json` (its `bundled` names the built-in iPod, `Resources/Device/n72ap-7E18.itbase`, which a fresh install unpacks and selects; `first_run` is what a first launch selects without it: an `available` build Apple still serves), `Assets.xcassets`, `Shim/` |
 | `LightTouchMac/Transport/` | The wire to a device and the app's logs: `IMobileDevice` (the dlopen'd libimobiledevice), `USBMux` (each device's usbmuxd), `DeviceExecution` (the serial gate, deadlines, late-handle cleanup, errors, timeouts), `NativeLogging`, `AppEventLog` |
-| `LightTouchMac/Services/` | Stock lockdown services on one device, all on `DeviceServices`' `run` kernel: `InstallationProxy`, `AFC` (staging and the Files browser), `SpringBoardServices`, `LockdownTools` (ActivationState, the lockdown-tz and lockdown-mcinstall children), `NotificationProxy` |
+| `LightTouchMac/Services/` | Stock lockdown services on one device, all on `DeviceServices`' `run` kernel: `InstallationProxy`, `AFC` (staging and the Files browser), `SpringBoardServices`, `LockdownTools` (ActivationState; the lockdown-tz and lockdown-mcinstall writes run as child processes of the services helper, `LightTouchServices/Lockdown`), `NotificationProxy` |
 | `LightTouchMac/Guest/` | The guest agent: `GuestAgent` (the wire and typed ops), `GuestServices` (media commit, trust, proxy route, respring, launch), `GuestPackage` |
 | `LightTouchMac/Library/` | What the app keeps: `DeviceInstance`, `DeviceLibrary`, `DeviceStateStorage`, `StorageLocations`, `Bundled`, `LegacyState`, `IPSWStore`, `FirmwareCatalog`, `FirmwareJobs`, `FirmwareDownloads`, `PreparationJob`, `IPALibrary`, `IPAMembers`, `AppMetadataCache` |
 | `LightTouchMac/Device/` | One running device: `DeviceProfile`, `DeviceSession`, `DeviceProcess` (its helper), `BootRecipe`, `EmulatorController` (lifecycle and input; vends `services`, `guest`, `installPipeline`), `DeviceRow`, `DeviceConnectionIssue`, `DeviceFileWatch`, `WebProxyConfiguration` |
@@ -132,9 +149,11 @@ Every headless boot passes `-audio driver=none`. The checks are headless; none o
 | `LightTouchDevice/` | The per-device helper: one QEMU instance, frames over IOSurface, control over the `Shared/` link, and the device's web proxy (`WebProxy` on URLSession, `WebProxyAdapters`) behind the 10.0.2.100:3128 guestfwd |
 | `Shared/` | The app–helper link (`DeviceLink`, `DeviceLinkProtocol`, `DeviceRendezvous`, the `CLink` module); `WebProxyCA`, the per-device proxy CA both sides use |
 | `Packages/FirmwareKit/` | `FirmwareKit` (IPSW → device), the `firmwarekit` CLI (`Sources/FirmwareKitCLI`), `CActivation` |
-| `scripts/` | `build-release.py` and its stages, `build-guest-tools.sh`, `package.sh`, `gate.sh`, `sources.py`, `check-macho.py`, `test-glib-compat.py`, lockdown C helpers |
+| `scripts/` | `vendor` (with `build-package-native.sh`, `build-static-deps.sh`, `merge-native.py`, `build-iboot32patcher.sh`, `build-guest-tools.sh`), `verify-archive`, `check-export`, `gate.sh`, `sources.py`, `check-macho.py`, `test-glib-compat.py` |
 | `tests/` | `run.py` and the tiers `offline/`, `sessions/`, `release/`; `drivers/` (helper-driver, session-driver), `fixtures/` (fake-firmwarekit.py, catalog-server.py, the Swift fixtures); `SLICED.md` |
 | `build-support/` | `dependencies.json` (pinned archives) and build patches |
-| `Configuration/` | `Shared.xcconfig` |
+| `Configuration/` | `Shared.xcconfig` (with the gitignored `Vendor.xcconfig` and `Local.xcconfig`), `LightTouchDevice.entitlements` |
+| `Models/` | The 3D device models and their lighting (`Resources/Models/` in the app) |
+| `LightTouchServices/` | The services helper: the device services the app asks for, and the lockdown writes (`Lockdown/`) it runs as child processes |
 | `spikes/` | Phase-0 spike sources (rendezvous, GL helper, two-at-once); archive material, kept for reference |
 | `tools/activation/` | Sam's activation tool (its `build/` output is ignored) |

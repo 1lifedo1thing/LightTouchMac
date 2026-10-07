@@ -4,8 +4,8 @@
 # iBoot32Patcher-ltm.patch applied (aligned xrefs and ABI-checked RSA bypass; smoke #48/#50).
 # OUT-DIR ends up with the binary, the upstream LICENSE (GPL-3.0), the patch, SOURCE.txt and build.json
 # (commit, license, sha256s). LTM_ARCH (default arm64) names the slices, e.g. "arm64 x86_64" for the
-# universal app (build-release.py --universal). Called by
-# build-package-native.sh and build-release.py --stage native; package.sh ships OUT-DIR's LICENSE, patch and SOURCE.txt.
+# universal app (scripts/vendor). Called by build-package-native.sh and scripts/vendor, which ships OUT-DIR's
+# LICENSE, patch and SOURCE.txt.
 #
 #     build-iboot32patcher.sh SRC-DIR OUT-DIR
 set -euo pipefail

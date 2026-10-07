@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Merge per-architecture native build roots into one universal root for package.sh.
+"""Merge per-architecture native build roots into one universal root for scripts/vendor.
 
 Each input is a native root for a different LTM_ARCH: a build-package-native.sh
-output, or a build-release.py --stage native root (its prefix and static deps
-reused from --native-deps, QEMU built elsewhere). Each part is read from where the
-root's native-build.json says it is. The output has the one-step layout package.sh
+output (or a root whose prefix and static deps come from another, QEMU built elsewhere). Each part is read from where the
+root's native-build.json says it is. The output has the layout scripts/vendor
 consumes: every Mach-O (dylibs, executables, static archives) is lipo'd; all other
 files must match exactly once each slice's build paths are replaced with the output's.
-iBoot32Patcher is not merged: build-release.py builds it for both slices.
+iBoot32Patcher is not merged: scripts/vendor builds it for both slices.
 """
 import argparse
 import json

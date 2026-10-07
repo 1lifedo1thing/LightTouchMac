@@ -23,6 +23,5 @@ controller's or the view's own state, which none of E6's extractions moves:
 
 Not production slices, listed so nobody hunts for them: `offline/check-model-startup` slices its sibling
 `check-model.py`'s fixture; `offline/check-reap-reason` cuts `DeviceTermination` out of `Shared/DeviceLink.swift`
-(the link itself needs the C channel); `release/check-package-layout` and `release/test-signing` run functions cut
-out of `scripts/package.sh` (shell, not Swift); `sessions/matrix.py`, `release/test-dependency-sources.py` use
+(the link itself needs the C channel); `sessions/matrix.py`, `release/test-dependency-sources.py` use
 `index()` on their own data.
