@@ -32,7 +32,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-checks-') as work:
         if '--ui-only' not in sys.argv:
             swift('catalog',common+['tests/fixtures/catalog.swift'])
             swift('network',common+['tests/fixtures/catalog-network.swift'],[port])
-            swift('queue',['LightTouchMac/Features/InstallationQueue.swift','tests/fixtures/installation-queue.swift'])
+            swift('queue',['LightTouchMac/Features/InstallationQueue.swift','LightTouchMac/App/UserActivity.swift','tests/fixtures/installation-queue.swift'])
         if '--ui' in sys.argv or '--ui-only' in sys.argv:
             run([sys.executable,'tests/offline/check-files-ui.py'])
             source=(root/'LightTouchMac/UI/AppsInspectorViewController.swift').read_text()

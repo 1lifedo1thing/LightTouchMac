@@ -430,7 +430,6 @@ final class DisplayView: NSView {
         // deallocate and step() kept polling, deep-copying frames forever. Only
         // masked because closing the window usually quits the app.
         if window == nil {
-            emulator?.screenVisible = false
             modelLoadTask?.cancel()
             modelFallbackTask?.cancel()
             wheelTiltResetTask?.cancel()
@@ -456,14 +455,6 @@ final class DisplayView: NSView {
             name: NSApplication.didChangeScreenParametersNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(releaseHeldKeys),
             name: NSWindow.didResignKeyNotification, object: window)
-        // Covered, minimized, on another Space or the app hidden: the window's occlusion covers them all.
-        NotificationCenter.default.addObserver(self, selector: #selector(occlusionChanged),
-            name: NSWindow.didChangeOcclusionStateNotification, object: window)
-        occlusionChanged()
-    }
-
-    @objc private func occlusionChanged() {
-        emulator?.screenVisible = window?.occlusionState.contains(.visible) == true
     }
 
     var onPhysicalSizeUnavailable: (() -> Void)?

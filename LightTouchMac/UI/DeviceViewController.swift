@@ -56,7 +56,25 @@ final class DeviceViewController: NSViewController {
     override func viewDidAppear() {
         super.viewDidAppear()
         view.window?.makeFirstResponder(displayView)
+        // Covered, minimized, on another Space or the app hidden: the window's occlusion covers them all.
+        occlusion.map(NotificationCenter.default.removeObserver)
+        occlusion = NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification,
+                                                           object: view.window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateScreenVisible() }
+        }
+        updateScreenVisible()
     }
+
+    override func viewDidDisappear() {
+        super.viewDidDisappear()
+        occlusion.map(NotificationCenter.default.removeObserver)
+        occlusion = nil
+        emulator.screenVisible = false
+    }
+
+    /// EmulatorController.screenVisible: the helper paces itself by it.
+    private var occlusion: NSObjectProtocol?
+    private func updateScreenVisible() { emulator.screenVisible = view.window?.occlusionState.contains(.visible) == true }
 
     var screen: DisplayView { displayView }
     

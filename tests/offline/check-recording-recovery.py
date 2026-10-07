@@ -83,5 +83,5 @@ with tempfile.TemporaryDirectory(prefix='ltm-recording-recovery-') as directory:
     (work/'check.swift').write_text(fixture)
     subprocess.run(['xcrun', 'swiftc', *device_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-swift-version', '6', '-default-isolation', 'MainActor',
                     '-module-cache-path', str(work/'modules'), str(root/'LightTouchMac/Features/ScreenMovieWriter.swift'),
-                    str(root/'LightTouchMac/Features/ScreenRecordingSession.swift'), str(work/'check.swift'), '-o', str(work/'check')], check=True)
+                    str(root/'LightTouchMac/Features/ScreenRecordingSession.swift'), str(root/'LightTouchMac/App/UserActivity.swift'), str(work/'check.swift'), '-o', str(work/'check')], check=True)
     subprocess.run([str(work/'check'), str(work)], check=True, timeout=30)
