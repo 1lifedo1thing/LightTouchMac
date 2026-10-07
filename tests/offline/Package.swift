@@ -49,8 +49,8 @@ let package = Package(name: "OfflineChecks", platforms: [.macOS("14.4")],
         .target(name: "Engine", dependencies: ["CIMobileDevice", .product(name: "HostServiceWire", package: "DeviceServices")],
                 swiftSettings: settings + [.unsafeFlags(imobiledevice + ["-Xfrontend", "-import-module", "-Xfrontend", "CIMobileDevice"])]),
         // A private home and app state for the test process (LightTouchCore's own, Tests/TestIsolation).
-        .target(name: "TestIsolation"),
-        .testTarget(name: "OfflineTests", dependencies: ["AppViews", "Display", "Engine", "Helper", "Menus", "Model", "Sidebar", "TestIsolation",
+        .target(name: "OfflineIsolation"),
+        .testTarget(name: "OfflineTests", dependencies: ["AppViews", "Display", "Engine", "Helper", "Menus", "Model", "Sidebar", "OfflineIsolation",
                                                          .product(name: "DeviceRuntime", package: "DeviceRuntime")], swiftSettings: settings + [.unsafeFlags(imobiledevice)]),
     ],
     swiftLanguageModes: [.v5])

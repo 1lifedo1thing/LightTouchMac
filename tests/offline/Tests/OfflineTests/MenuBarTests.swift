@@ -14,7 +14,8 @@ extension SharedState {
     @Suite struct MenuBarTests {
         /// One line per item; "-" is a separator. The iPad's differs only in its name: every board lists every item
         /// (Compass Heading, Carrier…), and what its hardware lacks is dimmed by validation, never left out.
-        static let ipodBar = """
+        static func bar(_ app: String) -> String { ipodBar.replacingOccurrences(of: "Light Touch", with: app) }
+    static let ipodBar = """
             Light Touch/About Light Touch
             Light Touch/-
             Light Touch/Settings…  ⌘,
@@ -189,13 +190,15 @@ extension SharedState {
         @Test func menuBar() {
             _ = NSApplication.shared
             MainMenuBuilder.install(profile: .k48)
+        // The application menu is named for the running process (xctest under Xcode, Light Touch in the app).
+        let appName = NSApp.mainMenu!.items[0].submenu!.items[0].title.replacingOccurrences(of: "About ", with: "")
             let ipad = NSApp.mainMenu!.items.flatMap { dump($0.submenu!, $0.title) }
-            let expectedIPad = Self.ipodBar.replacingOccurrences(of: "iPod", with: "iPad").components(separatedBy: "\n")
+            let expectedIPad = Self.bar(appName).replacingOccurrences(of: "iPod", with: "iPad").components(separatedBy: "\n")
             #expect(ipad == expectedIPad, "iPad menu bar:\n\(ipad.joined(separator: "\n"))")
             MainMenuBuilder.install(profile: .n72)
             let root = NSApp.mainMenu!
             let bar = root.items.flatMap { dump($0.submenu!, $0.title) }
-            #expect(bar == Self.ipodBar.components(separatedBy: "\n"), "iPod menu bar:\n\(bar.joined(separator: "\n"))")
+            #expect(bar == Self.bar(appName).components(separatedBy: "\n"), "iPod menu bar:\n\(bar.joined(separator: "\n"))")
             // With no device the Apps menu still lists its commands, every one dimmed, and a
             // device's inspector leaving hands it back the same way (MainMenuBuilder.resetAppsMenu).
             let apps = root.item(withTitle: "Apps")!.submenu!

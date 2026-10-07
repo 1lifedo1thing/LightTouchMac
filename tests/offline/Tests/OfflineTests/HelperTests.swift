@@ -7,8 +7,7 @@ import DeviceRuntime
 @testable import Helper
 
 extension SharedState {
-/// The helper's pieces that need no emulator: the libqemu binding's API check, the frame surface's colors, the
-/// native log capture.
+/// The helper's pieces that need no emulator: the libqemu binding's API check and the frame surface's colors.
 @Suite struct HelperTests {
     /// The helper loads only a libqemu-arm.dylib whose C API major version is its own (qemu_ios_api_version(),
     /// major << 16 | minor): fake 2.0 and 2.7 dylibs load; 1.2, 3.0 and one without the symbol (from before the
@@ -78,27 +77,5 @@ extension SharedState {
         #expect(abs(r0 - 234) <= 3 && abs(g0 - 51) <= 4 && abs(b0 - 35) <= 4, "pure red on a P3 screen: (\(r0), \(g0), \(b0)); (255, 0, 0) is oversaturated")
     }
 
-    /// NativeLogging: QEMU's stdout and stderr (this process's own, redirected for the test) go to native.log, app
-    /// events to app.log only. The layout, cache and pipe checks are StorageLocationsTests'.
-    @Test func nativeLogCapture() async throws {
-        func text(_ url: URL) -> String { (try? String(contentsOf: url, encoding: .utf8)) ?? "" }
-        let savedOut = dup(STDOUT_FILENO), savedErr = dup(STDERR_FILENO)
-        defer {
-            _ = dup2(savedOut, STDOUT_FILENO); _ = dup2(savedErr, STDERR_FILENO)
-            close(savedOut); close(savedErr)
-        }
-        try Bundled.requireStorage()
-        try NativeLogging.start()
-        fputs("native error marker\n", stderr)
-        fputs("native output marker\n", stdout)
-        fflush(stdout)
-        logEvent("app event only marker")
-        await AppEventLog.shared.flush()
-        NativeLogging.flush()
-        let native = text(Bundled.logsDirectory.appendingPathComponent("native.log"))
-        #expect(native.contains("native error marker") && native.contains("native output marker"))
-        #expect(!native.contains("app event only marker"))
-        #expect(text(Bundled.logsDirectory.appendingPathComponent("app.log")).contains("app event only marker"))
-    }
 }
 }

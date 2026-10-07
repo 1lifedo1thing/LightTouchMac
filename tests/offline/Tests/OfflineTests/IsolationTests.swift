@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import TestIsolation
+import OfflineIsolation
 @testable import LightTouchCore
 
 /// The views here read and write app state (the library, preferences, caches, logs): never the real one.
