@@ -23,7 +23,27 @@ extension SharedState {
             return [view] + children.flatMap(descendants)
         }
 
-        /// The Debug Port sheet lays out at a real size with its commands. The menu items and the sheet's text are
+        /// Windows opt out of state restoration (no restoration class, no autosave) unless named; a named window keeps
+    /// only its frame: the first has nothing to apply, a later one with the same name opens where it was left.
+    /// LightTouchApplication's own restoration overrides need their own app process and aren't checked here;
+    /// RestorationDefaultsTests has the process-only defaults.
+    @Test func windowRestorationPolicy() {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 240), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isRestorable = true
+        WindowRestorationPolicy.configure(window)
+        #expect(!window.isRestorable && window.restorationClass == nil && window.frameAutosaveName.isEmpty)
+        let name = "ltm-frame-test-" + UUID().uuidString
+        defer { UserDefaults.standard.removeObject(forKey: "NSWindow Frame " + name) }
+        let first = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 240), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        #expect(!WindowRestorationPolicy.configure(first, frameAutosaveName: name) && first.frameAutosaveName == name && !first.isRestorable)
+        let moved = NSRect(x: 123, y: 77, width: 500, height: 410)
+        first.setFrame(moved, display: false)
+        first.saveFrame(usingName: name)
+        let second = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 240), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        #expect(WindowRestorationPolicy.configure(second, frameAutosaveName: name) && second.frame.size == moved.size, "saved frame not applied: \(second.frame)")
+    }
+
+    /// The Debug Port sheet lays out at a real size with its commands. The menu items and the sheet's text are
         /// LightTouchCoreTests' DeviceSettingsMenuTests.
         @Test func debugPortSheet() {
             let lldb = "lldb -o 'gdb-remote 127.0.0.1:4321' KERNELCACHE"
