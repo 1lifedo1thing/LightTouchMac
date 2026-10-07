@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The Store's filter pull-down and the version sheet as AppKit draws them. Offline, nothing on screen.
 
-The filter's rules (CatalogFilter) and the sheet's model (CatalogDetailsModel) are Swift Testing's StoreFilterTests
+The filter's rules (CatalogFilter) and the sheet's model (CatalogDetailsModel) are Swift Testing's CatalogFilterTests
 and CatalogDetailsModelTests; this is the AppKit side over them, against the recorded Legacy Store responses in
 tests/fixtures/store-filter. Filter (real CatalogFilterButton, driven through its menu items, in a throwaway defaults
 suite): the iPod's family choice is dimmed and its Show Unavailable Apps toggle live and checked; a toggle reports
