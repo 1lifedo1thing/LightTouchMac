@@ -8,6 +8,25 @@ enum LibraryFixtures {
     static var shippedCatalog: URL { repo.appendingPathComponent("LightTouchMac/Resources/firmware-catalog.json") }
     static var fakeFirmwarekit: URL { repo.appendingPathComponent("tests/fixtures/fake-firmwarekit.py") }
 
+    /// Points the app's state and log roots (Bundled, which logEvent's app.log goes through) at a temporary
+    /// directory before anything in this process reads them, so code under test that logs never writes the real
+    /// library. Call first in any test whose code logs.
+    static let isolatedAppState: URL = {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("ltm-tests-state-\(getpid())", isDirectory: true)
+        setenv("LTM_STATE_DIR", url.path, 1)
+        return url
+    }()
+
+    /// An IPSW-shaped zip holding only a Restore.plist with this ProductType and build.
+    static func restoreZip(_ url: URL, product: String, build: String) throws {
+        let folder = url.deletingLastPathComponent().appendingPathComponent(url.lastPathComponent + ".d")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let plist = folder.appendingPathComponent("Restore.plist")
+        try PropertyListSerialization.data(fromPropertyList: ["ProductType": product, "ProductBuildVersion": build],
+                                           format: .xml, options: 0).write(to: plist)
+        try run("/usr/bin/zip", ["-q", "-j", url.path, plist.path])
+    }
+
     /// Runs `executable` to its exit; its stdout. Throws on a non-zero status.
     @discardableResult
     static func run(_ executable: String, _ arguments: [String], environment: [String: String]? = nil) throws -> String {
