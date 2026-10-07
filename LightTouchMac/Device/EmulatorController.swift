@@ -173,7 +173,7 @@ final class EmulatorController {
     }
     func hostWillSleep() { hostPower.hostWillSleep() }
     func hostDidWake() { hostPower.hostDidWake() }
-    func resyncTimeZone() { scheduleTimeZoneSync(generation: bootGeneration) }
+    func resyncTimeZone() { timeZone.resync() }
 
     /// Per-user machine state (the NAND copy-on-write overlay, logs).
     private var stateDir: URL { Bundled.stateDirectory }
@@ -453,82 +453,13 @@ final class EmulatorController {
     /// so its media import and agent extras are skipped.
     var hasGuestTools: Bool { profile.hasGuestTools }
 
-    /// Keep the guest's timezone matched to the Mac's: once when the device
-    /// first answers after this boot, and again whenever the host's zone
-    /// changes (travel). Set through lockdown's TimeZone value — lockdownd
-    /// rewrites /var/db/timezone/localtime and SpringBoard follows live, so
-    /// no respring (the lock screen's clock too: lockdown-tz refreshes it).
-    /// The link persists, so later boots start in the zone; a fresh device's
-    /// first lock screen is drawn before lockdown answers and shows the
-    /// restore's Pacific zone until this lands (smoke #58). The guest's clock
-    /// itself is UTC from the RTC model; only the zone needs the host's help.
-    private var timeZoneObserver: NSObjectProtocol? {
-        get { bootScope.timeZoneObserver }
-        set { bootScope.timeZoneObserver = newValue }
-    }
-    @ObservationIgnored private var timeZoneScope = 0
-    private var timeZoneTask: Task<Void, Never>? {
-        get { bootScope[.timeZone] }
-        set { bootScope[.timeZone] = newValue }
-    }
-
-    private func stopTimeZoneSync() {
-        timeZoneScope += 1
-        timeZoneTask?.cancel()
-        timeZoneTask = nil
-        timeZoneObserver = nil
-        bootScope.localeObserver = nil
-    }
-
-    func startTimeZoneSync() {
-        stopTimeZoneSync()
-        let generation = bootGeneration
-        let scope = timeZoneScope
-        timeZoneObserver = NotificationCenter.default.addObserver(forName: .NSSystemTimeZoneDidChange,
-                                               object: nil, queue: nil) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, generation == self.bootGeneration, scope == self.timeZoneScope else { return }
-                self.scheduleTimeZoneSync(generation: generation)
-            }
-        }
-        // The region and the 24-hour setting follow the Mac's too.
-        bootScope.localeObserver = NotificationCenter.default.addObserver(forName: NSLocale.currentLocaleDidChangeNotification,
-                                                                         object: nil, queue: nil) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, generation == self.bootGeneration, scope == self.timeZoneScope else { return }
-                self.scheduleTimeZoneSync(generation: generation)
-            }
-        }
-        scheduleTimeZoneSync(generation: generation)
-    }
-
-    private func scheduleTimeZoneSync(generation: Int) {
-        timeZoneTask?.cancel()
-        timeZoneTask = Task { [weak self] in await self?.syncTimeZoneWhenReady(generation: generation) }
-    }
-
-    /// Wait out the boot (services come up well after lockdown answers), then
-    /// set until one attempt sticks — a transient "Invalid service" right
-    /// after boot just means the next 5 s tick tries again. A zone the device
-    /// keeps whatever lockdown says stays until the Mac's zone changes again.
-    /// A new timezone notification replaces the pending operation for this boot.
-    private func syncTimeZoneWhenReady(generation: Int) async {
-        while !Task.isCancelled {
-            guard generation == bootGeneration, !shuttingDown, !isDead, !isPoweredOff else { return }
-            if state == .running, !preparingDevice, canManageApps, await deviceReady() {
-                guard generation == bootGeneration, !Task.isCancelled else { return }
-                do {
-                    let dated = lock?.pinsClock == true
-                    try await services.setTimeZone(TimeZone.current.identifier, keepClock: dated, guest: guest, region: .mac)
-                    return
-                } catch DeviceToolsError.zoneKept(let zone) {
-                    guard generation == bootGeneration, !Task.isCancelled else { return }
-                    logEvent("timezone: the device keeps \(zone)")
-                    return
-                } catch {}
-            }
-            try? await Task.sleep(for: .seconds(5))
-        }
+    /// The guest's zone and region follow the Mac's (TimeZoneSync).
+    @ObservationIgnored private lazy var timeZone = TimeZoneSync(host: self)
+    private func stopTimeZoneSync() { timeZone.stop() }
+    func startTimeZoneSync() { timeZone.start() }
+    func setGuestTimeZone(_ identifier: String) async throws {
+        let dated = lock?.pinsClock == true
+        try await services.setTimeZone(identifier, keepClock: dated, guest: guest, region: .mac)
     }
 
     /// App quit (after the clean shutdowns) and restarts. The helper gets
@@ -940,7 +871,7 @@ final class EmulatorController {
                                 logEvent("networking: Setup finished, lifting slirp restrict on wifi0")
                                 // Setup's country page set its own locale (7.x lists Afghanistan first: fa_AF);
                                 // the Mac's region again, as every later boot applies it.
-                                self.scheduleTimeZoneSync(generation: generation)
+                                self.timeZone.schedule(generation: generation)
                             } else {
                                 self.setupGate = gate
                             }
@@ -1186,7 +1117,7 @@ final class EmulatorController {
 // The session's state machines (LightTouchCore/Session) run against the controller through these.
 extension EmulatorController: MachineHost, ConnectionHost, ActivationServices, ReadinessHost, BootWatchHost,
                               ShutdownHost, EraseHost, BootCycleHost, AppLaunchHost, RotationHost,
-                              InputHost, GuestPackageHost {
+                              InputHost, GuestPackageHost, TimeZoneHost {
     var helper: DeviceHelper? { process }
     var helperLink: HelperLink? { link }
     var isPainting: Bool { state == .running }
