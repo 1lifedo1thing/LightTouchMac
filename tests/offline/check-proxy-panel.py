@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Exercise the real proxy panel's choices and transient status layout, and the
-per-device proxy files (each device's helper proxy reads its own routing)."""
+"""Exercise the real proxy panel's choices, local archive dates and transient status layout (AppKit).
+The per-device proxy files are WebProxyConfigurationTests'."""
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
@@ -31,29 +31,6 @@ func descendants(_ view: NSView) -> [NSView] {
 @main struct Check {
  @MainActor static func main() {
   NSTimeZone.default = TimeZone(identifier: CommandLine.arguments[1])!
-  // The device that kept the legacy pairing conf keeps the legacy files (its guest trusts that CA).
-  let legacy = DeviceInstance(storage: .init(usbmuxConf: "work/usbmuxd-conf"), paths: .init(directory: URL(fileURLWithPath: "/nonexistent")))
-  precondition(WebProxyConfiguration.directory(for: legacy) == Bundled.stateDirectory)
-  let own = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("ltm-proxy-\(UUID().uuidString)")
-  defer { try? FileManager.default.removeItem(at: own) }
-  let other = DeviceInstance(storage: .init(usbmuxConf: "Devices/x/usbmuxd-conf"), paths: .init(directory: own))
-  precondition(WebProxyConfiguration.directory(for: other) == own)
-  precondition(WebProxyConfiguration.load(from: own) == WebProxyConfiguration(), "a new device starts with the proxy off")
-  let saved = WebProxyConfiguration(mode: .archive, archiveDate: "20100101")
-  try! saved.save(in: own)
-  precondition(WebProxyConfiguration.load(from: own) == saved)
-  // An earlier build's web-proxy.json is read once and becomes web-proxy.plist.
-  let earlier = own.appendingPathComponent("earlier")
-  try! FileManager.default.createDirectory(at: earlier, withIntermediateDirectories: true)
-  try! Data(#"{"mode":"direct","archiveDate":"20080808"}"#.utf8).write(to: earlier.appendingPathComponent("web-proxy.json"))
-  precondition(WebProxyConfiguration.load(from: earlier) == WebProxyConfiguration(mode: .direct, archiveDate: "20080808"))
-  precondition(!FileManager.default.fileExists(atPath: earlier.appendingPathComponent("web-proxy.json").path)
-               && FileManager.default.fileExists(atPath: WebProxyConfiguration.preferencesFile(in: earlier).path), "web-proxy.json became web-proxy.plist")
-  precondition((try? String(contentsOf: WebProxyConfiguration.file(in: own), encoding: .utf8)) == "archive\n20100101\n")
-  let endpoint = WebProxyConfiguration.endpoint(directory: own)
-  precondition(endpoint.config == WebProxyConfiguration.file(in: own).path && endpoint.socket.utf8.count < 104)
-  precondition(endpoint != WebProxyConfiguration.endpoint(directory: own.appendingPathComponent("other")), "one socket per device")
-  precondition(WebProxyConfiguration.guestForward(socket: "/t/a,b's") == ",guestfwd=tcp:10.0.2.100:3128-cmd:/usr/bin/nc -U '/t/a,,b'\"'\"'s'")
   _ = NSApplication.shared
   for mode in [WebProxyConfiguration.Mode.off, .direct, .archive] {
    let initial = WebProxyConfiguration(mode: mode, archiveDate: "20090909")
