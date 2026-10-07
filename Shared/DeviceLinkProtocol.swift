@@ -94,6 +94,9 @@ nonisolated public enum LinkRequest: Codable, Sendable, Equatable {
     case modemSet(property: String, value: String)
     /// -> `.modemStatus(json)`: qemu_ios_ui_modem_status (as of the previous poll); nil without a modem.
     case modemStatus
+    /// qemu_ios_ui_hardware_keyboard (API 1.1): attach or detach the USB keyboard; `.ok(false)` where the machine
+    /// can't, or an older dylib.
+    case hardwareKeyboard(Bool)
 }
 
 nonisolated public enum LinkReply: Codable, Sendable, Equatable {

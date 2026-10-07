@@ -205,6 +205,7 @@ final class DeviceHost: @unchecked Sendable {
         case .audioStart: reply(audio.start())
         case let .battery(level, charging): reply(.ok(qemu.battery(Int32(level), Int32(charging))))
         case let .usbConnection(attached): reply(.ok(qemu.usbConnection(attached)))
+        case let .hardwareKeyboard(attached): reply(.ok(qemu.hardwareKeyboard?(attached) ?? false))
         case let .compass(heading): reply(.ok(qemu.compass(Int32(heading))))
         case let .usbCharger(high): reply(.ok(qemu.usbCharger(high)))
         case let .orientation(value): reply(.ok(qemu.orientation(Int32(value))))

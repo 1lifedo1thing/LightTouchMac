@@ -200,6 +200,7 @@ enum MainMenuBuilder {
         input.addItem(item("Volume Down", #selector(MainWindowController.deviceVolumeDown(_:)), String(UnicodeScalar(NSDownArrowFunctionKey)!), [.option, .command]))
         input.addItem(.separator())
         input.addItem(item("Send Keyboard Input", #selector(MainWindowController.toggleKeyboardInput(_:))))
+        input.addItem(item("Connect Hardware Keyboard", #selector(MainWindowController.toggleHardwareKeyboard(_:)), "k", [.shift, .command]))
         menu.addItem(submenu(input, title: "Input"))
         let network = NSMenu(title: "Network")
         network.addItem(item("Connect to the Internet", #selector(AppDelegate.toggleInternetAccess(_:))))

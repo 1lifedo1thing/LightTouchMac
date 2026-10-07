@@ -119,6 +119,7 @@ Device/Input/Volume Up  ⌥⌘↑
 Device/Input/Volume Down  ⌥⌘↓
 Device/Input/-
 Device/Input/Send Keyboard Input
+Device/Input/Connect Hardware Keyboard  ⇧⌘k
 Device/Network ▸
 Device/Network/Connect to the Internet
 Device/Network/-

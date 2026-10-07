@@ -17,6 +17,8 @@ nonisolated struct DeviceSettings: Codable, Equatable {
     var autoRotateWithGuest: Bool?
     var debugPort: Bool?
     var carrier: CarrierSettings?
+    /// Connect Hardware Keyboard (⇧⌘K); nil is connected.
+    var hardwareKeyboard: Bool?
 
     static func url(_ device: URL) -> URL { device.appendingPathComponent("settings.plist") }
 

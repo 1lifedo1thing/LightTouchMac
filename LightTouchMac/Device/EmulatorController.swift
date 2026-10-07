@@ -820,6 +820,7 @@ final class EmulatorController {
         if state == .booting, !poweringOn {
             state = .running
             applyBattery()
+            applyHardwareKeyboard()
         }
     }
 
@@ -1439,6 +1440,23 @@ final class EmulatorController {
         let enabled = !keyboardInputEnabled
         changeSettings { $0.keyboardInputEnabled = enabled }
         onStatusChange?()
+    }
+
+    /// Connect Hardware Keyboard (⇧⌘K, per device): unplugged, iOS shows its on-screen keyboard in a text field.
+    var hardwareKeyboardConnected: Bool { settings.hardwareKeyboard ?? true }
+    func toggleHardwareKeyboard() {
+        let connected = !hardwareKeyboardConnected
+        changeSettings { $0.hardwareKeyboard = connected }
+        applyHardwareKeyboard(changed: true)
+        onStatusChange?()
+    }
+    /// Each boot starts with the keyboard plugged in (BootRecipe's usb-kbd): unplug it when it's off.
+    private func applyHardwareKeyboard(changed: Bool = false) {
+        guard profile.canToggleHardwareKeyboard, changed || !hardwareKeyboardConnected else { return }
+        let connected = hardwareKeyboardConnected
+        control(.hardwareKeyboard(connected)) { ok in
+            if !ok { logEvent("keyboard: couldn’t \(connected ? "connect" : "disconnect") the hardware keyboard") }
+        }
     }
 
     func sendKey(macKeyCode: UInt16, down: Bool) {

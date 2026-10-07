@@ -92,6 +92,9 @@ nonisolated enum DeviceProfile: Equatable {
     /// The iPod image carries our guest shell and agent; the stock iPad has none, nor has 1.x (smoke.md #31).
     var hasGuestTools: Bool { self == .iPodTouch2G }
     var hasCompass: Bool { self == .iPad1 }
+    /// Boards whose USB keyboard can be unplugged and plugged back while running (qemu_ios_ui_hardware_keyboard);
+    /// the others keep the one they booted with (or have none: the n18 and n88).
+    var canToggleHardwareKeyboard: Bool { self == .iPad1 || self == .iPodTouch4G || self == .iPhone4 }
     /// A cellular modem (the Carrier panel): the original iPhone, the 3GS and the iPhone 4.
     var hasCellular: Bool { self == .iPhone2G || self == .iPhone3GS || self == .iPhone4 }
     /// Whether the board's charging is its USB port's current (the iPad's usb-charger), not the PMU's charger.

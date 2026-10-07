@@ -37,6 +37,14 @@ code = r'''import Foundation
   precondition(String(decoding: bytes.prefix(5), as: UTF8.self) == "<?xml", "an XML property list")
   let left = defaults.persistentDomain(forName: suite) ?? [:]
   precondition(left.keys.sorted() == ["captureFolder"], "every per-device and app-wide key went, a deleted device's too: \(left.keys.sorted())")
+  // Connect Hardware Keyboard: off is saved per device and read back; unset is connected.
+  var keyboard = DeviceSettings.load(DeviceInstance.directory(b, state: state))
+  precondition(keyboard.hardwareKeyboard == nil)
+  keyboard.hardwareKeyboard = false
+  try keyboard.save(DeviceInstance.directory(b, state: state))
+  precondition(DeviceSettings.load(DeviceInstance.directory(b, state: state)).hardwareKeyboard == false, "the keyboard choice wasn't kept")
+  precondition(DeviceProfile.iPhone4.canToggleHardwareKeyboard && !DeviceProfile.iPhone3GS.canToggleHardwareKeyboard
+               && !DeviceProfile.iPodTouch2G.canToggleHardwareKeyboard, "keyboard toggle boards")
   print("PASS: per-device defaults (notice, pose, keyboard, debug port, carrier) and the app-wide fallbacks move into settings.plist; the keys go")
  }
 }

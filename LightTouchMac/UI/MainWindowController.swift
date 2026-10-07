@@ -949,6 +949,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     }
 
     @objc func toggleKeyboardInput(_ sender: Any?) { emulator?.toggleKeyboardInput() }
+    @objc func toggleHardwareKeyboard(_ sender: Any?) { emulator?.toggleHardwareKeyboard() }
 
     @objc func toggleFiles(_ sender: Any?) {
         if filesWindow == nil {
@@ -1528,6 +1529,9 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(toggleKeyboardInput(_:)):
             menuItem.state = emulator.keyboardInputEnabled ? .on : .off
             return true
+        case #selector(toggleHardwareKeyboard(_:)):
+            menuItem.state = emulator.hardwareKeyboardConnected ? .on : .off
+            return emulator.profile.canToggleHardwareKeyboard
         case #selector(deviceShutDown(_:)): return emulator.canShutDown
         case #selector(deviceForceStop(_:)): return emulator.canForceStop
         case #selector(deviceReset(_:)):  return !emulator.isDead
