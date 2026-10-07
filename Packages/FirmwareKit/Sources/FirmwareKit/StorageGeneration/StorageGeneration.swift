@@ -371,9 +371,14 @@ public actor StorageGeneration {
                 offset += count
             }
         }
-        guard fsync(fd) == 0, rename(temporary.path, destination.path) == 0 else {
+        guard fullSync(fd), rename(temporary.path, destination.path) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
         try sync(destination.deletingLastPathComponent())
     }
+    /// Every write here publishes (a record, an intent) by the rename after it. fsync only hands data to the
+    /// drive; F_FULLFSYNC also empties the drive's cache, so this file and everything synced before it (the
+    /// generation's pages) reach the medium before the rename can, and a power cut leaves the old generation or
+    /// the new one whole. A volume without F_FULLFSYNC (some network shares) gets fsync.
+    static func fullSync(_ fd: Int32) -> Bool { fcntl(fd, F_FULLFSYNC) == 0 || fsync(fd) == 0 }
 }
