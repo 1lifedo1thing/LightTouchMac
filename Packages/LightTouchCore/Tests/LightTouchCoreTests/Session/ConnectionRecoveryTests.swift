@@ -25,7 +25,9 @@ struct ConnectionRecoveryTests {
     @Test func repeatedManagementFailuresRecoverOnceWithCooldownAndGuards() async throws {
         try await withScratchDirectory { directory in
             let c = session(directory)
-            c.recovery.reportFailure(DeviceError.instproxy(.opInProgress, phase: "browse"), operation: "Refreshing apps")
+            #expect(observes({ _ = c.recovery.issue }) {
+                c.recovery.reportFailure(DeviceError.instproxy(.opInProgress, phase: "browse"), operation: "Refreshing apps")
+            }, "the inspector's placeholder and the status line follow the issue")
             #expect(c.recovery.issue?.summary == "Updating apps…" && c.deviceReachable == nil, "installd busy blocks nothing")
             for error: DeviceError in [.endpointBusy, .notAttached, .unavailable, .timedOut(operation: "USB connection"),
                                        .instproxy(.opFailed, phase: "browse"), .lockdown(-17), .lockdown(-4), .lockdown(-27), .lockdown(-32)] {

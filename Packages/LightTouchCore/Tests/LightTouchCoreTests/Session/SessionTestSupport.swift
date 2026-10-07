@@ -1,10 +1,20 @@
 import Foundation
+import Observation
 import Testing
 import HostServiceWire
 import HostRuntime
 import DeviceRuntime
 @testable import LightTouchCore
 
+
+/// Whether `body` changes anything `read` reads, as Observation reports it (at the change, synchronously).
+func observes(_ read: () -> Void, during body: () throws -> Void) rethrows -> Bool {
+    final class Flag: @unchecked Sendable { var raised = false }
+    let flag = Flag()
+    withObservationTracking(read) { flag.raised = true }
+    try body()
+    return flag.raised
+}
 
 /// A fresh directory under the temporary directory for an async body, removed afterwards.
 func withScratchDirectory<T>(_ body: (URL) async throws -> T) async throws -> T {
@@ -131,7 +141,6 @@ final class FakeSession: MachineHost, ConnectionHost, ActivationServices, Readin
     var recoveries = 0
     func reconnectManagement() async throws { recoveries += 1 }
     func appsMayHaveChanged() { steps.append("appsChanged") }
-    func connectionChanged() {}
 
     // MARK: Lockdown (ActivationServices)
     var activationAnswers: [String?] = [], activationAsked = 0

@@ -27,22 +27,14 @@ import Cocoa
 
 /// A started device: its record and the controller that runs its helper.
 /// A restart replaces the whole session (DeviceSessionHost.restart).
+/// Its state is the controller's, observable: observers track what they show (ObservationLoop).
 @MainActor final class DeviceSession {
-    /// Posted on the main actor for every emulator status change. The object is the session.
-    static let didChangeNotification = Notification.Name("DeviceSessionDidChange")
-
     var instance: DeviceInstance { emulator.instance }
     let emulator: EmulatorController
     var profile: Board { emulator.profile }
     private(set) lazy var workspace = DeviceWorkspace(emulator: emulator)
 
-    init(emulator: EmulatorController) {
-        self.emulator = emulator
-        emulator.onStatusChange = { [weak self] in
-            guard let self else { return }
-            NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
-        }
-    }
+    init(emulator: EmulatorController) { self.emulator = emulator }
 
     var phase: SessionPhase {
         if emulator.isDead {

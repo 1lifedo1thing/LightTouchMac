@@ -2,6 +2,7 @@
 // recovery of an unresponsive management service, and the once-per-boot activation verdict.
 
 import Foundation
+import Observation
 import HostRuntime
 import HostServiceWire
 import DeviceRuntime
@@ -26,12 +27,11 @@ public protocol ConnectionHost: AnyObject {
     func reconnectManagement() async throws
     /// The app list may have changed (.ltmAppsChanged).
     func appsMayHaveChanged()
-    func connectionChanged()
 }
 
 /// A transient installd transition is not a dead device. If repeated reads fail, reopen the management service
 /// through the independent guest agent. Never reboot the iPod or touch its applications to repair a connection.
-public final class ConnectionRecovery {
+@Observable public final class ConnectionRecovery {
     private unowned let host: ConnectionHost
     private let notices: DeviceNotices
     public init(host: ConnectionHost, notices: DeviceNotices) {
@@ -44,7 +44,7 @@ public final class ConnectionRecovery {
     var lastRecovery = Date.distantPast
     /// After lockdownd restarts, before the app list is read again.
     var settle: Duration = .seconds(2)
-    public var isReconnecting = false { didSet { host.connectionChanged() } }
+    public var isReconnecting = false
     private var task: Task<Void, Never>? {
         get { host.bootScope[.recovery] }
         set { host.bootScope[.recovery] = newValue }
@@ -65,7 +65,6 @@ public final class ConnectionRecovery {
             // Killing lockdownd during that transition only makes it worse.
             failures = 0
         }
-        host.connectionChanged()
     }
 
     /// A service answered: nothing blocks commands any more, not even a stale activation issue.

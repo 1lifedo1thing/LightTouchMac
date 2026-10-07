@@ -14,11 +14,12 @@
 
 import LightTouchCore
 import Foundation
+import Observation
 import Subprocess
 import System
 
-@MainActor
-public final class USBMux {
+/// Observable: `session` is whether app management has a daemon (the controller's canManageApps).
+@MainActor @Observable public final class USBMux {
     public init(session: Session? = nil, onUnexpectedExit: (() -> Void)? = nil) {
         self.session = session
         self.onUnexpectedExit = onUnexpectedExit

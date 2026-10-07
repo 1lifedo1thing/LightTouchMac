@@ -9,7 +9,8 @@ import DeviceRuntime
 /// A control request for the running boot: `done(true)` when the machine applied it (BootSessionScope.control).
 public typealias MachineControl = (LinkRequest, @escaping (Bool) -> Void) -> Void
 
-/// Keyboard passthrough (per device, on by default) and Connect Hardware Keyboard (⇧⌘K, per device).
+/// Keyboard passthrough (per device, on by default) and Connect Hardware Keyboard (⇧⌘K, per device). Both are
+/// settings, so observable through the settings file.
 public final class KeyboardInput {
     private let settings: DeviceSettingsFile
     private let canToggleHardwareKeyboard: Bool
@@ -17,7 +18,6 @@ public final class KeyboardInput {
     private let send: (LinkCommand) -> Void
     /// The guest takes key presses now: running, accepting input, display awake.
     private let canPress: () -> Bool
-    public var onChange: (() -> Void)?
 
     public init(settings: DeviceSettingsFile, canToggleHardwareKeyboard: Bool, control: @escaping MachineControl,
                 send: @escaping (LinkCommand) -> Void, canPress: @escaping () -> Bool) {
@@ -33,7 +33,6 @@ public final class KeyboardInput {
     public func toggleEnabled() {
         let enabled = !enabled
         settings.change { $0.keyboardInputEnabled = enabled }
-        onChange?()
     }
 
     /// Unplugged, iOS shows its on-screen keyboard in a text field.
@@ -42,7 +41,6 @@ public final class KeyboardInput {
         let connected = !hardwareConnected
         settings.change { $0.hardwareKeyboard = connected }
         applyHardware(changed: true)
-        onChange?()
     }
 
     /// Each boot starts with the keyboard plugged in (BootRecipe's usb-kbd): unplug it when it's off.

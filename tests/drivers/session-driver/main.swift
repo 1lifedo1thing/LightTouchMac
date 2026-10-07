@@ -147,7 +147,7 @@ extension String {
     var ipod: IPodFiles?
     /// Prepared bases use typed runtime strategy validation; raw historical fixtures use legacyN72.
     var preparedBase: URL?
-    /// EmulatorController.proxyForward's guestfwd, appended to the wifi netdev, and the proxy the helper serves (proxy.swift).
+    /// DeviceWebProxy.forward's guestfwd, appended to the wifi netdev, and the proxy the helper serves (proxy.swift).
     var netdevExtra: String?
     var webProxy: WebProxyEndpoint?
     /// The device's Attach to Local Network, off as the app's default (BootRecipe.wifiNetdev's lan=off).
@@ -246,13 +246,13 @@ extension String {
             }
         }
     }
-    /// EmulatorController.composeGuestOffer for a prepared iPad: the bundled itpack, the base's lock record.
+    /// GuestPackageWatch.compose for a prepared iPad: the bundled itpack, the base's lock record.
     func iPadOffer(base: URL) throws -> String? {
         guard let itpack = config.ipadItpack else { return nil }
         return try offer(base: base, board: profile.rawValue, itpack: itpack)
     }
 
-    /// EmulatorController.composeGuestOffer for any prepared base: the itpack, the base's lock record, and the
+    /// GuestPackageWatch.compose for any prepared base: the itpack, the base's lock record, and the
     /// device's verdicts (guestRecord), as the app offers device.plist `guest`. Without them it_boot reverts a
     /// package it was never told is good after MAX_TRIES boots.
     func offer(base: URL, board: String, itpack: String) throws -> String? {

@@ -176,8 +176,6 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         syncZoomControls()
 
         window.delegate = self
-        NotificationCenter.default.addObserver(self, selector: #selector(sessionDidChange(_:)),
-                                               name: DeviceSession.didChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(preparationDidPublish(_:)),
                                                name: FirmwareJobs.didPublishNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(filesystemActivityDidChange),
@@ -260,9 +258,13 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         handOffIPSW(url, for: entry)
     }
 
-    @objc private func sessionDidChange(_ notification: Notification) {
-        guard notification.object as? DeviceSession === session else { return }
-        refreshForState()
+    /// The selected device's state, tracked: whatever refreshForState reads of it (the subtitle's status line,
+    /// the notice, the startup toast, the toolbar's validation, the dead overlay) refreshes the window when it
+    /// changes. Re-armed on every show(), so it follows the selected session.
+    private var stateTracking: ObservationLoop?
+    private func trackState() {
+        if let stateTracking { stateTracking.rearm() }
+        else { stateTracking = ObservationLoop(read: { [weak self] in self?.refreshForState() }) }
     }
 
     /// Shows the entry's workspace when it has a session, else its placeholder.
@@ -296,7 +298,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         console.split.sources = logs.filter { $0.lastPathComponent == "serial.log" } + logs.filter { $0.lastPathComponent != "serial.log" }
         if let profile = session?.profile ?? entry?.profile, profile != currentProfile { profileDidChange(to: profile) }
         window?.title = entry.map { library.label(for: $0).title } ?? "Light Touch"
-        refreshForState()
+        trackState()
     }
 
     /// Puts the selected session's cached views in the window, or the placeholder.

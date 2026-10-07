@@ -13,10 +13,20 @@ import HostRuntime
 // helper's DeviceLink: status and frames are read from shared memory, input is a
 // command, the rest are requests. One controller per boot: a restart is a new
 // session (DeviceSessionHost.restart).
+//
+// The composition root: the boot, the helper and the status poll are its own; the rest are components in
+// LightTouchCore/Session it owns and forwards to (input, rotation, keyboard, battery, carrier, options, web proxy,
+// guest package, foreground watch, time zone, app management, and the state machines: readiness, recovery,
+// activation, boot watch, shutdown ladder, boot cycle, erase), each running against the controller through its
+// host protocol (the extension at the end).
+//
+// Observable (as are its components): the window, the inspector and the sidebar each track what they show
+// (ObservationLoop). Bookkeeping no observer shows is @ObservationIgnored.
 
 import Cocoa
+import Observation
 
-@MainActor
+@MainActor @Observable
 final class EmulatorController {
 
     let profile: Board
@@ -24,44 +34,35 @@ final class EmulatorController {
     let network: Bool
     private let usbmux = USBMux()
     private(set) var started = false
-    private var stopped = false
-    private var serialCapture: SerialLogCapture?
-    var isErasing = false { didSet { trackStartup(was: oldValue || state == .booting || preparingDevice); onStatusChange?() } }
+    @ObservationIgnored private var stopped = false
+    @ObservationIgnored private var serialCapture: SerialLogCapture?
+    var isErasing = false { didSet { trackStartup(was: oldValue || state == .booting || preparingDevice) } }
     /// When the current startup (erase, boot, readiness) began: the toast's counter, per device, not per window.
     private(set) var startupBegan = Date()
     var isStartingUp: Bool { isErasing || state == .booting || preparingDevice }
     private func trackStartup(was: Bool) { if isStartingUp, !was { startupBegan = Date() } }
 
-    private(set) var isSleeping = false { didSet { if oldValue != isSleeping { onStatusChange?() } } }
-    private(set) var foregroundAppName: String? { didSet { if oldValue != foregroundAppName { onStatusChange?() } } }
-    /// Each device's proxy routing and certificate live beside its own state
-    /// (WebProxyConfiguration.directory): one device's proxy (in its
-    /// helper) never reads another's mode.
-    private var proxyDirectory: URL { WebProxyConfiguration.directory(for: instance) }
+    private(set) var isSleeping = false
+    /// The guest's front app, the web proxy reaching the guest, the end of Setup (ForegroundWatch).
+    @ObservationIgnored private(set) lazy var foreground = ForegroundWatch(host: self)
+    var foregroundAppName: String? { foreground.appName }
+    /// This device's web proxy (DeviceWebProxy): its routing and certificate beside the device's own state.
+    @ObservationIgnored private(set) lazy var proxy = DeviceWebProxy(directory: { [unowned self] in
+        WebProxyConfiguration.directory(for: instance)
+    }, shortName: profile.shortName)
+    private var proxyDirectory: URL { proxy.directory }
     /// iPhone OS 1.x devices take the web proxy's CA while stopped (FirmwareTool.trustAnchor): no agent, no MCInstall.
     private var trustsStopped: Bool { profile.trustsStopped }
-    private(set) lazy var webProxy = WebProxyConfiguration.load(from: proxyDirectory)
-    private(set) var webProxyStatus: WebProxyStatus = .waiting
-    private var proxyRevision = 0
-    private(set) var webProxyAvailable = false
-    func configureWebProxy(_ value: WebProxyConfiguration) throws {
-        guard webProxyAvailable else { throw DeviceToolsError.failed("The proxy is unavailable. Turn on the \(profile.shortName) and connect it to the internet.") }
-        try value.save(in: proxyDirectory)
-        webProxy = value
-        proxyRevision += 1
-        webProxyStatus = .waiting
-        onStatusChange?()
-    }
+    var webProxy: WebProxyConfiguration { proxy.configuration }
+    var webProxyStatus: WebProxyStatus { proxy.status }
+    var webProxyAvailable: Bool { proxy.available }
+    func configureWebProxy(_ value: WebProxyConfiguration) throws { try proxy.configure(value) }
     /// This device's settings.plist (DeviceSettings), read once and written on every change.
-    private lazy var settingsFile = DeviceSettingsFile(directory: instance.paths.directory)
-    private var settings: DeviceSettings { settingsFile.value }
-    private func changeSettings(_ change: (inout DeviceSettings) -> Void) { settingsFile.change(change) }
+    @ObservationIgnored private lazy var settingsFile = DeviceSettingsFile(directory: instance.paths.directory)
     typealias NoticeOperation = DeviceNotices.Operation
-    private(set) lazy var notices: DeviceNotices = {
-        let notices = DeviceNotices(settings: settingsFile, shortName: profile.shortName) { [weak self] in self?.storageFailed ?? false }
-        notices.onChange = { [weak self] in self?.onStatusChange?() }
-        return notices
-    }()
+    @ObservationIgnored private(set) lazy var notices = DeviceNotices(settings: settingsFile, shortName: profile.shortName) {
+        [weak self] in self?.storageFailed ?? false
+    }
     var deviceNotice: String? { notices.message }
     func reportDeviceNotice(_ message: String, for operation: NoticeOperation) { notices.report(message, for: operation) }
     /// The notice's remedy is Erase All Content and Settings (a refused
@@ -73,29 +74,20 @@ final class EmulatorController {
     func dismissDeviceNotice() { notices.dismiss() }
     func resolveDeviceNotice(for operation: NoticeOperation) { notices.resolve(operation) }
 
-    private var foregroundTask: Task<Void, Never>? {
-        get { bootScope[.foreground] }
-        set { bootScope[.foreground] = newValue }
-    }
-    /// Set when this boot came up with slirp restrict=on (5.x, Setup not yet done on this overlay):
-    /// the foreground watch feeds it frontmost and lifts restrict in place once Setup is over.
-    private var setupGate: BootRecipe.SetupNetworkGate?
     let bootScope = BootSessionScope()
     private var bootGeneration: Int { bootScope.generation }
     /// Retired boots' services workers (Stop waits for them only so long).
     let workers = WorkerRetirement()
     var isPoweredOff: Bool { state == .poweredOff }
 
-    private var reportedStorageFailure = false
+    @ObservationIgnored private var reportedStorageFailure = false
     /// From the boot until SpringBoard answers over lockdown; the status line says where it is.
-    private(set) lazy var readiness: ReadinessWatch = {
+    @ObservationIgnored private(set) lazy var readiness: ReadinessWatch = {
         let readiness = ReadinessWatch(host: self, notices: notices)
         readiness.onPreparingChange = { [weak self] old in
             guard let self else { return }
             trackStartup(was: isErasing || state == .booting || old)
-            onStatusChange?()
         }
-        readiness.onChange = { [weak self] in self?.onStatusChange?() }
         return readiness
     }()
     var preparingDevice: Bool { readiness.preparingDevice }
@@ -111,13 +103,8 @@ final class EmulatorController {
     /// app kept a frozen frame with every control live.
     typealias VMState = LightTouchCore.VMState
     var state: VMState = .notStarted {
-        didSet { trackStartup(was: isErasing || oldValue == .booting || preparingDevice); if oldValue != state { onStatusChange?() } }
+        didSet { trackStartup(was: isErasing || oldValue == .booting || preparingDevice) }
     }
-
-    /// Fired on any health-relevant change — a state transition, usbmuxd dying,
-    /// device reachability flipping. Pull model: the observer reads `state`,
-    /// `canManageApps`, and `statusLine` fresh. One callback, not three.
-    var onStatusChange: (() -> Void)?
 
     /// Set by the inspector's poll: nil = never checked, true/false = last read.
     var deviceReachable: Bool? {
@@ -128,7 +115,6 @@ final class EmulatorController {
                 reachableSince = Date()
                 startFileWatch()   // iOS is up: every file the helper depends on exists now
             }
-            if oldValue != deviceReachable { onStatusChange?() }
             recovery.consider()
             activation.checkIfNeeded()
             // Clean abandoned uploads when the guest first answers. The sweep
@@ -146,16 +132,15 @@ final class EmulatorController {
     var connectionIssue: DeviceConnectionIssue? { recovery.issue }
 
     /// The standing issue from failed service reads, and the recovery of an unresponsive management service.
-    private(set) lazy var recovery = ConnectionRecovery(host: self, notices: notices)
+    @ObservationIgnored private(set) lazy var recovery = ConnectionRecovery(host: self, notices: notices)
     var isReconnecting: Bool { recovery.isReconnecting }
     func reportConnectionFailure(_ error: Error, operation: String) { recovery.reportFailure(error, operation: operation) }
     var installerUsesDevice: Bool { AppInstaller.isUsingDevice(instance.id) }
     var guestAgentAlive: Bool { guestAgent.isAlive }
     func reconnectManagement() async throws { try await guest.reconnectManagement() }
     func appsMayHaveChanged() { NotificationCenter.default.post(name: .ltmAppsChanged, object: instance.id) }
-    func connectionChanged() { onStatusChange?() }
 
-    private var didSweepStaging = false
+    @ObservationIgnored private var didSweepStaging = false
 
     /// The device record whose state this controller runs.
     private(set) var instance: DeviceInstance
@@ -164,7 +149,6 @@ final class EmulatorController {
         self.instance = instance
         self.profile = profile
         self.network = network
-        usbmux.onUnexpectedExit = { [weak self] in self?.onStatusChange?() }
         let center = NSWorkspace.shared.notificationCenter
         hostSleepObservers = [
             center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
@@ -180,15 +164,15 @@ final class EmulatorController {
 
     // MARK: - Mac sleep
 
-    nonisolated(unsafe) private var hostSleepObservers: [NSObjectProtocol] = []
+    @ObservationIgnored nonisolated(unsafe) private var hostSleepObservers: [NSObjectProtocol] = []
     /// The Mac's sleep and the screen's visibility (HostPower).
-    private lazy var hostPower = HostPower(host: self) { [weak self] in
+    @ObservationIgnored private lazy var hostPower = HostPower(host: self) { [weak self] in
         guard let self, statusTimer != nil else { return }
         startStatusPoll()
     }
     func hostWillSleep() { hostPower.hostWillSleep() }
     func hostDidWake() { hostPower.hostDidWake() }
-    func resyncTimeZone() { scheduleTimeZoneSync(generation: bootGeneration) }
+    func resyncTimeZone() { timeZone.resync() }
 
     /// Per-user machine state (the NAND copy-on-write overlay, logs).
     private var stateDir: URL { Bundled.stateDirectory }
@@ -202,14 +186,14 @@ final class EmulatorController {
     /// The status block, read now; nil before the helper's first hello.
     var status: SharedStatus? { process?.status }
     /// The session replaces this controller with a fresh helper (DeviceSessionHost.restart).
-    var onRestartRequested: (() -> Void)?
-    var onStorageGenerationChanged: (() -> Void)?
+    @ObservationIgnored var onRestartRequested: (() -> Void)?
+    @ObservationIgnored var onStorageGenerationChanged: (() -> Void)?
     /// The active recording's audio (GuestAudioCapture).
-    var audioSink: ((LinkEvent) -> Void)?
-    private var statusTimer: Timer?
-    private var lastFrameSerial: UInt64 = 0
-    private var releasing = false
-    private var admittedStorage: StorageBootProof?
+    @ObservationIgnored var audioSink: ((LinkEvent) -> Void)?
+    @ObservationIgnored private var statusTimer: Timer?
+    @ObservationIgnored private var lastFrameSerial: UInt64 = 0
+    @ObservationIgnored private var releasing = false
+    @ObservationIgnored private var admittedStorage: StorageBootProof?
 
     // MARK: - Boot
 
@@ -270,14 +254,13 @@ final class EmulatorController {
             self.instance = refreshed
             self.admittedStorage = try StorageBootProof.capture(recordBytes: recordBytes)
             self.onStorageGenerationChanged?()
-            self.onStatusChange?()
         }) { [weak self] result in
             if case let .failure(error) = result, let self { logEvent("boot: \(instance.name): \(error)") }
         }
         if hasGuestTools {
-            startOrientationWatch()   // idle until the guest is up and reachable
+            rotation.startGuestWatch()   // idle until the guest is up and reachable
         } else {
-            startInterfaceOrientationWatch()
+            rotation.startInterfaceWatch()
         }
         startTimeZoneSync()       // guest zone follows the Mac's, incl. travel
         startForegroundWatch()
@@ -289,12 +272,11 @@ final class EmulatorController {
     private func bootConfiguration(hardware: DeviceInfo?) -> BootConfig? {
         guard !isDead, !releasing else { return nil }
         link?.send(.screenVisible(screenVisible))
-        proxyEndpoint = nil
+        proxy.forgetEndpoint()
         var config = preparedBootConfiguration(hardware: hardware)
-        config?.webProxy = proxyEndpoint
+        config?.webProxy = proxy.endpoint
         config?.storageProof = admittedStorage
-        debugPort = debugPortEnabled && config != nil ? DebugPort.freePort() : nil
-        if let port = debugPort {
+        if let port = options.chooseDebugPort(booting: config != nil) {
             config?.argv += DebugPort.arguments(port: port)
             logEvent("debug port: QEMU gdbstub on 127.0.0.1:\(port)")
         }
@@ -303,7 +285,7 @@ final class EmulatorController {
             readiness.start()
             publishDeveloperConnection()
             logEmulatorBuild()
-            startGuestPackageWatch()  // after composeGuestOffer(): a watch with no offer judges nothing
+            startGuestPackageWatch()  // after guestPackage.compose(): a watch with no offer judges nothing
             startBootWatch()
         }
         return config
@@ -313,7 +295,7 @@ final class EmulatorController {
     /// DeviceProcess already holds the storage lease when this hello callback runs.
     /// The UDID the guest reports: the record's, or for an iPhone base prepared before its identity carried an IMEI
     /// (n90/n88 recipe 1) the one its seed-derived IMEI makes; DeviceLock.machineOptions passes that IMEI to the modem.
-    private var guestUDID: String? {
+    var guestUDID: String? {
         if profile.kbootPhone,
            let data = try? Data(contentsOf: instance.paths.base.appendingPathComponent("identity.json")),
            let identity = try? JSONSerialization.jsonObject(with: data) as? [String: Any], identity["imei"] == nil,
@@ -350,17 +332,17 @@ final class EmulatorController {
         if profile.isKBoot {
             let setupDone = FileManager.default.fileExists(atPath: BootRecipe.setupDoneMark(overlay: overlayURL).path)
             let restrict = network && BootRecipe.setupPhonesHome(iosVersion: iosVersion) && !setupDone
-            netdev = network ? proxyForward().map {
+            netdev = network ? proxy.forward().map {
                 BootRecipe.wifiNetdev(guestForward: $0, restricted: restrict, localNetwork: localNetworkEnabled)
             } : nil
-            setupGate = netdev != nil && restrict ? BootRecipe.SetupNetworkGate() : nil
+            foreground.setupGate = netdev != nil && restrict ? BootRecipe.SetupNetworkGate() : nil
         } else {
-            netdev = network ? BootRecipe.wifiNetdev(guestForward: proxyForward() ?? "", restricted: false,
+            netdev = network ? BootRecipe.wifiNetdev(guestForward: proxy.forward() ?? "", restricted: false,
                                                      localNetwork: localNetworkEnabled) : nil
         }
         do {
-            return try prepared.configuration(hardware: machine, bootArgs: Self.bootArgs, usbAddress: usbSession?.guestAddress,
-                wifi: network, guestPackage: composeGuestOffer(), serial: serialCapture?.argument ?? "null",
+            return try prepared.configuration(hardware: machine, bootArgs: DeviceOptions.bootArgs(), usbAddress: usbSession?.guestAddress,
+                wifi: network, guestPackage: guestPackage.compose(), serial: serialCapture?.argument ?? "null",
                 // Every board: 16 CoreAudio buffers (186 ms) ride out a busy emulator thread. The A4 boards
                 // had QEMU's default 4 (46 ms), and the iPod touch 4's sounds crackled on a slower Mac.
                 audio: ["-audio", "driver=coreaudio,out.buffer-count=16"], netdev: netdev,
@@ -381,7 +363,6 @@ final class EmulatorController {
                     case BootWatch.ethlinkMarker:
                         self.ethlinkUp = true
                         self.noteBoot(.guestTools)
-                        self.onStatusChange?()
                     case BootWatch.recoveryMarker:
                         self.inRecovery = true
                         self.abortBoot(BootWatch.recoveryReason(self.profile))
@@ -394,7 +375,7 @@ final class EmulatorController {
 
     // MARK: - Files under a running device
 
-    private var fileWatch: DeviceFileWatch?
+    @ObservationIgnored private var fileWatch: DeviceFileWatch?
     /// Something deleted, renamed or replaced the device's files while its helper
     /// had them open: the guest runs on dead inodes until Stop, which then quits
     /// without flushing into them.
@@ -421,7 +402,7 @@ final class EmulatorController {
     // MARK: - Boot deadline
 
     /// The boot deadline, recovery mode, a boot that can't be built and the helper's death (BootWatch).
-    private(set) lazy var bootWatch = BootWatch(host: self)
+    @ObservationIgnored private(set) lazy var bootWatch = BootWatch(host: self)
     /// Why the helper died, for the row and the dead overlay.
     var deathReason: String? { bootWatch.deathReason }
     private func failBoot(_ error: Error) { bootWatch.failBoot(error) }
@@ -432,22 +413,6 @@ final class EmulatorController {
     /// by iBoot too). Without a USB bridge (--no-appsync) painting has to do.
     var bootFinished: Bool { deviceReachable == true || (usbmux.session == nil && state == .running) }
 
-    /// This boot's web proxy: the helper serves `proxyEndpoint` (BootConfig.webProxy, reading this device's
-    /// routing file) and the guestfwd returned here reaches it; nil when the routing can't be written.
-    private var proxyEndpoint: WebProxyEndpoint?
-    private func proxyForward() -> String? {
-        do {
-            try webProxy.writeRouting(in: proxyDirectory)
-            webProxyAvailable = true
-            let endpoint = WebProxyConfiguration.endpoint(directory: proxyDirectory)
-            proxyEndpoint = endpoint
-            return WebProxyConfiguration.guestForward(socket: endpoint.socket)
-        } catch {
-            webProxyStatus = .failed
-            logEvent("proxy routing: \(error.localizedDescription)")
-            return nil
-        }
-    }
 
     /// Status is read from the helper's shared block: the old per-frame poll,
     /// now on its own timer so a hidden device (no display link) still flips
@@ -487,82 +452,13 @@ final class EmulatorController {
     /// so its media import and agent extras are skipped.
     var hasGuestTools: Bool { profile.hasGuestTools }
 
-    /// Keep the guest's timezone matched to the Mac's: once when the device
-    /// first answers after this boot, and again whenever the host's zone
-    /// changes (travel). Set through lockdown's TimeZone value — lockdownd
-    /// rewrites /var/db/timezone/localtime and SpringBoard follows live, so
-    /// no respring (the lock screen's clock too: lockdown-tz refreshes it).
-    /// The link persists, so later boots start in the zone; a fresh device's
-    /// first lock screen is drawn before lockdown answers and shows the
-    /// restore's Pacific zone until this lands (smoke #58). The guest's clock
-    /// itself is UTC from the RTC model; only the zone needs the host's help.
-    private var timeZoneObserver: NSObjectProtocol? {
-        get { bootScope.timeZoneObserver }
-        set { bootScope.timeZoneObserver = newValue }
-    }
-    private var timeZoneScope = 0
-    private var timeZoneTask: Task<Void, Never>? {
-        get { bootScope[.timeZone] }
-        set { bootScope[.timeZone] = newValue }
-    }
-
-    private func stopTimeZoneSync() {
-        timeZoneScope += 1
-        timeZoneTask?.cancel()
-        timeZoneTask = nil
-        timeZoneObserver = nil
-        bootScope.localeObserver = nil
-    }
-
-    func startTimeZoneSync() {
-        stopTimeZoneSync()
-        let generation = bootGeneration
-        let scope = timeZoneScope
-        timeZoneObserver = NotificationCenter.default.addObserver(forName: .NSSystemTimeZoneDidChange,
-                                               object: nil, queue: nil) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, generation == self.bootGeneration, scope == self.timeZoneScope else { return }
-                self.scheduleTimeZoneSync(generation: generation)
-            }
-        }
-        // The region and the 24-hour setting follow the Mac's too.
-        bootScope.localeObserver = NotificationCenter.default.addObserver(forName: NSLocale.currentLocaleDidChangeNotification,
-                                                                         object: nil, queue: nil) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, generation == self.bootGeneration, scope == self.timeZoneScope else { return }
-                self.scheduleTimeZoneSync(generation: generation)
-            }
-        }
-        scheduleTimeZoneSync(generation: generation)
-    }
-
-    private func scheduleTimeZoneSync(generation: Int) {
-        timeZoneTask?.cancel()
-        timeZoneTask = Task { [weak self] in await self?.syncTimeZoneWhenReady(generation: generation) }
-    }
-
-    /// Wait out the boot (services come up well after lockdown answers), then
-    /// set until one attempt sticks — a transient "Invalid service" right
-    /// after boot just means the next 5 s tick tries again. A zone the device
-    /// keeps whatever lockdown says stays until the Mac's zone changes again.
-    /// A new timezone notification replaces the pending operation for this boot.
-    private func syncTimeZoneWhenReady(generation: Int) async {
-        while !Task.isCancelled {
-            guard generation == bootGeneration, !shuttingDown, !isDead, !isPoweredOff else { return }
-            if state == .running, !preparingDevice, canManageApps, await deviceReady() {
-                guard generation == bootGeneration, !Task.isCancelled else { return }
-                do {
-                    let dated = lock?.pinsClock == true
-                    try await services.setTimeZone(TimeZone.current.identifier, keepClock: dated, guest: guest, region: .mac)
-                    return
-                } catch DeviceToolsError.zoneKept(let zone) {
-                    guard generation == bootGeneration, !Task.isCancelled else { return }
-                    logEvent("timezone: the device keeps \(zone)")
-                    return
-                } catch {}
-            }
-            try? await Task.sleep(for: .seconds(5))
-        }
+    /// The guest's zone and region follow the Mac's (TimeZoneSync).
+    @ObservationIgnored private lazy var timeZone = TimeZoneSync(host: self)
+    private func stopTimeZoneSync() { timeZone.stop() }
+    func startTimeZoneSync() { timeZone.start() }
+    func setGuestTimeZone(_ identifier: String) async throws {
+        let dated = lock?.pinsClock == true
+        try await services.setTimeZone(identifier, keepClock: dated, guest: guest, region: .mac)
     }
 
     /// App quit (after the clean shutdowns) and restarts. The helper gets
@@ -627,7 +523,7 @@ final class EmulatorController {
 
     /// When the guest last painted a new frame. Advanced by the status poll on
     /// every new ring serial; the signal behind `booting → running`.
-    private(set) var lastFrameAdvance = Date.distantPast
+    @ObservationIgnored private(set) var lastFrameAdvance = Date.distantPast
 
     private func noteFrameAdvanced() {
         lastFrameAdvance = Date()
@@ -644,13 +540,17 @@ final class EmulatorController {
         Date().timeIntervalSince(lastFrameAdvance) < 2.0
     }
 
-    var storageFailed: Bool { status?.storageFailed ?? false }
+    /// The helper's shared status block, so the status poll announces the flip (withMutation) for observers.
+    var storageFailed: Bool {
+        access(keyPath: \.storageFailed)
+        return status?.storageFailed ?? false
+    }
     /// The guest agent, live: 0 absent or not running, 1 alive, 2 stale.
     var liveAgentStatus: Int { status?.agentStatus ?? 0 }
 
     /// The agent's ping (its ops), until it restarts.
     let agentCache = GuestAgentCache()
-    private var lastAgentStatusCheck = Date.distantPast
+    @ObservationIgnored private var lastAgentStatusCheck = Date.distantPast
     private var agentStatus = 0
     var agentStatusText: String {
         guard state == .running || state == .paused else { return "Waiting for device" }
@@ -673,7 +573,6 @@ final class EmulatorController {
                 // A restarted agent may be a different version: ping it again.
                 agentCache.reset()
                 agentStatus = status.agentStatus
-                onStatusChange?()
             }
             if status.agentStatus == 2 { agentStaleSince = agentStaleSince ?? now } else { agentStaleSince = nil }
         }
@@ -682,7 +581,7 @@ final class EmulatorController {
             // must never render a stale running/sleeping subtitle mid-shutdown.
             state = .poweredOff
             retireBoot()
-            foregroundAppName = nil
+            foreground.forget()
             isSleeping = false
             deviceReachable = false
         }
@@ -694,6 +593,7 @@ final class EmulatorController {
 
         if storageFailed, !reportedStorageFailure {
             reportedStorageFailure = true
+            withMutation(keyPath: \.storageFailed) {}
             reportDeviceNotice(statusLine, for: .storage)
         }
     }
@@ -742,9 +642,9 @@ final class EmulatorController {
         return guestToolsStatus
     }
     /// Set by the status poll: when the agent last went stale (2), nil while it answers.
-    private var agentStaleSince: Date?
+    @ObservationIgnored private var agentStaleSince: Date?
     /// When lockdown first answered this boot.
-    private var reachableSince: Date?
+    @ObservationIgnored private var reachableSince: Date?
     /// it_ethlink reported LinkStatus 0 -> 1 on serial (the iPad's guest package).
     private(set) var ethlinkUp = false
     private var inRecovery = false
@@ -759,37 +659,29 @@ final class EmulatorController {
 
     private func logEmulatorBuild() { logEvent("emulator \(dylibProvenance)") }
     
-    // MARK: - Hardware buttons
-    
-    private var restartingSpringBoard = false {
-        didSet { onStatusChange?() }
-    }
+    // MARK: - Input
 
-    private static let holdInterval: TimeInterval = 0.10
-    
-    /// The emulator's button numbers (qemu-ios-ui.h).
-    enum Button: Int { case home = 0, power, volumeUp, volumeDown }
-
-    private func tapButton(_ button: Button) {
-        guard let link else { return }
-        link.send(.button(button.rawValue, down: true))
-        // Release off the main queue (send is thread-safe and ordered), so a
-        // stalled main runloop must not be what holds a hardware button down.
-        DispatchQueue.global().asyncAfter(deadline: .now() + Self.holdInterval) {
-            link.send(.button(button.rawValue, down: false))
-        }
-    }
-    
-    func pressHome()       { tapButton(.home) }
-    func pressLock()       { tapButton(.power) }
-    func pressVolumeUp()   { tapButton(.volumeUp) }
-    func pressVolumeDown() { tapButton(.volumeDown) }
-    func rotateLeft()      { link?.send(.rotate(clockwise: false)) }
-    func rotateRight()     { link?.send(.rotate(clockwise: true)) }
-    private(set) var shakeGeneration: UInt64 = 0
-    func shake() {
-        link?.send(.shake)
-        shakeGeneration &+= 1
+    /// The hardware buttons, shake, tilt, pasting and typing (DeviceInput); the keyboard is KeyboardInput.
+    @ObservationIgnored private(set) lazy var input = DeviceInput(host: self, settings: settingsFile)
+    typealias Button = DeviceInput.Button
+    func pressHome()       { input.tap(.home) }
+    func pressLock()       { input.tap(.power) }
+    func pressVolumeUp()   { input.tap(.volumeUp) }
+    func pressVolumeDown() { input.tap(.volumeDown) }
+    func rotateLeft()      { rotation.rotateLeft() }
+    func rotateRight()     { rotation.rotateRight() }
+    var shakeGeneration: UInt64 { input.shakeGeneration }
+    func shake() { input.shake() }
+    typealias MotionPose = DeviceInput.MotionPose
+    var motionPose: MotionPose { input.motionPose }
+    func setMotionPose(_ pose: MotionPose) { input.setMotionPose(pose) }
+    func setTilt(angle: Double, pitch: Double = 0) { input.setTilt(angle: angle, pitch: pitch) }
+    func pasteToGuest(_ text: String) { input.paste(text) }
+    func typeText(_ text: String, shiftHeld: Bool) { input.typeText(text, shiftHeld: shiftHeld) }
+    func typeThroughAgent(_ text: String) async -> Bool {
+        let agent = guestAgent
+        guard (try? await agent.capabilities().has("type")) == true else { return false }
+        return (try? await agent.perform("type", body: Data(text.utf8))) != nil
     }
 
     /// A control request; `done(true)` when the machine applied it (false on a
@@ -802,7 +694,7 @@ final class EmulatorController {
 
     /// The Battery menu (BatteryControls): every boot starts from it (at its first frame); a new QEMU otherwise
     /// starts at its own 80% while the menu still shows the choice.
-    private(set) lazy var battery = BatteryControls(canChooseUSBCharger: profile.canChooseUSBCharger, scope: bootScope) {
+    @ObservationIgnored private(set) lazy var battery = BatteryControls(canChooseUSBCharger: profile.canChooseUSBCharger, scope: bootScope) {
         [weak self] request, done in self?.control(request, done)
     }
     var batteryLevel: Int { battery.level }
@@ -827,308 +719,55 @@ final class EmulatorController {
             deviceReachable = nil
         }
     }
-    enum MotionPose: Int { case upright, flat }
-    private(set) lazy var motionPose = settings.motionPose.flatMap(MotionPose.init(rawValue:)) ?? .upright
-    func setMotionPose(_ pose: MotionPose) {
-        motionPose = pose
-        changeSettings { $0.motionPose = pose.rawValue }
-        onStatusChange?()
-    }
 
-    /// Layer rotation and mounted device roll have opposite signs. Normalize
-    /// across the upside-down seam before passing degrees to the shared model.
-    func setTilt(angle: Double, pitch: Double = 0) {
-        guard acceptsInput, !isSleeping else { return }
-        link?.send(ChassisTilt.attitudeCommand(angle: angle, pitch: pitch, pose: motionPose.rawValue))
-    }
+    // MARK: - Rotation
 
-    /// The device's orientation as degrees turned clockwise from portrait —
-    /// the same value the LCD model calls its rotation, stepped in lockstep
-    /// with the guest's own quarter-turn cycle (ipod_touch_kbd_rotate:
-    /// portrait → landscape-right(90) → upside-down(180) → landscape-left(270)).
-    /// DisplayView poses the shell from this, so all rotation must go through
-    /// rotate(clockwise:) or the shell drifts out of step with the guest.
-    private(set) var rotationDegrees = 0 {
-        // Orientation is health-relevant UI state like any other: the toolbar's
-        // rotate glyph shows which way the NEXT turn goes, so it has to follow
-        // an automatic rotation too, not just the three manual actions that used
-        // to poke it by hand.
-        didSet { if oldValue != rotationDegrees { onStatusChange?() } }
-    }
-    var isLandscape: Bool { rotationDegrees == 90 || rotationDegrees == 270 }
-
-    /// Toggle between portrait and landscape: enter counter-clockwise (home
-    /// button ends up on the right), leave by heading back the short way.
-    func toggleRotation() {
-        rotate(clockwise: rotationDegrees == 270)
-    }
-
-    /// Rotate a quarter turn in a named direction.
-    func rotate(clockwise: Bool) {
-        let next = (rotationDegrees + (clockwise ? 90 : 270)) % 360
-        if !setAccelerometer(for: next) { clockwise ? rotateRight() : rotateLeft() }
-        rotationDegrees = next
-    }
-
-    /// The iPad sets its accelerometer outright for the shell's angle rather
-    /// than stepping it: the machine moves it on its own (the power-off
-    /// gesture), and a relative step from there lands on the wrong side.
-    /// Values are UIDeviceOrientation: a clockwise turn from portrait (1) puts
-    /// Home on the left (4), then upside down (2), then Home right (3).
-    @discardableResult
-    private func setAccelerometer(for degrees: Int) -> Bool {
-        guard profile.orientationSource == .springBoard, let value = [0: 1, 90: 4, 180: 2, 270: 3][degrees] else { return false }
-        // The machine answers asynchronously now; only an iPad takes this path,
-        // and it always has the control, so a refusal is just logged.
-        control(.orientation(value)) { applied in
-            if !applied { logEvent("rotation: the device refused orientation \(value)") }
-        }
-        return true
-    }
-
-    /// Quarter-turn our way to `target`, the short way round. Every step goes
-    /// through rotate(clockwise:) so the guest and `rotationDegrees` stay in
-    /// lockstep — this is a caller of the one source of truth, not a second one.
-    private func rotate(toward target: Int) {
-        while true {
-            let delta = (target - rotationDegrees + 360) % 360
-            guard delta != 0 else { return }
-            rotate(clockwise: delta != 270)   // 90 and 180 go clockwise, 270 back
-        }
-    }
+    /// The quarter turns and auto-rotation with the guest (DeviceRotation).
+    @ObservationIgnored private(set) lazy var rotation = DeviceRotation(host: self, settings: settingsFile,
+                                                                        setsAccelerometer: profile.orientationSource == .springBoard)
+    var rotationDegrees: Int { rotation.degrees }
+    var isLandscape: Bool { rotation.isLandscape }
+    func toggleRotation() { rotation.toggle() }
+    func rotate(clockwise: Bool) { rotation.rotate(clockwise: clockwise) }
+    var autoRotateEnabled: Bool { rotation.autoRotateEnabled }
+    func toggleAutoRotate() { rotation.toggleAutoRotate() }
+    func startOrientationWatch() { rotation.startGuestWatch() }
+    func resetRotation() { rotation.reset() }
 
     // MARK: Carrier (radio boards)
-    //
-    // The fake network's settings are the device's (DeviceSettings.carrier): every boot starts the modem
-    // with them (BootRecipe, -global ios-baseband.*), and a change while it runs is written to the modem too.
 
-    var hasCellular: Bool { profile.hasCellular }
-
-    private(set) lazy var carrierSettings: CarrierSettings = settings.carrier.flatMap { $0.isValid ? $0 : nil } ?? CarrierSettings()
-
-    /// Saves valid settings and writes what changed to the running modem; false (nothing saved) for invalid ones.
+    /// The fake network's settings and the running modem (CarrierModem).
+    @ObservationIgnored private(set) lazy var carrier = CarrierModem(hasCellular: profile.hasCellular, settings: settingsFile,
+                                                                     scope: bootScope) { [weak self] in self?.link }
+    var hasCellular: Bool { carrier.hasCellular }
+    var carrierSettings: CarrierSettings { carrier.carrierSettings }
     @discardableResult
-    func setCarrierSettings(_ settings: CarrierSettings) -> Bool {
-        guard hasCellular, settings.isValid else { return false }
-        let old = Dictionary(carrierSettings.properties.map { ($0.name, $0.value) }, uniquingKeysWith: { a, _ in a })
-        carrierSettings = settings
-        changeSettings { $0.carrier = settings }
-        for p in settings.properties where old[p.name] != p.value { modem(p.name, p.value) }
-        return true
-    }
+    func setCarrierSettings(_ settings: CarrierSettings) -> Bool { carrier.setCarrierSettings(settings) }
+    func modem(_ property: String, _ value: String, done: @escaping (Bool) -> Void = { _ in }) { carrier.modem(property, value, done: done) }
+    func modemStatus(_ done: @escaping (ModemStatus?) -> Void) { carrier.modemStatus(done) }
 
-    /// One modem property or action (incoming-call, remote-answer, remote-hangup, incoming-sms); `done` gets whether
-    /// the helper queued it. The modem's own refusal shows in the next status's `error`.
-    func modem(_ property: String, _ value: String, done: @escaping (Bool) -> Void = { _ in }) {
-        guard hasCellular else { return done(false) }
-        control(.modemSet(property: property, value: value), done)
-    }
+    // MARK: - Options
 
-    /// The modem's state as of the previous poll (the helper refreshes it per call); nil when it isn't running.
-    func modemStatus(_ done: @escaping (ModemStatus?) -> Void) {
-        guard hasCellular, let link, !bootScope.retired else { return done(nil) }
-        let session = bootScope.id
-        link.request(.modemStatus) { [weak self] reply in
-            MainActor.assumeIsolated {
-                guard let self, !self.bootScope.retired, session == self.bootScope.id,
-                      case .success(.modemStatus(let json?)) = reply else { return done(nil) }
-                done(ModemStatus(json: json))
-            }
-        }
-    }
+    /// Attach to Local Network, the debug port and the boot arguments (DeviceOptions).
+    @ObservationIgnored private(set) lazy var options = DeviceOptions(settings: settingsFile, board: instance.board) { [weak self] in self?.link }
+    var localNetworkEnabled: Bool { options.localNetworkEnabled }
+    func toggleLocalNetwork() { options.toggleLocalNetwork() }
+    var debugPortEnabled: Bool { options.debugPortEnabled }
+    func toggleDebugPort() { options.toggleDebugPort() }
+    var debugPort: Int? { options.debugPort }
+    var lldbAttachCommand: String? { options.lldbAttachCommand }
 
-    // MARK: - Auto-rotation
-    //
-    // Open a landscape-only app and the emulated iPod swings to landscape by
-    // itself; press home and it swings back. The signal comes from the guest,
-    // because on 3.1.3 there is nowhere else it can come from: SpringBoard's
-    // -[SpringBoard noteUIOrientationChanged:display:] updates an ivar and calls
-    // GSEventRotateSimulator() in-process, and posts nothing. The three
-    // com.apple.springboard.*Orientation Darwin notifications that notification_proxy
-    // WOULD have relayed are posted from the accelerometer path — they describe
-    // how the device is being held, which is the thing we are faking anyway —
-    // and springboardservicesrelay on 3.1.3 answers only getIconState /
-    // setIconState / getIconPNGData, so libimobiledevice's
-    // sbservices_get_interface_orientation has nothing to talk to.
-    //
-    // The guest agent reads SpringBoardServices' SBGetUIOrientation MIG stub
-    // (7E18's ABI; other builds answer ENOSYS and the shell stays put).
-    //
-    // EDGES, NOT LEVELS, is the rule that keeps this from fighting the user.
-    // We rotate when the guest's orientation *changes*; we never correct the
-    // shell towards the guest's steady state. The home screen is portrait-only
-    // on 3.1.3, so a levels rule would undo a manual rotation the instant it was
-    // made — the user turns the device, the guest stays at 0, and we would turn
-    // it straight back. With edges, a manual rotation the guest declines to
-    // follow simply stands, and a manual rotation the guest DOES follow reports
-    // the orientation we already moved to, so it lands on a no-op. The user only
-    // loses their manual angle when the front app actually changes what it wants,
-    // which is the moment they asked us to follow.
 
-    /// Attach to Local Network, per device (DeviceSettings.localNetwork), off by default: while off the
-    /// emulator refuses the guest's LAN traffic (BootRecipe.wifiNetdev), so macOS never asks on its own.
-    /// Turning it on asks macOS for Local Network access right then and opens the running device in place.
-    var localNetworkEnabled: Bool { settings.localNetwork ?? false }
-    func toggleLocalNetwork() {
-        let enabled = !localNetworkEnabled
-        changeSettings { $0.localNetwork = enabled }
-        if enabled { LocalNetworkAccess.request() }
-        link?.send(.netLocalNetwork(enabled))
-        onStatusChange?()
-    }
-
-    /// Debug port, per device (DeviceSettings.debugPort), off by default; read at each start. QEMU's gdbstub on a
-    /// free loopback port, `debugPort` while this boot has one (qemu-ios docs/guest-debug.md).
-    var debugPortEnabled: Bool { settings.debugPort ?? false }
-    func toggleDebugPort() {
-        let enabled = !debugPortEnabled
-        changeSettings { $0.debugPort = enabled }
-        onStatusChange?()
-    }
-    private(set) var debugPort: Int?
-    var lldbAttachCommand: String? { debugPort.map { DebugPort.lldbCommand(board: instance.board, port: $0) } }
-
-    /// Off switch, for anyone who would rather the device never move on its own. Per device
-    /// (DeviceSettings.autoRotateWithGuest); on by default — it is only ever driven by an explicit change on the
-    /// guest's side.
-    var autoRotateEnabled: Bool { settings.autoRotateWithGuest ?? true }
-    func toggleAutoRotate() {
-        let enabled = !autoRotateEnabled
-        changeSettings { $0.autoRotateWithGuest = enabled }
-        onStatusChange?()
-    }
-
-    /// The last value SpringBoard reported, in SpringBoard's degrees (0, 90,
-    /// 180, -90). nil until the first line arrives — that first one only seeds
-    /// this, so a watcher that attaches to an already-running guest never yanks
-    /// the shell around on connect.
-    private var lastGuestOrientation: Int?
-    private var orientationTask: Task<Void, Never>? {
-        get { bootScope[.orientation] }
-        set { bootScope[.orientation] = newValue }
-    }
-
-    /// SpringBoard's degrees are the angle the *content* is rotated by; ours are
-    /// the angle the *device* is turned clockwise. They are mirror images.
-    ///
-    /// From -[SBApplication defaultStatusBarOrientation]: UIInterfaceOrientation
-    /// Portrait → 0, PortraitUpsideDown → 180, LandscapeLeft → 90, LandscapeRight
-    /// → -90. UIInterfaceOrientationLandscapeLeft is the one with the home button
-    /// on the RIGHT, which is the device turned 270° clockwise — hence the flip.
-    private func hostDegrees(forGuest degrees: Int) -> Int? {
-        switch degrees {
-        case 0:          return 0
-        case 180:        return 180
-        case 90:         return 270   // LandscapeLeft:  home button right
-        case -90, 270:   return 90    // LandscapeRight: home button left
-        default:         return nil   // a torn line, or a value we don't know
-        }
-    }
-
-    private func guestOrientationChanged(to degrees: Int) {
-        guard let target = hostDegrees(forGuest: degrees) else { return }
-        defer { lastGuestOrientation = degrees }
-        // First reading seeds only: see lastGuestOrientation.
-        guard let previous = lastGuestOrientation, previous != degrees else { return }
-        guard autoRotateEnabled, state == .running else { return }
-        rotate(toward: target)
-    }
-
-    /// The iPad: 3.2's springboardservicesrelay answers getInterfaceOrientation,
-    /// so no guest tools are needed. iOS comes back up in the orientation it
-    /// last had while the app starts every process portrait, so the first
-    /// reading after boot is adopted; after that only changes are followed
-    /// (the edges rule above). rotate(toward:) moves the shell and the
-    /// accelerometer together.
-    private func startInterfaceOrientationWatch() {
-        orientationTask?.cancel()
-        orientationTask = Task { [weak self] in
-            var last: Int?
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(3))
-                guard let self else { return }
-                if self.state == .booting { last = nil }   // a restart: adopt again
-                // Only once lockdown has answered: before that every try is "not reachable over USB yet", every 3 s in the log.
-                guard self.canReachDevice, !self.isSleeping, !self.isInstalling,
-                      let reading = try? await self.services.interfaceOrientation(),
-                      let target = Self.iPadDegrees(forInterface: reading) else { continue }
-                if last == nil || (last != reading && self.autoRotateEnabled), target != self.rotationDegrees {
-                    self.rotate(toward: target)
-                }
-                last = reading
-            }
-        }
-    }
-
-    /// SpringBoard's UIInterfaceOrientation -> the app's clockwise device
-    /// angle, as on hardware: upright is Portrait (1); turned clockwise, Home
-    /// is on the left and the UI is LandscapeLeft (4); then upside down (2);
-    /// then LandscapeRight (3).
-    static func iPadDegrees(forInterface orientation: Int) -> Int? {
-        [1: 0, 4: 90, 2: 180, 3: 270][orientation]
-    }
-
-    /// Keeps one reporter alive for as long as the app runs, re-attaching after
-    /// a boot, a respring, or a dropped USB session — the same "the guest drops
-    /// its services and comes back" reality NotificationProxy backs off around.
-    func startOrientationWatch() {
-        orientationTask?.cancel()
-        orientationTask = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                if self.state == .running, !self.preparingDevice, !self.isSleeping, !self.isInstalling {
-                    let generation = self.bootGeneration
-                    do {
-                        if let degrees = try await self.guestOrientation() {
-                            try Task.checkCancellation()
-                            guard generation == self.bootGeneration else { continue }
-                            self.guestOrientationChanged(to: degrees)
-                        }
-                    } catch {
-                        if Task.isCancelled { return }
-                        self.lastGuestOrientation = nil
-                        do { try await Task.sleep(for: .seconds(5)) } catch { return }
-                    }
-                }
-                do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
-            }
-        }
-    }
 
     // MARK: - Guest package
 
-    /// What this boot offered the guest's loader; nil: no offer.
-    private(set) var guestOffer: GuestPackage.Offer?
-    private(set) var guestToolsStatus: GuestPackage.Status = .unknown {
-        didSet { if oldValue != guestToolsStatus { onStatusChange?() } }
-    }
-    private var guestPackageTask: Task<Void, Never>? {
-        get { bootScope[.guestPackage] }
-        set { bootScope[.guestPackage] = newValue }
-    }
-    private var guestOfferDirectory: URL { instance.paths.work.appendingPathComponent("guest-offer", isDirectory: true) }
-    private var recordURL: URL {
-        DeviceInstance.directory(instance.id, state: stateDir).appendingPathComponent(DeviceInstance.recordName)
-    }
-    /// The base's device.lock.json (decoded once while it is unchanged; nil for none or an unreadable one).
-    private var lock: DeviceLock? { (try? DeviceLock.read(base: instance.paths.base)) ?? nil }
-    /// The preparer's device.lock.json record.
-    private var lockRecord: GuestPackage.LockRecord? { GuestPackage.lockRecord(lock) }
-    private var guestRecord: DeviceInstance.Guest? { (try? DeviceInstance.read(recordURL))?.guest }
-
-    /// The record's `guest`, read fresh and written back (never the whole cached record).
-    private func updateGuestRecord(_ change: (inout DeviceInstance.Guest) -> Void) {
-        guard var record = try? DeviceInstance.read(recordURL) else { return }
-        var guest = record.guest ?? DeviceInstance.Guest()
-        if guest.seed == nil { guest.seed = lockRecord?.seed }
-        change(&guest)
-        guard guest != record.guest else { return }
-        record.guest = guest
-        do {
-            try record.write(state: stateDir)
-            DeviceLibrary.shared.reload()
-        } catch { logEvent("guest package: could not record \(guest): \(error.localizedDescription)") }
-    }
+    /// This boot's offer and its verdict (GuestPackageWatch).
+    @ObservationIgnored private(set) lazy var guestPackage = GuestPackageWatch(host: self, stateDirectory: stateDir)
+    var guestOffer: GuestPackage.Offer? { guestPackage.offer }
+    var guestToolsStatus: GuestPackage.Status { guestPackage.status }
+    func startGuestPackageWatch() { guestPackage.start() }
+    private var recordURL: URL { guestPackage.recordURL }
+    private var lock: DeviceLock? { guestPackage.lock }
 
     /// View ▸ Free-Form Screen (issue #21): the record's `panel`, read fresh and written back ("WxH" as the panel
     /// scans; nil, the shipped panel). With `restart`, a running device stops (Stop's hard halt) and a fresh helper
@@ -1152,78 +791,15 @@ final class EmulatorController {
         return true
     }
 
-    /// Compose this boot's offer from the bundled itpack; the machine's
-    /// guest-package= directory, or nil (no property: an older dylib, no
-    /// itpack, or nothing for this build) and the device keeps what it runs.
-    private func composeGuestOffer() -> String? {
-        guestOffer = nil
-        guard status?.guestPackageSupported == true,
-              let pack = GuestPackage.bundledPack(arch: guestArch, filesRoot: Bundled.filesRoot, guestRoot: Bundled.guestRoot) else {
-            try? FileManager.default.removeItem(at: guestOfferDirectory)
-            return nil
-        }
-        let build = instance.firmware.split(separator: "-").last.map(String.init) ?? ""
-        do {
-            try FileManager.default.createDirectory(at: instance.paths.work, withIntermediateDirectories: true)
-            guestOffer = GuestOfferComposition.offer(augmentation: GuestDeveloperTools.augmentation(instance: instance, build: build)) { augment in
-                try GuestPackage.compose(itpack: pack, board: instance.board, build: build,
-                                         lock: lockRecord, guest: guestRecord, into: guestOfferDirectory, augment: augment)
-            }
-        } catch {
-            logEvent("guest package: no offer: \(error.localizedDescription)")
-        }
-        if let guestOffer { logEvent("guest package: offering \(guestOffer.serial == 0 ? "the built-in package" : "serial \(guestOffer.serial) (\(guestOffer.version))")") }
-        return guestOffer == nil ? nil : guestOfferDirectory.path
-    }
-
-    /// Judge this boot: a report and a healthy session (UI up, the agent or
-    /// lockdown answering) is `good`; a new package with no healthy session
-    /// within the budget is `bad`. No report once healthy: legacy baked tools.
-    func startGuestPackageWatch() {
-        guestPackageTask?.cancel()
-        guestToolsStatus = .unknown
-        guard let offer = guestOffer else { return }
-        let generation = bootGeneration
-        guestPackageTask = Task { [weak self] in
-            await GuestPackageSession.watch(offer: offer, sample: { [weak self] in
-                guard let self, generation == self.bootGeneration, !self.isDead, !self.shuttingDown,
-                      let status = self.status else { return nil }
-                // iPods report their agent channel; iPads use a real lockdown
-                // round trip because the helper has no pasteboard-agent status.
-                let healthy = self.state == .running && status.uiReady
-                    && (self.hasGuestTools ? status.agentStatus == 1 : self.deviceReachable == true)
-                return .init(report: status.guestPackage, record: self.guestRecord,
-                             glesProtocol: status.glesProtocol, healthy: healthy)
-            }, publish: { [weak self] update in
-                guard let self, generation == self.bootGeneration, !self.isDead, !self.shuttingDown else { return }
-                if let report = update.changedReport {
-                    logEvent("guest package: loader reports serial \(report.serial), result \(report.result)")
-                }
-                if update.changesRecord {
-                    self.updateGuestRecord { update.apply(to: &$0) }
-                }
-                self.guestToolsStatus = update.status
-                switch update.verdict {
-                case .good(let serial)?: logEvent("guest package: serial \(serial) judged good")
-                case .bad(let serial)?: logEvent("guest package: serial \(serial) judged bad (no healthy session in \(GuestPackage.badAfter))")
-                case .legacy?: logEvent("guest package: no report; legacy baked guest tools")
-                default: break
-                }
-            })
-        }
-    }
 
     // MARK: - Keyboard passthrough
     
     /// Keyboard passthrough and Connect Hardware Keyboard (KeyboardInput), per device.
-    private(set) lazy var keyboard: KeyboardInput = {
-        let keyboard = KeyboardInput(settings: settingsFile, canToggleHardwareKeyboard: profile.canToggleHardwareKeyboard,
-            control: { [weak self] request, done in self?.control(request, done) },
-            send: { [weak self] command in self?.link?.send(command) },
-            canPress: { [weak self] in self.map { $0.acceptsInput && !$0.isSleeping } ?? false })
-        keyboard.onChange = { [weak self] in self?.onStatusChange?() }
-        return keyboard
-    }()
+    @ObservationIgnored private(set) lazy var keyboard = KeyboardInput(settings: settingsFile,
+        canToggleHardwareKeyboard: profile.canToggleHardwareKeyboard,
+        control: { [weak self] request, done in self?.control(request, done) },
+        send: { [weak self] command in self?.link?.send(command) },
+        canPress: { [weak self] in self.map { $0.acceptsInput && !$0.isSleeping } ?? false })
     var keyboardInputEnabled: Bool { keyboard.enabled }
     func toggleKeyboardInput() { keyboard.toggleEnabled() }
     /// Connect Hardware Keyboard (⇧⌘K, per device): unplugged, iOS shows its on-screen keyboard in a text field.
@@ -1236,7 +812,7 @@ final class EmulatorController {
     // pause() and resume() are MachineHost's; Restart and Power On are BootCycle's.
 
     /// Restart and Power On in place (BootCycle).
-    private(set) lazy var cycle = BootCycle(host: self)
+    @ObservationIgnored private(set) lazy var cycle = BootCycle(host: self)
     private var poweringOn: Bool { cycle.poweringOn }
     /// Restart the guest, its filesystem synced first.
     func reset() { cycle.reset() }
@@ -1252,7 +828,7 @@ final class EmulatorController {
         recovery.isReconnecting = false
     }
     func forgetGuestFacts() {
-        foregroundAppName = nil
+        foreground.forget()
         isSleeping = false
     }
     func forgetReachability() {
@@ -1260,101 +836,20 @@ final class EmulatorController {
         reachableSince = nil
     }
     func forgetEthlink() { ethlinkUp = false }
-    func resetRotation() {
-        rotationDegrees = 0
-        setAccelerometer(for: 0)
-    }
 
-    func startForegroundWatch() {
-        foregroundTask?.cancel()
-        let generation = bootGeneration
-        foregroundTask = Task { [weak self] in
-            var appliedProxyRevision: Int?
-            while !Task.isCancelled {
-                guard let self else { return }
-                if self.canReachDevice, !self.isSleeping, !self.isInstalling, !AppInstaller.hasPendingWork(for: self.instance.id) {
-                    if self.webProxyAvailable && appliedProxyRevision != self.proxyRevision {
-                        let revision = self.proxyRevision
-                        if self.webProxyStatus == .waiting {
-                            self.webProxyStatus = .applying
-                            self.onStatusChange?()
-                        }
-                        do {
-                            let trust = try await WebProxySetup(services: self.services, guest: self.guest, proxyDirectory: self.proxyDirectory,
-                                    stoppedTrust: self.trustsStopped ? (self.instance.paths.directory, self.instance.storage.key) : nil)
-                                .configure(enabled: self.webProxy.mode != .off)
-                            try Task.checkCancellation()
-                            guard generation == self.bootGeneration else { return }
-                            if revision == self.proxyRevision {
-                                appliedProxyRevision = revision
-                                self.webProxyStatus = trust
-                                self.onStatusChange?()
-                            }
-                        } catch {
-                            if Task.isCancelled { return }
-                            if self.webProxyStatus != .failed {
-                                self.webProxyStatus = .failed
-                                logEvent("proxy settings: \(error.localizedDescription)")
-                                self.onStatusChange?()
-                            }
-                        }
-                    }
-                    do {
-                        let fg = self.guestAgent.isAlive ? try await self.guest.foreground() : nil
-                        try Task.checkCancellation()
-                        guard generation == self.bootGeneration else { return }
-                        self.foregroundAppName = fg?.name
-                        // Setup over (unlocked, purplebuddy gone): open networking once, in
-                        // place -- the Wi-Fi association and DHCP lease stay (no reboot, no re-join).
-                        if var gate = self.setupGate, let link = self.link {
-                            if gate.observe(bundleID: fg?.bundleID, name: fg?.name) {
-                                self.setupGate = nil
-                                link.send(.netRestrict(false))
-                                try? Data().write(to: BootRecipe.setupDoneMark(overlay: self.overlayURL))
-                                logEvent("networking: Setup finished, lifting slirp restrict on wifi0")
-                                // Setup's country page set its own locale (7.x lists Afghanistan first: fa_AF);
-                                // the Mac's region again, as every later boot applies it.
-                                self.scheduleTimeZoneSync(generation: generation)
-                            } else {
-                                self.setupGate = gate
-                            }
-                        }
-                    } catch {
-                        if Task.isCancelled { return }
-                        self.foregroundAppName = nil
-                        _ = self.setupGate?.observe(bundleID: nil, name: nil)   // a failed poll breaks the streak
-                    }
-                }
-                do { try await Task.sleep(for: .seconds(3)) } catch { return }
-            }
+    func startForegroundWatch() { foreground.start() }
+    var hasPendingInstallWork: Bool { AppInstaller.hasPendingWork(for: instance.id) }
+    var overlay: URL { overlayURL }
+    func foregroundApp() async throws -> (bundleID: String, name: String?) { try await guest.foreground() }
+    func applyWebProxy(since applied: Int?, generation: Int) async throws -> Int? {
+        try await proxy.apply(since: applied, isCurrent: { generation == self.bootGeneration }) { enabled in
+            try await WebProxySetup(services: self.services, guest: self.guest, proxyDirectory: self.proxyDirectory,
+                    stoppedTrust: self.trustsStopped ? (self.instance.paths.directory, self.instance.storage.key) : nil)
+                .configure(enabled: enabled)
         }
     }
+    func setupFinished(generation: Int) { timeZone.schedule(generation: generation) }
 
-    func pasteToGuest(_ text: String) { link?.send(.paste(text)) }
-
-    /// Composed text (DisplayView's NSTextInputClient): it_agent's `type` into the focused field (it_typein),
-    /// in order; where the agent can't (no it_typein, no field), the US keys that type it, one by one.
-    private var typing: Task<Void, Never>?
-    func typeText(_ text: String, shiftHeld: Bool) {
-        guard !text.isEmpty, keyboardInputEnabled, acceptsInput, !isSleeping else { return }
-        let previous = typing
-        typing = Task { [weak self] in
-            await previous?.value
-            guard let self else { return }
-            let agent = guestAgent
-            if (try? await agent.capabilities().has("type")) == true,
-               (try? await agent.perform("type", body: Data(text.utf8))) != nil { return }
-            for character in text {
-                guard let (code, shift) = GuestKeyboard.key(for: character) else { continue }
-                let pressShift = shift && !shiftHeld
-                if pressShift { link?.send(.key(macKeyCode: 56, down: true)) }
-                link?.send(.key(macKeyCode: Int(code), down: true))
-                link?.send(.key(macKeyCode: Int(code), down: false))
-                if pressShift { link?.send(.key(macKeyCode: 56, down: false)) }
-                try? await Task.sleep(for: .milliseconds(15))
-            }
-        }
-    }
 
     /// Guest audio for a recording (ScreenMovieWriter). Its clock is the
     /// dylib's: monotonic seconds since the capture started.
@@ -1382,11 +877,7 @@ final class EmulatorController {
     /// next boot clones base/nor.bin again.
     private var preparedNORURL: URL? { instance.paths.writableNOR }
     /// Stop, Force Stop and Shut Down (ShutdownLadder): Stop is a hard halt, never a guest shutdown.
-    private(set) lazy var ladder: ShutdownLadder = {
-        let ladder = ShutdownLadder(host: self)
-        ladder.onChange = { [weak self] in self?.onStatusChange?() }
-        return ladder
-    }()
+    @ObservationIgnored private(set) lazy var ladder = ShutdownLadder(host: self)
     static let haltBudget: TimeInterval = ShutdownLadder.Budgets().halt
     /// The quit backstop: the halt, then the kill, then the services worker.
     static let stopBudget: TimeInterval = ShutdownLadder.Budgets().stop
@@ -1408,7 +899,7 @@ final class EmulatorController {
     }
 
     /// Erase All Content and Settings (DeviceErase).
-    private lazy var eraser = DeviceErase(host: self)
+    @ObservationIgnored private lazy var eraser = DeviceErase(host: self)
     func requestFactoryReset() { eraser.request() }
     var eraseTargets: DeviceErase.Targets {
         DeviceErase.Targets(overlay: overlayURL, snapshots: [snapshotURL, snapshotTmpURL, snapshotBadURL],
@@ -1416,65 +907,51 @@ final class EmulatorController {
     }
     func discardInstalls() { AppInstaller.discard(for: instance.id) }
     func stopGuestWatches() {
-        foregroundTask?.cancel()
-        orientationTask?.cancel()
+        foreground.stop()
+        rotation.stopWatching()
     }
     func restart() { onRestartRequested?() }
 
     // MARK: - App management
-    
-    var canManageApps: Bool { usbmux.session != nil && !storageFailed }
 
-    /// The question every app-management command actually wants answered.
-    ///
-    /// `canManageApps` only says the host daemon is alive, and it is true from
-    /// the moment usbmuxd starts — through the whole boot and USB enumeration,
-    /// which is ~40s on a warm image and past three minutes on a first boot.
-    /// Gating on it alone left Install App… enabled that whole
-    /// time, so choosing them opened a file picker (or a Terminal window) for a
-    /// device that could only answer "not reachable over USB yet". The
-    /// inspector's own buttons already waited for a real round trip; the menu
-    /// and toolbar were the ones still guessing. `deviceReachable` is that round
-    /// trip, set by the list poll, and nil until the first one lands.
-    var canReachDevice: Bool { usbConnected && canManageApps && isRunning && deviceReachable == true }
-
-    /// Adding to the ready queue opens no guest session. A probe suppressed by
-    /// our own install must not disable File → Install App or drag-and-drop.
-    var canQueueInstall: Bool {
-        usbConnected && canManageApps && isRunning && (deviceReachable == true || AppInstaller.isUsingDevice(instance.id) || isInstalling)
-    }
+    /// Reaching the device's services, installs and media imports, restarting the Home screen (DeviceApps).
+    @ObservationIgnored private(set) lazy var apps = DeviceApps(host: self)
+    var canManageApps: Bool { apps.canManageApps }
+    var canReachDevice: Bool { apps.canReachDevice }
+    var canQueueInstall: Bool { apps.canQueueInstall }
+    var isInstalling: Bool { apps.isInstalling }
+    private var restartingSpringBoard: Bool { apps.restartingSpringBoard }
     /// The usbmuxd socket to talk to this device on, for the long-lived
     /// notification_proxy watcher (which owns its own session, not a gated one).
     var usbmuxSession: String? { usbmux.session?.clientSocket }
-    
+
     /// The guest agent through this device's helper, and the app's operations on it.
     var guestAgent: GuestAgent { GuestAgent(link: link, cache: agentCache) }
     var guest: GuestServices { GuestServices(agent: guestAgent, packaged: status?.guestPackage != nil) }
-
-    /// This device's stock lockdown services (installation_proxy, AFC,
-    /// springboardservices, lockdownd) on its usbmuxd; throws until usbmuxd is up.
-    var services: DeviceServices {
-        get throws {
-            guard !bootScope.retired, let session = usbmux.session else {
-                throw DeviceToolsError.failed("The device is not reachable over USB yet.")
-            }
-            return DeviceServices(clientSocket: session.clientSocket, udid: guestUDID, session: bootScope.id)
-        }
+    var services: DeviceServices { get throws { try apps.services } }
+    var installPipeline: AppInstallPipeline { get throws { try apps.installPipeline } }
+    func deviceReady() async -> Bool { await apps.deviceReady() }
+    func checkDeviceConnection() async throws { try await apps.checkDeviceConnection() }
+    func restartSpringBoard() async throws { try await apps.restartSpringBoard() }
+    var hasSpringBoardServices: Bool { apps.hasSpringBoardServices }
+    func waitForSpringBoard(agentCounts: Bool = false) async throws { try await apps.waitForSpringBoard(agentCounts: agentCounts) }
+    func install(_ ipa: URL, placeholderRaised: Bool = false,
+                 progress: @escaping @Sendable (String) -> Void = { _ in }) async throws -> String {
+        try await apps.install(ipa, placeholderRaised: placeholderRaised, progress: progress)
     }
-
-    /// The install pipeline for this device (AppInstaller runs it, and raises
-    /// a catalog download's placeholder through it).
-    var installPipeline: AppInstallPipeline {
-        get throws { AppInstallPipeline(services: try services, agent: guestAgent, deviceOS: iosVersion) }
+    func importMedia(_ media: PreparedMedia, progress: @escaping @Sendable (Double) -> Void,
+                     willCommit: () -> Void) async throws {
+        try await apps.importMedia(media, progress: progress, willCommit: willCommit)
     }
 
     /// The guest's orientation in degrees; nil when this image has no agent.
     /// Failures must not start a second transport.
-    private func guestOrientation() async throws -> Int? {
+    func guestOrientation() async throws -> Int? {
         _ = try services
         guard guestAgent.status != 0 else { return nil }
         return try await guestAgent.orientation()
     }
+    func interfaceOrientation() async throws -> Int { try await services.interfaceOrientation() }
 
     /// This device's firmware, from its catalog entry: what an app's minimum
     /// iOS and architecture are checked against.
@@ -1490,25 +967,11 @@ final class EmulatorController {
                               media: catalogEntry?.media ?? [], prerelease: catalogEntry?.prerelease != nil)
     }
     
-    /// Cheap in-process check that the USB bridge sees the guest (bounded and
-    /// gated: DeviceServices.checkAttachment). App-service reads establish
-    /// lockdownd readiness separately.
-    func deviceReady() async -> Bool {
-        (try? await checkDeviceConnection()) != nil
-    }
-
-    func checkDeviceConnection() async throws {
-        try Task.checkCancellation()
-        guard usbConnected, !isPoweredOff, !shuttingDown,
-              let socket = usbmux.session?.clientSocket else { throw DeviceError.notAttached }
-        _ = socket
-        try await services.checkAttachment()
-    }
 
     // MARK: - Activation (prepared offline, completed and verified per boot)
 
     /// The once-per-boot activation verdict (ActivationCheck).
-    private lazy var activation = ActivationCheck(host: self, services: self, recovery: recovery, readiness: readiness, notices: notices)
+    @ObservationIgnored private lazy var activation = ActivationCheck(host: self, services: self, recovery: recovery, readiness: readiness, notices: notices)
     func activationState() async -> String? { await (try? services)?.activationState() }
     func finishActivation() async throws { try await services.finishActivation() }
     func installProxyReady() async -> Bool { await (try? services)?.installProxyReady() == true }
@@ -1517,93 +980,21 @@ final class EmulatorController {
     var displaySleeping: Bool? { status?.displaySleeping }
     func checkServices() throws { _ = try services }
     func launchInGuest(_ bundleID: String) async throws { try await guest.launch(bundleID) }
-    func restartSpringBoard() async throws {
-        guard isRunning, !isInstalling else { return }
-        restartingSpringBoard = true
-        defer { restartingSpringBoard = false }
-        // launchd stops SpringBoard and KeepAlive brings it straight back: the
-        // cheap fix for "a freshly sideloaded app crashes until I restart", as
-        // SpringBoard rebuilds what it caches about installed apps in seconds
-        // where a boot costs ~40. User-invoked only, never the install path's.
-        _ = try services
-        try await guest.respring()
-        try await waitForSpringBoard()
-    }
 
-    /// springboardservices first ships in iPhone OS 3.1: 2.x and 3.0 lockdownd has no such service (Invalid service
-    /// on every try), so there lockdown answering is as ready as the Home screen gets.
-    var hasSpringBoardServices: Bool { iosVersion.compare("3.1", options: .numeric) != .orderedAscending }
+    // MARK: - Boot environment (DeviceOptions)
 
-    /// `agentCounts`: the guest agent naming SpringBoard's screen (or Setup Assistant) frontmost is an answer too.
-    /// A device in Setup is up and takes input, yet its springboardservices may refuse the layout (n81 9A334 on a
-    /// slow Mac: every connection reset for the whole wait). Not after a respring, where the agent can still name
-    /// the screen of the SpringBoard that is going away.
-    func waitForSpringBoard(agentCounts: Bool = false) async throws {
-        guard hasSpringBoardServices else { return }
-        let deadline = ContinuousClock.now + .seconds(45 * Board.hostSlowdown)
-        while ContinuousClock.now < deadline {
-            try Task.checkCancellation()
-            if (try? await services.homeScreenOrder()) != nil { return }
-            if agentCounts, guestAgent.isAlive, SpringBoardAnswer.up(frontmost: try? await guest.foreground().bundleID) {
-                logEvent("boot: SpringBoard answers through the guest agent (its layout service did not)")
-                return
-            }
-            try await Task.sleep(for: .seconds(1))
-        }
-        throw DeviceToolsError.failed("The Home screen didn’t come back. Restart the \(profile.shortName); your apps are kept.")
-    }
-
-    /// True while any install is running — the quit guard reads this so ⌘Q
-    /// mid-install prompts instead of leaving a half-installed app.
-    private(set) var isInstalling = false
-
-    func install(_ ipa: URL, placeholderRaised: Bool = false,
-                 progress: @escaping @Sendable (String) -> Void = { _ in }) async throws -> String {
-        isInstalling = true
-        defer { isInstalling = false }
-        return try await installPipeline.install(ipa, placeholderRaised: placeholderRaised, progress: progress)
-    }
-
-    func importMedia(_ media: PreparedMedia, progress: @escaping @Sendable (Double) -> Void,
-                    willCommit: () -> Void) async throws {
-        guard canQueueInstall else { throw DeviceToolsError.failed("The device is not ready for media import.") }
-        isInstalling = true
-        defer { isInstalling = false }
-        let device = MediaImport(services: try services, guest: guest)
-        try await device.stage(media, progress: progress)
-        try Task.checkCancellation()
-        willCommit()
-        try await device.commit(media)
-    }
-
-    // MARK: - Boot environment
-    
-    /// UserDefaults key for Settings ▸ verbose boot.
-    static let verboseBootDefaultsKey = "verboseBoot"
-    static var verboseBoot: Bool {
-        UserDefaults.standard.bool(forKey: verboseBootDefaultsKey)
-    }
-
-    static let kernelConsoleDefaultsKey = "kernelConsole"
-    static var kernelConsole: Bool {
-        UserDefaults.standard.bool(forKey: kernelConsoleDefaultsKey)
-    }
-
-    /// Early iBoot handoff arguments; serial output is included in diagnostics.
-    /// The regression checker compares the base command line with the harness;
-    /// verbose boot and kernel-console output remain optional app settings.
-    static var bootArgs: String {
-        var args = "amfi_allow_any_signature=1 cs_enforcement_disable=1"
-        if verboseBoot { args += " -v" }
-        if kernelConsole { args += " serial=3 debug=0x8" }
-        return args
-    }
+    static let verboseBootDefaultsKey = DeviceOptions.verboseBootDefaultsKey
+    static var verboseBoot: Bool { UserDefaults.standard.bool(forKey: verboseBootDefaultsKey) }
+    static let kernelConsoleDefaultsKey = DeviceOptions.kernelConsoleDefaultsKey
+    static var kernelConsole: Bool { UserDefaults.standard.bool(forKey: kernelConsoleDefaultsKey) }
 
 }
 
 // The session's state machines (LightTouchCore/Session) run against the controller through these.
 extension EmulatorController: MachineHost, ConnectionHost, ActivationServices, ReadinessHost, BootWatchHost,
-                              ShutdownHost, EraseHost, BootCycleHost, AppLaunchHost {
+                              ShutdownHost, EraseHost, BootCycleHost, AppLaunchHost, RotationHost,
+                              InputHost, GuestPackageHost, TimeZoneHost, AppsHost,
+                              ForegroundHost {
     var helper: DeviceHelper? { process }
     var helperLink: HelperLink? { link }
     var isPainting: Bool { state == .running }

@@ -54,7 +54,7 @@ struct GuestConfig: Decodable {
         do { return try await body() } catch { fail("\(name) \(what): \(error)") }
     }
 
-    /// EmulatorController.composeGuestOffer, with the driver's record.
+    /// GuestPackageWatch.compose, with the driver's record.
     func composeOffer() -> String? {
         let dir = device.dir.appendingPathComponent("work/guest-offer")
         try? FileManager.default.createDirectory(at: dir.deletingLastPathComponent(), withIntermediateDirectories: true)

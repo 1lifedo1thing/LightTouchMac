@@ -9,6 +9,7 @@
 // 1.x's power-off gesture), so its storage is left clean; the helper stays, powered off, as after the slider.
 
 import Foundation
+import Observation
 import HostRuntime
 import DeviceRuntime
 
@@ -27,7 +28,7 @@ public protocol ShutdownHost: AnyObject {
     func willStop()
 }
 
-public final class ShutdownLadder {
+@Observable public final class ShutdownLadder {
     public struct Budgets {
         public init() {}
         /// SIGTERM to the kill.
@@ -46,10 +47,9 @@ public final class ShutdownLadder {
 
     private unowned let host: ShutdownHost
     public var budgets = Budgets()
-    public var onChange: (() -> Void)?
     public init(host: ShutdownHost) { self.host = host }
 
-    public private(set) var shuttingDown = false { didSet { onChange?() } }
+    public private(set) var shuttingDown = false
     /// Stop asked the helper to halt: its exit is Stopped, not a crash.
     public private(set) var halting = false
     private var haltTask: Task<Void, Never>?
