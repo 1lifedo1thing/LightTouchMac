@@ -15,6 +15,8 @@ final class CaptureStatusView: NSView {
     static var autoDismissal: Duration = .seconds(5)
     var fileURL: URL? { state.fileURL }
     var onPrimary: (() -> Void)?
+    /// The capture banner's text button (showCapture's `link`).
+    var onLink: (() -> Void)?
     var onSecondary: (() -> Void)?
     var onDismiss: (() -> Void)?
     var onVisibilityChange: (() -> Void)?
@@ -40,6 +42,7 @@ final class CaptureStatusView: NSView {
         super.init(frame: .zero)
         hosting = NSHostingView(rootView: CaptureBanner(state: state,
             primary: { [weak self] in self?.onPrimary?() },
+            link: { [weak self] in self?.performLink() },
             secondary: { [weak self] in self?.onSecondary?() },
             dismiss: { [weak self] in self?.dismissBanner() },
             hovering: { [weak self] hovered in
@@ -73,13 +76,20 @@ final class CaptureStatusView: NSView {
         state.warning = appearance == .warning
         state.image = nil
         state.fileURL = nil
+        state.link = nil
         isHidden = false
         alphaValue = 1
         state.isPresented = true
     }
 
-    func showCapture(title: String, image: NSImage, fileURL: URL?) {
+    /// The banner's text button, if it shows one.
+    var linkTitle: String? { state.link }
+    func performLink() { state.link = nil; onLink?() }
+
+    /// `link`: a text button under the title (a capture preference), which `onLink` handles; it goes once clicked.
+    func showCapture(title: String, image: NSImage, fileURL: URL?, link: String? = nil) {
         update(title: title, dismissible: true, appearance: .success)
+        state.link = link
         state.image = image
         state.fileURL = fileURL
         let id = presentationID
@@ -134,6 +144,7 @@ private final class CaptureBannerState {
     var dismissible = false
     var image: NSImage?
     var fileURL: URL?
+    var link: String?
     var isWindowActive = true
     var isPresented = false
 }
@@ -141,6 +152,7 @@ private final class CaptureBannerState {
 private struct CaptureBanner: View {
     let state: CaptureBannerState
     let primary: () -> Void
+    var link: () -> Void = {}
     let secondary: () -> Void
     let dismiss: () -> Void
     let hovering: (Bool) -> Void
@@ -174,6 +186,9 @@ private struct CaptureBanner: View {
                 Text(state.title).fontWeight(.medium).lineLimit(1)
                 if !state.detail.isEmpty {
                     Text(state.detail).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                }
+                if let title = state.link {
+                    Button(title, action: link).buttonStyle(.link).font(.subheadline).lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

@@ -35,8 +35,9 @@ enum CaptureError: Error { case failed(String) }
 @MainActor final class CaptureStatusView: NSView {
     enum Appearance { case warning }
     var fileURL: URL?
-    var onPrimary: (() -> Void)?, onSecondary: (() -> Void)?, onDismiss: (() -> Void)?
-    func showCapture(title: String, image: NSImage, fileURL: URL?) { self.fileURL = fileURL }
+    var onPrimary: (() -> Void)?, onSecondary: (() -> Void)?, onDismiss: (() -> Void)?, onLink: (() -> Void)?
+    var link: String?
+    func showCapture(title: String, image: NSImage, fileURL: URL?, link: String? = nil) { self.fileURL = fileURL; self.link = link }
     func update(title: String, detail: String, primary: String?, secondary: String?, dismissible: Bool, appearance: Appearance) {}
 }
 

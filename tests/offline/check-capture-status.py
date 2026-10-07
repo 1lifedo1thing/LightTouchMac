@@ -92,6 +92,26 @@ final class DisplayView:NSView {}
   precondition(panel.isVisible && panel.parent === window)
   status.isHidden=true;content.updateStatusVisibility()
   precondition(!panel.isVisible && panel.parent==nil)
+  // The saved banner's text button ("Hide bezels for screenshots"): shown, pressed, it calls onLink and goes.
+  do {
+   let banner=CaptureStatusView()
+   let offscreen=NSWindow(contentRect:CGRect(x:0,y:0,width:360,height:48),styleMask:[.titled],backing:.buffered,defer:true)
+   offscreen.contentView=banner
+   var linked=0
+   banner.onLink={ linked+=1 }
+   banner.showCapture(title:"Screenshot saved",image:NSImage(size:NSSize(width:320,height:480)),fileURL:nil,link:"Hide bezels for screenshots")
+   func settle() { for _ in 0..<5 { RunLoop.main.run(until:Date().addingTimeInterval(0.03)); banner.layoutSubtreeIfNeeded() } }
+   settle()
+   precondition(banner.linkTitle=="Hide bezels for screenshots","no text button: \(String(describing: banner.linkTitle))")
+   if let out=ProcessInfo.processInfo.environment["LTM_CHECK_OUT"] {
+    let rep=banner.bitmapImageRepForCachingDisplay(in:banner.bounds)!; banner.cacheDisplay(in:banner.bounds,to:rep)
+    try rep.representation(using:.png,properties:[:])!.write(to:URL(fileURLWithPath:out).appendingPathComponent("screenshot-banner.png"))
+   }
+   banner.performLink()
+   precondition(linked==1 && banner.linkTitle==nil,"onLink \(linked); the button stays")
+   banner.showCapture(title:"Screenshot saved",image:NSImage(size:NSSize(width:1,height:1)),fileURL:nil)
+   precondition(banner.linkTitle==nil,"a banner without a link shows one")
+  }
   print("PASS: full canvas, no idle panel, feedback fits narrow windows, file deletion/move dismissal, transient banner, app-switch reattachment")
  }
 }

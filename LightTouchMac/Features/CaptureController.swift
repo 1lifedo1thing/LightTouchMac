@@ -168,8 +168,10 @@ import UniformTypeIdentifiers
                     NSWorkspace.shared.activateFileViewerSelecting([savedURL])
                 }
                 if !recording.isActive, action != .open {
+                    // With the bezel in the picture, a way to leave it out of the next ones (Capture Screen Only).
                     captureStatus.showCapture(title: action == .copy ? "Screenshot copied" : "Screenshot saved",
-                                              image: nsImage, fileURL: savedURL)
+                                              image: nsImage, fileURL: savedURL,
+                                              link: captureMode == 0 ? "Hide bezels for screenshots" : nil)
                     deviceVC?.updateStatusVisibility()
                 }
             } catch { NSAlert(error: error).beginSheetModal(for: window, completionHandler: nil) }
@@ -307,6 +309,11 @@ import UniformTypeIdentifiers
     private func installCaptureStatus() {
         captureStatus.isHidden = true
         captureStatus.onPrimary = { [weak self] in self?.saveRecordingAs() }
+        captureStatus.onLink = { [weak self] in
+            guard let self, captureMode == 0 else { return }
+            toggleCaptureScreenOnly()
+            onChange()
+        }
         captureStatus.onSecondary = { [weak self] in
             guard let self else { return }
             // Resolve the file from the displayed banner. A prior recording's
