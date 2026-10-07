@@ -14,41 +14,53 @@
 // User-Agent and the standard URLSession connection limits. Ready files install
 // serially, independently of the order downloads finish.
 
-import LightTouchCore
-import Cocoa
+import Foundation
 
-extension NSPasteboard.PasteboardType {
-    /// A JSON-encoded CatalogApp riding a drag out of the Store list, so the
-    /// device view can offer drag-to-install for catalog rows.
-    static let ltmCatalogApp = NSPasteboard.PasteboardType("app.lighttouch.catalog-app")
-}
-
-struct CatalogApp: Codable, Sendable {
-    let bundleID: String?
-    let name: String
-    let developer: String?
-    let version: String?
-    let minOS: String?
-    let size: Int64?
-    let ipaID: Int
-    let iconURL: URL?
-    let downloadURL: URL
-    let appURL: URL?
+public struct CatalogApp: Codable, Sendable {
+    public init(bundleID: String? = nil, name: String, developer: String? = nil, version: String? = nil, minOS: String? = nil, size: Int64? = nil, ipaID: Int, iconURL: URL? = nil, downloadURL: URL, appURL: URL? = nil, md5: String? = nil, compat: Compat? = nil) {
+        self.bundleID = bundleID
+        self.name = name
+        self.developer = developer
+        self.version = version
+        self.minOS = minOS
+        self.size = size
+        self.ipaID = ipaID
+        self.iconURL = iconURL
+        self.downloadURL = downloadURL
+        self.appURL = appURL
+        self.md5 = md5
+        self.compat = compat
+    }
+    public let bundleID: String?
+    public let name: String
+    public let developer: String?
+    public let version: String?
+    public let minOS: String?
+    public let size: Int64?
+    public let ipaID: Int
+    public let iconURL: URL?
+    public let downloadURL: URL
+    public let appURL: URL?
     /// API 2.1: the .ipa's own md5 (the archive's, the one IPALibrary keeps),
     /// and the server's verdict for the requested device. Absent before 2.1.
-    var md5: String? = nil
-    var compat: Compat? = nil
+    public var md5: String? = nil
+    public var compat: Compat? = nil
 
-    struct Compat: Codable, Sendable {
-        let compatible: Bool
-        let reasons: [String]
+    public struct Compat: Codable, Sendable {
+        public init(compatible: Bool, reasons: [String], deviceFamily: [String]? = nil) {
+            self.compatible = compatible
+            self.reasons = reasons
+            self.deviceFamily = deviceFamily
+        }
+        public let compatible: Bool
+        public let reasons: [String]
         /// UIDeviceFamily: "1" iPhone/iPod touch, "2" iPad.
-        var deviceFamily: [String]? = nil
+        public var deviceFamily: [String]? = nil
 
-        enum CodingKeys: String, CodingKey { case compatible, reasons, deviceFamily = "device_family" }
+        public enum CodingKeys: String, CodingKey { case compatible, reasons, deviceFamily = "device_family" }
     }
 
-    enum CodingKeys: String, CodingKey {
+    public enum CodingKeys: String, CodingKey {
         case bundleID = "bundle_id", name, developer, version, minOS = "min_os"
         case size, ipaID = "ipa_id", iconURL = "icon_url"
         case downloadURL = "download_url", appURL = "app_url", md5, compat
@@ -56,7 +68,7 @@ struct CatalogApp: Codable, Sendable {
 
     /// Why the server excluded this app for the device, in user words; nil
     /// when it runs or the server didn't say. The first reason is the one shown.
-    var incompatibility: String? {
+    public var incompatibility: String? {
         guard let compat, !compat.compatible else { return nil }
         guard let reason = compat.reasons.first else { return "Not compatible with this device" }
         if reason == "armv6_slice_contains_armv7_code" || (reason.hasPrefix("no_") && reason.hasSuffix("_slice")) {
@@ -79,7 +91,7 @@ struct CatalogApp: Codable, Sendable {
     /// server excluded, its reason instead. The min-OS stayed out on purpose:
     /// the server already filtered to what runs here, so it was noise on
     /// every row.
-    var subtitle: String {
+    public var subtitle: String {
         if let incompatibility { return incompatibility }
         var parts: [String] = []
         if let developer { parts.append(developer) }
@@ -90,7 +102,7 @@ struct CatalogApp: Codable, Sendable {
     }
 }
 
-nonisolated enum CatalogError: LocalizedError {
+public nonisolated enum CatalogError: LocalizedError {
     case badStatus(Int)
     case invalidCopy(String)
     /// A response that didn't decode; the DecodingError (its coding path) is in app.log.
@@ -100,11 +112,11 @@ nonisolated enum CatalogError: LocalizedError {
     case unsupportedDevice(name: String?)
 
     /// The error for a non-200 answer and its body.
-    static func status(_ code: Int, body: Data) -> CatalogError {
+    public static func status(_ code: Int, body: Data) -> CatalogError {
         code == 400 && String(decoding: body, as: UTF8.self).contains("device must be one of") ? .unsupportedDevice(name: nil) : .badStatus(code)
     }
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .unsupportedDevice(let name): "Legacy Store doesn’t support \(name ?? "this device") yet."
         case .invalidCopy(let message): message
@@ -118,17 +130,22 @@ nonisolated enum CatalogError: LocalizedError {
 }
 
 @MainActor
-enum CatalogClient {
+public enum CatalogClient {
 
     /// Tests may inject a local service; production always uses Legacy Store.
-    static var baseURL = URL(string: "https://legacystore.app")!
+    public static var baseURL = URL(string: "https://legacystore.app")!
+    /// Where downloads are staged; nil is Bundled.workDirectory. Tests point it at a temporary directory.
+    public static var scratchDirectory: URL?
+    /// Where the client's diagnostics go (HTTP statuses, undecodable responses): app.log, or a test's own record.
+    public static var log: (String) -> Void = { logEvent($0) }
 
     private static let userAgent: String = {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
         return "LightTouchMac/\(version) (+https://legacystore.app)"
     }()
 
-    private static func request(_ url: URL) -> URLRequest {
+    /// A request carrying the app's identifying User-Agent (the catalog icons use it too).
+    public static func request(_ url: URL) -> URLRequest {
         var req = URLRequest(url: url)
         req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         return req
@@ -148,7 +165,7 @@ enum CatalogClient {
     /// suggested (most-archived compatible) list, compatible apps only. A
     /// query also lists the apps the device can't run (API 2.1), greyed with
     /// the reason, so searching for one says why instead of nothing.
-    static func search(_ query: String, device: String? = nil, os: String = "3.1.3") async throws -> [CatalogApp] {
+    public static func search(_ query: String, device: String? = nil, os: String = "3.1.3") async throws -> [CatalogApp] {
         var components = URLComponents(url: baseURL.appendingPathComponent("api/emulator/apps"),
                                        resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "limit", value: "50")]
@@ -157,7 +174,7 @@ enum CatalogClient {
             + target(device: device, os: os)
         let (data, response) = try await URLSession.shared.data(for: request(components.url!))
         if let code = (response as? HTTPURLResponse)?.statusCode, code != 200 {
-            logEvent("Legacy Store: HTTP \(code) for \(components.url!.path)?\(components.url!.query ?? "")")
+            log("Legacy Store: HTTP \(code) for \(components.url!.path)?\(components.url!.query ?? "")")
             throw CatalogError.status(code, body: data)
         }
         struct Envelope: Decodable { let apps: [CatalogApp] }
@@ -165,7 +182,7 @@ enum CatalogClient {
     }
 
     /// The copy, if it runs on this device (a 2.1 server 404s it otherwise).
-    static func compatibleCopy(_ id: Int, device: String? = nil, os: String = "3.1.3") async throws -> CatalogApp {
+    public static func compatibleCopy(_ id: Int, device: String? = nil, os: String = "3.1.3") async throws -> CatalogApp {
         var url = URLComponents(url: baseURL.appendingPathComponent("api/emulator/apps"),
                                 resolvingAgainstBaseURL: false)!
         url.queryItems = [URLQueryItem(name: "ipa_id", value: String(id))] + target(device: device, os: os)
@@ -178,7 +195,7 @@ enum CatalogClient {
         return app
     }
 
-    static func copyDetails(_ id: Int) async throws -> CatalogCopy {
+    public static func copyDetails(_ id: Int) async throws -> CatalogCopy {
         let copy: CatalogCopy = try await get(baseURL.appendingPathComponent("api/v1/copies/\(id)"))
         guard copy.ipa_id == String(id) else {
             throw CatalogError.invalidCopy("Legacy Store returned a different archived copy.")
@@ -186,7 +203,7 @@ enum CatalogClient {
         return copy
     }
 
-    static func versions(for app: CatalogApp) async throws -> [CatalogVersion] {
+    public static func versions(for app: CatalogApp) async throws -> [CatalogVersion] {
         guard let key = app.bundleID ?? app.appURL?.lastPathComponent, !key.isEmpty else {
             throw CatalogError.invalidCopy("This app has no catalog identifier.")
         }
@@ -200,7 +217,7 @@ enum CatalogClient {
         let (data, response) = try await URLSession.shared.data(for: request(url))
         guard let response = response as? HTTPURLResponse, response.statusCode == 200 else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            logEvent("Legacy Store: HTTP \(code) for \(url.path)?\(url.query ?? "")")
+            log("Legacy Store: HTTP \(code) for \(url.path)?\(url.query ?? "")")
             throw CatalogError.status(code, body: data)
         }
         try Task.checkCancellation()
@@ -212,7 +229,7 @@ enum CatalogClient {
     private static func decode<T: Decodable>(_ type: T.Type, _ data: Data, from url: URL) throws -> T {
         do { return try JSONDecoder().decode(type, from: data) }
         catch let error as DecodingError {
-            logEvent("Legacy Store: couldn’t read \(url.path)?\(url.query ?? "") (\(data.count) bytes) as \(T.self): \(String(reflecting: error))")
+            log("Legacy Store: couldn’t read \(url.path)?\(url.query ?? "") (\(data.count) bytes) as \(T.self): \(String(reflecting: error))")
             throw CatalogError.unreadable
         }
     }
@@ -221,7 +238,7 @@ enum CatalogClient {
     /// disk — unless the library already holds the copy (its checksum), in
     /// which case the file is a clone of that, with no transfer. A failed or
     /// cancelled transfer owns no permanent scratch directory.
-    static func download(_ app: CatalogApp, device: String? = nil, deviceOS: String = "3.1.3", arch: String = "armv6",
+    public static func download(_ app: CatalogApp, device: String? = nil, deviceOS: String = "3.1.3", arch: String = "armv6",
                          progress: @escaping @MainActor @Sendable (Double) -> Void) async throws -> URL {
         let current = try await compatibleCopy(app.ipaID, device: device, os: deviceOS)
         guard current.bundleID == app.bundleID else {
@@ -242,7 +259,7 @@ enum CatalogClient {
             }
             details = copy
         }
-        let dir = Bundled.workDirectory.appendingPathComponent("catalog-\(app.ipaID)-\(UUID().uuidString)",
+        let dir = (scratchDirectory ?? Bundled.workDirectory).appendingPathComponent("catalog-\(app.ipaID)-\(UUID().uuidString)",
                                                                isDirectory: true)
         let safeName = String(app.name.map { "/:\0".contains($0) ? "-" : $0 }.prefix(120))
         let file = dir.appendingPathComponent("\(safeName.isEmpty ? "App" : safeName).ipa")
@@ -268,20 +285,6 @@ enum CatalogClient {
             try? FileManager.default.removeItem(at: dir)
             throw error
         }
-    }
-
-    /// One shared memo for catalog row icons; they're 57–512 px PNGs keyed by
-    /// their content-addressed URL, so entries never go stale.
-    static let iconMemo = NSCache<NSString, NSImage>()
-
-    static func icon(for app: CatalogApp) async -> NSImage? {
-        guard let url = app.iconURL else { return nil }
-        if let memo = iconMemo.object(forKey: url.absoluteString as NSString) { return memo }
-        guard let (data, response) = try? await URLSession.shared.data(for: request(url)),
-              (response as? HTTPURLResponse)?.statusCode == 200,
-              let image = NSImage(data: data) else { return nil }
-        iconMemo.setObject(image, forKey: url.absoluteString as NSString)
-        return image
     }
 }
 

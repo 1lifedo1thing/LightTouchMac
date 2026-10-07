@@ -1,28 +1,28 @@
 import Foundation
 import CryptoKit
 
-nonisolated struct CatalogCopy: Decodable, Sendable {
-    let ipa_id: String
-    let filename: String?
-    let size: Int64?
-    let md5: String?
-    let available: Bool
-    let version: String?
-    let bundle_id: String?
-    let binary: Binary?
+public nonisolated struct CatalogCopy: Decodable, Sendable {
+    public let ipa_id: String
+    public let filename: String?
+    public let size: Int64?
+    public let md5: String?
+    public let available: Bool
+    public let version: String?
+    public let bundle_id: String?
+    public let binary: Binary?
 
-    struct Binary: Decodable, Sendable {
-        let install_status: String?
-        let architectures: [String]?
-        let macho_min_os: String?
-        let device_family_macho: [String]?
+    public struct Binary: Decodable, Sendable {
+        public let install_status: String?
+        public let architectures: [String]?
+        public let macho_min_os: String?
+        public let device_family_macho: [String]?
         /// API 2.1: the armv6 slice's instructions are really ARMv7 (a
         /// cracked release that relabelled its armv7 slice); nil = not scanned.
-        let armv7_code: Bool?
+        public let armv7_code: Bool?
 
-        enum CodingKeys: String, CodingKey { case install_status, architectures, macho_min_os, device_family_macho, armv7_code }
+        public enum CodingKeys: String, CodingKey { case install_status, architectures, macho_min_os, device_family_macho, armv7_code }
 
-        init(from decoder: Decoder) throws {
+        public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             install_status = try c.decodeIfPresent(String.self, forKey: .install_status)
             architectures = try c.decodeIfPresent([String].self, forKey: .architectures)
@@ -38,7 +38,7 @@ nonisolated struct CatalogCopy: Decodable, Sendable {
     }
 
     /// `deviceOS`: the device's iOS version (its catalog entry).
-    static func osIssue(_ value: String?, deviceOS: String = "3.1.3") -> String? {
+    public static func osIssue(_ value: String?, deviceOS: String = "3.1.3") -> String? {
         guard let value else { return nil }
         let parts = value.split(separator: ".", omittingEmptySubsequences: false)
         let numbers = parts.compactMap { part -> Int? in
@@ -56,12 +56,12 @@ nonisolated struct CatalogCopy: Decodable, Sendable {
 
     /// Whether a device whose CPU is `arch` has a slice here it can execute:
     /// an armv7 CPU (the iPad) runs armv6 slices too, as Legacy Store judges.
-    static func runs(_ architectures: [String]?, on arch: String) -> Bool {
+    public static func runs(_ architectures: [String]?, on arch: String) -> Bool {
         architectures?.contains { $0 == arch || (arch == "armv7" && $0 == "armv6") } == true
     }
 
     /// `arch`: the device's CPU (armv6 on the iPod touch 1G/2G, armv7 on the iPad).
-    func unavailableReason(minimumOS: String?, deviceOS: String = "3.1.3", arch: String = "armv6") -> String? {
+    public func unavailableReason(minimumOS: String?, deviceOS: String = "3.1.3", arch: String = "armv6") -> String? {
         guard available else { return "This archived download is no longer available." }
         guard let binary else { return "This copy has not been analyzed for compatibility." }
         guard binary.install_status == "installable" else {
@@ -82,7 +82,7 @@ nonisolated struct CatalogCopy: Decodable, Sendable {
 
     /// MD5 is the archive's file-integrity check, not a signature or trust decision.
     /// Hash chunks off the main actor; never load an entire IPA into memory.
-    @concurrent func verifyDownload(_ file: URL) async throws {
+    @concurrent public func verifyDownload(_ file: URL) async throws {
         let actual = try FileManager.default.attributesOfItem(atPath: file.path)[.size] as? NSNumber
         guard let actual, actual.int64Value > 0,
               size == nil || size == actual.int64Value else {
@@ -106,16 +106,16 @@ nonisolated struct CatalogCopy: Decodable, Sendable {
     }
 }
 
-nonisolated struct CatalogVersion: Decodable, Sendable {
-    let version: String?
-    let minimum_os_version: String?
-    let copies: [Copy]
+public nonisolated struct CatalogVersion: Decodable, Sendable {
+    public let version: String?
+    public let minimum_os_version: String?
+    public let copies: [Copy]
 
-    struct Copy: Decodable, Sendable {
-        let ipa_id: String
-        let size: Int64?
-        let install_status: String?
-        let architectures: [String]?
-        let macho_min_os: String?
+    public struct Copy: Decodable, Sendable {
+        public let ipa_id: String
+        public let size: Int64?
+        public let install_status: String?
+        public let architectures: [String]?
+        public let macho_min_os: String?
     }
 }

@@ -9,7 +9,6 @@
 // nothing references it and Settings ▸ Storage removes it. The collection
 // is the point of this program.
 
-import LightTouchCore
 import Foundation
 import CryptoKit
 import Darwin
@@ -52,8 +51,12 @@ public enum IPALibrary {
         public let size: Int64
     }
 
+    /// The state directory the library and the device copies live under; nil is Bundled's. Tests point it at a
+    /// temporary directory.
+    public nonisolated(unsafe) static var stateRoot: URL?
+
     public nonisolated static var directory: URL {
-        Bundled.stateDirectory.appendingPathComponent("Library/IPAs", isDirectory: true)
+        (stateRoot ?? Bundled.stateDirectory).appendingPathComponent("Library/IPAs", isDirectory: true)
     }
     /// An XML property list; earlier builds kept index.json, converted on the first read.
     private nonisolated static var indexURL: URL { directory.appendingPathComponent("index.plist") }
@@ -61,19 +64,19 @@ public enum IPALibrary {
 
     // MARK: - Index
 
-    private static var loaded: [String: Entry]?
+    private static var loaded: (url: URL, index: [String: Entry])?
 
     /// sha256 → entry, read once per process (the app holds the library lock).
     public static var index: [String: Entry] {
-        if let loaded { return loaded }
+        if let loaded, loaded.url == indexURL { return loaded.index }
         let read = (try? PropertyListFile.read([String: Entry].self, from: indexURL,
                                                legacyJSON: directory.appendingPathComponent("index.json"))) ?? [:]
-        loaded = read
+        loaded = (indexURL, read)
         return read
     }
 
     private static func save(_ index: [String: Entry]) {
-        loaded = index
+        loaded = (indexURL, index)
         do {
             try StorageLocations.privateDirectory(directory)
             try PropertyListFile.write(index, to: indexURL)
@@ -104,7 +107,13 @@ public enum IPALibrary {
     }
 
     private nonisolated static func file(_ id: String, device: DeviceInstance) -> URL {
-        device.paths.ipas.appendingPathComponent("\(id).ipa")
+        ipas(device).appendingPathComponent("\(id).ipa")
+    }
+
+    /// A device's IPAs directory, under `stateRoot` when one is set.
+    private nonisolated static func ipas(_ device: DeviceInstance) -> URL {
+        guard let stateRoot else { return device.paths.ipas }
+        return device.paths(state: stateRoot, logs: stateRoot.appendingPathComponent("Logs", isDirectory: true)).ipas
     }
 
     /// The device's copy for this app, or nil if we never kept one.
@@ -190,7 +199,7 @@ public enum IPALibrary {
     public static func sweep(devices: [DeviceInstance]) {
         // An entry whose blob went (removed by hand) says nothing true any more.
         var index = index.filter { FileManager.default.fileExists(atPath: blob($0.key).path) }
-        let stored = devices.reduce(0) { $0 + store(copies: $1.paths.ipas, into: &index) }
+        let stored = devices.reduce(0) { $0 + store(copies: ipas($1), into: &index) }
         if stored > 0 { logEvent("library: \(stored) device copies stored") }
         if index != self.index { save(index) }
     }

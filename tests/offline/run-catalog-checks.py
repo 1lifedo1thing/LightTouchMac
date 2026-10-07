@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Run catalog, ready-queue, boundary and optional native AppKit checks. No QEMU."""
+"""With --ui: the native AppKit table checks (the Store's selection and placeholders, and check-files-ui.py). No QEMU.
+The catalog, network and ready-queue halves are Swift Testing (CatalogCopyTests, CatalogClientTests,
+InstallationQueueTests)."""
 from pathlib import Path
 from firmwarekit_leaf import schema_sources
 import os, subprocess, sys, tempfile, time
@@ -29,10 +31,6 @@ with tempfile.TemporaryDirectory(prefix='ltm-checks-') as work:
         (work/'paths.swift').write_text('extension DeviceInstance { var paths: Paths { paths(state: Bundled.stateDirectory, logs: Bundled.logsDirectory) } }\n')
         common = ['LightTouchMac/'+f+'.swift' for f in ['Features/CatalogClient','Features/CatalogCopy','Library/Bundled','Transport/AppEventLog','Library/StorageLocations','Transport/NativeLogging',
                                                         'Library/IPALibrary','Library/DeviceInstance','Device/Board+App','Library/FirmwareCatalog']] + [ str(work/'paths.swift')]
-        if '--ui-only' not in sys.argv:
-            swift('catalog',common+['tests/fixtures/catalog.swift'])
-            swift('network',common+['tests/fixtures/catalog-network.swift'],[port])
-            swift('queue',['LightTouchMac/Features/InstallationQueue.swift','LightTouchMac/App/UserActivity.swift','tests/fixtures/installation-queue.swift'])
         if '--ui' in sys.argv or '--ui-only' in sys.argv:
             run([sys.executable,'tests/offline/check-files-ui.py'])
             source=(root/'LightTouchMac/UI/AppsInspectorViewController.swift').read_text()

@@ -1,3 +1,4 @@
+import LightTouchCore
 import Cocoa
 
 /// The standard filter pull-down beside Installed/Store, over CatalogFilter.
