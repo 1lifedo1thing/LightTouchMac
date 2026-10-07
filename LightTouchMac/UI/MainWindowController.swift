@@ -436,7 +436,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         let shortName = entry.profile?.shortName ?? "device"
         alert.messageText = "\(name(entry))’s file system is open in Finder"
         alert.informativeText = edits.isEditMounted(instance)
-            ? "Starting the \(shortName) unmounts it so the \(shortName) can use it. Copies in progress finish first, then your changes are saved."
+            ? "Starting the \(shortName) unmounts its file system so the \(shortName) can use it. Copies in progress finish first, then your changes are saved."
             : "Starting the \(shortName) saves your changes first."
         alert.addButton(withTitle: "Save and Start")
         alert.addButton(withTitle: "Cancel")
