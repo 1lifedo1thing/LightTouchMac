@@ -24,7 +24,8 @@ nonisolated public enum StatusSlot: Int, CaseIterable {
          // layout 2: it_boot's QC_PKG_REPORT and the GL shim's QC_GLES_HELLO
          guestPackageReported, guestPackage, guestPackageState,   // serial, it_boot R_* (Int64 bit patterns)
          glesProtocol, glesSerial,
-         guestPackageSupported              // the dylib has the guest-package= property (set before boot)
+         guestPackageSupported,             // the dylib has the guest-package= property (set before boot)
+         backlightLevel                     // qemu_ios_ui_backlight_level (Int64 bit pattern)
 }
 
 nonisolated public enum QemuState: UInt64, Sendable {
@@ -59,7 +60,9 @@ nonisolated public struct SharedStatus: Sendable, Equatable {
     public var glesSerial: Int64 = 0
     /// The loaded dylib serves guest-package offers (older ones reject the property).
     public var guestPackageSupported = false
-    public init(heartbeat: UInt64, frameSerial: UInt64, width: Int, height: Int, ringGeneration: UInt64, uiReady: Bool, storageFailed: Bool, shutdownConfirmed: Bool, displaySleeping: Bool, agentStatus: Int, glesContexts: Int, iconGeneration: UInt64, qemuState: QemuState, exitCode: Int32, helperPID: Int32, guestPackage: GuestPackageReport? = nil, glesProtocol: Int32 = 0, glesSerial: Int64 = 0, guestPackageSupported: Bool = false) {
+    /// The level the guest last programmed into the backlight driver (its raw code; 0 off), -1 where not decoded.
+    public var backlightLevel = -1
+    public init(heartbeat: UInt64, frameSerial: UInt64, width: Int, height: Int, ringGeneration: UInt64, uiReady: Bool, storageFailed: Bool, shutdownConfirmed: Bool, displaySleeping: Bool, agentStatus: Int, glesContexts: Int, iconGeneration: UInt64, qemuState: QemuState, exitCode: Int32, helperPID: Int32, guestPackage: GuestPackageReport? = nil, glesProtocol: Int32 = 0, glesSerial: Int64 = 0, guestPackageSupported: Bool = false, backlightLevel: Int = -1) {
         self.heartbeat = heartbeat
         self.frameSerial = frameSerial
         self.width = width
@@ -79,6 +82,7 @@ nonisolated public struct SharedStatus: Sendable, Equatable {
         self.glesProtocol = glesProtocol
         self.glesSerial = glesSerial
         self.guestPackageSupported = guestPackageSupported
+        self.backlightLevel = backlightLevel
     }
 }
 
@@ -142,7 +146,8 @@ nonisolated public struct StatusBlock: @unchecked Sendable {
                                              result: Int32(truncatingIfNeeded: Int64(bitPattern: self[.guestPackageState]))),
                      glesProtocol: Int32(truncatingIfNeeded: Int64(bitPattern: self[.glesProtocol])),
                      glesSerial: Int64(bitPattern: self[.glesSerial]),
-                     guestPackageSupported: self[.guestPackageSupported] != 0)
+                     guestPackageSupported: self[.guestPackageSupported] != 0,
+                     backlightLevel: Int(Int64(bitPattern: self[.backlightLevel])))
     }
 }
 

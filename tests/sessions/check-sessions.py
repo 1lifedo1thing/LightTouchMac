@@ -168,6 +168,25 @@ def guest_checks(find, check, events):
         check(len(offers) == 2 and "verdict bad" in offers[-1].get("text", ""), "fresh: the rollback offer carries the bad verdict")
 
 
+def backlight_top(board, base):
+    """The level the board's own firmware programs at Brightness 100% (qemu_ios_ui_backlight_level's code), or None
+    where the emulator does not decode the backlight."""
+    if board in ("ipod1g", "iphone2g"):
+        return 0x2e     # ApplePCF50635PMUBacklight's "raw" table (its kext personality) tops out at LEDOUT 0x2e
+    if board == "ipod":
+        return 0xf5     # AppleD1759PMUBacklight at Brightness 1.0 (3.1.3: it_prefs' live GSEventSetBacklightLevel)
+    if board in ("ipad", "ipod4g", "iphone4"):
+        # 6.x+ kernels step through the device tree's backlight-table (u16 codes, 0x7b3 at the n90's top);
+        # earlier ones run the SWI level up to its full 11 bits.
+        kboot = (base / "kboot.bin").read_bytes()
+        at = kboot.find(b"backlight-table".ljust(32, b"\0"))
+        if at < 0:
+            return 0x7ff
+        size = int.from_bytes(kboot[at + 32:at + 36], "little") & 0x7fffffff
+        return int.from_bytes(kboot[at + 36 + size - 2:at + 36 + size], "little")
+    return None
+
+
 def build(args, out):
     # tests/run.py's swiftc shim: app sources that moved into LightTouchCore resolve there (also run on its own).
     shims = importlib.util.spec_from_file_location("ltm_run", ROOT / "tests/run.py")
@@ -205,7 +224,8 @@ def main():
     ap.add_argument("--ipad-device", type=Path)
     ap.add_argument("--guest", action="store_true", help="the no-shell guest-services scenario on two iPods")
     ap.add_argument("--ipod-device", type=Path, help="--guest: a fresh device.py iPod (nand/, nor.bin, iBoot.bin, gid-blobs.bin)")
-    ap.add_argument("--itpack", type=Path, default=sources.path("qemu-ios") / "build/guest-package/armv6.itpack")
+    ap.add_argument("--itpack", type=Path, help="--guest: the iPods' armv6.itpack (default: the qemu-ios build's); "
+                    "--single: an iPod or 1.x board boots with the app's offer from it")
     ap.add_argument("--guest-tools", type=Path, help="--guest: a flat build-guest-tools.sh guest-tools directory "
                     "(it_agent, it_typein.dylib, itphoto); default: the qemu-ios checkout's contrib binaries")
     ap.add_argument("--contrib", type=Path, default=sources.path("qemu-ios") / "contrib")
@@ -291,6 +311,8 @@ def main():
         if args.region:
             locale, hours = args.region.split(":")
             cfg["single"]["region"] = {"locale": locale, "uses24HourClock": hours == "24"}
+        if args.itpack:
+            cfg["single"]["itpack"] = str(args.itpack)
         if args.upgrade_ipa:
             cfg["single"]["upgradeIPA"] = str(args.upgrade_ipa)
         if args.read_file:
@@ -314,6 +336,7 @@ def main():
     if args.ipad_itpack:
         cfg["ipadItpack"] = str(args.ipad_itpack)
     if args.guest:
+        args.itpack = args.itpack or sources.path("qemu-ios") / "build/guest-package/armv6.itpack"
         tz = work / "LightTouchServices"
         dev = args.ipod_device
         c, g = args.contrib, args.guest_tools
@@ -386,6 +409,13 @@ def main():
                                   (lock.get("entry") or {}).get("id") or f"{lock.get('board')}-{lock.get('build')}",
                                   ROOT / "tests/sessions/matrix-refs")
         check(home.get("ok") is True, f"{d}: usable Home screen: {home}")
+        top = backlight_top(d, base_dir)
+        for h in find("home", device=d):
+            level = h.get("backlight", -1)
+            if top is None or level == -1:
+                print(f"  --  {d}: backlight level not decoded here ({level})")
+            else:
+                check(level >= top, f"{d}: backlight at Home {level:#x}, the firmware's 100% is {top:#x}")
         if args.region:
             locale, hours = args.region.split(":")
             region = (find("region", device=d) or [{}])[0]
