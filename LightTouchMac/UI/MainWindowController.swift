@@ -1339,13 +1339,19 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
             network: \(emulator.network)   usbmuxd: \(emulator.usbmuxSession ?? "none")
             canManageApps: \(emulator.canManageApps)
             """ } ?? "state: not running"
+        let executables = Bundle.main.executableURL.flatMap {
+            try? FileManager.default.contentsOfDirectory(atPath: $0.deletingLastPathComponent().path)
+        } ?? []
+        let reports = DiagnosticsExport.crashReports(executables: executables)
         let info = """
         LightTouchMac diagnostics
+        \(DiagnosticsExport.systemSummary())
+        crash reports: \(reports.isEmpty ? "none in the last 30 days" : reports.map(\.lastPathComponent).joined(separator: ", "))
         device: \(diagnosticInstance.map { "\($0.name) \($0.firmware) \($0.id)" } ?? "none")
         \(device)
         """
         do {
-            try await DiagnosticsExport.write(to: dest, logs: logs, info: info)
+            try await DiagnosticsExport.write(to: dest, logs: logs, info: info, crashReports: reports)
             NSWorkspace.shared.activateFileViewerSelecting([dest])
         } catch is CancellationError {
             // The exporter waits for its child to stop before removing scratch.
