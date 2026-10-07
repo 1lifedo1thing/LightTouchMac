@@ -118,19 +118,4 @@ with tempfile.TemporaryDirectory() as work:
     if r.returncode:
         sys.exit("FAIL: lockdown-tz zone step\n" + r.stderr[-2000:])
 
-# The Mac's side: ClockRegion turns a locale (its region override included) into lockdown's Locale id and 24-hour flag.
-with tempfile.TemporaryDirectory() as work:
-    main = Path(work, "main.swift")
-    main.write_text('''import Foundation
-func region(_ id: String) -> ClockRegion { ClockRegion(Locale(identifier: id)) }
-precondition(region("en_GB") == ClockRegion(locale: "en_GB", uses24HourClock: true), "\\(region("en_GB"))")
-precondition(region("en_US") == ClockRegion(locale: "en_US", uses24HourClock: false), "\\(region("en_US"))")
-precondition(region("en_US@hours=h23") == ClockRegion(locale: "en_US", uses24HourClock: true), "the Mac's 24-hour switch")
-precondition(region("en_GB@hours=h12").uses24HourClock == false, "the Mac's 12-hour switch")
-precondition(region("de_DE@rg=chzzzz").locale == "de_CH", "\\(region("de_DE@rg=chzzzz"))")
-precondition(region("en_US").arguments == ["--locale", "en_US", "--24h", "0"])
-print("PASS: ClockRegion: lockdown Locale ids and the 24-hour flag from the Mac's locale")
-''')
-    exe = Path(work, "region")
-    subprocess.run(["xcrun", "swiftc", str(root / "LightTouchMac/Services/ClockRegion.swift"), str(main), "-o", str(exe)], check=True)
-    subprocess.run([str(exe)], check=True)
+# The Mac's side (ClockRegion) is LightTouchCoreTests' ClockRegionTests.

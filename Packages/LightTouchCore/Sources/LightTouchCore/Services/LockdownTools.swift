@@ -94,7 +94,7 @@ extension DeviceServices {
 
     /// One of the lockdown child tools, pointed at this device's usbmuxd: its
     /// status and the first KB of each stream.
-    private static func lockdownChild(_ tool: String, _ arguments: [String], socket: String) async throws
+    static func lockdownChild(_ tool: String, _ arguments: [String], socket: String) async throws
         -> (status: Int32, output: String, error: String) {
         try Task.checkCancellation()
         // The existing subprocess library owns spawn, output draining and reaping.
