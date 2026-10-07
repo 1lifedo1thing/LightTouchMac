@@ -64,7 +64,7 @@ for adapter in armv6.sh legacy.h crt1old.c subtype.py mkold.py README.md; do
 done
 # Normalize a development-only default in the retained upstream build adapter.
 # shell-cc always supplies ARMV6_SDK explicitly; this does not change built bytes.
-sed -i '' 's|/[^" ]*/OldSDK/iPhoneOS3.1.3.sdk|$HOME/Developer/ipod2g-re/OldSDK/iPhoneOS3.1.3.sdk|' "$DEST/Sources/armv6-toolchain/armv6.sh"
+sed -i '' 's|^ARMV6_SDK=.*$|ARMV6_SDK="${ARMV6_SDK:-$HOME/Developer/ipod2g-re/OldSDK/iPhoneOS3.1.3.sdk}"|' "$DEST/Sources/armv6-toolchain/armv6.sh"
 cp "$LTM_QEMU_SOURCE_DIR/COPYING" "$DEST/Licenses/QEMU-COPYING"
 cp "$HERE/licenses/Bash-GPL-3.txt" "$DEST/Licenses/"
 xcrun clang --version | sed '/^InstalledDir:/d' > "$DEST/Sources/toolchain.txt"
