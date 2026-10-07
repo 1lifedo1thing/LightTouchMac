@@ -277,7 +277,7 @@ func phone(_ args: Arguments) -> Never {
             "orientation 4", "wait 1", "dump turned", "status", "wait 4", "dump turned5", "status", "quit", "expectExit 60"]))
         r.check(d.finish(600) == 0, "rotate: scenario completed")
         let serials = d.events.find("status").map { (($0["status"] as? Event) ?? $0).int("frameSerial") }
-        r.check(serials.count == 3 && (serials[1] ?? 0) > (serials[0] ?? Int.max), "rotate: a new frame within 1 s of the rotation (frame serials \(serials))")
+        r.check(serials.count == 3 && (serials[1] ?? 0) > (serials[0] ?? Int.max), "rotate: a new frame within 1 s of the rotation (frame serials \(serials.map { $0 ?? -1 }))")
         let home = d.dir.appendingPathComponent("home.png"), turned = d.dir.appendingPathComponent("turned.png")
         let same = (try? Data(contentsOf: home)) == (try? Data(contentsOf: turned))
         let dumped = d.events.find("dump").contains { $0.string("name") == "turned" && $0.bool("ok") }
