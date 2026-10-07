@@ -14,7 +14,7 @@ struct CarrierPanel: View {
 
     var body: some View {
         Form {
-            Section("Network") {
+            Section {
                 TextField("Carrier", text: $model.carrierName)
                 LabeledContent("MCC / MNC") {
                     HStack {
@@ -40,6 +40,10 @@ struct CarrierPanel: View {
                         Text("\(model.settings.bars) bars").monospacedDigit().foregroundStyle(.secondary)
                     }
                 }
+            } header: {
+                Text("Network")
+            } footer: {
+                Text("Signal indicator may take a moment to update.")
             }
             Section("Calls") {
                 HStack {
@@ -58,7 +62,7 @@ struct CarrierPanel: View {
             Section("SMS") {
                 TextField("From", text: $model.smsNumber)
                 HStack(alignment: .bottom) {
-                    TextField("Message", text: $model.smsText, prompt: Text("Message"), axis: .vertical)
+                    TextField("Message", text: $model.smsText, prompt: Text("Type your SMS…"), axis: .vertical)
                         .labelsHidden().lineLimit(3...6).onSubmit { model.sendSMS() }
                     Button("Send") { model.sendSMS() }.disabled(!model.smsValid)
                 }

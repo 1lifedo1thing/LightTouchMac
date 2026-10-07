@@ -208,6 +208,7 @@ private struct CaptureBanner: View {
             }
         }
         .font(.subheadline)
+        .monospacedDigit()   // counters and times tick without the text jittering
         .foregroundStyle(.primary)
         .padding(.leading, 8)
         .padding(.trailing, max(8, (48 - accessoryHeight) / 2))
