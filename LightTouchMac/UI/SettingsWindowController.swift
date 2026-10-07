@@ -111,9 +111,9 @@ struct GeneralSettingsView: View {
 
     var body: some View {
         Form {
-            Picker("Internet access", selection: $internet) {
-                Text("Connect").tag(Bool?.some(true))
-                Text("Use Offline").tag(Bool?.some(false))
+            Picker("Connect to the internet…", selection: $internet) {
+                Text("Always").tag(Bool?.some(true))
+                Text("Never").tag(Bool?.some(false))
                 Text("Ask When a Device Starts").tag(Bool?.none)
             }
         }
