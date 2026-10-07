@@ -4,8 +4,8 @@ import Testing
 @testable import FirmwareKit
 
 struct HookProvenanceTests {
-    @Test func originalAndAbsenceAreImmutable() async throws {
-        try await Oracle.withTemp { dir in
+    @Test func originalAndAbsenceAreImmutable() throws {
+        try Oracle.withTemp { dir in
             let target = "framework/Engine"
             let at = dir.appendingPathComponent(target)
             try SystemEdits.mkdirs(at.deletingLastPathComponent())

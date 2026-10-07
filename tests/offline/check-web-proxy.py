@@ -18,7 +18,10 @@ LOCATION = bytes.fromhex('00010005656e5f55530000000b332e322e322e3742353030000000
 
 def build(work):
     exe = work / 'web-proxy'
+    tls = work / 'GuestTLS.o'
+    subprocess.run(['xcrun', 'clang', '-c', str(ROOT / 'LightTouchDevice/GuestTLS.c'), '-o', str(tls)], check=True)
     subprocess.run(['xcrun', 'swiftc', *device_runtime.swift_flags(ROOT), '-swift-version', '5', '-module-cache-path', str(work / 'modules'), *map(str, SOURCES),
+                    '-import-objc-header', str(ROOT / 'LightTouchDevice/GuestTLS.h'), str(tls),
                     '-o', str(exe)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return exe
 

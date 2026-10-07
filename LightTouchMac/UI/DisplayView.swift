@@ -412,8 +412,10 @@ final class DisplayView: NSView {
             context.duration = duration
             model.animator().alphaValue = CGFloat(shellLayer.opacity)
         } completionHandler: { [weak self] in
-            self?.shellLayer.isHidden = true
-            self?.shellLayer.removeAnimation(forKey: "modelPresentation")
+            MainActor.assumeIsolated {
+                self?.shellLayer.isHidden = true
+                self?.shellLayer.removeAnimation(forKey: "modelPresentation")
+            }
         }
     }
 

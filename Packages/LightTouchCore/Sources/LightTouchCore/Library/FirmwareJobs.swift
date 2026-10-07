@@ -115,7 +115,7 @@ import Foundation
         }
         // ponytail: a resumed download reports under its own entry, so a sibling IPSW the last
         // launch was fetching for 4.3.x prepares its own entry; persist `waiting` if that matters.
-        downloads.active { sha1s in
+        downloads.active { [weak self] sha1s in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 for sha1 in sha1s {
@@ -408,8 +408,8 @@ import Foundation
             log: logs.appendingPathComponent("Preparing/\(entry.id).log"),
             blob: bundled ? ipsw : nil
         )
-        let job = PreparationJob(request) { event in
-            Task { @MainActor [weak self] in self?.preparation(entry, event) }
+        let job = PreparationJob(request) { [weak self] event in
+            Task { @MainActor in self?.preparation(entry, event) }
         }
         preparations[entry.id] = job
         starts[entry.id] = (Date(), 0)

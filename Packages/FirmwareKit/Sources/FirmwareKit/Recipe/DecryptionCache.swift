@@ -1,5 +1,6 @@
 import CryptoKit
 import Darwin
+import FirmwareSchema
 import Foundation
 
 /// Immutable, versioned decrypt results. Publication and inspection share a

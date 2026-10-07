@@ -4,6 +4,7 @@ import Foundation
 import HostRuntime
 import Network
 import Testing
+import os
 
 @testable import LightTouchCore
 
@@ -102,20 +103,20 @@ import Testing
         let paths: [String]
         var testDescription: String { name }
     }
-    static let size = 2 << 20
-    static func ipsw(_ url: String, mirrors: [(String, String)], sha1: String) -> [String: any Sendable] {
+    nonisolated static let size = 2 << 20
+    nonisolated static func ipsw(_ url: String, mirrors: [(String, String)], sha1: String) -> [String: any Sendable] {
         [
             "kind": "ipsw", "url": url, "sha1": sha1, "bytes": size,
             "mirrors": mirrors.map { ["url": $0.0, "sha1": $0.1, "bytes": size] },
         ]
     }
     /// Unrar.swift's own test fixture (MIT): a 107-byte RAR 5 archive holding README.md, 40 bytes.
-    static let rar = Data(
+    nonisolated static let rar = Data(
         base64Encoded:
             "UmFyIRoHAQAzkrXlCgEFBgAFAQGAgAD3EqflHwICqAAGqACkgwIWO/FfV7UGeoAAAQlSRUFETUUubWQjIFVucmFyCgpBIGRlc2NyaXB0aW9uIG9mIHRoaXMgcGFja2FnZS4KHXdWUQMFBAA="
     )!
-    static let member = Data("# Unrar\n\nA description of this package.\n".utf8)
-    static func rarSource(_ base: String, archiveSHA1: String) -> [String: any Sendable] {
+    nonisolated static let member = Data("# Unrar\n\nA description of this package.\n".utf8)
+    nonisolated static func rarSource(_ base: String, archiveSHA1: String) -> [String: any Sendable] {
         [
             "kind": "rar", "url": base + "/media_ipsw.rar", "archive_sha1": archiveSHA1, "archive_bytes": rar.count,
             "member": "README.md",
@@ -488,14 +489,14 @@ import Testing
 }
 
 extension IPSWStoreTests {
-    static func sha1Hex(_ data: Data) -> String {
+    nonisolated static func sha1Hex(_ data: Data) -> String {
         Insecure.SHA1.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 }
 
 /// The checkout's firmwarekit (Packages/FirmwareKit, debug), built once per test run under .build/offline-firmwarekit.
 enum FirmwareKitTool {
-    private static let built: Result<URL, any Error> = Result {
+    private nonisolated static let built: Result<URL, any Error> = Result {
         let package = LibraryFixtures.repo.appendingPathComponent("Packages/FirmwareKit").path
         let scratch = LibraryFixtures.repo.appendingPathComponent(".build/offline-firmwarekit").path
         let swift = "/usr/bin/xcrun"
@@ -516,7 +517,7 @@ enum FirmwareKitTool {
 }
 
 /// A loopback HTTP server: GET of a known path answers its bytes, anything else 404; every path asked is logged.
-final class TestHTTPServer: @unchecked Sendable {
+nonisolated final class TestHTTPServer: @unchecked Sendable {
     private let listener: NWListener
     private let files: [String: Data]
     private let queue = DispatchQueue(label: "test-http")
@@ -535,10 +536,9 @@ final class TestHTTPServer: @unchecked Sendable {
             receive(connection, Data())
         }
         let port: UInt16 = try await withCheckedThrowingContinuation { continuation in
-            let once = NSLock()
-            var resumed = false
+            let resumed = OSAllocatedUnfairLock(initialState: false)
             listener.stateUpdateHandler = { [listener] state in
-                once.withLock {
+                resumed.withLock { resumed in
                     guard !resumed else { return }
                     switch state {
                     case .ready:

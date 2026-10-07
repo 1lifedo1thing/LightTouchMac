@@ -46,8 +46,8 @@ int ltm_lockdown_mcinstall(int argc, char **argv) {
     property_list_service_client_t pl = NULL;
     char *cert = NULL, *xml = NULL, *status = NULL;
     uint32_t xml_len = 0;
-    long n;
-    FILE *f;
+    long n = 0; /* the certificate's length; set only when installing */
+    FILE *f = NULL;
 
     int query = argc == 2 && !strcmp(argv[1], "--installed");
     if (argc != 2) {

@@ -11,7 +11,7 @@
 // error code (the `code` of firmwarekit's error event).
 
 import Foundation
-import ZIPFoundation
+@preconcurrency import ZIPFoundation
 
 public struct FirmwareError: Error, CustomStringConvertible, Sendable {
     public enum Code: String, Sendable {

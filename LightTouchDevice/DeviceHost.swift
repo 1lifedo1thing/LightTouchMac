@@ -311,7 +311,8 @@ final class DeviceHost: @unchecked Sendable {
         case .snapshotStatus:
             var buffer = [CChar](repeating: 0, count: 512)
             let code = qemu.snapshotStatus(&buffer, UInt(buffer.count))
-            reply(.snapshot(status: Int(code), error: code == 3 ? String(cString: buffer) : nil))
+            let message = String(decoding: buffer.prefix { $0 != 0 }.map(UInt8.init(bitPattern:)), as: UTF8.self)
+            reply(.snapshot(status: Int(code), error: code == 3 ? message : nil))
         case .agent(let wire, let deadline): agents.submit(wire, deadline: deadline, reply: reply)
         case .audioStart: reply(audio.start())
         case .battery(let level, let charging): reply(.ok(qemu.battery(Int32(level), Int32(charging))))

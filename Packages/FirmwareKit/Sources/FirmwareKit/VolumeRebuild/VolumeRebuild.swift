@@ -74,14 +74,14 @@ public enum VolumeRebuild {
         }
         let baseNames = (0..<4).map { names(base, $0) }
         let ovlNames = (0..<4).map { names(overlay, $0) }
-        func source(_ cs: Int, _ pg: Int) -> URL? {
+        @Sendable func source(_ cs: Int, _ pg: Int) -> URL? {
             let n = "\(pg).page"
             if let overlay, ovlNames[cs].contains(n) { return overlay.appendingPathComponent("cs\(cs)/\(n)") }
             if ovlNames[cs].contains("blk\(pg / 128).erased") { return nil }
             return baseNames[cs].contains(n) ? base.appendingPathComponent("cs\(cs)/\(n)") : nil
         }
         /// Block `n` into `buf`; false for a blank or absent page.
-        func read(_ n: Int, into buf: inout [UInt8]) throws -> Bool {
+        @Sendable func read(_ n: Int, into buf: inout [UInt8]) throws -> Bool {
             let (cs, pg) = predict(n)
             guard let u = source(cs, pg) else { return false }
             let fd = open(u.path, O_RDONLY)

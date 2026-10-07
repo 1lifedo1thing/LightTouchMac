@@ -161,7 +161,7 @@ final class StepProgress: @unchecked Sendable {
     }
 
     private func end() {
-        guard let plan else { return }
+        guard plan != nil else { return }
         emit(.progress(1, detail: detail(text)))
         self.plan = nil
     }
