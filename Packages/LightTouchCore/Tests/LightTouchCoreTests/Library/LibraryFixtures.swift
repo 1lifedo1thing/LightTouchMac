@@ -6,7 +6,7 @@ nonisolated enum LibraryFixtures {
     static let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     static var shippedCatalog: URL { repo.appendingPathComponent("LightTouchMac/Resources/firmware-catalog.json") }
-    static var fakeFirmwarekit: URL { repo.appendingPathComponent("tests/fixtures/fake-firmwarekit.py") }
+    static var fakeFirmwarekit: URL { repo.appendingPathComponent("tests/fixtures/fake-firmwarekit") }
 
     /// Points the app's state and log roots (Bundled, which logEvent's app.log goes through) at a temporary
     /// directory before anything in this process reads them, so code under test that logs never writes the real
@@ -57,13 +57,13 @@ nonisolated enum LibraryFixtures {
         return url
     }
 
-    /// The fake preparer (tests/fixtures/fake-firmwarekit.py) in `mode`, writing its argv to `argv`, as its own
+    /// The fake preparer (tests/fixtures/fake-firmwarekit) in `mode`, writing its argv to `argv`, as its own
     /// executable: the mode and argv path travel in the script, not this process's shared environment.
     static func fakePreparer(in directory: URL, mode: String = "ok", argv: URL? = nil, unwrap: URL? = nil) throws -> URL {
         let name = "preparer-\(mode)-\(UUID().uuidString.prefix(8))"
         var body = ""
         if let unwrap { body += "[ \"$1\" = unwrap ] && exec '\(unwrap.path)' \"$@\"\n" }
-        body += "FAKE_MODE=\(mode) FAKE_ARGV='\(argv?.path ?? "")' exec /usr/bin/python3 '\(fakeFirmwarekit.path)' \"$@\"\n"
+        body += "FAKE_MODE=\(mode) FAKE_ARGV='\(argv?.path ?? "")' exec '\(fakeFirmwarekit.path)' \"$@\"\n"
         return try script(directory.appendingPathComponent(name), body)
     }
 
