@@ -11,3 +11,7 @@ extension KeyModifiers {
         if flags.contains(.command) { insert(.command) }
     }
 }
+
+extension MouseTouchPair {
+    mutating func down(at point: CGPoint, _ flags: NSEvent.ModifierFlags) { down(at: point, KeyModifiers(flags)) }
+}

@@ -1427,7 +1427,7 @@ final class DisplayView: NSView {
             grabPoint = convert(event.locationInWindow, from: nil)
             return
         }
-        if let (nx, ny) = normalized(event) ?? nearScreenEdge(event) { touchPair.down(at: CGPoint(x: nx, y: ny), KeyModifiers(event.modifierFlags)) }
+        if let (nx, ny) = normalized(event) ?? nearScreenEdge(event) { touchPair.down(at: CGPoint(x: nx, y: ny), event.modifierFlags) }
         emit(event, TouchPhase.begin)
     }
 
