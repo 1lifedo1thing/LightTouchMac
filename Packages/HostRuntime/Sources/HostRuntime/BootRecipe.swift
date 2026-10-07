@@ -156,7 +156,8 @@ public nonisolated enum BootRecipe {
     /// not) and restrict=on while Setup runs offline.
     /// `localNetwork` false (the default, the device's "Attach to Local Network" off): slirp refuses the guest's
     /// traffic to private, link-local and multicast addresses, so the guest can't make macOS ask for Local
-    /// Network access on its own. The Mac's DNS server and the app's loopback guestfwds stay reachable.
+    /// Network access on its own. DNS still works (the emulator asks the system resolver, never a LAN DNS server)
+    /// and the app's loopback guestfwds stay reachable.
     public static func wifiNetdev(guestForward: String, restricted: Bool, localNetwork: Bool = false) -> String {
         "user,id=wifi0" + guestForward + (restricted ? ",restrict=on" : "") + (localNetwork ? "" : ",lan=off")
     }
