@@ -261,6 +261,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if emulators.contains(where: \.isErasing) { return .terminateCancel }
         if awaitingTermination { return .terminateLater }
         if windowController?.finishRecordingBeforeQuit() == true { return .terminateCancel }
+        // A preparation doesn't survive a quit (a download does: it resumes).
+        let preparing = FirmwareJobs.shared.jobs.values.filter { if case .preparing = $0 { true } else { false } }.count
+        if preparing > 0 {
+            let alert = NSAlert()
+            alert.messageText = preparing == 1 ? "A device is being prepared" : "Devices are being prepared"
+            alert.informativeText = "Quitting stops the preparation. It starts over the next time you prepare the device."
+            alert.addButton(withTitle: "Quit Anyway")
+            alert.addButton(withTitle: "Cancel")
+            alert.buttons.first?.hasDestructiveAction = true
+            guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
+        }
         guard !emulators.isEmpty else { return .terminateNow }
 
         // Queued installs count too. isInstalling is set only around the install
