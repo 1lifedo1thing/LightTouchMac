@@ -144,7 +144,7 @@ real_source = prefix + r'''
 with tempfile.TemporaryDirectory(prefix='ltm-model-startup-') as tmp:
     work=Path(tmp);app=work/'Check.app/Contents';(app/'MacOS').mkdir(parents=True);(app/'Resources').mkdir()
     (app/'Resources/Models').mkdir()
-    for name in ['N72.usdz', 'N72Studio.realityenv']:
+    for name in ['N72.usdz', 'N72Studio.png']:
         (app/'Resources/Models'/name).symlink_to(root/'Models'/name)
     windowed = os.environ.get('LTM_DISPLAY_CHECKS') == '1'
     for name, source, actual_model in [('stub', stub_source, False), *([('renderer', real_source, True)] if windowed else [])]:

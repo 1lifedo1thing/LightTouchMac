@@ -508,7 +508,7 @@ with tempfile.TemporaryDirectory(prefix="ltm-model-") as tmp:
     for model in MODELS:
         (app/f"Resources/Models/{model}.usdz").symlink_to(root/f"Models/{model}.usdz")
     for env in ("N72Studio", "N45Rim"):
-        (app/f"Resources/Models/{env}.realityenv").symlink_to(root/f"Models/{env}.realityenv")
+        (app/f"Resources/Models/{env}.png").symlink_to(root/f"Models/{env}.png")
     sources=root/"LightTouchMac"
     qemu=Path(os.environ["QEMU_SRC"]) if os.environ.get("QEMU_SRC") else pins.path("qemu-ios")
     attitude_header=qemu/"include/hw/arm/ipod-attitude.h"

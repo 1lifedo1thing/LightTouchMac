@@ -3,6 +3,7 @@ import HostRuntime
 import AppKit
 import RealityKit
 import Metal
+import ImageIO
 
 /// The live LCD is a material on the asset, with input projected onto that same surface.
 @MainActor
@@ -155,7 +156,7 @@ final class DeviceModelView: NSView {
       for child in entity.children { tune(child) }
     }
     tune(loaded)
-    let lighting = try await EnvironmentResource(named: "Models/N72Studio", in: .main)
+    let lighting = try await modelEnvironment("N72Studio")
     renderer.environment.lighting.resource = lighting
     renderer.environment.lighting.intensityExponent = 2
     var homeLight = ImageBasedLightComponent(source: .single(lighting), intensityExponent: 2)
@@ -167,7 +168,7 @@ final class DeviceModelView: NSView {
       let rimLighting = Entity()
       anchor.addChild(rimLighting)
       rimLighting.components.set(ImageBasedLightComponent(
-        source: .single(try await EnvironmentResource(named: "Models/N45Rim", in: .main)), intensityExponent: 2))
+        source: .single(try await modelEnvironment("N45Rim")), intensityExponent: 2))
       for name in ["Front_frame___broad_graphite_bevel", "Cover_glass___opaque_masked_surround",
                    "Display___inactive_optical_border", "Ambient_proximity_sensor___1"] {
         loaded.findEntity(named: name)?.components.set(ImageBasedLightReceiverComponent(imageBasedLight: rimLighting))
@@ -564,4 +565,15 @@ final class DeviceModelView: NSView {
     chassisShadow.shadowPath = path
     return true
   }
+}
+
+/// An environment from its equirectangular source image (Models/<name>.png, scripts/generate-*-lighting.py), built
+/// here rather than shipped compiled: a compiled .realityenv is encrypted, which notarization reports as an archive it
+/// can't unpack. Renders within 12/255 of the compiled environment (mean under 0.4/255).
+@available(macOS 15.0, *)
+private func modelEnvironment(_ name: String) async throws -> EnvironmentResource {
+  guard let url = Bundle.main.url(forResource: name, withExtension: "png", subdirectory: "Models"),
+        let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+        let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw CocoaError(.fileReadCorruptFile) }
+  return try await EnvironmentResource(equirectangular: image)
 }

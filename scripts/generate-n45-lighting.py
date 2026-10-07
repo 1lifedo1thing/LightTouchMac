@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Rebuild N45's rim-and-glass environment (NumPy, Pillow, Xcode): Models/N45Rim.realityenv.
+"""Rebuild N45's rim-and-glass environment image, Models/N45Rim.png (NumPy, Pillow); DeviceModelView builds the
+RealityKit environment from it at run time.
 
 DeviceModelView lights only N45's graphite frame and cover glass with it; every other surface keeps
 N72Studio. Apple's product shots light the brushed rim from the upper left: a dark graphite, lighter there and
@@ -7,7 +8,7 @@ falling to near-black at the lower right, with a toned-down highlight along the 
 camera) shows a faint lighter sheen to the upper right of a diagonal. Radiance at quarter intensity, as
 N72Studio; DeviceModelView restores two stops.
 """
-import numpy as np, subprocess, tempfile
+import numpy as np
 from pathlib import Path
 from PIL import Image
 w, h = 1024, 512
@@ -27,10 +28,4 @@ light += behind * .6 * t * t * (3 - 2 * t)
 rgb = light[..., None] * np.array([.94, .97, 1.])
 ldr = np.clip(rgb / 4, 0, 1)
 srgb = np.where(ldr <= .0031308, 12.92 * ldr, 1.055 * ldr ** (1 / 2.4) - .055)
-with tempfile.TemporaryDirectory() as temporary:
-    image = Path(temporary) / "N45Rim.png"
-    Image.fromarray(np.uint8(np.round(srgb * 255))).save(image)
-    subprocess.run(["xcrun", "realitytool", "image", "--platform", "macosx",
-        "--deployment-target", "14.0", "--cube-face-size", "256", "--specular-size", "256",
-        "--output-reality-asset", str(Path(__file__).resolve().parents[1] / "Models/N45Rim.realityenv"),
-        str(image)], check=True)
+Image.fromarray(np.uint8(srgb * 255)).save(Path(__file__).resolve().parents[1] / "Models/N45Rim.png")
