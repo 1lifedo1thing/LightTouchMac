@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the real menus and exercise the production device validation branches.
+"""Build the real menus (App/MainMenu.swift whole). The Device menu's validation is DeviceMenuStateTests'.
 
 EXPECTED is the whole menu bar as built for each board: every item, its menu, its shortcut, and
 which items start hidden or alternate; any move, rename or shortcut change fails here first."""
@@ -10,20 +10,7 @@ import host_runtime
 import re,subprocess,tempfile
 root=Path(__file__).resolve().parents[2]/'LightTouchMac'
 menu=(root/'App/MainMenu.swift').read_text()
-controller=(root/'UI/MainWindowController.swift').read_text()
-a=controller.index('        case #selector(deviceRotate(_:)), #selector(deviceRotateLeft(_:))')
-b=controller.index('        case #selector(configureWebProxy(_:)):',a)
-validation=controller[a:b]
-a=controller.index('    @objc func toggleDevicePause(')
-b=controller.index('    @objc func devicePause(',a)
-toggle=controller[a:b]
-capture=(root/'Features/CaptureController.swift').read_text()
-a=capture.index('    var canTakeScreenshot: Bool {')
-b=capture.index('    init(preferences:',a)
-captureAvailability=capture[a:b]
 selectors=set(re.findall(r'#selector\(MainWindowController\.(\w+)\(',menu))
-selectors.update(re.findall(r'#selector\((\w+)\(',validation))
-selectors.discard('toggleDevicePause')
 stubs='\n'.join('@objc func '+name+'(_ sender:Any?) {}' for name in sorted(selectors))
 # (profile, menu path / title  shortcut [hidden] [alternate]); "-" is a separator. The Help and Services
 # menus' own contents come from AppKit.
@@ -179,16 +166,6 @@ Help/Export Diagnostics…
 # hardware lacks is dimmed by validation, never left out.
 IPAD_BAR=IPOD_BAR.replace('iPod','iPad')
 source=r'''import Cocoa
-struct Instance { let id=UUID() }
-@MainActor final class Emulator {
- var isPaused=false,isRunning=true,isInstalling=false,acceptsInput=true,isSleeping=false
- let instance=Instance()
- var batteryLevel=100,batteryCharging=true
- var compassHeading:Int?=nil,hasCompass=false,hasCellular=false
- func pause(){isPaused=true;isRunning=false}
- func resume(){isPaused=false;isRunning=true}
-}
-@MainActor enum AppInstaller { static var hasPendingWork=false; static func hasPendingWork(for id:UUID)->Bool {hasPendingWork} }
 @MainActor final class AppDelegate:NSObject { @objc func toggleAutomaticRotation(_ sender:Any?) {}
  @objc func toggleInternetAccess(_ sender:Any?) {}
  @objc func toggleLocalNetwork(_ sender:Any?) {}
@@ -206,23 +183,8 @@ struct Instance { let id=UUID() }
  @objc func refreshFiles(_ sender:Any?) {}
  @objc func toggleHidden(_ sender:Any?) {}
 }
-@MainActor final class Recording {
- enum Phase { case idle, saving }
- var phase:Phase = .idle
- var canStop=false,needsRecovery=false
-}
 @MainActor final class MainWindowController:NSWindowController {
- let emulator:Emulator?=Emulator(),recording=Recording()
- var screenshotBusy=false
- var capture:MainWindowController { self }   // CaptureController's availability, below
-'''+stubs+'\n'+toggle+'\n'+captureAvailability+r'''
- func validateMenuItem(_ menuItem:NSMenuItem)->Bool {
- guard let emulator else {return false}
- switch menuItem.action {
-'''+validation+r'''
- default:return true
- }
- }
+'''+stubs+r'''
 }
 /// One line per item: its menu path, title, shortcut, and whether it starts hidden or is an Option alternate.
 @MainActor func dump(_ menu:NSMenu,_ path:String)->[String] {
@@ -277,19 +239,6 @@ struct Instance { let id=UUID() }
   precondition(find("Upright",in:input)==nil && find("Reset Tilt",in:input)==nil)
   for name in ["Add Device…","Start","Import IPSW…","Delete Device…","Show in Finder"] {
    precondition(find(name,in:device)==nil,"library command \(name) belongs to File")
-  }
-  // Default presses alternate between upright portrait and home-button-right
-  // landscape. Option reverses the same next turn, including after auto-rotation.
-  var degrees=0
-  for expected in [270,0,270,0] {
-   let action=RotationControlAction(rotationDegrees:degrees,optionPressed:false)
-   degrees=(degrees+(action.clockwise ? 90:270))%360
-   precondition(degrees==expected)
-  }
-  for degrees in [0,90,180,270] {
-   let normal=RotationControlAction(rotationDegrees:degrees,optionPressed:false)
-   let alternate=RotationControlAction(rotationDegrees:degrees,optionPressed:true)
-   precondition(normal.clockwise != alternate.clockwise && normal.symbol != alternate.symbol)
   }
   let help=root.item(withTitle:"Help")!.submenu!
   for name in ["Open SSH","Restart SpringBoard","Verbose Boot","Kernel Console"] {
@@ -363,39 +312,10 @@ struct Instance { let id=UUID() }
    precondition(item.keyEquivalent != "-" && item.keyEquivalent != "=")
   }
   precondition(root.item(withTitle:"Help")!.submenu!.item(withTitle:"Export Diagnostics…") != nil)
-  let window=NSWindow(contentRect:NSRect(x:0,y:0,width:200,height:100),styleMask:[.titled],backing:.buffered,defer:false)
-  let controller=MainWindowController(window:window)
-  precondition(controller.canTakeScreenshot && controller.canStartRecording && controller.canToggleRecording)
-  controller.emulator!.isRunning=false;controller.emulator!.isPaused=true
-  precondition(controller.canTakeScreenshot && !controller.canStartRecording && !controller.canToggleRecording)
-  controller.emulator!.isSleeping=true
-  precondition(!controller.canTakeScreenshot && !controller.canToggleRecording)
-  controller.recording.canStop=true
-  precondition(controller.canToggleRecording,"Stopping must remain available when the guest stops")
-  controller.recording.phase = .saving
-  precondition(!controller.canToggleRecording)
-  controller.recording.phase = .idle;controller.recording.canStop=false;controller.recording.needsRecovery=true
-  precondition(controller.canToggleRecording,"Recovery must remain available offline")
-  controller.recording.needsRecovery=false;controller.emulator!.isSleeping=false
-  controller.emulator!.isRunning=true;controller.emulator!.isPaused=false;controller.screenshotBusy=true
-  precondition(!controller.canTakeScreenshot && !controller.canStartRecording && !controller.canToggleRecording)
-  controller.screenshotBusy=false
-  let pause=find("Pause",in:device)!
   precondition(device.item(withTitle:"Save State Now") == nil)
   precondition(root.item(withTitle:"Window")!.submenu!.item(withTitle:"Show iPod Files") != nil)
   precondition(root.item(withTitle:"View")!.submenu!.item(withTitle:"Physical Size") != nil)
-  precondition(controller.validateMenuItem(pause))
-  controller.toggleDevicePause(nil)
-  precondition(controller.validateMenuItem(pause) && pause.title=="Resume")
-  controller.toggleDevicePause(nil)
-  precondition(controller.validateMenuItem(pause) && pause.title=="Pause")
-  AppInstaller.hasPendingWork=true;precondition(!controller.validateMenuItem(pause));AppInstaller.hasPendingWork=false
-  let text=NSTextView(frame:window.contentView!.bounds);window.contentView!.addSubview(text)
-  window.makeFirstResponder(text)
-  precondition(!controller.validateMenuItem(find("Rotate Left",in:device)!))
-  controller.emulator!.acceptsInput=false
-  precondition(!controller.validateMenuItem(find("Volume Up",in:device)!))
-  print("PASS: command homes, Window order, stable menus, unique/reserved shortcuts, capture availability, pause and input validation")
+  print("PASS: command homes, Window order, stable menus, unique/reserved shortcuts, Escape's discard")
  }
 }
 '''

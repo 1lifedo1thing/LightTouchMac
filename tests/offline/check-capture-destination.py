@@ -53,7 +53,7 @@ with tempfile.TemporaryDirectory() as tmp:
     script = Path(tmp)/'main.swift'
     script.write_text(code)
     subprocess.run(['swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-parse-as-library', '-default-isolation', 'MainActor', '-module-cache-path', str(Path(tmp)/'modules'),
-                    *[str(app/f) for f in ['Device/Board+App.swift', 'Features/CapturePreferences.swift', 'Features/CaptureSound.swift', 'Library/UnusedURL.swift',
+                    *[str(app/f) for f in ['Device/Board+App.swift', 'Features/CapturePreferences.swift', 'Features/CaptureSound.swift', 'Library/UnusedURL.swift', 'UI/DeviceMenuState.swift',
                                            'Features/CaptureController.swift']],
                     str(root/'tests/fixtures/capture-controller.swift'), str(script), '-o', str(Path(tmp)/'check')], check=True)
     subprocess.run([str(Path(tmp)/'check')], check=True)

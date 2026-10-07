@@ -37,17 +37,22 @@ import UniformTypeIdentifiers
     private var deviceVC: DeviceViewController? { session()?.workspace.deviceVC }
     var captureMode: Int { UserDefaults.standard.integer(forKey: "captureMode") == 1 ? 1 : 0 }
 
-    var canTakeScreenshot: Bool {
-        guard let emulator else { return false }
-        return (emulator.isRunning || emulator.isPaused) && !emulator.isSleeping && !screenshotBusy
+    var availability: CaptureAvailability {
+        var availability = CaptureAvailability()
+        if let emulator {
+            availability.isRunning = emulator.isRunning
+            availability.isPaused = emulator.isPaused
+            availability.isSleeping = emulator.isSleeping
+        }
+        availability.screenshotBusy = screenshotBusy
+        availability.recordingSaving = recording.phase == .saving
+        availability.recordingCanStop = recording.canStop
+        availability.recordingNeedsRecovery = recording.needsRecovery
+        return availability
     }
-    var canStartRecording: Bool {
-        guard let emulator else { return false }
-        return emulator.isRunning && !emulator.isSleeping && !screenshotBusy
-    }
-    var canToggleRecording: Bool {
-        recording.phase != .saving && (recording.canStop || recording.needsRecovery || canStartRecording)
-    }
+    var canTakeScreenshot: Bool { availability.canTakeScreenshot }
+    var canStartRecording: Bool { availability.canStartRecording }
+    var canToggleRecording: Bool { availability.canToggleRecording }
 
     init(preferences: CapturePreferences = .shared) {
         capturePreferences = preferences

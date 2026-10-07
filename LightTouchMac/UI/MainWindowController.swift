@@ -1431,6 +1431,33 @@ extension MainWindowController: NSToolbarItemValidation {
 // MARK: - Menu validation (enablement + checkmarks)
 
 extension MainWindowController: NSMenuItemValidation {
+    /// The selected device as the Device menu's items see it (DeviceMenuState).
+    private var deviceMenu: DeviceMenuState {
+        var state = DeviceMenuState()
+        guard let emulator else { return state }
+        state.isRunning = emulator.isRunning
+        state.isPaused = emulator.isPaused
+        state.isSleeping = emulator.isSleeping
+        state.isPoweredOff = emulator.isPoweredOff
+        state.shuttingDown = emulator.shuttingDown
+        state.isInstalling = emulator.isInstalling
+        state.hasPendingInstalls = AppInstaller.hasPendingWork(for: emulator.instance.id)
+        state.acceptsInput = emulator.acceptsInput
+        state.hasCompass = emulator.hasCompass
+        state.hasCellular = emulator.hasCellular
+        state.batteryLevel = emulator.batteryLevel
+        state.batteryCharging = emulator.batteryCharging
+        state.compassHeading = emulator.compassHeading
+        state.editingText = window?.firstResponder is NSTextView
+        return state
+    }
+
+    private func apply(_ validation: DeviceMenuState.Validation, to item: NSMenuItem) -> Bool {
+        if let title = validation.title { item.title = title }
+        if let on = validation.isOn { item.state = on ? .on : .off }
+        return validation.isEnabled
+    }
+
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(toggleFiles(_:)) {
             return true
@@ -1522,28 +1549,17 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(restartSpringBoard(_:)):
             return emulator.canReachDevice && !emulator.isInstalling
         // Device input only reaches a running guest.
-        case #selector(deviceLock(_:)):
-            menuItem.title = emulator.isPoweredOff ? "Power On" : emulator.isSleeping ? "Wake" : "Lock"
-            return emulator.acceptsInput || (emulator.isPoweredOff && !emulator.shuttingDown)
+        case #selector(deviceLock(_:)): return apply(deviceMenu.validate(.lock), to: menuItem)
         case #selector(deviceRotate(_:)), #selector(deviceRotateLeft(_:)), #selector(deviceRotateRight(_:)):
-            return emulator.acceptsInput && !(window?.firstResponder is NSTextView)
-        case #selector(setBatteryLevel(_:)):
-            menuItem.state = menuItem.tag == emulator.batteryLevel ? .on : .off
-            return emulator.acceptsInput
-        case #selector(toggleBatteryCharging(_:)):
-            menuItem.state = emulator.batteryCharging ? .on : .off
-            return emulator.acceptsInput
-        case #selector(setCompassHeading(_:)):
-            menuItem.state = menuItem.tag == emulator.compassHeading ? .on : .off
-            return emulator.acceptsInput && emulator.hasCompass
-        case #selector(showCarrier(_:)):
-            return emulator.hasCellular && (emulator.isRunning || emulator.isPaused)
+            return apply(deviceMenu.validate(.rotate), to: menuItem)
+        case #selector(setBatteryLevel(_:)): return apply(deviceMenu.validate(.batteryLevel(menuItem.tag)), to: menuItem)
+        case #selector(toggleBatteryCharging(_:)): return apply(deviceMenu.validate(.charging), to: menuItem)
+        case #selector(setCompassHeading(_:)): return apply(deviceMenu.validate(.compassHeading(menuItem.tag)), to: menuItem)
+        case #selector(showCarrier(_:)): return apply(deviceMenu.validate(.carrier), to: menuItem)
         case #selector(deviceHome(_:)), #selector(deviceShake(_:)),
              #selector(deviceVolumeUp(_:)), #selector(deviceVolumeDown(_:)):
-            return emulator.acceptsInput
-        case #selector(toggleDevicePause(_:)):
-            menuItem.title = emulator.isPaused ? "Resume" : "Pause"
-            return (emulator.isRunning || emulator.isPaused) && !emulator.isInstalling && !AppInstaller.hasPendingWork(for: emulator.instance.id)
+            return apply(deviceMenu.validate(.input), to: menuItem)
+        case #selector(toggleDevicePause(_:)): return apply(deviceMenu.validate(.pause), to: menuItem)
         case #selector(configureWebProxy(_:)):
             return emulator.webProxyAvailable
         case #selector(toggleKeyboardInput(_:)):
