@@ -38,23 +38,17 @@ final class EmulatorController {
 
     private(set) var isSleeping = false
     private(set) var foregroundAppName: String?
-    /// Each device's proxy routing and certificate live beside its own state
-    /// (WebProxyConfiguration.directory): one device's proxy (in its
-    /// helper) never reads another's mode.
-    private var proxyDirectory: URL { WebProxyConfiguration.directory(for: instance) }
+    /// This device's web proxy (DeviceWebProxy): its routing and certificate beside the device's own state.
+    @ObservationIgnored private(set) lazy var proxy = DeviceWebProxy(directory: { [unowned self] in
+        WebProxyConfiguration.directory(for: instance)
+    }, shortName: profile.shortName)
+    private var proxyDirectory: URL { proxy.directory }
     /// iPhone OS 1.x devices take the web proxy's CA while stopped (FirmwareTool.trustAnchor): no agent, no MCInstall.
     private var trustsStopped: Bool { profile.trustsStopped }
-    @ObservationIgnored private(set) lazy var webProxy = WebProxyConfiguration.load(from: proxyDirectory)
-    private(set) var webProxyStatus: WebProxyStatus = .waiting
-    @ObservationIgnored private var proxyRevision = 0
-    private(set) var webProxyAvailable = false
-    func configureWebProxy(_ value: WebProxyConfiguration) throws {
-        guard webProxyAvailable else { throw DeviceToolsError.failed("The proxy is unavailable. Turn on the \(profile.shortName) and connect it to the internet.") }
-        try value.save(in: proxyDirectory)
-        webProxy = value
-        proxyRevision += 1
-        webProxyStatus = .waiting
-    }
+    var webProxy: WebProxyConfiguration { proxy.configuration }
+    var webProxyStatus: WebProxyStatus { proxy.status }
+    var webProxyAvailable: Bool { proxy.available }
+    func configureWebProxy(_ value: WebProxyConfiguration) throws { try proxy.configure(value) }
     /// This device's settings.plist (DeviceSettings), read once and written on every change.
     @ObservationIgnored private lazy var settingsFile = DeviceSettingsFile(directory: instance.paths.directory)
     private var settings: DeviceSettings { settingsFile.value }
@@ -279,9 +273,9 @@ final class EmulatorController {
     private func bootConfiguration(hardware: DeviceInfo?) -> BootConfig? {
         guard !isDead, !releasing else { return nil }
         link?.send(.screenVisible(screenVisible))
-        proxyEndpoint = nil
+        proxy.forgetEndpoint()
         var config = preparedBootConfiguration(hardware: hardware)
-        config?.webProxy = proxyEndpoint
+        config?.webProxy = proxy.endpoint
         config?.storageProof = admittedStorage
         if let port = options.chooseDebugPort(booting: config != nil) {
             config?.argv += DebugPort.arguments(port: port)
@@ -339,12 +333,12 @@ final class EmulatorController {
         if profile.isKBoot {
             let setupDone = FileManager.default.fileExists(atPath: BootRecipe.setupDoneMark(overlay: overlayURL).path)
             let restrict = network && BootRecipe.setupPhonesHome(iosVersion: iosVersion) && !setupDone
-            netdev = network ? proxyForward().map {
+            netdev = network ? proxy.forward().map {
                 BootRecipe.wifiNetdev(guestForward: $0, restricted: restrict, localNetwork: localNetworkEnabled)
             } : nil
             setupGate = netdev != nil && restrict ? BootRecipe.SetupNetworkGate() : nil
         } else {
-            netdev = network ? BootRecipe.wifiNetdev(guestForward: proxyForward() ?? "", restricted: false,
+            netdev = network ? BootRecipe.wifiNetdev(guestForward: proxy.forward() ?? "", restricted: false,
                                                      localNetwork: localNetworkEnabled) : nil
         }
         do {
@@ -420,22 +414,6 @@ final class EmulatorController {
     /// by iBoot too). Without a USB bridge (--no-appsync) painting has to do.
     var bootFinished: Bool { deviceReachable == true || (usbmux.session == nil && state == .running) }
 
-    /// This boot's web proxy: the helper serves `proxyEndpoint` (BootConfig.webProxy, reading this device's
-    /// routing file) and the guestfwd returned here reaches it; nil when the routing can't be written.
-    @ObservationIgnored private var proxyEndpoint: WebProxyEndpoint?
-    private func proxyForward() -> String? {
-        do {
-            try webProxy.writeRouting(in: proxyDirectory)
-            webProxyAvailable = true
-            let endpoint = WebProxyConfiguration.endpoint(directory: proxyDirectory)
-            proxyEndpoint = endpoint
-            return WebProxyConfiguration.guestForward(socket: endpoint.socket)
-        } catch {
-            webProxyStatus = .failed
-            logEvent("proxy routing: \(error.localizedDescription)")
-            return nil
-        }
-    }
 
     /// Status is read from the helper's shared block: the old per-frame poll,
     /// now on its own timer so a hidden device (no display link) still flips
@@ -1022,29 +1000,14 @@ final class EmulatorController {
             while !Task.isCancelled {
                 guard let self else { return }
                 if self.canReachDevice, !self.isSleeping, !self.isInstalling, !AppInstaller.hasPendingWork(for: self.instance.id) {
-                    if self.webProxyAvailable && appliedProxyRevision != self.proxyRevision {
-                        let revision = self.proxyRevision
-                        if self.webProxyStatus == .waiting {
-                            self.webProxyStatus = .applying
-                        }
-                        do {
-                            let trust = try await WebProxySetup(services: self.services, guest: self.guest, proxyDirectory: self.proxyDirectory,
+                    do {
+                        appliedProxyRevision = try await self.proxy.apply(since: appliedProxyRevision,
+                                                                          isCurrent: { generation == self.bootGeneration }) { enabled in
+                            try await WebProxySetup(services: self.services, guest: self.guest, proxyDirectory: self.proxyDirectory,
                                     stoppedTrust: self.trustsStopped ? (self.instance.paths.directory, self.instance.storage.key) : nil)
-                                .configure(enabled: self.webProxy.mode != .off)
-                            try Task.checkCancellation()
-                            guard generation == self.bootGeneration else { return }
-                            if revision == self.proxyRevision {
-                                appliedProxyRevision = revision
-                                self.webProxyStatus = trust
-                            }
-                        } catch {
-                            if Task.isCancelled { return }
-                            if self.webProxyStatus != .failed {
-                                self.webProxyStatus = .failed
-                                logEvent("proxy settings: \(error.localizedDescription)")
-                            }
+                                .configure(enabled: enabled)
                         }
-                    }
+                    } catch { return }
                     do {
                         let fg = self.guestAgent.isAlive ? try await self.guest.foreground() : nil
                         try Task.checkCancellation()
