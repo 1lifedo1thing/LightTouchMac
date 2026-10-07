@@ -7,7 +7,7 @@ import HostRuntime
 import DeviceRuntime
 
 /// A control request for the running boot: `done(true)` when the machine applied it (BootSessionScope.control).
-public typealias MachineControl = (LinkRequest, @escaping (Bool) -> Void) -> Void
+public typealias MachineControl = (LinkRequest, @escaping @MainActor (Bool) -> Void) -> Void
 
 /// Keyboard passthrough (per device, on by default) and Connect Hardware Keyboard (⇧⌘K, per device). Both are
 /// settings, so observable through the settings file.

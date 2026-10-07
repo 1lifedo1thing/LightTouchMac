@@ -35,7 +35,8 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
     /// Quick Look's copies of the selected files, in a private temporary folder removed when the panel closes.
     private var previewItems: [URL] = []
     private var previewFolder: URL?
-    private var spaceMonitor: Any?
+    // nonisolated(unsafe): set on the main actor in viewDidLoad and read again only by deinit, after the last use.
+    nonisolated(unsafe) private var spaceMonitor: Any?
     /// Drag-out promises run one after another (AFC transfers are serial anyway).
     private var promiseChain: Task<Void, Never>?
     private var idleStatusWidth: NSLayoutConstraint!
@@ -387,14 +388,15 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
     }
 
     nonisolated func filePromiseProvider(_ provider: NSFilePromiseProvider, fileNameForType fileType: String) -> String {
-        MainActor.assumeIsolated { (provider.userInfo as? DeviceFile)?.name ?? "File" }
+        (provider.userInfo as? DeviceFile)?.name ?? "File"
     }
 
     nonisolated func filePromiseProvider(_ provider: NSFilePromiseProvider, writePromiseTo url: URL,
                                          completionHandler: @escaping (Error?) -> Void) {
         let handler = UncheckedHandler(completionHandler)
+        let promised = provider.userInfo as? DeviceFile
         MainActor.assumeIsolated {
-            guard let file = provider.userInfo as? DeviceFile, let services else {
+            guard let file = promised, let services else {
                 handler.call(CocoaError(.fileReadUnknown)); return
             }
             let previous = promiseChain
@@ -449,14 +451,19 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
         previewItems = []
     }
 
-    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
-    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
-        panel.dataSource = self
-        panel.reloadData()
+    // QuickLook's panel-control methods are declared nonisolated; it calls them on the main thread.
+    nonisolated override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
+    nonisolated override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated {
+            panel.dataSource = self
+            panel.reloadData()
+        }
     }
-    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
-        panel.dataSource = nil
-        clearPreview()
+    nonisolated override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated {
+            panel.dataSource = nil
+            clearPreview()
+        }
     }
     nonisolated func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
         MainActor.assumeIsolated { previewItems.count }
@@ -521,7 +528,8 @@ private final class FilesBackground: NSView {
 }
 
 /// A file promise's completion handler, called once from the main actor.
-private struct UncheckedHandler: @unchecked Sendable {
+// @unchecked: AppKit's file-promise completion handler may be called from any thread.
+nonisolated private struct UncheckedHandler: @unchecked Sendable {
     let call: (Error?) -> Void
     init(_ call: @escaping (Error?) -> Void) { self.call = call }
 }

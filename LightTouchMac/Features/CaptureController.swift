@@ -28,7 +28,8 @@ import UniformTypeIdentifiers
     private(set) var screenshotBusy = false
     private(set) var copiedScreenshot = false
     private var copyConfirmation: Task<Void, Never>?
-    private var captureKeyMonitor: Any?
+    // nonisolated(unsafe): set on the main actor; deinit reads it again only after the last use.
+    nonisolated(unsafe) private var captureKeyMonitor: Any?
     private var spaceBar = SpaceBarCapture()
     private var quitAfterRecording = false
     private var closeAfterRecording = false

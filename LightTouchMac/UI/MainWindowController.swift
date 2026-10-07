@@ -64,7 +64,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     private var filesWindow: DeviceFilesWindowController?
     private weak var proxySettingsEditor: ProxySettingsView?
     private var filesVC: DeviceFilesViewController? { filesWindow?.browser }
-    private var modifierMonitor: Any?
+    // nonisolated(unsafe): set on the main actor; deinit reads it again only after the last use.
+    nonisolated(unsafe) private var modifierMonitor: Any?
     /// Screenshots, recordings and their banner (CaptureController).
     private let capture = CaptureController()
     private var recording: ScreenRecordingSession { capture.recording }

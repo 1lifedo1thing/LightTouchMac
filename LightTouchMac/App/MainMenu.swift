@@ -314,16 +314,16 @@ enum MainMenuBuilder {
 /// The Capture menu. Escape is Discard Recording's (which asks first) only while a recording can be discarded in the
 /// key device window, with no sheet on it and no text being edited; otherwise the key passes on to text fields,
 /// sheets, alerts and the rest. A plain NSMenu takes a matching key equivalent even from a disabled item.
-final class CaptureMenu: NSMenu {
+nonisolated final class CaptureMenu: NSMenu {   // NSMenu's own initializers are nonisolated; AppKit calls it on main
     /// `window` is the key window.
-    static func escapeDiscards(in window: NSWindow?) -> Bool {
+    @MainActor static func escapeDiscards(in window: NSWindow?) -> Bool {
         guard let window, window.windowController is MainWindowController else { return false }
         return window.attachedSheet == nil && !(window.firstResponder is NSText)
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.keyCode == 53 {
-            guard Self.escapeDiscards(in: NSApp.keyWindow) else { return false }
+            guard MainActor.assumeIsolated({ Self.escapeDiscards(in: NSApp.keyWindow) }) else { return false }
             update()
             guard items.contains(where: { $0.keyEquivalent == "\u{1b}" && $0.isEnabled }) else { return false }
         }

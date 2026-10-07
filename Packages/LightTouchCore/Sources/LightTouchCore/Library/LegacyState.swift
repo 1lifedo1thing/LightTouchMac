@@ -10,7 +10,7 @@
 import Foundation
 import HostRuntime
 
-public nonisolated struct LegacyState {
+public nonisolated struct LegacyState: Sendable {
     public let state: URL
     /// The pre-library root, still in place.
     public let oldRoot: URL?
