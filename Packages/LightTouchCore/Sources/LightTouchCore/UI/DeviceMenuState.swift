@@ -47,7 +47,7 @@ public struct DeviceMenuState {
     public func validate(_ item: Item) -> Validation {
         switch item {
         case .lock:
-            Validation(isEnabled: acceptsInput || (isPoweredOff && !shuttingDown), title: isPoweredOff ? "Power On" : isSleeping ? "Wake" : "Lock")
+            Validation(isEnabled: acceptsInput || (isPoweredOff && !shuttingDown), title: isPoweredOff ? "Start" : isSleeping ? "Wake" : "Lock")
         case .rotate:
             Validation(isEnabled: acceptsInput && !editingText)
         case .batteryLevel(let level):

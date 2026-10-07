@@ -40,6 +40,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     /// validation and toolbar item follows it.
     private(set) var session: DeviceSession?
     private var selectedEntry: FirmwareCatalog.Entry?
+    /// The selected device's own directory and board, running or not (nil before it is prepared).
+    var selectedInstance: DeviceInstance? { selectedEntry.flatMap(host.instance(for:)) }
     private var emulator: EmulatorController? { session?.emulator }
     private var deviceVC: DeviceViewController? { session?.workspace.deviceVC }
     private var inspectorVC: AppsInspectorViewController? { session?.workspace.inspectorVC }
@@ -290,8 +292,12 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         multipleSelected.text = "\(count) Devices"
         if session == nil { showDetail(entry != nil ? placeholder : count > 1 ? multipleSelected : nothingSelected) }
         if let entry, session == nil {
+            let instance = host.instance(for: entry), edits = DeviceFilesystemEdits.shared
+            let editing = instance.flatMap { edits.hasOpenEdit($0) ? $0 : nil }
+            if let editing { edits.watch(editing, library: host.library) }
             placeholder.update(host.row(for: entry), canDownload: FirmwareJobs.shared.canDownload,
-                               activity: host.instance(for: entry).flatMap { DeviceFilesystemEdits.shared.activity[$0.id] })
+                               activity: instance.flatMap { edits.activity[$0.id] },
+                               editing: editing.map(edits.isEditMounted))
         }
         // The console's picker: the same logs as Device Logs, without the rotated
         // copies, the device's serial log first.
@@ -393,8 +399,9 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         case .openFilesystem, .commitFilesystem, .discardFilesystem, .recoverFilesystem:
             DeviceFilesystemEdits.shared.perform(action, entry: entry, host: host)
         case .start: start(entry)
-        case .stop: if let emulator = host.session(for: entry)?.emulator { shutDown(emulator) }
-        case .forceStop: if let emulator = host.session(for: entry)?.emulator { powerOff(emulator) }
+        // The same questions as Device ▸ Shut Down… and Force Stop…, from the sidebar and File menu too.
+        case .stop: if let emulator = host.session(for: entry)?.emulator { confirmShutDown(emulator) }
+        case .forceStop: if let emulator = host.session(for: entry)?.emulator { confirmForceStop(emulator) }
         case .downloadAndPrepare: FirmwareJobs.shared.downloadAndPrepare(entry)
         case .importIPSW: chooseIPSW(for: entry)
         case .cancel: FirmwareJobs.shared.cancel(entry)
@@ -425,11 +432,14 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         }
         guard edits.hasOpenEdit(instance), let window else { return release(commit: nil) }
         let alert = NSAlert()
-        alert.messageText = "Save the changes to \(name(entry))’s file system before starting it?"
-        alert.informativeText = "Its file system is open in Finder. Changes you don’t save are lost."
+        let shortName = entry.profile?.shortName ?? "device"
+        alert.messageText = "\(name(entry))’s file system is open in Finder"
+        alert.informativeText = edits.isEditMounted(instance)
+            ? "Starting the \(shortName) unmounts it so the \(shortName) can use it. Copies in progress finish first, then your changes are saved."
+            : "Starting the \(shortName) saves your changes first."
         alert.addButton(withTitle: "Save and Start")
         alert.addButton(withTitle: "Cancel")
-        alert.addButton(withTitle: "Discard and Start")
+        alert.addButton(withTitle: "Don’t Save")
         alert.beginSheetModal(for: window) { response in
             switch response {
             case .alertFirstButtonReturn: release(commit: true)
@@ -1065,8 +1075,9 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         }
     }
     /// Shut Down… (⌘.): the guest powers itself off, after asking.
-    @objc func deviceShutDown(_ sender: Any?) {
-        guard let emulator, let window else { return }
+    @objc func deviceShutDown(_ sender: Any?) { emulator.map(confirmShutDown) }
+    private func confirmShutDown(_ emulator: EmulatorController) {
+        guard let window else { return }
         let alert = NSAlert()
         alert.messageText = "Shut down this \(emulator.profile.shortName)?"
         alert.informativeText = "It turns off the way it does when you slide to power off."
@@ -1079,8 +1090,9 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     }
 
     /// Force Stop…: the hard halt, after asking.
-    @objc func deviceForceStop(_ sender: Any?) {
-        guard let emulator, let window else { return }
+    @objc func deviceForceStop(_ sender: Any?) { emulator.map(confirmForceStop) }
+    private func confirmForceStop(_ emulator: EmulatorController) {
+        guard let window else { return }
         let alert = NSAlert()
         alert.messageText = "Force stop this \(emulator.profile.shortName)?"
         alert.informativeText = "It stops at once, as if its battery were removed. Anything an app hasn’t saved is lost."
@@ -1418,7 +1430,7 @@ extension MainWindowController: NSToolbarItemValidation {
         case .installApp:
             return emulator.canQueueInstall
         case .lock:
-            let label = emulator.isPoweredOff ? "Power On" : emulator.isSleeping ? "Wake" : "Lock"
+            let label = emulator.isPoweredOff ? "Start" : emulator.isSleeping ? "Wake" : "Lock"
             item.show(label: label, toolTip: label + " (⌘L)", symbol: emulator.isPoweredOff ? "power" : "lock")
             return emulator.acceptsInput || (emulator.isPoweredOff && !emulator.shuttingDown)
         case .home, .rotate:
@@ -1486,17 +1498,15 @@ extension MainWindowController: NSMenuItemValidation {
             return deviceVC?.screen.canToggleFreeForm ?? false
         case #selector(toggleDeviceRunning(_:)):
             let running = selectedEntry.map { [.running, .stopping].contains(host.row(for: $0).state) } ?? false
-            menuItem.title = running ? "Shut Down" : "Start"
+            menuItem.title = running ? "Shut Down…" : "Start"
             return selectedEntry.map { canPerform(running ? .stop : .start, for: $0) } ?? false
-        case #selector(downloadAndPrepare(_:)): return selectedEntry.map { canPerform(.downloadAndPrepare, for: $0) } ?? false
+        case #selector(downloadAndPrepare(_:)):
+            menuItem.title = selectedEntry.map { host.row(for: $0).prepareTitle } ?? "Download and Prepare"
+            return selectedEntry.map { canPerform(.downloadAndPrepare, for: $0) } ?? false
         case #selector(importIPSW(_:)): return selectedEntry.map { canPerform(.importIPSW, for: $0) } ?? false
         case #selector(cancelFirmwareJob(_:)):
-            if let entry = selectedEntry, case .preparing = host.row(for: entry).state { menuItem.title = "Cancel Preparation" }
-            else { menuItem.title = "Cancel Download" }
-            // The one item that comes and goes: there only while a download or preparation can be cancelled.
-            let cancellable = selectedEntry.map { canPerform(.cancel, for: $0) } ?? false
-            menuItem.isHidden = !cancellable
-            return cancellable
+            menuItem.title = selectedEntry.map { host.row(for: $0).cancelTitle } ?? "Cancel Download"
+            return selectedEntry.map { canPerform(.cancel, for: $0) } ?? false
         case #selector(showDeviceInFinder(_:)): return selectedEntry.map { canPerform(.showInFinder, for: $0) } ?? false
         case #selector(deleteDevice(_:)):
             let selected = library.selectedEntries

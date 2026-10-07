@@ -51,8 +51,8 @@ source=r'''import Cocoa
   let item=NSToolbarItem(itemIdentifier:.init("lock"))
   item.show(label:"Lock",toolTip:"Lock (⌘L)",symbol:"lock");let lockImage=item.image
   item.show(label:"Lock",toolTip:"Lock (⌘L)",symbol:"lock");precondition(item.image === lockImage)
-  item.show(label:"Power On",toolTip:"Power On (⌘L)",symbol:"power")
-  precondition(item.image !== lockImage && item.label=="Power On" && item.toolTip=="Power On (⌘L)")
+  item.show(label:"Start",toolTip:"Start (⌘L)",symbol:"power")
+  precondition(item.image !== lockImage && item.label=="Start" && item.toolTip=="Start (⌘L)")
   print("PASS: native record/stop action, elapsed sizing, saving progress, accessible phase labels, recovery and idle reset; unchanged updates touch nothing")
  }
 }

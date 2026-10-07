@@ -30,7 +30,7 @@ File/Add Device…  ⌘n
 File/-
 File/Import IPSW…
 File/Download and Prepare
-File/Cancel Download hidden
+File/Cancel Download
 File/-
 File/Start
 File/-

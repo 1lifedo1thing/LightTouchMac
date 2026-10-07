@@ -31,7 +31,7 @@ import DeviceRuntime
     @ObservationIgnored public private(set) var endpoint: WebProxyEndpoint?
 
     public func configure(_ value: WebProxyConfiguration) throws {
-        guard available else { throw DeviceToolsError.failed("The proxy is unavailable. Turn on the \(shortName) and connect it to the internet.") }
+        guard available else { throw DeviceToolsError.failed("The proxy is unavailable. Start the \(shortName) and connect it to the internet.") }
         try value.save(in: directory)
         configuration = value
         revision += 1

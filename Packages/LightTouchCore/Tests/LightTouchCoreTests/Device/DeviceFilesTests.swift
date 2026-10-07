@@ -61,7 +61,7 @@ struct DeviceFilesTests {
             await eventually("the directory's rename") { seen.paths.contains(overlay.path) }
             #expect(seen.paths.contains(overlay.path), "\(seen.paths)")
             withExtendedLifetime(watch) {}
-            #expect(DeviceFileWatch.notice(shortName: "iPad") == "Files of this iPad were changed while it was running. Stop and start it again; unsaved changes may be lost.")
+            #expect(DeviceFileWatch.notice(shortName: "iPad") == "Files of this iPad were changed while it was running. Shut it down and start it again; unsaved changes may be lost.")
         }
     }
 

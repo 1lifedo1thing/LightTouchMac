@@ -2,7 +2,7 @@
 The sidebar lists your devices. File → Add Device (⌘N) chooses iPod and iPad versions to add. Select one and choose Download and Prepare to get its IPSW from Apple, or Import IPSW to use one you have; you can also drop an IPSW onto the window. When it’s ready, Start runs it. File also has Show in Finder and Delete Device. Light Touch → Settings → Storage shows what each device and IPSW takes on disk.
 
 # Using the device
-Click and drag on the screen as you would with a finger. Pinch on a trackpad, or Option-drag on the screen, to use two fingers. Home Screen is ⇧⌘H; Lock is ⌘L. Device → Shut Down (⌘.) asks, then turns the [Device] off the way sliding to power off does; Force Stop stops it at once. Choose Power On to start it again.
+Click and drag on the screen as you would with a finger. Pinch on a trackpad, or Option-drag on the screen, to use two fingers. Home Screen is ⇧⌘H; Lock is ⌘L. Device → Shut Down (⌘.) asks, then turns the [Device] off the way sliding to power off does; Force Stop stops it at once. Choose Start to start it again.
 
 The toolbar provides Home Screen, Lock, Rotate, Zoom, and capture actions. View → Customize Toolbar lets you rearrange controls or add Files, Motion, and Capture Options. View also shows and hides the sidebar (⌃⌘S), the inspector (⌥⌘I), and the console (⇧⌘Y).
 

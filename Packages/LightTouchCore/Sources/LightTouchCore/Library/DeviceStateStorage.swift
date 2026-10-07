@@ -28,7 +28,7 @@ public nonisolated enum DeviceStateStorage {
         catch let error as StorageLease.Failure {
             if case let .openFailed(code) = error { throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO) }
             throw CocoaError(.fileWriteNoPermission, userInfo: [NSLocalizedDescriptionKey:
-                "This device’s storage is in use. Stop the device or finish its filesystem edit first."])
+                "This device’s storage is in use. Shut down the device, or save or discard its file system changes, first."])
         }
     }
 

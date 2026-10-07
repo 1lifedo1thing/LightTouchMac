@@ -87,10 +87,7 @@ enum MainMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(item("Import IPSW…", #selector(MainWindowController.importIPSW(_:))))
         menu.addItem(item("Download and Prepare", #selector(MainWindowController.downloadAndPrepare(_:))))
-        // Hidden until there is a job to cancel (MainWindowController.validateMenuItem shows it).
-        let cancel = item("Cancel Download", #selector(MainWindowController.cancelFirmwareJob(_:)))
-        cancel.isHidden = true
-        menu.addItem(cancel)
+        menu.addItem(item("Cancel Download", #selector(MainWindowController.cancelFirmwareJob(_:))))
         menu.addItem(.separator())
         menu.addItem(item("Start", #selector(MainWindowController.toggleDeviceRunning(_:))))
         menu.addItem(.separator())

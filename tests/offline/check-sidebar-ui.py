@@ -274,7 +274,7 @@ final class Delegate: DeviceLibraryDelegate {
         let live = commands.filter { vc.validateMenuItem($0) }.map(\.title)
         // Start/Shut Down is one item whose title follows the row (Force Stop beside it, dimmed while stopped); Cancel is there only while something can be cancelled.
         if !["Start", "Show File System in Finder", "Erase All Content and Settings…"].allSatisfy({ t in commands.contains { $0.title == t } })
-            || commands.contains(where: { ["Shut Down", "Cancel"].contains($0.title) }) || !live.contains("Start") || live.contains("Force Stop") {
+            || commands.contains(where: { ["Shut Down…", "Cancel Download", "Cancel Preparation"].contains($0.title) }) || !live.contains("Start") || live.contains("Force Stop…") {
             fail("context menu: \(commands.map(\.title)), enabled \(live)")
         }
         delegate.allowed = Set(DeviceAction.allCases).subtracting([.cancel])
@@ -282,7 +282,7 @@ final class Delegate: DeviceLibraryDelegate {
         NotificationCenter.default.post(name: DeviceSessionHost.didChangeNotification, object: nil)
         vc.menuNeedsUpdate(context)
         var titles = context.items.map(\.title)
-        if !titles.contains("Shut Down") || !titles.contains("Force Stop") || titles.contains("Start") || titles.contains("Cancel") {
+        if !titles.contains("Shut Down…") || !titles.contains("Force Stop…") || titles.contains("Start") || titles.contains("Cancel Download") {
             fail("a running row's context menu: \(titles)")
         }
         host.running = []
@@ -290,7 +290,7 @@ final class Delegate: DeviceLibraryDelegate {
         FirmwareJobs.shared.jobs["n72ap-8C148"] = .preparing(Preparation(step: 1, steps: 2, name: "x"))
         vc.menuNeedsUpdate(context)
         titles = context.items.map(\.title)
-        if !titles.contains("Cancel") || !titles.contains("Start") { fail("a preparing row's context menu: \(titles)") }
+        if !titles.contains("Cancel Preparation") || !titles.contains("Start") { fail("a preparing row's context menu: \(titles)") }
         FirmwareJobs.shared.jobs = [:]
         // The Dock's bar: running jobs averaged, each as its row's bar; nothing running, no bar.
         let dock = FirmwareJob.dockProgress([.downloading(fraction: 0.5), .preparing(Preparation(step: 1, steps: 2, name: "x", fraction: 0.5, startsAt: 0.5)), .failed("x")])

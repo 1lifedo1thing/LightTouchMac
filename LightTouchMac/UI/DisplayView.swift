@@ -118,7 +118,7 @@ final class DisplayView: NSView {
         stack.orientation = .vertical
         stack.spacing = 10
         if next != .shuttingDown {
-            let button = NSButton(title: next == .poweredOff ? "Power On" : "Wake Up", target: self, action: #selector(wakeDevice(_:)))
+            let button = NSButton(title: next == .poweredOff ? "Start" : "Wake", target: self, action: #selector(wakeDevice(_:)))
             button.bezelStyle = .rounded
             stack.addArrangedSubview(button)
         }

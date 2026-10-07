@@ -343,12 +343,17 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
         if isError { return "Try Again" }
         return switch primaryAction {
         case .start: "Start"
-        case .downloadAndPrepare: state == .downloaded || state == .bundled ? "Prepare" : "Download and Prepare"
+        case .downloadAndPrepare: prepareTitle
         case .importIPSW: "Import IPSW…"
         case .cancel: "Cancel"
         default: nil
         }
     }
+
+    /// Download and Prepare's name in every menu: Prepare once the IPSW is here.
+    public var prepareTitle: String { state == .downloaded || state == .bundled ? "Prepare" : "Download and Prepare" }
+    /// Cancel's name in every menu: what it cancels.
+    public var cancelTitle: String { if case .preparing = state { "Cancel Preparation" } else { "Cancel Download" } }
 
     /// The row's note beside a quiet accessory: a device prepared without activation says so.
     public var note: String? { preparedWithoutActivation && instanceID != nil ? "Prepared without activation" : nil }

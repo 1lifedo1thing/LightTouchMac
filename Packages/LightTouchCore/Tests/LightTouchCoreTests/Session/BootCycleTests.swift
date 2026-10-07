@@ -40,7 +40,7 @@ struct BootCycleTests {
             c.cycle.reset()
             await c.bootScope[.reset]?.value
             #expect(c.link.commands.isEmpty && !c.bootScope.retired && c.steps.isEmpty)
-            #expect(c.notices.message == "Couldn’t restart because the device did not finish syncing its filesystem.")
+            #expect(c.notices.message == "Couldn’t restart because the device didn’t finish saving its files.")
             #expect(c.readiness.current != nil, "a booting device gets its readiness watch back")
             c.readiness.cancel()
             // The next good restart resolves the notice.

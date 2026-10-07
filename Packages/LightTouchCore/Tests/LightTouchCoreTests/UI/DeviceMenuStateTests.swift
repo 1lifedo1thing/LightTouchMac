@@ -70,7 +70,7 @@ struct DeviceMenuStateTests {
         state.isSleeping = true
         #expect(state.validate(.lock).title == "Wake")
         state = DeviceMenuState(); state.isPoweredOff = true
-        #expect(state.validate(.lock) == .init(isEnabled: true, title: "Power On"))
+        #expect(state.validate(.lock) == .init(isEnabled: true, title: "Start"))
         state.shuttingDown = true
         #expect(!state.validate(.lock).isEnabled)
     }

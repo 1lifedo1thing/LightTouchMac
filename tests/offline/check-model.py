@@ -450,11 +450,11 @@ enum PreparedMedia { nonisolated static let extensions: Set<String> = [] }
   e.isSleeping=true;display.updatePowerPresentation();touches.removeAll()
   let sleepBadge = display.subviews.compactMap { $0 as? NSStackView }.first!
   precondition(sleepBadge.arrangedSubviews.count == 2)
-  precondition((sleepBadge.arrangedSubviews.last as? NSButton)?.title == "Wake Up")
+  precondition((sleepBadge.arrangedSubviews.last as? NSButton)?.title == "Wake")
   e.isPoweredOff=true;display.updatePowerPresentation()
   let offBadge = display.subviews.compactMap { $0 as? NSStackView }.first!
   precondition(offBadge.arrangedSubviews.count == 2)
-  precondition((offBadge.arrangedSubviews.last as? NSButton)?.title == "Power On")
+  precondition((offBadge.arrangedSubviews.last as? NSButton)?.title == "Start")
   e.isPoweredOff=false;display.updatePowerPresentation()
   let event=NSEvent.mouseEvent(with:.leftMouseDown,location:model.convert(model.projectedPoint(CGPoint(x:0.5,y:0.5)),to:nil),modifierFlags:[],timestamp:0,windowNumber:window.windowNumber,context:nil,eventNumber:0,clickCount:1,pressure:1)!
   display.mouseDown(with:event);precondition(touches.isEmpty)

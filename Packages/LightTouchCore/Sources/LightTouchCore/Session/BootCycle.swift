@@ -89,7 +89,7 @@ public final class BootCycle {
             }
             guard !Task.isCancelled, generation == host.bootScope.generation, !host.storageFailed, !host.shuttingDown, !host.state.isDead else { return }
             guard synced == true else {
-                host.notices.report("Couldn’t restart because the device did not finish syncing its filesystem.", for: .powerOff)
+                host.notices.report("Couldn’t restart because the device didn’t finish saving its files.", for: .powerOff)
                 if host.state == .booting { host.readiness.start() }
                 return
             }

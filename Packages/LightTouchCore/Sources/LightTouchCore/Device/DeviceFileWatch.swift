@@ -15,7 +15,7 @@ public nonisolated final class DeviceFileWatch: @unchecked Sendable {
 
     /// What the notice says once anything under the device moved.
     public static func notice(shortName: String) -> String {
-        "Files of this \(shortName) were changed while it was running. Stop and start it again; unsaved changes may be lost."
+        "Files of this \(shortName) were changed while it was running. Shut it down and start it again; unsaved changes may be lost."
     }
 
     /// `directories` and each of their direct children, and `files` (a NOR kept
