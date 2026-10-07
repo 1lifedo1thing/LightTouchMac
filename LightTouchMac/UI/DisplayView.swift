@@ -427,6 +427,8 @@ final class DisplayView: NSView {
         }
         NotificationCenter.default.addObserver(self, selector: #selector(screenChanged),
             name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(releaseHeldKeys),
+            name: NSWindow.didResignKeyNotification, object: window)
     }
 
     var onPhysicalSizeUnavailable: (() -> Void)?
@@ -1738,7 +1740,33 @@ final class DisplayView: NSView {
             return
         }
         if keyboardPointerKey(event, down: true) { return }
-        emulator?.sendKey(macKeyCode: event.keyCode, down: true)
+        if !hasMarkedText(), GuestKeyboard.passesThrough(keyCode: event.keyCode, characters: event.characters,
+                                                          shift: event.modifierFlags.contains(.shift),
+                                                          inputSource: inputContext?.selectedKeyboardInputSource) {
+            pressKey(event.keyCode)
+        } else {
+            // Another layout, a dead key or an input method: the text input system composes, insertText sends.
+            keyInText = event
+            inputContext?.handleEvent(event)
+            keyInText = nil
+        }
+    }
+
+    // MARK: - Held keys and composed text
+
+    private var heldKeys = HeldKeys()
+    private var keyInText: NSEvent?
+    private var markedText = NSMutableAttributedString()
+
+    private func pressKey(_ code: UInt16) {
+        heldKeys.press(code)
+        emulator?.sendKey(macKeyCode: code, down: true)
+    }
+
+    /// Focus left the screen (another view, window or app): every key the guest has down goes up.
+    @objc func releaseHeldKeys() {
+        for code in heldKeys.releaseAll() { emulator?.sendKey(macKeyCode: code, down: false) }
+        if hasMarkedText() { inputContext?.discardMarkedText(); unmarkText() }
     }
 
     override func keyUp(with event: NSEvent) {
@@ -1750,7 +1778,7 @@ final class DisplayView: NSView {
             return
         }
         if keyboardPointerKey(event, down: false) { return }
-        emulator?.sendKey(macKeyCode: event.keyCode, down: false)
+        if heldKeys.release(event.keyCode) { emulator?.sendKey(macKeyCode: event.keyCode, down: false) }
     }
 
     override func flagsChanged(with event: NSEvent) {
@@ -1758,10 +1786,15 @@ final class DisplayView: NSView {
         // guest keyboard missed them (no capitals, no "!"). Command and
         // Control stay with the menu bar. sendKey lets key-ups through while
         // input is off, so a modifier can't stick down.
+        let down: Bool?
         switch event.keyCode {
-        case 56, 60: emulator?.sendKey(macKeyCode: event.keyCode, down: event.modifierFlags.contains(.shift))
-        case 58, 61: emulator?.sendKey(macKeyCode: event.keyCode, down: event.modifierFlags.contains(.option))
-        default: break
+        case 56, 60: down = event.modifierFlags.contains(.shift)
+        case 58, 61: down = event.modifierFlags.contains(.option)
+        default: down = nil
+        }
+        if let down {
+            if down { heldKeys.press(event.keyCode) } else { _ = heldKeys.release(event.keyCode) }
+            emulator?.sendKey(macKeyCode: event.keyCode, down: down)
         }
         updatePairRings(event.modifierFlags)
         if !event.modifierFlags.contains(.shift), !keyboardTouchKeys.isDisjoint(with: [123, 124, 125, 126]) {
@@ -1771,6 +1804,7 @@ final class DisplayView: NSView {
     }
 
     override func resignFirstResponder() -> Bool {
+        releaseHeldKeys()
         endKeyboardTouch()
         resetMotion()
         return super.resignFirstResponder()
@@ -1872,4 +1906,37 @@ private final class HomeButton: NSButton {
         NSColor.black.withAlphaComponent(isHighlighted ? 0.5 : 0).setFill()
         NSBezierPath(ovalIn: bounds).fill()
     }
+}
+
+// Composed text (input methods, dead keys, other layouts) reaches the guest as text: EmulatorController.typeText.
+// The composition itself isn't drawn here; the input method's own window shows it beside the screen.
+extension DisplayView: NSTextInputClient {
+    func insertText(_ string: Any, replacementRange: NSRange) {
+        let text = (string as? NSAttributedString)?.string ?? string as? String ?? ""
+        markedText = NSMutableAttributedString()
+        emulator?.typeText(text, shiftHeld: heldKeys.down.contains(56) || heldKeys.down.contains(60))
+    }
+    /// A key the input system didn't turn into text (Return or an arrow with nothing composed): as itself.
+    override func doCommand(by selector: Selector) {
+        if let keyInText { pressKey(keyInText.keyCode) }
+    }
+    func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        markedText = NSMutableAttributedString(attributedString: (string as? NSAttributedString) ?? NSAttributedString(string: string as? String ?? ""))
+    }
+    func unmarkText() { markedText = NSMutableAttributedString() }
+    func selectedRange() -> NSRange { NSRange(location: markedText.length, length: 0) }
+    func markedRange() -> NSRange { markedText.length > 0 ? NSRange(location: 0, length: markedText.length) : NSRange(location: NSNotFound, length: 0) }
+    func hasMarkedText() -> Bool { markedText.length > 0 }
+    func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? {
+        guard let clipped = Range(range, in: markedText.string).map({ NSRange($0, in: markedText.string) }) else { return nil }
+        actualRange?.pointee = clipped
+        return markedText.attributedSubstring(from: clipped)
+    }
+    func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
+    /// The candidate window sits under the screen's lower middle.
+    func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
+        let anchor = NSRect(x: bounds.midX, y: bounds.minY + bounds.height * 0.25, width: 1, height: 20)
+        return window?.convertToScreen(convert(anchor, to: nil)) ?? .zero
+    }
+    func characterIndex(for point: NSPoint) -> Int { NSNotFound }
 }
