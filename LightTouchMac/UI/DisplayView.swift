@@ -7,19 +7,6 @@ import DeviceRuntime
 import Cocoa
 
 /// Fit the whole device in the window, or use an integer display-pixel scale.
-enum ZoomMode: Equatable {
-    case fit
-    case physical
-    case pixels(Int)
-
-    static let steps = [1, 2, 3, 4, 6, 8]
-
-    var percent: Int? {
-        guard case .pixels(let n) = self else { return nil }
-        return n * 100
-    }
-}
-
 final class DisplayView: NSView {
 
     /// The device this view shows, fixed at init.
@@ -634,9 +621,8 @@ final class DisplayView: NSView {
     /// Scale is independent of a framebuffer arriving before or after rotation.
     var pixelMultiple: CGFloat {
         // Free-form steps in points per guest pixel, the unit its Nx is in.
-        if freeFormActive { return appliedScale }
-        return appliedScale * screenCutout.width / nativeScreenPixels.width
-            * (window?.backingScaleFactor ?? 2)
+        ZoomMode.pixelMultiple(appliedScale: appliedScale, cutoutWidth: screenCutout.width, nativeWidth: nativeScreenPixels.width,
+                               backingScale: window?.backingScaleFactor ?? 2, freeForm: freeFormActive)
     }
 
     private var appliedScale: CGFloat = 1
@@ -644,12 +630,12 @@ final class DisplayView: NSView {
     /// Whole display pixels per guest pixel stay crisp (nearest); between the steps (Fit, Physical Size)
     /// nearest would draw guest pixels one or two display pixels wide, so those are filtered (linear).
     static func contentsFilter(_ pixelMultiple: CGFloat) -> CALayerContentsFilter {
-        abs(pixelMultiple - pixelMultiple.rounded()) < 0.01 ? .nearest : .linear
+        ZoomMode.drawsNearest(pixelMultiple) ? .nearest : .linear
     }
 
     private func shellScale(guestPixelsPerDisplayPixel multiple: Int) -> CGFloat {
-        CGFloat(multiple) / (window?.backingScaleFactor ?? 2)
-            * nativeScreenPixels.width / screenCutout.width
+        ZoomMode.shellScale(guestPixelsPerDisplayPixel: multiple, cutoutWidth: screenCutout.width, nativeWidth: nativeScreenPixels.width,
+                            backingScale: window?.backingScaleFactor ?? 2)
     }
 
     /// The largest uniform scale that fits `nativeSize` in the pane inset on
@@ -1055,27 +1041,10 @@ final class DisplayView: NSView {
         if let liveTextView { return liveTextView.capturedImage }
         guard let image = capturePanelFrame(includeTouches: includeTouches) else { return nil }
         // Match the window: scan-to-upright plus, where the surface doesn't follow it, the device's own quarter-turn.
-        let device = profile.surfaceFollowsRotation ? 0 : (emulator?.rotationDegrees ?? 0) / 90
-        let turns = ((Int((guestTurn * 2 / .pi).rounded()) + device) % 4 + 4) % 4
+        let turns = PanelCapture.quarterTurns(guestTurn: guestTurn, deviceDegrees: emulator?.rotationDegrees ?? 0,
+                                              surfaceFollowsRotation: profile.surfaceFollowsRotation)
         guard turns != 0 else { return image }
-        return Self.rotated(image, clockwiseQuarterTurns: turns) ?? image
-    }
-
-    private static func rotated(_ image: CGImage, clockwiseQuarterTurns turns: Int) -> CGImage? {
-        let w = CGFloat(image.width), h = CGFloat(image.height)
-        let size = turns % 2 == 0 ? CGSize(width: w, height: h) : CGSize(width: h, height: w)
-        guard turns != 0, let context = CGContext(data: nil, width: Int(size.width), height: Int(size.height),
-                                                  bitsPerComponent: 8, bytesPerRow: 0,
-                                                  space: image.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
-                                                  bitmapInfo: image.bitmapInfo.rawValue) else { return image }
-        // CG is y-up, so a visual clockwise turn is a negative angle.
-        switch turns {
-        case 1: context.translateBy(x: 0, y: w); context.rotate(by: -.pi / 2)
-        case 2: context.translateBy(x: w, y: h); context.rotate(by: .pi)
-        default: context.translateBy(x: h, y: 0); context.rotate(by: .pi / 2)
-        }
-        context.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
-        return context.makeImage()
+        return PanelCapture.rotated(image, clockwiseQuarterTurns: turns) ?? image
     }
 
     private func capturePanelFrame(includeTouches: Bool) -> CGImage? {

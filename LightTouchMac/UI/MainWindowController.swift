@@ -893,24 +893,10 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         Self.saveZoom(mode)
     }
 
-    private static let zoomKey = "zoomMode"
     private static func saveZoom(_ mode: ZoomMode) {
-        let encoded: String
-        switch mode {
-        case .fit: encoded = "fit"
-        case .physical: encoded = "physical"
-        case .pixels(let n): encoded = "pixels:\(n)"
-        }
-        UserDefaults.standard.set(encoded, forKey: zoomKey)
+        UserDefaults.standard.set(mode.defaultsValue, forKey: ZoomMode.defaultsKey)
     }
-    static func savedZoom() -> ZoomMode {
-        switch UserDefaults.standard.string(forKey: zoomKey) {
-        case "physical": return .physical
-        case let s? where s.hasPrefix("pixels:"):
-            return Int(s.dropFirst("pixels:".count)).flatMap { ZoomMode.steps.contains($0) ? .pixels($0) : nil } ?? .fit
-        default: return .fit
-        }
-    }
+    static func savedZoom() -> ZoomMode { ZoomMode(defaultsValue: UserDefaults.standard.string(forKey: ZoomMode.defaultsKey)) }
 
     /// Grey out a direction there is no room left in.
     private func syncZoomControls() {
@@ -924,12 +910,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     /// so the first press nudges the device rather than jumping it.
     func stepZoom(_ direction: Int) {
         guard let deviceVC else { return }
-        let steps = ZoomMode.steps
-        let current = deviceVC.screen.pixelMultiple
-        let next = direction > 0
-            ? steps.first { CGFloat($0) > current + 0.001 } ?? steps.last!
-            : steps.last { CGFloat($0) < current - 0.001 } ?? steps.first!
-        apply(.pixels(next))
+        apply(ZoomMode.step(from: deviceVC.screen.pixelMultiple, direction: direction))
     }
 
     @objc func zoomIn(_ sender: Any?)  { stepZoom(1) }

@@ -517,8 +517,8 @@ with tempfile.TemporaryDirectory(prefix="ltm-model-") as tmp:
     profile=["Device/Board+App", "../tests/fixtures/machines"]
     for name,source,extra in [
         ("model",model_source,profile),
-        ("layer",layer_source,["UI/DisplayView", "UI/GuestKeyboard", "UI/MouseTouchPair", *profile, "UI/DisplayMeasurements", "UI/AttitudeIndicatorButton", "UI/InlineLiveTextView", "UI/DroppedFiles", "UI/DropHighlight"]),
-        *([("display",display_source,["UI/DisplayView", "UI/GuestKeyboard", "UI/MouseTouchPair", *profile, "UI/DisplayMeasurements", "UI/AttitudeIndicatorButton", "UI/InlineLiveTextView", "UI/DroppedFiles", "UI/DropHighlight"])] if windowed else [])
+        ("layer",layer_source,["UI/DisplayView", "UI/GuestKeyboard", "UI/MouseTouchPair", *profile, "UI/DisplayMeasurements", "UI/ZoomMode", "Capture/PanelCapture", "UI/AttitudeIndicatorButton", "UI/InlineLiveTextView", "UI/DroppedFiles", "UI/DropHighlight"]),
+        *([("display",display_source,["UI/DisplayView", "UI/GuestKeyboard", "UI/MouseTouchPair", *profile, "UI/DisplayMeasurements", "UI/ZoomMode", "Capture/PanelCapture", "UI/AttitudeIndicatorButton", "UI/InlineLiveTextView", "UI/DroppedFiles", "UI/DropHighlight"])] if windowed else [])
     ]:
         swift=work/(name+".swift");swift.write_text(source)
         exe=app/"MacOS"/name
