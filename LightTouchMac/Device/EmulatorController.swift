@@ -296,7 +296,7 @@ final class EmulatorController {
     /// DeviceProcess already holds the storage lease when this hello callback runs.
     /// The UDID the guest reports: the record's, or for an iPhone base prepared before its identity carried an IMEI
     /// (n90/n88 recipe 1) the one its seed-derived IMEI makes; DeviceLock.machineOptions passes that IMEI to the modem.
-    private var guestUDID: String? {
+    var guestUDID: String? {
         if profile.kbootPhone,
            let data = try? Data(contentsOf: instance.paths.base.appendingPathComponent("identity.json")),
            let identity = try? JSONSerialization.jsonObject(with: data) as? [String: Any], identity["imei"] == nil,
@@ -660,8 +660,6 @@ final class EmulatorController {
 
     private func logEmulatorBuild() { logEvent("emulator \(dylibProvenance)") }
     
-    private var restartingSpringBoard = false
-
     // MARK: - Input
 
     /// The hardware buttons, shake, tilt, pasting and typing (DeviceInput); the keyboard is KeyboardInput.
@@ -950,50 +948,35 @@ final class EmulatorController {
     func restart() { onRestartRequested?() }
 
     // MARK: - App management
-    
-    var canManageApps: Bool { usbmux.session != nil && !storageFailed }
 
-    /// The question every app-management command actually wants answered.
-    ///
-    /// `canManageApps` only says the host daemon is alive, and it is true from
-    /// the moment usbmuxd starts — through the whole boot and USB enumeration,
-    /// which is ~40s on a warm image and past three minutes on a first boot.
-    /// Gating on it alone left Install App… enabled that whole
-    /// time, so choosing them opened a file picker (or a Terminal window) for a
-    /// device that could only answer "not reachable over USB yet". The
-    /// inspector's own buttons already waited for a real round trip; the menu
-    /// and toolbar were the ones still guessing. `deviceReachable` is that round
-    /// trip, set by the list poll, and nil until the first one lands.
-    var canReachDevice: Bool { usbConnected && canManageApps && isRunning && deviceReachable == true }
-
-    /// Adding to the ready queue opens no guest session. A probe suppressed by
-    /// our own install must not disable File → Install App or drag-and-drop.
-    var canQueueInstall: Bool {
-        usbConnected && canManageApps && isRunning && (deviceReachable == true || AppInstaller.isUsingDevice(instance.id) || isInstalling)
-    }
+    /// Reaching the device's services, installs and media imports, restarting the Home screen (DeviceApps).
+    @ObservationIgnored private(set) lazy var apps = DeviceApps(host: self)
+    var canManageApps: Bool { apps.canManageApps }
+    var canReachDevice: Bool { apps.canReachDevice }
+    var canQueueInstall: Bool { apps.canQueueInstall }
+    var isInstalling: Bool { apps.isInstalling }
+    private var restartingSpringBoard: Bool { apps.restartingSpringBoard }
     /// The usbmuxd socket to talk to this device on, for the long-lived
     /// notification_proxy watcher (which owns its own session, not a gated one).
     var usbmuxSession: String? { usbmux.session?.clientSocket }
-    
+
     /// The guest agent through this device's helper, and the app's operations on it.
     var guestAgent: GuestAgent { GuestAgent(link: link, cache: agentCache) }
     var guest: GuestServices { GuestServices(agent: guestAgent, packaged: status?.guestPackage != nil) }
-
-    /// This device's stock lockdown services (installation_proxy, AFC,
-    /// springboardservices, lockdownd) on its usbmuxd; throws until usbmuxd is up.
-    var services: DeviceServices {
-        get throws {
-            guard !bootScope.retired, let session = usbmux.session else {
-                throw DeviceToolsError.failed("The device is not reachable over USB yet.")
-            }
-            return DeviceServices(clientSocket: session.clientSocket, udid: guestUDID, session: bootScope.id)
-        }
+    var services: DeviceServices { get throws { try apps.services } }
+    var installPipeline: AppInstallPipeline { get throws { try apps.installPipeline } }
+    func deviceReady() async -> Bool { await apps.deviceReady() }
+    func checkDeviceConnection() async throws { try await apps.checkDeviceConnection() }
+    func restartSpringBoard() async throws { try await apps.restartSpringBoard() }
+    var hasSpringBoardServices: Bool { apps.hasSpringBoardServices }
+    func waitForSpringBoard(agentCounts: Bool = false) async throws { try await apps.waitForSpringBoard(agentCounts: agentCounts) }
+    func install(_ ipa: URL, placeholderRaised: Bool = false,
+                 progress: @escaping @Sendable (String) -> Void = { _ in }) async throws -> String {
+        try await apps.install(ipa, placeholderRaised: placeholderRaised, progress: progress)
     }
-
-    /// The install pipeline for this device (AppInstaller runs it, and raises
-    /// a catalog download's placeholder through it).
-    var installPipeline: AppInstallPipeline {
-        get throws { AppInstallPipeline(services: try services, agent: guestAgent, deviceOS: iosVersion) }
+    func importMedia(_ media: PreparedMedia, progress: @escaping @Sendable (Double) -> Void,
+                     willCommit: () -> Void) async throws {
+        try await apps.importMedia(media, progress: progress, willCommit: willCommit)
     }
 
     /// The guest's orientation in degrees; nil when this image has no agent.
@@ -1019,20 +1002,6 @@ final class EmulatorController {
                               media: catalogEntry?.media ?? [], prerelease: catalogEntry?.prerelease != nil)
     }
     
-    /// Cheap in-process check that the USB bridge sees the guest (bounded and
-    /// gated: DeviceServices.checkAttachment). App-service reads establish
-    /// lockdownd readiness separately.
-    func deviceReady() async -> Bool {
-        (try? await checkDeviceConnection()) != nil
-    }
-
-    func checkDeviceConnection() async throws {
-        try Task.checkCancellation()
-        guard usbConnected, !isPoweredOff, !shuttingDown,
-              let socket = usbmux.session?.clientSocket else { throw DeviceError.notAttached }
-        _ = socket
-        try await services.checkAttachment()
-    }
 
     // MARK: - Activation (prepared offline, completed and verified per boot)
 
@@ -1046,64 +1015,6 @@ final class EmulatorController {
     var displaySleeping: Bool? { status?.displaySleeping }
     func checkServices() throws { _ = try services }
     func launchInGuest(_ bundleID: String) async throws { try await guest.launch(bundleID) }
-    func restartSpringBoard() async throws {
-        guard isRunning, !isInstalling else { return }
-        restartingSpringBoard = true
-        defer { restartingSpringBoard = false }
-        // launchd stops SpringBoard and KeepAlive brings it straight back: the
-        // cheap fix for "a freshly sideloaded app crashes until I restart", as
-        // SpringBoard rebuilds what it caches about installed apps in seconds
-        // where a boot costs ~40. User-invoked only, never the install path's.
-        _ = try services
-        try await guest.respring()
-        try await waitForSpringBoard()
-    }
-
-    /// springboardservices first ships in iPhone OS 3.1: 2.x and 3.0 lockdownd has no such service (Invalid service
-    /// on every try), so there lockdown answering is as ready as the Home screen gets.
-    var hasSpringBoardServices: Bool { iosVersion.compare("3.1", options: .numeric) != .orderedAscending }
-
-    /// `agentCounts`: the guest agent naming SpringBoard's screen (or Setup Assistant) frontmost is an answer too.
-    /// A device in Setup is up and takes input, yet its springboardservices may refuse the layout (n81 9A334 on a
-    /// slow Mac: every connection reset for the whole wait). Not after a respring, where the agent can still name
-    /// the screen of the SpringBoard that is going away.
-    func waitForSpringBoard(agentCounts: Bool = false) async throws {
-        guard hasSpringBoardServices else { return }
-        let deadline = ContinuousClock.now + .seconds(45 * Board.hostSlowdown)
-        while ContinuousClock.now < deadline {
-            try Task.checkCancellation()
-            if (try? await services.homeScreenOrder()) != nil { return }
-            if agentCounts, guestAgent.isAlive, SpringBoardAnswer.up(frontmost: try? await guest.foreground().bundleID) {
-                logEvent("boot: SpringBoard answers through the guest agent (its layout service did not)")
-                return
-            }
-            try await Task.sleep(for: .seconds(1))
-        }
-        throw DeviceToolsError.failed("The Home screen didn’t come back. Restart the \(profile.shortName); your apps are kept.")
-    }
-
-    /// True while any install is running — the quit guard reads this so ⌘Q
-    /// mid-install prompts instead of leaving a half-installed app.
-    private(set) var isInstalling = false
-
-    func install(_ ipa: URL, placeholderRaised: Bool = false,
-                 progress: @escaping @Sendable (String) -> Void = { _ in }) async throws -> String {
-        isInstalling = true
-        defer { isInstalling = false }
-        return try await installPipeline.install(ipa, placeholderRaised: placeholderRaised, progress: progress)
-    }
-
-    func importMedia(_ media: PreparedMedia, progress: @escaping @Sendable (Double) -> Void,
-                    willCommit: () -> Void) async throws {
-        guard canQueueInstall else { throw DeviceToolsError.failed("The device is not ready for media import.") }
-        isInstalling = true
-        defer { isInstalling = false }
-        let device = MediaImport(services: try services, guest: guest)
-        try await device.stage(media, progress: progress)
-        try Task.checkCancellation()
-        willCommit()
-        try await device.commit(media)
-    }
 
     // MARK: - Boot environment (DeviceOptions)
 
@@ -1117,7 +1028,7 @@ final class EmulatorController {
 // The session's state machines (LightTouchCore/Session) run against the controller through these.
 extension EmulatorController: MachineHost, ConnectionHost, ActivationServices, ReadinessHost, BootWatchHost,
                               ShutdownHost, EraseHost, BootCycleHost, AppLaunchHost, RotationHost,
-                              InputHost, GuestPackageHost, TimeZoneHost {
+                              InputHost, GuestPackageHost, TimeZoneHost, AppsHost {
     var helper: DeviceHelper? { process }
     var helperLink: HelperLink? { link }
     var isPainting: Bool { state == .running }
