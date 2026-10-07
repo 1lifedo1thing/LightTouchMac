@@ -237,7 +237,7 @@ final class DeviceHost: @unchecked Sendable {
             "wifi0".withCString { p in qemu.netRestrict?(p, on) }
         case let .netLocalNetwork(allowed):
             webProxy?.localNetwork = allowed
-            "wifi0".withCString { p in qemu.netLAN?(p, allowed) }
+            "".withCString { p in qemu.netLAN?(p, allowed) }   // every user netdev: an iPhone's cell0 with wifi0
         }
     }
 

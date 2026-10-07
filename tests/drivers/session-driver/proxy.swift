@@ -27,6 +27,10 @@ struct ProxyConfig: Decodable {
     /// LAN address) with Attach to Local Network off, then `lan` again once `.netLocalNetwork(true)` opens it; then stop.
     var lan: String?
     var internet: String?
+    /// A plain host name's page, fetched DIRECT (the PAC) while the LAN is off: the guest's own DNS through slirp,
+    /// with the netdev's `domainname` completing the name.
+    var dns: String?
+    var domain: String?
 }
 
 /// The host the proof fetches ask for: one that cannot resolve (RFC 6761 `.invalid`), so only the proxy answers it, with
@@ -59,7 +63,7 @@ nonisolated enum ProxyProbe {
     catch { fail("proxy CA: \(error)") }
     let endpoint = WebProxyConfiguration.endpoint(directory: proxyDir)
     d.webProxy = endpoint
-    d.netdevExtra = WebProxyConfiguration.guestForward(socket: endpoint.socket)
+    d.netdevExtra = WebProxyConfiguration.guestForward(socket: endpoint.socket) + (p.domain.map { ",domainname=\($0)" } ?? "")
     let cache = GuestAgentCache()
     var agent: GuestAgent { GuestAgent(link: d.process.link, cache: cache) }
     func localTool(_ name: String) throws -> Data {
@@ -179,7 +183,9 @@ nonisolated enum ProxyProbe {
     } catch { emit("route", ["device": d.name, "ok": false, "error": "\(error)"]) }
     if let lan = p.lan {
         if let internet = p.internet { await get("internet", internet) }
+        if let dns = p.dns { await get("dns", dns) }
         await get("lan-off", lan)
+        emit("lan-on", ["at": Date().timeIntervalSince1970])
         d.process.link.send(.netLocalNetwork(true))
         try? await Task.sleep(for: .seconds(1))
         await get("lan-on", lan)

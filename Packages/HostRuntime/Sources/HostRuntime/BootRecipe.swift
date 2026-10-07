@@ -156,7 +156,8 @@ public nonisolated enum BootRecipe {
     /// not) and restrict=on while Setup runs offline.
     /// `localNetwork` false (the default, the device's "Attach to Local Network" off): slirp refuses the guest's
     /// traffic to private, link-local and multicast addresses, so the guest can't make macOS ask for Local
-    /// Network access on its own. The Mac's DNS server and the app's loopback guestfwds stay reachable.
+    /// Network access on its own. DNS still works (the emulator asks the system resolver, never a LAN DNS server)
+    /// and the app's loopback guestfwds stay reachable.
     public static func wifiNetdev(guestForward: String, restricted: Bool, localNetwork: Bool = false) -> String {
         "user,id=wifi0" + guestForward + (restricted ? ",restrict=on" : "") + (localNetwork ? "" : ",lan=off")
     }
@@ -223,8 +224,9 @@ public nonisolated enum BootRecipe {
         let argv = ["LightTouchMac", "-M", machine, "-drive", "if=pflash,format=raw,file=\(escape(d.writableNOR))",
                     "-display", "none", "-no-shutdown"] + audio + ["-serial", serial] + (netdev.map { ["-netdev", $0] } ?? [])
             // The iPhone's modem carries its EDGE data (raw IP over a mux DLCI) to its own slirp, cell0, with the web
-            // proxy's guestfwd as Wi-Fi's (the image routes cellular through the proxy too).
-            + (hardware.hasCellular ? ["-netdev", netdev.map { $0.replacingOccurrences(of: "id=wifi0", with: "id=cell0") } ?? "user,id=cell0"] : [])
+            // proxy's guestfwd as Wi-Fi's (the image routes cellular through the proxy too) and its lan= setting; with
+            // no wifi0 given, off the LAN like the machine's own default wifi0.
+            + (hardware.hasCellular ? ["-netdev", netdev.map { $0.replacingOccurrences(of: "id=wifi0", with: "id=cell0") } ?? "user,id=cell0,lan=off"] : [])
         return BootConfig(argv: argv, machine: hardware.machine)
     }
 
