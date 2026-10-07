@@ -59,34 +59,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(command, forType: .string)
     }
-    @objc func toggleInternetAccess(_ sender: Any?) {
-        let current = UserDefaults.standard.object(forKey: NetworkAccessPreference.key) as? Bool ?? emulator?.network ?? true
-        UserDefaults.standard.set(!current, forKey: NetworkAccessPreference.key)
-    }
+    @objc func toggleInternetAccess(_ sender: Any?) { NetworkAccessPreference.toggle(running: emulator?.network) }
     @objc func toggleLocalNetwork(_ sender: Any?) { emulator?.toggleLocalNetwork() }
+
+    /// The settings items for the running device (DeviceSettingsMenu).
+    private var settingsMenu: DeviceSettingsMenu {
+        DeviceSettingsMenu(device: emulator.map {
+            var device = DeviceSettingsMenu.Device(marketingName: $0.profile.marketingName, shortName: $0.profile.shortName)
+            device.localNetworkEnabled = $0.localNetworkEnabled
+            device.autoRotateEnabled = $0.autoRotateEnabled
+            device.debugPortEnabled = $0.debugPortEnabled
+            device.debugPort = $0.debugPort
+            device.lldbAttachCommand = $0.lldbAttachCommand
+            device.network = $0.network
+            return device
+        }, desiredNetwork: NetworkAccessPreference.desired(running: emulator?.network))
+    }
+
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        if item.action == #selector(toggleLocalNetwork(_:)) {
-            item.title = emulator.map { "Attach \($0.profile.marketingName) to Local Network" } ?? "Attach to Local Network"
-            item.state = emulator?.localNetworkEnabled ?? false ? .on : .off
-            return emulator != nil
-        } else if item.action == #selector(toggleAutomaticRotation(_:)) {
-            item.state = emulator?.autoRotateEnabled ?? true ? .on : .off
-            return emulator != nil
-        } else if item.action == #selector(showDebugPort(_:)) {
-            let enabled = emulator?.debugPortEnabled ?? false
-            item.state = enabled ? .on : .off
-            item.toolTip = emulator.map { enabled != ($0.debugPort != nil) ? "Takes effect the next time the \($0.profile.shortName) starts." : nil } ?? nil
-            return emulator != nil
-        } else if item.action == #selector(copyLLDBCommand(_:)) {
-            item.toolTip = emulator?.debugPort.map { "QEMU's gdbstub is on 127.0.0.1:\($0). Replace KERNELCACHE and QEMU_IOS; see qemu-ios docs/guest-debug.md." }
-            return emulator?.lldbAttachCommand != nil
-        } else if item.action == #selector(toggleInternetAccess(_:)) {
-            let desired = UserDefaults.standard.object(forKey: NetworkAccessPreference.key) as? Bool ?? emulator?.network ?? true
-            // The title stays put; a choice the running device doesn't have yet says when it applies.
-            item.state = desired ? .on : .off
-            item.toolTip = emulator.map { desired != $0.network ? "Takes effect the next time Light Touch opens the \($0.profile.shortName)." : nil } ?? nil
+        let menuItem: DeviceSettingsMenu.Item
+        switch item.action {
+        case #selector(toggleLocalNetwork(_:)): menuItem = .localNetwork
+        case #selector(toggleAutomaticRotation(_:)): menuItem = .autoRotate
+        case #selector(showDebugPort(_:)): menuItem = .debugPort
+        case #selector(copyLLDBCommand(_:)): menuItem = .copyLLDBCommand
+        case #selector(toggleInternetAccess(_:)): menuItem = .internet
+        default: return true
         }
-        return true
+        let validation = settingsMenu.validate(menuItem)
+        if let title = validation.title { item.title = title }
+        if let on = validation.isOn { item.state = on ? .on : .off }
+        item.toolTip = validation.toolTip
+        return validation.isEnabled
     }
 
     @objc func showHelp(_ sender: Any?) {
