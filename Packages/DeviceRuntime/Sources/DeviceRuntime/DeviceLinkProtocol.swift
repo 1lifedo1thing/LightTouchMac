@@ -161,7 +161,7 @@ nonisolated public enum DeviceLinkWireError: Error, Equatable {
 /// Reads run on a dispatch read source; writes go through a private serial
 /// queue, so a wedged peer can never block the caller (the app's main thread).
 /// `onClose` fires once: EOF, a read error, or a protocol violation.
-nonisolated public final class LinkChannel<Incoming: Decodable, Outgoing: Encodable>: @unchecked Sendable {
+nonisolated public final class LinkChannel<Incoming: Decodable & SendableMetatype, Outgoing: Encodable & SendableMetatype>: @unchecked Sendable {
     public let fd: Int32
     private let source: DispatchSourceRead
     private let writeQueue: DispatchQueue

@@ -14,18 +14,21 @@ import HostRuntime
 
 import Foundation
 import IOSurface
+import os
 
 signal(SIGPIPE, SIG_IGN)
 setvbuf(stdout, nil, _IOLBF, 0)
 
-var arguments = [String: String]()
-do {
+/// The command line, parsed once; read from the link, boot and main threads.
+let arguments: [String: String] = {
+    var parsed = [String: String]()
     var it = CommandLine.arguments.dropFirst().makeIterator()
     while let a = it.next() {
         guard a.hasPrefix("--"), let v = a == "--machines" ? "" : it.next() else { FileHandle.standardError.write(Data("usage: see main.swift\n".utf8)); exit(64) }
-        arguments[a] = v
+        parsed[a] = v
     }
-}
+    return parsed
+}()
 
 /// Never dispatchMain(): it pthread_exit()s the main thread, and the dylib's
 /// rcu_init constructor registered that thread as an RCU reader, so
@@ -36,13 +39,13 @@ func parkMainThread() -> Never {
     while true { CFRunLoopRun() }
 }
 
-/// SIGTERM / SIGINT run the same halt as a vanished parent.
+/// SIGTERM / SIGINT run the same halt as a vanished parent. Main thread only.
 var signalSources: [DispatchSourceSignal] = []
-func onTerminationSignals(_ handler: @escaping (String) -> Void) {
+@MainActor func onTerminationSignals(_ handler: @escaping @MainActor (String) -> Void) {
     for sig in [SIGTERM, SIGINT] {
         signal(sig, SIG_IGN)
         let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
-        source.setEventHandler { handler(sig == SIGTERM ? "SIGTERM" : "SIGINT") }
+        source.setEventHandler { MainActor.assumeIsolated { handler(sig == SIGTERM ? "SIGTERM" : "SIGINT") } }
         source.resume()
         signalSources.append(source)
     }
@@ -64,28 +67,14 @@ func emit(_ object: [String: Any]) {
     FileHandle.standardOutput.write(data + Data("\n".utf8))
 }
 
-/// The device's lease (Devices/<uuid>/work/lease), held until this process
-/// exits: a second helper on the same storage, from another Light Touch or
-/// beside one still finishing its shutdown, is refused before it boots.
-var storageLease: StorageLease?
-func takeLease(_ path: String?) -> Bool {
-    guard let path else { return true }
-    do { storageLease = try StorageLease(URL(fileURLWithPath: path)); return true }
-    catch let error as StorageLease.Failure {
-        switch error {
-        case .openFailed(let code): helperLog("lease \(path): \(String(cString: strerror(code)))")
-        case .inUse: helperLog("lease \(path) is held")
-        case .pendingEdit:
-            helperLog("unfinished storage edit \(URL(fileURLWithPath: path).deletingLastPathComponent().appendingPathComponent("edit.json").path); resolve it before booting")
-        }
-    } catch { helperLog("lease \(path): \(error.localizedDescription)") }
-    return false
-}
+/// The device's lease, held until this process exits (HostRuntime HeldLease).
+let storageLease = HeldLease()
+func takeLease(_ path: String?) -> Bool { storageLease.take(path, log: helperLog) }
 
 /// Every helper mode verifies managed boot records under the same held lease.
 func installBootStorageAuthority(_ host: DeviceHost) {
     host.bootStorageAuthority = { proof in
-        guard let lease = storageLease, let path = arguments["--lease"] else {
+        guard let lease = storageLease.lease, let path = arguments["--lease"] else {
             throw StorageBootProof.Failure.missingLease
         }
         let record = URL(fileURLWithPath: path).deletingLastPathComponent()
@@ -113,7 +102,7 @@ if let service = arguments["--connect"] {
 
 // MARK: - Linked (spawned by the app)
 
-func runLinked(service: String, token: String) -> Never {
+@MainActor func runLinked(service: String, token: String) -> Never {
     guard fcntl(3, F_GETFD) != -1 else { helperLog("no link on fd 3: not spawned by DeviceLink"); exit(64) }
     let parent = getppid()
     let qemu = loadQemu()
@@ -125,7 +114,8 @@ func runLinked(service: String, token: String) -> Never {
     guard kr == 0 else { helperLog("rendezvous with \(service) failed: \(kr)"); exit(72) }
 
     let linkQueue = DispatchQueue(label: "LightTouch.link")
-    var channel: LinkChannel<AppMessage, HelperMessage>!
+    // nonisolated(unsafe): assigned once, below, before the channel reads its first message; only read after.
+    nonisolated(unsafe) var channel: LinkChannel<AppMessage, HelperMessage>!
     func shutdown(_ reason: String) {
         guard let host else { exit(0) }
         host.halt(reason: reason)
@@ -201,7 +191,7 @@ func decodeConfig<T: Decodable>(_ path: String, _: T.Type) -> T {
     }
 }
 
-func runHeadless(configPath: String) -> Never {
+@MainActor func runHeadless(configPath: String) -> Never {
     let config = decodeConfig(configPath, HeadlessConfig.self)
     if let dylib = config.dylib { setenv("LTM_QEMU_DYLIB", dylib, 1) }
     guard let qemu = loadQemu() else { exit(70) }
@@ -209,10 +199,9 @@ func runHeadless(configPath: String) -> Never {
     let host = DeviceHost(qemu: qemu, status: status)
     guard takeLease(arguments["--lease"]) else { exit(75) }
     installBootStorageAuthority(host)
-    let readerLock = NSLock()
-    var reader: FrameRingReader?
+    let reader = OSAllocatedUnfairLock<FrameRingReader?>(uncheckedState: nil)
     host.onRingChanged = { ring in
-        readerLock.withLock { reader = FrameRingReader(status: status, generation: ring.generation, surfaces: ring.surfaces) }
+        reader.withLockUnchecked { $0 = FrameRingReader(status: status, generation: ring.generation, surfaces: ring.surfaces) }
         emit(["event": "ring", "generation": ring.generation, "width": ring.width, "height": ring.height])
     }
     host.onExit = { rc in
@@ -224,7 +213,7 @@ func runHeadless(configPath: String) -> Never {
     do { _ = try host.boot(config.boot) }
     catch { helperLog("boot storage admission: \(error)"); exit(75) }
 
-    func front() -> IOSurface? { readerLock.withLock { reader?.front()?.surface } }
+    @Sendable func front() -> IOSurface? { reader.withLockUnchecked { $0?.front()?.surface } }
     let start = Date()
     Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
         emit(["event": "status", "t": Date().timeIntervalSince(start), "status": describe(status.snapshot())])
@@ -274,18 +263,18 @@ func runHeadless(configPath: String) -> Never {
             case "snapshot":
                 let t0 = Date()
                 host.perform(.snapshotSave(path: p[1]))
-                var code = 1
-                var error: String?
+                let result = OSAllocatedUnfairLock<(code: Int, error: String?)>(initialState: (1, nil))
                 while Date().timeIntervalSince(t0) < 60 {
                     usleep(100_000)
                     let done = DispatchSemaphore(value: 0)
                     host.handle(.snapshotStatus) { reply in
-                        if case let .snapshot(c, e) = reply { code = c; error = e }
+                        if case let .snapshot(c, e) = reply { result.withLock { $0 = (c, e) } }
                         done.signal()
                     }
                     done.wait()
-                    if code >= 2 { break }
+                    if result.withLock({ $0.code }) >= 2 { break }
                 }
+                let (code, error) = result.withLock { $0 }
                 emit(["event": "snapshot", "status": code, "error": error ?? "", "seconds": Date().timeIntervalSince(t0)])
             case "resume": host.perform(.snapshotResume)
             case "shutdown": host.halt(reason: "action")
@@ -321,7 +310,7 @@ struct OneShotConfig: Decodable {
     var timeout: Double
 }
 
-func runOneShot(configPath: String) -> Never {
+@MainActor func runOneShot(configPath: String) -> Never {
     let config = decodeConfig(configPath, OneShotConfig.self)
     if let dylib = config.dylib { setenv("LTM_QEMU_DYLIB", dylib, 1) }
     guard let qemu = loadQemu() else { exit(70) }
@@ -329,35 +318,38 @@ func runOneShot(configPath: String) -> Never {
     guard takeLease(arguments["--lease"]) else { exit(75) }
     installBootStorageAuthority(host)
     let start = Date()
-    var marker = false
-    var stopping = false
+    /// Whether the serial log showed the stop marker, and whether we asked QEMU to stop: set on the watch thread and
+    /// the main queue, read wherever QEMU's exit lands.
+    struct Flags { var marker = false, stopping = false }
+    let flags = OSAllocatedUnfairLock(initialState: Flags())
     /// exited: QEMU returned by itself (the guest halted), not because we quit it.
-    func finish(exited: Bool, code: Int32) -> Never {
+    @Sendable func finish(exited: Bool, code: Int32) -> Never {
+        let marker = flags.withLock { $0.marker }
         emit(["event": "oneshot", "exited": exited, "exitCode": code, "marker": marker,
               "seconds": Date().timeIntervalSince(start)])
         exit(marker ? 0 : exited ? code : 124)
     }
-    host.onExit = { rc in finish(exited: !stopping, code: rc) }
+    host.onExit = { rc in finish(exited: !flags.withLock { $0.stopping }, code: rc) }
     onTerminationSignals { _ in qemu.quit() }
     // The preparer (firmwarekit) died: nobody will read this boot's result.
     let parent = getppid()
     let parentWatch = DispatchSource.makeProcessSource(identifier: parent, eventMask: .exit, queue: .main)
-    parentWatch.setEventHandler { helperLog("parent \(parent) exited"); stopping = true; qemu.quit() }
+    parentWatch.setEventHandler { helperLog("parent \(parent) exited"); flags.withLock { $0.stopping = true }; qemu.quit() }
     parentWatch.resume()
     do { _ = try host.boot(config.boot) }
     catch { helperLog("boot storage admission: \(error)"); exit(75) }
-    if getppid() != parent || parent == 1 { stopping = true; qemu.quit() }
+    if getppid() != parent || parent == 1 { flags.withLock { $0.stopping = true }; qemu.quit() }
     Thread.detachNewThread {
         while !host.hasExited {
             usleep(500_000)
             if config.stopMarker != nil || config.stopPattern != nil,
                let text = try? String(contentsOfFile: config.serialLog, encoding: .isoLatin1) {
-                if let stop = config.stopMarker, text.contains(stop) { marker = true }
+                if let stop = config.stopMarker, text.contains(stop) { flags.withLock { $0.marker = true } }
                 if let pattern = config.stopPattern,
-                   text.replacingOccurrences(of: "\n", with: "").range(of: pattern, options: .regularExpression) != nil { marker = true }
+                   text.replacingOccurrences(of: "\n", with: "").range(of: pattern, options: .regularExpression) != nil { flags.withLock { $0.marker = true } }
             }
-            if marker || Date().timeIntervalSince(start) > config.timeout {
-                stopping = true
+            if flags.withLock({ $0.marker }) || Date().timeIntervalSince(start) > config.timeout {
+                flags.withLock { $0.stopping = true }
                 qemu.quit()
                 let deadline = Date().addingTimeInterval(5)
                 while !host.hasExited, Date() < deadline { usleep(50_000) }

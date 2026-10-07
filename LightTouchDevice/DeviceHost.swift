@@ -71,7 +71,8 @@ final class DeviceHost: @unchecked Sendable {
         pump = timer
         for name in [ProcessInfo.thermalStateDidChangeNotification, Notification.Name.NSProcessInfoPowerStateDidChange] {
             powerObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: nil) { [weak self] _ in
-                self?.pumpQueue.async { self?.constrained = DeviceHost.hostConstrained(); self?.pace() }
+                guard let self else { return }
+                self.pumpQueue.async { self.constrained = DeviceHost.hostConstrained(); self.pace() }
             })
         }
         pumpQueue.sync { pace(force: true) }
@@ -257,7 +258,7 @@ final class DeviceHost: @unchecked Sendable {
     }
 
     /// Everything but hello (main.swift answers that).
-    func handle(_ request: LinkRequest, reply: @escaping (LinkReply) -> Void) {
+    func handle(_ request: LinkRequest, reply: @escaping @Sendable (LinkReply) -> Void) {
         switch request {
         case .hello: reply(.failure("hello twice"))
         case let .boot(config):
@@ -353,12 +354,12 @@ final class DeviceHost: @unchecked Sendable {
 final class AgentDispatcher: @unchecked Sendable {
     private let qemu: Qemu
     private let queue = DispatchQueue(label: "LightTouch.agent")
-    private var pending: [String: (deadline: Date, reply: (LinkReply) -> Void)] = [:]
+    private var pending: [String: (deadline: Date, reply: @Sendable (LinkReply) -> Void)] = [:]
     private var timer: DispatchSourceTimer?
 
     init(qemu: Qemu) { self.qemu = qemu }
 
-    func submit(_ wire: String, deadline: Double, reply: @escaping (LinkReply) -> Void) {
+    func submit(_ wire: String, deadline: Double, reply: @escaping @Sendable (LinkReply) -> Void) {
         queue.async { [self] in
             guard qemu.ready() else { return reply(.failure("The device is not running.")) }
             let id = String(wire.prefix { $0 != " " && $0 != "\n" })

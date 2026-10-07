@@ -6,4 +6,4 @@ let package = Package(name: "DeviceRuntime", platforms: [.macOS(.v13)],
     targets: [
         .target(name: "LTMLinkC", publicHeadersPath: "."),
         .target(name: "DeviceRuntime", dependencies: ["HostRuntime", "LTMLinkC"]),
-    ], swiftLanguageModes: [.v5])
+    ])

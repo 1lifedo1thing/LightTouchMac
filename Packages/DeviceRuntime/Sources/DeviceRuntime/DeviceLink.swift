@@ -95,14 +95,14 @@ nonisolated public final class DeviceLink: @unchecked Sendable {
     private var ring: FrameRingReader?
     private var _info: HelperInfo?
     private var nextID: UInt64 = 1
-    public typealias Reply = (Result<LinkReply, DeviceLinkError>) -> Void
+    public typealias Reply = @Sendable (Result<LinkReply, DeviceLinkError>) -> Void
     private struct Pending: @unchecked Sendable {
         let timer: DispatchWorkItem
         let reply: Reply
     }
     private var pending: [UInt64: Pending] = [:]
     private var invalidated = false
-    private var startCompletion: ((Result<HelperInfo, DeviceLinkError>) -> Void)?
+    private var startCompletion: (@Sendable (Result<HelperInfo, DeviceLinkError>) -> Void)?
     private var exitSource: DispatchSourceProcess?
 
     public init(configuration: Configuration, queue: DispatchQueue = .main) {
@@ -133,7 +133,7 @@ nonisolated public final class DeviceLink: @unchecked Sendable {
     // MARK: Start
 
     /// Spawn the helper and connect. Completes once, on `queue`.
-    public func start(completion: @escaping (Result<HelperInfo, DeviceLinkError>) -> Void) {
+    public func start(completion: @escaping @Sendable (Result<HelperInfo, DeviceLinkError>) -> Void) {
         let server = DeviceRendezvousServer.shared
         let kr = server.start()
         guard kr == 0 else { return queue.async { completion(.failure(.rendezvous("bootstrap_check_in: \(kr)"))) } }
@@ -283,7 +283,7 @@ nonisolated public final class DeviceLink: @unchecked Sendable {
     public func kill() { let p = pid; if p > 0 { _ = Darwin.kill(p, SIGKILL) } }
 
     private func invalidate(_ error: DeviceLinkError, kill shouldKill: Bool) {
-        let (fire, channel, waiting, completion): (Bool, LinkChannel<HelperMessage, AppMessage>?, [Pending], ((Result<HelperInfo, DeviceLinkError>) -> Void)?) = lock.withLock {
+        let (fire, channel, waiting, completion): (Bool, LinkChannel<HelperMessage, AppMessage>?, [Pending], (@Sendable (Result<HelperInfo, DeviceLinkError>) -> Void)?) = lock.withLock {
             guard !invalidated else { return (false, nil, [], nil) }
             invalidated = true
             let waiting = Array(pending.values)

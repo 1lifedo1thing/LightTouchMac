@@ -128,7 +128,7 @@ extension DeviceServices {
     }
 }
 
-extension HomeScreenLayout {
+nonisolated extension HomeScreenLayout {
     /// plist_t -> Foundation, via the XML both sides already speak. Converting
     /// through a string beats walking the plist_t node by node, and an icon
     /// layout is a few KB.

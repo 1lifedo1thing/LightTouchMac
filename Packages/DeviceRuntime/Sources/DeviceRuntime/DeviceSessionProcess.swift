@@ -46,9 +46,9 @@ public enum DeviceProcessDeath: Equatable {
 
     /// Optional stopped-storage preparation precedes spawn/hello. A nil boot
     /// configuration deliberately fails before a boot request.
-    public func start(_ configure: @escaping (HelperInfo) -> BootConfig?,
+    public func start(_ configure: @escaping @MainActor (HelperInfo) -> BootConfig?,
                       preparation: (@MainActor () async throws -> Void)? = nil,
-                      completion: @escaping (Result<HelperInfo, DeviceLinkError>) -> Void) {
+                      completion: @escaping @MainActor (Result<HelperInfo, DeviceLinkError>) -> Void) {
         guard !startRequested, !isDead, !stopRequested else {
             completion(.failure(.closed("this device session has already started")))
             return
@@ -79,8 +79,8 @@ public enum DeviceProcessDeath: Equatable {
         }
     }
 
-    private func spawn(_ configure: @escaping (HelperInfo) -> BootConfig?,
-                       completion: @escaping (Result<HelperInfo, DeviceLinkError>) -> Void) {
+    private func spawn(_ configure: @escaping @MainActor (HelperInfo) -> BootConfig?,
+                       completion: @escaping @MainActor (Result<HelperInfo, DeviceLinkError>) -> Void) {
         link.start { [weak self] result in
             MainActor.assumeIsolated { self?.started(result, configure, completion) }
         }
@@ -88,7 +88,7 @@ public enum DeviceProcessDeath: Equatable {
     }
 
     private func started(_ result: Result<HelperInfo, DeviceLinkError>, _ configure: (HelperInfo) -> BootConfig?,
-                         _ completion: @escaping (Result<HelperInfo, DeviceLinkError>) -> Void) {
+                         _ completion: @escaping @MainActor (Result<HelperInfo, DeviceLinkError>) -> Void) {
         guard !stopRequested, !isDead else {
             cancelledBeforeBoot = true
             completion(.failure(.closed("device start cancelled before boot")))
