@@ -28,6 +28,7 @@ final class Cursor: NSWindow { var at = NSPoint.zero; override var mouseLocation
  func pressModelControl(_ e: NSEvent) -> Bool { false }
  func panelResize(_ e: NSEvent) -> Bool { false }
  func isChassisEvent(_ e: NSEvent) -> Bool { false }
+ func nearScreenEdge(_ e: NSEvent) -> (Double, Double)? { nil }   // check-bare-screen's
  // A 100x100 panel at the window origin.
  func normalized(windowPoint p: NSPoint) -> (Double, Double)? {
   (0...100).contains(p.x) && (0...100).contains(p.y) ? (Double(p.x) / 100, Double(p.y) / 100) : nil

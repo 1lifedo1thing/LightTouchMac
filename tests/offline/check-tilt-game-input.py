@@ -142,6 +142,7 @@ final class ScrollEvent: NSEvent {
 ''' + scroll_gain.replace("private ", "") + r'''
     func convert(_ point: CGPoint, from: NSView?) -> CGPoint { point }
     func isChassisEvent(_ event: NSEvent) -> Bool { true }
+    func nearScreenEdge(_ event: NSEvent) -> (Double, Double)? { nil }   // check-bare-screen's
     func pressModelControl(_ event: NSEvent) -> Bool { false }
     func panelResize(_ event: NSEvent) -> Bool { false }
     func cursorOverPanel(_ event: NSEvent) -> Bool { false }

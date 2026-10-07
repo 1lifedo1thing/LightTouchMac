@@ -191,7 +191,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-store-compat-') as directory:
         assert all(('q' in q) == (q.get('incompatible') == 'include') and 'family' not in q for q in searches), searches
         assert all(q.get('os') for q in searches if 'device' in q), searches
         if shape == 'new':
-            assert [q.get('device') for q in searches] == ['iPod2,1', 'iPod2,1', 'iPad1,1', 'iPod1,1', 'iPod1,1'], searches
+            assert [q.get('device') for q in searches] == ['iPhone9,9', 'iPod2,1', 'iPod2,1', 'iPad1,1', 'iPod1,1', 'iPod1,1'], searches
             lookups = [q for p, q in server.requests if p == '/api/emulator/apps' and 'ipa_id' in q]
             assert all(q.get('device') and q.get('os') and 'incompatible' not in q for q in lookups), lookups
             assert '/api/v1/copies/195588' not in paths, 'a known md5 still fetched the copy record'

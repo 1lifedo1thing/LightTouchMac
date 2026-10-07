@@ -24,6 +24,7 @@ struct Scope { subscript(_ k: ScopeKey) -> Task<Void, Never>? { get { nil } set 
  var state = State.booting, poweringOn = false, lastFrameAdvance = Date.distantPast, bootScope = Scope()
  var sent: [LinkRequest] = []
  func control(_ r: LinkRequest, _ done: @escaping (Bool) -> Void = { _ in }) { sent.append(r); done(true) }
+ func applyHardwareKeyboard(changed: Bool = false) {}   // check-device-keyboard's
  func boot() -> [LinkRequest] { state = .booting; sent = []; noteFrameAdvanced(); noteFrameAdvanced(); return sent }
 """ + battery + frame + r"""
 }
