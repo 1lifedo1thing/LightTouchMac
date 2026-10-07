@@ -839,6 +839,9 @@ final class DisplayView: NSView {
         updateTouchOverlay()
         updateKeyboardPointer()
         _ = currentFrame()
+        // The guest's orientation can change after its turned picture arrived (the A4 boards' SpringBoard query
+        // answers later): with a static screen no new frame would lay it out.
+        if emulator?.rotationDegrees != lastRotation { needsLayout = true }
     }
 
     /// The newest ring surface, shown if it is new. The ring reader belongs to
