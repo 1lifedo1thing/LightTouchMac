@@ -174,6 +174,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
                                                name: DeviceSession.didChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(preparationDidPublish(_:)),
                                                name: FirmwareJobs.didPublishNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(filesystemActivityDidChange),
+                                               name: DeviceFilesystemEdits.didChangeNotification, object: nil)
         capture.window = window
         capture.session = { [weak self] in self?.session }
         capture.profile = { [weak self] in self?.currentProfile ?? profile }
@@ -237,6 +239,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
     func libraryRowsDidChange(_ library: DeviceLibraryViewController) { show(selectedEntry) }
 
+    @objc private func filesystemActivityDidChange() { show(selectedEntry) }
+
     func library(_ library: DeviceLibraryViewController, perform action: DeviceAction, for entry: FirmwareCatalog.Entry) {
         perform(action, for: entry)
     }
@@ -275,7 +279,10 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         let count = library.selectedEntries.count
         multipleSelected.text = "\(count) Devices"
         if session == nil { showDetail(entry != nil ? placeholder : count > 1 ? multipleSelected : nothingSelected) }
-        if let entry, session == nil { placeholder.update(host.row(for: entry), canDownload: FirmwareJobs.shared.canDownload) }
+        if let entry, session == nil {
+            placeholder.update(host.row(for: entry), canDownload: FirmwareJobs.shared.canDownload,
+                               activity: host.instance(for: entry).flatMap { DeviceFilesystemEdits.shared.activity[$0.id] })
+        }
         // The console's picker: the same logs as Device Logs, without the rotated
         // copies, the device's serial log first.
         let logs = diagnosticLogs.filter { $0.pathExtension == "log" }
@@ -352,7 +359,9 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         let emulator = host.session(for: entry)?.emulator
         if let instance = host.instance(for: entry) {
             switch action {
-            case .start, .erase, .delete:
+            case .start:
+                if DeviceFilesystemEdits.shared.blocksStart(instance) { return false }
+            case .erase, .delete:
                 if DeviceFilesystemEdits.shared.blocked(instance) { return false }
             case .openFilesystem, .commitFilesystem, .discardFilesystem, .recoverFilesystem:
                 return DeviceFilesystemEdits.shared.canPerform(action, instance: instance)
@@ -390,9 +399,35 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
     private func name(_ entry: FirmwareCatalog.Entry) -> String { library.displayName(for: entry) }
 
+    /// Start: the file system view let go first (an edit open in Finder is saved or discarded, after asking).
     private func start(_ entry: FirmwareCatalog.Entry) {
         library.select(entry)
-        if let id = host.instance(for: entry)?.id { Task { try? await DeviceFilesystemEdits.shared.endBrowsing(id) } }
+        guard let instance = host.instance(for: entry) else { return launch(entry) }
+        let edits = DeviceFilesystemEdits.shared
+        func release(commit: Bool?) {
+            Task {
+                do { try await edits.release(instance, entry: entry, host: host, commit: commit) }
+                catch { if let window { await NSAlert(error: error).beginSheetModal(for: window) }; return }
+                if canPerform(.start, for: entry) { launch(entry) }
+            }
+        }
+        guard edits.hasOpenEdit(instance), let window else { return release(commit: nil) }
+        let alert = NSAlert()
+        alert.messageText = "Save the changes to \(name(entry))’s file system before starting it?"
+        alert.informativeText = "Its file system is open in Finder. Changes you don’t save are lost."
+        alert.addButton(withTitle: "Save and Start")
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Discard and Start")
+        alert.beginSheetModal(for: window) { response in
+            switch response {
+            case .alertFirstButtonReturn: release(commit: true)
+            case .alertThirdButtonReturn: release(commit: false)
+            default: break
+            }
+        }
+    }
+
+    private func launch(_ entry: FirmwareCatalog.Entry) {
         if let session = host.session(for: entry) {
             if session.emulator.isDead { host.restart(session) } else { session.emulator.powerOn() }
             return

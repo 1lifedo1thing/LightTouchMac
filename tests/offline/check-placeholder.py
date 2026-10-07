@@ -161,6 +161,32 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
             }
         }
 
+        // A file system operation in flight: its words with a spinner in the state line, and Start held.
+        do {
+            let vc = DevicePlaceholderViewController()
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 640), styleMask: [.titled], backing: .buffered, defer: true)
+            window.appearance = NSAppearance(named: .aqua)
+            window.contentView = vc.view
+            func all(_ v: NSView) -> [NSView] { v.subviews.flatMap { [$0] + all($0) } }
+            func visible(_ v: NSView) -> Bool { var p: NSView? = v; while let q = p { if q.isHidden { return false }; p = q.superview }; return true }
+            let ready = DeviceRow(entry: ipad, instanceID: id, session: nil, job: nil)
+            vc.update(ready, canDownload: true, activity: "Reading the file system…")
+            vc.view.layoutSubtreeIfNeeded()
+            let texts = all(vc.view).compactMap { $0 as? NSTextField }.filter { visible($0) }.map(\.stringValue)
+            let spinner = all(vc.view).compactMap { $0 as? NSProgressIndicator }.first { $0.style == .spinning && visible($0) }
+            let start = all(vc.view).compactMap { $0 as? NSButton }.first { $0.title == "Start" }
+            if !texts.contains("Reading the file system…") || texts.contains("Ready") || spinner == nil || start?.isEnabled != false {
+                failures.append("activity: \(texts), spinner \(spinner != nil), Start enabled \(start?.isEnabled ?? false)")
+            }
+            let rep = vc.view.bitmapImageRepForCachingDisplay(in: vc.view.bounds)!
+            vc.view.cacheDisplay(in: vc.view.bounds, to: rep)
+            try rep.representation(using: .png, properties: [:])!.write(to: out.appendingPathComponent("placeholder-filesystem.png"))
+            vc.update(ready, canDownload: true)
+            if all(vc.view).contains(where: { ($0 as? NSProgressIndicator)?.style == .spinning && visible($0) }) || start?.isEnabled != true {
+                failures.append("the spinner stays or Start stays held after the operation")
+            }
+        }
+
         // Two jobs, one placeholder: each has its own bar, so switching rows never animates one bar between their values.
         do {
             let vc = DevicePlaceholderViewController()

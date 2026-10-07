@@ -20,6 +20,8 @@ final class DevicePlaceholderViewController: NSViewController {
     /// Under the bar: percent, time left, speed (DeviceRow.progressLine).
     private let progressLine = NSTextField(labelWithString: "")
     private let reason = NSTextField(wrappingLabelWithString: "")
+    /// Beside the state line while a file system operation runs (DeviceFilesystemEdits.activity).
+    private let activitySpinner = NSProgressIndicator()
     private let showLog = NSButton(title: "Show Logs", target: nil, action: nil)
     private let primary = NSButton(title: "", target: nil, action: nil)
     private let prepareAgain = NSButton(title: "Prepare Again…", target: nil, action: nil)
@@ -72,7 +74,13 @@ final class DevicePlaceholderViewController: NSViewController {
         let versionLine = NSStackView(views: [version, info])
         versionLine.spacing = 4
         let identity = column([model, versionLine], spacing: 2)
-        let state = column([status, progressSlot, progressLine, reason], spacing: 6)
+        activitySpinner.style = .spinning
+        activitySpinner.controlSize = .small
+        activitySpinner.isDisplayedWhenStopped = false
+        let statusLine = NSStackView(views: [activitySpinner, status])
+        statusLine.spacing = 6
+        statusLine.detachesHiddenViews = true
+        let state = column([statusLine, progressSlot, progressLine, reason], spacing: 6)
         let actions = NSStackView(views: [showLog, prepareAgain, primary])
         actions.spacing = 12
         // The row keeps its height with no button (running), so the lockup doesn't move between states.
@@ -107,7 +115,9 @@ final class DevicePlaceholderViewController: NSViewController {
         return stack
     }
 
-    func update(_ row: DeviceRow, canDownload: Bool) {
+    /// `activity`: a file system operation in flight on the device ("Reading the file system…"): it stands in for
+    /// the state line, with a spinner, and holds the button.
+    func update(_ row: DeviceRow, canDownload: Bool, activity: String? = nil) {
         loadViewIfNeeded()
         self.row = row
         let entry = row.entry
@@ -161,11 +171,20 @@ final class DevicePlaceholderViewController: NSViewController {
 
         if row.progressHeadline == nil { bars[entry.id] = nil }
 
+        if let activity {
+            status.stringValue = activity
+            activitySpinner.isHidden = false
+            activitySpinner.startAnimation(nil)
+        } else {
+            activitySpinner.stopAnimation(nil)
+            activitySpinner.isHidden = true
+        }
+
         if let action = row.primaryAction, let title = row.primaryTitle {
             primary.title = title
             // Return does the next thing; it never cancels a download (Escape does).
             primary.keyEquivalent = action == .cancel ? "\u{1b}" : "\r"
-            primary.isEnabled = row.allows(action, canDownload: canDownload)
+            primary.isEnabled = row.allows(action, canDownload: canDownload) && activity == nil
             primary.isHidden = false
             primary.setAccessibilityLabel("\(title) \(model.stringValue) iOS \(entry.version)")
         } else {
