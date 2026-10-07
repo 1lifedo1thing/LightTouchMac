@@ -60,6 +60,11 @@ public protocol ReadinessHost: AnyObject {
 
     public func setStatus(_ status: String) { preparationStatus = status }
 
+    /// SpringBoard didn't answer within one wait: the screen is the user's, the apps and files wait.
+    public static func springBoardNotice(shortName: String) -> String {
+        "Apps and files will be available when the \(shortName) finishes starting."
+    }
+
     private var task: Task<Void, Never>? {
         get { host.bootScope[.readiness] }
         set { host.bootScope[.readiness] = newValue }
@@ -108,8 +113,28 @@ public protocol ReadinessHost: AnyObject {
                 noteBoot(.usbAttached)
                 preparationStatus = host.expectsSetup ? "Waiting for Setup…" : "Waiting for the Home screen…"
                 // A framebuffer and lockdown can both respond while SpringBoard
-                // is still starting. Do not enable input until SpringBoard answers.
-                try await host.waitForSpringBoard(agentCounts: true)
+                // is still starting. Do not enable input until SpringBoard answers,
+                // unless it takes longer than one wait: then the screen is live and
+                // the user's (7.x's first boot: Setup's springboardservices refuses and
+                // the guest agent starts in launchd's throttled band, minutes late
+                // on a loaded Mac). Keep asking; the answer makes the device ready.
+                while true {
+                    do {
+                        try await host.waitForSpringBoard(agentCounts: true)
+                        break
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        try Task.checkCancellation()
+                        guard generation == host.bootScope.generation, !host.isDead, !host.shuttingDown else { return }
+                        guard !host.storageFailed else { throw error }
+                        if preparingDevice {
+                            logEvent("boot: SpringBoard hasn’t answered yet; input enabled, still waiting")
+                            preparingDevice = false
+                            notices.report(Self.springBoardNotice(shortName: host.profile.shortName), for: .preparation)
+                        }
+                    }
+                }
                 try Task.checkCancellation()
                 guard generation == host.bootScope.generation else { return }
                 // Read the emulated backlight, not sblaunch's optional lock
