@@ -286,7 +286,7 @@ final class EmulatorController {
             readiness.start()
             publishDeveloperConnection()
             logEmulatorBuild()
-            startGuestPackageWatch()  // after composeGuestOffer(): a watch with no offer judges nothing
+            startGuestPackageWatch()  // after guestPackage.compose(): a watch with no offer judges nothing
             startBootWatch()
         }
         return config
@@ -343,7 +343,7 @@ final class EmulatorController {
         }
         do {
             return try prepared.configuration(hardware: machine, bootArgs: DeviceOptions.bootArgs(), usbAddress: usbSession?.guestAddress,
-                wifi: network, guestPackage: composeGuestOffer(), serial: serialCapture?.argument ?? "null",
+                wifi: network, guestPackage: guestPackage.compose(), serial: serialCapture?.argument ?? "null",
                 // Every board: 16 CoreAudio buffers (186 ms) ride out a busy emulator thread. The A4 boards
                 // had QEMU's default 4 (46 ms), and the iPod touch 4's sounds crackled on a slower Mac.
                 audio: ["-audio", "driver=coreaudio,out.buffer-count=16"], netdev: netdev,
@@ -833,36 +833,13 @@ final class EmulatorController {
 
     // MARK: - Guest package
 
-    /// What this boot offered the guest's loader; nil: no offer.
-    private(set) var guestOffer: GuestPackage.Offer?
-    private(set) var guestToolsStatus: GuestPackage.Status = .unknown
-    private var guestPackageTask: Task<Void, Never>? {
-        get { bootScope[.guestPackage] }
-        set { bootScope[.guestPackage] = newValue }
-    }
-    private var guestOfferDirectory: URL { instance.paths.work.appendingPathComponent("guest-offer", isDirectory: true) }
-    private var recordURL: URL {
-        DeviceInstance.directory(instance.id, state: stateDir).appendingPathComponent(DeviceInstance.recordName)
-    }
-    /// The base's device.lock.json (decoded once while it is unchanged; nil for none or an unreadable one).
-    private var lock: DeviceLock? { (try? DeviceLock.read(base: instance.paths.base)) ?? nil }
-    /// The preparer's device.lock.json record.
-    private var lockRecord: GuestPackage.LockRecord? { GuestPackage.lockRecord(lock) }
-    private var guestRecord: DeviceInstance.Guest? { (try? DeviceInstance.read(recordURL))?.guest }
-
-    /// The record's `guest`, read fresh and written back (never the whole cached record).
-    private func updateGuestRecord(_ change: (inout DeviceInstance.Guest) -> Void) {
-        guard var record = try? DeviceInstance.read(recordURL) else { return }
-        var guest = record.guest ?? DeviceInstance.Guest()
-        if guest.seed == nil { guest.seed = lockRecord?.seed }
-        change(&guest)
-        guard guest != record.guest else { return }
-        record.guest = guest
-        do {
-            try record.write(state: stateDir)
-            DeviceLibrary.shared.reload()
-        } catch { logEvent("guest package: could not record \(guest): \(error.localizedDescription)") }
-    }
+    /// This boot's offer and its verdict (GuestPackageWatch).
+    @ObservationIgnored private(set) lazy var guestPackage = GuestPackageWatch(host: self, stateDirectory: stateDir)
+    var guestOffer: GuestPackage.Offer? { guestPackage.offer }
+    var guestToolsStatus: GuestPackage.Status { guestPackage.status }
+    func startGuestPackageWatch() { guestPackage.start() }
+    private var recordURL: URL { guestPackage.recordURL }
+    private var lock: DeviceLock? { guestPackage.lock }
 
     /// View ▸ Free-Form Screen (issue #21): the record's `panel`, read fresh and written back ("WxH" as the panel
     /// scans; nil, the shipped panel). With `restart`, a running device stops (Stop's hard halt) and a fresh helper
@@ -886,66 +863,6 @@ final class EmulatorController {
         return true
     }
 
-    /// Compose this boot's offer from the bundled itpack; the machine's
-    /// guest-package= directory, or nil (no property: an older dylib, no
-    /// itpack, or nothing for this build) and the device keeps what it runs.
-    private func composeGuestOffer() -> String? {
-        guestOffer = nil
-        guard status?.guestPackageSupported == true,
-              let pack = GuestPackage.bundledPack(arch: guestArch, filesRoot: Bundled.filesRoot, guestRoot: Bundled.guestRoot) else {
-            try? FileManager.default.removeItem(at: guestOfferDirectory)
-            return nil
-        }
-        let build = instance.firmware.split(separator: "-").last.map(String.init) ?? ""
-        do {
-            try FileManager.default.createDirectory(at: instance.paths.work, withIntermediateDirectories: true)
-            guestOffer = GuestOfferComposition.offer(augmentation: GuestDeveloperTools.augmentation(instance: instance, build: build)) { augment in
-                try GuestPackage.compose(itpack: pack, board: instance.board, build: build,
-                                         lock: lockRecord, guest: guestRecord, into: guestOfferDirectory, augment: augment)
-            }
-        } catch {
-            logEvent("guest package: no offer: \(error.localizedDescription)")
-        }
-        if let guestOffer { logEvent("guest package: offering \(guestOffer.serial == 0 ? "the built-in package" : "serial \(guestOffer.serial) (\(guestOffer.version))")") }
-        return guestOffer == nil ? nil : guestOfferDirectory.path
-    }
-
-    /// Judge this boot: a report and a healthy session (UI up, the agent or
-    /// lockdown answering) is `good`; a new package with no healthy session
-    /// within the budget is `bad`. No report once healthy: legacy baked tools.
-    func startGuestPackageWatch() {
-        guestPackageTask?.cancel()
-        guestToolsStatus = .unknown
-        guard let offer = guestOffer else { return }
-        let generation = bootGeneration
-        guestPackageTask = Task { [weak self] in
-            await GuestPackageSession.watch(offer: offer, sample: { [weak self] in
-                guard let self, generation == self.bootGeneration, !self.isDead, !self.shuttingDown,
-                      let status = self.status else { return nil }
-                // iPods report their agent channel; iPads use a real lockdown
-                // round trip because the helper has no pasteboard-agent status.
-                let healthy = self.state == .running && status.uiReady
-                    && (self.hasGuestTools ? status.agentStatus == 1 : self.deviceReachable == true)
-                return .init(report: status.guestPackage, record: self.guestRecord,
-                             glesProtocol: status.glesProtocol, healthy: healthy)
-            }, publish: { [weak self] update in
-                guard let self, generation == self.bootGeneration, !self.isDead, !self.shuttingDown else { return }
-                if let report = update.changedReport {
-                    logEvent("guest package: loader reports serial \(report.serial), result \(report.result)")
-                }
-                if update.changesRecord {
-                    self.updateGuestRecord { update.apply(to: &$0) }
-                }
-                self.guestToolsStatus = update.status
-                switch update.verdict {
-                case .good(let serial)?: logEvent("guest package: serial \(serial) judged good")
-                case .bad(let serial)?: logEvent("guest package: serial \(serial) judged bad (no healthy session in \(GuestPackage.badAfter))")
-                case .legacy?: logEvent("guest package: no report; legacy baked guest tools")
-                default: break
-                }
-            })
-        }
-    }
 
     // MARK: - Keyboard passthrough
     
@@ -1269,7 +1186,7 @@ final class EmulatorController {
 // The session's state machines (LightTouchCore/Session) run against the controller through these.
 extension EmulatorController: MachineHost, ConnectionHost, ActivationServices, ReadinessHost, BootWatchHost,
                               ShutdownHost, EraseHost, BootCycleHost, AppLaunchHost, RotationHost,
-                              InputHost {
+                              InputHost, GuestPackageHost {
     var helper: DeviceHelper? { process }
     var helperLink: HelperLink? { link }
     var isPainting: Bool { state == .running }
