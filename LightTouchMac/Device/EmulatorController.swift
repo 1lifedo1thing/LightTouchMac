@@ -14,6 +14,12 @@ import HostRuntime
 // command, the rest are requests. One controller per boot: a restart is a new
 // session (DeviceSessionHost.restart).
 //
+// The composition root: the boot, the helper and the status poll are its own; the rest are components in
+// LightTouchCore/Session it owns and forwards to (input, rotation, keyboard, battery, carrier, options, web proxy,
+// guest package, foreground watch, time zone, app management, and the state machines: readiness, recovery,
+// activation, boot watch, shutdown ladder, boot cycle, erase), each running against the controller through its
+// host protocol (the extension at the end).
+//
 // Observable (as are its components): the window, the inspector and the sidebar each track what they show
 // (ObservationLoop). Bookkeeping no observer shows is @ObservationIgnored.
 
@@ -53,8 +59,6 @@ final class EmulatorController {
     func configureWebProxy(_ value: WebProxyConfiguration) throws { try proxy.configure(value) }
     /// This device's settings.plist (DeviceSettings), read once and written on every change.
     @ObservationIgnored private lazy var settingsFile = DeviceSettingsFile(directory: instance.paths.directory)
-    private var settings: DeviceSettings { settingsFile.value }
-    private func changeSettings(_ change: (inout DeviceSettings) -> Void) { settingsFile.change(change) }
     typealias NoticeOperation = DeviceNotices.Operation
     @ObservationIgnored private(set) lazy var notices = DeviceNotices(settings: settingsFile, shortName: profile.shortName) {
         [weak self] in self?.storageFailed ?? false
