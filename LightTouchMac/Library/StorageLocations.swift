@@ -12,14 +12,48 @@ nonisolated enum StorageLocations {
         let logs: URL
     }
 
+    /// The state root's name: `.noindex` keeps Spotlight out of the device
+    /// pages (hundreds of thousands of files). `.metadata_never_index` inside a
+    /// folder no longer works (macOS 27 indexed it); the suffix does, and
+    /// renaming an indexed folder drops its entries.
+    static let stateDirectoryName = bundleIdentifier + ".noindex"
+
+    static func stateRoot(applicationSupport: URL) -> URL {
+        applicationSupport.appendingPathComponent(stateDirectoryName, isDirectory: true)
+    }
+
     static func prepare(applicationSupport: URL, library: URL, override: URL? = nil) throws -> Layout {
-        let state = override ?? applicationSupport.appendingPathComponent(bundleIdentifier, isDirectory: true)
+        let state = override ?? stateRoot(applicationSupport: applicationSupport)
+        if override == nil {
+            try adoptUnsuffixedRoot(applicationSupport.appendingPathComponent(bundleIdentifier, isDirectory: true), as: state)
+        }
         try privateDirectory(state)
+        // Device storage is recreatable from the IPSW or lives only for the
+        // device's sake; Time Machine skips it (the xattr covers new devices).
+        for name in ["Devices", "Preparing"] {
+            let url = state.appendingPathComponent(name, isDirectory: true)
+            if (try? privateDirectory(url)) != nil { excludeFromBackup(url) }
+        }
         let logs = override?.appendingPathComponent("Logs", isDirectory: true)
             ?? library.appendingPathComponent("Logs/\(bundleIdentifier)", isDirectory: true)
         try privateDirectory(logs)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: logs.path)
         return Layout(state: state, logs: logs)
+    }
+
+    /// Builds before the `.noindex` root kept state under the bare identifier:
+    /// one rename moves it (records hold paths relative to the root). Not while
+    /// an older build holds that root's app lock.
+    static func adoptUnsuffixedRoot(_ old: URL, as state: URL) throws {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: old.path), !fm.fileExists(atPath: state.path) else { return }
+        let fd = open(old.appendingPathComponent(".app-lock").path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { throw posixError() }
+        defer { close(fd) }
+        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
+            throw CocoaError(.fileLocking, userInfo: [NSLocalizedDescriptionKey: "Light Touch is already running with this library."])
+        }
+        try fm.moveItem(at: old, to: state)
     }
 
     static func privateDirectory(_ url: URL) throws {
@@ -54,8 +88,7 @@ nonisolated enum StorageLocations {
                               path: String(decoding: path.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self))
     }
 
-    /// Time Machine skips it (an xattr, so it survives renames). For
-    /// recreatable or in-flight data only: overlays and bases stay backed up.
+    /// Time Machine skips it (an xattr, so it survives renames).
     static func excludeFromBackup(_ url: URL, _ excluded: Bool = true) {
         var url = url
         var values = URLResourceValues()

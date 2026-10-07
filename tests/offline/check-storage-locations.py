@@ -29,9 +29,24 @@ import Foundation
         let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
         let support = root.appendingPathComponent("Library/Application Support", isDirectory: true)
         let library = root.appendingPathComponent("Library", isDirectory: true)
-        let destination = support.appendingPathComponent(StorageLocations.bundleIdentifier, isDirectory: true)
+        let destination = support.appendingPathComponent(StorageLocations.bundleIdentifier + ".noindex", isDirectory: true)
+        // A root from before the .noindex name moves over whole; while an older
+        // build holds its app lock, startup stops instead.
+        let unsuffixed = support.appendingPathComponent(StorageLocations.bundleIdentifier, isDirectory: true)
+        try StorageLocations.privateDirectory(unsuffixed)
+        try write("pages", unsuffixed.appendingPathComponent("Devices/x/base/0.page"))
+        let held = open(unsuffixed.appendingPathComponent(".app-lock").path, O_RDWR | O_CREAT, 0o600)
+        precondition(held >= 0 && flock(held, LOCK_EX) == 0)
+        denied { _ = try StorageLocations.prepare(applicationSupport:support, library:library) }
+        precondition(!exists(destination) && exists(unsuffixed))
+        Darwin.close(held)
         let layout = try StorageLocations.prepare(applicationSupport:support, library:library)
-        precondition(layout.state == destination && exists(destination))
+        precondition(layout.state == destination && exists(destination) && !exists(unsuffixed))
+        precondition(try text(destination.appendingPathComponent("Devices/x/base/0.page")) == "pages")
+        // Device storage is out of Time Machine (Spotlight: the root's suffix).
+        for name in ["Devices", "Preparing"] {
+            precondition(try destination.appendingPathComponent(name).resourceValues(forKeys:[.isExcludedFromBackupKey]).isExcludedFromBackup == true, name)
+        }
         precondition(layout.logs.path == library.appendingPathComponent("Logs/"+StorageLocations.bundleIdentifier).path && exists(layout.logs))
         for url in [destination, layout.logs] {
             precondition(try fm.attributesOfItem(atPath:url.path)[.posixPermissions] as! NSNumber == 0o700)
@@ -104,7 +119,7 @@ import Foundation
         precondition(try text(Bundled.logsDirectory.appendingPathComponent("app.log")).contains("app event only marker"))
         _=dup2(savedOut,STDOUT_FILENO);_=dup2(savedErr,STDERR_FILENO)
         Darwin.close(savedOut);Darwin.close(savedErr)
-        print("PASS: private state/log layout, isolation, a blocked root refused, bounded log streams, EOF and FIFO cleanup, unified/native separation")
+        print("PASS: private state/log layout, the .noindex root and its migration, device storage out of backups, isolation, a blocked root refused, bounded log streams, EOF and FIFO cleanup, unified/native separation")
     }
 }
 '''.replace('precondition(try ', 'precondition(try! '))
