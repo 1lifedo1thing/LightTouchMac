@@ -752,35 +752,31 @@ final class EmulatorController {
 
     private func logEmulatorBuild() { logEvent("emulator \(dylibProvenance)") }
     
-    // MARK: - Hardware buttons
-    
     private var restartingSpringBoard = false
 
-    private static let holdInterval: TimeInterval = 0.10
-    
-    /// The emulator's button numbers (qemu-ios-ui.h).
-    enum Button: Int { case home = 0, power, volumeUp, volumeDown }
+    // MARK: - Input
 
-    private func tapButton(_ button: Button) {
-        guard let link else { return }
-        link.send(.button(button.rawValue, down: true))
-        // Release off the main queue (send is thread-safe and ordered), so a
-        // stalled main runloop must not be what holds a hardware button down.
-        DispatchQueue.global().asyncAfter(deadline: .now() + Self.holdInterval) {
-            link.send(.button(button.rawValue, down: false))
-        }
-    }
-    
-    func pressHome()       { tapButton(.home) }
-    func pressLock()       { tapButton(.power) }
-    func pressVolumeUp()   { tapButton(.volumeUp) }
-    func pressVolumeDown() { tapButton(.volumeDown) }
+    /// The hardware buttons, shake, tilt, pasting and typing (DeviceInput); the keyboard is KeyboardInput.
+    @ObservationIgnored private(set) lazy var input = DeviceInput(host: self, settings: settingsFile)
+    typealias Button = DeviceInput.Button
+    func pressHome()       { input.tap(.home) }
+    func pressLock()       { input.tap(.power) }
+    func pressVolumeUp()   { input.tap(.volumeUp) }
+    func pressVolumeDown() { input.tap(.volumeDown) }
     func rotateLeft()      { rotation.rotateLeft() }
     func rotateRight()     { rotation.rotateRight() }
-    private(set) var shakeGeneration: UInt64 = 0
-    func shake() {
-        link?.send(.shake)
-        shakeGeneration &+= 1
+    var shakeGeneration: UInt64 { input.shakeGeneration }
+    func shake() { input.shake() }
+    typealias MotionPose = DeviceInput.MotionPose
+    var motionPose: MotionPose { input.motionPose }
+    func setMotionPose(_ pose: MotionPose) { input.setMotionPose(pose) }
+    func setTilt(angle: Double, pitch: Double = 0) { input.setTilt(angle: angle, pitch: pitch) }
+    func pasteToGuest(_ text: String) { input.paste(text) }
+    func typeText(_ text: String, shiftHeld: Bool) { input.typeText(text, shiftHeld: shiftHeld) }
+    func typeThroughAgent(_ text: String) async -> Bool {
+        let agent = guestAgent
+        guard (try? await agent.capabilities().has("type")) == true else { return false }
+        return (try? await agent.perform("type", body: Data(text.utf8))) != nil
     }
 
     /// A control request; `done(true)` when the machine applied it (false on a
@@ -817,16 +813,6 @@ final class EmulatorController {
             usbConnected = true
             deviceReachable = nil
         }
-    }
-    enum MotionPose: Int { case upright, flat }
-    var motionPose: MotionPose { settings.motionPose.flatMap(MotionPose.init(rawValue:)) ?? .upright }
-    func setMotionPose(_ pose: MotionPose) { changeSettings { $0.motionPose = pose.rawValue } }
-
-    /// Layer rotation and mounted device roll have opposite signs. Normalize
-    /// across the upside-down seam before passing degrees to the shared model.
-    func setTilt(angle: Double, pitch: Double = 0) {
-        guard acceptsInput, !isSleeping else { return }
-        link?.send(ChassisTilt.attitudeCommand(angle: angle, pitch: pitch, pose: motionPose.rawValue))
     }
 
     // MARK: - Rotation
@@ -1129,31 +1115,6 @@ final class EmulatorController {
         }
     }
 
-    func pasteToGuest(_ text: String) { link?.send(.paste(text)) }
-
-    /// Composed text (DisplayView's NSTextInputClient): it_agent's `type` into the focused field (it_typein),
-    /// in order; where the agent can't (no it_typein, no field), the US keys that type it, one by one.
-    @ObservationIgnored private var typing: Task<Void, Never>?
-    func typeText(_ text: String, shiftHeld: Bool) {
-        guard !text.isEmpty, keyboardInputEnabled, acceptsInput, !isSleeping else { return }
-        let previous = typing
-        typing = Task { [weak self] in
-            await previous?.value
-            guard let self else { return }
-            let agent = guestAgent
-            if (try? await agent.capabilities().has("type")) == true,
-               (try? await agent.perform("type", body: Data(text.utf8))) != nil { return }
-            for character in text {
-                guard let (code, shift) = GuestKeyboard.key(for: character) else { continue }
-                let pressShift = shift && !shiftHeld
-                if pressShift { link?.send(.key(macKeyCode: 56, down: true)) }
-                link?.send(.key(macKeyCode: Int(code), down: true))
-                link?.send(.key(macKeyCode: Int(code), down: false))
-                if pressShift { link?.send(.key(macKeyCode: 56, down: false)) }
-                try? await Task.sleep(for: .milliseconds(15))
-            }
-        }
-    }
 
     /// Guest audio for a recording (ScreenMovieWriter). Its clock is the
     /// dylib's: monotonic seconds since the capture started.
@@ -1399,7 +1360,8 @@ final class EmulatorController {
 
 // The session's state machines (LightTouchCore/Session) run against the controller through these.
 extension EmulatorController: MachineHost, ConnectionHost, ActivationServices, ReadinessHost, BootWatchHost,
-                              ShutdownHost, EraseHost, BootCycleHost, AppLaunchHost, RotationHost {
+                              ShutdownHost, EraseHost, BootCycleHost, AppLaunchHost, RotationHost,
+                              InputHost {
     var helper: DeviceHelper? { process }
     var helperLink: HelperLink? { link }
     var isPainting: Bool { state == .running }
