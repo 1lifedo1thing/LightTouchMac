@@ -31,5 +31,8 @@
 			</array>
 		</dict>
 	</array>
+	<!-- Intel Macs with two GPUs: stay on the integrated one; the device screen needs no discrete GPU. -->
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
 </dict>
 </plist>
