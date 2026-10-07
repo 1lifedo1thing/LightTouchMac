@@ -327,24 +327,12 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
                 guard response == .OK, let self, generation == self.revision, let folder = panel.url else { return }
                 self.beginTransfer { progress in
                     for (index, file) in files.enumerated() {
-                        let url = DeviceFilesViewController.unusedURL(folder.appendingPathComponent(file.name))
+                        let url = folder.appendingPathComponent(file.name).unused
                         try await services.download(file, to: url) { progress((Double(index) + $0) / Double(files.count)) }
                     }
                 }
             }
         }
-    }
-
-    /// `url`, or "name 2.ext", "name 3.ext"… when something is already there.
-    nonisolated static func unusedURL(_ url: URL) -> URL {
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: url.path) else { return url }
-        let base = url.deletingPathExtension().lastPathComponent, ext = url.pathExtension
-        for n in 2... {
-            let candidate = url.deletingLastPathComponent().appendingPathComponent(ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)")
-            if !fm.fileExists(atPath: candidate.path) { return candidate }
-        }
-        return url
     }
 
     // MARK: - Drag in and out

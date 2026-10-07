@@ -134,7 +134,7 @@ import UniformTypeIdentifiers
                 } else if action == .open {
                     let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Light Touch Screenshots", isDirectory: true)
                     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                    let url = folder.appendingPathComponent(captureName("Screenshot") + " " + UUID().uuidString.prefix(8)).appendingPathExtension("png")
+                    let url = folder.appendingPathComponent(captureName("Screenshot")).appendingPathExtension("png").unused
                     try data.write(to: url, options: .atomic)
                     if let application = capturePreferences.openInApplicationURL {
                         _ = try await NSWorkspace.shared.open([url], withApplicationAt: application, configuration: .init())
@@ -216,14 +216,15 @@ import UniformTypeIdentifiers
     func captureDestination(_ kind: String, extension suffix: String) throws -> URL {
         let folder = captureFolder
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        return folder.appendingPathComponent(captureName(kind) + " " + UUID().uuidString.prefix(8))
-            .appendingPathExtension(suffix)
+        return folder.appendingPathComponent(captureName(kind)).appendingPathExtension(suffix).unused
     }
 
-    func captureName(_ kind: String) -> String {
-        let date = Date().formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false))
-            .replacingOccurrences(of: ":", with: "-")
-        return "Light Touch \(kind) \(date)"
+    /// "Light Touch Screenshot 2026-10-07 at 17.22.14", in the Mac's time zone (as macOS names its own).
+    func captureName(_ kind: String, at date: Date = Date()) -> String {
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US_POSIX")
+        format.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+        return "Light Touch \(kind) \(format.string(from: date))"
     }
 
     // MARK: - Space bar
