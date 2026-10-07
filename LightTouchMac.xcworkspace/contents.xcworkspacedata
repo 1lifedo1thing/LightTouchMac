@@ -25,4 +25,7 @@
    <FileRef
       location = "group:Packages/BuildTools">
    </FileRef>
+   <FileRef
+      location = "group:tests/offline">
+   </FileRef>
 </Workspace>

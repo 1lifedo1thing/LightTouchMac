@@ -57,6 +57,14 @@
         "identifier": "BuildToolsTests",
         "name": "BuildToolsTests"
       }
+    },
+    {
+      "parallelizable": false,
+      "target": {
+        "containerPath": "container:tests\/offline",
+        "identifier": "OfflineTests",
+        "name": "OfflineTests"
+      }
     }
   ],
   "version": 1
