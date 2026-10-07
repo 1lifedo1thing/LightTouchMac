@@ -15,14 +15,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-checks-') as work:
     work = Path(work)
     env = dict(os.environ, CFFIXED_USER_HOME=str(work/'home'), LTM_STATE_DIR=str(work/'state'))
     (work/'home').mkdir()
-    portfile = work/'port'
-    server = subprocess.Popen([sys.executable, str(root/'tests/fixtures/catalog-server.py'), str(portfile)])
     try:
-        for _ in range(100):
-            if portfile.exists(): break
-            if server.poll() is not None: raise RuntimeError('fixture server exited')
-            time.sleep(.02)
-        port = portfile.read_text()
         def swift(name, sources, arguments=()):
             exe=work/name
             run(['swiftc', *host_runtime.swift_flags(root), *schema_sources(),'-parse-as-library','-module-cache-path',str(work/'modules'), *sources,'-o',str(exe)])
@@ -130,4 +123,4 @@ with tempfile.TemporaryDirectory(prefix='ltm-checks-') as work:
 ''')
             swift('ui',common+[str(fixture),'tests/fixtures/catalog-ui.swift'])
     finally:
-        server.terminate(); server.wait(timeout=5)
+        pass

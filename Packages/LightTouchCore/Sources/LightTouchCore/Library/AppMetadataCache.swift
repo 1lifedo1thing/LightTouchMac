@@ -15,7 +15,10 @@ import HostServiceWire
 
 @MainActor
 public final class AppMetadataCache {
-    public static let shared = AppMetadataCache()
+    private static let standard = AppMetadataCache()
+    /// The cache everything uses; a test swaps in one kept in a temporary directory.
+    public static var shared: AppMetadataCache { testing ?? standard }
+    static var testing: AppMetadataCache?
     
     private struct Entry: Codable {
         public let name: String

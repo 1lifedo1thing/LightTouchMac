@@ -20,6 +20,15 @@ public enum IPALibrary {
     /// One stored archive; the optional fields are what the install that
     /// stored it knew.
     public struct Entry: Codable, Equatable, Sendable {
+        public init(bundleID: String, name: String? = nil, version: String? = nil, minOS: String? = nil, size: Int64, md5: String, catalogIpaID: Int? = nil) {
+            self.bundleID = bundleID
+            self.name = name
+            self.version = version
+            self.minOS = minOS
+            self.size = size
+            self.md5 = md5
+            self.catalogIpaID = catalogIpaID
+        }
         public var bundleID: String
         public var name: String? = nil
         public var version: String? = nil

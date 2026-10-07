@@ -2,53 +2,76 @@
 // AppInstaller (starts .ipa, media and Legacy Store installs, queues removals,
 // pauses a device's queue on a transport failure). The inspector shows the rows
 // and the device menus ask it for busy state; the steps on the device are
-// AppInstallPipeline's and MediaImport's, through EmulatorController.
+// AppInstallPipeline's and MediaImport's, through the device's InstallDevice
+// side (EmulatorController's, in the app).
 
-import LightTouchCore
+import Foundation
 import HostServiceClient
 import HostServiceWire
-import Cocoa
+
+/// What the install queue needs of one running device: its identity and firmware, the steps it runs on the
+/// guest, and how it tells the user about a failure. `window` is whatever window started the work (an
+/// NSWindow in the app), for a sheet.
+@MainActor public protocol InstallDevice: AnyObject {
+    var instance: DeviceInstance { get }
+    var mediaFirmware: MediaSupport.Firmware { get }
+    var productType: String? { get }
+    var iosVersion: String { get }
+    var guestArch: String { get }
+    /// The dropped file converted for this device (PreparedMedia.prepare with its board).
+    func prepareMedia(_ source: URL) async throws -> PreparedMedia
+    func importMedia(_ media: PreparedMedia, progress: @escaping @Sendable (Double) -> Void, willCommit: () -> Void) async throws
+    func install(_ ipa: URL, placeholderRaised: Bool, progress: @escaping @Sendable (String) -> Void) async throws -> String
+    /// The home-screen placeholder a Legacy Store download raises at its first byte (AppInstallPipeline's).
+    func installPlaceholder(_ action: String, bundleID: String, after previous: Task<Void, Never>?) -> Task<Void, Never>?
+    func uninstall(_ bundleID: String) async throws
+    func reportConnectionFailure(_ error: Error, operation: String)
+    /// A failed removal's (or a refused command's) alert.
+    func present(_ error: Error, in window: AnyObject?)
+    /// The app installed but declares a newer MinimumOSVersion than this device runs.
+    func warnMayNotLaunch(_ appName: String, in window: AnyObject?)
+}
 
 extension Notification.Name {
     /// Posted after an install/uninstall completes so any open list refreshes;
     /// object is the device's instance id (nil: every device).
-    static let ltmAppsChanged = Notification.Name("LTMAppsChanged")
+    public static let ltmAppsChanged = Notification.Name("LTMAppsChanged")
     /// Posted when an install begins; object is the InstallJob.
-    static let ltmInstallStarted = Notification.Name("LTMInstallStarted")
+    public static let ltmInstallStarted = Notification.Name("LTMInstallStarted")
     /// Posted as an install reports progress; object is the InstallJob.
-    static let ltmInstallProgress = Notification.Name("LTMInstallProgress")
+    public static let ltmInstallProgress = Notification.Name("LTMInstallProgress")
 }
 
 /// One install in flight. The sidebar shows it as a row; cancelling it tears
 /// down the script, which takes its own home-screen placeholder with it (the
 /// script traps TERM for exactly this).
 @MainActor
-final class InstallJob {
+public final class InstallJob {
     /// The device this job lands on (DeviceInstance.id): each inspector shows
     /// its own device's rows, and an erase drops only that device's jobs.
-    let deviceID: UUID
+    public let deviceID: UUID
     /// Starts as the .ipa's filename and is replaced by the app's real display
     /// name as soon as the archive has been read.
-    fileprivate(set) var name: String
-    fileprivate(set) var status = "Installing…"
+    public fileprivate(set) var name: String
+    public fileprivate(set) var status = "Installing…"
     /// Set when the install has stopped, however it stopped. Two .ipas can be
     /// in flight at once and each one's finish notification reaches the list —
     /// without this, the first to land clears the other's row too.
-    fileprivate(set) var isFinished = false
+    public fileprivate(set) var isFinished = false
     /// Learned from the .ipa while the install runs. The list keeps this row up
     /// until an app with this id actually shows up, so a finished install never
     /// leaves a gap where neither the placeholder nor the real row is present.
-    fileprivate(set) var bundleID: String?
-    fileprivate(set) var finishedAt: Date?
+    public fileprivate(set) var bundleID: String?
+    public fileprivate(set) var finishedAt: Date?
     /// Set when the install ENDED BADLY. A finished job renders as an ordinary
     /// app row, which for a failed one was a lie: the sidebar showed the app,
     /// with its real icon and name, for ~30 s (forever, if the failure was the
     /// device going away) while nothing had been installed at all.
-    fileprivate(set) var failed = false
+    public fileprivate(set) var failed = false
     fileprivate var task: Task<Void, Never>?
-    fileprivate(set) var retry: (() -> Void)?
-    fileprivate(set) var dismissed = false
-    func dismiss() {
+    public fileprivate(set) var retry: (() -> Void)?
+    public fileprivate(set) var dismissed = false
+    public func dismiss() {
         dismissed = true
         NotificationCenter.default.post(name: .ltmAppsChanged, object: deviceID)
     }
@@ -59,18 +82,18 @@ final class InstallJob {
     /// instproxy_install runs on a detached thread that ignores cancellation, so
     /// after it starts the install WILL finish — the row used to say
     /// "Cancelling…" for the rest of it and then the app appeared anyway.
-    fileprivate(set) var isCancellable = true
+    public fileprivate(set) var isCancellable = true
 
     /// While a Legacy Store copy is still coming down: 0…1 (negative when the
     /// total size is unknown), nil once staged or for a local-file install.
-    fileprivate(set) var downloadProgress: Double?
+    public fileprivate(set) var downloadProgress: Double?
     /// The catalog copy this job installs, so search results recognize it.
-    fileprivate(set) var catalogIpaID: Int?
+    public fileprivate(set) var catalogIpaID: Int?
     /// The catalog icon, so the pending row can show it before the .ipa lands.
-    fileprivate(set) var catalogIconURL: URL?
+    public fileprivate(set) var catalogIconURL: URL?
 
-    var isCancelled: Bool { task?.isCancelled ?? false }
-    func cancel() { task?.cancel() }
+    public var isCancelled: Bool { task?.isCancelled ?? false }
+    public func cancel() { task?.cancel() }
 }
 
 /// Shared install flow used by the inspector's Add button and by drag-and-drop
@@ -79,18 +102,18 @@ final class InstallJob {
 /// ready queue are per device (the job's `deviceID`): one device's erase,
 /// pause or long install never touches another's.
 @MainActor
-enum AppInstaller {
+public enum AppInstaller {
 
     /// Queued removals need the same quit/restart protection as installs.
     /// Any device's: the quit guard.
-    static var hasPendingWork: Bool { !jobs.isEmpty || !removals.isEmpty }
-    static func hasPendingWork(for device: UUID) -> Bool {
+    public static var hasPendingWork: Bool { !jobs.isEmpty || !removals.isEmpty }
+    public static func hasPendingWork(for device: UUID) -> Bool {
         jobs.contains { $0.deviceID == device } || removals.values.contains { $0.device == device }
     }
     private static var jobs: [InstallJob] = []
     private static var removals: [UUID: (device: UUID, task: Task<Void, Never>)] = [:]
 
-    static func cancelPendingWork() {
+    public static func cancelPendingWork() {
         for job in jobs where job.isCancellable { job.cancel() }
         for removal in removals.values { removal.task.cancel() }
     }
@@ -104,7 +127,7 @@ enum AppInstaller {
     /// what can be cancelled and drop every install row of that device. An
     /// install already inside installation_proxy can't be stopped; its row goes
     /// too and the erase makes the outcome moot. Other devices' work continues.
-    static func discard(for device: UUID) {
+    public static func discard(for device: UUID) {
         for job in rows.allObjects where job.deviceID == device {
             job.task?.cancel()
             job.dismissed = true
@@ -117,16 +140,16 @@ enum AppInstaller {
     /// One ready queue per device; a queue outlives its jobs (it is tiny).
     private static var queues: [UUID: InstallationQueue] = [:]
     /// Internal so the queue checks (tests/offline) can hold a device's slot.
-    static func queue(for device: UUID) -> InstallationQueue {
+    public static func queue(for device: UUID) -> InstallationQueue {
         if let queue = queues[device] { return queue }
         let queue = InstallationQueue()
         queues[device] = queue
         return queue
     }
-    static func isUsingDevice(_ device: UUID) -> Bool { queues[device]?.isBusy ?? false }
-    static func isPaused(_ device: UUID) -> Bool { queues[device]?.isPaused ?? false }
+    public static func isUsingDevice(_ device: UUID) -> Bool { queues[device]?.isBusy ?? false }
+    public static func isPaused(_ device: UUID) -> Bool { queues[device]?.isPaused ?? false }
 
-    static func resume(_ device: UUID) {
+    public static func resume(_ device: UUID) {
         queue(for: device).resume()
         for job in jobs where job.deviceID == device && job.status.hasPrefix("Paused") {
             job.status = "Waiting for device…"
@@ -135,8 +158,8 @@ enum AppInstaller {
     }
 
     @discardableResult
-    static func start(_ ipa: URL, with emulator: EmulatorController,
-                      presenting window: NSWindow?) -> InstallJob {
+    public static func start(_ ipa: URL, with emulator: any InstallDevice,
+                      presenting window: AnyObject?) -> InstallJob {
         // The row goes up on the filename immediately — reading the .ipa costs
         // a couple of unzips, and the point of the row is to appear the moment
         // the drop happens — then takes the app's real display name as soon as
@@ -171,8 +194,8 @@ enum AppInstaller {
     /// Media shares the ready queue and progress rows with app installation,
     /// so AFC uploads cannot race installs or device lifecycle operations.
     @discardableResult
-    static func startMedia(_ source: URL, with emulator: EmulatorController,
-                           presenting window: NSWindow?) -> InstallJob {
+    public static func startMedia(_ source: URL, with emulator: any InstallDevice,
+                           presenting window: AnyObject?) -> InstallJob {
         let job = InstallJob(name: source.deletingPathExtension().lastPathComponent, device: emulator.instance.id)
         // Refused before anything is read, staged or run in the guest: its helpers can't add this here.
         let refusal = MediaSupport.refusal(PreparedMedia.destination(forExtension: source.pathExtension), on: emulator.mediaFirmware)
@@ -188,7 +211,7 @@ enum AppInstaller {
         rows.add(job)
         NotificationCenter.default.post(name: .ltmInstallStarted, object: job)
         if let refusal {
-            logEvent("install: \(job.name) refused: \(refusal)")
+            log("install: \(job.name) refused: \(refusal)")
             job.failed = true
             finish(job)
             return job
@@ -203,7 +226,7 @@ enum AppInstaller {
             let scoped = source.startAccessingSecurityScopedResource()
             defer { if scoped { source.stopAccessingSecurityScopedResource() } }
             do {
-                let media = try await PreparedMedia.prepare(source, profile: emulator.profile)
+                let media = try await emulator.prepareMedia(source)
                 defer { try? FileManager.default.removeItem(at: media.directory) }
                 job.name = media.title
                 job.status = readyQueue.isPaused ? "Paused" : "Waiting for other transfers…"
@@ -244,8 +267,8 @@ enum AppInstaller {
     /// A failed job's row text, with the whole error in app.log first: the row's words alone
     /// ("isn't in the correct format") left diagnostics with nothing to go on. A decoding error
     /// never reaches the row as Foundation's text.
-    static func failureText(_ error: Error, _ job: InstallJob) -> String {
-        logEvent("install: \(job.name) failed: \(String(reflecting: error)) [\((error as NSError).domain) \((error as NSError).code)]")
+    public static func failureText(_ error: Error, _ job: InstallJob) -> String {
+        log("install: \(job.name) failed: \(String(reflecting: error)) [\((error as NSError).domain) \((error as NSError).code)]")
         return error is DecodingError ? CatalogError.unreadable.localizedDescription : error.localizedDescription
     }
 
@@ -255,8 +278,8 @@ enum AppInstaller {
     /// Downloads run independently. Completed files join the device queue, so
     /// a slow large download cannot block lightweight apps that are ready.
     @discardableResult
-    static func startCatalog(_ app: CatalogApp, with emulator: EmulatorController,
-                             presenting window: NSWindow?) -> InstallJob {
+    public static func startCatalog(_ app: CatalogApp, with emulator: any InstallDevice,
+                             presenting window: AnyObject?) -> InstallJob {
         let job = InstallJob(name: app.name, device: emulator.instance.id)
         job.retry = { [weak job, weak emulator, weak window] in
             guard let emulator else { return }
@@ -293,11 +316,11 @@ enum AppInstaller {
             // cancel of an id already gone is a no-op on SpringBoard.
             var raised: Task<Void, Never>?
             if let bundleID = app.bundleID {
-                raised = (try? emulator.installPipeline)?.installPlaceholder("add", bundleID: bundleID)
+                raised = emulator.installPlaceholder("add", bundleID: bundleID, after: nil)
             }
             defer {
                 if let bundleID = app.bundleID {
-                    (try? emulator.installPipeline)?.installPlaceholder("cancel", bundleID: bundleID, after: raised)
+                    _ = emulator.installPlaceholder("cancel", bundleID: bundleID, after: raised)
                 }
             }
             do {
@@ -341,8 +364,8 @@ enum AppInstaller {
 
     /// Queue when bytes are ready, not when the app was selected.
     private static func install(_ job: InstallJob, ipa: URL,
-                                with emulator: EmulatorController,
-                                presenting window: NSWindow?,
+                                with emulator: any InstallDevice,
+                                presenting window: AnyObject?,
                                 placeholderRaised: Bool = false) async {
         let readyQueue = queue(for: emulator.instance.id)
         if readyQueue.isBusy || readyQueue.isPaused {
@@ -380,16 +403,7 @@ enum AppInstaller {
                                                   minOS: info["MinimumOSVersion"] as? String, catalogIpaID: job.catalogIpaID),
                                        device: emulator.instance)
             }
-            if output.contains("newer than the device's") {
-                let alert = NSAlert()
-                alert.alertStyle = .warning
-                alert.messageText = "“\(job.name)” installed, but may not launch"
-                let version = emulator.iosVersion
-                alert.informativeText = "It needs a newer version of iOS than \(version). "
-                    + "Look for a version built for iOS \(version.split(separator: ".").first ?? "3") or earlier."
-                if let window { alert.beginSheetModal(for: window) { _ in } }
-                else { alert.runModal() }
-            }
+            if output.contains("newer than the device's") { emulator.warnMayNotLaunch(job.name, in: window) }
         } catch is CancellationError {
             // Cancelling is a decision, not a failure. The placeholder icon
             // is already down: the script path has a TERM trap and the
@@ -406,8 +420,8 @@ enum AppInstaller {
     /// task here makes pending removals visible to Quit even if the inspector
     /// is hidden. Cancellation skips queued work; an active guest operation
     /// finishes before the device slot is released.
-    static func remove(_ apps: [InstalledApp], with emulator: EmulatorController,
-                       presenting window: NSWindow?,
+    public static func remove(_ apps: [InstalledApp], with emulator: any InstallDevice,
+                       presenting window: AnyObject?,
                        willRemove: @escaping (InstalledApp) -> Void,
                        didRemove: @escaping (InstalledApp) -> Void,
                        didFinish: @escaping () -> Void) {
@@ -426,26 +440,26 @@ enum AppInstaller {
                 for app in apps {
                     try Task.checkCancellation()
                     willRemove(app)
-                    try await emulator.services.uninstall(app.id)
+                    try await emulator.uninstall(app.id)
                     IPALibrary.forget(app.id, device: emulator.instance)
                     // The name and icon are app-wide: another device that still has the app keeps them.
-                    if !IPALibrary.retained(app.id, by: DeviceLibrary.shared.instances) { AppMetadataCache.shared.forget(app.id) }
+                    if !IPALibrary.retained(app.id, by: devices()) { AppMetadataCache.shared.forget(app.id) }
                     didRemove(app)
                 }
             } catch is CancellationError {
                 // Quit can cancel a waiting batch, never an active C call.
             } catch {
                 guard !Task.isCancelled else { return }
-                logEvent("uninstall failed: \(String(reflecting: error))")
+                log("uninstall failed: \(String(reflecting: error))")
                 pauseIfNeeded(error, with: emulator)
-                presentError(error, window)
+                emulator.present(error, in: window)
             }
         })
     }
 
     /// Every queued mutation of one device shares this policy: an unavailable
     /// guest must not receive another write immediately after a failed removal.
-    private static func pauseIfNeeded(_ error: Error, with emulator: EmulatorController,
+    private static func pauseIfNeeded(_ error: Error, with emulator: any InstallDevice,
                                       excluding failedJob: InstallJob? = nil) {
         guard let deviceError = error as? DeviceError, deviceError.shouldPauseInstallQueue else { return }
         let device = emulator.instance.id
@@ -457,11 +471,8 @@ enum AppInstaller {
         }
     }
 
-    /// A failed removal's (or a refused command's) alert. A variable so the
-    /// queue checks, which compile this file whole, count alerts instead.
-    static var presentError: (Error, NSWindow?) -> Void = { error, window in
-        let alert = NSAlert(error: error)
-        if let window { alert.beginSheetModal(for: window) }
-        else { alert.runModal() }
-    }
+    /// Where the queue's diagnostics go (a failure's whole error): app.log, or a test's own record.
+    static var log: (String) -> Void = { logEvent($0) }
+    /// Every device the library knows, for whether another still keeps an uninstalled app's name and icon.
+    static var devices: () -> [DeviceInstance] = { DeviceLibrary.shared.instances }
 }
