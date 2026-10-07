@@ -265,9 +265,9 @@ final class EmulatorController {
             if case let .failure(error) = result, let self { logEvent("boot: \(instance.name): \(error)") }
         }
         if hasGuestTools {
-            startOrientationWatch()   // idle until the guest is up and reachable
+            rotation.startGuestWatch()   // idle until the guest is up and reachable
         } else {
-            startInterfaceOrientationWatch()
+            rotation.startInterfaceWatch()
         }
         startTimeZoneSync()       // guest zone follows the Mac's, incl. travel
         startForegroundWatch()
@@ -775,8 +775,8 @@ final class EmulatorController {
     func pressLock()       { tapButton(.power) }
     func pressVolumeUp()   { tapButton(.volumeUp) }
     func pressVolumeDown() { tapButton(.volumeDown) }
-    func rotateLeft()      { link?.send(.rotate(clockwise: false)) }
-    func rotateRight()     { link?.send(.rotate(clockwise: true)) }
+    func rotateLeft()      { rotation.rotateLeft() }
+    func rotateRight()     { rotation.rotateRight() }
     private(set) var shakeGeneration: UInt64 = 0
     func shake() {
         link?.send(.shake)
@@ -829,56 +829,19 @@ final class EmulatorController {
         link?.send(ChassisTilt.attitudeCommand(angle: angle, pitch: pitch, pose: motionPose.rawValue))
     }
 
-    /// The device's orientation as degrees turned clockwise from portrait —
-    /// the same value the LCD model calls its rotation, stepped in lockstep
-    /// with the guest's own quarter-turn cycle (ipod_touch_kbd_rotate:
-    /// portrait → landscape-right(90) → upside-down(180) → landscape-left(270)).
-    /// DisplayView poses the shell from this, so all rotation must go through
-    /// rotate(clockwise:) or the shell drifts out of step with the guest.
-    // Observed like the rest: the toolbar's rotate glyph shows which way the NEXT turn goes, so it has to follow
-    // an automatic rotation too, not just the three manual actions.
-    private(set) var rotationDegrees = 0
-    var isLandscape: Bool { rotationDegrees == 90 || rotationDegrees == 270 }
+    // MARK: - Rotation
 
-    /// Toggle between portrait and landscape: enter counter-clockwise (home
-    /// button ends up on the right), leave by heading back the short way.
-    func toggleRotation() {
-        rotate(clockwise: rotationDegrees == 270)
-    }
-
-    /// Rotate a quarter turn in a named direction.
-    func rotate(clockwise: Bool) {
-        let next = (rotationDegrees + (clockwise ? 90 : 270)) % 360
-        if !setAccelerometer(for: next) { clockwise ? rotateRight() : rotateLeft() }
-        rotationDegrees = next
-    }
-
-    /// The iPad sets its accelerometer outright for the shell's angle rather
-    /// than stepping it: the machine moves it on its own (the power-off
-    /// gesture), and a relative step from there lands on the wrong side.
-    /// Values are UIDeviceOrientation: a clockwise turn from portrait (1) puts
-    /// Home on the left (4), then upside down (2), then Home right (3).
-    @discardableResult
-    private func setAccelerometer(for degrees: Int) -> Bool {
-        guard profile.orientationSource == .springBoard, let value = [0: 1, 90: 4, 180: 2, 270: 3][degrees] else { return false }
-        // The machine answers asynchronously now; only an iPad takes this path,
-        // and it always has the control, so a refusal is just logged.
-        control(.orientation(value)) { applied in
-            if !applied { logEvent("rotation: the device refused orientation \(value)") }
-        }
-        return true
-    }
-
-    /// Quarter-turn our way to `target`, the short way round. Every step goes
-    /// through rotate(clockwise:) so the guest and `rotationDegrees` stay in
-    /// lockstep — this is a caller of the one source of truth, not a second one.
-    private func rotate(toward target: Int) {
-        while true {
-            let delta = (target - rotationDegrees + 360) % 360
-            guard delta != 0 else { return }
-            rotate(clockwise: delta != 270)   // 90 and 180 go clockwise, 270 back
-        }
-    }
+    /// The quarter turns and auto-rotation with the guest (DeviceRotation).
+    @ObservationIgnored private(set) lazy var rotation = DeviceRotation(host: self, settings: settingsFile,
+                                                                        setsAccelerometer: profile.orientationSource == .springBoard)
+    var rotationDegrees: Int { rotation.degrees }
+    var isLandscape: Bool { rotation.isLandscape }
+    func toggleRotation() { rotation.toggle() }
+    func rotate(clockwise: Bool) { rotation.rotate(clockwise: clockwise) }
+    var autoRotateEnabled: Bool { rotation.autoRotateEnabled }
+    func toggleAutoRotate() { rotation.toggleAutoRotate() }
+    func startOrientationWatch() { rotation.startGuestWatch() }
+    func resetRotation() { rotation.reset() }
 
     // MARK: Carrier (radio boards)
     //
@@ -920,34 +883,6 @@ final class EmulatorController {
         }
     }
 
-    // MARK: - Auto-rotation
-    //
-    // Open a landscape-only app and the emulated iPod swings to landscape by
-    // itself; press home and it swings back. The signal comes from the guest,
-    // because on 3.1.3 there is nowhere else it can come from: SpringBoard's
-    // -[SpringBoard noteUIOrientationChanged:display:] updates an ivar and calls
-    // GSEventRotateSimulator() in-process, and posts nothing. The three
-    // com.apple.springboard.*Orientation Darwin notifications that notification_proxy
-    // WOULD have relayed are posted from the accelerometer path — they describe
-    // how the device is being held, which is the thing we are faking anyway —
-    // and springboardservicesrelay on 3.1.3 answers only getIconState /
-    // setIconState / getIconPNGData, so libimobiledevice's
-    // sbservices_get_interface_orientation has nothing to talk to.
-    //
-    // The guest agent reads SpringBoardServices' SBGetUIOrientation MIG stub
-    // (7E18's ABI; other builds answer ENOSYS and the shell stays put).
-    //
-    // EDGES, NOT LEVELS, is the rule that keeps this from fighting the user.
-    // We rotate when the guest's orientation *changes*; we never correct the
-    // shell towards the guest's steady state. The home screen is portrait-only
-    // on 3.1.3, so a levels rule would undo a manual rotation the instant it was
-    // made — the user turns the device, the guest stays at 0, and we would turn
-    // it straight back. With edges, a manual rotation the guest declines to
-    // follow simply stands, and a manual rotation the guest DOES follow reports
-    // the orientation we already moved to, so it lands on a no-op. The user only
-    // loses their manual angle when the front app actually changes what it wants,
-    // which is the moment they asked us to follow.
-
     /// Attach to Local Network, per device (DeviceSettings.localNetwork), off by default: while off the
     /// emulator refuses the guest's LAN traffic (BootRecipe.wifiNetdev), so macOS never asks on its own.
     /// Turning it on asks macOS for Local Network access right then and opens the running device in place.
@@ -969,111 +904,7 @@ final class EmulatorController {
     private(set) var debugPort: Int?
     var lldbAttachCommand: String? { debugPort.map { DebugPort.lldbCommand(board: instance.board, port: $0) } }
 
-    /// Off switch, for anyone who would rather the device never move on its own. Per device
-    /// (DeviceSettings.autoRotateWithGuest); on by default — it is only ever driven by an explicit change on the
-    /// guest's side.
-    var autoRotateEnabled: Bool { settings.autoRotateWithGuest ?? true }
-    func toggleAutoRotate() {
-        let enabled = !autoRotateEnabled
-        changeSettings { $0.autoRotateWithGuest = enabled }
-    }
 
-    /// The last value SpringBoard reported, in SpringBoard's degrees (0, 90,
-    /// 180, -90). nil until the first line arrives — that first one only seeds
-    /// this, so a watcher that attaches to an already-running guest never yanks
-    /// the shell around on connect.
-    @ObservationIgnored private var lastGuestOrientation: Int?
-    private var orientationTask: Task<Void, Never>? {
-        get { bootScope[.orientation] }
-        set { bootScope[.orientation] = newValue }
-    }
-
-    /// SpringBoard's degrees are the angle the *content* is rotated by; ours are
-    /// the angle the *device* is turned clockwise. They are mirror images.
-    ///
-    /// From -[SBApplication defaultStatusBarOrientation]: UIInterfaceOrientation
-    /// Portrait → 0, PortraitUpsideDown → 180, LandscapeLeft → 90, LandscapeRight
-    /// → -90. UIInterfaceOrientationLandscapeLeft is the one with the home button
-    /// on the RIGHT, which is the device turned 270° clockwise — hence the flip.
-    private func hostDegrees(forGuest degrees: Int) -> Int? {
-        switch degrees {
-        case 0:          return 0
-        case 180:        return 180
-        case 90:         return 270   // LandscapeLeft:  home button right
-        case -90, 270:   return 90    // LandscapeRight: home button left
-        default:         return nil   // a torn line, or a value we don't know
-        }
-    }
-
-    private func guestOrientationChanged(to degrees: Int) {
-        guard let target = hostDegrees(forGuest: degrees) else { return }
-        defer { lastGuestOrientation = degrees }
-        // First reading seeds only: see lastGuestOrientation.
-        guard let previous = lastGuestOrientation, previous != degrees else { return }
-        guard autoRotateEnabled, state == .running else { return }
-        rotate(toward: target)
-    }
-
-    /// The iPad: 3.2's springboardservicesrelay answers getInterfaceOrientation,
-    /// so no guest tools are needed. iOS comes back up in the orientation it
-    /// last had while the app starts every process portrait, so the first
-    /// reading after boot is adopted; after that only changes are followed
-    /// (the edges rule above). rotate(toward:) moves the shell and the
-    /// accelerometer together.
-    private func startInterfaceOrientationWatch() {
-        orientationTask?.cancel()
-        orientationTask = Task { [weak self] in
-            var last: Int?
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(3))
-                guard let self else { return }
-                if self.state == .booting { last = nil }   // a restart: adopt again
-                // Only once lockdown has answered: before that every try is "not reachable over USB yet", every 3 s in the log.
-                guard self.canReachDevice, !self.isSleeping, !self.isInstalling,
-                      let reading = try? await self.services.interfaceOrientation(),
-                      let target = Self.iPadDegrees(forInterface: reading) else { continue }
-                if last == nil || (last != reading && self.autoRotateEnabled), target != self.rotationDegrees {
-                    self.rotate(toward: target)
-                }
-                last = reading
-            }
-        }
-    }
-
-    /// SpringBoard's UIInterfaceOrientation -> the app's clockwise device
-    /// angle, as on hardware: upright is Portrait (1); turned clockwise, Home
-    /// is on the left and the UI is LandscapeLeft (4); then upside down (2);
-    /// then LandscapeRight (3).
-    static func iPadDegrees(forInterface orientation: Int) -> Int? {
-        [1: 0, 4: 90, 2: 180, 3: 270][orientation]
-    }
-
-    /// Keeps one reporter alive for as long as the app runs, re-attaching after
-    /// a boot, a respring, or a dropped USB session — the same "the guest drops
-    /// its services and comes back" reality NotificationProxy backs off around.
-    func startOrientationWatch() {
-        orientationTask?.cancel()
-        orientationTask = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                if self.state == .running, !self.preparingDevice, !self.isSleeping, !self.isInstalling {
-                    let generation = self.bootGeneration
-                    do {
-                        if let degrees = try await self.guestOrientation() {
-                            try Task.checkCancellation()
-                            guard generation == self.bootGeneration else { continue }
-                            self.guestOrientationChanged(to: degrees)
-                        }
-                    } catch {
-                        if Task.isCancelled { return }
-                        self.lastGuestOrientation = nil
-                        do { try await Task.sleep(for: .seconds(5)) } catch { return }
-                    }
-                }
-                do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
-            }
-        }
-    }
 
     // MARK: - Guest package
 
@@ -1235,10 +1066,6 @@ final class EmulatorController {
         reachableSince = nil
     }
     func forgetEthlink() { ethlinkUp = false }
-    func resetRotation() {
-        rotationDegrees = 0
-        setAccelerometer(for: 0)
-    }
 
     func startForegroundWatch() {
         foregroundTask?.cancel()
@@ -1385,7 +1212,7 @@ final class EmulatorController {
     func discardInstalls() { AppInstaller.discard(for: instance.id) }
     func stopGuestWatches() {
         foregroundTask?.cancel()
-        orientationTask?.cancel()
+        rotation.stopWatching()
     }
     func restart() { onRestartRequested?() }
 
@@ -1438,11 +1265,12 @@ final class EmulatorController {
 
     /// The guest's orientation in degrees; nil when this image has no agent.
     /// Failures must not start a second transport.
-    private func guestOrientation() async throws -> Int? {
+    func guestOrientation() async throws -> Int? {
         _ = try services
         guard guestAgent.status != 0 else { return nil }
         return try await guestAgent.orientation()
     }
+    func interfaceOrientation() async throws -> Int { try await services.interfaceOrientation() }
 
     /// This device's firmware, from its catalog entry: what an app's minimum
     /// iOS and architecture are checked against.
@@ -1571,7 +1399,7 @@ final class EmulatorController {
 
 // The session's state machines (LightTouchCore/Session) run against the controller through these.
 extension EmulatorController: MachineHost, ConnectionHost, ActivationServices, ReadinessHost, BootWatchHost,
-                              ShutdownHost, EraseHost, BootCycleHost, AppLaunchHost {
+                              ShutdownHost, EraseHost, BootCycleHost, AppLaunchHost, RotationHost {
     var helper: DeviceHelper? { process }
     var helperLink: HelperLink? { link }
     var isPainting: Bool { state == .running }
