@@ -70,7 +70,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-rotation-redraw-') as tmp:
     (app / 'Resources/shell-iphone4.png').symlink_to(root / 'LightTouchMac/Assets.xcassets/shell-iphone4.imageset/shell-iphone4.png')
     (work / 'check.swift').write_text(source)
     exe = app / 'MacOS/check'
-    sources = ['UI/DisplayView', 'UI/MouseTouchPair', 'Device/Board+App', '../tests/fixtures/machines', 'UI/DisplayMeasurements', 'UI/ZoomMode', 'Capture/PanelCapture', 'Input/KeyboardPointer', 'UI/AttitudeIndicatorButton',
+    sources = ['UI/DisplayView', 'Input/MouseTouchPair', 'Device/Board+App', '../tests/fixtures/machines', 'UI/DisplayMeasurements', 'UI/ZoomMode', 'Capture/PanelCapture', 'Input/KeyboardPointer', 'UI/AttitudeIndicatorButton',
                'UI/InlineLiveTextView', 'UI/DroppedFiles', 'UI/DropHighlight','UI/GuestKeyboard']
     subprocess.run(['swiftc', *device_runtime.swift_flags(root), '-module-cache-path', str(work / 'modules'), '-default-isolation', 'MainActor',
                     *[str(root / 'LightTouchMac' / f'{s}.swift') for s in sources], str(work / 'check.swift'), '-o', str(exe)], check=True)

@@ -1427,7 +1427,7 @@ final class DisplayView: NSView {
             grabPoint = convert(event.locationInWindow, from: nil)
             return
         }
-        if let (nx, ny) = normalized(event) ?? nearScreenEdge(event) { touchPair.down(at: CGPoint(x: nx, y: ny), event.modifierFlags) }
+        if let (nx, ny) = normalized(event) ?? nearScreenEdge(event) { touchPair.down(at: CGPoint(x: nx, y: ny), KeyModifiers(event.modifierFlags)) }
         emit(event, TouchPhase.begin)
     }
 
@@ -1464,8 +1464,8 @@ final class DisplayView: NSView {
     private func updatePairRings(_ flags: NSEvent.ModifierFlags) {
         guard !touchDown else { return }
         let point = window.flatMap { normalized(windowPoint: $0.mouseLocationOutsideOfEventStream) }.map { CGPoint(x: $0.0, y: $0.1) }
-        touchPair.track(flags, at: point)
-        guard touchInteractionEnabled, let point, let second = touchPair.secondFinger(for: point, flags) else {
+        touchPair.track(KeyModifiers(flags), at: point)
+        guard touchInteractionEnabled, let point, let second = touchPair.secondFinger(for: point, KeyModifiers(flags)) else {
             showPairRings(nil); return
         }
         showPairRings((point, second))
