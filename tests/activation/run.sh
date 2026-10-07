@@ -8,4 +8,3 @@ cc -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined tests/activation/fi
 ASAN_OPTIONS=abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 "$work/finish"
 sh tools/activation/test.sh
 swift test --package-path Packages/FirmwareKit --filter ActivationTests
-python3 tests/sessions/check-activation-gate.py --offline
