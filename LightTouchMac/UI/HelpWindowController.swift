@@ -1,26 +1,16 @@
+import LightTouchCore
 import Cocoa
 
-/// Light Touch Help: Help.txt's task topics (a "# " line starts one) in a
-/// sidebar, the chosen topic beside it. "[Device]" reads as the selected
-/// device's name.
+/// Light Touch Help: Help.txt's task topics (HelpTopic) in a sidebar, the
+/// chosen topic beside it.
 final class HelpWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
-    struct Topic: Equatable { let title: String; let body: String }
-
-    static func topics(_ text: String) -> [Topic] {
-        text.components(separatedBy: "\n# ").compactMap { chunk in
-            let lines = chunk.drop { $0 == "#" || $0 == " " }.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
-            guard let title = lines.first, !title.isEmpty else { return nil }
-            return Topic(title: String(title), body: lines.count > 1 ? lines[1].trimmingCharacters(in: .whitespacesAndNewlines) : "")
-        }
-    }
-
-    private let source: [Topic]
-    private var topics: [Topic] = []
+    private let source: [HelpTopic]
+    private var topics: [HelpTopic] = []
     private let list = NSTableView()
     let text = NSTextView()
 
     init(text helpText: String) {
-        source = Self.topics(helpText)
+        source = HelpTopic.topics(helpText)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 780, height: 560),
                               styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
         window.title = "Light Touch Help"
@@ -75,8 +65,7 @@ final class HelpWindowController: NSWindowController, NSTableViewDataSource, NST
 
     /// Re-reads "[Device]" as `deviceName`, keeping the chosen topic.
     func show(deviceName: String) {
-        topics = source.map { Topic(title: $0.title.replacingOccurrences(of: "[Device]", with: deviceName),
-                                    body: $0.body.replacingOccurrences(of: "[Device]", with: deviceName)) }
+        topics = source.map { $0.naming(deviceName) }
         let row = max(list.selectedRow, 0)
         list.reloadData()
         select(topic: min(row, topics.count - 1))
@@ -95,7 +84,7 @@ final class HelpWindowController: NSWindowController, NSTableViewDataSource, NST
         paragraph.paragraphSpacing = 10
         let body = NSMutableAttributedString(string: topic.title + "\n", attributes: [.font: NSFont.preferredFont(forTextStyle: .title2),
                                                                                     .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraph])
-        body.append(NSAttributedString(string: topic.body.replacingOccurrences(of: "\n\n", with: "\n"), attributes: [.font: NSFont.systemFont(ofSize: 14), .foregroundColor: NSColor.labelColor,
+        body.append(NSAttributedString(string: topic.shownBody, attributes: [.font: NSFont.systemFont(ofSize: 14), .foregroundColor: NSColor.labelColor,
                                                                         .paragraphStyle: paragraph]))
         text.textStorage?.setAttributedString(body)
         text.scrollToBeginningOfDocument(nil)
