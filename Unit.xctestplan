@@ -50,6 +50,13 @@
         "identifier": "SessionKitTests",
         "name": "SessionKitTests"
       }
+    },
+    {
+      "target": {
+        "containerPath": "container:Packages\/BuildTools",
+        "identifier": "BuildToolsTests",
+        "name": "BuildToolsTests"
+      }
     }
   ],
   "version": 1

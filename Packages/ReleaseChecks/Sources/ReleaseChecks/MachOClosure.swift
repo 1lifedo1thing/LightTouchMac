@@ -1,6 +1,6 @@
 import Foundation
 
-/// Every architecture slice's complete macOS load closure (what scripts/check-macho.py checks for the native builds):
+/// Every architecture slice's complete macOS load closure (`scripts/ltm-build check-macho` for the native builds):
 /// each dependency resolves (through the binary's rpaths and its loaders'), none needs a newer macOS than the app
 /// supports, and inside an app none escapes the bundle; optionally, native code has no weak imports.
 public enum MachOClosure {
@@ -53,6 +53,25 @@ public enum MachOClosure {
     static func expand(_ path: String, loader: URL, executable: URL) -> URL {
         URL(fileURLWithPath: path.replacingOccurrences(of: "@loader_path", with: loader.path)
             .replacingOccurrences(of: "@executable_path", with: executable.path))
+    }
+
+    /// The binary's own rpaths for `arch`, as written (scripts/vendor's relink edits them).
+    public static func rpaths(_ path: URL, arch: String) throws -> [String] { try metadata(path, arch: arch).rpaths }
+
+    /// The binary's non-system dependencies for `arch`, each with the file it resolves to through the binary's own
+    /// rpaths (@loader_path and @executable_path both its directory).
+    public static func dependencies(_ path: URL, arch: String) throws -> [(name: String, file: URL)] {
+        let meta = try metadata(path, arch: arch), dir = path.deletingLastPathComponent()
+        let search = meta.rpaths.map { expand($0, loader: dir, executable: dir) }
+        return try meta.dependencies.filter { !$0.hasPrefix("/usr/lib/") && !$0.hasPrefix("/System/Library/") }.map { dependency in
+            let candidates = dependency.hasPrefix("@rpath/")
+                ? search.map { $0.appendingPathComponent(String(dependency.dropFirst("@rpath/".count))) }
+                : [expand(dependency, loader: dir, executable: dir)]
+            guard let file = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) else {
+                throw Failure("\(path.path): unresolved dependency \(dependency)")
+            }
+            return (dependency, file.resolvingSymlinksInPath())
+        }
     }
 
     /// Checks `path` and everything it loads for `arch`. `executable`: the directory @executable_path means (an app's
