@@ -34,8 +34,11 @@ let package = Package(name: "OfflineChecks", platforms: [.macOS("14.4")],
         .target(name: "Display", dependencies: [.product(name: "LightTouchCore", package: "LightTouchCore"), .product(name: "HostRuntime", package: "HostRuntime"),
                                                 .product(name: "DeviceRuntime", package: "DeviceRuntime")],
                 swiftSettings: settings),
+        // The 3D model (RealityKit), for headless renders.
+        .target(name: "Model", dependencies: [.product(name: "LightTouchCore", package: "LightTouchCore"), .product(name: "HostRuntime", package: "HostRuntime")],
+                swiftSettings: settings),
         // A private home and app state for the test process (LightTouchCore's own, Tests/TestIsolation).
         .target(name: "TestIsolation"),
-        .testTarget(name: "OfflineTests", dependencies: ["AppViews", "Display", "Menus", "Sidebar", "TestIsolation"], swiftSettings: settings),
+        .testTarget(name: "OfflineTests", dependencies: ["AppViews", "Display", "Menus", "Model", "Sidebar", "TestIsolation"], swiftSettings: settings),
     ],
     swiftLanguageModes: [.v5])
