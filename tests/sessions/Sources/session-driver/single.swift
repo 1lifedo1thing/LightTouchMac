@@ -3,14 +3,14 @@ import HostRuntime
 import HostServiceClient
 import HostServiceWire
 @testable import LightTouchCore
-// One prepared device (tests/sessions/check-sessions.py --single, ReleaseBootTests, tests/matrix.py): a firmwarekit
+// One prepared device (`sessions single`, ReleaseBootTests): a firmwarekit
 // base booted as the app boots it, through the bundled helper, dylib and usbmuxd. It must light, answer lockdown
 // over its own usbmuxd, take AFC round trips past 16 KiB (max-packet multiples, whose transfers end in a real ZLP),
 // take an IPA, and shut down cleanly. No restore is involved. Screenshots of each stage land in the work directory.
 //
 // With `itpack` (an iPod) or the config's ipadItpack (an iPad) the boot carries the app's guest-package offer and
 // the loader's report is recorded; `reboot` adds a second boot on the same overlay that must light, answer
-// lockdown and still hold a file uploaded before the clean shutdown (tests/matrix.py's persist check).
+// lockdown and still hold a file uploaded before the clean shutdown (the persist check).
 
 import Foundation
 import SessionKit
@@ -56,7 +56,7 @@ struct SingleConfig: Decodable {
     var launchAt: [Double]?
     /// A launch goes through the guest agent where the bake installed it (as the app's sidebar launches); then a tap at this
     /// normalized point (the iPad's panel: portrait top is x 0, portrait left is y 1; the iPod's portrait screen) and
-    /// screenshots tapped1-2, 3 s apart. tests/matrix.py --gl-tap opens the Harness's "GL: rotating triangle" with it.
+    /// screenshots tapped1-2, 3 s apart.
     var tapAfterLaunch: [Double]?
     /// The same bundle id at a newer version, installed over the first (issue #22): it must install as an upgrade,
     /// keeping a file written into the app's data before it (judged through the agent). installd may move the data

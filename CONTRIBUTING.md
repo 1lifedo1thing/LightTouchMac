@@ -48,8 +48,8 @@ QEMU_BUILD_DIR = $(QEMU_IOS_DIR)/build-w1-native          # libqemu-arm.dylib, o
 
 These repeat **the pin**, `build-support/sources.json`: the qemu-ios commit, its expected checkout path and
 development build directory, and the usbmuxd commit; iBoot32Patcher is pinned in `build-support/dependencies.json`.
-`scripts/sources.py` resolves the pin for every script and check (`sources.py qemu-ios | usbmuxd | qemu-build`,
-`sources.py check` for pinned vs actual; `QEMU_IOS_DIR`, `USBMUXD_SOURCE_DIR` and `QEMU_BUILD_DIR` override).
+`scripts/sources` resolves the pin for every script (`sources qemu-ios | usbmuxd | qemu-build | commit NAME`,
+`sources check` for pinned vs actual; `QEMU_IOS_DIR`, `USBMUXD_SOURCE_DIR` and `QEMU_BUILD_DIR` override).
 To produce the dylib, build `qemu-system-arm` in that checkout and run `contrib/macos-app/make-dylib-macos.sh BUILD_DIR`.
 The services helper links libimobiledevice and libplist: from the vendor directory (below) when there is one,
 else Homebrew's. Put local overrides of any of these in `Configuration/Local.xcconfig` (gitignored).
@@ -84,7 +84,7 @@ A release is an Xcode archive; nothing edits the bundle after Xcode.
    macOS; the bundled helper, services worker and bridge run from the bundle and the helper loads the bundled
    emulator; bundle hygiene (licenses, sources, Help, no local paths, the built-in iPod's placeholder identity,
    stripped, no duplicates, nothing loose under `Resources`, the guest archive included); the identity scan; and the
-   bundled `firmwarekit` unpacks the built-in iPod, which `tests/sessions/check-sessions.py --single` boots through
+   bundled `firmwarekit` unpacks the built-in iPod, which `sessions single` (tests/sessions) boots through
    the bundled helper, dylib, services worker and usbmuxd. `TEST_RUNNER_LTM_RELEASE_FULL=1` also prepares and boots
    every release entry (minutes each).
 4. **Notarize and make the download**, either way; both write `LightTouchMac-universal.zip` (`ditto -c -k
@@ -101,35 +101,35 @@ A release is an Xcode archive; nothing edits the bundle after Xcode.
 
 ## Gates
 
-One runner, three tiers, and a wrapper that runs the host-only ones:
+Three commands, no runner around them:
 
 ```sh
-tests/run.py offline            # no emulator: the Unit test plan (xcodebuild test on LightTouchMac.xcworkspace: the
-                                # packages' Swift Testing suites) and the remaining tests/offline/check-*.py (swiftc
-                                # on the app's views plus temp fixtures), -j 4 through one shared module cache
-tests/run.py release            # packaging and build checks (tests/release/); --network adds the dependency fetch
-tests/run.py sessions           # helper + emulator, one boot at a time, -audio driver=none: check-helper-boot,
-                                # check-sessions (--ipad-device, then --guest), check-guest-package,
-                                # check-activation-gate, check-boot-deadline, check-files-native, check-media-native
-scripts/gate.sh --quick         # swift test (Packages/FirmwareKit) + offline + release
-scripts/gate.sh --full          # quick + sessions
+# no emulator: every package's Swift Testing suites (the list is Unit.xctestplan)
+xcodebuild test -workspace LightTouchMac.xcworkspace -scheme LightTouchMac -testPlan Unit
+# emulator sessions on prepared bases (firmwarekit create output), one boot at a time; `sessions --help` for the rest
+swift run --package-path tests/sessions sessions single BASE [--launch] [--reboot]
+swift run --package-path tests/sessions sessions phone N90_BASE --only carrier --overlay PAST_SETUP_OVERLAY
+swift run --package-path tests/sessions sessions local-network N72_BASE
+# a built app (Releases, step 3)
+TEST_RUNNER_LTM_RELEASE_APP="path/to/Light Touch.app" xcodebuild test -workspace LightTouchMac.xcworkspace \
+    -scheme LightTouchMac -testPlan Release
 ```
 
-`--only NAME` runs a subset. One line per check (PASS, FAIL, SKIP with the reason, XFAIL for a check
-`tests/run.py` lists as known failing on today's code, XPASS once it passes again); non-zero exit only on
-FAIL; every log under the printed directory. The sessions tier's inputs (`QEMU_IOS_DIR`, the helper's dylib,
-the iPad and iPod device directories, the armv6 package) are documented in `tests/run.py`; a check whose
-input is missing is SKIP with the path it wanted; `--require-inputs` makes a selected skip fail acceptance. Every script resolves the qemu-ios and usbmuxd checkouts
-through `scripts/sources.py` (the pin in `build-support/sources.json`).
+`sessions` builds the Debug helper, services worker and firmwarekit (cached in `.build/sessions-xcode`) and boots with
+scripts/vendor's dylib, usbmuxd, SecureROMs and guest package, or with a built app's (`--app`); `--dylib` takes a
+development build. It prints one ok/FAIL line per check and exits 1 on any FAIL; logs, screenshots and the driver's
+events stay in `--work`. It judges the Home screen by the guest agent's frontmost app and screen where the base has an
+agent, and by a frame reference in `tests/sessions/matrix-refs` where there is one. No test run writes the real app
+state or logs: the Unit plan's packages run in a private home, and `sessions` keeps the drivers' state in its work
+directory and fails a run that touched the real `app.log`.
 
 | Directory | What is there |
 |---|---|
-| `Packages/*/Tests`, `Unit.xctestplan` | Swift Testing: LightTouchCoreTests (the app's logic), HostRuntimeTests, FirmwareKitTests, HostServiceWireTests, ReleaseChecksTests' fixtures. `xcodebuild test -workspace LightTouchMac.xcworkspace -scheme LightTouchMac` runs the Unit plan (an Xcode project can't reach a local package's tests; the workspace can). LightTouchCore's tests run one at a time in a private home (Tests/TestIsolation) |
-| `tests/offline/` | What still needs a fake C library, a helper process or a real AppKit view: the services engine against a fake libimobiledevice, the C lockdown writes, the helper's web proxy, and offscreen renders of the app's views. Each docstring names what it compiles; the one that still cuts a section out of a production file is in [tests/SLICED.md](tests/SLICED.md) |
-| `tests/sessions/` | `check-sessions.py` boots two devices at once through the app's own session code (`tests/drivers/session-driver`); `--single DIR --board ipod|ipad` boots one prepared base the way the app does and is what `ReleaseBootTests` runs on a built app; `--guest` runs the guest-services scenario. `check-helper-boot.py` drives the helper directly (`tests/drivers/helper-driver`). `matrix.py`, `install-durability.py` and `volume-rebuild-oracle.py` are tools run by hand (`tests/matrix.py` still works) |
-| `tests/release/` | Build and packaging checks: dependency sources, guest build, the native merge, `scripts/check-macho.py` on fixture binaries (`test-package.py`). `scripts/check-macho.py` and `scripts/test-glib-compat.py` stay in `scripts/` because the native recipe hash includes them; a built app's checks are `Release.xctestplan` (Releases, step 3) |
-| `tests/drivers/`, `tests/fixtures/` | The Swift drivers the session checks compile; the fake preparer, the catalog server and the Swift fixtures the checks share |
-| `swift test --package-path Packages/FirmwareKit` | FirmwareKit's synthetic unit tests and fixed legacy reference hashes. Optional corpus tests report real skips unless `FK_TEST_CORPUS=1` or `FK_REQUIRE_FIXTURES=1` selects them; selected missing inputs fail. Format/bake oracle checks resolve qemu-ios through `FIRMWAREKIT_QEMU_IOS` |
+| `Packages/*/Tests`, `Unit.xctestplan` | Swift Testing: LightTouchCoreTests (the app's logic), HostRuntimeTests, FirmwareKitTests, HostServiceWireTests, ReleaseChecksTests' fixtures, BuildToolsTests (the native merge, the dependency sources). LightTouchCore's tests run one at a time in a private home (Tests/TestIsolation) |
+| `tests/offline/` | A Swift package (OfflineTests, in the Unit plan) for what needs the app target's own files: AppKit views rendered offscreen, the display's input and layout, the helper's C API version and LCD color, the services engine against a fake libimobiledevice. The production files are compiled whole through symlinks beside small stand-ins; no window is ordered in |
+| `tests/sessions/` | A Swift package: `sessions` (the checks and their verdicts), the drivers that stand in for the app (`session-driver`: the app's session code; `helper-driver`: DeviceLink straight to the helper), and SessionKit (frame references, the Home verdict, the Setup walks), whose tests are in the Unit plan |
+| `tests/activation/`, `tests/fixtures/` | C harnesses run by hand (`tests/activation/run.sh`: the activation finish and the lockdown zone writes); the fake preparer (`fake-firmwarekit`, bash), the store fixtures and `machines.json` the tests share |
+| `swift test --package-path Packages/FirmwareKit` | Also runs FirmwareKit's suites alone. Optional corpus tests report real skips unless `FK_TEST_CORPUS=1` or `FK_REQUIRE_FIXTURES=1` selects them; selected missing inputs fail. Format/bake oracle checks compare against qemu-ios's imgtools through `FIRMWAREKIT_QEMU_IOS` |
 
 Every headless boot passes `-audio driver=none`. The checks are headless; none of them launch the app.
 
@@ -177,11 +177,10 @@ those two places; its firmware is catalog entries, and preparing it is a Firmwar
 | `Packages/ReleaseChecks/` | The checks of a built app (`Release.xctestplan`): signatures, entitlements, slices and load closure, bundle hygiene, the bundled tools, boots through the bundle |
 | `Packages/DeviceServices/` | One device's stock lockdown services: `HostServiceWire` (the request/event protocol, errors, timeouts, device paths, the Home screen layout) and `HostServiceClient` (the app's `DeviceServices` calls, `HostServiceWorkers`, `NotificationProxy`) |
 | `Packages/FirmwareKit/` | `FirmwareKit` (IPSW → device), `FirmwareSchema` (the wire types, `StorageCapacity`, `DeveloperTools`, `GuestArchive`: what the app links), the `firmwarekit` CLI (`Sources/FirmwareKitCLI`), `CActivation` |
-| `scripts/` | `vendor` (with `build-package-native.sh`, `build-static-deps.sh`, `merge-native.py`, `build-iboot32patcher.sh`, `build-guest-tools.sh`), `release`, `check-export`, `gate.sh`, `sources.py`, `check-macho.py`, `test-glib-compat.py` |
-| `tests/` | `run.py` and the tiers `offline/`, `sessions/`, `release/`; `drivers/` (helper-driver, session-driver), `fixtures/` (fake-firmwarekit.py, catalog-server.py, the Swift fixtures); `SLICED.md` |
+| `scripts/` | `vendor` (with `build-package-native.sh`, `build-static-deps.sh`, `build-iboot32patcher.sh`, `build-guest-tools.sh`), `ltm-build` (Packages/BuildTools: vendor, check-macho, merge-native, sources), `sources`, `release`, `check-export` |
+| `tests/` | `offline/` and `sessions/` (Swift packages), `activation/` (C harnesses), `fixtures/` |
 | `build-support/` | `dependencies.json` (pinned archives) and build patches |
 | `Configuration/` | `Shared.xcconfig` (with the gitignored `Vendor.xcconfig` and `Local.xcconfig`), `LightTouchDevice.entitlements` |
 | `Models/` | The 3D device models and their lighting (`Resources/Models/` in the app) |
 | `LightTouchServices/` | The services helper: `Engine/` (libimobiledevice: installation_proxy, AFC, springboardservices, notification_proxy and lockdown on one `run` kernel, the serial gate and deadlines), and the lockdown writes (`Lockdown/`) it runs as child processes |
-| `spikes/` | Phase-0 spike sources (rendezvous, GL helper, two-at-once); archive material, kept for reference |
 | `tools/activation/` | Sam's activation tool (its `build/` output is ignored) |

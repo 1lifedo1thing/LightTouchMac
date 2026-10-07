@@ -7,7 +7,7 @@ import Testing
 /// firmware is offered an import, a verified one is refused, or the refusal loses its plain words.
 struct MediaSupportTests {
     /// Every catalog entry's verified destinations; anything not listed takes none. Booted round trips
-    /// (check-media-native.py --single): 7D11, 7E18 and 7B367; 7C145, 7B405 and 7B500 share their 3.x services.
+    /// (the former live media check): 7D11, 7E18 and 7B367; 7C145, 7B405 and 7B500 share their 3.x services.
     /// Music on the iPad's 5.1.1 (9B206) through ML3's importer; other 5.x builds have not been round-tripped.
     /// 4.2.1 (both boards) fails (it-media README), so 4.x stays refused.
     static let verified: [String: Set<String>] = [

@@ -5,7 +5,7 @@ import Foundation
 import Testing
 @testable import LightTouchCore
 
-/// PreparationJob: the preparer's JSON Lines and messages, then runs against tests/fixtures/fake-firmwarekit.py
+/// PreparationJob: the preparer's JSON Lines and messages, then runs against tests/fixtures/fake-firmwarekit
 /// (publish, errors, cancel, the atomic publish), the removal guard, Delete Device and the launch sweeps.
 @Suite(.serialized) struct PreparationJobTests {
     let fm = FileManager.default

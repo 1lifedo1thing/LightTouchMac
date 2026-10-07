@@ -5,7 +5,7 @@
 // subdirectory of Sources/FirmwareKit so agents can add modules without editing this file.
 //
 // Dependencies are pinned to exact versions and recorded with their licenses in build-support/dependencies.json
-// (scripts/dependency-sources.py's manifest): ZIPFoundation (IPSW members), MachOKit (Mach-O headers, fat
+// (BuildTools' dependency sources manifest): ZIPFoundation (IPSW members), MachOKit (Mach-O headers, fat
 // files, code signatures), swift-subprocess (`diskutil image` / `hdiutil` through DiskImage), Unrar.swift (a "rar"
 // source's IPSW: RARLAB's UnRAR, extraction only).
 import PackageDescription

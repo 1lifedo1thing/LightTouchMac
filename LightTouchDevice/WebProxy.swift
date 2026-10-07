@@ -52,7 +52,7 @@ final class WebProxy: @unchecked Sendable {
     }
     private var _localNetwork = true
 
-    /// LTM_WEB_PROXY_TRACE set: one stderr line per request (tests/sessions/check-proxy-trust.py: did Safari's page come here).
+    /// LTM_WEB_PROXY_TRACE set: one stderr line per request (`sessions proxy-trust`: did Safari's page come here).
     static let trace = ProcessInfo.processInfo.environment["LTM_WEB_PROXY_TRACE"] != nil
     static let headMax = 65536, bodyMax = 8 << 20, archiveBodyMax = 32 << 20
 

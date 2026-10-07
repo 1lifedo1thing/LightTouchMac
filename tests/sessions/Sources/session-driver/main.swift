@@ -28,7 +28,7 @@ nonisolated struct Config: Decodable {
     var single: SingleConfig?
     /// The web proxy's certificate trusted through the guest agent, no profile screen (proxy.swift).
     var proxy: ProxyConfig?
-    /// The driver's own deadline in seconds (default 560; tests/matrix.py's second boot needs more).
+    /// The driver's own deadline in seconds (default 560; 6.x/7.x and --reboot need more).
     var timeout: Double?
     /// Hello/lease followed by a preparation error; never sends a boot request.
     var preparationFailure: Bool?
@@ -508,7 +508,7 @@ func checkPreparedFiles() throws {
     async let s2: Void = waitUSB(ipad, expecting: "iPad1,1", 240)
     _ = await (s1, s2)
     // Wake the iPod (its display may have slept while it booted), then input to each:
-    // the lock screen sliders (tests/sessions/check-helper-boot.py).
+    // the lock screen sliders.
     ipod.process.link.send(.button(0, down: true)); try? await Task.sleep(for: .milliseconds(150))
     ipod.process.link.send(.button(0, down: false))
     try? await Task.sleep(for: .seconds(3))

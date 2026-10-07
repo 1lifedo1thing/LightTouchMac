@@ -7,7 +7,6 @@ import DeviceRuntime
 /// The shared session owner (DeviceRuntime's DeviceSessionProcess) and the app's adapter around it (DeviceProcess):
 /// a helper's death classified by what was asked of it, the row's three labels, the link's last frame, and the
 /// boot's storage admission (preparation) with its lease, cancellation and exactly-once completion.
-/// (The race through the owner against a fake link stays tests/offline/check-reap-reason.py: it swaps DeviceLink.)
 struct DeviceProcessTests {
     @Test func exitsAreClassifiedByWhatWasAsked() {
         let cases: [(DeviceLinkError?, Int32?, Bool, DeviceTermination, DeviceProcessDeath)] = [
