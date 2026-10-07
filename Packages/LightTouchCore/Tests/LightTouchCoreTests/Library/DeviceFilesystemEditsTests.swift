@@ -174,4 +174,43 @@ import HostRuntime
             #expect(calls().last?.contains("--action commit") == true && !edits.hasOpenEdit(ipod), "\(calls())")
         }
     }
+
+    /// The default probes on a real volume mounted the way an edit is (nobrowse, in the temporary directory, whose
+    /// /private/var/folders the mount table names): it is a mount point, and a file held open for writing is a copy
+    /// in progress until it is closed.
+    @Test func theMountAndWriteProbesOnARealVolume() async throws {
+        try await LibraryFixtures.withScratch { dir in
+            func run(_ tool: String, _ args: [String]) throws -> String {
+                let p = Process(), pipe = Pipe()
+                p.executableURL = URL(fileURLWithPath: tool); p.arguments = args; p.standardOutput = pipe; p.standardError = pipe
+                try p.run()
+                let out = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                p.waitUntilExit()
+                guard p.terminationStatus == 0 else { throw CocoaError(.fileWriteUnknown, userInfo: [NSLocalizedDescriptionKey: out]) }
+                return out
+            }
+            let image = dir.appendingPathComponent("v.img")
+            #expect(FileManager.default.createFile(atPath: image.path, contents: nil) && truncate(image.path, 8 << 20) == 0)
+            let dev = try run("/usr/bin/hdiutil", ["attach", "-imagekey", "diskimage-class=CRawDiskImage", "-nomount", "-nobrowse", image.path])
+                .split(whereSeparator: \.isWhitespace).first.map(String.init) ?? ""
+            defer { _ = try? run("/usr/bin/hdiutil", ["detach", dev, "-force"]) }
+            _ = try run("/sbin/newfs_hfs", ["-v", "probe", dev])
+            let mountPoint = FileManager.default.temporaryDirectory.appendingPathComponent("LightTouch-edit-test-\(UUID().uuidString)/probe")
+            try FileManager.default.createDirectory(at: mountPoint, withIntermediateDirectories: true)
+            defer { rmdir(mountPoint.path); rmdir(mountPoint.deletingLastPathComponent().path) }
+            #expect(!DeviceFilesystemEdits.isMountPoint(mountPoint))
+            _ = try run("/usr/sbin/diskutil", ["mount", "-mountOptions", "nobrowse,noowners", "-mountPoint", mountPoint.path, dev])
+            #expect(DeviceFilesystemEdits.isMountPoint(mountPoint), "a volume mounted in the temporary directory isn't seen")
+            #expect(await !DeviceFilesystemEdits.isBeingWritten(mountPoint))
+            let file = mountPoint.appendingPathComponent("copy.bin")
+            FileManager.default.createFile(atPath: file.path, contents: nil)
+            let handle = try FileHandle(forWritingTo: file)
+            try handle.write(contentsOf: Data(count: 4096))
+            #expect(await DeviceFilesystemEdits.isBeingWritten(mountPoint), "a file open for writing isn't a copy in progress")
+            try handle.close()
+            #expect(await !DeviceFilesystemEdits.isBeingWritten(mountPoint))
+            _ = try run("/usr/sbin/diskutil", ["unmount", dev])
+            #expect(!DeviceFilesystemEdits.isMountPoint(mountPoint))
+        }
+    }
 }

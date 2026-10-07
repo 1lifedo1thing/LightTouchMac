@@ -210,12 +210,14 @@ public final class DeviceFilesystemEdits {
         rmdir(mountPoint.deletingLastPathComponent().path)
     }
 
-    /// statfs: `url` is where a file system is mounted.
+    /// statfs: `url` is where a file system is mounted. realpath, not resolvingSymlinksInPath: that drops the
+    /// /private of the temporary directory's /private/var/folders, where the mount table has it.
     public nonisolated static func isMountPoint(_ url: URL) -> Bool {
         var fs = statfs()
-        guard statfs(url.path, &fs) == 0 else { return false }
+        guard statfs(url.path, &fs) == 0, let real = realpath(url.path, nil) else { return false }
+        defer { free(real) }
         let mountedOn = withUnsafeBytes(of: &fs.f_mntonname) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
-        return mountedOn == url.resolvingSymlinksInPath().path
+        return mountedOn == String(cString: real)
     }
 
     /// A file open for writing on the volume (lsof), or its free space or file count moving over half a second.
