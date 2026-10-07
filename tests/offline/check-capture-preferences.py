@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Native capture preferences, the Settings window (General, Capture, Storage) and its Capture and General
-panes' actions, and notification payloads. --out DIR keeps the panes' renders (settings-*.png); nothing is
+"""The Settings window (General, Capture, Storage) and its Capture and General panes' actions over the native
+capture preferences. The preferences' own rules and the notification payloads are CapturePreferencesTests'. --out DIR keeps the panes' renders (settings-*.png); nothing is
 put on screen."""
 from pathlib import Path
 import sys
@@ -139,17 +139,10 @@ func render(_ view: NSView, _ name: String) throws {
   let restored = CapturePreferences(defaults: defaults)
   precondition(restored.copyOnCapture && !restored.openFinderAfterCapture && !restored.soundEffectsEnabled)
   precondition(restored.spaceBarAction == .saveScreenshot)
-  let id = UUID()
-  let notification = CaptureNotifications.reminderContent(recordingID: id, profile: .n72)
-  precondition(notification.userInfo["recordingID"] as? String == id.uuidString)
-  let ready = CaptureNotifications.readyContent("iPod touch (2nd generation) iOS 3.1.3", entryID: "n72ap-7E18")
-  precondition(ready.title == "iPod touch (2nd generation) iOS 3.1.3 is ready to use" && ready.userInfo["entry"] as? String == "n72ap-7E18", ready.title)
-  let content = CaptureNotifications.recoveryContent(filename: "Recovered.mov", bookmark: Data([1,2,3]))
-  precondition(content.body == "Recovered.mov" && content.userInfo["recordingBookmark"] as? Data == Data([1,2,3]))
   try FileManager.default.removeItem(at: app)
   precondition(preferences.openInApplicationURL == CapturePreferences.previewApplicationURL,
                "a deleted app must not remain selected through Bundle's metadata cache")
-  print("PASS: capture defaults/migration, recent folders, app fallback, Settings tabs, titles and sizing, General's internet choice, Capture pane actions/layout, notification opt-in and payload identity")
+  print("PASS: capture defaults/migration, recent folders, app fallback, Settings tabs, titles and sizing, General's internet choice, Capture pane actions/layout, notification opt-in")
  }
 }
 '''
@@ -157,7 +150,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-capture-preferences-') as directory
  work = Path(directory)
  (work/'check.swift').write_text(fixture)
  subprocess.run(['swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), DEVICE_PROFILE, '-swift-version', '6', '-default-isolation', 'MainActor', '-module-cache-path', str(work/'modules'),
-   *[str(root/'LightTouchMac'/name) for name in ['Features/CapturePreferences.swift', 'UI/CaptureOptionsView.swift', 'Features/CaptureNotifications.swift',
+   *[str(root/'LightTouchMac'/name) for name in ['Features/CapturePreferences.swift', 'UI/CaptureOptionsView.swift', 'Features/CaptureNotifications.swift', 'Features/CaptureNotificationContent.swift',
                                                   'UI/SettingsWindowController.swift', 'App/WindowRestorationPolicy.swift', 'App/NetworkAccessPreference.swift']],
    str(work/'check.swift'), '-o', str(work/'check')], check=True)
  subprocess.run([str(work/'check'), *([args.out] if args.out else [])], check=True, timeout=25)

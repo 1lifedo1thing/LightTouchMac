@@ -1,15 +1,16 @@
+import CoreServices
+import Foundation
 import HostRuntime
-import Cocoa
 
 /// Capture choices are shared by the toolbar, menus, and focused options panel.
 /// The existing folder key is retained so upgrading never moves a user's saves.
-struct CapturePreferences {
-    static let shared = CapturePreferences()
+public struct CapturePreferences {
+    public static let shared = CapturePreferences()
     private let defaults: UserDefaults
 
-    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+    public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
 
-    var saveLocation: URL {
+    public var saveLocation: URL {
         get {
             guard let path = defaults.string(forKey: "captureFolder"), !path.isEmpty else {
                 return Self.desktopDirectory
@@ -28,7 +29,7 @@ struct CapturePreferences {
         }
     }
 
-    var saveLocations: [URL] {
+    public var saveLocations: [URL] {
         var locations = [Self.desktopDirectory]
         for url in [saveLocation] + (defaults.stringArray(forKey: "captureRecentFolders") ?? [])
             .map({ URL(fileURLWithPath: $0, isDirectory: true).standardizedFileURL }) {
@@ -37,11 +38,11 @@ struct CapturePreferences {
         return locations
     }
 
-    static var desktopDirectory: URL {
+    public static var desktopDirectory: URL {
         FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)[0].standardizedFileURL
     }
 
-    var openInApplicationURL: URL? {
+    public var openInApplicationURL: URL? {
         get {
             if let path = defaults.string(forKey: "openInApplicationPath"), !path.isEmpty {
                 let url = URL(fileURLWithPath: path, isDirectory: true)
@@ -56,15 +57,15 @@ struct CapturePreferences {
         }
     }
 
-    var openInApplicationName: String {
+    public var openInApplicationName: String {
         openInApplicationURL.map(Self.applicationName) ?? "Preview"
     }
 
-    static var previewApplicationURL: URL? {
-        NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Preview")
+    public static var previewApplicationURL: URL? {
+        (LSCopyApplicationURLsForBundleIdentifier("com.apple.Preview" as CFString, nil)?.takeRetainedValue() as? [URL])?.first
     }
 
-    static func isApplication(_ url: URL) -> Bool {
+    public static func isApplication(_ url: URL) -> Bool {
         var isDirectory: ObjCBool = false
         guard url.isFileURL, url.pathExtension.lowercased() == "app",
               FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue,
@@ -73,34 +74,34 @@ struct CapturePreferences {
         return true
     }
 
-    static func applicationName(_ url: URL) -> String {
+    public static func applicationName(_ url: URL) -> String {
         let name = FileManager.default.displayName(atPath: url.path)
         return name.hasSuffix(".app") ? String(name.dropLast(4)) : name
     }
 
-    var copyOnCapture: Bool {
+    public var copyOnCapture: Bool {
         get { bool("copyOnCapture", default: false) }
         nonmutating set { defaults.set(newValue, forKey: "copyOnCapture") }
     }
-    var openFinderAfterCapture: Bool {
+    public var openFinderAfterCapture: Bool {
         get { bool("openFinderAfterCapture", default: true) }
         nonmutating set { defaults.set(newValue, forKey: "openFinderAfterCapture") }
     }
-    var soundEffectsEnabled: Bool {
+    public var soundEffectsEnabled: Bool {
         get { bool("soundEffectsEnabled", default: true) }
         nonmutating set { defaults.set(newValue, forKey: "soundEffectsEnabled") }
     }
-    var notifyOnRecordingRecovery: Bool {
+    public var notifyOnRecordingRecovery: Bool {
         get { bool("notifyOnRecordingRecovery", default: false) }
         nonmutating set { defaults.set(newValue, forKey: "notifyOnRecordingRecovery") }
     }
-    var reminderAfterDuration: Int {
+    public var reminderAfterDuration: Int {
         get { CaptureReminderDuration(rawValue: defaults.integer(forKey: "reminderAfterDuration"))?.rawValue ?? 0 }
         nonmutating set {
             defaults.set(CaptureReminderDuration(rawValue: newValue)?.rawValue ?? 0, forKey: "reminderAfterDuration")
         }
     }
-    var spaceBarAction: CaptureSpaceBarAction {
+    public var spaceBarAction: CaptureSpaceBarAction {
         get { CaptureSpaceBarAction(rawValue: defaults.integer(forKey: "spaceBarAction")) ?? .none }
         nonmutating set { defaults.set(newValue.rawValue, forKey: "spaceBarAction") }
     }
@@ -110,9 +111,9 @@ struct CapturePreferences {
     }
 }
 
-enum CaptureSpaceBarAction: Int, CaseIterable {
+public enum CaptureSpaceBarAction: Int, CaseIterable {
     case none = 0, copyScreenshot = 2, saveScreenshot = 3, saveScreenshotAs = 4, toggleRecording = 5
-    func title(for profile: Board) -> String {
+    public func title(for profile: Board) -> String {
         switch self {
         case .none: "Send to \(profile.shortName)"
         case .copyScreenshot: "Copy Screenshot"
@@ -123,13 +124,13 @@ enum CaptureSpaceBarAction: Int, CaseIterable {
     }
 }
 
-enum CaptureReminderDuration: Int, CaseIterable {
+public enum CaptureReminderDuration: Int, CaseIterable {
     case never = 0
     #if DEBUG
     case tenSeconds = 10
     #endif
     case oneMinute = 60, fiveMinutes = 300, tenMinutes = 600, thirtyMinutes = 1800, oneHour = 3600
-    var title: String {
+    public var title: String {
         if self == .never { return "Never" }
         return Duration.seconds(rawValue).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide))
     }

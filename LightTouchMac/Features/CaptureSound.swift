@@ -1,3 +1,4 @@
+import LightTouchCore
 import AudioToolbox
 
 /// The same system effects used by WireView for explicit capture actions.

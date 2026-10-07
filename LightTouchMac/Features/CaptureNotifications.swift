@@ -1,3 +1,4 @@
+import LightTouchCore
 import HostRuntime
 import Cocoa
 import UserNotifications
@@ -14,9 +15,9 @@ final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate {
     private let center: UNUserNotificationCenter
     private var reminderRevision = 0
     private var reminderIdentifier: String?
-    private nonisolated static let recoveryCategory = "CAPTURE_RECORDING_RECOVERED"
-    private nonisolated static let reminderCategory = "CAPTURE_STILL_RECORDING"
-    private nonisolated static let readyCategory = "DEVICE_READY"
+    private nonisolated static let recoveryCategory = CaptureNotificationContent.recoveryCategory
+    private nonisolated static let reminderCategory = CaptureNotificationContent.reminderCategory
+    private nonisolated static let readyCategory = CaptureNotificationContent.readyCategory
     private nonisolated static let revealAction = "SHOW_CAPTURE_IN_FINDER"
     private nonisolated static let stopSaveAction = "STOP_SAVE_CAPTURE"
     private nonisolated static let stopDeleteAction = "STOP_DELETE_CAPTURE"
@@ -47,7 +48,7 @@ final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate {
         do {
             let bookmark = try file.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil)
             let request = UNNotificationRequest(identifier: "recovered-recording-\(UUID().uuidString)",
-                                                content: Self.recoveryContent(filename: file.lastPathComponent, bookmark: bookmark),
+                                                content: CaptureNotificationContent.recovery(filename: file.lastPathComponent, bookmark: bookmark),
                                                 trigger: nil)
             try await center.add(request)
             return true
@@ -62,16 +63,9 @@ final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate {
             settings = await center.notificationSettings()
         }
         guard Self.canPresent(settings) else { return }
-        try? await center.add(UNNotificationRequest(identifier: "device-ready-\(entryID)", content: Self.readyContent(name, entryID: entryID), trigger: nil))
+        try? await center.add(UNNotificationRequest(identifier: "device-ready-\(entryID)", content: CaptureNotificationContent.ready(name, entryID: entryID), trigger: nil))
     }
 
-    static func readyContent(_ name: String, entryID: String) -> UNNotificationContent {
-        let content = UNMutableNotificationContent()
-        content.title = "\(name) is ready to use"
-        content.categoryIdentifier = readyCategory
-        content.userInfo = ["entry": entryID]
-        return content
-    }
 
     func scheduleReminder(after seconds: TimeInterval, recordingID: UUID, profile: Board) async {
         cancelReminder()
@@ -81,7 +75,7 @@ final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate {
         guard revision == reminderRevision, !NSApp.isActive, Self.canPresent(settings) else { return }
         let identifier = "recording-reminder-\(UUID().uuidString)"
         reminderIdentifier = identifier
-        let request = UNNotificationRequest(identifier: identifier, content: Self.reminderContent(recordingID: recordingID, profile: profile),
+        let request = UNNotificationRequest(identifier: identifier, content: CaptureNotificationContent.reminder(recordingID: recordingID, profile: profile),
                                             trigger: UNTimeIntervalNotificationTrigger(timeInterval: max(1, seconds), repeats: false))
         do {
             try await center.add(request)
@@ -108,22 +102,7 @@ final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate {
                 || settings.notificationCenterSetting == .enabled)
     }
 
-    static func recoveryContent(filename: String, bookmark: Data) -> UNNotificationContent {
-        let content = UNMutableNotificationContent()
-        content.title = "Recording recovered"
-        content.body = filename
-        content.categoryIdentifier = recoveryCategory
-        content.userInfo = ["recordingBookmark": bookmark]
-        return content
-    }
 
-    static func reminderContent(recordingID: UUID, profile: Board) -> UNNotificationContent {
-        let content = UNMutableNotificationContent()
-        content.title = "\(profile.shortName) is still recording"
-        content.categoryIdentifier = reminderCategory
-        content.userInfo = ["recordingID": recordingID.uuidString]
-        return content
-    }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                             willPresent notification: UNNotification,
