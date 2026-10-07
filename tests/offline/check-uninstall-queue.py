@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Run the production removal flow behind an install, through cancellation and failure. Compiles
-Features/AppInstaller.swift whole (with InstallationQueue, DeviceExecution and DeviceProfile) against
+Features/AppInstaller.swift whole (with InstallationQueue, DeviceExecution and Board) against
 tests/fixtures/app-installer*.swift and a scripted EmulatorController."""
 from pathlib import Path
 import sys
@@ -28,7 +28,7 @@ struct DeviceInstance { let id = UUID() }
   if let error { continuation.resume(throwing: error) } else { continuation.resume() }
  }
  // Not reached: this check queues removals only.
- let profile = DeviceProfile.iPodTouch2G, iosVersion = "3.1.3", guestArch = "armv6", productType: String? = "iPod2,1"
+ let profile = Board.n72, iosVersion = "3.1.3", guestArch = "armv6", productType: String? = "iPod2,1"
  var installPipeline: InstallPipeline { get throws { InstallPipeline() } }
  func install(_ ipa: URL, placeholderRaised: Bool, progress: @escaping @Sendable (String) -> Void) async throws -> String { "" }
  func importMedia(_ media: PreparedMedia, progress: @escaping @Sendable (Double) -> Void, willCommit: () -> Void) async throws {}
@@ -154,7 +154,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-uninstall-') as directory:
     subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-swift-version', '6', '-default-isolation', 'MainActor',
                     '-module-cache-path', str(work / 'modules'), *[str(app / f) for f in [
                         'Features/AppInstaller.swift', 'Features/MediaSupport.swift', 'Features/InstallationQueue.swift', 'Transport/DeviceExecution.swift',
-                        'Device/DeviceProfile.swift']],
+                        'Device/Board+App.swift']],
                     str(root / 'tests/fixtures/app-installer.swift'), str(root / 'tests/fixtures/app-installer-library.swift'),
                     str(work / 'check.swift'), '-o', str(work / 'check')], check=True)
     subprocess.run([str(work / 'check')], check=True, timeout=20)

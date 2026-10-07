@@ -25,7 +25,7 @@ stub_source = prefix + r'''
  var shellPixels: CGSize { CGSize(width:737,height:1318) }
  enum Control { case sleepWake, volumeUp, volumeDown }
  func control(at p:CGPoint)->Control?{nil}
- init(url:URL,profile:DeviceProfile) async throws {
+ init(url:URL,profile:Board) async throws {
   delay=Self.preparationDelay
   try await Task.sleep(for:Self.loadingDelay)
   super.init(frame:.zero)
@@ -58,7 +58,7 @@ stub_source = prefix + r'''
    DeviceModelView.preparationDelay = scenario == "slow frame" ? .milliseconds(1400):.milliseconds(50)
    DeviceModelView.framesPrepared=0
    let started=ContinuousClock.now
-   let display=DisplayView(frame:NSRect(x:0,y:0,width:500,height:800),profile:.iPodTouch2G)
+   let display=DisplayView(frame:NSRect(x:0,y:0,width:500,height:800),profile:.n72)
    let e=EmulatorController();display.emulator=e
    let window=NSWindow(contentRect:display.frame,styleMask:[.titled],backing:.buffered,defer:false)
    window.contentView=display
@@ -83,7 +83,7 @@ stub_source = prefix + r'''
   }
   DeviceModelView.loadingDelay = .zero
   DeviceModelView.preparationDelay = .seconds(5)
-  var closingDisplay:DisplayView? = DisplayView(frame:NSRect(x:0,y:0,width:500,height:800),profile:.iPodTouch2G)
+  var closingDisplay:DisplayView? = DisplayView(frame:NSRect(x:0,y:0,width:500,height:800),profile:.n72)
   weak let releasedDisplay = closingDisplay
   let closingWindow=NSWindow(contentRect:closingDisplay!.frame,styleMask:[.titled],backing:.buffered,defer:false)
   closingWindow.contentView=closingDisplay
@@ -100,7 +100,7 @@ real_source = prefix + r'''
  @MainActor static func main() async throws {
   _=NSApplication.shared
   frameColor = 0xff00ff00
-  let display=DisplayView(frame:NSRect(x:0,y:0,width:500,height:800),profile:.iPodTouch2G)
+  let display=DisplayView(frame:NSRect(x:0,y:0,width:500,height:800),profile:.n72)
   let e=EmulatorController();display.emulator=e
   // Loading can precede window attachment. Deliberately cross the old one-
   // second cutoff, then require production RealityKit to become visible.
@@ -132,7 +132,7 @@ real_source = prefix + r'''
     "Visible model did not render the green guest LCD: \(pixel)")
   window.orderOut(nil);window.contentView=nil
   // A first-frame waiter with no drawable must still cancel promptly.
-  let unattached=try await DeviceModelView(url:Bundle.main.url(forResource:"N72",withExtension:"usdz",subdirectory:"Models")!,profile:.iPodTouch2G)
+  let unattached=try await DeviceModelView(url:Bundle.main.url(forResource:"N72",withExtension:"usdz",subdirectory:"Models")!,profile:.n72)
   let waiter=Task { await unattached.prepareFirstFrame() }
   waiter.cancel()
   let cancelledResult=await waiter.value
@@ -149,7 +149,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-model-startup-') as tmp:
     windowed = os.environ.get('LTM_DISPLAY_CHECKS') == '1'
     for name, source, actual_model in [('stub', stub_source, False), *([('renderer', real_source, True)] if windowed else [])]:
         swift=work/f'{name}.swift';swift.write_text(source);exe=app/'MacOS'/name
-        sources=['UI/DisplayView','UI/MouseTouchPair','Device/DeviceProfile','Device/DeviceProfile+Display','UI/DisplayMeasurements','UI/AttitudeIndicatorButton','UI/InlineLiveTextView','UI/DroppedFiles','UI/DropHighlight','UI/GuestKeyboard']
+        sources=['UI/DisplayView','UI/MouseTouchPair','Device/Board+App','UI/DisplayMeasurements','UI/AttitudeIndicatorButton','UI/InlineLiveTextView','UI/DroppedFiles','UI/DropHighlight','UI/GuestKeyboard']
         if actual_model: sources.append('UI/DeviceModelView')
         subprocess.run(['swiftc', *device_runtime.swift_flags(Path(__file__).resolve().parents[2]),'-module-cache-path',str(work/'modules'),'-default-isolation','MainActor',
                         *[str(root/'LightTouchMac'/f'{item}.swift') for item in sources],

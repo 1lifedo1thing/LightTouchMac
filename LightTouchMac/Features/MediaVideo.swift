@@ -1,3 +1,4 @@
+import HostRuntime
 import Foundation
 import AVFoundation
 
@@ -11,7 +12,7 @@ struct MediaVideo: Sendable {
 
     nonisolated static let extensions: Set<String> = ["mp4", "m4v", "mov"]
 
-    nonisolated static func prepare(_ source: URL, cacheDirectory: URL? = nil, profile: DeviceProfile) async throws -> MediaVideo {
+    nonisolated static func prepare(_ source: URL, cacheDirectory: URL? = nil, profile: Board) async throws -> MediaVideo {
         let worker = Task.detached {
             try Task.checkCancellation()
             guard extensions.contains(source.pathExtension.lowercased()) else {
@@ -139,7 +140,7 @@ struct MediaVideo: Sendable {
         } onCancel: { worker.cancel() }
     }
 
-    nonisolated private static func validatedDuration(of file: URL, expected duration: Double, profile: DeviceProfile) async throws -> Double {
+    nonisolated private static func validatedDuration(of file: URL, expected duration: Double, profile: Board) async throws -> Double {
         let values = try file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
         let asset = AVURLAsset(url: file)
         let exportedDuration = try await asset.load(.duration).seconds
@@ -164,13 +165,13 @@ struct MediaVideo: Sendable {
 private final class MediaVideoExport {
     private let source: URL
     private let destination: URL
-    private let profile: DeviceProfile
+    private let profile: Board
     private var session: AVAssetExportSession?
 
     /// The A4 devices (iPad, iPhone 4, iPod touch 4th generation) play H.264 up to 720p.
-    nonisolated static func playsHD(_ profile: DeviceProfile) -> Bool { [.iPad1, .iPhone4, .iPodTouch4G].contains(profile) }
+    nonisolated static func playsHD(_ profile: Board) -> Bool { profile.soc == .s5l8930 }
 
-    init(source: URL, destination: URL, profile: DeviceProfile) {
+    init(source: URL, destination: URL, profile: Board) {
         self.source = source; self.destination = destination; self.profile = profile
     }
 

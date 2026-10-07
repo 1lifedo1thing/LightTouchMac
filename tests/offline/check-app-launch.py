@@ -8,7 +8,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import host_runtime
 import subprocess, tempfile
-DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device/DeviceProfile.swift')
+DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device/Board+App.swift')
 root = Path(__file__).resolve().parents[2]
 def method(source, signature):
     start = source.index(signature)
@@ -32,7 +32,7 @@ func logEvent(_ message: String) { }
 }
 struct Agent { let isAlive = true }
 @MainActor final class EmulatorController {
- let profile = DeviceProfile.iPodTouch2G
+ let profile = Board.n72
  var acceptsInput = true, isSleeping = false
  var wakes = 0
  let deviceTools = FakeGuest()

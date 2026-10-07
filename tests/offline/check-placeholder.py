@@ -266,8 +266,8 @@ with tempfile.TemporaryDirectory(prefix='ltm-placeholder-') as tmp:
     (tmp / 'stubs.swift').write_text(stubs)
     (tmp / 'main.swift').write_text(check)
     subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), *schema_sources(), '-parse-as-library', '-swift-version', '5', '-module-cache-path', str(tmp / 'modules'),
-                    str(app / 'Library/FirmwareCatalog.swift'), str(app / 'Device/DeviceProfile.swift'),
-                    str(app / 'Device/DeviceProfile+Display.swift'), str(app / 'Device/DeviceRow.swift'), str(app / 'UI/DropHighlight.swift'),
-                    str(app / 'UI/DeviceProfile+Icon.swift'), str(app / 'UI/AppleDeviceType.swift'),
+                    str(app / 'Library/FirmwareCatalog.swift'), str(app / 'Device/Board+App.swift'),
+                    str(app / 'Device/DeviceRow.swift'), str(app / 'UI/DropHighlight.swift'),
+                    str(app / 'UI/Board+Icon.swift'), str(app / 'UI/AppleDeviceType.swift'),
                     str(tmp / 'placeholder.swift'), str(tmp / 'stubs.swift'), str(tmp / 'main.swift'), '-o', str(tmp / 'check')], check=True)
     subprocess.run([str(tmp / 'check'), str(app / 'Resources/firmware-catalog.json'), str(out)], check=True, timeout=60)

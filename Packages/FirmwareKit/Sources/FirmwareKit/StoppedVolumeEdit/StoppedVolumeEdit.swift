@@ -67,7 +67,7 @@ public enum StoppedVolumeEdit {
               let paths = owner.paths else { throw FirmwareError(.unsupported, "invalid device metadata") }
         defer { withExtendedLifetime(owner) {} }
         let source = VolumeExport.ResolvedSource(owner: owner)
-        if ["n45ap", "m68ap"].contains(record["board"] as? String ?? ""), try VolumeRebuild.board(of: source.base) == .legacy {
+        if HostRuntime.Board(rawValue: record["board"] as? String ?? "")?.soc == .s5l8900, try VolumeRebuild.board(of: source.base) == .legacy {
             _ = try N45FTL(base: source.base, overlay: source.overlay)      // refuses an unclean FTL before any work
             return (try StorageGeneration.begin(owner: owner), source, paths, bytes)
         }
@@ -77,9 +77,9 @@ public enum StoppedVolumeEdit {
         guard try VolumeRebuild.board(of: source.base) == .ipod else {
             throw FirmwareError(.unsupported, "this device does not have a supported writable store")
         }
-        let sourceLock = try object(source.base.deletingLastPathComponent().appendingPathComponent("device.lock.json"))
-        guard let derived = sourceLock["derived"] as? [String: Any], let epoch = derived["nand_epoch"] as? Int,
-              derived["storage_layout"] == nil || derived["storage_layout"] as? String == "n72-generated-v1" else {
+        let sourceLock = try DeviceLock.read(base: source.base.deletingLastPathComponent())
+        guard let epoch = sourceLock?.nandEpoch,
+              [nil, "n72-generated-v1"].contains(sourceLock?.derived?["storage_layout"]?.string) else {
             throw FirmwareError(.unsupported, "writable export requires the N72 generated layout; physical FTL storage must use guest services")
         }
         // Certify the fixed mapping in legacy locks before applying its writer.
@@ -166,7 +166,7 @@ public enum StoppedVolumeEdit {
                 maintenance["working_nor_sha256"] = try Preparer.digest(workingNOR, SHA256())
             }
             lock["maintenance"] = maintenance
-            let lockData = try JSONSerialization.data(withJSONObject: lock, options: [.prettyPrinted, .sortedKeys])
+            let lockData = try DeviceLock(json: lock).data()
             try StorageGeneration.write(lockData, to: lockURL)
             let provenance: [String: Any] = ["lock": try edit.recordPath(lockURL), "sha256": StorageGeneration.hash(lockData)]
             try Preparer.readOnly(edit.base)

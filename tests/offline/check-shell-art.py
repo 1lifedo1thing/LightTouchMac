@@ -2,7 +2,7 @@
 """Every catalog board has a flat picture (the prepare screen's art, DisplayView's fallback shell): its own, except the
 pairs Sam chose to share (the iPod touch 3G shows the 2G's photo, the 3GS the original iPhone's frame, 10-06).
 
-Compiles DeviceProfile(+Display) whole and asks it, for each board in the shipped firmware catalog, which asset
+Compiles Board(+Display) whole and asks it, for each board in the shipped firmware catalog, which asset
 (shellImageName) and shell size it uses. Fails when a board has no profile or no asset, when two boards share an
 asset name or identical pixels (the 1G showing the 2G's shell was the bug), or when an asset's size is not the
 profile's shellPixels (the screen cutout and Home circle are placed in those pixels).
@@ -22,13 +22,13 @@ with tempfile.TemporaryDirectory(prefix='ltm-shell-art-') as tmp:
     tmp = Path(tmp)
     (tmp / 'main.swift').write_text('''import Foundation
 for board in CommandLine.arguments.dropFirst() {
-    guard let p = [DeviceProfile.iPodTouch2G, .iPad1, .iPodTouch1G, .iPodTouch4G, .iPhone4, .iPhone3GS, .iPodTouch3G, .iPhone2G].first(where: { $0.boardID == board }) else { print(board, "-"); continue }
+    guard let p = Board(rawValue: board) else { print(board, "-"); continue }
     let c = p.screenCutout
     print(board, p.shellImageName, Int(p.shellPixels.width), Int(p.shellPixels.height), Int(c.midX), Int(c.midY), Int(c.minY / 2))
 }
 ''')
-    subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-module-cache-path', str(tmp / 'modules'), str(root / 'LightTouchMac/Device/DeviceProfile.swift'),
-                    str(root / 'LightTouchMac/Device/DeviceProfile+Display.swift'), str(tmp / 'main.swift'), '-o', str(tmp / 'art')], check=True)
+    subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-module-cache-path', str(tmp / 'modules'), str(root / 'LightTouchMac/Device/Board+App.swift'),
+                    str(tmp / 'main.swift'), '-o', str(tmp / 'art')], check=True)
     rows = [line.split() for line in subprocess.check_output([tmp / 'art', *boards], text=True).splitlines()]
 
 # The boards that show another's picture, and whose.
@@ -37,7 +37,7 @@ seen = {}
 tones = {}
 for board, name, *size in rows:
     size, (cx, cy, above) = size[:2], map(int, size[2:])
-    assert name != '-', f'{board}: no DeviceProfile'
+    assert name != '-', f'{board}: no Board'
     imageset = assets / f'{name}.imageset'
     files = json.loads((imageset / 'Contents.json').read_text())['images']
     png = imageset / files[0]['filename']

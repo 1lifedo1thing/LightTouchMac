@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The iPad frame asset must match the profile's shell size, screen cutout and Home circle.
 
-Compiles DeviceProfile+Display.swift whole and reads the iPad's geometry from it. With a screenshot
+Compiles Board+App.swift whole and reads the iPad's geometry from it. With a screenshot
 argument (a 1024x768 panel dump from qemu-ios docs/ipad1/screens), also writes
 docs/ipad-frame/composite-check.png: the frame with the panel turned upright into the cutout, the way
 DisplayView draws it."""
@@ -18,12 +18,12 @@ frame = Image.open(root / 'LightTouchMac/Assets.xcassets/ipad-frame.imageset/ipa
 with tempfile.TemporaryDirectory(prefix='ltm-ipad-frame-') as tmp:
     tmp = Path(tmp)
     (tmp / 'main.swift').write_text('''import Foundation
-let p = DeviceProfile.iPad1
+let p = Board.k48
 print(Int(p.shellPixels.width), Int(p.shellPixels.height), Int(p.screenCutout.minX), Int(p.screenCutout.minY),
       Int(p.screenCutout.width), Int(p.screenCutout.height), p.homeButtonDiameter, p.homeButtonBottomInset)
 ''')
-    subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-module-cache-path', str(tmp / 'modules'), str(root / 'LightTouchMac/Device/DeviceProfile.swift'),
-                    str(root / 'LightTouchMac/Device/DeviceProfile+Display.swift'), str(tmp / 'main.swift'), '-o', str(tmp / 'geometry')], check=True)
+    subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-module-cache-path', str(tmp / 'modules'), str(root / 'LightTouchMac/Device/Board+App.swift'),
+                    str(tmp / 'main.swift'), '-o', str(tmp / 'geometry')], check=True)
     values = subprocess.check_output([tmp / 'geometry'], text=True).split()
 shell = (int(values[0]), int(values[1]))
 cut = tuple(int(v) for v in values[2:6])

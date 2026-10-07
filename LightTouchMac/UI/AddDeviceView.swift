@@ -3,6 +3,7 @@
 // Only stable builds show until Show experimental is on (remembered).
 // A sheet, not a window: it belongs to the one main window and is done before the user goes on (HIG, Sheets).
 
+import HostRuntime
 import SwiftUI
 
 struct AddDeviceView: View {
@@ -29,7 +30,7 @@ struct AddDeviceView: View {
             let entries = catalog.entries.filter { $0.board == board }
             let profile = entries[0].profile
             return Group(id: board, name: profile?.marketingName ?? entries[0].productType,
-                         icon: profile?.icon ?? DeviceProfile.icon(modelCode: entries[0].productType, fallbackSymbol: "questionmark.square.dashed"),
+                         icon: profile?.icon ?? Board.icon(modelCode: entries[0].productType, fallbackSymbol: "questionmark.square.dashed"),
                          entries: entries)
         }
         self.added = added

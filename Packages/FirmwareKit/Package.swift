@@ -38,6 +38,6 @@ let package = Package(
         .executableTarget(name: "FirmwareKitCLI", dependencies: ["FirmwareKit",
             .product(name: "HostRuntime", package: "HostRuntime"),
         ]),
-        .testTarget(name: "FirmwareKitTests", dependencies: ["FirmwareKit"]),
+        .testTarget(name: "FirmwareKitTests", dependencies: ["FirmwareKit", .product(name: "HostRuntime", package: "HostRuntime")]),
     ]
 )

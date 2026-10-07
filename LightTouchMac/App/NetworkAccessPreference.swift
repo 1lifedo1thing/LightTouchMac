@@ -1,3 +1,4 @@
+import HostRuntime
 import Cocoa
 
 /// Resolve consent before QEMU can send any guest traffic. Loopback USB and
@@ -7,7 +8,7 @@ enum NetworkAccessPreference {
 
     /// Whether the device about to start gets the Mac's network: `--network`/`--no-network`
     /// on the command line (a choice that is not remembered), else the saved answer, else a prompt.
-    static func resolve(profile: DeviceProfile) -> Bool {
+    static func resolve(profile: Board) -> Bool {
         let arguments = CommandLine.arguments
         if arguments.contains("--no-network") { return false }
         if arguments.contains("--network") { return true }

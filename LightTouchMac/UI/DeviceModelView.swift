@@ -1,3 +1,4 @@
+import HostRuntime
 import AppKit
 import RealityKit
 import Metal
@@ -49,7 +50,7 @@ final class DeviceModelView: NSView {
   private static let freezeDelay: CFTimeInterval = 0.5
 
   @available(macOS 15, *)
-  init(url: URL, profile: DeviceProfile) async throws {
+  init(url: URL, profile: Board) async throws {
     let loaded = try await Entity(contentsOf: url)
     func firstModel(_ entity: Entity) -> Entity? {
       if entity.components[ModelComponent.self] != nil { return entity }
@@ -138,7 +139,7 @@ final class DeviceModelView: NSView {
             finish.metallic = .init(floatLiteral: 0.7)
             finish.roughness = .init(floatLiteral: 0.36)
           }
-          if profile == .iPodTouch1G && (name == "glass" || name.contains("inactive_LCD_perimeter")) {
+          if profile == .n45 && (name == "glass" || name.contains("inactive_LCD_perimeter")) {
             finish.baseColor = .init(tint: NSColor(srgbRed: 0.07, green: 0.08, blue: 0.1, alpha: 1))
             finish.specular = .init(floatLiteral: 0.5)
           }
@@ -160,7 +161,7 @@ final class DeviceModelView: NSView {
     homeLight.inheritsRotation = true
     homeLighting.components.set(homeLight)
     home.components.set(ImageBasedLightReceiverComponent(imageBasedLight: homeLighting))
-    if profile == .iPodTouch1G {
+    if profile == .n45 {
       // World-fixed like a studio light: the rim's gradient stays upper-left as the device turns.
       let rimLighting = Entity()
       anchor.addChild(rimLighting)

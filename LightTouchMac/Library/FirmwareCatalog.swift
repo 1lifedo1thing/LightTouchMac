@@ -2,6 +2,7 @@
 // Distinct from CatalogClient's app catalog. Field names follow qemu-ios
 // manifests/*.json.
 
+import HostRuntime
 import Foundation
 
 nonisolated struct FirmwareCatalog: Codable, Sendable {
@@ -68,6 +69,8 @@ nonisolated struct FirmwareCatalog: Codable, Sendable {
             get { wire.build }
             set { wire.build = newValue }
         }
+        /// The libraries Import Media may add to on this build (MediaSupport).
+        var media: [String] { wire.media ?? [] }
         var released: String? {
             get { wire.released }
             set { wire.released = newValue }
@@ -101,7 +104,7 @@ nonisolated struct FirmwareCatalog: Codable, Sendable {
             set { wire.estimates = newValue }
         }
 
-        var profile: DeviceProfile? { DeviceProfile(boardID: board) }
+        var profile: Board? { Board(rawValue: board) }
         /// What the user reads: "iPhone 4", never the model identifier ("iPhone3,1") unless the board is unknown.
         var marketingName: String { profile?.marketingName ?? productType }
 
@@ -170,18 +173,3 @@ nonisolated struct FirmwareCatalog: Codable, Sendable {
     var bundledEntry: Entry? { entries.first { $0.bundled != nil } }
 }
 
-nonisolated extension DeviceProfile {
-    init?(boardID: String) {
-        switch boardID {
-        case DeviceProfile.iPodTouch2G.boardID: self = .iPodTouch2G
-        case DeviceProfile.iPad1.boardID: self = .iPad1
-        case DeviceProfile.iPodTouch1G.boardID: self = .iPodTouch1G
-        case DeviceProfile.iPodTouch4G.boardID: self = .iPodTouch4G
-        case DeviceProfile.iPhone4.boardID: self = .iPhone4
-        case DeviceProfile.iPhone3GS.boardID: self = .iPhone3GS
-        case DeviceProfile.iPodTouch3G.boardID: self = .iPodTouch3G
-        case DeviceProfile.iPhone2G.boardID: self = .iPhone2G
-        default: return nil
-        }
-    }
-}

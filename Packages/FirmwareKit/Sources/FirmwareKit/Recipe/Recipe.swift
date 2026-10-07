@@ -13,6 +13,7 @@
 
 import CryptoKit
 import Foundation
+import HostRuntime
 
 /// What one board adds to Recipe.create. Methods run in the order above, each inside its step.
 protocol Board: AnyObject {
@@ -179,7 +180,7 @@ public enum Recipe {
         ]
         let lock = merged(shared, try board.lock(c))
         try fm.removeItem(at: c.work)
-        try Preparer.lockData(lock).write(to: c.file("device.lock.json"))
+        try DeviceLock(json: lock).data().write(to: c.file(DeviceLock.fileName))
         c.log("\(o.out.path): UDID \(c.ident.udid ?? "-")")
         progress.finish()
         emit(.done(lock: "device.lock.json"))

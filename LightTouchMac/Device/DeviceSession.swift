@@ -5,6 +5,7 @@
 // LightTouchDevice helper (DeviceProcess), so any number can run at once, a
 // dead one restarts without the app, and the others never notice.
 
+import HostRuntime
 import Cocoa
 
 // MARK: - Sessions
@@ -30,7 +31,7 @@ import Cocoa
 
     var instance: DeviceInstance { emulator.instance }
     let emulator: EmulatorController
-    var profile: DeviceProfile { emulator.profile }
+    var profile: Board { emulator.profile }
     private(set) lazy var workspace = DeviceWorkspace(emulator: emulator)
 
     init(emulator: EmulatorController) {
@@ -95,7 +96,7 @@ import Cocoa
     private var baseRecipes: [UUID: Int?] = [:]
     private func baseRecipe(_ instance: DeviceInstance) -> Int? {
         if let known = baseRecipes[instance.id] { return known }
-        let version = DeviceRow.baseRecipeVersion(instance.paths.base.appendingPathComponent("device.lock.json"),
+        let version = DeviceRow.baseRecipeVersion(instance.paths.base.appendingPathComponent(DeviceLock.fileName),
                                                    device: instance.paths.directory)
         baseRecipes[instance.id] = version
         return version
@@ -105,7 +106,7 @@ import Cocoa
     private var activationless: [UUID: Bool] = [:]
     private func lacksActivation(_ instance: DeviceInstance) -> Bool {
         if let known = activationless[instance.id] { return known }
-        let lacks = DeviceInstance.lockLacksActivation(instance.paths.base.appendingPathComponent("device.lock.json"))
+        let lacks = DeviceInstance.lockLacksActivation(instance.paths.base.appendingPathComponent(DeviceLock.fileName))
         activationless[instance.id] = lacks
         return lacks
     }

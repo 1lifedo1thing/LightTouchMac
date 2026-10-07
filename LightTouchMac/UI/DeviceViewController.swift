@@ -4,6 +4,7 @@
 // main content; it centres its content and becomes first responder so
 // keyboard passthrough works whenever the device area has focus.
 
+import HostRuntime
 import Cocoa
 
 final class DeviceViewController: NSViewController {
@@ -18,7 +19,7 @@ final class DeviceViewController: NSViewController {
         super.init(nibName: nil, bundle: nil)
         displayView.emulator = emulator
         let profile = emulator.profile
-        displayView.configureFreeForm(scan: DeviceProfile.panelScan(emulator.instance.panel), key: emulator.instance.id)
+        displayView.configureFreeForm(scan: Board.panelScan(emulator.instance.panel), key: emulator.instance.id)
         displayView.onPanelChange = { [weak emulator] upright, restart in
             emulator?.setPanel(upright.map(profile.panelOption(upright:)), restart: restart) ?? false
         }

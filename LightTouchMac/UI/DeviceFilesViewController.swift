@@ -1,3 +1,4 @@
+import HostRuntime
 import Cocoa
 import Quartz
 import UniformTypeIdentifiers
@@ -16,7 +17,7 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
     private let browser = NSBrowser()
     private let status = NSTextField(wrappingLabelWithString: "")
     private let progress = NSProgressIndicator()
-    private let profile: DeviceProfile
+    private let profile: Board
     private let upload: NSButton
     private let download = NSButton(title: "Save to Mac…", target: nil, action: nil)
     private let refresh = NSButton(title: "Refresh", target: nil, action: nil)
@@ -36,7 +37,7 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
     private var idleStatusWidth: NSLayoutConstraint!
     private var activeStatusWidth: NSLayoutConstraint!
 
-    init(profile: DeviceProfile) {
+    init(profile: Board) {
         self.profile = profile
         upload = NSButton(title: "Copy to \(profile.shortName)…", target: nil, action: nil)
         super.init(nibName: nil, bundle: nil)

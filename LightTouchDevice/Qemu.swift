@@ -1,22 +1,23 @@
 import DeviceRuntime
+import HostRuntime
 // libqemu-arm.dylib, dlopen'ed. The helper never links it: which build runs is
 // chosen at launch (LTM_QEMU_DYLIB in a Debug build, else the bundle's
 // Frameworks, else the build rpath) and reported in the hello.
 
 import Foundation
 
+/// qemu-ios-ui.h QemuIosDeviceInfo (C API 2.0).
 struct QemuDeviceInfoC {
     var machine: UnsafePointer<CChar>?
-    var screenWidth: Int32
-    var screenHeight: Int32
-    var screenScale: Int32
-    var defaultOrientation: Int32
-    var hasCellular: Bool
+    var board: UnsafePointer<CChar>?
+    var screenWidth, screenHeight, screenScale, defaultOrientation: Int32
+    var hasCellular, hasUSBHost, hasCompass, hasUSBCharger: Bool
+    var panelMin, panelMaxWidth, panelMaxHeight, panelWidthStep, panelMaxPixels: Int32
 }
 
 final class Qemu: @unchecked Sendable {
     /// The libqemu-arm.dylib C API major version this helper binds.
-    static let apiMajor: UInt32 = 1
+    static let apiMajor: UInt32 = 2
     let path: String
     private let handle: UnsafeMutableRawPointer
 
@@ -77,7 +78,7 @@ final class Qemu: @unchecked Sendable {
     typealias IntFn = @convention(c) () -> Int32
 
     lazy var main = sym("qemu_ios_main", (@convention(c) (Int32, UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) -> Int32).self)
-    lazy var deviceInfo = sym("qemu_ios_device_info", (@convention(c) (UnsafePointer<CChar>) -> UnsafeRawPointer?).self)
+    lazy var deviceInfoAt = sym("qemu_ios_device_info_at", (@convention(c) (Int32) -> UnsafeRawPointer?).self)
     lazy var attach = sym("qemu_ios_ui_attach", (@convention(c) (UnsafeRawPointer?, UnsafeRawPointer?) -> Void).self)
     lazy var frame = sym("qemu_ios_ui_frame", (@convention(c) (UnsafeMutablePointer<UnsafeRawPointer?>, UnsafeMutablePointer<Int32>, UnsafeMutablePointer<Int32>, UnsafeMutablePointer<UInt64>) -> Bool).self)
     lazy var ready = sym("qemu_ios_ui_ready", BoolFn.self)
@@ -133,13 +134,21 @@ final class Qemu: @unchecked Sendable {
     lazy var audioRead = sym("qemu_ios_audio_capture_read", (@convention(c) (UInt64, UnsafeMutableRawPointer?, Int32, UnsafeMutablePointer<Double>?) -> Int32).self)
     lazy var audioStop = sym("qemu_ios_audio_capture_stop", (@convention(c) (UInt64) -> Void).self)
 
-    func info(machine: String) -> DeviceInfo? {
-        guard let raw = machine.withCString({ deviceInfo($0) }) else { return nil }
-        let c = raw.load(as: QemuDeviceInfoC.self)
-        return DeviceInfo(machine: c.machine.map { String(cString: $0) } ?? machine,
-                          screenWidth: Int(c.screenWidth), screenHeight: Int(c.screenHeight),
-                          screenScale: Int(c.screenScale), defaultOrientation: Int(c.defaultOrientation),
-                          hasCellular: c.hasCellular)
+    /// Every machine the library runs (qemu_ios_device_info_at).
+    var machines: [DeviceInfo] {
+        var list: [DeviceInfo] = []
+        while let raw = deviceInfoAt(Int32(list.count)) {
+            let c = raw.load(as: QemuDeviceInfoC.self)
+            func string(_ p: UnsafePointer<CChar>?) -> String { p.map { String(cString: $0) } ?? "" }
+            list.append(DeviceInfo(machine: string(c.machine), board: string(c.board), screenWidth: Int(c.screenWidth),
+                                   screenHeight: Int(c.screenHeight), screenScale: Int(c.screenScale),
+                                   defaultOrientation: Int(c.defaultOrientation), hasCellular: c.hasCellular,
+                                   hasUSBHost: c.hasUSBHost, hasCompass: c.hasCompass, hasUSBCharger: c.hasUSBCharger,
+                                   panelMin: Int(c.panelMin), panelMaxWidth: Int(c.panelMaxWidth),
+                                   panelMaxHeight: Int(c.panelMaxHeight), panelWidthStep: Int(c.panelWidthStep),
+                                   panelMaxPixels: Int(c.panelMaxPixels)))
+        }
+        return list
     }
 
     var modified: Double {

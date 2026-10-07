@@ -11,12 +11,15 @@ for the read-only view). Checks:
 - a 1.x device that wasn't shut down cleanly gets the offer to shut it down first, not firmwarekit's error.
 """
 from pathlib import Path
-import subprocess, tempfile
+import subprocess, sys, tempfile
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+import host_runtime
 
 root = Path(__file__).resolve().parents[2]
 
 stubs = r'''
 import Cocoa
+import HostRuntime
 enum DeviceAction { case start, openFilesystem, commitFilesystem, discardFilesystem, recoverFilesystem }
 enum DeviceToolsError: Error { case failed(String) }
 enum FirmwareCatalog { struct Entry { let id: String } }
@@ -25,6 +28,7 @@ struct DeviceInstance {
     let id = UUID()
     let board: String
     let paths: Paths
+    var profile: Board? { Board(rawValue: board) }
 }
 final class DeviceLibrary {
     static let didChangeNotification = Notification.Name("lib")
@@ -137,7 +141,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-fs-edits-') as tmp:
     tmp = Path(tmp)
     (tmp / 'stubs.swift').write_text(stubs)
     (tmp / 'main.swift').write_text(check)
-    subprocess.run(['xcrun', 'swiftc', '-parse-as-library', '-module-cache-path', str(tmp / 'modules'),
+    subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(root), '-parse-as-library',
                     str(root / 'LightTouchMac/Library/DeviceFilesystemEdits.swift'), str(tmp / 'stubs.swift'), str(tmp / 'main.swift'),
                     '-o', str(tmp / 'check')], check=True)
     (tmp / 'devices').mkdir()

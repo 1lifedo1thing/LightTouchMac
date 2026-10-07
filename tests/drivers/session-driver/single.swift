@@ -74,19 +74,19 @@ struct SingleConfig: Decodable {
 @MainActor func runSingle(_ s: SingleConfig) async {
     let ipad = s.board == "ipad"
     // The S5L8900 boards (the 1G and the original iPhone) share the 1.x paths; boardID is FirmwareKit's.
-    let (profile, boardID): (DeviceProfile, String) = switch s.board {
-    case "ipad": (.iPad1, "k48ap")
-    case "ipod1g": (.iPodTouch1G, "n45ap")
-    case "iphone2g": (.iPhone2G, "m68ap")
-    case "ipod4g": (.iPodTouch4G, "n81ap")
-    case "iphone4": (.iPhone4, "n90ap")
-    case "ipod3g": (.iPodTouch3G, "n18ap")
-    case "iphone3gs": (.iPhone3GS, "n88ap")
-    default: (.iPodTouch2G, "n72ap")
+    let (profile, boardID): (Board, String) = switch s.board {
+    case "ipad": (.k48, "k48ap")
+    case "ipod1g": (.n45, "n45ap")
+    case "iphone2g": (.m68, "m68ap")
+    case "ipod4g": (.n81, "n81ap")
+    case "iphone4": (.n90, "n90ap")
+    case "ipod3g": (.n18, "n18ap")
+    case "iphone3gs": (.n88, "n88ap")
+    default: (.n72, "n72ap")
     }
     // The A4 and S5L8920 boards boot as the iPad does (kboot, the armv7 offer from ipadItpack); input, wake and
     // power-off stay the phone's.
-    let a4 = profile.isA4
+    let a4 = profile.isKBoot
     let d = Device(name: s.board, profile: profile)
     let b = URL(fileURLWithPath: s.base)
     if s.board == "ipod" || (a4 && !ipad) { d.preparedBase = b }
@@ -96,7 +96,7 @@ struct SingleConfig: Decodable {
         catch { fail("boot lock: \(error)") }
         d.ipod = .init(nand: b.appendingPathComponent("nand").path, nor: b.appendingPathComponent("nor.bin").path,
                        iBoot: iBoot, gidBlobs: b.appendingPathComponent("gid-blobs.bin").path,
-                       machine: BootRecipe.lockMachine(b.appendingPathComponent("device.lock.json")))
+                       machine: (try? DeviceLock.read(base: b))??.machineOptions(base: b) ?? [:])
     }
     // Composed per boot from the device's verdicts, as the app's composeGuestOffer (an iPad's in Device.boot);
     // `offered`: this boot carries one (compose gives none for a stub seed).
@@ -110,15 +110,15 @@ struct SingleConfig: Decodable {
         } catch { emit("offerError", ["error": "\(error)"]); offered = false; return nil }
     }
     // The lock says whether the bake installed it_agent, including a fitted legacy build.
-    let lock = (try? JSONSerialization.jsonObject(with: Data(contentsOf: b.appendingPathComponent("device.lock.json")))) as? [String: Any]
+    let lock = (try? DeviceLock.read(base: b)) ?? nil
     let identity = (try? JSONSerialization.jsonObject(with: Data(contentsOf: b.appendingPathComponent("identity.json")))) as? [String: Any]
     // 7.x boots, pairs and walks Setup far slower (qemu-ios e7ec3ded6a: about 1400 s of QEMU for app-install).
-    let slow = Double((lock?["product_version"] as? String ?? "").split(separator: ".").first ?? "").map { $0 >= 7 ? 2.5 : 1 } ?? 1
-    let lockAgent = ((lock?["guest_package"] as? [String: Any])?["jobs"] as? [String])?.contains("com.qemu.it-agent.plist") ?? false
-    let agent = d.profile.hasGuestTools && (((lock?["derived"] as? [String: Any])?["guest_tools"] as? String)?.hasPrefix("installed") ?? true)
+    let slow = Double((lock?.productVersion ?? "").split(separator: ".").first ?? "").map { $0 >= 7 ? 2.5 : 1 } ?? 1
+    let lockAgent = lock?.guestPackage?["jobs"]?.strings?.contains("com.qemu.it-agent.plist") ?? false
+    let agent = d.profile.hasGuestTools && (lock?.derived?["guest_tools"]?.string?.hasPrefix("installed") ?? true)
     // 2.x reboot(RB_HALT) unmounts then halts the CPU without writing PMU standby.
     // Its stock power sheet does power off, even when a legacy agent is installed.
-    let agentCanPowerOff = agent && ((lock?["product_version"] as? String ?? "3.1")
+    let agentCanPowerOff = agent && ((lock?.productVersion ?? "3.1")
         .compare("3.1", options: .numeric) != .orderedAscending)
 
     func boot(_ generation: Int) async {
@@ -311,9 +311,9 @@ struct SingleConfig: Decodable {
     /// GUI Stop is a separate hard halt and does not establish guest unmount.
     func shutdown(_ generation: Int) async {
         let quit = Date()
-        if s.prefersHostPowerGesture(build: lock?["build"] as? String) && !ipad {
+        if s.prefersHostPowerGesture(build: lock?.build) && !ipad {
             do {
-                try await HostInputAutomation.shutdown(d.process, firstGeneration: profile == .iPodTouch1G)
+                try await HostInputAutomation.shutdown(d.process, firstGeneration: profile == .n45)
                 emit("hostPowerGesture", ["device": d.name, "generation": generation, "confirmed": d.process.status?.shutdownConfirmed == true])
             } catch {
                 emit("hostPowerGesture", ["device": d.name, "generation": generation, "error": "\(error)"])
@@ -424,9 +424,9 @@ struct SingleConfig: Decodable {
     // launch() goes through the guest agent wherever it answers (judged on the frontmost app), else taps the icon.
     if s.launch == true { await launch(d, at: s.launchAt, tap: s.tapAfterLaunch) }
     if s.media != nil {
-        let version = lock?["product_version"] as? String ?? "", build = lock?["build"] as? String ?? ""
-        let firmware = MediaSupport.Firmware(board: ipad ? "k48ap" : s.board == "ipod1g" ? "n45ap" : "n72ap",
-                                             version: version, build: build, name: "iOS \(version)")
+        let version = lock?.productVersion ?? ""
+        let firmware = MediaSupport.Firmware(version: version, name: "iOS \(version)",
+                                             media: lock?.entry?["content"]?["media"]?.strings ?? [])
         await mediaRoundTrip(d, s, firmware: firmware, packaged: offered)
     }
 

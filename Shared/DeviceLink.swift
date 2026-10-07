@@ -52,8 +52,9 @@ nonisolated public enum DeviceTermination: Sendable, Equatable {
 nonisolated public final class DeviceLink: @unchecked Sendable {
     public struct Configuration: Sendable {
         /// Contents/MacOS/LightTouchDevice beside the running executable.
-        public var helper: URL = Bundle.main.executableURL!.deletingLastPathComponent()
+        public static let bundledHelper = Bundle.main.executableURL!.deletingLastPathComponent()
             .appendingPathComponent("LightTouchDevice")
+        public var helper: URL = bundledHelper
         public var instance: UUID
         /// The helper's stdout + stderr, e.g. ProcessLogCapture.writeDescriptor
         /// for Devices/<uuid>/native.log. -1: /dev/null.
@@ -63,8 +64,8 @@ nonisolated public final class DeviceLink: @unchecked Sendable {
         public var dylib: String? = nil
         /// Extra environment for the helper process (QEMU's boot env goes in BootConfig).
         public var environment: [String: String] = [:]
-        /// Machine for hello's deviceInfo.
-        public var machine: String? = nil
+        /// The board ID for hello's deviceInfo.
+        public var board: String? = nil
         /// Code requirement for the helper; nil = DeviceRendezvous.defaultRequirement.
         public var requirement: String? = nil
         /// Spawn -> valid Mach hello + hello reply.
@@ -185,7 +186,7 @@ nonisolated public final class DeviceLink: @unchecked Sendable {
             onClose: { [weak self] error in self?.invalidate(.closed(error.map { "\($0)" } ?? "end of file"), kill: false) })
         lock.withLock { self.channel = channel }
 
-        request(.hello(protocolVersion: DeviceLinkWire.protocolVersion, machine: configuration.machine),
+        request(.hello(protocolVersion: DeviceLinkWire.protocolVersion, board: configuration.board),
                 timeout: configuration.connectTimeout) { [weak self] result in
             guard let self else { return }
             switch result {

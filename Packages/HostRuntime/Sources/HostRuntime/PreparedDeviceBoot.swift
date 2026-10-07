@@ -7,43 +7,6 @@ import Darwin
 /// record paths or enforce containment. Maintenance ownership checks stay with
 /// the application's storage transaction boundary.
 public struct PreparedDeviceBoot {
-    public enum Board: String, Sendable, CaseIterable {
-        case n45 = "n45ap", n72 = "n72ap", k48 = "k48ap", n81 = "n81ap", n90 = "n90ap", n88 = "n88ap", n18 = "n18ap", m68 = "m68ap"
-
-        /// The A4 boards (the ipad1 machine family) and the S5L8920 iPhone 3GS, which FirmwareKit prepares
-        /// the same way: kboot/iboot via BootRecipe.iPad.
-        /// The boards with a cellular modem (qemu-ios ios-baseband): the original iPhone, the 3GS and the iPhone 4.
-        public var hasRadio: Bool { self == .m68 || self == .n88 || self == .n90 }
-        public var isA4: Bool { self == .k48 || self == .n81 || self == .n90 || self == .n88 || self == .n18 }
-        /// An A4 board's -M name.
-        var a4Machine: String { [.n81: "iPod-Touch-4G", .n90: "iPhone-4", .n88: "n88", .n18: "n18"][self] ?? "ipad1" }
-
-        public func requiredFiles(strategy: String?) throws -> (boot: String, files: [String]) {
-            switch self {
-            case .n81, .n90, .n88, .n18:
-                // kboot only (FirmwareKit's n81 recipe); nor.bin carries the grafted NOR's effaceable storage.
-                guard strategy == nil || strategy == "kboot" else { throw PreparedDeviceBoot.unknownStrategy(strategy!) }
-                return ("kboot.bin", ["nor.bin"])
-            case .k48:
-                switch strategy {
-                case nil, "kboot": return ("kboot.bin", [])
-                case "iboot": return ("iBoot.bin", ["nor.bin", "gid-blobs.bin"])
-                case "bootrom": return ("SecureROM.bin", ["nor.bin", "gid-blobs.bin"])
-                default: throw PreparedDeviceBoot.unknownStrategy(strategy!)
-                }
-            case .n72:
-                switch strategy {
-                case nil, "iboot": return ("iBoot.bin", ["nor.bin", "gid-blobs.bin"])
-                case "bootrom": return ("nor.bin", ["gid-blobs.bin"])
-                default: throw PreparedDeviceBoot.unknownStrategy(strategy!)
-                }
-            case .n45, .m68:
-                guard strategy == nil || strategy == "iboot" else { throw PreparedDeviceBoot.unknownStrategy(strategy!) }
-                return ("iBoot.bin", ["nor.bin"])
-            }
-        }
-    }
-
     public enum Failure: Error, Equatable { case baseMismatch }
     private let board: Board
     private let boot: URL
@@ -57,22 +20,18 @@ public struct PreparedDeviceBoot {
     private let dieID: String?
     private let machine: [String: String]
 
-    private static func unknownStrategy(_ strategy: String) -> CocoaError {
-        CocoaError(.fileReadCorruptFile, userInfo: [NSLocalizedDescriptionKey: "Unknown boot strategy: \(strategy)"])
-    }
-
     public static func prepare(board: Board, base: URL, overlay: URL, writableNOR: URL?,
                                storageKey: String?, bootrom: String, dieID: String? = nil,
                                panel: String? = nil) throws -> Self {
-        let lock = base.appendingPathComponent("device.lock.json")
-        let strategy = try BootRecipe.bootStrategy(lock)
+        let lock = try DeviceLock.read(base: base)
+        let strategy = lock?.bootStrategy
         let required = try board.requiredFiles(strategy: strategy)
         let files = try BootRecipe.preparedFiles(base: base, overlay: overlay, writableNOR: writableNOR,
                                                   boot: required.boot, also: required.files)
-        if !board.isA4, files.writableNOR == nil {
+        if !board.isKBoot, files.writableNOR == nil {
             throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: "writable NOR"])
         }
-        if board.isA4 {
+        if board.isKBoot {
             _ = try BootRecipe.preparedIPadBoot(strategy: strategy, image: files.boot.path,
                 writableNOR: files.writableNOR?.path, gidBlobs: base.appendingPathComponent("gid-blobs.bin").path)
         }
@@ -84,8 +43,8 @@ public struct PreparedDeviceBoot {
         return Self(board: board, boot: files.boot, nand: files.nand,
                     baseNOR: base.appendingPathComponent("nor.bin"), writableNOR: files.writableNOR,
                     overlay: overlay, bootrom: bootrom, strategy: strategy,
-                    gidBlobs: board == .n45 || board == .m68 ? nil : base.appendingPathComponent("gid-blobs.bin").path,
-                    dieID: unitDieID, machine: BootRecipe.lockMachine(lock).merging(panel.map { ["panel": $0] } ?? [:]) { $1 })
+                    gidBlobs: board.soc == .s5l8900 ? nil : base.appendingPathComponent("gid-blobs.bin").path,
+                    dieID: unitDieID, machine: (lock?.machineOptions(base: base) ?? [:]).merging(panel.map { ["panel": $0] } ?? [:]) { $1 })
     }
 
     /// Explicit adapter for pre-library N72 regression fixtures with separate images.
@@ -133,37 +92,39 @@ public struct PreparedDeviceBoot {
         return (try? String(contentsOf: stamp, encoding: .utf8)) == identity
     }
 
-    public func configuration(bootArgs: String, usbAddress: String?, wifi: Bool,
+    /// `hardware`: the emulator's facts about the board (its hello's DeviceInfo; else Machines'): the -M machine,
+    /// the modem, the USB host.
+    public func configuration(hardware: DeviceInfo? = nil, bootArgs: String, usbAddress: String?, wifi: Bool,
                               guestPackage: String?, serial: String, audio: [String],
                               netdev: String?, restore: [String] = [], webProxy: WebProxyEndpoint? = nil,
                               cellular: BootRecipe.Cellular = .on, carrier: CarrierSettings? = nil) throws -> BootConfig {
+        guard let hardware = hardware ?? board.hardware else {
+            throw CocoaError(.featureUnsupported, userInfo: [NSLocalizedDescriptionKey: "The emulator library has no machine for \(board.rawValue)."])
+        }
         var config: BootConfig
-        switch board {
-        case .n45, .m68:
+        switch board.soc {
+        case .s5l8900:
             config = BootRecipe.iPod1G(.init(bootrom: bootrom, iBoot: boot.path, nand: nand.path,
                         writableNOR: writableNOR!.path, overlay: overlay.path, usbAddress: usbAddress,
-                        wifi: wifi, guestPackage: guestPackage, machineOptions: machine,
-                        machineName: board == .m68 ? "iPhone-2G" : "iPod-Touch-1G"),
-                        serial: serial, audio: audio, netdev: netdev)
-        case .n72:
+                        wifi: wifi, guestPackage: guestPackage, machineOptions: machine),
+                        hardware: hardware, serial: serial, audio: audio, netdev: netdev)
+        case .s5l8720:
             config = BootRecipe.iPod(.init(bootArgs: bootArgs, iBoot: strategy == "bootrom" ? "" : boot.path,
                         bootrom: bootrom, nand: nand.path, nor: baseNOR.path, writableNOR: writableNOR!.path,
                         overlay: overlay.path, usbAddress: usbAddress, wifi: wifi,
                         gidBlobs: gidBlobs, guestPackage: guestPackage, machineOptions: machine),
-                        serial: serial, audio: audio, netdev: netdev, restore: restore)
-        case .k48, .n81, .n90, .n88, .n18:
+                        hardware: hardware, serial: serial, audio: audio, netdev: netdev, restore: restore)
+        case .s5l8920, .s5l8930:
             let bootPath = try BootRecipe.preparedIPadBoot(strategy: strategy, image: boot.path,
                                                           writableNOR: writableNOR?.path, gidBlobs: gidBlobs)
             var ipad = BootRecipe.IPad(boot: bootPath, nand: nand.path, overlay: overlay.path,
                         dieID: dieID, usbAddress: usbAddress, wifi: wifi,
                         guestPackage: guestPackage, machineOptions: machine)
             ipad.cellular = cellular
-            config = BootRecipe.iPad(ipad,
-                        serial: serial, audio: audio, netdev: netdev, restore: restore,
-                        board: board.a4Machine)
+            config = BootRecipe.iPad(ipad, hardware: hardware, serial: serial, audio: audio, netdev: netdev, restore: restore)
         }
         // The device's saved Carrier panel settings: the modem starts with them (radio boards only).
-        if let carrier, board.hasRadio { config.argv += carrier.globals }
+        if let carrier, hardware.hasCellular { config.argv += carrier.globals }
         config.webProxy = webProxy
         return config
     }

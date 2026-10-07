@@ -28,7 +28,7 @@ import threading
 import time
 import unicodedata
 from types import SimpleNamespace
-DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device/DeviceProfile.swift')
+DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device/Board+App.swift')
 
 parser = argparse.ArgumentParser(description=__doc__)
 mode = parser.add_mutually_exclusive_group()
@@ -136,9 +136,9 @@ final class Progress: @unchecked Sendable {
         let source = URL(fileURLWithPath:CommandLine.arguments[1])
         func prepare() async throws -> PreparedMedia {
             if MediaVideo.extensions.contains(source.pathExtension.lowercased()) {
-                return .video(try await MediaVideo.prepare(source, cacheDirectory: source.deletingLastPathComponent().appendingPathComponent("video-cache"), profile: .iPodTouch2G))
+                return .video(try await MediaVideo.prepare(source, cacheDirectory: source.deletingLastPathComponent().appendingPathComponent("video-cache"), profile: .n72))
             }
-            return try await PreparedMedia.prepare(source, profile: .iPodTouch2G)
+            return try await PreparedMedia.prepare(source, profile: .n72)
         }
         let media = try await prepare()
         defer { try? FileManager.default.removeItem(at: media.directory) }

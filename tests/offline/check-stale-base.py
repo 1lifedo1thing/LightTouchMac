@@ -106,6 +106,6 @@ with tempfile.TemporaryDirectory(prefix='ltm-stale-base-') as tmp:
         specs.append(f'{name}:{entry_id}:{path}:{int(flagged)}:{device}')
     (tmp / 'main.swift').write_text(check)
     subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(root), '-parse-as-library', '-swift-version', '5', '-module-cache-path', str(tmp / 'modules'),
-                    str(root / 'Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift'), str(app / 'Library/FirmwareCatalog.swift'), str(app / 'Device/DeviceProfile.swift'),
+                    str(root / 'Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift'), str(app / 'Library/FirmwareCatalog.swift'), str(app / 'Device/Board+App.swift'),
                     str(app / 'Device/DeviceRow.swift'), str(tmp / 'main.swift'), '-o', str(tmp / 'check')], check=True)
     subprocess.run([str(tmp / 'check'), str(app / 'Resources/firmware-catalog.json'), *specs], check=True, timeout=60)

@@ -115,7 +115,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-sidebar-list-') as tmp:
     tmp = Path(tmp)
     (tmp / 'main.swift').write_text(check)
     subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), *schema_sources(), '-parse-as-library', '-swift-version', '5', '-module-cache-path', str(tmp / 'modules'),
-                    str(app / 'Library/FirmwareCatalog.swift'), str(app / 'Device/DeviceProfile.swift'),
+                    str(app / 'Library/FirmwareCatalog.swift'), str(app / 'Device/Board+App.swift'),
                     str(app / 'Device/DeviceRow.swift'), str(app / 'Library/SidebarList.swift'),
                     str(tmp / 'main.swift'), '-o', str(tmp / 'check')], check=True)
     subprocess.run([str(tmp / 'check'), str(app / 'Resources/firmware-catalog.json')], check=True, timeout=60)

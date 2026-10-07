@@ -25,7 +25,8 @@ final class K48Board: Board {
     var a4: KBoot.Board { ["n81ap": .n81, "n90ap": .n90, "n88ap": .n88, "n18ap": .n18][board] ?? .k48 }
     /// The S5L8920 family (-M n18, n88): the IPSW's NAND epoch.
     var s5l8920: Bool { a4.isS5L8920 }
-    var machine: String { a4.machine }
+    /// The emulator's facts about the board (its -M machine, modem, USB host), from the helper (check()).
+    var hardware: DeviceInfo!
     let volumesStep = "Building the system and data volumes", keybagStep = "Creating the data-protection keybag"
     var bootStep: String { iboot ? "Writing the identity and boot chain" : "Writing the identity and boot image" }
     /// The seal boot halts through it_seal, a guest helper: none without them (guest_tools off).
@@ -38,17 +39,18 @@ final class K48Board: Board {
     /// NOR (blank on 3.x: NVRAM only).
     var kbootNOR: Bool { dataProtection || s5l8920 }
     var dieID: String { (ident.dieID ?? []).joined(separator: ":") }
-    /// The radio boards' one-shot boots carry the modem with the lock's IMEI, as BootRecipe boots them: a phone's
-    /// lockdownd decides activation from CommCenter (6.0's keeps FactoryActivated only for a phone it can see), and
-    /// what the seal boot decides is what the store keeps.
-    var modem: String { IPhoneIdentity.a4Boards.contains(board) ? ",baseband=on" + (ident["imei"].map { ",imei=\($0)" } ?? "") : "" }
-    /// What every boot of the device carries, as BootRecipe boots it (the lock's "machine"): the modem, and the
-    /// recipe's pinned clock (a beta's lockdownd stops activating past its expiry date).
-    var bootOptions: String { wifiOption + modem + (recipe.rtcEpoch.map { ",rtc-epoch=\($0)" } ?? "") }
-    /// The BCM4329's CIS address on the iPad machine (its wifi-mac property): the same unit address KBoot/K48IBoot
-    /// write to the device tree and NOR. The N81/N90 machines take theirs from the device tree's /chosen only.
-    var wifiMAC: String? { board == "k48ap" ? ident["wifi-mac"] : nil }
-    var wifiOption: String { wifiMAC.map { ",wifi-mac=\($0)" } ?? "" }
+    /// What every boot of the device carries (the lock's "machine", which BootRecipe passes): the modem's IMEI (the
+    /// identity's, which lockdownd/MobileGestalt hash into the UDID; a phone's lockdownd decides activation from
+    /// CommCenter, and what the seal boot decides is what the store keeps), the recipe's pinned clock (a beta's
+    /// lockdownd stops activating past its expiry date) and K48's BCM4329 CIS address (its wifi-mac property: the
+    /// unit address KBoot/K48IBoot write to the device tree and NOR; the N81/N90 machines take theirs from /chosen).
+    var machineOptions: [String: String] {
+        var options: [String: String] = [:]
+        options["imei"] = ident["imei"]
+        options["rtc-epoch"] = recipe.rtcEpoch.map(String.init)
+        if board == "k48ap" { options["wifi-mac"] = ident["wifi-mac"] }
+        return options
+    }
     var ident: UnitIdentity!
     /// The keybag and seal one-shots' limit. 7.x's launchd starts our RunAtLoad daemons (it_seal among them) about
     /// 170 s into the boot, and it_seal halts 40 s later: modem-on 7.0-7.0.6 seals took 118-229 s, 7.1.2's about
@@ -65,7 +67,7 @@ final class K48Board: Board {
         let kbootOnly = o.entry.board != "k48ap"
         strategy = recipe.boot ?? (kbootOnly ? "kboot" : "iboot")
         guard strategy == "iboot" || strategy == "kboot" else { throw FirmwareError(.unsupported, "\(o.entry.id): unknown boot strategy \(strategy)") }
-        guard !(kbootOnly && strategy == "iboot") else { throw FirmwareError(.unsupported, "\(o.entry.id): the \(["n90ap": "iPhone 4", "n88ap": "iPhone 3GS", "n18ap": "iPod touch 3G"][o.entry.board] ?? "iPod touch 4G") boots by kboot only (no NAND boot chain yet)") }
+        guard !(kbootOnly && strategy == "iboot") else { throw FirmwareError(.unsupported, "\(o.entry.id): the \(HostRuntime.Board(rawValue: o.entry.board)?.marketingName ?? o.entry.board) boots by kboot only (no NAND boot chain yet)") }
         iboot = strategy == "iboot"
         dataProtection = recipe.options["writable_nor"] == true
     }
@@ -79,6 +81,11 @@ final class K48Board: Board {
         }
         self.helper = helper
         patcher = K48IBoot.patcher(helper: helper)
+        Machines.helper = helper
+        guard let hardware = HostRuntime.Board(rawValue: board)?.hardware else {
+            throw FirmwareError(.internal, "\(helper.lastPathComponent)'s emulator library has no machine for \(board)")
+        }
+        self.hardware = hardware
     }
 
     /// The iBoot names exactly one kernelcache path (N72Board.kernelcachePath) and it is SystemEdits.kernelcachePath.
@@ -96,7 +103,7 @@ final class K48Board: Board {
     func identity(seed: String) throws -> UnitIdentity {
         ident = try UnitIdentity.synthesize(seed: seed, storage: recipe.storage, modelNumber: kbootBoard ? a4.modelNumber : nil)
         // The radio boards: the modem reports the IMEI, and lockdownd/MobileGestalt hash it into the UDID.
-        if IPhoneIdentity.a4Boards.contains(board) { ident = ident.addingIMEI(seed: seed) }
+        if HostRuntime.Board(rawValue: board)?.kbootPhone == true { ident = ident.addingIMEI(seed: seed) }
         return ident
     }
 
@@ -199,8 +206,8 @@ final class K48Board: Board {
         let attempts = 3
         for attempt in 1...attempts {
             let serial = work.appendingPathComponent("keybag-\(attempt).log")
-            let (r, text) = try Preparer.oneshot(helper, boot: "kboot=\(Preparer.esc(kboot))", machine: "nand=\(Preparer.esc(store)),nor-rw=\(Preparer.esc(nor)),die-id=\(dieID)" + bootOptions,
-                                                 serial: serial, stop: "panic(", timeout: oneshotTimeout, work: work, log: c.log, board: machine)
+            let (r, text) = try oneshot(c, .kernel(image: kboot.path, writableNOR: nor.path), store: store, overlay: nil,
+                                        serial: serial, stop: "panic(", timeout: oneshotTimeout)
             for line in text.split(separator: "\n") where line.contains("it_keybag:") { c.log(String(line)) }
             if r.exited, text.contains(Preparer.keybagDone) { break }
             let why = text.split(separator: "\n").first { $0.contains("panic(") }
@@ -219,32 +226,39 @@ final class K48Board: Board {
     /// without the full R/O restore.
     func seal(_ c: Recipe.Context) throws {
         let work = c.work, store = c.nand, nor = norURL(c)
-        let boot: String, extra: String
-        if iboot {
-            // ipad1_seal.py --iboot: enter the patched iBoot with the catalog keys; the writable NOR is where this
-            // boot's effaceable/NVRAM writes land (no base nor=). die-id must be non-zero or iBoot rejects it.
-            boot = "iboot=\(Preparer.esc(c.file("iBoot.bin"))),gid-blobs=\(Preparer.esc(c.file("gid-blobs.bin")))"
-            extra = ",die-id=\(dieID),nor-rw=\(Preparer.esc(nor!))" + bootOptions
-        } else {
-            boot = "kboot=\(Preparer.esc(c.file("kboot.bin")))"
-            extra = ",die-id=\(dieID)" + (nor.map { ",nor-rw=\(Preparer.esc($0))" } ?? "") + bootOptions
-        }
+        // ipad1_seal --iboot: enter the patched iBoot with the catalog keys; the writable NOR is where this boot's
+        // effaceable/NVRAM writes land (no base nor=). die-id must be non-zero or iBoot rejects it.
+        let boot: BootRecipe.IPadBoot = iboot
+            ? .iBoot(image: c.file("iBoot.bin").path, writableNOR: nor!.path, gidBlobs: c.file("gid-blobs.bin").path)
+            : .kernel(image: c.file("kboot.bin").path, writableNOR: nor?.path)
         let serial = work.appendingPathComponent("seal.log")
-        let (r, text) = try Preparer.oneshot(helper, boot: boot, machine: "nand=\(Preparer.esc(store))" + extra, serial: serial, stop: nil,
-                                             timeout: oneshotTimeout, work: work, log: c.log, board: machine)
+        let (r, text) = try oneshot(c, boot, store: store, overlay: nil, serial: serial, stop: nil, timeout: oneshotTimeout)
         guard r.exited, text.contains(Preparer.halting) else {
             throw FirmwareError(.oneshotFailed, "seal boot: \(r.exited ? "QEMU exited without it_seal" : "no clean halt") after \(Int(r.seconds)) s")
         }
         let overlay = work.appendingPathComponent("seal-overlay")
         try FileManager.default.createDirectory(at: overlay, withIntermediateDirectories: true)
-        let (ck, check) = try Preparer.oneshot(helper, boot: boot, machine: "nand=\(Preparer.esc(store)),nand-overlay=\(Preparer.esc(overlay))" + extra,
-                                               serial: work.appendingPathComponent("check.log"), stop: nil, stopPattern: Preparer.ftlOpen, timeout: 120,
-                                               work: work, log: c.log, board: machine)
+        let (ck, check) = try oneshot(c, boot, store: store, overlay: overlay, serial: work.appendingPathComponent("check.log"),
+                                      stop: nil, stopPattern: Preparer.ftlOpen, timeout: 120)
         guard ck.marker, Preparer.ftlOpened(check), !check.contains(Preparer.rescan) else {
             throw FirmwareError(.oneshotFailed, "check boot: \(check.contains(Preparer.rescan) ? "the store still rescans" : "no FTL_Open")")
         }
         try? FileManager.default.removeItem(at: overlay)
         c.log(check.split(separator: "\n").first { $0.contains("FTL_Open") }.map(String.init) ?? "FTL_Open [OK]")
+    }
+
+    /// One `LightTouchDevice --oneshot` boot of the store as the device boots (BootRecipe.iPad, the lock's machine
+    /// options), with no keyboard and no reboot: the one-shot ends when the guest shuts down, and a restart is a
+    /// shutdown too (4.3's launchd turns it_seal's reboot(RB_HALT) into its own clean reboot(RB_AUTOBOOT); 5.x's halt
+    /// restarts through the PMU), as qemu-ios imgtools/ipad1_seal.py (8edc395979). `overlay` nil writes the store.
+    func oneshot(_ c: Recipe.Context, _ boot: BootRecipe.IPadBoot, store: URL, overlay: URL?, serial: URL, stop: String?,
+                 stopPattern: String? = nil, timeout: Double) throws -> (Preparer.OneShot, String) {
+        let ipad = BootRecipe.IPad(boot: boot, nand: store.path, overlay: overlay?.path, dieID: dieID, usbAddress: nil,
+                                   wifi: true, machineOptions: machineOptions, oneShot: true)
+        let config = BootRecipe.iPad(ipad, hardware: hardware, serial: "file:\(serial.path)", audio: ["-audio", "driver=none"],
+                                     netdev: nil, restore: [])
+        return try Preparer.oneshot(helper, argv: config.argv, machine: config.machine, serial: serial, stop: stop,
+                                    stopPattern: stopPattern, timeout: timeout, work: c.work, log: c.log)
     }
 
     func lock(_ c: Recipe.Context) throws -> [String: Any] {
@@ -268,9 +282,7 @@ final class K48Board: Board {
             "identity": ["die_id": dieID],
             "outputs": outputs,
             "gl_test": SystemEdits.Options(recipe: recipe).glTest,
-            // -M <board>,imei=: the modem (baseband=on) reports the identity's IMEI, so the UDID matches it.
-            "machine": (ident["imei"].map { ["imei": $0] } ?? [:]).merging(recipe.rtcEpoch.map { ["rtc-epoch": String($0)] } ?? [:]) { a, _ in a }
-                .merging(wifiMAC.map { ["wifi-mac": $0] } ?? [:]) { a, _ in a },
+            "machine": machineOptions,
         ]
     }
 }

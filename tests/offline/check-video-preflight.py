@@ -2,7 +2,7 @@
 """Actual macOS iPod export: compatible movie, metadata, identity and cancellation."""
 from pathlib import Path
 import json, shutil, subprocess, sys, tempfile
-DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device/DeviceProfile.swift')
+DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device/Board+App.swift')
 
 root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(root / 'scripts'))
@@ -22,7 +22,7 @@ enum DeviceToolsError: LocalizedError {
   let source = URL(fileURLWithPath: CommandLine.arguments[1])
   let work = URL(fileURLWithPath: CommandLine.arguments[2])
   if CommandLine.arguments.count > 3 {   // a 720p source: the iPad keeps 720p, the iPod gets its own 640-wide copy
-   for (profile, name) in [(DeviceProfile.iPad1, "hd-ipad.m4v"), (.iPodTouch2G, "hd-ipod.m4v")] {
+   for (profile, name) in [(Board.k48, "hd-ipad.m4v"), (.n72, "hd-ipod.m4v")] {
     let prepared = try await MediaVideo.prepare(source, cacheDirectory: work.appendingPathComponent("hd-cache"), profile: profile)
     try FileManager.default.copyItem(at: prepared.video, to: work.appendingPathComponent(name))
     try? FileManager.default.removeItem(at: prepared.directory)
@@ -30,7 +30,7 @@ enum DeviceToolsError: LocalizedError {
    return
   }
   let original = try Data(contentsOf: source)
-  let first = try await MediaVideo.prepare(source, cacheDirectory: work.appendingPathComponent("cache"), profile: .iPodTouch2G)
+  let first = try await MediaVideo.prepare(source, cacheDirectory: work.appendingPathComponent("cache"), profile: .n72)
   defer { try? FileManager.default.removeItem(at: first.directory) }
   precondition(first.title == source.deletingPathExtension().lastPathComponent)
   precondition(first.video.lastPathComponent == "video.m4v" && UUID(uuidString: first.id) != nil)
@@ -43,7 +43,7 @@ enum DeviceToolsError: LocalizedError {
   precondition(duration > 5900 && duration < 6100)
   try FileManager.default.copyItem(at: first.video, to: work.appendingPathComponent("prepared.m4v"))
   try await Task.sleep(for: .milliseconds(1100))
-  let second = try await MediaVideo.prepare(source, cacheDirectory: work.appendingPathComponent("cache"), profile: .iPodTouch2G)
+  let second = try await MediaVideo.prepare(source, cacheDirectory: work.appendingPathComponent("cache"), profile: .n72)
   defer { try? FileManager.default.removeItem(at: second.directory) }
   precondition(first.id == second.id && first.directory != second.directory, "repeated exports must reconcile to one guest library item")
   let unchanged = try Data(contentsOf: source)
@@ -55,26 +55,26 @@ enum DeviceToolsError: LocalizedError {
   precondition(directoryMode.intValue == 0o700 && fileMode.intValue == 0o600)
   // Two simultaneous drops must adopt the same atomic cache winner.
   let simultaneous = work.appendingPathComponent("simultaneous-cache")
-  async let a = MediaVideo.prepare(source, cacheDirectory: simultaneous, profile: .iPodTouch2G)
-  async let b = MediaVideo.prepare(source, cacheDirectory: simultaneous, profile: .iPodTouch2G)
+  async let a = MediaVideo.prepare(source, cacheDirectory: simultaneous, profile: .n72)
+  async let b = MediaVideo.prepare(source, cacheDirectory: simultaneous, profile: .n72)
   let (left, right) = try await (a, b)
   defer { try? FileManager.default.removeItem(at: left.directory); try? FileManager.default.removeItem(at: right.directory) }
   precondition(left.id == right.id)
   // A damaged disposable cache entry can never poison future imports.
   try Data("invalid cache".utf8).write(to: cached)
-  let repaired = try await MediaVideo.prepare(source, cacheDirectory: cache, profile: .iPodTouch2G)
+  let repaired = try await MediaVideo.prepare(source, cacheDirectory: cache, profile: .n72)
   defer { try? FileManager.default.removeItem(at: repaired.directory) }
   let repairedSize = try FileManager.default.attributesOfItem(atPath: repaired.video.path)[.size] as! NSNumber
   precondition(repairedSize.intValue > 0)
   for name in ["empty.mp4", "broken.mov", "audio.mov", "folder.mp4", "unknown.avi"] {
-   do { _ = try await MediaVideo.prepare(work.appendingPathComponent(name), cacheDirectory: work.appendingPathComponent("cache"), profile: .iPodTouch2G); preconditionFailure("accepted \(name)") }
+   do { _ = try await MediaVideo.prepare(work.appendingPathComponent(name), cacheDirectory: work.appendingPathComponent("cache"), profile: .n72); preconditionFailure("accepted \(name)") }
    catch { }
   }
-  let cancelled = Task { try await MediaVideo.prepare(source, cacheDirectory: work.appendingPathComponent("cache"), profile: .iPodTouch2G) }
+  let cancelled = Task { try await MediaVideo.prepare(source, cacheDirectory: work.appendingPathComponent("cache"), profile: .n72) }
   cancelled.cancel()
   do { _ = try await cancelled.value; preconditionFailure("cancelled export succeeded") }
   catch is CancellationError { }
-  let duringExport = Task { try await MediaVideo.prepare(source, cacheDirectory: work.appendingPathComponent("cancel-cache"), profile: .iPodTouch2G) }
+  let duringExport = Task { try await MediaVideo.prepare(source, cacheDirectory: work.appendingPathComponent("cancel-cache"), profile: .n72) }
   try await Task.sleep(for: .milliseconds(10))
   duringExport.cancel()
   do { _ = try await duringExport.value; preconditionFailure("cancelled active export succeeded") }

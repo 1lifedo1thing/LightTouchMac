@@ -9,47 +9,15 @@ import DeviceRuntime
 // helper publishes that in the status block. The app judges the session
 // (good/bad) and records it in device.plist `guest`, and the next offer
 // carries those verdicts. No report: the image has no loader (legacy baked
-// tools), and the app keeps them current itself (GuestServices).
-//
-// Foundation only, so tests compile it as the app does.
+// tools), and the app keeps them current itself (GuestServices). The .itpack and offer formats are
+// HostRuntime's GuestPack, which FirmwareKit's seed writes too.
 
 import CryptoKit
 import Foundation
+import HostRuntime
 
 nonisolated enum GuestPackage {
-    /// One package's manifest.json.
-    struct Manifest: Codable, Sendable {
-        struct Requires: Codable, Sendable {
-            var boards: [String]
-            var builds: [String]
-            var host: [String: [Int]]?
-        }
-        struct File: Codable, Sendable {
-            var name: String
-            var mode: String
-            var size: Int
-            var sha256: String
-        }
-        struct Hook: Codable, Sendable {
-            var file: String
-            var target: String
-            var respring: Bool
-        }
-        var serial: Int64
-        var version: String
-        var family: String
-        var arch: String
-        var stub: Bool?
-        var requires: Requires
-        var files: [File]
-        var jobs: [String]
-        var hooks: [Hook]
-        /// The GL targets' stock paths (mkpkg GL_TARGETS: MBX, OPENGLES, the GL front end's): their hooks exist
-        /// only where the preparer installed the front end.
-        static let glTargets: Set<String> = [
-            "/System/Library/Frameworks/OpenGLES.framework/MBXGLEngine.bundle/MBXGLEngine",
-            "/System/Library/Frameworks/OpenGLES.framework/OpenGLES"]
-    }
+    typealias Manifest = GuestPack.Manifest
 
     /// What was offered this boot.
     struct Offer: Sendable, Equatable {
@@ -64,20 +32,12 @@ nonisolated enum GuestPackage {
         var ethlink = false
     }
 
-    /// The offer wire this app writes (it_boot's `ltpkg 1`), and the GL wire
-    /// range the host serves (QC_GLES_HELLO; 0 is no hello yet or no shim, 1 the name-keyed wire).
-    static let packageProtocol = 1
+    /// The GL wire range the host serves (QC_GLES_HELLO; 0 is no hello yet or no shim, 1 the name-keyed wire).
     static let glesProtocols = 0...1
-
-    static let magic = Data("ITPACK01".utf8)
 
     /// it_boot's R_* report codes.
     enum ReportCode: Int32 {
         case unchanged = 0, installed, switched, revertedBad, revertedTries, refused
-    }
-
-    static func arch(board: String) -> String? {
-        ["n72ap": "armv6", "n45ap": "armv6", "m68ap": "armv6", "k48ap": "armv7", "n81ap": "armv7", "n90ap": "armv7", "n88ap": "armv7", "n18ap": "armv7"][board]
     }
 
     /// The bundled itpack for an arch: the app's guest-tools (Bundled.guestRoot, which
@@ -95,73 +55,13 @@ nonisolated enum GuestPackage {
         return candidates.first { FileManager.default.isReadableFile(atPath: $0.path) }
     }
 
-    // MARK: - itpack
-
-    /// "ITPACK01", a little-endian u32 index length, the JSON index, then one zlib stream.
-    static func read(_ url: URL) throws -> [(name: String, data: Data)] {
-        func invalid(_ why: String) -> Error { DeviceToolsError.failed("\(url.lastPathComponent): \(why)") }
-        let blob = try Data(contentsOf: url)
-        guard blob.count >= 12, blob.prefix(8) == magic else { throw invalid("not an .itpack") }
-        let n = Int(blob[blob.startIndex + 8]) | Int(blob[blob.startIndex + 9]) << 8
-            | Int(blob[blob.startIndex + 10]) << 16 | Int(blob[blob.startIndex + 11]) << 24
-        guard blob.count >= 12 + n + 2 else { throw invalid("truncated") }
-        struct Index: Decodable { struct Entry: Decodable { var name: String; var size: Int }; var entries: [Entry] }
-        let index = try JSONDecoder().decode(Index.self, from: blob.subdata(in: 12..<12 + n))
-        // zlib's 2-byte header off: Compression's zlib is raw deflate (the adler trailer is ignored).
-        let stream = try (blob.subdata(in: 12 + n + 2..<blob.count) as NSData).decompressed(using: .zlib) as Data
-        var entries: [(String, Data)] = [], offset = 0
-        for e in index.entries {
-            guard !e.name.hasPrefix("/"), !e.name.split(separator: "/").contains(".."), e.size >= 0,
-                  offset + e.size <= stream.count else { throw invalid("bad entry \(e.name)") }
-            entries.append((e.name, stream.subdata(in: offset..<offset + e.size)))
-            offset += e.size
-        }
-        guard offset == stream.count else { throw invalid("the index does not cover the stream") }
-        return entries
-    }
-
-    /// mkpkg's requires.builds: an exact build id, or "<major>*" for every build of that iOS major (2.x = 5*,
-    /// 3.x = 7*, 4.x = 8*), as FirmwareKit's GuestPackage.buildMatches.
-    static func buildMatches(_ builds: [String], _ build: String) -> Bool {
-        let major = build.prefix { $0.isNumber }
-        return builds.contains { $0 == build || ($0.hasSuffix("*") && $0.dropLast() == major) }
-    }
-
-    /// The package in an itpack for this board and build, with its payloads by
-    /// package path; nil when there is none (or only a stub).
+    /// The package in an itpack for this board and build, with its payloads by package path; nil when there is
+    /// none (or only a stub).
     static func package(in itpack: URL, board: String, build: String) throws -> (Manifest, [String: Data])? {
-        let entries = try read(itpack)
-        for (name, data) in entries where name.hasSuffix("/manifest.json") {
-            let manifest = try JSONDecoder().decode(Manifest.self, from: data)
-            guard manifest.requires.boards.contains(board), buildMatches(manifest.requires.builds, build),
-                  manifest.stub != true else { continue }
-            let prefix = String(name.dropLast("manifest.json".count))
-            var payloads: [String: Data] = [:]
-            for (entry, bytes) in entries where entry.hasPrefix(prefix) && entry != name {
-                payloads[String(entry.dropFirst(prefix.count))] = bytes
-            }
-            return (manifest, payloads)
-        }
-        return nil
+        try GuestPack.packages(GuestPack.read(itpack), board: board, build: build).first.map { ($0.manifest, $0.payloads) }
     }
 
     // MARK: - Offer
-
-    /// mkpkg.py offer_text: payload lines are indexed in manifest order.
-    static func offerText(_ m: Manifest, build: String, serial: Int64? = nil, good: [Int64] = [], bad: [Int64] = []) -> String {
-        var lines = ["ltpkg \(packageProtocol)", "build \(build)", "serial \(serial ?? m.serial) \(m.version)"]
-        lines += good.map { "verdict good \($0)" } + bad.map { "verdict bad \($0)" }
-        if serial == nil || serial == m.serial {
-            let hooks = Dictionary(m.hooks.map { ($0.file, $0) }, uniquingKeysWith: { a, _ in a })
-            for (i, f) in m.files.enumerated() {
-                let kind = hooks[f.name] != nil ? "hook" : m.jobs.contains(f.name) ? "job" : "file"
-                var line = "\(kind) \(i) \(f.name) \(f.mode) \(f.size) \(f.sha256)"
-                if let hook = hooks[f.name] { line += " \(hook.target)" + (hook.respring ? " respring" : "") }
-                lines.append(line)
-            }
-        }
-        return lines.joined(separator: "\n") + "\n"
-    }
 
     /// Write this boot's offer into `dir` (replacing it). `lock` is the
     /// preparer's record, when there is one: as its seed did, the GL engines'
@@ -175,13 +75,12 @@ nonisolated enum GuestPackage {
         guard let found = try package(in: itpack, board: board, build: build) else { return nil }
         var (manifest, payloads) = found
         if let range = manifest.requires.host?["guest-package"], range.count == 2,
-           !(range[0]...range[1]).contains(packageProtocol) { return nil }
+           !(range[0]...range[1]).contains(GuestPack.packageProtocol) { return nil }
         if let lock {
             let dropped = Set(manifest.hooks.filter { hook in
                 (!lock.gles && Manifest.glTargets.contains(hook.target)) || (lock.hooks.map { !$0.contains(hook.target) } ?? false)
             }.map(\.file))
-            manifest.hooks.removeAll { dropped.contains($0.file) }
-            manifest.files.removeAll { dropped.contains($0.name) }
+            manifest.dropHooks(dropped)
         }
         let builtIn = guest?.builtIn == manifest.serial
         let staging = dir.deletingLastPathComponent().appendingPathComponent(".\(dir.lastPathComponent)-\(UUID().uuidString)")
@@ -198,7 +97,7 @@ nonisolated enum GuestPackage {
                 try data.write(to: url)
             }
         }
-        let text = offerText(manifest, build: build, serial: builtIn ? 0 : nil,
+        let text = GuestPack.offerText(manifest, build: build, serial: builtIn ? 0 : nil,
                              good: guest?.lastGood.map { [$0] } ?? [], bad: guest?.bad ?? [])
         try Data(text.utf8).write(to: staging.appendingPathComponent("offer"))
         var offeredSerial = builtIn ? 0 : manifest.serial
@@ -231,12 +130,11 @@ nonisolated enum GuestPackage {
         var hooks: [String]?
     }
 
-    static func lockRecord(_ lock: URL) -> LockRecord? {
-        guard let data = try? Data(contentsOf: lock),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let record = json["guest_package"] as? [String: Any] else { return nil }
-        return LockRecord(seed: (record["seed"] as? NSNumber)?.int64Value, gles: record["gles"] as? Bool ?? (record["gli"] is String),   // locks before gl-runtime: a gli id
-                          hooks: record["hooks"] as? [String])
+    static func lockRecord(_ lock: DeviceLock?) -> LockRecord? {
+        guard let record = lock?.guestPackage?.object else { return nil }
+        return LockRecord(seed: record["seed"]?.int.map(Int64.init),
+                          gles: record["gles"]?.bool ?? (record["gli"]?.string != nil),   // locks before gl-runtime: a gli id
+                          hooks: record["hooks"]?.strings)
     }
 
     // MARK: - Verdicts

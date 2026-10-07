@@ -7,7 +7,7 @@ import HostRuntime
 //                                             Hello fails (exit 75) if another process holds PATH's flock.
 //   LightTouchDevice --headless config.json   boot, run scripted actions, PNG dumps, status on stdout
 //   LightTouchDevice --oneshot config.json    boot until QEMU exits or a serial marker (seal/keybag)
-//   LightTouchDevice --probe MACHINE          load the dylib, print the hello's HelperInfo (packaging tests)
+//   LightTouchDevice --machines               load the dylib, print the dylib's path and every machine's DeviceInfo
 //
 // libqemu-arm.dylib: $LTM_QEMU_DYLIB, else ../Frameworks, else the build rpath.
 // Exit codes: QEMU's, or 64 usage, 70 no dylib, 72 rendezvous failed, 124 one-shot timeout.
@@ -22,7 +22,7 @@ var arguments = [String: String]()
 do {
     var it = CommandLine.arguments.dropFirst().makeIterator()
     while let a = it.next() {
-        guard a.hasPrefix("--"), let v = it.next() else { FileHandle.standardError.write(Data("usage: see main.swift\n".utf8)); exit(64) }
+        guard a.hasPrefix("--"), let v = a == "--machines" ? "" : it.next() else { FileHandle.standardError.write(Data("usage: see main.swift\n".utf8)); exit(64) }
         arguments[a] = v
     }
 }
@@ -100,13 +100,14 @@ if let service = arguments["--connect"] {
     runHeadless(configPath: path)
 } else if let path = arguments["--oneshot"] {
     runOneShot(configPath: path)
-} else if let machine = arguments["--probe"] {
+} else if arguments["--machines"] != nil {
+    // Every machine the emulator library runs, with its facts (HostRuntime DeviceInfo.list).
     guard let qemu = loadQemu() else { exit(70) }
-    let info = DeviceHost(qemu: qemu, status: StatusBlock.create()).info(machine: machine)
-    FileHandle.standardOutput.write(try! JSONEncoder().encode(info) + Data("\n".utf8))
+    struct Listing: Encodable { let dylibPath: String; let machines: [DeviceInfo] }
+    FileHandle.standardOutput.write(try! JSONEncoder().encode(Listing(dylibPath: qemu.path, machines: qemu.machines)) + Data("\n".utf8))
     exit(0)
 } else {
-    FileHandle.standardError.write(Data("usage: LightTouchDevice --connect S --token T --instance U | --headless config.json | --oneshot config.json | --probe MACHINE\n".utf8))
+    FileHandle.standardError.write(Data("usage: LightTouchDevice --connect S --token T --instance U | --headless config.json | --oneshot config.json | --machines\n".utf8))
     exit(64)
 }
 
@@ -133,7 +134,7 @@ func runLinked(service: String, token: String) -> Never {
         switch message {
         case .command(let command):
             host?.perform(command)
-        case .request(let id, .hello(let version, let machine)):
+        case .request(let id, .hello(let version, let board)):
             guard version == DeviceLinkWire.protocolVersion else {
                 channel.send(.reply(id: id, .failure("protocol \(version) is not \(DeviceLinkWire.protocolVersion)")))
                 return
@@ -148,7 +149,7 @@ func runLinked(service: String, token: String) -> Never {
                 channel.drain()
                 exit(75)
             }
-            channel.send(.reply(id: id, .hello(host.info(machine: machine))))
+            channel.send(.reply(id: id, .hello(host.info(board: board))))
         case .request(let id, let request):
             guard let host else { channel.send(.reply(id: id, .failure("no emulator"))); return }
             host.handle(request) { channel.send(.reply(id: id, $0)) }

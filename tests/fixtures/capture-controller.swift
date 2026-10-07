@@ -1,8 +1,9 @@
 // Stand-ins for what Features/CaptureController.swift reaches outside itself, for the offline checks that compile
 // it whole (check-capture-destination, check-capture-shortcuts): a scripted recording that records its stops, the
 // banner, the reminder notifications, and a selected device whose screen captures nothing. Compiled with the real
-// CapturePreferences, CaptureSound and DeviceProfile.
+// CapturePreferences, CaptureSound and Board.
 
+import HostRuntime
 import Cocoa
 
 nonisolated func logEvent(_ message: String) {}
@@ -46,7 +47,7 @@ enum CaptureError: Error { case failed(String) }
     enum RecordingAction { case stopAndSave, stopAndDelete }
     var onRecordingAction: ((UUID, RecordingAction) -> Void)?
     var reminders: [(TimeInterval, UUID)] = [], cancellations = 0
-    func scheduleReminder(after delay: TimeInterval, recordingID: UUID, profile: DeviceProfile) async { reminders.append((delay, recordingID)) }
+    func scheduleReminder(after delay: TimeInterval, recordingID: UUID, profile: Board) async { reminders.append((delay, recordingID)) }
     func cancelReminder() { cancellations += 1 }
     func notifyRecoveredRecording(_ url: URL) async -> Bool { false }
 }

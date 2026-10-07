@@ -1,3 +1,4 @@
+import HostRuntime
 import Cocoa
 
 /// Capture choices are shared by the toolbar, menus, and focused options panel.
@@ -111,7 +112,7 @@ struct CapturePreferences {
 
 enum CaptureSpaceBarAction: Int, CaseIterable {
     case none = 0, copyScreenshot = 2, saveScreenshot = 3, saveScreenshotAs = 4, toggleRecording = 5
-    func title(for profile: DeviceProfile) -> String {
+    func title(for profile: Board) -> String {
         switch self {
         case .none: "Send to \(profile.shortName)"
         case .copyScreenshot: "Copy Screenshot"

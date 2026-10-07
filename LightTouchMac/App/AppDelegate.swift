@@ -1,6 +1,8 @@
 // Created by Sam on 2026-08-05.
 
 import Cocoa
+import DeviceRuntime
+import HostRuntime
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
@@ -112,12 +114,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func showAbout(_ sender: Any?) { AboutCredits.show() }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        // The boards' hardware facts are the emulator's: the bundled helper lists them once, on first use.
+        Machines.helper = DeviceLink.Configuration.bundledHelper
         // Keep AppKit's native editing utilities for search fields and panels.
         // Device, Files, Help, and log windows have distinct jobs, not tabs.
         NSWindow.allowsAutomaticWindowTabbing = false
         NSApp.disableRelaunchOnLogin()
 
-        MainMenuBuilder.install(profile: .iPodTouch2G)
+        MainMenuBuilder.install(profile: .n72)
         #if DEBUG
         HomeScreenLayout.selfCheck()
         #endif
@@ -183,7 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if let bundled = FirmwareJobs.shared.prepareBundledIfFresh(sidebarSaved: UserDefaults.standard.object(forKey: SidebarList.entriesKey) != nil) {
             host.lastSelection = bundled
         }
-        let profile = host.launchSelection?.profile ?? .iPodTouch2G
+        let profile = host.launchSelection?.profile ?? .n72
         MainMenuBuilder.install(profile: profile)
         let controller = MainWindowController(host: host, profile: profile)
         controller.showWindow(nil)
@@ -202,9 +206,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let base = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
         let state = Bundled.stateDirectory
         guard !DeviceInstance.all(state: state).contains(where: { DeviceInstance.url($0.base.path, state: state).standardizedFileURL == base }) else { return }
-        guard let data = try? Data(contentsOf: base.appendingPathComponent("device.lock.json")),
-              let lock = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let id = (lock["entry"] as? [String: Any])?["id"] as? String, let entry = catalog.entry(id: id) else {
+        guard let id = (try? DeviceLock.read(base: base))??.entryID, let entry = catalog.entry(id: id) else {
             return logEvent("LTM_DEV_BASE: \(path) has no device.lock.json naming a catalog entry")
         }
         do {

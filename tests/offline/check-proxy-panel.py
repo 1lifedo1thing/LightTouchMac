@@ -9,7 +9,7 @@ import argparse, subprocess, tempfile
 ap = argparse.ArgumentParser()
 ap.add_argument('--out', help='keep the sheet render (proxy-sheet.png)')
 args = ap.parse_args()
-DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device/DeviceProfile.swift')
+DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device/Board+App.swift')
 root = Path(__file__).resolve().parents[2]
 fixture = r'''import Cocoa
 struct Bundled { static let stateDirectory = URL(fileURLWithPath: NSTemporaryDirectory()) }
@@ -57,7 +57,7 @@ func descendants(_ view: NSView) -> [NSView] {
   _ = NSApplication.shared
   for mode in [WebProxyConfiguration.Mode.off, .direct, .archive] {
    let initial = WebProxyConfiguration(mode: mode, archiveDate: "20090909")
-   let panel = ProxySettingsView(configuration: initial, status: .ready, profile: .iPodTouch2G)
+   let panel = ProxySettingsView(configuration: initial, status: .ready, profile: .n72)
    // The production sheet (MainWindowController.configureWebProxy): Cancel, then OK as the default.
    var answers: [Bool] = []
    let sheet = ProxySettingsView.sheet(panel) { answers.append($0) }
@@ -91,7 +91,7 @@ func descendants(_ view: NSView) -> [NSView] {
     panel.layoutSubtreeIfNeeded()
     let visible = descendants(panel).filter { !$0.isHiddenOrHasHiddenAncestor }
     let labels = visible.compactMap { ($0 as? NSTextField)?.stringValue }
-    if let message = status.message(for: .iPodTouch2G) { precondition(labels.contains(message), labels.description) }
+    if let message = status.message(for: .n72) { precondition(labels.contains(message), labels.description) }
     else { precondition(!labels.contains(where: { $0.contains("proxy…") || $0.contains("Try again") })) }
     precondition(panel.frame.height >= readyHeight)
     precondition(panel.frame.width == 300)

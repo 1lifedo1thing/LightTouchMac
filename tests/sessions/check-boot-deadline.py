@@ -38,8 +38,8 @@ def offline():
     retire = s[s.index("    private func retireBoot()"):s.index("    func stop()", s.index("    private func retireBoot()"))]
     source = r'''import Foundation
 nonisolated func logEvent(_ message: String) {}
-enum DeviceProfile { case iPodTouch2G, iPad1
- var shortName: String { self == .iPad1 ? "iPad" : "iPod" }
+enum Board { case n72, k48
+ var shortName: String { self == .k48 ? "iPad" : "iPod" }
  var bootBudget: TimeInterval { 0.3 }
 }
 @MainActor final class FakeProcess {
@@ -60,7 +60,7 @@ struct Serial { func finish() {} }
  enum State: Equatable { case notStarted, booting, running, poweredOff; case dead(exitCode: Int32?) }
  enum NoticeOperation { case storage }
  static let haltBudget: TimeInterval = 0.2
- let profile: DeviceProfile
+ let profile: Board
  var state = State.booting
  var isDead: Bool { if case .dead = state { return true } else { return false } }
  var isPoweredOff: Bool { state == .poweredOff }
@@ -86,7 +86,7 @@ struct Serial { func finish() {} }
  var statusTimer: Timer?, readinessTask: Task<Void, Never>?, foregroundTask: Task<Void, Never>?, orientationTask: Task<Void, Never>?
  var audioSink: ((Int) -> Void)?
  var serialCapture: Serial? = Serial()
- init(_ profile: DeviceProfile) {
+ init(_ profile: Board) {
   self.profile = profile
   timeZoneObserver = NotificationCenter.default.addObserver(forName: .init("FixtureTimeZone"), object: nil, queue: nil) { _ in }
   timeZoneTask = Task { try? await Task.sleep(for: .seconds(5)) }
@@ -107,56 +107,56 @@ struct Serial { func finish() {} }
    await until(what) { c.isDead }
   }
   // No uiReady within the budget: halted, dead with the deadline reason.
-  let late = Controller(.iPodTouch2G)
+  let late = Controller(.n72)
   late.startBootWatch(); await halted(late, "late")
-  precondition(late.process!.terms == 1 && late.isDead && late.deathReason == Controller.deadlineReason(.iPodTouch2G))
+  precondition(late.process!.terms == 1 && late.isDead && late.deathReason == Controller.deadlineReason(.n72))
   precondition(late.timeZoneObserver == nil && late.timeZoneTask == nil && late.timeZoneScope == 1, "helper death must retire timezone work")
   precondition(late.deathReason!.hasPrefix("The iPod didn’t start within"))
   // lockdown answered in time (QEMU's uiReady alone is iBoot's display, not iOS): nothing happens.
-  let lit = Controller(.iPad1); lit.deviceReachable = true
+  let lit = Controller(.k48); lit.deviceReachable = true
   lit.startBootWatch(); await watched(lit)
   precondition(lit.process!.terms == 0 && !lit.isDead && lit.deathReason == nil)
-  let quiet = Controller(.iPad1); quiet.status!.uiReady = true
+  let quiet = Controller(.k48); quiet.status!.uiReady = true
   quiet.startBootWatch(); await halted(quiet, "quiet")
   precondition(quiet.isDead, "a lit display without lockdown is not a finished boot")
   // iBoot's logo on screen (frames painted) but the boot never got past the kernel: still stopped.
-  let logo = Controller(.iPad1); logo.state = .running; logo.bootStage = .kernel
+  let logo = Controller(.k48); logo.state = .running; logo.bootStage = .kernel
   logo.startBootWatch(); await halted(logo, "logo")
-  precondition(logo.isDead && logo.deathReason == Controller.deadlineReason(.iPad1), "iBoot's picture alone is not iOS")
+  precondition(logo.isDead && logo.deathReason == Controller.deadlineReason(.k48), "iBoot's picture alone is not iOS")
   // iOS on screen ("slide to set up") with its guest tools reporting, USB never answering: kept running.
-  let setUp = Controller(.iPad1); setUp.state = .running; setUp.bootStage = .system
+  let setUp = Controller(.k48); setUp.state = .running; setUp.bootStage = .system
   setUp.startBootWatch(); await watched(setUp)
   precondition(!setUp.isDead && setUp.process!.terms == 0 && setUp.deathReason == nil, "a device on screen isn't killed for its USB")
   // The same boot without a picture: stopped.
-  let dark = Controller(.iPad1); dark.bootStage = .system
+  let dark = Controller(.k48); dark.bootStage = .system
   dark.startBootWatch(); await halted(dark, "dark")
   precondition(dark.isDead, "no picture by the deadline: stopped")
-  let noUSB = Controller(.iPodTouch2G); noUSB.usbmux.session = nil; noUSB.state = .running
+  let noUSB = Controller(.n72); noUSB.usbmux.session = nil; noUSB.state = .running
   noUSB.startBootWatch(); await watched(noUSB)
   precondition(!noUSB.isDead, "without a USB bridge, painting has to do")
   // Recovery mode on serial: at once, with the recovery reason; the helper's own exit keeps it.
-  let recovery = Controller(.iPad1)
+  let recovery = Controller(.k48)
   recovery.startBootWatch()
-  recovery.abortBoot(Controller.recoveryReason(.iPad1)); await until("recovery halted") { recovery.isDead }
-  precondition(recovery.process!.terms == 1 && recovery.isDead && recovery.deathReason == Controller.recoveryReason(.iPad1))
+  recovery.abortBoot(Controller.recoveryReason(.k48)); await until("recovery halted") { recovery.isDead }
+  precondition(recovery.process!.terms == 1 && recovery.isDead && recovery.deathReason == Controller.recoveryReason(.k48))
   precondition(recovery.deathReason!.contains("recovery mode") && recovery.deathReason!.contains("iPad"))
   recovery.abortBoot("again"); precondition(recovery.process!.terms == 1, "a dead session isn't aborted twice")
   // A helper that ignores SIGTERM is killed after the halt budget.
-  let stuck = Controller(.iPodTouch2G)
+  let stuck = Controller(.n72)
   stuck.process!.hung = true
   let stubborn = stuck.process!
   stuck.abortBoot("stuck"); await until("stuck killed") { stubborn.kills == 1 }
   precondition(stubborn.terms == 1 && stubborn.kills == 1)
   // Stop/powered-off sessions are left to their own paths.
-  let stopping = Controller(.iPodTouch2G); stopping.shuttingDown = true
+  let stopping = Controller(.n72); stopping.shuttingDown = true
   stopping.abortBoot("late"); precondition(stopping.process!.terms == 0 && !stopping.isDead)
   // A base without its boot file: named before anything boots.
   let missing = CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: "/state/Devices/x/base/iBoot.bin"])
-  let reason = Controller.bootFilesReason(missing, profile: .iPodTouch2G)
+  let reason = Controller.bootFilesReason(missing, profile: .n72)
   precondition(reason == "This iPod’s system files are incomplete: iBoot.bin is missing. Delete it and prepare it again.")
-  let other = Controller.bootFilesReason(CocoaError(.fileReadCorruptFile), profile: .iPad1)
+  let other = Controller.bootFilesReason(CocoaError(.fileReadCorruptFile), profile: .k48)
   precondition(other.hasPrefix("Couldn’t prepare the iPad’s storage: "))
-  let failing = Controller(.iPodTouch2G)
+  let failing = Controller(.n72)
   failing.failBoot(missing)
   precondition(failing.isDead && failing.deathReason == reason && failing.notices == [reason])
   print("PASS: boot deadline and recovery mode end the session as named errors with the helper halted; missing boot files are named before boot")

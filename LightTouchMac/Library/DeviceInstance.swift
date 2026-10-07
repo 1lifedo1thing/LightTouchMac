@@ -81,7 +81,7 @@ nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Sendable {
     /// (issue #21). Absent: the shipped panel.
     var panel: String?
 
-    var profile: DeviceProfile? { DeviceProfile(boardID: board) }
+    var profile: Board? { Board(rawValue: board) }
 
     static let recordName = DeviceRecord.name
 
@@ -141,11 +141,9 @@ nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Sendable {
     /// `inputs.activation`; a base made without that step has null or nothing
     /// there (a device.py base: `activation_hook: null`). False for an
     /// unreadable lock: nothing to claim.
-    static func lockLacksActivation(_ lock: URL) -> Bool {
-        guard let data = try? Data(contentsOf: lock),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let inputs = json["inputs"] as? [String: Any] else { return false }
-        return !(inputs["activation"] is [String: Any])
+    static func lockLacksActivation(_ url: URL) -> Bool {
+        guard let lock = (try? DeviceLock.read(url)) ?? nil, lock.inputs?.object != nil else { return false }
+        return !lock.activated
     }
 
     // MARK: - Record I/O

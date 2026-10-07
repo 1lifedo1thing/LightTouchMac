@@ -176,37 +176,14 @@ def ipad_boot(device, ovl, serial, restore=None, shutdown=True):
 
 
 def iphone_boot(device, ovl, serial):
-    """A FirmwareKit iPhone (kboot): its modem on (baseband=on, the lock's IMEI) and its data netdev, as the app boots it."""
+    """A FirmwareKit iPhone (m68ap, n88ap, n90ap) booted as the app boots it: the driver builds its argv with
+    PreparedDeviceBoot and BootRecipe from the hello's machine facts (the modem, the lock's IMEI, its cell0 netdev, the
+    USB keyboard where the machine has a USB host), with the Carrier panel's saved settings."""
     ovl.mkdir(parents=True, exist_ok=True)
-    lock = json.loads((device / "device.lock.json").read_text())
-    board = {"n90ap": "iPhone-4", "n88ap": "n88", "m68ap": "iPhone-2G"}[lock["board"]]
-    nor = ovl / "nor.bin"
-    if not nor.exists():
-        shutil.copy(device / "nor.bin", nor)
-        nor.chmod(0o600)
-    machine_opts = dict(lock.get("machine", {}))
-    if "imei" not in machine_opts and lock["board"] in ("n90ap", "n88ap"):
-        # a recipe-1 base: the seed's IMEI, as BootRecipe.lockMachine derives it (IPhoneIdentity.imei)
-        import hashlib
-        seed = json.loads((device / "identity.json").read_text())["seed"]
-        body = "00000000" + "".join(str(b % 10) for b in hashlib.sha256(("imei:" + seed).encode()).digest()[:6])
-        total = sum((d * 2 - 9 if d * 2 > 9 else d * 2) if k % 2 == 0 else d for k, d in enumerate(int(c) for c in reversed(body)))
-        machine_opts["imei"] = body + str((10 - total % 10) % 10)
-    options = "".join(f",{k}={esc(v)}" for k, v in sorted(machine_opts.items()))
-    if board == "iPhone-2G":   # BootRecipe.iPod1G: the S5L8900 ROM, the base's iBoot, the NOR as pflash; the modem is built in
-        rom = HOME / "Developer/qemu-ios-files/ipod1g/bootrom_s5l8900"
-        machine = f"{board},bootrom={esc(rom)},iboot={esc(device / 'iBoot.bin')},nand={esc(device / 'nand')},nand-overlay={esc(ovl)}" + options
-        drive = ["-drive", f"if=pflash,format=raw,file={str(nor).replace(',', ',,')}"]
-    else:
-        machine = (f"{board},kboot={esc(device / 'kboot.bin')},nand={esc(device / 'nand')},nand-overlay={esc(ovl)}"
-                   f",nor-rw={esc(nor)},baseband=on" + options)
-        drive = []
-    argv = ["LightTouchDevice", "-M", machine, *drive, "-display", "none", "-audio", "driver=none", "-no-shutdown",
-            "-serial", f"file:{serial}", "-netdev", "user,id=wifi0", "-netdev", "user,id=cell0",
-            *(["-device", "usb-kbd,bus=usb-bus.0,max-power=20"] if board == "iPhone-4" else []),   # as BootRecipe
-            # saved Carrier settings, as CarrierSettings.globals passes them at boot
-            "-global", "ios-baseband.carrier=Saved, Carrier", "-global", "ios-baseband.signal-dbm=-81"]
-    return {"machine": board, "argv": argv}
+    board = json.loads((device / "device.lock.json").read_text())["board"]
+    return {"board": board, "prepared": {"base": str(device), "overlay": str(ovl), "serial": str(serial),
+                                         "carrier": {"carrier": "Saved, Carrier", "mccMNC": "00101", "registered": True,
+                                                     "simPresent": True, "bars": 4}}}
 
 
 def setup_rejects_calls(device):
@@ -300,7 +277,7 @@ def main():
 
         if "ipod" in cases:
             print("ipod", flush=True)
-            d = Driver(args, bin_dir, helper, work, "ipod", {"machine": "iPod-Touch", "boot": ipod_boot(files, work / "ipod/overlay"),
+            d = Driver(args, bin_dir, helper, work, "ipod", {"board": "n72ap", "boot": ipod_boot(files, work / "ipod/overlay"),
                        "steps": ["boot", "lit 0.03 240", "dump lock", IPOD_UNLOCK, "wait 4", "dump home",
                                  "rotate cw", "wait 2", "dump rotated", "rotate ccw", "wait 2", "battery 50 0",
                                  "wait 20", "agent echo agent-ok", "status", "hold"]})
@@ -321,7 +298,7 @@ def main():
         if "ipad" in cases:
             print("ipad", flush=True)
             ovl = work / "ipad/overlay"
-            d = Driver(args, bin_dir, helper, work, "ipad", {"machine": "ipad1", "boot": ipad_boot(dev, ovl, work / "ipad/serial.log"),
+            d = Driver(args, bin_dir, helper, work, "ipad", {"board": "k48ap", "boot": ipad_boot(dev, ovl, work / "ipad/serial.log"),
                        "steps": ["boot", "lit 0.2 240", "dump lock", IPAD_UNLOCK, "wait 5", "dump home",
                                  f"snapshot {work}/ipad/snap1", "resume", "wait 4", "dump after-resume",
                                  f"snapshot {work}/ipad/snap2", "quit", "expectExit 30"]})
@@ -337,7 +314,7 @@ def main():
         if "restore" in cases:
             print("restore", flush=True)
             ovl = work / "ipad/overlay"
-            d = Driver(args, bin_dir, helper, work, "restore", {"machine": "ipad1",
+            d = Driver(args, bin_dir, helper, work, "restore", {"board": "k48ap",
                        "boot": ipad_boot(dev, ovl, work / "restore-serial.log", restore=work / "ipad/snap2"),
                        "steps": ["boot", "lit 0.1 60", "dump restored", IPAD_SETTINGS, "wait 5", "dump settings",
                                  "button 0", "wait 4", "dump after-home", "killHelper"]})
@@ -351,7 +328,7 @@ def main():
 
         if "ipad-orphan" in cases:
             print("ipad-orphan", flush=True)
-            d = Driver(args, bin_dir, helper, work, "ipad-orphan", {"machine": "ipad1",
+            d = Driver(args, bin_dir, helper, work, "ipad-orphan", {"board": "k48ap",
                        "boot": ipad_boot(dev, work / "ipad-orphan/overlay", work / "ipad-orphan/serial.log"),
                        "steps": ["boot", "lit 0.2 240", "dump lock", "wait 3", "hold"]})
             parent_kill(d, "ipad-orphan", results, 10)
@@ -373,7 +350,7 @@ def main():
         if "meddle" in cases:
             print("meddle", flush=True)
             ovl = work / "meddle/overlay"
-            d = Driver(args, bin_dir, helper, work, "meddle", {"machine": "iPod-Touch", "boot": ipod_boot(files, ovl),
+            d = Driver(args, bin_dir, helper, work, "meddle", {"board": "n72ap", "boot": ipod_boot(files, ovl),
                        "steps": ["boot", "lit 0.03 240", "wait 3", f"watch {ovl}", "hold"]})
             hold = d.wait_event("hold", 400)
             if check(hold, "lit and holding with the overlay watched", "meddle", results):
@@ -401,7 +378,7 @@ def main():
                 ovl.parent.mkdir(parents=True, exist_ok=True)
                 subprocess.run(["cp", "-cR", args.iphone_overlay, ovl], check=True)   # a clone: the source stays as it was
             boot = iphone_boot(args.iphone_device, ovl, work / "carrier/serial.log")
-            d = Driver(args, bin_dir, helper, work, "carrier", {"machine": boot["machine"], "boot": boot,
+            d = Driver(args, bin_dir, helper, work, "carrier", {**boot,
                        "steps": ["boot", "lit 0.1 300", "wait 60", "dump registered", "modemStatus",
                                  "modem carrier Cell Panel", "modem signal-dbm -97", "modem mcc-mnc 001", "wait 1", "modemStatus",
                                  "modem incoming-sms +15555550100|hello from the panel", "wait 2", "modemStatus",
@@ -425,7 +402,7 @@ def main():
         if "rotate" in cases:
             print("rotate", flush=True)
             boot = iphone_boot(args.iphone_device, work / "rotate/overlay", work / "rotate/serial.log")
-            d = Driver(args, bin_dir, helper, work, "rotate", {"machine": boot["machine"], "boot": boot,
+            d = Driver(args, bin_dir, helper, work, "rotate", {**boot,
                        "steps": ["boot", "lit 0.03 300", "wait 8", "dump lock", IPOD_UNLOCK, "wait 4", "tap 0.617 0.9", "wait 8", "dump home", "status",
                                  "orientation 4", "wait 1", "dump turned", "status", "wait 4", "dump turned5", "status",
                                  "quit", "expectExit 60"]})
@@ -445,7 +422,7 @@ def main():
         if "shutdown" in cases:
             print("shutdown", flush=True)
             boot = iphone_boot(args.iphone_device, work / "shutdown/overlay", work / "shutdown/serial.log")
-            d = Driver(args, bin_dir, helper, work, "shutdown", {"machine": boot["machine"], "boot": boot,
+            d = Driver(args, bin_dir, helper, work, "shutdown", {**boot,
                        "steps": ["boot", "lit 0.03 300", "wait 20", "shutdown 120", "status", "quit", "expectExit 60"]})
             rc = d.wait(600)
             check(rc == 0, "scenario completed", "shutdown", results) or print(d.tail())
@@ -455,7 +432,7 @@ def main():
         if "keyboard" in cases:
             print("keyboard", flush=True)
             boot = iphone_boot(args.iphone_device, work / "keyboard/overlay", work / "keyboard/serial.log")
-            d = Driver(args, bin_dir, helper, work, "keyboard", {"machine": boot["machine"], "boot": boot,
+            d = Driver(args, bin_dir, helper, work, "keyboard", {**boot,
                        "steps": ["boot", "lit 0.03 300", "wait 5", "keyboard off", "wait 2", "keyboard on", "quit", "expectExit 60"]})
             rc = d.wait(400)
             check(rc == 0, "scenario completed", "keyboard", results) or print(d.tail())

@@ -1,3 +1,4 @@
+import HostRuntime
 import Foundation
 
 enum PreparedMedia: Sendable {
@@ -37,7 +38,7 @@ enum PreparedMedia: Sendable {
         return MediaSong.extensions.contains(suffix) ? "Music" : MediaVideo.extensions.contains(suffix) ? "Videos" : "Photos"
     }
 
-    nonisolated static func prepare(_ source: URL, profile: DeviceProfile) async throws -> PreparedMedia {
+    nonisolated static func prepare(_ source: URL, profile: Board) async throws -> PreparedMedia {
         if MediaSong.extensions.contains(source.pathExtension.lowercased()) {
             return .song(try await MediaSong.prepare(source))
         }

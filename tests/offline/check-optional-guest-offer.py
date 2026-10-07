@@ -12,7 +12,6 @@ struct Instance {let board="n72ap",firmware="n72ap-7E18";struct Paths{let work:U
 @MainActor enum GuestPackage {
  struct Offer {let serial:Int64;let version:String}
  static var calls=0,builtinFails=false
- static func arch(board:String)->String?{"armv6"}
  static func bundledPack(arch:String,filesRoot:URL,guestRoot:URL?)->URL?{filesRoot}
  static func compose(itpack:URL,board:String,build:String,lock:Int?,guest:Int?,into:URL,augment:((URL,Int64)throws->(serial:Int64,version:String))?=nil)throws->Offer? {
   calls+=1
@@ -31,6 +30,7 @@ struct Instance {let board="n72ap",firmware="n72ap-7E18";struct Paths{let work:U
 @MainActor final class Controller {
  struct Status {let guestPackageSupported=true}
  let status:Status?=Status(),instance=Instance()
+ var guestArch:String{"armv6"}
  var guestOffer:GuestPackage.Offer?
  var guestOfferDirectory:URL{instance.paths.work.appendingPathComponent("offer")}
  var lockRecord:Int?{nil};var guestRecord:Int?{nil}

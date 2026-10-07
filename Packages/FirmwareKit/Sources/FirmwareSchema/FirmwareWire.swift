@@ -155,6 +155,9 @@ nonisolated public enum FirmwareWire {
         public var prereleaseNumber: Int?
         public var status: String
         public var statusNote: String?
+        /// The libraries the guest's media helpers have been qualified on for this build ("Music", "Photos",
+        /// "Videos"; qemu-ios contrib/it-media): Import Media offers these only.
+        public var media: [String]?
         public var source: Source
         public var keys: [String: Key]
         public var recipe: Recipe?
@@ -162,7 +165,7 @@ nonisolated public enum FirmwareWire {
         public var estimates: Estimates
 
         enum CodingKeys: String, CodingKey {
-            case id, board, version, build, released, prerelease, status, source, keys, recipe, emulator, estimates
+            case id, board, version, build, released, prerelease, status, media, source, keys, recipe, emulator, estimates
             case productType = "product_type", statusNote = "status_note", prereleaseNumber = "prerelease_number"
         }
 

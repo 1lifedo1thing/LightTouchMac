@@ -100,7 +100,7 @@ public enum TrustStore1x {
         let sha1 = Insecure.SHA1.hash(data: certificate).map { String(format: "%02x", $0) }.joined()
         func storageKey() throws -> String? {
             let record = try DeviceRecord.object(Data(contentsOf: DeviceRecord.url(device)))
-            guard ["n45ap", "m68ap"].contains(record["board"] as? String ?? "") else {
+            guard HostRuntime.Board(rawValue: record["board"] as? String ?? "")?.soc == .s5l8900 else {
                 throw FirmwareError(.unsupported, "trust anchors are written into 1.x devices only")
             }
             return (record["storage"] as? [String: Any])?["key"] as? String

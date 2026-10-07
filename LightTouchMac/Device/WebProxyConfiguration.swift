@@ -8,7 +8,7 @@ enum WebProxyStatus: Equatable {
     /// iPhone OS 1.x: the certificate is written into the stopped device (FirmwareTool.trustAnchor) at its next start.
     case needsRestart
 
-    func message(for profile: DeviceProfile) -> String? {
+    func message(for profile: Board) -> String? {
         switch self {
         case .waiting: "Waiting for \(profile.shortName)…"
         case .applying: "Updating proxy…"

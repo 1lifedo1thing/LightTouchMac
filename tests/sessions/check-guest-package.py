@@ -209,6 +209,6 @@ func check(_ ok: Bool, _ message: String = "", line: Int = #line) { precondition
     app = root / 'LightTouchMac'
     subprocess.run(['xcrun', 'swiftc', *device_runtime.swift_flags(root), str(root / 'Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift'), '-swift-version', '5', '-default-isolation', 'MainActor', '-parse-as-library',
                     '-module-cache-path', str(t / 'modules'), str(app / 'Guest/GuestPackage.swift'), str(app / 'Library/DeviceInstance.swift'),
-                    str(app / 'Device/DeviceProfile.swift'), str(app / 'Library/StorageLocations.swift'), str(app / 'Library/FirmwareCatalog.swift'), str(t / 'check.swift'), '-o', str(t / 'check')],
+                    str(app / 'Device/Board+App.swift'), str(app / 'Library/StorageLocations.swift'), str(app / 'Library/FirmwareCatalog.swift'), str(t / 'check.swift'), '-o', str(t / 'check')],
                    check=True)
     subprocess.run([str(t / 'check'), str(t)], check=True, timeout=60)

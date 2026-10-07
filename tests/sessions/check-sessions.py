@@ -87,7 +87,7 @@ def helper_requirement(args):
     return getattr(args, "helper_requirement", None) or (None if getattr(args, "helper", None) else TEAM_REQ)
 
 
-APP_SOURCES = ["Services/DeviceServices", "Transport/DeviceExecution", "Services/AFC", "Services/InstallationProxy", "Services/LockdownTools", "Services/ClockRegion", "Transport/IMobileDevice", "Device/DeviceProfile", "Device/DeviceProfile+Display",
+APP_SOURCES = ["Services/DeviceServices", "Transport/DeviceExecution", "Services/AFC", "Services/InstallationProxy", "Services/LockdownTools", "Services/ClockRegion", "Transport/IMobileDevice", "Device/Board+App",
                "Transport/NativeLogging", "Library/StorageLocations", "Library/DeviceStateStorage", "Guest/GuestServices", "Guest/GuestAgent", "Guest/GuestPackage",
                "Library/DeviceInstance", "Library/FirmwareCatalog", "Features/MediaPhoto", "Features/MediaIdentity", "Device/DeviceConnectionIssue",
                "Device/WebProxyConfiguration", "Services/SpringBoardServices", "Services/LockdownState", "Services/HostServiceTypes", "Services/HostServiceProtocol", "Services/HostServiceResources", "Services/HostServiceWorkers", "Services/MediaStaging", "Services/HomeScreenOrdering", "Library/FirmwareTool",
@@ -473,7 +473,7 @@ def main():
     geometry = {e["device"]: (e["width"], e["height"]) for e in hellos}
     check(geometry.get("ipod") == (320, 480) and geometry.get("ipad") == (1024, 768)
           and not [e for e in events if e.get("event") == "log" and "display:" in e.get("message", "")],
-          f"hello device info matches DeviceProfile, no mismatch logged: {geometry}")
+          f"hello device info matches Board, no mismatch logged: {geometry}")
     lit = {e["device"]: e for e in find("lit")}
     check("ipod" in lit and "ipad" in lit, "concurrent: both lit " + ", ".join(f"{k} {v['seconds']:.1f} s" for k, v in lit.items()))
     conc = (find("concurrent") or [{}])[0]

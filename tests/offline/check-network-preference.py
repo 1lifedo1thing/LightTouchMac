@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import host_runtime
 import subprocess,tempfile
-DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device/DeviceProfile.swift')
+DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device/Board+App.swift')
 root=Path(__file__).resolve().parents[2]
 fixture=r'''import Cocoa
 @main struct Check {
@@ -16,7 +16,7 @@ fixture=r'''import Cocoa
   let explicit=CommandLine.arguments.contains("--network") || CommandLine.arguments.contains("--no-network")
   for saved in [true,false] {
    defaults.set(saved,forKey:NetworkAccessPreference.key)
-   let network=NetworkAccessPreference.resolve(profile: .iPodTouch2G)
+   let network=NetworkAccessPreference.resolve(profile: .n72)
    precondition(network == (explicit ? !CommandLine.arguments.contains("--no-network") : saved))
    precondition(defaults.bool(forKey:NetworkAccessPreference.key)==saved)
   }

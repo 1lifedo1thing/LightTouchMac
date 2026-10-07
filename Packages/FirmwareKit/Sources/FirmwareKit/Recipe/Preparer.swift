@@ -93,19 +93,6 @@ public enum Preparer {
 
     static func esc(_ p: URL) -> String { p.path.replacingOccurrences(of: ",", with: ",,") }
 
-    /// One `LightTouchDevice --oneshot` boot of an A4 machine (`board`: ipad1, iPod-Touch-4G); `boot` is the boot-source option ("kboot=…" or
-    /// "iboot=…,gid-blobs=…") and `machine` the rest (nand=…, die-id=…, nor-rw=…).
-    /// -no-reboot: the one-shot ends when the guest shuts down, and a restart is a shutdown too (4.3's launchd turns
-    /// it_seal's reboot(RB_HALT) into its own clean reboot(RB_AUTOBOOT); 5.x's halt restarts through the PMU),
-    /// as qemu-ios imgtools/ipad1_seal.py (8edc395979).
-    static func oneshot(_ helper: URL, boot: String, machine: String, serial: URL, stop: String?, stopPattern: String? = nil, timeout: Double,
-                        work: URL, log: (String) -> Void, board: String = "ipad1") throws -> (OneShot, String) {
-        let argv = ["LightTouchDevice", "-machine", "\(board),\(boot),\(machine)", "-display", "none", "-audio", "driver=none",
-                    "-monitor", "none", "-serial", "file:\(serial.path)", "-no-reboot"]
-        return try oneshot(helper, argv: argv, machine: board, serial: serial, stop: stop, stopPattern: stopPattern, timeout: timeout,
-                           work: work, log: log)
-    }
-
     /// One `LightTouchDevice --oneshot` boot of `argv` (which routes -serial to `serial`). `during` runs on its own
     /// thread once the helper is started (the iPod keybag's gdbstub handoff); if it throws, the helper is stopped
     /// and the error rethrown.
@@ -248,7 +235,7 @@ public enum Preparer {
 
     static func sha256(_ d: Data) -> String { SHA256.hash(data: d).map { String(format: "%02x", $0) }.joined() }
 
-    /// device.lock.json's bytes. A value JSONSerialization cannot write (a Swift box, an Optional) is an error
+    /// fit.json's bytes (DeviceLock writes device.lock.json's). A value JSONSerialization cannot write (a Swift box, an Optional) is an error
     /// event, not an NSException abort with no event.
     static func lockData(_ lock: [String: Any]) throws -> Data {
         guard JSONSerialization.isValidJSONObject(lock) else { throw FirmwareError(.internal, "the lock holds a value that is not JSON") }

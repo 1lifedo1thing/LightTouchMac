@@ -36,7 +36,7 @@ nonisolated enum Bundled { static var logsDirectory: URL { FileManager.default.t
    precondition(DeviceProcessDeath.classify(startFailure: failure, qemuExitCode: code,
        stopRequested: requested, termination: termination) == expected)
   }
-  for profile in [DeviceProfile.iPodTouch1G, .iPodTouch2G, .iPad1] {
+  for profile in [Board.n45, .n72, .k48] {
    precondition(DeviceProcess.reason(.stopped, profile: profile) == profile.stoppedReason)
    precondition(DeviceProcess.reason(.unexpected, profile: profile) == "The \(profile.shortName) stopped unexpectedly.")
    precondition(DeviceProcess.reason(.startFailed(.helperFailure("not booted")), profile: profile) == "The \(profile.shortName) didn’t start.")
@@ -138,8 +138,8 @@ with tempfile.TemporaryDirectory(prefix='ltm-reap-') as d:
     p = Path(d) / 'check.swift'; p.write_text(source)
     subprocess.run(['swiftc', *device_runtime.swift_flags(root), '-parse-as-library',
                     '-module-cache-path', d + '/modules', *[str(root / name) for name in (
-                        'LightTouchMac/Device/DeviceProcess.swift', 'LightTouchMac/Device/DeviceProfile.swift',
-                        'LightTouchMac/Device/DeviceProfile+Display.swift', 'LightTouchMac/Transport/NativeLogging.swift',
+                        'LightTouchMac/Device/DeviceProcess.swift', 'LightTouchMac/Device/Board+App.swift',
+                        'LightTouchMac/Transport/NativeLogging.swift',
                         'LightTouchMac/Library/StorageLocations.swift')], str(p), '-o', d + '/check'], check=True)
     subprocess.run([d + '/check'], check=True, timeout=8)
     p = Path(d) / 'drain.swift'; p.write_text(drain)

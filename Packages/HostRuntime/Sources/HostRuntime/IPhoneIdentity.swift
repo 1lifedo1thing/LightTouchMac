@@ -30,9 +30,6 @@ public enum IPhoneIdentity {
         return (10 - sum % 10) % 10
     }
 
-    /// The radio boards prepared through the A4 pipeline (n90ap iPhone 4, n88ap iPhone 3GS); m68ap has its own recipe.
-    public static let a4Boards: Set<String> = ["n90ap", "n88ap"]
-
     /// A base's identity.json fields with the IMEI and its UDID filled in when the base predates them (recipe 1);
     /// nil when it lacks what the UDID needs.
     public static func upgraded(_ identity: [String: Any]) -> (imei: String, udid: String)? {
@@ -41,4 +38,15 @@ public enum IPhoneIdentity {
         let imei = identity["imei"] as? String ?? (identity["seed"] as? String).map(imei(seed:))
         return imei.map { ($0, udid(serial: serial, imei: $0, wifiMAC: wifi, btMAC: bt)) }
     }
+}
+
+/// What a unit's identity seed decides beyond the IMEI, shared by FirmwareKit's UnitIdentity (which writes it into
+/// identity.json) and DeviceLock (which derives it for bases whose identity predates the field).
+public enum UnitSeed {
+    /// The 40-bit ECID: SHA-256(seed) bytes 20..<25, odd.
+    public static func ecid(seed: String) -> UInt64 {
+        Array(SHA256.hash(data: Data(seed.utf8)))[20..<25].reduce(UInt64(0)) { $0 << 8 | UInt64($1) } | 1
+    }
+    /// As identity.json and the machine's ecid option write it.
+    public static func ecid(seed: String) -> String { String(format: "0x%010llx", ecid(seed: seed) as UInt64) }
 }

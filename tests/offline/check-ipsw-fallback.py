@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[2]
 APP = ROOT / 'LightTouchMac'
 FAKE = ROOT / 'tests/fixtures/fake-firmwarekit.py'
 SOURCES = ['FirmwareJobs.swift', 'IPSWStore.swift', 'FirmwareDownloads.swift', 'PreparationJob.swift', 'DeviceInstance.swift',
-           'FirmwareCatalog.swift', 'DeviceProfile.swift', 'StorageLocations.swift', 'DeviceStateStorage.swift',
+           'FirmwareCatalog.swift', 'Board+App.swift', 'StorageLocations.swift', 'DeviceStateStorage.swift',
            'DeviceRow.swift']
 SIZE = 2 << 20
 

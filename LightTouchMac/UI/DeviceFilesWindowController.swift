@@ -1,9 +1,10 @@
+import HostRuntime
 import Cocoa
 
 /// The browser and transfer task survive closing this independently owned window.
 final class DeviceFilesWindowController: NSWindowController {
     let browser: DeviceFilesViewController
-    init(profile: DeviceProfile) {
+    init(profile: Board) {
         browser = DeviceFilesViewController(profile: profile)
         let window = NSWindow(contentViewController: browser)
         window.styleMask = [.titled, .closable, .resizable, .miniaturizable]

@@ -5,6 +5,7 @@
 
 import CryptoKit
 import Foundation
+import HostRuntime
 import Security
 
 struct WebProxySetup: Sendable {
@@ -53,11 +54,14 @@ struct WebProxySetup: Sendable {
         return try await services.offerProfile(proxyFile + ".ca.der") ? .needsTap : .ready
     }
 
-    /// A guest binary out of the bundled iPod package (armv6; ittrust runs on the iPad too), for a
-    /// guest whose package lacks it.
+    /// A guest binary out of the package for the catalog's built-in device (the iPod's armv6; ittrust runs on the
+    /// iPad too), for a guest whose package lacks it.
     static func bundledGuestTool(_ name: String) throws -> Data {
-        guard let pack = GuestPackage.bundledPack(arch: "armv6", filesRoot: Bundled.filesRoot, guestRoot: Bundled.guestRoot),
-              let tool = try GuestPackage.package(in: pack, board: "n72ap", build: "7E18")?.1["bin/\(name)"] else {
+        let catalog = FirmwareCatalog.bundled
+        guard let builtIn = catalog.bundled?.keys.sorted().first.flatMap(catalog.entry(id:)),
+              let arch = Board(rawValue: builtIn.board)?.arch,
+              let pack = GuestPackage.bundledPack(arch: arch, filesRoot: Bundled.filesRoot, guestRoot: Bundled.guestRoot),
+              let tool = try GuestPackage.package(in: pack, board: builtIn.board, build: builtIn.build)?.1["bin/\(name)"] else {
             throw DeviceToolsError.toolMissing(name)
         }
         return tool

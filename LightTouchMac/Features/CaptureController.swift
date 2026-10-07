@@ -5,6 +5,7 @@
 // asks this for what they enable; the device (its screen and canvas capture)
 // comes from the selected session.
 
+import HostRuntime
 import Cocoa
 import UniformTypeIdentifiers
 
@@ -17,7 +18,7 @@ import UniformTypeIdentifiers
     /// The selected device, nil when none runs.
     var session: () -> DeviceSession? = { nil }
     /// The window's device profile (the reminder names it).
-    var profile: () -> DeviceProfile = { .iPodTouch2G }
+    var profile: () -> Board = { .n72 }
     /// Capture state changed: the toolbar and menus revalidate.
     var onChange: () -> Void = {}
     /// Quit was waiting for the recording to save.

@@ -43,10 +43,11 @@ final class DeviceHost: @unchecked Sendable {
     var booted: Bool { stateLock.withLock { bootConfig != nil } }
     var hasExited: Bool { stateLock.withLock { exited } }
 
-    func info(machine: String?) -> HelperInfo {
+    func info(board: String?) -> HelperInfo {
         HelperInfo(protocolVersion: DeviceLinkWire.protocolVersion, pid: getpid(), dylibPath: qemu.path,
                    dylibModified: qemu.modified, buildID: qemu.buildID?().map { String(cString: $0) },
-                   deviceInfo: machine.flatMap { qemu.info(machine: $0) }, storageProofValidation: true)
+                   deviceInfo: board.flatMap { board in qemu.machines.first { $0.board == board } },
+                   storageProofValidation: true)
     }
 
     // MARK: Pump

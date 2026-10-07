@@ -1,3 +1,4 @@
+import HostRuntime
 import Foundation
 
 /// An app-service read can fail while iOS and the USB bridge are still alive.
@@ -13,14 +14,14 @@ nonisolated struct DeviceConnectionIssue: Equatable, Sendable {
 
     /// The guest is not activated (lockdown's ActivationState, or every
     /// service refused with -34 SERVICE_PROHIBITED): nothing to retry.
-    static func unactivated(profile: DeviceProfile, detail: String) -> DeviceConnectionIssue {
+    static func unactivated(profile: Board, detail: String) -> DeviceConnectionIssue {
         DeviceConnectionIssue(summary: "This \(profile.shortName) isn’t activated. Choose Erase All Content and Settings, then prepare it again.",
                               detail: detail, blocksCommands: true, reconnectManagement: false, persistent: true)
     }
 
     /// nil for the recognized activated states (Activated, FactoryActivated, WildcardActivated)
     /// and for an unknown state (nothing to say).
-    static func activation(state: String?, profile: DeviceProfile) -> DeviceConnectionIssue? {
+    static func activation(state: String?, profile: Board) -> DeviceConnectionIssue? {
         guard let state, !["Activated", "FactoryActivated", "WildcardActivated"].contains(state) else { return nil }
         return unactivated(profile: profile, detail: "ActivationState: \(state)")
     }
@@ -33,7 +34,7 @@ nonisolated struct DeviceConnectionIssue: Equatable, Sendable {
         self.persistent = persistent
     }
 
-    init?(error: Error, operation: String, profile: DeviceProfile) {
+    init?(error: Error, operation: String, profile: Board) {
         guard !(error is CancellationError) else { return nil }
         if case DeviceError.lockdown(-34) = error {   // SERVICE_PROHIBITED: an unactivated guest
             self = .unactivated(profile: profile, detail: "\(operation): \(error.localizedDescription)")

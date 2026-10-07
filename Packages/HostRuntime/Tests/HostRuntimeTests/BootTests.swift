@@ -12,7 +12,7 @@ struct BootTests {
         #expect(imei.count == 15 && imei.hasPrefix("00000000") && IPhoneIdentity.luhn(String(imei.prefix(14))) == Int(String(imei.last!)))
         #expect(IPhoneIdentity.upgraded(identity)?.udid == IPhoneIdentity.udid(serial: "ABCDEFGHJKL", imei: imei,
                                                                               wifiMAC: "02:11:22:33:44:66", btMAC: "02:11:22:33:44:67"))
-        for (board, machine) in [(PreparedDeviceBoot.Board.n90, "iPhone-4"), (.n88, "n88"), (.k48, "ipad1")] {
+        for (board, machine) in [(Board.n90, "iPhone-4"), (.n88, "n88"), (.k48, "ipad1")] {
             let f = try Fixture(board: board, strategy: "kboot", identity: identity)
             defer { try? FileManager.default.removeItem(at: f.root) }
             let config = try f.prepare(board).configuration(bootArgs: "", usbAddress: nil, wifi: true, guestPackage: nil,
@@ -30,12 +30,12 @@ struct BootTests {
     @Test func carrierSettingsReachRadioBoards() throws {
         var carrier = CarrierSettings()
         carrier.carrier = "Panel"
-        for board in [PreparedDeviceBoot.Board.n90, .n88, .m68, .k48, .n81] {
+        for board in [Board.n90, .n88, .m68, .k48, .n81] {
             let f = try Fixture(board: board, strategy: board == .m68 ? "iboot" : "kboot")
             defer { try? FileManager.default.removeItem(at: f.root) }
             let config = try f.prepare(board).configuration(bootArgs: "", usbAddress: nil, wifi: true, guestPackage: nil,
                 serial: "null", audio: [], netdev: "user,id=wifi0", carrier: carrier)
-            #expect(config.argv.contains("ios-baseband.carrier=Panel") == board.hasRadio)
+            #expect(config.argv.contains("ios-baseband.carrier=Panel") == board.hardware!.hasCellular)
         }
     }
 
@@ -51,7 +51,8 @@ private final class Fixture {
     var base: URL { root.appendingPathComponent("base, with spaces") }
     var overlay: URL { root.appendingPathComponent("overlay") }
     var nor: URL { root.appendingPathComponent("private-nor") }
-    init(board: PreparedDeviceBoot.Board, strategy: String?, identity: [String: Any]? = nil) throws {
+    init(board: Board, strategy: String?, identity: [String: Any]? = nil) throws {
+        MachineFixtures.install()
         let fm = FileManager.default
         try fm.createDirectory(at: base.appendingPathComponent("nand"), withIntermediateDirectories: true)
         for name in ["iBoot.bin", "kboot.bin", "SecureROM.bin", "gid-blobs.bin"] {
@@ -65,14 +66,14 @@ private final class Fixture {
             .write(to: base.appendingPathComponent("identity.json"))
     }
     deinit { try? FileManager.default.removeItem(at: root) }
-    func prepare(_ board: PreparedDeviceBoot.Board, key: String? = "base-A", panel: String? = nil) throws -> PreparedDeviceBoot {
+    func prepare(_ board: Board, key: String? = "base-A", panel: String? = nil) throws -> PreparedDeviceBoot {
         try .prepare(board: board, base: base, overlay: overlay, writableNOR: nor, storageKey: key, bootrom: "rom", panel: panel)
     }
 }
 
 extension BootTests {
-    @Test(arguments: [PreparedDeviceBoot.Board.n45, .n72, .k48, .m68])
-    func sharedAssembly(board: PreparedDeviceBoot.Board) throws {
+    @Test(arguments: [Board.n45, .n72, .k48, .m68])
+    func sharedAssembly(board: Board) throws {
         let f = try Fixture(board: board, strategy: "iboot")
         let prepared = try f.prepare(board)
         let config = try prepared.configuration(bootArgs: "args", usbAddress: "127.0.0.1:1234", wifi: true,
@@ -94,23 +95,22 @@ extension BootTests {
         case .n45, .m68:
             expected = BootRecipe.iPod1G(.init(bootrom: "rom", iBoot: f.base.appendingPathComponent("iBoot.bin").path,
                 nand: f.base.appendingPathComponent("nand").path, writableNOR: f.nor.path, overlay: f.overlay.path,
-                usbAddress: "127.0.0.1:1234", guestPackage: "offer", machineOptions: ["aes-uid": "engine"],
-                machineName: board == .m68 ? "iPhone-2G" : "iPod-Touch-1G"),
-                serial: "null", audio: ["-audio", "driver=none"], netdev: "user,id=wifi0")
+                usbAddress: "127.0.0.1:1234", guestPackage: "offer", machineOptions: ["aes-uid": "engine"]),
+                hardware: board.hardware!, serial: "null", audio: ["-audio", "driver=none"], netdev: "user,id=wifi0")
         case .n72:
             expected = BootRecipe.iPod(.init(bootArgs: "args", iBoot: f.base.appendingPathComponent("iBoot.bin").path,
                 bootrom: "rom", nand: f.base.appendingPathComponent("nand").path, nor: f.base.appendingPathComponent("nor.bin").path,
                 writableNOR: f.nor.path, overlay: f.overlay.path, usbAddress: "127.0.0.1:1234", wifi: true,
                 gidBlobs: f.base.appendingPathComponent("gid-blobs.bin").path, guestPackage: "offer",
                 machineOptions: ["aes-uid": "engine", "ecid": "0x234", "wifi-mac": "02:11:22:33:44:66"]),
-                serial: "null", audio: ["-audio", "driver=none"], netdev: "user,id=wifi0", restore: [])
+                hardware: board.hardware!, serial: "null", audio: ["-audio", "driver=none"], netdev: "user,id=wifi0", restore: [])
         case .k48:
             expected = BootRecipe.iPad(.init(boot: .iBoot(image: f.base.appendingPathComponent("iBoot.bin").path,
                 writableNOR: f.nor.path, gidBlobs: f.base.appendingPathComponent("gid-blobs.bin").path),
                 nand: f.base.appendingPathComponent("nand").path, overlay: f.overlay.path, dieID: "0x123:0x456",
                 usbAddress: "127.0.0.1:1234", wifi: true, guestPackage: "offer",
                 machineOptions: ["aes-uid": "engine", "wifi-mac": "02:11:22:33:44:66"]),
-                serial: "null", audio: ["-audio", "driver=none"], netdev: "user,id=wifi0", restore: [])
+                hardware: board.hardware!, serial: "null", audio: ["-audio", "driver=none"], netdev: "user,id=wifi0", restore: [])
         case .n81, .n90, .n88, .n18:
             return   // kboot only: missingLegacyStrategyKeepsBoardDefault covers it
         }
@@ -118,8 +118,8 @@ extension BootTests {
     }
 
     /// device.plist `panel` (issue #21) reaches the machine as panel=WxH; unset, the machine line has no panel.
-    @Test(arguments: [PreparedDeviceBoot.Board.n72, .k48])
-    func panelOption(board: PreparedDeviceBoot.Board) throws {
+    @Test(arguments: [Board.n72, .k48])
+    func panelOption(board: Board) throws {
         let f = try Fixture(board: board, strategy: "iboot")
         func machine(_ panel: String?) throws -> String {
             try f.prepare(board, panel: panel).configuration(bootArgs: "", usbAddress: nil, wifi: false,
@@ -165,8 +165,8 @@ extension BootTests {
         if strategy == "bootrom" { #expect(c.argv[2].contains("development-fuses=off")) }
     }
 
-    @Test(arguments: PreparedDeviceBoot.Board.allCases)
-    func unknownStrategyRejectedBeforeStorage(board: PreparedDeviceBoot.Board) throws {
+    @Test(arguments: Board.allCases)
+    func unknownStrategyRejectedBeforeStorage(board: Board) throws {
         let f = try Fixture(board: board, strategy: "typo")
         #expect(throws: CocoaError.self) { _ = try f.prepare(board) }
         #expect(FileManager.default.fileExists(atPath: f.overlay.path) == false)
@@ -236,12 +236,12 @@ extension BootTests {
 }
 
 extension BootTests {
-    @Test(arguments: PreparedDeviceBoot.Board.allCases, [
+    @Test(arguments: Board.allCases, [
         "{", "[]", "true", "42", "null", "\"iboot\"",
         "{\"boot_strategy\":null}", "{\"boot_strategy\":true}",
         "{\"boot_strategy\":17}", "{\"boot_strategy\":[]}", "{\"boot_strategy\":{}}"
     ])
-    func invalidPresentLockRejectedBeforeStorage(board: PreparedDeviceBoot.Board, json: String) throws {
+    func invalidPresentLockRejectedBeforeStorage(board: Board, json: String) throws {
         let f = try Fixture(board: board, strategy: nil)
         let lock = f.base.appendingPathComponent("device.lock.json")
         let data = Data(json.utf8)
@@ -259,12 +259,12 @@ extension BootTests {
         #expect(!FileManager.default.fileExists(atPath: f.nor.path))
     }
 
-    @Test(arguments: PreparedDeviceBoot.Board.allCases, [false, true])
-    func missingLegacyStrategyKeepsBoardDefault(board: PreparedDeviceBoot.Board, missingLock: Bool) throws {
+    @Test(arguments: Board.allCases, [false, true])
+    func missingLegacyStrategyKeepsBoardDefault(board: Board, missingLock: Bool) throws {
         let f = try Fixture(board: board, strategy: nil)
         let lock = f.base.appendingPathComponent("device.lock.json")
         if missingLock { try FileManager.default.removeItem(at: lock) }
-        #expect(try BootRecipe.bootStrategy(lock) == nil)
+        #expect(try DeviceLock.read(lock)?.bootStrategy == nil)
         let c = try f.prepare(board).configuration(bootArgs: "", usbAddress: nil, wifi: false,
             guestPackage: nil, serial: "null", audio: [], netdev: nil)
         switch board {

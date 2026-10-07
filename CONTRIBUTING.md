@@ -122,6 +122,20 @@ through `scripts/sources.py` (the pin in `build-support/sources.json`).
 
 Every headless boot passes `-audio driver=none`. The checks are headless; none of them launch the app.
 
+## Boards
+
+A board's facts have two homes. The emulator's: qemu-ios's `qemu_ios_device_info` table
+(`contrib/ios-app/qemu-ios-ui.c`): the `-M` machine, the board ID, the screen, the modem, the USB host, the compass,
+the USB charger and the `panel=` limits; the helper reports them in its hello and lists them with
+`LightTouchDevice --machines`, and the app reads them as `DeviceInfo` (`Board.hardware`). The app's: one `Board`
+case and its `Facts` in `Packages/HostRuntime/Sources/HostRuntime/Board.swift`: the names, the model ID, the SoC
+family (which decides how its prepared base boots and its guest architecture) and the art. Adding a board touches
+those two places; its firmware is catalog entries, and preparing it is a FirmwareKit recipe if no existing one fits.
+`tests/fixtures/machines.json` is the listing the tests use without an emulator; `tests/release/test-package.py`
+holds each of its machines to the bundled library's.
+
+`device.lock.json` is `DeviceLock` (HostRuntime): FirmwareKit writes it, everything else reads it through that type.
+
 ## Rules
 
 - **No Python bridge.** The app runs one preparer, the Swift `firmwarekit`. qemu-ios's Python `imgtools/` is the test oracle, not a runtime.
@@ -138,11 +152,11 @@ Every headless boot passes `-audio driver=none`. The checks are headless; none o
 | Path | What |
 |---|---|
 | `LightTouchMac/` | The app, one directory per layer (below), plus `Resources/firmware-catalog.json` (its `bundled` names the built-in iPod, `Resources/Device/n72ap-7E18.itbase`, which a fresh install unpacks and selects; `first_run` is what a first launch selects without it: an `available` build Apple still serves), `Assets.xcassets`, `Shim/` |
-| `LightTouchMac/Transport/` | The wire to a device and the app's logs: `IMobileDevice` (the dlopen'd libimobiledevice), `USBMux` (each device's usbmuxd), `DeviceExecution` (the serial gate, deadlines, late-handle cleanup, errors, timeouts), `NativeLogging`, `AppEventLog` |
+| `LightTouchMac/Transport/` | The wire to a device and the app's logs: `IMobileDevice` (libimobiledevice, linked by the services helper), `USBMux` (each device's usbmuxd), `DeviceExecution` (the serial gate, deadlines, late-handle cleanup, errors, timeouts), `NativeLogging`, `AppEventLog` |
 | `LightTouchMac/Services/` | Stock lockdown services on one device, all on `DeviceServices`' `run` kernel: `InstallationProxy`, `AFC` (staging and the Files browser), `SpringBoardServices`, `LockdownTools` (ActivationState; the lockdown-tz and lockdown-mcinstall writes run as child processes of the services helper, `LightTouchServices/Lockdown`), `NotificationProxy` |
 | `LightTouchMac/Guest/` | The guest agent: `GuestAgent` (the wire and typed ops), `GuestServices` (media commit, trust, proxy route, respring, launch), `GuestPackage` |
 | `LightTouchMac/Library/` | What the app keeps: `DeviceInstance`, `DeviceLibrary`, `DeviceStateStorage`, `StorageLocations`, `Bundled`, `LegacyState`, `IPSWStore`, `FirmwareCatalog`, `FirmwareJobs`, `FirmwareDownloads`, `PreparationJob`, `IPALibrary`, `IPAMembers`, `AppMetadataCache` |
-| `LightTouchMac/Device/` | One running device: `DeviceProfile`, `DeviceSession`, `DeviceProcess` (its helper), `BootRecipe`, `EmulatorController` (lifecycle and input; vends `services`, `guest`, `installPipeline`), `DeviceRow`, `DeviceConnectionIssue`, `DeviceFileWatch`, `WebProxyConfiguration` |
+| `LightTouchMac/Device/` | One running device: `Board+App` (what the app derives from a board), `DeviceSession`, `DeviceProcess` (its helper), `EmulatorController` (lifecycle and input; vends `services`, `guest`, `installPipeline`), `DeviceRow`, `DeviceConnectionIssue`, `DeviceFileWatch`, `WebProxyConfiguration` |
 | `LightTouchMac/Features/` | What the app does with a device: `AppInstaller` (the per-device install and removal queue), `AppInstallPipeline`, `MediaImport` (+ `Media*`, `PreparedMedia`), `WebProxySetup`, `CaptureController` (+ recording, movie writer, canvas capture, capture preferences), `CatalogClient`/`CatalogCopy`, `DiagnosticsExport` |
 | `LightTouchMac/UI/` | Windows, views and view controllers: `MainWindowController`, the sidebar, placeholder, device and inspector view controllers, `DisplayView`, `DeviceModelView`, `DroppedFiles`, the Files, log, storage, proxy and capture panels, small controls |
 | `LightTouchMac/App/` | `main`, `AppDelegate`, `MainMenu`, `WindowRestorationPolicy`, `NetworkAccessPreference` |

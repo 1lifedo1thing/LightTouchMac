@@ -1,3 +1,4 @@
+import HostRuntime
 import Cocoa
 
 final class ProxySettingsView: NSView {
@@ -12,9 +13,9 @@ final class ProxySettingsView: NSView {
     private let stack = NSStackView()
     var onResize: (() -> Void)?
 
-    private let profile: DeviceProfile
+    private let profile: Board
 
-    init(configuration: WebProxyConfiguration, status: WebProxyStatus, profile: DeviceProfile) {
+    init(configuration: WebProxyConfiguration, status: WebProxyStatus, profile: Board) {
         self.profile = profile
         super.init(frame: .zero)
         enabled.state = configuration.mode == .off ? .off : .on

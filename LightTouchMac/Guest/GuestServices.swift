@@ -13,12 +13,13 @@
 //
 // Foundation only, so tests/drivers/session-driver compiles it as the app does.
 
+import HostRuntime
 import Foundation
 
 enum AppLaunchError: Error {
     case locked, unavailable, failed
 
-    func message(for profile: DeviceProfile) -> String {
+    func message(for profile: Board) -> String {
         switch self {
         case .locked: "Unlock the \(profile.shortName), then try again."
         case .unavailable: "Wait for the \(profile.shortName) to finish starting, then try again."

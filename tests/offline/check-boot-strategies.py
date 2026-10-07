@@ -14,8 +14,13 @@ with tempfile.TemporaryDirectory(prefix='ltm-boot-strategies-') as tmp:
     (work / 'main.swift').write_text(r'''
 import Foundation
 func require(_ yes: Bool, _ message: String) { if !yes { fatalError(message) } }
+func info(_ machine: String, _ board: String) -> DeviceInfo {
+    DeviceInfo(machine: machine, board: board, screenWidth: 320, screenHeight: 480, screenScale: 1, defaultOrientation: 0,
+               hasCellular: false, hasUSBHost: false, hasCompass: false, hasUSBCharger: false,
+               panelMin: 64, panelMaxWidth: 1024, panelMaxHeight: 511, panelWidthStep: 2, panelMaxPixels: 0)
+}
 func machine(_ boot: BootRecipe.IPadBoot) -> String {
-    let config = BootRecipe.iPad(.init(boot: boot, nand: "nand", overlay: "overlay", dieID: "1:2", usbAddress: nil, wifi: false), serial: "null", audio: [], netdev: nil, restore: [])
+    let config = BootRecipe.iPad(.init(boot: boot, nand: "nand", overlay: "overlay", dieID: "1:2", usbAddress: nil, wifi: false), hardware: info("ipad1", "k48ap"), serial: "null", audio: [], netdev: nil, restore: [])
     return config.argv[2]
 }
 let kernel = machine(.kernel(image: "kernel", writableNOR: nil))
@@ -43,29 +48,29 @@ func writeLock(_ board: String, _ machine: [String: String]) throws {
 }
 try JSONSerialization.data(withJSONObject: ["wifi-mac": "02:11:22:33:44:66", "bt-mac": "02:11:22:33:44:67"]).write(to: dir.appendingPathComponent("identity.json"))
 try writeLock("n72ap", ["aes-uid": "engine"])
-require(BootRecipe.lockMachine(lock) == ["aes-uid": "engine", "wifi-mac": "02:11:22:33:44:66", "bt-mac": "02:11:22:33:44:67"], "existing N72 unit provisions card from identity")
+require((try DeviceLock.read(lock)!).machineOptions(base: dir) == ["aes-uid": "engine", "wifi-mac": "02:11:22:33:44:66", "bt-mac": "02:11:22:33:44:67"], "existing N72 unit provisions card from identity")
 try writeLock("n72ap", ["wifi-mac": "02:11:22:33:44:88"])
-require(BootRecipe.lockMachine(lock)["wifi-mac"] == "02:11:22:33:44:88", "explicit card provisioning wins")
+require((try DeviceLock.read(lock)!).machineOptions(base: dir)["wifi-mac"] == "02:11:22:33:44:88", "explicit card provisioning wins")
 try JSONSerialization.data(withJSONObject: ["seed": "ipad1-7B500-default"]).write(to: dir.appendingPathComponent("identity.json"))
 try writeLock("n72ap", [:])
-require(BootRecipe.lockMachine(lock)["ecid"] == "0x6bb6bf76e7", "legacy unit ECID uses the frozen seed identity")
+require((try DeviceLock.read(lock)!).machineOptions(base: dir)["ecid"] == "0x6bb6bf76e7", "legacy unit ECID uses the frozen seed identity")
 try JSONSerialization.data(withJSONObject: ["seed": "ipad1-7B500-default", "unique-chip-id": "0xa86437a9d7"]).write(to: dir.appendingPathComponent("identity.json"))
-require(BootRecipe.lockMachine(lock)["ecid"] == "0xa86437a9d7", "stored unit ECID wins over seed derivation")
+require((try DeviceLock.read(lock)!).machineOptions(base: dir)["ecid"] == "0xa86437a9d7", "stored unit ECID wins over seed derivation")
 try writeLock("n72ap", ["ecid": "0x123"])
-require(BootRecipe.lockMachine(lock)["ecid"] == "0x123", "explicit board ECID wins")
-let pod = BootRecipe.iPod(.init(bootArgs: "", iBoot: "", bootrom: "rom", nand: "nand", nor: "nor", writableNOR: "rw", overlay: "overlay", usbAddress: nil, wifi: false, machineOptions: BootRecipe.lockMachine(lock)), serial: "null", audio: [], netdev: nil, restore: [])
+require((try DeviceLock.read(lock)!).machineOptions(base: dir)["ecid"] == "0x123", "explicit board ECID wins")
+let pod = BootRecipe.iPod(.init(bootArgs: "", iBoot: "", bootrom: "rom", nand: "nand", nor: "nor", writableNOR: "rw", overlay: "overlay", usbAddress: nil, wifi: false, machineOptions: (try DeviceLock.read(lock)!).machineOptions(base: dir)), hardware: info("iPod-Touch", "n72ap"), serial: "null", audio: [], netdev: nil, restore: [])
 require(pod.argv[2].contains(",ecid=0x123"), "unit ECID reaches the production boot argv")
 try writeLock("k48ap", [:])
-require(BootRecipe.lockMachine(lock).isEmpty, "K48 takes no N72 ECID option")
+require((try DeviceLock.read(lock)!).machineOptions(base: dir).isEmpty, "K48 takes no N72 ECID option")
 try JSONSerialization.data(withJSONObject: ["wifi-mac": "02:11:22:33:44:66", "bt-mac": "02:11:22:33:44:67", "unique-chip-id": "0x234"]).write(to: dir.appendingPathComponent("identity.json"))
-require(BootRecipe.lockMachine(lock) == ["wifi-mac": "02:11:22:33:44:66"], "existing K48 unit provisions its card from identity")
+require((try DeviceLock.read(lock)!).machineOptions(base: dir) == ["wifi-mac": "02:11:22:33:44:66"], "existing K48 unit provisions its card from identity")
 try writeLock("k48ap", ["wifi-mac": "02:11:22:33:44:88"])
-require(BootRecipe.lockMachine(lock)["wifi-mac"] == "02:11:22:33:44:88", "explicit K48 card provisioning wins")
+require((try DeviceLock.read(lock)!).machineOptions(base: dir)["wifi-mac"] == "02:11:22:33:44:88", "explicit K48 card provisioning wins")
 try writeLock("n45ap", [:])
-require(BootRecipe.lockMachine(lock).isEmpty, "other boards do not acquire a card option")
+require((try DeviceLock.read(lock)!).machineOptions(base: dir).isEmpty, "other boards do not acquire a card option")
 try writeLock("n72ap", [:])
 try FileManager.default.removeItem(at: dir.appendingPathComponent("identity.json"))
-require(BootRecipe.lockMachine(lock).isEmpty, "legacy N72 with no identity preserves default")
+require((try DeviceLock.read(lock)!).machineOptions(base: dir).isEmpty, "legacy N72 with no identity preserves default")
 print("PASS: explicit kernel/iBoot/ROM strategies, missing inputs and unknown strategy rejection")
 ''')
     exe = work / 'check'

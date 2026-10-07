@@ -16,6 +16,7 @@
 
 import CryptoKit
 import Foundation
+import HostRuntime
 import zlib
 
 public enum PreparedBase {
@@ -100,7 +101,7 @@ public enum PreparedBase {
             package["itpack"] = itpack
             lock["guest_package"] = package
         }
-        return try Preparer.lockData(lock)
+        return try DeviceLock(json: lock).data()
     }
 
     // MARK: - Unpack
@@ -216,6 +217,6 @@ public enum PreparedBase {
             outputs["nor"] = record
             lock["outputs"] = outputs
         }
-        try Preparer.lockData(lock).write(to: lockURL, options: .atomic)
+        try DeviceLock(json: lock).data().write(to: lockURL, options: .atomic)
     }
 }

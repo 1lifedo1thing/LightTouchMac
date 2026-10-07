@@ -1,3 +1,4 @@
+import HostRuntime
 import DeviceRuntime
 // Created by Sam on 2026-08-05.
 //
@@ -60,7 +61,7 @@ final class AppsInspectorViewController: NSViewController {
     /// What the server returned; the table shows catalogResults, these through the filter menu.
     private var catalogFetched: [CatalogApp] = []
     private var catalogResults: [CatalogApp] { filterButton.apply(catalogFetched) }
-    private lazy var filterButton = CatalogFilterButton(isIPad: emulator.profile == .iPad1)
+    private lazy var filterButton = CatalogFilterButton(isIPad: emulator.profile.facts.kind == .iPad)
     private var searchTask: Task<Void, Never>?
     /// The table is showing Legacy Store content.
     private var searching: Bool { mode == .store }

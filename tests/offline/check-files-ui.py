@@ -67,7 +67,7 @@ final class Sink: NSResponder {
   NSApp.run()
  }
  @MainActor static func runChecks() async throws {
-  let controller=DeviceFilesWindowController(profile:.iPodTouch2G)
+  let controller=DeviceFilesWindowController(profile:.n72)
   let vc=controller.browser;vc.services=DeviceServices()
   let window=controller.window!
   (NSApp as! FilesApplication).commandWindow=window
@@ -178,5 +178,5 @@ final class Sink: NSResponder {
  }
 }
 ''')
- subprocess.run(['xcrun','swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]),'-default-isolation','MainActor',str(root/'LightTouchMac/App/WindowRestorationPolicy.swift'),str(root/'LightTouchMac/UI/DeviceFilesViewController.swift'),str(root/'LightTouchMac/UI/DeviceFilesWindowController.swift'),str(root/'LightTouchMac/Library/UnusedURL.swift'),str(root/'LightTouchMac/Device/DeviceProfile.swift'),str(tmp/'check.swift'),'-o',str(tmp/'check')],check=True)
+ subprocess.run(['xcrun','swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]),'-default-isolation','MainActor',str(root/'LightTouchMac/App/WindowRestorationPolicy.swift'),str(root/'LightTouchMac/UI/DeviceFilesViewController.swift'),str(root/'LightTouchMac/UI/DeviceFilesWindowController.swift'),str(root/'LightTouchMac/Library/UnusedURL.swift'),str(root/'LightTouchMac/Device/Board+App.swift'),str(tmp/'check.swift'),'-o',str(tmp/'check')],check=True)
  subprocess.run([str(tmp/'check')],check=True,timeout=120)  # hang guard only

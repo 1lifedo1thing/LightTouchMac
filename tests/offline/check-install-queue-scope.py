@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The install queue is per device: discarding, pausing and busy checks on device A leave device B alone.
-Compiles Features/AppInstaller.swift whole (with InstallationQueue, DeviceExecution and DeviceProfile) against
+Compiles Features/AppInstaller.swift whole (with InstallationQueue, DeviceExecution and Board) against
 tests/fixtures/app-installer*.swift and a scripted EmulatorController."""
 from pathlib import Path
 import sys
@@ -16,7 +16,7 @@ nonisolated func logEvent(_ message: String) { logged.append(message) }
 struct DeviceInstance { let id = UUID() }
 @MainActor final class EmulatorController {
  var services: EmulatorController { get throws { self } }  // EmulatorController.services: the uninstall
- let profile = DeviceProfile.iPodTouch2G
+ let profile = Board.n72
  let instance = DeviceInstance()
  var deviceReachable: Bool? = true
  var failures = 0
@@ -142,7 +142,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-queue-scope-') as directory:
     subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-swift-version', '6', '-default-isolation', 'MainActor',
                     '-module-cache-path', str(work / 'modules'), *[str(app / f) for f in [
                         'Features/AppInstaller.swift', 'Features/MediaSupport.swift', 'Features/InstallationQueue.swift', 'Transport/DeviceExecution.swift',
-                        'Device/DeviceProfile.swift']],
+                        'Device/Board+App.swift']],
                     str(root / 'tests/fixtures/app-installer.swift'), str(root / 'tests/fixtures/app-installer-library.swift'),
                     str(work / 'check.swift'), '-o', str(work / 'check')], check=True)
     subprocess.run([str(work / 'check')], check=True, timeout=25)

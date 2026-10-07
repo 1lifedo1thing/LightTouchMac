@@ -130,7 +130,7 @@ extension String {
 
 @MainActor final class Device {
     let name: String
-    let profile: DeviceProfile
+    let profile: Board
     var process: DeviceSessionProcess!
     private var processLog: ProcessLogCapture?
     var mux: Mux!
@@ -152,7 +152,7 @@ extension String {
     var webProxy: WebProxyEndpoint?
     /// The device's Attach to Local Network, off as the app's default (BootRecipe.wifiNetdev's lan=off).
     var localNetwork = false
-    init(name: String, profile: DeviceProfile) { self.name = name; self.profile = profile }
+    init(name: String, profile: Board) { self.name = name; self.profile = profile }
     var dir: URL { work.appendingPathComponent(name) }
     /// When `dir` is an app state's device (a link to Devices/<uuid> with its device.plist): its storage key, and the
     /// boot is admitted and pinned as the app's (EmulatorController: managed admission, instance.storage.key).
@@ -175,32 +175,32 @@ extension String {
         serial = try SerialLogCapture(url: dir.appendingPathComponent("serial.log"), temporaryRoot: work,
                                       watch: serialWatch?.phrases ?? [], onMatch: serialWatch?.onMatch ?? { _ in })
         // Preparation runs after hello, when the helper owns the storage lease.
-        func configuration() throws -> BootConfig {
+        func configuration(_ hardware: DeviceInfo?) throws -> BootConfig {
             let overlay = dir.appendingPathComponent("overlay")
             let prepared: PreparedDeviceBoot
             var offer = guestPackage
-            if profile.isA4 || profile == .iPodTouch1G || profile == .iPhone2G {
-                let base = profile.isA4 ? preparedBase ?? URL(fileURLWithPath: Self.ipadBase)
+            if profile.isKBoot || profile == .n45 || profile == .m68 {
+                let base = profile.isKBoot ? preparedBase ?? URL(fileURLWithPath: Self.ipadBase)
                     : URL(fileURLWithPath: ipod!.nand).deletingLastPathComponent()
-                let nor = !profile.isA4 || FileManager.default.fileExists(atPath: base.appendingPathComponent("nor.bin").path)
+                let nor = !profile.isKBoot || FileManager.default.fileExists(atPath: base.appendingPathComponent("nor.bin").path)
                     ? dir.appendingPathComponent("nor.bin") : nil
-                prepared = try PreparedDeviceBoot.prepare(board: profile.runtimeBoard,
+                prepared = try PreparedDeviceBoot.prepare(board: profile,
                     base: base, overlay: overlay, writableNOR: nor, storageKey: managedKey,
-                    bootrom: BootRecipe.bootrom(profile.bootromName, filesRoot: Self.files))
-                if profile.isA4 { offer = try iPadOffer(base: base) }
+                    bootrom: BootRecipe.bootrom(profile.bootrom, filesRoot: Self.files))
+                if profile.isKBoot { offer = try iPadOffer(base: base) }
             } else if let base = preparedBase {
                 prepared = try PreparedDeviceBoot.prepare(board: .n72, base: base, overlay: overlay,
                     writableNOR: dir.appendingPathComponent("nor.bin"), storageKey: managedKey,
-                    bootrom: BootRecipe.bootrom(profile.bootromName, filesRoot: Self.files))
+                    bootrom: BootRecipe.bootrom(profile.bootrom, filesRoot: Self.files))
             } else {
                 let files = ipod ?? IPodFiles(nand: Self.ipodNAND, nor: Self.files + "/ios3/nor_7E18.bin", iBoot: Self.files + "/ios3/iBoot.bin")
                 prepared = try PreparedDeviceBoot.legacyN72(nand: URL(fileURLWithPath: files.nand),
                     nor: URL(fileURLWithPath: files.nor), iBoot: files.iBoot, gidBlobs: files.gidBlobs,
                     machine: files.machine, overlay: overlay, bootrom: Self.files + "/bootrom_240_4")
             }
-            let netdev = profile.isA4 ? netdevExtra.map { BootRecipe.wifiNetdev(guestForward: $0, restricted: false, localNetwork: localNetwork) }
+            let netdev = profile.isKBoot ? netdevExtra.map { BootRecipe.wifiNetdev(guestForward: $0, restricted: false, localNetwork: localNetwork) }
                 : BootRecipe.wifiNetdev(guestForward: netdevExtra ?? "", restricted: false, localNetwork: localNetwork)
-            return try prepared.configuration(bootArgs: "amfi_allow_any_signature=1 cs_enforcement_disable=1",
+            return try prepared.configuration(hardware: hardware, bootArgs: "amfi_allow_any_signature=1 cs_enforcement_disable=1",
                 usbAddress: mux.guestAddress, wifi: true, guestPackage: offer, serial: serial!.argument,
                 audio: ["-audio", config.single?.audioWAV.map { "driver=wav,path=\($0)" } ?? "driver=none"], netdev: netdev, webProxy: webProxy)
         }
@@ -220,7 +220,7 @@ extension String {
             self.helloPID = info.pid
             emit("hello", ["device": self.name, "pid": info.pid, "dylib": info.dylibPath, "build": info.buildID ?? "",
                            "width": info.deviceInfo?.screenWidth ?? 0, "height": info.deviceInfo?.screenHeight ?? 0])
-            do { return try configuration() }
+            do { return try configuration(info.deviceInfo) }
             catch {
                 self.preparationError = "\(error)"
                 emit("configurationFailed", ["device": self.name, "error": self.preparationError!])
@@ -249,22 +249,21 @@ extension String {
     /// EmulatorController.composeGuestOffer for a prepared iPad: the bundled itpack, the base's lock record.
     func iPadOffer(base: URL) throws -> String? {
         guard let itpack = config.ipadItpack else { return nil }
-        return try offer(base: base, board: profile.boardID, itpack: itpack)
+        return try offer(base: base, board: profile.rawValue, itpack: itpack)
     }
 
     /// EmulatorController.composeGuestOffer for any prepared base: the itpack, the base's lock record, and the
     /// device's verdicts (guestRecord), as the app offers device.plist `guest`. Without them it_boot reverts a
     /// package it was never told is good after MAX_TRIES boots.
     func offer(base: URL, board: String, itpack: String) throws -> String? {
-        let lockURL = base.appendingPathComponent("device.lock.json")
-        let lock = try JSONSerialization.jsonObject(with: Data(contentsOf: lockURL)) as? [String: Any]
+        let lock = try DeviceLock.read(base: base)
         let dir = dir.appendingPathComponent("work/guest-offer")
         try FileManager.default.createDirectory(at: dir.deletingLastPathComponent(), withIntermediateDirectories: true)
         var record = guestRecord
-        if record.seed == nil { record.seed = GuestPackage.lockRecord(lockURL)?.seed }
-        let offer = try GuestPackage.compose(itpack: URL(fileURLWithPath: itpack), board: board, build: lock?["build"] as? String ?? "",
-                                             lock: GuestPackage.lockRecord(lockURL), guest: record, into: dir)
-        emit("offer", ["device": name, "serial": offer?.serial ?? -1, "seed": GuestPackage.lockRecord(lockURL)?.seed ?? -1,
+        if record.seed == nil { record.seed = GuestPackage.lockRecord(lock)?.seed }
+        let offer = try GuestPackage.compose(itpack: URL(fileURLWithPath: itpack), board: board, build: lock?.build ?? "",
+                                             lock: GuestPackage.lockRecord(lock), guest: record, into: dir)
+        emit("offer", ["device": name, "serial": offer?.serial ?? -1, "seed": GuestPackage.lockRecord(lock)?.seed ?? -1,
                        "lastGood": record.lastGood ?? -1])
         return offer == nil ? nil : dir.path
     }
@@ -317,7 +316,7 @@ extension String {
         var attempts = 0, locked: Bool?
         for attempt in 0..<3 {
             if attempt > 0 { await wakeForShot("unlock\(generation)-\(attempt)") }
-            if profile == .iPad1 { await drag(0.9365, 0.621, 0.9365, 0.0612) } else { await drag(0.18, 0.9, 0.92, 0.9) }
+            if profile == .k48 { await drag(0.9365, 0.621, 0.9365, 0.0612) } else { await drag(0.18, 0.9, 0.92, 0.9) }
             attempts += 1
             try? await Task.sleep(for: .seconds(5))
             locked = try? await agent?.isLocked()
@@ -538,7 +537,7 @@ func checkPreparedFiles() throws {
 
 @MainActor func run() async {
     do { try checkPreparedFiles() } catch { fail("prepared files: \(error)") }
-    let ipod = Device(name: "ipod", profile: .iPodTouch2G), ipad = Device(name: "ipad", profile: .iPad1)
+    let ipod = Device(name: "ipod", profile: .n72), ipad = Device(name: "ipad", profile: .k48)
     do { try ipod.boot(generation: 1); try ipad.boot(generation: 1) } catch { fail("boot: \(error)") }
     async let a: Void = waitLit(ipod, 0.03, 240)
     async let b: Void = waitLit(ipad, 0.2, 240)
@@ -613,7 +612,7 @@ func checkPreparedFiles() throws {
 
 /// Exercise the actual helper hello and owned-process reaping without booting QEMU.
 @MainActor func runPreparationFailure() async {
-    let d = Device(name: "preparation-failure", profile: .iPodTouch2G)
+    let d = Device(name: "preparation-failure", profile: .n72)
     let missing = work.appendingPathComponent("missing-nor.bin")
     d.ipod = .init(nand: work.appendingPathComponent("missing-nand").path,
                    nor: missing.path, iBoot: "unused")
@@ -665,7 +664,7 @@ func checkPreparedFiles() throws {
         let intent = lease.deletingLastPathComponent().appendingPathComponent("edit.json")
         if name == "pending" { try! Data("unfinished-edit".utf8).write(to: intent) }
         let capture = try! ProcessLogCapture(url: work.appendingPathComponent("\(name).log"))
-        let process = makeProcess(profile: .iPodTouch2G, log: capture, lease: lease,
+        let process = makeProcess(profile: .n72, log: capture, lease: lease,
             helper: URL(fileURLWithPath: config.helper), requirement: config.requirement)
         var hello = false
         var completionError: DeviceLinkError?
@@ -713,7 +712,7 @@ func checkPreparedFiles() throws {
 @MainActor func runKillBeforeBoot() async {
     let capture = try! ProcessLogCapture(url: work.appendingPathComponent("kill-before-boot.log"))
     let lease = work.appendingPathComponent("device/work/lease")
-    let process = makeProcess(profile: .iPodTouch2G, log: capture, lease: lease,
+    let process = makeProcess(profile: .n72, log: capture, lease: lease,
         helper: URL(fileURLWithPath: config.helper), requirement: config.requirement)
     var configured = false, completions = 0, deaths = 0
     process.onDeath = { death in
@@ -753,10 +752,10 @@ Task { @MainActor in
 DispatchQueue.main.asyncAfter(deadline: .now() + (config.timeout ?? 560)) { fail("driver timed out") }
 CFRunLoopRun()
 
-@MainActor private func makeProcess(profile: DeviceProfile, log: ProcessLogCapture, lease: URL,
+@MainActor private func makeProcess(profile: Board, log: ProcessLogCapture, lease: URL,
                                     helper: URL, requirement: String?) -> DeviceSessionProcess {
     var configuration = DeviceLink.Configuration(instance: UUID(), outputDescriptor: log.writeDescriptor)
-    configuration.machine = profile.machineName
+    configuration.board = profile.rawValue
     configuration.helper = helper
     configuration.requirement = requirement
     configuration.arguments = ["--lease", lease.path]
@@ -770,8 +769,7 @@ CFRunLoopRun()
 @MainActor extension DeviceSessionProcess {
     var deathReason: String? {
         guard let death else { return nil }
-        let machine = link.configuration.machine
-        let name = machine == DeviceProfile.iPad1.machineName ? "iPad" : machine == DeviceProfile.iPhone2G.machineName ? "iPhone" : "iPod"
+        let name = link.configuration.board.flatMap(Board.init(rawValue:))?.shortName ?? "iPod"
         switch death {
         case .startFailed(.helperFailure(DeviceLinkWire.leaseRefusal)): return DeviceLinkWire.leaseRefusal
         case .startFailed: return "The \(name) didn’t start."

@@ -183,7 +183,7 @@ final class Delegate: DeviceLibraryDelegate {
         print("types: \(types)")
         if types["n45ap"] == nil || types["n45ap"] == types["n72ap"] { fail("the iPod 1G and 2G share a type: \(types)") }
         if Set(types.values).count != types.count { fail("boards share a type: \(types)") }
-        if !DeviceProfile.icon(modelCode: "Bogus9,9", fallbackSymbol: "ipodtouch").isTemplate { fail("an unknown model code didn't fall back to the symbol") }
+        if !Board.icon(modelCode: "Bogus9,9", fallbackSymbol: "ipodtouch").isTemplate { fail("an unknown model code didn't fall back to the symbol") }
         /// The image as 24×24 pixels, to tell pictures apart.
         func pixels(_ image: NSImage?) -> Data? {
             guard let image, let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 24, pixelsHigh: 24, bitsPerSample: 8,
@@ -471,9 +471,9 @@ with tempfile.TemporaryDirectory(prefix='ltm-sidebar-ui-') as tmp:
     (tmp / 'main.swift').write_text(check)
     subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), *schema_sources(), '-parse-as-library', '-swift-version', '5', '-default-isolation', 'MainActor',
                     '-module-cache-path', str(tmp / 'modules'),
-                    str(app / 'Library/FirmwareCatalog.swift'), str(app / 'Device/DeviceProfile.swift'),
+                    str(app / 'Library/FirmwareCatalog.swift'), str(app / 'Device/Board+App.swift'),
                     str(app / 'Device/DeviceRow.swift'), str(app / 'Library/SidebarList.swift'),
                     str(app / 'UI/DroppedFiles.swift'), str(app / 'Device/DeviceDeletions.swift'), str(app / 'UI/DeviceLibraryViewController.swift'),
-                    str(app / 'UI/AddDeviceView.swift'), str(app / 'UI/AppleDeviceType.swift'), str(app / 'UI/DeviceProfile+Icon.swift'), str(tmp / 'stubs.swift'), str(tmp / 'main.swift'),
+                    str(app / 'UI/AddDeviceView.swift'), str(app / 'UI/AppleDeviceType.swift'), str(app / 'UI/Board+Icon.swift'), str(tmp / 'stubs.swift'), str(tmp / 'main.swift'),
                     '-o', str(tmp / 'check')], check=True)
     subprocess.run([str(tmp / 'check'), str(app / 'Resources/firmware-catalog.json'), str(out)], check=True, timeout=60)

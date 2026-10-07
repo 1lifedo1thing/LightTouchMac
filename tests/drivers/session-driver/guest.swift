@@ -40,14 +40,14 @@ struct GuestConfig: Decodable {
     init(_ spec: GuestDeviceConfig, _ guest: GuestConfig) {
         self.spec = spec
         self.guest = guest
-        device = Device(name: spec.name, profile: .iPodTouch2G)
+        device = Device(name: spec.name, profile: .n72)
         device.ipod = .init(nand: spec.nand, nor: spec.nor, iBoot: spec.iBoot, gidBlobs: spec.gidBlobs,
-                            machine: spec.lock.map { BootRecipe.lockMachine(URL(fileURLWithPath: $0)) } ?? [:])
+                            machine: spec.lock.flatMap { url in (try? DeviceLock.read(URL(fileURLWithPath: url)))??.machineOptions(base: URL(fileURLWithPath: url).deletingLastPathComponent()) } ?? [:])
     }
     var name: String { spec.name }
     var agent: GuestAgent { GuestAgent(link: device.process.link, cache: cache) }
     var status: SharedStatus? { device.process.status }
-    var lock: GuestPackage.LockRecord? { spec.lock.flatMap { GuestPackage.lockRecord(URL(fileURLWithPath: $0)) } }
+    var lock: GuestPackage.LockRecord? { spec.lock.flatMap { GuestPackage.lockRecord((try? DeviceLock.read(URL(fileURLWithPath: $0))) ?? nil) } }
     var services: GuestServices { GuestServices(agent: agent, packaged: status?.guestPackage != nil) }
 
     func step<T>(_ what: String, _ body: () async throws -> T) async -> T {

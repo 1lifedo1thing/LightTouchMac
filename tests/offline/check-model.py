@@ -10,7 +10,7 @@ model_source = r'''import AppKit
 import RealityKit
 import Metal
 func - (a:CGPoint,b:CGPoint)->CGPoint { CGPoint(x:a.x-b.x,y:a.y-b.y) }
-let profiles: [String: DeviceProfile] = ["N72": .iPodTouch2G, "K48": .iPad1, "N45": .iPodTouch1G, "N81": .iPodTouch4G, "N88": .iPhone3GS]
+let profiles: [String: Board] = ["N72": .n72, "K48": .k48, "N45": .n45, "N81": .n81, "N88": .n88]
 /// Renders the model's own scene headless: RealityRenderer draws the same
 /// entities and camera into a texture, so no window is ever shown and the
 /// check runs with the display asleep. Pixel (x, y) is the view's y-up point.
@@ -56,7 +56,7 @@ func save(_ image: CGImage, _ path: String) throws {
 }
 /// Upright quadrants (red, green / blue, yellow), a centre circle and TOP, then
 /// turned into the panel's own scan-out orientation (the iPad's is landscape).
-func pattern(_ profile: DeviceProfile, rotation: Int) -> CGImage {
+func pattern(_ profile: Board, rotation: Int) -> CGImage {
   let turnsBack = profile.panelRotation != 0 ? 1 : rotation / 90
   let upright = profile.uprightScreenPixels
   let size = turnsBack % 2 == 0 ? upright : CGSize(width: upright.height, height: upright.width)
@@ -84,6 +84,7 @@ func pattern(_ profile: DeviceProfile, rotation: Int) -> CGImage {
 @main struct Check {
  @MainActor static func main() async throws {
   _ = NSApplication.shared
+  _ = fixtureMachines
   NSApp.setActivationPolicy(.prohibited)
   let name = CommandLine.arguments[3], profile = profiles[name]!
   let lower = name.lowercased(), out = CommandLine.arguments[2]
@@ -300,7 +301,7 @@ func pattern(_ profile: DeviceProfile, rotation: Int) -> CGImage {
   // frame sits a stop under the shot: luma ~0.34 upper left, ~0.18 lower right; anything at the old 0.5-0.75 is
   // silver again. The asset's near-black frameDark alone gives ~0.03 everywhere; flat paint gives no gradient.
   // Blue-black glass, ~25, with a faint sheen (~43) to the upper right of a diagonal (N45Rim).
-  if profile == .iPodTouch1G {
+  if profile == .n45 {
     func level(_ p: CGPoint) -> CGFloat {
       let c = color(face, model.projectedPoint(p), in: model.bounds.size)
       return 0.2126 * c.redComponent + 0.7152 * c.greenComponent + 0.0722 * c.blueComponent
@@ -388,7 +389,8 @@ enum PreparedMedia { nonisolated static let extensions: Set<String> = [] }
 @main struct Check {
  @MainActor static func main() async throws {
   _=NSApplication.shared
-  let profile: DeviceProfile = ["N72": .iPodTouch2G, "K48": .iPad1, "N45": .iPodTouch1G, "N81": .iPodTouch4G, "N88": .iPhone3GS][CommandLine.arguments[3]]!
+  _ = fixtureMachines
+  let profile: Board = ["N72": .n72, "K48": .k48, "N45": .n45, "N81": .n81, "N88": .n88][CommandLine.arguments[3]]!
   let panel = profile.screenPixels, mounted = profile.panelRotation != 0
   frameWidth = Int32(panel.width); frameHeight = Int32(panel.height)
   let e=EmulatorController(), display=DisplayView(frame:NSRect(x:0,y:0,width:800,height:800),profile:profile)
@@ -476,7 +478,8 @@ enum PreparedMedia { nonisolated static let extensions: Set<String> = [] }
 # DisplayView's flat LCD layer, built without a window: its framebuffer upscales nearest-neighbour too.
 layer_source = display_source.split('@main')[0] + r'''@main struct Check {
  @MainActor static func main() {
-  let profile: DeviceProfile = ["N72": .iPodTouch2G, "K48": .iPad1, "N45": .iPodTouch1G, "N81": .iPodTouch4G, "N88": .iPhone3GS][CommandLine.arguments[3]]!
+  _ = fixtureMachines
+  let profile: Board = ["N72": .n72, "K48": .k48, "N45": .n45, "N81": .n81, "N88": .n88][CommandLine.arguments[3]]!
   let display = DisplayView(frame: NSRect(x: 0, y: 0, width: 800, height: 800), profile: profile)
   func all(_ l: CALayer) -> [CALayer] { [l] + (l.sublayers ?? []).flatMap(all) }
   // The LCD layer: black-backed, stretched to the cutout (it takes each frame's IOSurface as contents).
@@ -511,7 +514,7 @@ with tempfile.TemporaryDirectory(prefix="ltm-model-") as tmp:
     attitude_header=qemu/"include/hw/arm/ipod-attitude.h"
     if not attitude_header.is_file():
         raise SystemExit("Set QEMU_SRC to the QEMU source tree for the production accelerometer comparison")
-    profile=["Device/DeviceProfile", "Device/DeviceProfile+Display"]
+    profile=["Device/Board+App", "../tests/fixtures/machines"]
     for name,source,extra in [
         ("model",model_source,profile),
         ("layer",layer_source,["UI/DisplayView", "UI/GuestKeyboard", "UI/MouseTouchPair", *profile, "UI/DisplayMeasurements", "UI/AttitudeIndicatorButton", "UI/InlineLiveTextView", "UI/DroppedFiles", "UI/DropHighlight"]),

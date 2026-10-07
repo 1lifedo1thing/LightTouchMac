@@ -15,7 +15,7 @@ struct ActivationConfig: Decodable {
 
 @MainActor func runActivation(_ a: ActivationConfig) async {
     let ipad = a.board == "ipad"
-    let d = Device(name: a.board, profile: ipad ? .iPad1 : .iPodTouch2G)
+    let d = Device(name: a.board, profile: ipad ? .k48 : .n72)
     let b = URL(fileURLWithPath: a.base)
     if !ipad, !a.base.isEmpty {
         let iBoot: String
@@ -23,7 +23,7 @@ struct ActivationConfig: Decodable {
         catch { fail("boot lock: \(error)") }
         d.ipod = .init(nand: b.appendingPathComponent("nand").path, nor: b.appendingPathComponent("nor.bin").path,
                        iBoot: iBoot, gidBlobs: FileManager.default.fileExists(atPath: b.appendingPathComponent("gid-blobs.bin").path) ? b.appendingPathComponent("gid-blobs.bin").path : nil,
-                       machine: BootRecipe.lockMachine(b.appendingPathComponent("device.lock.json")))
+                       machine: (try? DeviceLock.read(base: b))??.machineOptions(base: b) ?? [:])
     }
     emit("lock", ["lacksActivation": DeviceInstance.lockLacksActivation(b.appendingPathComponent("device.lock.json"))])
     do { try d.boot(generation: 1) } catch { fail("boot: \(error)") }

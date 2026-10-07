@@ -1,3 +1,4 @@
+import HostRuntime
 import Cocoa
 import UniformTypeIdentifiers
 
@@ -20,7 +21,7 @@ final class CaptureOptionsView: NSView {
     var onChange: (() -> Void)?
     var onResize: (() -> Void)?
 
-    init(preferences: CapturePreferences = .shared, profile: DeviceProfile,
+    init(preferences: CapturePreferences = .shared, profile: Board,
          authorizeNotifications: @escaping () async -> Bool = { await CaptureNotifications.shared.requestAuthorization() }) {
         self.preferences = preferences
         self.authorizeNotifications = authorizeNotifications

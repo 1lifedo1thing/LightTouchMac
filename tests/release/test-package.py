@@ -7,7 +7,7 @@ With an app (an archived or exported Light Touch.app), also check its device hel
 Contents/MacOS, hardened runtime with the QEMU entitlements (and no entitlements on the app or
 any other tool), its load closure and
 the dlopened Frameworks/libqemu-arm.dylib resolved inside the bundle, and a
---probe that actually loads the bundled emulator library.
+`--machines` that actually loads the bundled emulator library and knows every catalog board.
 """
 import plistlib
 import json
@@ -148,10 +148,16 @@ def check_helper(app):
     closure = subprocess.run([sys.executable, CHECK, '--minos', info, '--bundle', app, helper, worker, inetcat, dylib],
                              capture_output=True, text=True)
     assert closure.returncode == 0, closure.stderr
-    probe = subprocess.run([helper, '--probe', 'ipad1'], capture_output=True, text=True, timeout=60,
+    probe = subprocess.run([helper, '--machines'], capture_output=True, text=True, timeout=60,
                            env={k: v for k, v in os.environ.items() if k != 'LTM_QEMU_DYLIB'})
     assert probe.returncode == 0, probe.stderr
-    loaded = json.loads(probe.stdout)['dylibPath']
+    listing = json.loads(probe.stdout)
+    loaded = listing['dylibPath']
+    assert {m['board'] for m in listing['machines']} >= {e['board'] for e in json.loads(
+        (app / 'Contents/Resources/firmware-catalog.json').read_text())['entries']}, 'the emulator lacks a catalog board'
+    recorded = json.loads((pathlib.Path(__file__).resolve().parents[2] / 'tests/fixtures/machines.json').read_text())
+    stale = [m['board'] for m in recorded if m not in listing['machines']]
+    assert not stale, f'tests/fixtures/machines.json differs from the emulator for {stale}: record `LightTouchDevice --machines` again'
     assert pathlib.Path(loaded).resolve() == dylib.resolve(), f'helper loaded {loaded}, not the bundled {dylib}'
     # iPhone OS 1.x lockdownd is SSLv3 only: the bundled OpenSSL must be built enable-ssl3 enable-ssl3-method
     # (build-static-deps.sh); without it libimobiledevice-sslv3-ios1.patch asks for a protocol the library lacks.

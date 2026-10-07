@@ -2,6 +2,7 @@
 //
 // Programmatic rebuild of the app-template MainMenu.xib.
 
+import HostRuntime
 import Cocoa
 
 /// First-responder actions AppKit dispatches by selector but exposes no Swift
@@ -16,7 +17,7 @@ import Cocoa
 @MainActor
 enum MainMenuBuilder {
 
-    static func install(profile: DeviceProfile) {
+    static func install(profile: Board) {
         let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
             ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Light Touch"
         let main = NSMenu(title: "Main Menu")
@@ -77,7 +78,7 @@ enum MainMenuBuilder {
         return menu
     }
 
-    private static func fileMenu(_ profile: DeviceProfile) -> NSMenu {
+    private static func fileMenu(_ profile: Board) -> NSMenu {
         // The sidebar selection's library commands, as in its context menu, act
         // on a device the way File acts on documents. Transfers belong to the
         // active Files window, through its responder chain.
@@ -105,7 +106,7 @@ enum MainMenuBuilder {
         return menu
     }
     
-    private static func editMenu(_ profile: DeviceProfile) -> NSMenu {
+    private static func editMenu(_ profile: Board) -> NSMenu {
         // Preserve native editing in search, Help, logs, and file panels.
         // Device-specific editing never takes over the standard Copy/Paste keys.
         let menu = NSMenu(title: "Edit")
@@ -174,7 +175,7 @@ enum MainMenuBuilder {
         return menu
     }
     
-    private static func deviceMenu(_ profile: DeviceProfile) -> NSMenu {
+    private static func deviceMenu(_ profile: Board) -> NSMenu {
         // Emulated hardware only; nil targets route through the active window's responder chain.
         let menu = NSMenu(title: "Device")
         menu.addItem(item("Home Screen", #selector(MainWindowController.deviceHome(_:)), "h", [.shift, .command]))
@@ -249,7 +250,7 @@ enum MainMenuBuilder {
         for item in menu.items { item.isEnabled = false }
     }
 
-    private static func windowMenu(_ profile: DeviceProfile) -> NSMenu {
+    private static func windowMenu(_ profile: Board) -> NSMenu {
         let menu = NSMenu(title: "Window")
         menu.addItem(item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"))
         menu.addItem(item("Zoom", #selector(NSWindow.performZoom(_:))))

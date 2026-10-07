@@ -20,7 +20,7 @@ source = r'''import Foundation
    let actual=try JSONSerialization.jsonObject(with:data) as! NSDictionary
    precondition(actual==expected,"flat wire field was lost")
   }
-  precondition(gui.profile == .iPad1 && gui.prereleaseBadge == "beta 3" && gui.status == .experimental)
+  precondition(gui.profile == .k48 && gui.prereleaseBadge == "beta 3" && gui.status == .experimental)
   // Apps to manage from iPhone OS 2.0 on (installation_proxy); none on 1.x.
   precondition(gui.managesApps)
   for (version, manages) in [("1.0", false), ("1.1.5", false), ("2.0", true), ("10.3", true)] {
@@ -50,6 +50,6 @@ with tempfile.TemporaryDirectory(prefix='ltm-firmware-schema-') as directory:
     (tmp/'Check.swift').write_text(source)
     subprocess.run(['xcrun','swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]),'-parse-as-library','-swift-version','5','-default-isolation','MainActor',
         '-module-cache-path',str(tmp/'modules'),*schema_sources(),
-        str(ROOT/'LightTouchMac/Library/FirmwareCatalog.swift'),str(ROOT/'LightTouchMac/Device/DeviceProfile.swift'),
+        str(ROOT/'LightTouchMac/Library/FirmwareCatalog.swift'),str(ROOT/'LightTouchMac/Device/Board+App.swift'),
         str(tmp/'Check.swift'),'-o',str(tmp/'check')],check=True)
     subprocess.run([str(tmp/'check'),str(ROOT/'LightTouchMac/Resources/firmware-catalog.json')],check=True)

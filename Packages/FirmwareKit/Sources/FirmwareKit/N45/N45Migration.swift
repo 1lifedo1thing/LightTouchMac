@@ -43,11 +43,8 @@ public nonisolated enum N45Migration {
         defer { withExtendedLifetime(owner) {} }
         guard let bytes = owner.bytes, let paths = owner.paths,
               let board = (try? DeviceRecord.object(bytes))?["board"] as? String,
-              ["n45ap", "m68ap"].contains(board) else { return nil }
-        let lock = (try? Data(contentsOf: paths.base.appendingPathComponent("device.lock.json")))
-            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-        let recipe = ((lock?["entry"] as? [String: Any])?["content"] as? [String: Any])?["recipe"] as? [String: Any]
-        guard let version = recipe?["version"] as? Int, let step = FirmwareWire.admissionRecipeSteps[board]?[version],
+              HostRuntime.Board(rawValue: board)?.soc == .s5l8900 else { return nil }
+        guard let version = (try? DeviceLock.read(base: paths.base))??.recipeVersion, let step = FirmwareWire.admissionRecipeSteps[board]?[version],
               !FileManager.default.fileExists(atPath: paths.overlay.appendingPathComponent(stamp).path) else { return nil }
         return step
     }

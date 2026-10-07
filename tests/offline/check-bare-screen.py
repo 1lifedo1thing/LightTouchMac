@@ -31,6 +31,7 @@ stub = startup[start:startup.index('@main struct Check', start)]
 source = prefix + stub + r'''
 @main struct Check {
  @MainActor static func main() async throws {
+  _ = fixtureMachines
   _ = NSApplication.shared
   NSApp.setActivationPolicy(.prohibited)
   let out = CommandLine.arguments.count > 1 ? URL(fileURLWithPath: CommandLine.arguments[1]) : nil
@@ -45,7 +46,7 @@ source = prefix + stub + r'''
   precondition(UserDefaults.standard.object(forKey: DisplayView.bezelKey) as? Int == DisplayView.Bezel.off.rawValue, "not persisted")
   DeviceModelView.loadingDelay = .zero; DeviceModelView.preparationDelay = .milliseconds(50)
 
-  let display = DisplayView(frame: NSRect(x: 0, y: 0, width: 800, height: 800), profile: .iPodTouch2G)
+  let display = DisplayView(frame: NSRect(x: 0, y: 0, width: 800, height: 800), profile: .n72)
   let e = EmulatorController(); display.emulator = e
   let window = NSWindow(contentRect: display.frame, styleMask: [.titled], backing: .buffered, defer: false)
   window.contentView = display
@@ -164,8 +165,8 @@ source = prefix + stub + r'''
   window.contentView = nil
 
   // The iPad: its panel is mounted sideways in the shell; bare, the screen still stands upright, centred and fitted.
-  frameWidth = Int32(DeviceProfile.iPad1.screenPixels.width); frameHeight = Int32(DeviceProfile.iPad1.screenPixels.height)
-  let pad = DisplayView(frame: NSRect(x: 0, y: 0, width: 800, height: 800), profile: .iPad1)
+  frameWidth = Int32(Board.k48.screenPixels.width); frameHeight = Int32(Board.k48.screenPixels.height)
+  let pad = DisplayView(frame: NSRect(x: 0, y: 0, width: 800, height: 800), profile: .k48)
   let padEmulator = EmulatorController(); pad.emulator = padEmulator
   let padWindow = NSWindow(contentRect: pad.frame, styleMask: [.titled], backing: .buffered, defer: false)
   padWindow.contentView = pad
@@ -190,7 +191,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-bare-screen-') as tmp:
     (app / 'Resources/shell.png').symlink_to(root / 'LightTouchMac/Assets.xcassets/shell.imageset/shell_opaque.png')
     (work / 'check.swift').write_text(source)
     exe = app / 'MacOS/check'
-    sources = ['UI/DisplayView', 'UI/MouseTouchPair', 'Device/DeviceProfile', 'Device/DeviceProfile+Display', 'UI/DisplayMeasurements', 'UI/AttitudeIndicatorButton',
+    sources = ['UI/DisplayView', 'UI/MouseTouchPair', 'Device/Board+App', '../tests/fixtures/machines', 'UI/DisplayMeasurements', 'UI/AttitudeIndicatorButton',
                'UI/InlineLiveTextView', 'UI/DroppedFiles', 'UI/DropHighlight','UI/GuestKeyboard']
     subprocess.run(['swiftc', *device_runtime.swift_flags(root), '-module-cache-path', str(work / 'modules'), '-default-isolation', 'MainActor',
                     *[str(root / 'LightTouchMac' / f'{s}.swift') for s in sources], str(work / 'check.swift'), '-o', str(exe)], check=True)

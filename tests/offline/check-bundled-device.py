@@ -27,7 +27,7 @@ from firmwarekit_leaf import capacity_sources, schema_sources
 ROOT = Path(__file__).resolve().parents[2]
 APP = ROOT / 'LightTouchMac'
 SOURCES = ['FirmwareJobs.swift', 'IPSWStore.swift', 'FirmwareDownloads.swift', 'PreparationJob.swift', 'DeviceInstance.swift',
-           'FirmwareCatalog.swift', 'DeviceProfile.swift', 'StorageLocations.swift', 'DeviceStateStorage.swift', 'DeviceRow.swift']
+           'FirmwareCatalog.swift', 'Board+App.swift', 'StorageLocations.swift', 'DeviceStateStorage.swift', 'DeviceRow.swift']
 
 
 def source(name):
@@ -85,7 +85,7 @@ func expect(_ ok: Bool, _ what: @autoclosure () -> String, line: Int = #line) {
         let device = devices()[0]
         expect(device.firmware == iPod.id && device.base.kind == .prepared, "a prepared n72ap-7E18 device")
         let base = DeviceInstance.directory(device.id, state: state).appendingPathComponent("base")
-        let boot = try iPod.profile!.preparedBoot(strategy: "iboot")
+        let boot = try iPod.profile!.requiredFiles(strategy: "iboot")
         for name in [boot.boot, "nand", "identity.json", "device.lock.json"] + boot.files {
             expect(fm.fileExists(atPath: base.appendingPathComponent(name).path), "base has \(name)")
         }

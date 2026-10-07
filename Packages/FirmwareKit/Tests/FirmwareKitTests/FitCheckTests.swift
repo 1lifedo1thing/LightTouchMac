@@ -1,4 +1,5 @@
 import Foundation
+import enum HostRuntime.GuestPack
 import Testing
 @testable import FirmwareKit
 
@@ -83,7 +84,7 @@ enum FitFixture {
     static func payload(_ arch: String, _ name: String) throws -> Data? {
         let itpack = Oracle.guestPackages.appendingPathComponent(arch + ".itpack")
         guard Oracle.exists(itpack) else { return nil }
-        return try GuestPackage.read(itpack)[name]
+        return try GuestPack.read(itpack).first { $0.name == name }?.data
     }
 }
 

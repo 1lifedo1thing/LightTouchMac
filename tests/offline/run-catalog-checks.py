@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-checks-') as work:
         # CatalogClient consults the IPA library, whose device paths DeviceLibrary.swift resolves in the app.
         (work/'paths.swift').write_text('extension DeviceInstance { var paths: Paths { paths(state: Bundled.stateDirectory, logs: Bundled.logsDirectory) } }\n')
         common = ['LightTouchMac/'+f+'.swift' for f in ['Features/CatalogClient','Features/CatalogCopy','Library/Bundled','Transport/AppEventLog','Library/StorageLocations','Transport/NativeLogging',
-                                                        'Library/IPALibrary','Library/DeviceInstance','Device/DeviceProfile','Library/FirmwareCatalog']] + ['Packages/FirmwareKit/Sources/FirmwareKit/GuestPackage/GuestArchive.swift', str(work/'paths.swift')]
+                                                        'Library/IPALibrary','Library/DeviceInstance','Device/Board+App','Library/FirmwareCatalog']] + ['Packages/FirmwareKit/Sources/FirmwareKit/GuestPackage/GuestArchive.swift', str(work/'paths.swift')]
         if '--ui-only' not in sys.argv:
             swift('catalog',common+['tests/fixtures/catalog.swift'])
             swift('network',common+['tests/fixtures/catalog-network.swift'],[port])

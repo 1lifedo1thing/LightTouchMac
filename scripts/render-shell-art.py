@@ -4,7 +4,7 @@
 The iPod touch 2G's shell.png is a cut-out product photo; the 1G has no such photo without screen content, so
 its art is the N45 model itself: DeviceModelView (materials tuned as in the app) rendered face-on, screen off,
 headless with RealityRenderer (no window), cropped to the chassis. Prints the shell size, screen cutout and
-Home button numbers that DeviceProfile+Display.swift needs for that art.
+Home button numbers that Board+App.swift needs for that art.
 
   scripts/render-shell-art.py N45 LightTouchMac/Assets.xcassets/shell-1g.imageset/shell-1g.png
 """
@@ -12,7 +12,7 @@ from pathlib import Path
 import subprocess, sys, tempfile
 root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root / "scripts"))
-import device_runtime   # DeviceProfile imports HostRuntime: the same flags check-model.py compiles with
+import device_runtime   # Board imports HostRuntime: the same flags check-model.py compiles with
 name, out = sys.argv[1], Path(sys.argv[2]).resolve()
 source = r'''import AppKit
 import RealityKit
@@ -21,7 +21,7 @@ import Metal
  @MainActor static func main() async throws {
   _ = NSApplication.shared
   NSApp.setActivationPolicy(.prohibited)
-  let profile: DeviceProfile = ["N72": .iPodTouch2G, "K48": .iPad1, "N45": .iPodTouch1G, "N81": .iPodTouch4G, "N88": .iPhone3GS][CommandLine.arguments[2]]!
+  let profile: Board = ["N72": .n72, "K48": .k48, "N45": .n45, "N81": .n81, "N88": .n88][CommandLine.arguments[2]]!
   let model = try await DeviceModelView(url: URL(fileURLWithPath: CommandLine.arguments[1]), profile: profile)
   let size = CGSize(width: 800, height: 1400)
   model.frame = NSRect(origin: .zero, size: size)
@@ -100,7 +100,7 @@ with tempfile.TemporaryDirectory(prefix="ltm-shell-art-") as tmp:
     exe = app / "MacOS/render"
     src = root / "LightTouchMac"
     subprocess.run(["swiftc", *device_runtime.swift_flags(root), "-module-cache-path", str(work / "modules"), "-default-isolation", "MainActor",
-                    str(src / "UI/DeviceModelView.swift"), str(src / "Device/DeviceProfile.swift"),
-                    str(src / "Device/DeviceProfile+Display.swift"), str(work / "render.swift"), "-o", str(exe)], check=True)
+                    str(src / "UI/DeviceModelView.swift"),
+                    str(src / "Device/Board+App.swift"), str(work / "render.swift"), "-o", str(exe)], check=True)
     out.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run([str(exe), str(src / f"{name}.usdz"), name, str(out)], check=True, timeout=120)

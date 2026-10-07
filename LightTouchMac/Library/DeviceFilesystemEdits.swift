@@ -1,3 +1,4 @@
+import HostRuntime
 import Cocoa
 
 /// A stopped generation is mounted by FirmwareKit; a durable intent keeps the
@@ -32,15 +33,10 @@ final class DeviceFilesystemEdits {
     }
     /// An edit open in Finder: Start asks to save or discard it first.
     func hasOpenEdit(_ instance: DeviceInstance) -> Bool { !busy.contains(instance.id) && pending(instance)?.phase == "editing" }
-    /// Boards whose stored volume FirmwareKit can edit while stopped: the N72's generated store, and 1.x devices
-    /// through their legacy FTL (StoppedVolumeEdit edits those in place).
-    static let editableBoards: Set<String> = ["n72ap", "n45ap", "m68ap"]
-    /// The S5L8920 boards' stores aren't rebuilt into volumes (VolumeRebuild): no view at all.
-    static let unbrowsableBoards: Set<String> = ["n18ap", "n88ap"]
     func canPerform(_ action: DeviceAction, instance: DeviceInstance) -> Bool {
         guard FirmwareJobs.preparer != nil, !busy.contains(instance.id) else { return false }
-        guard Self.editableBoards.contains(instance.board) else {
-            return action == .openFilesystem && !Self.unbrowsableBoards.contains(instance.board)
+        guard instance.profile?.editableStopped == true else {
+            return action == .openFilesystem && instance.profile?.browsableStopped == true
         }
         switch action {
         case .openFilesystem: return pending(instance)?.phase == nil || pending(instance)?.phase == "editing"
@@ -69,7 +65,7 @@ final class DeviceFilesystemEdits {
                 guard await host.releaseStopped(for: entry) else {
                     throw DeviceToolsError.failed("Stop the device before opening its filesystem.")
                 }
-                guard Self.editableBoards.contains(instance.board) else { return try await browse(instance, executable: executable) }
+                guard instance.profile?.editableStopped == true else { return try await browse(instance, executable: executable) }
                 var intent = pending(instance)
                 let prefix = ["edit", "--device", instance.paths.directory.path, "--record-policy", "managed"]
                 if action == .openFilesystem, intent == nil {

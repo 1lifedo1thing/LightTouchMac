@@ -6,35 +6,24 @@
 import Foundation
 
 nonisolated enum MediaSupport {
-    /// A device's firmware as the gate reads it: board, marketing version, build, and the name the sidebar shows.
+    /// A device's firmware as the gate reads it: its marketing version, the name the sidebar shows, and the libraries
+    /// the catalog qualifies its helpers on (the entry's `media`).
     struct Firmware: Sendable, Equatable {
-        var board: String
         var version: String
-        var build: String
         /// "iOS 5.0 beta 1"
         var name: String
+        /// The catalog entry's `media`: "Music", "Videos", "Photos".
+        var media: [String] = []
         /// A beta or GM: the helpers were qualified on releases only.
         var prerelease = false
     }
 
-    /// Whether this firmware's helpers can add to `destination` ("Music", "Videos", "Photos").
+    /// Whether this firmware's helpers can add to `destination` ("Music", "Videos", "Photos"): MusicLibrary's
+    /// purchase-folder insert over the iTunes Library.itlp library and PLCameraAlbum's save with the saved path
+    /// (3.x), Music on 5.x through ML3's importer; 4.x's post-processing deletes a library it can't verify, and
+    /// neither 4.x nor 5.x has a photo save that names the saved file (qemu-ios contrib/it-media/README.md).
     static func supports(_ destination: String, on firmware: Firmware) -> Bool {
-        func from(_ low: String, below high: String) -> Bool {
-            firmware.version.compare(low, options: .numeric) != .orderedAscending
-                && firmware.version.compare(high, options: .numeric) == .orderedAscending
-        }
-        guard ["n72ap", "k48ap"].contains(firmware.board), !firmware.prerelease else { return false }
-        switch destination {
-        // MusicLibrary's purchase-folder insert over the iTunes Library.itlp library and PLCameraAlbum's save
-        // with the saved path: 3.x. Music on 5.x through ML3's importer, round-tripped on the iPad's 5.1.1 alone.
-        // 4.x's post-processing deletes a library it can't verify, and neither 4.x nor 5.x has a photo save that
-        // names the saved file (qemu-ios contrib/it-media/README.md).
-        case "Music": return from("3.1", below: "4") || (firmware.board == "k48ap" && firmware.build == "9B206")
-        case "Photos": return from("3.1", below: "4")
-        // Movies through the same insert, verified (decoding included) on 3.1.3 alone.
-        case "Videos": return firmware.board == "n72ap" && firmware.build == "7E18"
-        default: return false
-        }
+        !firmware.prerelease && firmware.media.contains(destination)
     }
 
     /// Whether any media can be added (the Import Media… command).

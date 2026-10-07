@@ -5,6 +5,7 @@
 // (same selectors, same validation). Menu actions route here through the
 // responder chain (the window controller is the window's next responder).
 
+import HostRuntime
 import Cocoa
 import SwiftUI
 import UniformTypeIdentifiers
@@ -40,7 +41,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     private var deviceVC: DeviceViewController? { session?.workspace.deviceVC }
     private var inspectorVC: AppsInspectorViewController? { session?.workspace.inspectorVC }
     /// The board the menus, Files window and capture options were made for.
-    private var currentProfile: DeviceProfile
+    private var currentProfile: Board
     private let library: DeviceLibraryViewController
     private let placeholder = DevicePlaceholderViewController()
     /// The detail area with no row selected.
@@ -77,14 +78,14 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     /// 1100×760 for the iPad (device plus inspector), plus the console bar.
     /// Wide enough that the toolbar's sidebar section holds its toggle and + beside the window buttons.
     private static let sidebarWidth: CGFloat = 260
-    private static func contentSize(for profile: DeviceProfile) -> NSSize {
-        let device = profile == .iPad1 ? NSSize(width: 1100, height: 760) : NSSize(width: 720, height: 640)
+    private static func contentSize(for profile: Board) -> NSSize {
+        let device = profile == .k48 ? NSSize(width: 1100, height: 760) : NSSize(width: 720, height: 640)
         return NSSize(width: device.width + sidebarWidth, height: device.height + ConsoleBar.height)
     }
     /// Cleared once the user resizes; until then switching devices resizes to fit.
     private var sizedToDevice = true
 
-    init(host: DeviceSessionHost, profile: DeviceProfile) {
+    init(host: DeviceSessionHost, profile: Board) {
         self.host = host
         currentProfile = profile
         library = DeviceLibraryViewController(host: host)
@@ -325,7 +326,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     }
 
     /// Menus, the Files window and the capture options name the board.
-    private func profileDidChange(to profile: DeviceProfile) {
+    private func profileDidChange(to profile: Board) {
         currentProfile = profile
         noInspector.shortName = profile.shortName
         MainMenuBuilder.install(profile: profile)
@@ -343,7 +344,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
     /// Keeps the device area its own size, plus the sidebar, until the user
     /// sizes the window themselves. Anchored at the top-left, on screen.
-    private func resize(to profile: DeviceProfile) {
+    private func resize(to profile: Board) {
         guard sizedToDevice, let window, !window.styleMask.contains(.fullScreen) else { return }
         let size = Self.contentSize(for: profile)
         var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))

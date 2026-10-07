@@ -5,6 +5,7 @@
 // which entry they are for (the clicked row for its context menu, the
 // selection otherwise).
 
+import HostRuntime
 import Cocoa
 import UniformTypeIdentifiers
 
@@ -550,7 +551,7 @@ final class DeviceRowCell: NSTableCellView {
     private let detail = NSTextField(labelWithString: "")
     private let ring = NSProgressIndicator()
     private let symbol = NSImageView()
-    /// The device's artwork (DeviceProfile.icon), sized to the row: as the cell's imageView, selection restyles it.
+    /// The device's artwork (Board.icon), sized to the row: as the cell's imageView, selection restyles it.
     private let icon = NSImageView()
 
     init() {

@@ -8,7 +8,9 @@ import HostRuntime
 //   helper-driver --helper PATH --scenario scenario.json --dump DIR [--log native.log] [--requirement R]
 //                 [--lease PATH] [--expect-failure TEXT]   (exit 0 if the start fails with TEXT)
 //
-// scenario: {"dylib": "...", "machine": "ipad1", "boot": BootConfig, "steps": ["boot", "lit 0.2 300", ...]}
+// scenario: {"dylib": "...", "board": "k48ap", "boot": BootConfig, "steps": ["boot", "lit 0.2 300", ...]}; or, for a
+// FirmwareKit base booted as the app boots it (PreparedDeviceBoot with the hello's machine facts), "prepared":
+// {"base": DIR, "overlay": DIR, "serial": FILE, "carrier": CarrierSettings} in place of "boot".
 // "watch DIR" starts the app's DeviceFileWatch on DIR (and its children): "meddled" events follow any change.
 
 import Foundation
@@ -21,10 +23,29 @@ do {
 }
 
 struct Scenario: Decodable {
+    struct Prepared: Decodable {
+        var base: String, overlay: String, serial: String
+        /// The SecureROMs (BootRecipe.bootrom); default ~/Developer/qemu-ios-files.
+        var files: String?
+        /// The Carrier panel's saved settings, as the app boots a radio board with them.
+        var carrier: CarrierSettings?
+    }
     var dylib: String?
-    var machine: String?
+    var board: String?
     var boot: BootConfig?
+    var prepared: Prepared?
     var steps: [String]
+}
+
+/// `prepared` as the app boots it: PreparedDeviceBoot and BootRecipe with the hello's DeviceInfo.
+func preparedBoot(_ p: Scenario.Prepared, hardware: DeviceInfo?) throws -> BootConfig {
+    guard let board = scenario.board.flatMap(Board.init(rawValue:)) else { throw CocoaError(.featureUnsupported) }
+    let overlay = URL(fileURLWithPath: p.overlay)
+    let prepared = try PreparedDeviceBoot.prepare(board: board, base: URL(fileURLWithPath: p.base), overlay: overlay,
+        writableNOR: overlay.appendingPathComponent("nor.bin"), storageKey: nil,
+        bootrom: BootRecipe.bootrom(board.bootrom, filesRoot: p.files ?? NSHomeDirectory() + "/Developer/qemu-ios-files"))
+    return try prepared.configuration(hardware: hardware, bootArgs: "", usbAddress: nil, wifi: true, guestPackage: nil,
+        serial: "file:\(p.serial)", audio: ["-audio", "driver=none"], netdev: "user,id=wifi0", carrier: p.carrier)
 }
 
 let t0 = Date()
@@ -46,7 +67,7 @@ if let log = opts["--log"] { logFD = open(log, O_WRONLY | O_CREAT | O_APPEND | O
 var configuration = DeviceLink.Configuration(instance: UUID(), outputDescriptor: logFD)
 configuration.helper = URL(fileURLWithPath: opts["--helper"]!)
 configuration.dylib = scenario.dylib
-configuration.machine = scenario.machine
+configuration.board = scenario.board
 configuration.requirement = opts["--requirement"]
 if let lease = opts["--lease"] { configuration.arguments = ["--lease", lease] }
 let link = DeviceLink(configuration: configuration, queue: queue)
@@ -105,8 +126,10 @@ display.setEventHandler {
 }
 
 let started: Result<HelperInfo, DeviceLinkError> = sync { link.start(completion: $0) }
+var hardware: DeviceInfo?
 switch started {
 case .success(let info):
+    hardware = info.deviceInfo
     emit("connected", ["pid": info.pid, "protocol": info.protocolVersion, "dylib": info.dylibPath,
                        "dylibModified": info.dylibModified, "buildID": info.buildID ?? "",
                        "deviceInfo": info.deviceInfo.map { "\($0.machine) \($0.screenWidth)x\($0.screenHeight) scale \($0.screenScale)" } ?? "",
@@ -127,7 +150,11 @@ Thread.detachNewThread {
         emit("step", ["step": step])
         switch p[0] {
         case "boot":
-            guard let boot = scenario.boot, case .success(.ok(true)) = request(.boot(boot)) else { fail("boot refused") }
+            let boot: BootConfig
+            do { boot = try scenario.boot ?? preparedBoot(scenario.prepared!, hardware: hardware) }
+            catch { fail("boot configuration: \(error)") }
+            emit("argv", ["argv": boot.argv])
+            guard case .success(.ok(true)) = request(.boot(boot)) else { fail("boot refused") }
         case "wait":
             usleep(UInt32(v[0] * 1e6))
         case "lit":

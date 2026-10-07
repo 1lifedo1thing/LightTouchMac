@@ -59,9 +59,8 @@ public enum KBoot {
     static let nandNodes = ["arm-io/flash-controller0", "arm-io/flash-controller0/disk"]
     static let model = [("model-number", "MB292"), ("region-info", "LL/A")]
 
-    /// One A4 board: the QEMU machine that runs it and what iBoot would put in its DT.
+    /// One kboot board: what iBoot would put in its DT. (The machine that runs it is the emulator's: DeviceInfo.)
     public struct Board: Equatable, Sendable {
-        public var machine: String
         public var fbWidth: Int, fbHeight: Int
         public var rotation: UInt32, scale: UInt32, boardID: UInt32
         public var modelNumber: String
@@ -77,19 +76,19 @@ public enum KBoot {
         /// IPSW lacks and every UIFont and bitmap context comes back nil. nil: leave the slot alone.
         public var productID: [UInt8]? = nil
 
-        public static let k48 = Board(machine: "ipad1", fbWidth: 1024, fbHeight: 768, rotation: 270, scale: 1,
+        public static let k48 = Board(fbWidth: 1024, fbHeight: 768, rotation: 270, scale: 1,
                                       boardID: 0x02, modelNumber: "MB292")
-        public static let n81 = Board(machine: "iPod-Touch-4G", fbWidth: 640, fbHeight: 960, rotation: 0, scale: 2,
+        public static let n81 = Board(fbWidth: 640, fbHeight: 960, rotation: 0, scale: 2,
                                       boardID: 0x08, modelNumber: "MC540")
-        public static let n90 = Board(machine: "iPhone-4", fbWidth: 640, fbHeight: 960, rotation: 0, scale: 2,
+        public static let n90 = Board(fbWidth: 640, fbHeight: 960, rotation: 0, scale: 2,
                                       boardID: 0x00, modelNumber: "MC603", dram: 0x2000_0000, radio: true)
         /// iPhone 3GS (S5L8920): -M n88, model MB715. Its baseband node is unmatched (no modem model yet).
-        public static let n88 = Board(machine: "n88", fbWidth: 320, fbHeight: 480, rotation: 0, scale: 1,
+        public static let n88 = Board(fbWidth: 320, fbHeight: 480, rotation: 0, scale: 1,
                                       boardID: 0x00, modelNumber: "MB715", platformName: "s5l8920x", chipID: 0x8920,
                                       productID: [0x87, 0x84, 0xae, 0x8d, 0x70, 0x66, 0xb0, 0xf0, 0x13, 0x6b,
                                                   0xe9, 0x1d, 0xcf, 0xe6, 0x32, 0xa4, 0x36, 0xff, 0xd6, 0xfb])
         /// iPod touch 3G (S5L8922): -M n18, model MC008; NOR-less, so it takes the graft.
-        public static let n18 = Board(machine: "n18", fbWidth: 320, fbHeight: 480, rotation: 0, scale: 1,
+        public static let n18 = Board(fbWidth: 320, fbHeight: 480, rotation: 0, scale: 1,
                                       boardID: 0x02, modelNumber: "MC008", platformName: "s5l8922x", chipID: 0x8922)
         /// The S5L8920 family (-M n18, n88): no metadata whitening in its DTs, the IPSW's NAND epoch, no USB host.
         public var isS5L8920: Bool { platformName != "s5l8930x" }

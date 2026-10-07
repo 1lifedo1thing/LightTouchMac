@@ -7,6 +7,7 @@
   "build": "7B367",
   "released": "2010-04-03",
   "status": "available",
+  "media": ["Music", "Photos"],
   "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPad/061-7987.20100403.mjiTr/iPad1,1_3.2_7B367_Restore.ipsw", "sha1": "172e8297af74b91971a802e6ad137c891f553099", "bytes": 478959325, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPad1,1_3.2_7B367_Restore.ipsw", "sha1": "172e8297af74b91971a802e6ad137c891f553099", "bytes": 478959325}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8930x.img3", "iv": "e839ae241b3c2010a13c2031973f7310", "key": "f6a6c39e8ea1c2bf9d2bd4eef2e7ef4d0d0611d86a6d8511c625b58042e8e31e"},
@@ -41,6 +42,7 @@
   "build": "7B405",
   "released": "2010-07-15",
   "status": "experimental",
+  "media": ["Music", "Photos"],
   "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPad/061-8282.20100713.vgtgh/iPad1,1_3.2.1_7B405_Restore.ipsw", "sha1": "de0a2b64cd335d48fb4abc9ed8700f5dbdf768ca", "bytes": 479012625, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPad1,1_3.2.1_7B405_Restore.ipsw", "sha1": "de0a2b64cd335d48fb4abc9ed8700f5dbdf768ca", "bytes": 479012625}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8930x.img3", "iv": "743a4d54b0da0b23662885bd6a8a9ce1", "key": "aae7b027f6d797b0a95459a13b1c0d9749f2279a5de4356239ddf34ede15fd39"},
@@ -75,6 +77,7 @@
   "build": "7B500",
   "released": "2010-08-11",
   "status": "available",
+  "media": ["Music", "Photos"],
   "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iPad/061-8801.20100811.CvfR5/iPad1,1_3.2.2_7B500_Restore.ipsw", "sha1": "68b613f78581d36eab96aa5a007001dff142baa3", "bytes": 479001595, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPad1,1_3.2.2_7B500_Restore.ipsw", "sha1": "68b613f78581d36eab96aa5a007001dff142baa3", "bytes": 479001595}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8930x.img3", "iv": "743a4d54b0da0b23662885bd6a8a9ce1", "key": "aae7b027f6d797b0a95459a13b1c0d9749f2279a5de4356239ddf34ede15fd39"},
@@ -786,6 +789,7 @@
   "build": "9B206",
   "released": "2012-05-07",
   "status": "experimental",
+  "media": ["Music"],
   "source": {"kind": "ipsw", "url": "https://secure-appldnld.apple.com/iOS5.1.1/041-4292.02120427.Tkk0d/iPad1,1_5.1.1_9B206_Restore.ipsw", "sha1": "ad9b607439250f2337fe132890dadc4c487beca8", "bytes": 761323675, "mirrors": [{"url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPad1,1_5.1.1_9B206_Restore.ipsw", "sha1": "ad9b607439250f2337fe132890dadc4c487beca8", "bytes": 761323675}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8930x.img3", "iv": "4237068c8dd229ab98c63c5ef8d229bc", "key": "91ec6f799f12ce876fbe8bbf8de0b998fcf358ca5001af7f3016a7d782576617"},
@@ -1761,6 +1765,7 @@
   "build": "7C145",
   "released": "2009-09-09",
   "status": "experimental",
+  "media": ["Music", "Photos"],
   "status_note": "Apple never hosted this paid update; the download is a third-party mirror.",
   "source": {"kind": "ipsw", "url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod2,1_3.1.1_7C145_Restore.ipsw", "sha1": "e0d8800a4fc7cc5be6976ddbceb43c2d2a7120d7", "bytes": 277753989, "mirrors": [{"url": "https://invoxiplaygames.uk/ipsw/iPod2,1_3.1.1_7C145_Restore.ipsw", "sha1": "e0d8800a4fc7cc5be6976ddbceb43c2d2a7120d7", "bytes": 277753989}]},
   "keys": {
@@ -1796,6 +1801,7 @@
   "build": "7D11",
   "released": "2009-10-08",
   "status": "experimental",
+  "media": ["Music", "Photos"],
   "status_note": "Apple never hosted this paid update; the download is a third-party mirror.",
   "source": {"kind": "ipsw", "url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod2,1_3.1.2_7D11_Restore.ipsw", "sha1": "e7c83d4a5baec0e81816ae1cd1caf9a4dc38ebf0", "bytes": 277794671, "mirrors": [{"url": "https://invoxiplaygames.uk/ipsw/iPod2,1_3.1.2_7D11_Restore.ipsw", "sha1": "e7c83d4a5baec0e81816ae1cd1caf9a4dc38ebf0", "bytes": 277794671}]},
   "keys": {
@@ -1831,6 +1837,7 @@
   "build": "7E18",
   "released": "2010-02-02",
   "status": "available",
+  "media": ["Music", "Photos", "Videos"],
   "source": {"kind": "ipsw", "url": "https://archive.org/download/iOS_Firmware_Exhibit_Collection/iPod2,1_3.1.3_7E18_Restore.ipsw", "sha1": "5f4f5c01eda2f811f73167e7d1f82dbeed82367b", "bytes": 263275211, "mirrors": [{"url": "https://invoxiplaygames.uk/ipsw/iPod2,1_3.1.3_7E18_Restore.ipsw", "sha1": "5f4f5c01eda2f811f73167e7d1f82dbeed82367b", "bytes": 263275211}]},
   "keys": {
    "AppleLogo": {"file": "applelogo.s5l8720x.img3", "iv": "f246cfefd363c2ec38927473be6f6d45", "key": "afa37377de73fdf1e2ad6b0117cd2847"},

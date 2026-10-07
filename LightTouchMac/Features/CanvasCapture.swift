@@ -1,3 +1,4 @@
+import HostRuntime
 import AppKit
 import CoreImage
 import ScreenCaptureKit
@@ -15,9 +16,9 @@ final class CanvasCapture {
     private var filter: SCContentFilter?
     private(set) var outputSize = CGSize.zero
 
-    private let profile: DeviceProfile
+    private let profile: Board
 
-    init(view: NSView, profile: DeviceProfile) { self.view = view; self.profile = profile }
+    init(view: NSView, profile: Board) { self.view = view; self.profile = profile }
 
     private func configuration() throws -> SCStreamConfiguration {
         guard let view, let window = view.window, window.isVisible, !window.isMiniaturized,

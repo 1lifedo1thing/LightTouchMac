@@ -123,7 +123,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-package-session-') as temporary:
         'LightTouchMac/Guest/GuestPackage.swift',
         'LightTouchMac/Device/BootSessionScope.swift',
         'LightTouchMac/Library/DeviceInstance.swift',
-        'LightTouchMac/Device/DeviceProfile.swift',
+        'LightTouchMac/Device/Board+App.swift',
         'LightTouchMac/Library/StorageLocations.swift',
         'LightTouchMac/Library/FirmwareCatalog.swift',
     ]

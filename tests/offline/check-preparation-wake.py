@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import host_runtime
 from pathlib import Path
 import subprocess, tempfile
-DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device/DeviceProfile.swift')
+DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device/Board+App.swift')
 root=Path(__file__).resolve().parents[2]
 s=(root/'LightTouchMac/Device/EmulatorController.swift').read_text()
 a=s.index('    private func startReadinessWatch()');b=s.index('    /// Keep the guest',a)
@@ -22,7 +22,7 @@ struct DeviceToolsError: Error {static func failed(_ s:String)->Self{Self()}}
 struct Status { var displaySleeping: Bool; var shutdownConfirmed = false; var guestPackage: Int? = nil }
 struct FakeLink { func send(_ c: LinkCommand) {} }
 @MainActor final class Controller {
- let profile = DeviceProfile.iPodTouch2G
+ let profile = Board.n72
  enum State{case running,booting,poweredOff};enum Notice{case preparation}
  var state=State.running
  var hasGuestTools=true

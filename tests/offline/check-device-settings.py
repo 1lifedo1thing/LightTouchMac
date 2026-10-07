@@ -9,6 +9,7 @@ import host_runtime
 code = r'''import Foundation
 @main struct Check {
  static func main() throws {
+  _ = fixtureMachines
   let state = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
   let suite = "ltm-device-settings-\(getpid())", defaults = UserDefaults(suiteName: suite)!
   defer { defaults.removePersistentDomain(forName: suite) }
@@ -43,8 +44,8 @@ code = r'''import Foundation
   keyboard.hardwareKeyboard = false
   try keyboard.save(DeviceInstance.directory(b, state: state))
   precondition(DeviceSettings.load(DeviceInstance.directory(b, state: state)).hardwareKeyboard == false, "the keyboard choice wasn't kept")
-  precondition(DeviceProfile.iPhone4.canToggleHardwareKeyboard && !DeviceProfile.iPhone3GS.canToggleHardwareKeyboard
-               && !DeviceProfile.iPodTouch2G.canToggleHardwareKeyboard, "keyboard toggle boards")
+  precondition(Board.n90.canToggleHardwareKeyboard && !Board.n88.canToggleHardwareKeyboard
+               && !Board.n72.canToggleHardwareKeyboard, "keyboard toggle boards")
   print("PASS: per-device defaults (notice, pose, keyboard, debug port, carrier) and the app-wide fallbacks move into settings.plist; the keys go")
  }
 }
@@ -52,7 +53,7 @@ code = r'''import Foundation
 with tempfile.TemporaryDirectory(prefix='ltm-device-settings-') as directory:
     work = Path(directory)
     (work / 'check.swift').write_text(code)
-    sources = ['Library/DeviceSettings', 'Library/DeviceInstance', 'Device/DeviceProfile', 'Library/StorageLocations', 'Library/FirmwareCatalog']
+    sources = ['Library/DeviceSettings', 'Library/DeviceInstance', 'Device/Board+App', '../tests/fixtures/machines', 'Library/StorageLocations', 'Library/FirmwareCatalog']
     subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(ROOT), '-swift-version', '5', '-parse-as-library',
                     '-module-cache-path', str(work / 'modules'),
                     str(ROOT / 'Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift'), *[str(ROOT / f'LightTouchMac/{s}.swift') for s in sources],

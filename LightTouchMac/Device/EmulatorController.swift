@@ -15,7 +15,7 @@ import Cocoa
 @MainActor
 final class EmulatorController {
 
-    let profile: DeviceProfile
+    let profile: Board
     /// Emulated Wi-Fi with the Mac's networking (slirp); off is a device with no internet.
     let network: Bool
     private let usbmux = USBMux()
@@ -40,7 +40,7 @@ final class EmulatorController {
     /// helper) never reads another's mode.
     private var proxyDirectory: URL { WebProxyConfiguration.directory(for: instance) }
     /// iPhone OS 1.x devices take the web proxy's CA while stopped (FirmwareTool.trustAnchor): no agent, no MCInstall.
-    private var trustsStopped: Bool { ["n45ap", "m68ap"].contains(instance.board) }
+    private var trustsStopped: Bool { profile.trustsStopped }
     private(set) lazy var webProxy = WebProxyConfiguration.load(from: proxyDirectory)
     private(set) var webProxyStatus: WebProxyStatus = .waiting
     private var proxyRevision = 0
@@ -235,7 +235,7 @@ final class EmulatorController {
     /// The device record whose state this controller runs.
     private(set) var instance: DeviceInstance
 
-    init(instance: DeviceInstance, profile: DeviceProfile, network: Bool = true) {
+    init(instance: DeviceInstance, profile: Board, network: Bool = true) {
         self.instance = instance
         self.profile = profile
         self.network = network
@@ -299,7 +299,7 @@ final class EmulatorController {
         warnIfLowOnSpace()
         // The boot is built after the hello: usbmuxd must listen before the guest's USB.
         preparationStatus = "Preparing device…"
-        process.start({ [weak self] _ in self?.bootConfiguration() }, preparation: { [weak self] in
+        process.start({ [weak self] info in self?.bootConfiguration(hardware: info.deviceInfo) }, preparation: { [weak self] in
             guard let self, !self.releasing, !self.stopped else { throw CancellationError() }
             guard let executable = FirmwareJobs.preparer else {
                 throw DeviceToolsError.failed("The firmware worker is unavailable.")
@@ -339,10 +339,11 @@ final class EmulatorController {
     }
 
     /// nil when the device can't boot; the notice says why and the state is dead.
-    private func bootConfiguration() -> BootConfig? {
+    /// `hardware`: the helper's hello's DeviceInfo, the emulator's facts about this board.
+    private func bootConfiguration(hardware: DeviceInfo?) -> BootConfig? {
         guard !isDead, !releasing else { return nil }
         proxyEndpoint = nil
-        var config = preparedBootConfiguration()
+        var config = preparedBootConfiguration(hardware: hardware)
         config?.webProxy = proxyEndpoint
         config?.storageProof = admittedStorage
         debugPort = debugPortEnabled && config != nil ? DebugPort.freePort() : nil
@@ -364,9 +365,9 @@ final class EmulatorController {
     /// Storage preparation and argv assembly are shared with headless callers.
     /// DeviceProcess already holds the storage lease when this hello callback runs.
     /// The UDID the guest reports: the record's, or for an iPhone base prepared before its identity carried an IMEI
-    /// (n90/n88 recipe 1) the one its seed-derived IMEI makes; BootRecipe.lockMachine passes that IMEI to the modem.
+    /// (n90/n88 recipe 1) the one its seed-derived IMEI makes; DeviceLock.machineOptions passes that IMEI to the modem.
     private var guestUDID: String? {
-        if IPhoneIdentity.a4Boards.contains(instance.board),
+        if profile.kbootPhone,
            let data = try? Data(contentsOf: instance.paths.base.appendingPathComponent("identity.json")),
            let identity = try? JSONSerialization.jsonObject(with: data) as? [String: Any], identity["imei"] == nil,
            let upgraded = IPhoneIdentity.upgraded(identity) {
@@ -375,15 +376,16 @@ final class EmulatorController {
         return instance.identity?.udid
     }
 
-    private func preparedBootConfiguration() -> BootConfig? {
-        let prepared: PreparedDeviceBoot
+    private func preparedBootConfiguration(hardware: DeviceInfo?) -> BootConfig? {
+        let prepared: PreparedDeviceBoot, machine: DeviceInfo
         do {
-            guard let board = PreparedDeviceBoot.Board(rawValue: instance.board) else {
-                throw CocoaError(.fileReadCorruptFile)
+            guard let hardware else {
+                throw DeviceToolsError.failed("The emulator library has no machine for this \(profile.shortName).")
             }
-            prepared = try PreparedDeviceBoot.prepare(board: board, base: instance.paths.base,
+            machine = hardware
+            prepared = try PreparedDeviceBoot.prepare(board: profile, base: instance.paths.base,
                 overlay: overlayURL, writableNOR: instance.paths.writableNOR, storageKey: instance.storage.key,
-                bootrom: BootRecipe.bootrom(profile.bootromName, filesRoot: Bundled.filesRoot), dieID: instance.identity?.dieID,
+                bootrom: BootRecipe.bootrom(profile.bootrom, filesRoot: Bundled.filesRoot), dieID: instance.identity?.dieID,
                 panel: instance.panel)
         } catch PreparedDeviceBoot.Failure.baseMismatch {
             baseImageMismatch = true
@@ -398,7 +400,7 @@ final class EmulatorController {
         let usbSession = usbmux.start(paths: instance.paths)
         openSerialLog()
         let netdev: String?
-        if profile.isA4 {
+        if profile.isKBoot {
             let setupDone = FileManager.default.fileExists(atPath: BootRecipe.setupDoneMark(overlay: overlayURL).path)
             let restrict = network && BootRecipe.setupPhonesHome(iosVersion: iosVersion) && !setupDone
             netdev = network ? proxyForward().map {
@@ -410,7 +412,7 @@ final class EmulatorController {
                                                      localNetwork: localNetworkEnabled) : nil
         }
         do {
-            return try prepared.configuration(bootArgs: Self.bootArgs, usbAddress: usbSession?.guestAddress,
+            return try prepared.configuration(hardware: machine, bootArgs: Self.bootArgs, usbAddress: usbSession?.guestAddress,
                 wifi: network, guestPackage: composeGuestOffer(), serial: serialCapture?.argument ?? "null",
                 // Every board: 16 CoreAudio buffers (186 ms) ride out a busy emulator thread. The A4 boards
                 // had QEMU's default 4 (46 ms), and the iPod touch 4's sounds crackled on a slower Mac.
@@ -475,14 +477,14 @@ final class EmulatorController {
     static let recoveryMarker = "Entering recovery mode"
     /// it_ethlink (the iPad's guest package) bringing the USB Ethernet link up.
     static let ethlinkMarker = "it_ethlink: LinkStatus 0 -> 1"
-    static func recoveryReason(_ profile: DeviceProfile) -> String {
+    static func recoveryReason(_ profile: Board) -> String {
         "The \(profile.shortName) started in recovery mode. Delete it and prepare it again."
     }
-    static func deadlineReason(_ profile: DeviceProfile) -> String {
+    static func deadlineReason(_ profile: Board) -> String {
         "The \(profile.shortName) didn’t start within \(Int(profile.bootBudget)) seconds."
     }
     /// A boot file the base lacks (BootRecipe.preparedFiles), else the storage error as it is.
-    static func bootFilesReason(_ error: Error, profile: DeviceProfile) -> String {
+    static func bootFilesReason(_ error: Error, profile: Board) -> String {
         if let cocoa = error as? CocoaError, cocoa.code == .fileNoSuchFile, let path = cocoa.userInfo[NSFilePathErrorKey] as? String {
             return "This \(profile.shortName)’s system files are incomplete: \(URL(fileURLWithPath: path).lastPathComponent) is missing. Delete it and prepare it again."
         }
@@ -723,7 +725,7 @@ final class EmulatorController {
             if state == .running, !preparingDevice, canManageApps, await deviceReady() {
                 guard generation == bootGeneration, !Task.isCancelled else { return }
                 do {
-                    let dated = BootRecipe.lockMachine(instance.paths.base.appendingPathComponent("device.lock.json"))["rtc-epoch"] != nil
+                    let dated = lock?.pinsClock == true
                     try await services.setTimeZone(TimeZone.current.identifier, keepClock: dated, guest: guest, region: .mac)
                     return
                 } catch DeviceToolsError.zoneKept(let zone) {
@@ -1336,10 +1338,10 @@ final class EmulatorController {
     private var recordURL: URL {
         DeviceInstance.directory(instance.id, state: stateDir).appendingPathComponent(DeviceInstance.recordName)
     }
+    /// The base's device.lock.json (decoded once while it is unchanged; nil for none or an unreadable one).
+    private var lock: DeviceLock? { (try? DeviceLock.read(base: instance.paths.base)) ?? nil }
     /// The preparer's device.lock.json record.
-    private var lockRecord: GuestPackage.LockRecord? {
-        GuestPackage.lockRecord(instance.paths.base.appendingPathComponent("device.lock.json"))
-    }
+    private var lockRecord: GuestPackage.LockRecord? { GuestPackage.lockRecord(lock) }
     private var guestRecord: DeviceInstance.Guest? { (try? DeviceInstance.read(recordURL))?.guest }
 
     /// The record's `guest`, read fresh and written back (never the whole cached record).
@@ -1383,8 +1385,8 @@ final class EmulatorController {
     /// itpack, or nothing for this build) and the device keeps what it runs.
     private func composeGuestOffer() -> String? {
         guestOffer = nil
-        guard status?.guestPackageSupported == true, let arch = GuestPackage.arch(board: instance.board),
-              let pack = GuestPackage.bundledPack(arch: arch, filesRoot: Bundled.filesRoot, guestRoot: Bundled.guestRoot) else {
+        guard status?.guestPackageSupported == true,
+              let pack = GuestPackage.bundledPack(arch: guestArch, filesRoot: Bundled.filesRoot, guestRoot: Bundled.guestRoot) else {
             try? FileManager.default.removeItem(at: guestOfferDirectory)
             return nil
         }
@@ -1763,7 +1765,7 @@ final class EmulatorController {
     /// `completion(true)` once the guest is off (or a Force Stop took over), false when it didn't get there in
     /// `shutdownBudget` (the device keeps running).
     private var cleanShutdown: Task<Void, Never>?
-    static let shutdownBudget: TimeInterval = 90 * DeviceProfile.hostSlowdown
+    static let shutdownBudget: TimeInterval = 90 * Board.hostSlowdown
     var canShutDown: Bool { state == .running && !shuttingDown && !isErasing && !storageFailed && process?.isDead == false }
     var isShuttingDownCleanly: Bool { cleanShutdown != nil && haltTask == nil }
     func shutDown(completion: @escaping (Bool) -> Void) {
@@ -1947,13 +1949,12 @@ final class EmulatorController {
     var iosVersion: String { catalogEntry?.version ?? "3.1.3" }
     /// "iPod2,1": the model Legacy Store judges apps for, with iosVersion.
     var productType: String? { catalogEntry?.productType }
-    var guestArch: String { catalogEntry?.recipe?.guest?.arch ?? GuestPackage.arch(board: instance.board) ?? "armv6" }
+    var guestArch: String { catalogEntry?.recipe?.guest?.arch ?? profile.arch }
     /// What the media gate reads (MediaSupport).
     var mediaFirmware: MediaSupport.Firmware {
-        MediaSupport.Firmware(board: instance.board, version: iosVersion,
-                              build: catalogEntry?.build ?? instance.firmware.split(separator: "-").last.map(String.init) ?? "",
+        MediaSupport.Firmware(version: iosVersion,
                               name: (["iOS \(iosVersion)"] + [catalogEntry?.prereleaseBadge].compactMap { $0 }).joined(separator: " "),
-                              prerelease: catalogEntry?.prerelease != nil)
+                              media: catalogEntry?.media ?? [], prerelease: catalogEntry?.prerelease != nil)
     }
     
     /// Cheap in-process check that the USB bridge sees the guest (bounded and
@@ -2079,7 +2080,7 @@ final class EmulatorController {
     /// the screen of the SpringBoard that is going away.
     private func waitForSpringBoard(agentCounts: Bool = false) async throws {
         guard hasSpringBoardServices else { return }
-        let deadline = ContinuousClock.now + .seconds(45 * DeviceProfile.hostSlowdown)
+        let deadline = ContinuousClock.now + .seconds(45 * Board.hostSlowdown)
         while ContinuousClock.now < deadline {
             try Task.checkCancellation()
             if (try? await services.homeScreenOrder()) != nil { return }

@@ -58,7 +58,7 @@ public struct UnitIdentity: Equatable, Sendable {
         let wifi = [0x02] + h[28..<32] + [h[27] & 0xFE]          // even last byte: BT = +1 never carries
         let bt = Array(wifi[0..<5]) + [wifi[5] + 1]
         let beInt = { (b: [UInt8]) in b.reduce(UInt64(0)) { $0 << 8 | UInt64($1) } }
-        let ecid = beInt(Array(h[20..<25])) | 1
+        let ecid: UInt64 = UnitSeed.ecid(seed: seed)
         // SecureROM builds ECID from CHIPID words 2/3 and CPRV from bits 10..15 of word 3 (revision 0x11);
         // derive the die-id words from the ECID so the ROM-advertised identity agrees (ipad1_kboot.synth_identity,
         // qemu-ios ff331e1ef9). die-id[1]'s high 16 bits keep the original h[2:6] value.

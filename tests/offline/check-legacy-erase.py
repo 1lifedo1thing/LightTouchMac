@@ -34,7 +34,7 @@ from firmwarekit_leaf import capacity_sources, schema_sources
 ROOT = Path(__file__).resolve().parents[2]
 APP = ROOT / 'LightTouchMac'
 SOURCES = ['Library/FirmwareCatalog.swift', 'Library/DeviceInstance.swift', 'Library/DeviceStateStorage.swift', 'Library/StorageLocations.swift',
-           'Library/PreparationJob.swift', 'Device/DeviceProfile.swift', 'Library/LegacyState.swift', 'Library/IPALibrary.swift',
+           'Library/PreparationJob.swift', 'Device/Board+App.swift', 'Library/LegacyState.swift', 'Library/IPALibrary.swift',
            'Library/IPSWStore.swift', 'Library/FirmwareDownloads.swift']
 
 catalog = json.loads((APP / 'Resources/firmware-catalog.json').read_text())
@@ -152,7 +152,7 @@ case "fresh":
     expect(instance.storage.writableNOR == "Devices/\(instance.id.uuidString)/nor.bin" && instance.storage.usbmuxConf == "Devices/\(instance.id.uuidString)/usbmuxd-conf", "\(instance.storage)")
     expect(instance.identity?.udid != nil && instance.provenance?.sha256 != nil && instance.storage.key.count == 16, "identity and provenance from the lock")
     let paths = instance.paths
-    let boot = try DeviceProfile.iPodTouch2G.preparedBoot(strategy: BootRecipe.bootStrategy(paths.base.appendingPathComponent("device.lock.json")))
+    let boot = try Board.n72.requiredFiles(strategy: DeviceLock.read(base: paths.base)?.bootStrategy)
     let files = try BootRecipe.preparedFiles(base: paths.base, overlay: paths.overlay, writableNOR: paths.writableNOR, boot: boot.boot, also: boot.files)
     expect(files.boot.lastPathComponent == "iBoot.bin" && fm.fileExists(atPath: files.nand.appendingPathComponent("cs0/1.page").path), "the boot files BootRecipe wants")
     expect(files.writableNOR.map { fm.fileExists(atPath: $0.path) && mode($0) & 0o200 != 0 } == true, "a writable NOR clone on first boot")

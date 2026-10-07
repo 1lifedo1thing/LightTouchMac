@@ -40,7 +40,7 @@ nonisolated enum ProxyProbe {
 
 @MainActor func runProxy(_ p: ProxyConfig) async {
     let ipad = p.board == "ipad"
-    let d = Device(name: p.board, profile: ipad ? .iPad1 : .iPodTouch2G)
+    let d = Device(name: p.board, profile: ipad ? .k48 : .n72)
     if !ipad, !p.base.isEmpty {
         let b = URL(fileURLWithPath: p.base)
         let iBoot: String
@@ -48,7 +48,7 @@ nonisolated enum ProxyProbe {
         catch { fail("boot lock: \(error)") }
         d.ipod = .init(nand: b.appendingPathComponent("nand").path, nor: b.appendingPathComponent("nor.bin").path,
                        iBoot: iBoot, gidBlobs: b.appendingPathComponent("gid-blobs.bin").path,
-                       machine: BootRecipe.lockMachine(b.appendingPathComponent("device.lock.json")))
+                       machine: (try? DeviceLock.read(base: b))??.machineOptions(base: b) ?? [:])
     }
     // The proxy's files, as WebProxyConfiguration keeps them per device: routing (direct) and the CA.
     let proxyDir = work.appendingPathComponent("\(p.board)/proxy")

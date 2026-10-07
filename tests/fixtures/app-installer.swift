@@ -1,9 +1,10 @@
 // Stand-ins for what Features/AppInstaller.swift reaches outside itself, for the offline queue checks that compile
 // it whole (check-install-queue-scope, check-media-queue, check-uninstall-queue, check-ipa-library). Each check
 // brings its own EmulatorController (the device side it drives) and DeviceInstance, and compiles the real
-// DeviceProfile, DeviceExecution (DeviceError) and InstallationQueue; tests/fixtures/app-installer-library.swift
+// Board, DeviceExecution (DeviceError) and InstallationQueue; tests/fixtures/app-installer-library.swift
 // adds IPALibrary and the Legacy Store for the checks that don't compile the real ones.
 
+import HostRuntime
 import Cocoa
 
 struct InstalledApp { let id: String }
@@ -32,7 +33,7 @@ struct InstalledApp { let id: String }
     nonisolated static func destination(forExtension suffix: String) -> String {
         ["mp3": "Music", "mov": "Videos"][suffix.lowercased()] ?? "Photos"
     }
-    static func prepare(_ source: URL, profile: DeviceProfile) async throws -> PreparedMedia {
+    static func prepare(_ source: URL, profile: Board) async throws -> PreparedMedia {
         let name = source.deletingPathExtension().lastPathComponent
         prepared.append(name)
         if delayed.contains(name) { try await withCheckedThrowingContinuation { preparation[name] = $0 } }
@@ -45,7 +46,7 @@ struct InstalledApp { let id: String }
 }
 
 /// EmulatorController.mediaFirmware, set per check; MediaSupport itself is compiled for real.
-@MainActor var fixtureMediaFirmware = MediaSupport.Firmware(board: "n72ap", version: "3.1.3", build: "7E18", name: "iOS 3.1.3")
+@MainActor var fixtureMediaFirmware = MediaSupport.Firmware(version: "3.1.3", name: "iOS 3.1.3", media: ["Music", "Photos", "Videos"])
 extension EmulatorController { var mediaFirmware: MediaSupport.Firmware { fixtureMediaFirmware } }
 
 /// EmulatorController.installPipeline: the queue checks reach only its placeholder.

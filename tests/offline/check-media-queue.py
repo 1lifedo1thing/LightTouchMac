@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Production media jobs wait behind installs, report progress, and cancel safely. Compiles
-Features/AppInstaller.swift whole (with InstallationQueue, DeviceExecution and DeviceProfile) against
+Features/AppInstaller.swift whole (with InstallationQueue, DeviceExecution and Board) against
 tests/fixtures/app-installer*.swift and a scripted EmulatorController."""
 from pathlib import Path
 import sys
@@ -15,7 +15,7 @@ nonisolated func logEvent(_ message: String) {}
 typealias Failure = PreparedMedia.Failure
 struct DeviceInstance { let id = UUID() }
 @MainActor final class EmulatorController {
- let profile = DeviceProfile.iPodTouch2G
+ let profile = Board.n72
  let instance = DeviceInstance()
  var deviceReachable: Bool? = true
  func reportConnectionFailure(_ error: Error, operation: String) { deviceReachable = false }
@@ -147,7 +147,7 @@ extension AppInstaller {
   precondition(!waiting.failed && waiting.status == "Added to Music" && !AppInstaller.hasPendingWork)
   // Media the firmware's helpers can't take is refused on its row at once: nothing is prepared, queued or
   // run in the guest, and there is nothing to retry (MediaSupport, compiled for real).
-  fixtureMediaFirmware = .init(board: "n45ap", version: "1.1", build: "3A101a", name: "iOS 1.1")
+  fixtureMediaFirmware = .init(version: "1.1", name: "iOS 1.1")
   let preparedBefore = PreparedMedia.prepared.count, startedBefore = emulator.started.count
   let refusedSong = add("Refused song.mp3"), refusedPhoto = add("Refused photo.png")
   for (job, words) in [(refusedSong, "Adding music isn’t supported on iOS 1.1 yet."),
@@ -167,7 +167,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-media-queue-check-') as directory:
     subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-swift-version', '6', '-default-isolation', 'MainActor',
                     '-module-cache-path', str(work / 'modules'), *[str(app / f) for f in [
                         'Features/AppInstaller.swift', 'Features/MediaSupport.swift', 'Features/InstallationQueue.swift', 'Transport/DeviceExecution.swift',
-                        'Device/DeviceProfile.swift']],
+                        'Device/Board+App.swift']],
                     str(root / 'tests/fixtures/app-installer.swift'), str(root / 'tests/fixtures/app-installer-library.swift'),
                     str(work / 'check.swift'), '-o', str(work / 'check')], check=True)
     subprocess.run([str(work / 'check')], check=True, timeout=25)

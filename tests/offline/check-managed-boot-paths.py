@@ -21,8 +21,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-managed-boot-') as tmp:
                                              'LightTouchMac/Library/StorageLocations.swift',
                                              'LightTouchMac/Library/FirmwareCatalog.swift',
                                              'Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift',
-                                             'LightTouchMac/Device/DeviceProfile.swift',
-                                             'LightTouchMac/Device/DeviceProfile+Display.swift',
+                                             'LightTouchMac/Device/Board+App.swift',
                                              'tests/fixtures/managed-boot-paths.swift']],
                     '-o', tmp + '/check'], check=True)
     subprocess.run([tmp + '/check'], check=True)

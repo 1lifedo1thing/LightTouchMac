@@ -12,7 +12,7 @@
                                               # ~/Downloads as an already-downloaded dedupe hit.
 
 Compiles IPSWStore, FirmwareDownloads, PreparationJob, DeviceInstance, DeviceStateStorage,
-FirmwareCatalog, DeviceProfile and StorageLocations with a stub Bundled. Also: the removal
+FirmwareCatalog, Board and StorageLocations with a stub Bundled. Also: the removal
 guard (Erase/Delete stay inside the device's own storage), Delete Device through
 Devices/.deleting-<uuid> with a read-only base, the atomic publish, and the launch sweeps. Every path is a temp dir; nothing
 reads or writes the real Application Support or Caches. Everything is deleted at the end.
@@ -31,7 +31,7 @@ APP = ROOT / 'LightTouchMac'
 FAKE = ROOT / 'tests/fixtures/fake-firmwarekit.py'
 LOCAL_IPSW = Path.home() / 'Downloads/ipad1-ios32-feasibility/iPad1,1_3.2_7B367_Restore.ipsw'
 SOURCES = ['Library/IPSWStore.swift', 'Library/FirmwareDownloads.swift', 'Library/PreparationJob.swift', 'Library/DeviceInstance.swift',
-           'Library/FirmwareCatalog.swift', 'Device/DeviceProfile.swift', 'Library/StorageLocations.swift', 'Library/DeviceStateStorage.swift']
+           'Library/FirmwareCatalog.swift', 'Device/Board+App.swift', 'Library/StorageLocations.swift', 'Library/DeviceStateStorage.swift']
 
 STUBS = r'''
 import Foundation
@@ -200,7 +200,10 @@ case "unit":
     }
     expect(PreparationJob.message(code: "unsupported", detail: "not a zip archive") == "This IPSW isn’t supported.", "unsupported without a piece")
     let identity = PreparationJob.identity(identityJSON: Data(#"{"udid":"u1","die-id":["0x1","0x2"]}"#.utf8),
-                                           lock: Data(#"{"identity":{"seed":"s","udid":"u2","die_id":"0x3:0x4"}}"#.utf8), seed: "x")
+                                           lock: try JSONDecoder().decode(DeviceLock.self, from: Data(#"{"identity":{"seed":"s","udid":"u2","die_id":"0x3:0x4"}}"#.utf8)), seed: "x")
+    let fromLock = PreparationJob.identity(identityJSON: nil,
+                                           lock: try JSONDecoder().decode(DeviceLock.self, from: Data(#"{"identity":{"seed":"s","udid":"u2","die_id":"0x3:0x4"}}"#.utf8)), seed: "x")
+    expect(fromLock == .init(seed: "s", udid: "u2", dieID: "0x3:0x4"), "\(fromLock)")
     expect(identity == .init(seed: "s", udid: "u1", dieID: "0x1:0x2"), "\(identity)")
 
     // PreparationJob against the fake preparer: publish, errors, cancel.

@@ -40,7 +40,7 @@ extension DeviceInstance {
  func uninstall(_ id: String) async throws { removed.append(id) }
  func reportConnectionFailure(_ error: Error, operation: String) {}
  // Not reached: this check queues removals only.
- let profile = DeviceProfile.iPodTouch2G, iosVersion = "3.1.3", guestArch = "armv6", productType: String? = "iPod2,1"
+ let profile = Board.n72, iosVersion = "3.1.3", guestArch = "armv6", productType: String? = "iPod2,1"
  var installPipeline: InstallPipeline { get throws { InstallPipeline() } }
  func install(_ ipa: URL, placeholderRaised: Bool, progress: @escaping @Sendable (String) -> Void) async throws -> String { "" }
  func importMedia(_ media: PreparedMedia, progress: @escaping @Sendable (Double) -> Void, willCommit: () -> Void) async throws {}
@@ -179,7 +179,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-ipa-library-') as directory:
     try:
         (work / 'check.swift').write_text(code)
         sources = ['Library/IPALibrary', 'Features/CatalogClient', 'Features/CatalogCopy', 'Library/Bundled', 'Transport/AppEventLog', 'Library/StorageLocations', 'Transport/NativeLogging',
-                   'Library/DeviceInstance', 'Device/DeviceProfile', 'Library/FirmwareCatalog', 'Features/InstallationQueue',
+                   'Library/DeviceInstance', 'Device/Board+App', 'Library/FirmwareCatalog', 'Features/InstallationQueue',
                    'Features/AppInstaller', 'Features/MediaSupport', 'Transport/DeviceExecution']
         subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(root), '-swift-version', '5', '-default-isolation', 'MainActor', '-parse-as-library',
                         '-module-cache-path', str(work / 'modules'), str(root / 'Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift'), str(root / 'Packages/FirmwareKit/Sources/FirmwareKit/GuestPackage/GuestArchive.swift'), *[str(root / f'LightTouchMac/{s}.swift') for s in sources],

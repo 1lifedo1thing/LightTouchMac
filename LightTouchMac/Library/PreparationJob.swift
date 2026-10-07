@@ -239,17 +239,17 @@ nonisolated final class PreparationJob: @unchecked Sendable {
     static func publish(staging: URL, entry: FirmwareCatalog.Entry, id: UUID, state: URL,
                         lock lockName: String = "device.lock.json", keep: Bool = false) throws -> DeviceInstance {
         let fm = FileManager.default
-        let profile = entry.profile ?? .iPad1
+        let profile = entry.profile ?? .k48
         let lockURL = staging.appendingPathComponent(lockName)
-        let strategy = try BootRecipe.bootStrategy(lockURL)
-        let boot = try profile.preparedBoot(strategy: strategy)
+        let lock = try DeviceLock.read(lockURL)
+        let boot = try profile.requiredFiles(strategy: lock?.bootStrategy)
         for name in [boot.boot, "nand", "identity.json", lockName] + boot.files
             where !fm.fileExists(atPath: staging.appendingPathComponent(name).path) {
             throw FirmwareError.failed("The prepared device is incomplete (\(name) is missing).")
         }
         let lockData = try Data(contentsOf: lockURL)
         let identity = identity(identityJSON: try? Data(contentsOf: staging.appendingPathComponent("identity.json")),
-                                lock: lockData, seed: id.uuidString)
+                                lock: lock, seed: id.uuidString)
         let directory = DeviceInstance.directory(id, state: state)
         let relative = "Devices/\(id.uuidString)"
         let base = keep ? staging.path : "\(relative)/base"
@@ -278,15 +278,13 @@ nonisolated final class PreparationJob: @unchecked Sendable {
     }
 
     /// udid and die id from identity.json, else the lock's identity; the seed is ours.
-    static func identity(identityJSON: Data?, lock: Data, seed: String) -> DeviceInstance.Identity {
-        func object(_ data: Data?) -> [String: Any] {
-            data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
-        }
-        let file = object(identityJSON), locked = object(lock)["identity"] as? [String: Any] ?? [:]
+    static func identity(identityJSON: Data?, lock: DeviceLock?, seed: String) -> DeviceInstance.Identity {
+        let file = identityJSON.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
         func dieID(_ value: Any?) -> String? { (value as? [String])?.joined(separator: ":") ?? value as? String }
-        return .init(seed: locked["seed"] as? String ?? seed,
-                     udid: file["udid"] as? String ?? locked["udid"] as? String,
-                     dieID: dieID(file["die-id"] ?? file["die_id"]) ?? dieID(locked["die_id"]))
+        let locked = lock?.identity
+        return .init(seed: locked?["seed"]?.string ?? seed,
+                     udid: file["udid"] as? String ?? locked?["udid"]?.string,
+                     dieID: dieID(file["die-id"] ?? file["die_id"]) ?? locked?["die_id"].flatMap { $0.strings?.joined(separator: ":") ?? $0.string })
     }
 
     static func sha256(_ data: Data) -> String {

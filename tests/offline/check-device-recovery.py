@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import host_runtime
 import subprocess,tempfile
-DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device/DeviceProfile.swift')
+DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device/Board+App.swift')
 root=Path(__file__).resolve().parents[2]
 s=(root/'LightTouchMac/Device/EmulatorController.swift').read_text()
 a=s.index('    private var connectionFailures =');b=s.index('    private var didSweepStaging',a)
@@ -29,7 +29,7 @@ struct Instance { let id=UUID() }
 @MainActor final class Controller {
  let bootScope = BootSessionScope()
  var bootGeneration:Int { bootScope.generation }
- let profile = DeviceProfile.iPodTouch2G
+ let profile = Board.n72
  let instance=Instance()
  var isRunning=true,isInstalling=false,hasFileTransfer=false,preparingDevice=false
  var usbConnected=true

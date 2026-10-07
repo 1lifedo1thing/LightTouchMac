@@ -220,11 +220,8 @@ public enum N72NAND {
         } else if gptPages(blocks) != [mbr, header, entry] {
             return false
         }
-        let lock = (try? Data(contentsOf: base.appendingPathComponent("device.lock.json")))
-            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-        let recipe = ((lock?["entry"] as? [String: Any])?["content"] as? [String: Any])?["recipe"] as? [String: Any]
         let marked = (try? Data(contentsOf: marker)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-        if let version = recipe?["version"] as? Int, version < exactGPTRecipe,
+        if let version = (try? DeviceLock.read(base: base))??.recipeVersion, version < exactGPTRecipe,
            (marked?["recipe"] as? Int ?? 0) < exactGPTRecipe {
             try writeDurably(JSONSerialization.data(withJSONObject: ["recipe": exactGPTRecipe, "step": "n72-exact-gpt"],
                                                     options: [.sortedKeys]), to: marker)

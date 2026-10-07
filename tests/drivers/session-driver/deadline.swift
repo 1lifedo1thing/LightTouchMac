@@ -11,13 +11,13 @@ import Foundation
 struct DeadlineConfig: Decodable {
     var board: String   // "ipod" | "ipad"
     var base: String
-    /// Seconds to wait for uiReady or the marker (the app: DeviceProfile.bootBudget).
+    /// Seconds to wait for uiReady or the marker (the app: Board.bootBudget).
     var budget: Double?
 }
 
 @MainActor func runDeadline(_ c: DeadlineConfig) async {
     let ipad = c.board == "ipad"
-    let d = Device(name: c.board, profile: ipad ? .iPad1 : .iPodTouch2G)
+    let d = Device(name: c.board, profile: ipad ? .k48 : .n72)
     let b = URL(fileURLWithPath: c.base)
     if !ipad {
         let gid = b.appendingPathComponent("gid-blobs.bin").path
@@ -26,7 +26,7 @@ struct DeadlineConfig: Decodable {
         catch { fail("boot lock: \(error)") }
         d.ipod = .init(nand: b.appendingPathComponent("nand").path, nor: b.appendingPathComponent("nor.bin").path,
                        iBoot: iBoot, gidBlobs: FileManager.default.fileExists(atPath: gid) ? gid : nil,
-                       machine: BootRecipe.lockMachine(b.appendingPathComponent("device.lock.json")))
+                       machine: (try? DeviceLock.read(base: b))??.machineOptions(base: b) ?? [:])
     }
     let matched = Matched()
     d.serialWatch = (["Entering recovery mode"], { phrase in matched.set(phrase) })

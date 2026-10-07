@@ -15,8 +15,8 @@ retire = s[s.index("    private func retireBoot()"):s.index("    func stop()", s
 halt = s[a:b].replace('haltBudget: TimeInterval = 10', 'haltBudget: TimeInterval = 0.3')
 assert 'serviceTeardownBudget: TimeInterval = 2' in halt, 'Stop bounds the services worker teardown'
 halt = halt.replace('serviceTeardownBudget: TimeInterval = 2', 'serviceTeardownBudget: TimeInterval = 0.3')
-assert 'shutdownBudget: TimeInterval = 90 * DeviceProfile.hostSlowdown' in halt
-halt = halt.replace('shutdownBudget: TimeInterval = 90 * DeviceProfile.hostSlowdown', 'shutdownBudget: TimeInterval = 0.5')
+assert 'shutdownBudget: TimeInterval = 90 * Board.hostSlowdown' in halt
+halt = halt.replace('shutdownBudget: TimeInterval = 90 * Board.hostSlowdown', 'shutdownBudget: TimeInterval = 0.5')
 source = r'''import Foundation
 nonisolated func logEvent(_ s: String) {}
 /// DeviceProcess's surface: SIGTERM exits it (or not, when hung); SIGKILL always does.

@@ -179,7 +179,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-store-ui-') as directory:
     (work / 'paths.swift').write_text('extension DeviceInstance { var paths: Paths { paths(state: Bundled.stateDirectory, logs: Bundled.logsDirectory) } }\n')
     sources = ['Features/CatalogClient', 'Features/CatalogCopy', 'Features/CatalogFilter', 'UI/CatalogFilterButton',
                'UI/CatalogDetailsViewController', 'Library/Bundled', 'Transport/AppEventLog', 'Library/StorageLocations',
-               'Transport/NativeLogging', 'Library/IPALibrary', 'Library/DeviceInstance', 'Device/DeviceProfile', 'Library/FirmwareCatalog']
+               'Transport/NativeLogging', 'Library/IPALibrary', 'Library/DeviceInstance', 'Device/Board+App', 'Library/FirmwareCatalog']
     subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(root), '-parse-as-library', '-module-cache-path', str(work / 'modules'),
                     str(root / 'Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift'), str(root / 'Packages/FirmwareKit/Sources/FirmwareKit/GuestPackage/GuestArchive.swift'), *[str(root / f'LightTouchMac/{s}.swift') for s in sources], str(work / 'paths.swift'), str(work / 'check.swift'),
                     '-o', str(work / 'check')], check=True)

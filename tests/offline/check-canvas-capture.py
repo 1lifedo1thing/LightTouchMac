@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import host_runtime
 import subprocess,tempfile
-DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device/DeviceProfile.swift')
+DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device/Board+App.swift')
 root=Path(__file__).resolve().parents[2]
 fixture=r'''import AppKit
 nonisolated enum CaptureError: LocalizedError {case failed(String);var errorDescription:String? {if case let .failed(s)=self {s}else{nil}}}
@@ -19,7 +19,7 @@ nonisolated enum CaptureError: LocalizedError {case failed(String);var errorDesc
   canvas.wantsLayer=true;canvas.layer!.backgroundColor=NSColor.green.cgColor
   content.addSubview(canvas);window.makeKeyAndOrderFront(nil)
   try await Task.sleep(for:.milliseconds(300))
-  let capture=CanvasCapture(view:canvas,profile:.iPodTouch2G)
+  let capture=CanvasCapture(view:canvas,profile:.n72)
   func check(_ image:CGImage, width:Int,height:Int) throws {
    precondition(image.width==width && image.height==height)
    let bitmap=NSBitmapImageRep(cgImage:image)

@@ -41,12 +41,12 @@ def offline():
     a = s.index("    // MARK: - Activation (prepared offline, completed and verified per boot")
     activation = s[a:s.index("    func launchApp(_ bundleID: String)", a)]
     instance = (ROOT / "LightTouchMac/Library/DeviceInstance.swift").read_text()
-    a = instance.index("    static func lockLacksActivation(_ lock: URL) -> Bool {")
+    a = instance.index("    static func lockLacksActivation(_ url: URL) -> Bool {")
     lock = instance[a:instance.index("\n    }", a) + 6]
     source = r'''import Foundation
 nonisolated func logEvent(_ message: String) {}
 @MainActor final class Controller {
- let profile = DeviceProfile.iPodTouch2G
+ let profile = Board.n72
  var usbConnected = true, liveAgentStatus = 1, connectionFailures = 0
  var onStatusChange: (() -> Void)?
  let bootScope = BootSessionScope()
@@ -88,10 +88,10 @@ enum Lock {
   func settle() async { try? await Task.sleep(for: .milliseconds(80)); for _ in 0..<20 { await Task.yield() } }
   // The known activated states pass; unknown names do not.
   for state in ["Activated", "FactoryActivated", "WildcardActivated"] {
-   precondition(DeviceConnectionIssue.activation(state: state, profile: .iPodTouch2G) == nil, state)
+   precondition(DeviceConnectionIssue.activation(state: state, profile: .n72) == nil, state)
   }
-  for state in ["Unactivated", "Pending", "", "SomeOtherActivated"] { precondition(DeviceConnectionIssue.activation(state: state, profile: .iPodTouch2G) != nil, state) }
-  precondition(DeviceConnectionIssue.activation(state: nil, profile: .iPodTouch2G) == nil)
+  for state in ["Unactivated", "Pending", "", "SomeOtherActivated"] { precondition(DeviceConnectionIssue.activation(state: state, profile: .n72) != nil, state) }
+  precondition(DeviceConnectionIssue.activation(state: nil, profile: .n72) == nil)
   // Unactivated three times: persistent issue, blocked, no retry, preparation cancelled, notice.
   let c = Controller(); c.answers = ["Unactivated", "Unactivated", "Unactivated"]
   c.deviceReachable = true; await settle()
@@ -157,7 +157,7 @@ enum Lock {
     with tempfile.TemporaryDirectory(prefix="ltm-activation-") as d:
         p = Path(d) / "check.swift"
         p.write_text(source)
-        subprocess.run(["swiftc", *host_runtime.swift_flags(ROOT), "-parse-as-library", "-module-cache-path", d + "/modules", str(ROOT / "LightTouchMac/Device/DeviceProfile.swift"), str(ROOT / "LightTouchMac/Device/BootSessionScope.swift"),
+        subprocess.run(["swiftc", *host_runtime.swift_flags(ROOT), "-parse-as-library", "-module-cache-path", d + "/modules", str(ROOT / "LightTouchMac/Device/Board+App.swift"), str(ROOT / "LightTouchMac/Device/BootSessionScope.swift"),
                         str(ROOT / "LightTouchMac/Device/DeviceConnectionIssue.swift"), str(ROOT / "LightTouchMac/Transport/DeviceExecution.swift"), str(p), "-o", d + "/check"], check=True)
         subprocess.run([d + "/check"], check=True, timeout=60)
 

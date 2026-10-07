@@ -13,7 +13,7 @@ import Foundation
 nonisolated public enum DeviceLinkWire {
     /// Bumped on any incompatible change to the messages below, the status block
     /// layout or the Mach hello. The helper refuses a hello with another version.
-    public static let protocolVersion = 1
+    public static let protocolVersion = 2
     /// The helper's hello refusal when another helper holds the device's lease; the app shows it as is.
     public static let leaseRefusal = "This device is in use by another copy of Light Touch."
     /// Upper bound on one framed message, either direction. An agent request is
@@ -68,8 +68,8 @@ nonisolated public enum LinkCommand: Codable, Sendable, Equatable {
 }
 
 nonisolated public enum LinkRequest: Codable, Sendable, Equatable {
-    /// Always first. `machine` selects the reply's `deviceInfo`.
-    case hello(protocolVersion: Int, machine: String?)
+    /// Always first. `board` (a board ID, "n72ap") selects the reply's `deviceInfo`.
+    case hello(protocolVersion: Int, board: String?)
     /// Starts qemu_ios_main once; `.ok(true)` when the QEMU thread is running.
     case boot(BootConfig)
     /// -> `.snapshot(status:error:)`, QemuIosSnapshotStatus values.
@@ -122,23 +122,6 @@ nonisolated public enum LinkEvent: Codable, Sendable, Equatable {
     case audioEnded(generation: UInt64, failed: Bool)
 }
 
-nonisolated public struct DeviceInfo: Codable, Sendable, Equatable {
-    public var machine: String
-    public var screenWidth: Int
-    public var screenHeight: Int
-    public var screenScale: Int
-    public var defaultOrientation: Int
-    public var hasCellular: Bool
-    public init(machine: String, screenWidth: Int, screenHeight: Int, screenScale: Int, defaultOrientation: Int, hasCellular: Bool) {
-        self.machine = machine
-        self.screenWidth = screenWidth
-        self.screenHeight = screenHeight
-        self.screenScale = screenScale
-        self.defaultOrientation = defaultOrientation
-        self.hasCellular = hasCellular
-    }
-}
-
 nonisolated public struct HelperInfo: Codable, Sendable, Equatable {
     public var protocolVersion: Int
     public var pid: Int32
@@ -147,7 +130,7 @@ nonisolated public struct HelperInfo: Codable, Sendable, Equatable {
     public var dylibModified: Double
     /// qemu_ios_build_id(): the loaded Mach-O's UUID.
     public var buildID: String?
-    /// qemu_ios_device_info(hello.machine).
+    /// qemu_ios_device_info of hello.board's machine.
     public var deviceInfo: DeviceInfo?
     /// The helper rechecks admitted storage under its lease before boot.
     public var storageProofValidation: Bool?

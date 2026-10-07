@@ -1,3 +1,4 @@
+import HostRuntime
 import DeviceRuntime
 // Device shell and LCD share a transform. Fit uses the pane bounds; manual
 // zoom uses display pixels per guest pixel, independent of orientation.
@@ -21,7 +22,7 @@ enum ZoomMode: Equatable {
 final class DisplayView: NSView {
 
     /// The device this view shows, fixed at init.
-    private let profile: DeviceProfile
+    private let profile: Board
     /// The panel at rest — iPod touch 2G: 320×480 at 163 ppi (3.5" panel).
     /// The live frame buffer swaps its sides on rotation.
     private var nativeScreenPixels: CGSize
@@ -189,7 +190,7 @@ final class DisplayView: NSView {
     /// Simulator-style rings where the two fingers of an Option drag land.
     private let pairRings = [CAShapeLayer(), CAShapeLayer()]
 
-    init(frame: NSRect, profile: DeviceProfile) {
+    init(frame: NSRect, profile: Board) {
         self.profile = profile
         nativeScreenPixels = profile.uprightScreenPixels
         framePixels = nativeScreenPixels
@@ -672,8 +673,8 @@ final class DisplayView: NSView {
     /// The upright size on screen while a resize is in progress or waiting to restart (the frame stretched to it).
     private var freeFormTarget: CGSize?
     private var freeFormActive: Bool { freeFormPanel != nil || freeFormTarget != nil }
-    /// The running scan's scan-to-upright turn (DeviceProfile.guestTurn): the shipped panel's, or the free-form one's.
-    private var guestTurn: CGFloat { runningScan.map(DeviceProfile.guestTurn(scan:)) ?? profile.panelRotation }
+    /// The running scan's scan-to-upright turn (Board.guestTurn): the shipped panel's, or the free-form one's.
+    private var guestTurn: CGFloat { runningScan.map(Board.guestTurn(scan:)) ?? profile.panelRotation }
     /// The free-form panel as it scans (the record's `panel`); nil, the shipped one.
     private var runningScan: CGSize?
     var isFreeForm: Bool { freeFormPanel != nil }
@@ -702,7 +703,7 @@ final class DisplayView: NSView {
         deviceKey = key
         if profile.supportsFreeForm, let scan {
             runningScan = scan
-            freeFormPanel = DeviceProfile.upright(scan: scan)
+            freeFormPanel = Board.upright(scan: scan)
             applyFreeFormGeometry()
             applyBezel(.off)
             needsLayout = true

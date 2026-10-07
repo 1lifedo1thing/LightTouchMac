@@ -43,7 +43,7 @@ public nonisolated enum FirmwareBootAdmission {
     @Sendable static func migrate(_ owner: StoppedRecordOwner) throws -> Bool {
         guard let bytes = owner.bytes, let paths = owner.paths,
               let record = try? DeviceRecord.object(bytes) else { return false }
-        if let board = record["board"] as? String, IPhoneIdentity.a4Boards.contains(board) {
+        if let board = record["board"] as? String, HostRuntime.Board(rawValue: board)?.kbootPhone == true {
             return try iPhoneIMEI(base: paths.base, marker: owner.device.appendingPathComponent(FirmwareWire.migratedRecipeFile))
         }
         guard record["board"] as? String == "n72ap" else { return false }
@@ -54,14 +54,12 @@ public nonisolated enum FirmwareBootAdmission {
 
     /// n90/n88 recipe 1 -> 2: the identity gains the IMEI the modem reports, and the UDID it makes
     /// (IPhoneIdentity). The read-only base keeps its identity.json; both values are pure functions of it, so
-    /// the boot derives the IMEI (BootRecipe.lockMachine) and the app the UDID. The marker records the step.
+    /// the boot derives the IMEI (DeviceLock.machineOptions) and the app the UDID. The marker records the step.
     static func iPhoneIMEI(base: URL, marker: URL) throws -> Bool {
         let fm = FileManager.default
         guard !fm.fileExists(atPath: marker.path),
-              let lock = (try? Data(contentsOf: base.appendingPathComponent("device.lock.json")))
-                .flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }),
-              let version = (((lock["entry"] as? [String: Any])?["content"] as? [String: Any])?["recipe"] as? [String: Any])?["version"] as? Int,
-              let board = lock["board"] as? String, let step = FirmwareWire.admissionRecipeSteps[board]?[version],
+              let lock = try? DeviceLock.read(base: base), let version = lock.recipeVersion,
+              let board = lock.board, let step = FirmwareWire.admissionRecipeSteps[board]?[version],
               let identity = (try? Data(contentsOf: base.appendingPathComponent("identity.json")))
                 .flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }),
               identity["imei"] == nil, let upgraded = IPhoneIdentity.upgraded(identity) else { return false }

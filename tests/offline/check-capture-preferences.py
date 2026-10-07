@@ -10,7 +10,7 @@ import argparse, subprocess, tempfile
 ap = argparse.ArgumentParser()
 ap.add_argument('--out')
 args = ap.parse_args()
-DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device/DeviceProfile.swift')
+DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device/Board+App.swift')
 root = Path(__file__).resolve().parents[2]
 fixture = r'''import Cocoa
 import UserNotifications
@@ -72,7 +72,7 @@ func render(_ view: NSView, _ name: String) throws {
   precondition(preferences.spaceBarAction == .none && preferences.reminderAfterDuration == 0)
   var prompts = 0
   var permission = false
-  let view = CaptureOptionsView(preferences: preferences, profile: .iPodTouch2G, authorizeNotifications: { prompts += 1; return permission })
+  let view = CaptureOptionsView(preferences: preferences, profile: .n72, authorizeNotifications: { prompts += 1; return permission })
   // One Settings window: a toolbar tab per pane, titled after the pane, sized to it.
   let general = GeneralSettingsView()
   let settings = SettingsWindowController(general: general, capture: view, storage: StubPane())
@@ -140,7 +140,7 @@ func render(_ view: NSView, _ name: String) throws {
   precondition(restored.copyOnCapture && !restored.openFinderAfterCapture && !restored.soundEffectsEnabled)
   precondition(restored.spaceBarAction == .saveScreenshot)
   let id = UUID()
-  let notification = CaptureNotifications.reminderContent(recordingID: id, profile: .iPodTouch2G)
+  let notification = CaptureNotifications.reminderContent(recordingID: id, profile: .n72)
   precondition(notification.userInfo["recordingID"] as? String == id.uuidString)
   let ready = CaptureNotifications.readyContent("iPod touch (2nd generation) iOS 3.1.3", entryID: "n72ap-7E18")
   precondition(ready.title == "iPod touch (2nd generation) iOS 3.1.3 is ready to use" && ready.userInfo["entry"] as? String == "n72ap-7E18", ready.title)

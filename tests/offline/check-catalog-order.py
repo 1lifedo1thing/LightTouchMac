@@ -79,5 +79,5 @@ with tempfile.TemporaryDirectory(prefix="ltm-catalog-order-") as d:
     p.write_text(source)
     (Path(d) / "catalog.json").write_text(json.dumps(fixture))
     subprocess.run(["swiftc", *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), *schema_sources(), "-parse-as-library", "-module-cache-path", d + "/modules", str(root / "LightTouchMac/Library/FirmwareCatalog.swift"),
-                    str(root / "LightTouchMac/Device/DeviceProfile.swift"), str(p), "-o", d + "/check"], check=True)
+                    str(root / "LightTouchMac/Device/Board+App.swift"), str(p), "-o", d + "/check"], check=True)
     subprocess.run([d + "/check", d + "/catalog.json", str(shipped)], check=True, timeout=20)

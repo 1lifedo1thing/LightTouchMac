@@ -1,3 +1,4 @@
+import HostRuntime
 import Cocoa
 import UserNotifications
 
@@ -72,7 +73,7 @@ final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate {
         return content
     }
 
-    func scheduleReminder(after seconds: TimeInterval, recordingID: UUID, profile: DeviceProfile) async {
+    func scheduleReminder(after seconds: TimeInterval, recordingID: UUID, profile: Board) async {
         cancelReminder()
         guard seconds > 0, !NSApp.isActive else { return }
         let revision = reminderRevision
@@ -116,7 +117,7 @@ final class CaptureNotifications: NSObject, UNUserNotificationCenterDelegate {
         return content
     }
 
-    static func reminderContent(recordingID: UUID, profile: DeviceProfile) -> UNNotificationContent {
+    static func reminderContent(recordingID: UUID, profile: Board) -> UNNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = "\(profile.shortName) is still recording"
         content.categoryIdentifier = reminderCategory

@@ -5,9 +5,6 @@ import Darwin
 import Foundation
 
 public nonisolated enum DebugPort {
-    /// The guest CPU's lldb triple per board; boards not listed are ARMv7 (Cortex-A8, A4 and later).
-    static let arch = ["n45ap": "armv6", "m68ap": "armv6", "n72ap": "armv6"]
-
     /// QEMU's argv for a gdbstub on 127.0.0.1:`port` (loopback only: the stub has no authentication).
     public static func arguments(port: Int) -> [String] { ["-gdb", "tcp:127.0.0.1:\(port)"] }
 
@@ -33,7 +30,7 @@ public nonisolated enum DebugPort {
     /// What to paste into Terminal. KERNELCACHE stays a placeholder: the decrypted kernel lives in the firmware,
     /// not in the device (qemu-ios docs/guest-debug.md lists where each board's comes from).
     public static func lldbCommand(board: String, port: Int) -> String {
-        "lldb -o 'target create --arch \(arch[board] ?? "armv7")-apple-ios KERNELCACHE'"
+        "lldb -o 'target create --arch \(Board(rawValue: board)?.arch ?? "armv7")-apple-ios KERNELCACHE'"
             + " -o 'gdb-remote 127.0.0.1:\(port)'"
             + " -o 'command script import QEMU_IOS/imgtools/lldb/xnu.py'"
     }

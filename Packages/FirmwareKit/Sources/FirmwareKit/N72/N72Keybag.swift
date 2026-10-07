@@ -12,6 +12,7 @@
 // UID-derived).
 
 import Foundation
+import HostRuntime
 
 enum N72Keybag {
     /// The host stages these with the ramdisk at the paused kernel handoff.
@@ -31,7 +32,11 @@ enum N72Keybag {
         try fm.createDirectory(at: ovl, withIntermediateDirectories: true)
         let port = try GDBRemote.freePort()
         let file = { (n: String) in Preparer.esc(out.appendingPathComponent(n)) }
-        let machine = ["iPod-Touch,bootrom=\(Preparer.esc(bootrom))", "nand=\(file("nand"))", "nor=\(file("nor.bin"))",
+        Machines.helper = helper
+        guard let hardware = HostRuntime.Board.n72.hardware else {
+            throw FirmwareError(.internal, "\(helper.lastPathComponent)'s emulator library has no machine for n72ap")
+        }
+        let machine = ["\(hardware.machine),bootrom=\(Preparer.esc(bootrom))", "nand=\(file("nand"))", "nor=\(file("nor.bin"))",
                        "nor-rw=\(Preparer.esc(nor))", "nandrw=\(Preparer.esc(ovl))", "direct-iboot=\(file("iBoot.bin"))",
                        "gid-blobs=\(file("gid-blobs.bin"))", "aes-uid=engine", "boot-args="]
             .joined(separator: ",")
@@ -41,7 +46,7 @@ enum N72Keybag {
         let image = try Data(contentsOf: rd)
         final class Note: @unchecked Sendable { var text = "" }
         let note = Note()
-        let (r, text) = try Preparer.oneshot(helper, argv: argv, machine: "iPod-Touch", serial: serial, stop: "panic(", timeout: 300,
+        let (r, text) = try Preparer.oneshot(helper, argv: argv, machine: hardware.machine, serial: serial, stop: "panic(", timeout: 300,
                                              work: work, log: log) {
             note.text = try handoff(GDBRemote(port: port), kernelcache: kc, ramdisk: image)
         }

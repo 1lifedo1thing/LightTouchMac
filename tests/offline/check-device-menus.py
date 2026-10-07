@@ -243,11 +243,11 @@ struct Instance { let id=UUID() }
 @main struct Check {
  @MainActor static func main() {
   _ = NSApplication.shared
-  MainMenuBuilder.install(profile: .iPad1)
+  MainMenuBuilder.install(profile: .k48)
   let ipad=NSApp.mainMenu!.items.flatMap{ dump($0.submenu!,$0.title) }
   let expectedIPad=CommandLine.arguments[2].components(separatedBy:"\n")
   precondition(ipad==expectedIPad,"iPad menu bar:\n"+ipad.joined(separator:"\n"))
-  MainMenuBuilder.install(profile: .iPodTouch2G)
+  MainMenuBuilder.install(profile: .n72)
   let root=NSApp.mainMenu!
   let bar=root.items.flatMap{ dump($0.submenu!,$0.title) }
   precondition(bar==CommandLine.arguments[1].components(separatedBy:"\n"),"iPod menu bar:\n"+bar.joined(separator:"\n"))
@@ -401,5 +401,5 @@ struct Instance { let id=UUID() }
 '''
 with tempfile.TemporaryDirectory(prefix='ltm-menu-check-') as tmp:
     tmp=Path(tmp);(tmp/'check.swift').write_text(source)
-    subprocess.run(['xcrun','swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]),'-swift-version','5','-default-isolation','MainActor',str(root/'App/MainMenu.swift'),str(root/'Device/DeviceProfile.swift'),str(root/'UI/RotationControlAction.swift'),str(tmp/'check.swift'),'-o',str(tmp/'check')],check=True)
+    subprocess.run(['xcrun','swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]),'-swift-version','5','-default-isolation','MainActor',str(root/'App/MainMenu.swift'),str(root/'Device/Board+App.swift'),str(root/'UI/RotationControlAction.swift'),str(tmp/'check.swift'),'-o',str(tmp/'check')],check=True)
     subprocess.run([str(tmp/'check'),IPOD_BAR,IPAD_BAR],check=True)

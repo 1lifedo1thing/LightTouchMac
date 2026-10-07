@@ -26,12 +26,13 @@ stub = startup[start:startup.index('@main struct Check', start)]
 source = prefix + stub + r'''
 @main struct Check {
  @MainActor static func main() async throws {
+  _ = fixtureMachines
   _ = NSApplication.shared
   NSApp.setActivationPolicy(.prohibited)
   for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] { UserDefaults.standard.removeObject(forKey: key) }
   defer { for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] { UserDefaults.standard.removeObject(forKey: key) } }
   DisplayView.bezel = .flat
-  let profile = DeviceProfile.iPhone4
+  let profile = Board.n90
   frameWidth = Int32(profile.screenPixels.width); frameHeight = Int32(profile.screenPixels.height)
   let display = DisplayView(frame: NSRect(x: 0, y: 0, width: 800, height: 800), profile: profile)
   let e = EmulatorController(); display.emulator = e
@@ -69,7 +70,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-rotation-redraw-') as tmp:
     (app / 'Resources/shell-iphone4.png').symlink_to(root / 'LightTouchMac/Assets.xcassets/shell-iphone4.imageset/shell-iphone4.png')
     (work / 'check.swift').write_text(source)
     exe = app / 'MacOS/check'
-    sources = ['UI/DisplayView', 'UI/MouseTouchPair', 'Device/DeviceProfile', 'Device/DeviceProfile+Display', 'UI/DisplayMeasurements', 'UI/AttitudeIndicatorButton',
+    sources = ['UI/DisplayView', 'UI/MouseTouchPair', 'Device/Board+App', '../tests/fixtures/machines', 'UI/DisplayMeasurements', 'UI/AttitudeIndicatorButton',
                'UI/InlineLiveTextView', 'UI/DroppedFiles', 'UI/DropHighlight','UI/GuestKeyboard']
     subprocess.run(['swiftc', *device_runtime.swift_flags(root), '-module-cache-path', str(work / 'modules'), '-default-isolation', 'MainActor',
                     *[str(root / 'LightTouchMac' / f'{s}.swift') for s in sources], str(work / 'check.swift'), '-o', str(exe)], check=True)
