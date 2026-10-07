@@ -5,10 +5,6 @@ import HostRuntime
 import DeviceRuntime
 @testable import LightTouchCore
 
-/// The repository checkout this test file sits in (for tests/fixtures).
-let repositoryRoot = URL(fileURLWithPath: #filePath)
-    .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-    .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 
 /// A fresh directory under the temporary directory for an async body, removed afterwards.
 func withScratchDirectory<T>(_ body: (URL) async throws -> T) async throws -> T {

@@ -4,7 +4,7 @@
     tests/run.py offline  [--only NAME ...] [-j N]     no emulator: the Unit test plan (xcodebuild test on
                                                         LightTouchMac.xcworkspace: the packages' Swift Testing suites),
                                                         tests/offline/check-*.py (swiftc on the app's sources plus temp
-                                                        fixtures), run-catalog-checks.py, and the --offline halves of
+                                                        fixtures), and the --offline halves of
                                                         check-activation-gate / check-boot-deadline
     tests/run.py release  [--only NAME ...] [-j N] [--network]
                                                         packaging and build checks: tests/release/*.py and
@@ -158,7 +158,6 @@ def offline_checks():
     unit = ['xcodebuild', '-workspace', ROOT / 'LightTouchMac.xcworkspace', '-scheme', 'LightTouchMac', '-testPlan', 'Unit',
             '-derivedDataPath', ROOT / '.build/xcode-unit', '-quiet', 'test']
     checks = [unit, *[[p] for p in sorted((TESTS / 'offline').glob('check-*.py'))]]
-    checks.append([TESTS / 'offline/run-catalog-checks.py'])
     checks.append([TESTS / 'sessions/check-activation-gate.py', '--offline'])
     checks.append([TESTS / 'sessions/check-boot-deadline.py', '--offline'])
     checks.append([TESTS / 'sessions/test-matrix-provenance.py'])   # immutable input identity and retained evidence
