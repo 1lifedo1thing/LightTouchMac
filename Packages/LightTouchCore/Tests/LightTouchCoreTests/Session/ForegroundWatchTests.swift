@@ -74,4 +74,20 @@ struct ForegroundWatchTests {
             #expect(FileManager.default.fileExists(atPath: BootRecipe.setupDoneMark(overlay: overlay).path), "the overlay remembers Setup is done")
         }
     }
+
+    /// A boot without slirp's restriction (no network) still marks Setup done, so later boots wait for the Home screen.
+    @Test func setupsEndIsMarkedWithoutTheRestriction() async throws {
+        try await withScratchDirectory { overlay in
+            let host = Host(overlay: overlay)
+            let watch = watch(host)
+            watch.setupGate = BootRecipe.SetupNetworkGate()
+            watch.liftsRestrict = false
+            host.fronts = [("com.apple.purplebuddy", "Setup"), ("com.apple.springboard", "Home"), ("com.apple.springboard", "Home")]
+            watch.start()
+            await eventually("finished") { !host.finished.isEmpty }
+            watch.stop()
+            #expect(host.link.commands.isEmpty, "nothing to lift")
+            #expect(FileManager.default.fileExists(atPath: BootRecipe.setupDoneMark(overlay: overlay).path))
+        }
+    }
 }

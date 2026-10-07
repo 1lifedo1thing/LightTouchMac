@@ -32,9 +32,11 @@ public protocol ForegroundHost: AnyObject {
 
     /// The guest's front app; the window's subtitle while it runs.
     public private(set) var appName: String?
-    /// Set when this boot came up with slirp restrict=on (5.x, Setup not yet done on this overlay):
-    /// the watch feeds it frontmost and lifts restrict in place once Setup is over.
+    /// Set when this boot shows Setup (5.x, Setup not yet done on this overlay): the watch feeds it frontmost and,
+    /// once Setup is over, writes the overlay's mark and, with `liftsRestrict`, lifts slirp's restrict in place.
     @ObservationIgnored public var setupGate: BootRecipe.SetupNetworkGate?
+    /// This boot came up with slirp restrict=on until Setup is over.
+    @ObservationIgnored public var liftsRestrict = true
     /// Between polls (shorter in tests).
     @ObservationIgnored var interval: Duration = .seconds(3)
 
@@ -68,9 +70,13 @@ public protocol ForegroundHost: AnyObject {
                         if var gate = setupGate, let link = host.helperLink {
                             if gate.observe(bundleID: fg?.bundleID, name: fg?.name) {
                                 setupGate = nil
-                                link.send(.netRestrict(false))
+                                if liftsRestrict {
+                                    link.send(.netRestrict(false))
+                                    logEvent("networking: Setup finished, lifting slirp restrict on wifi0")
+                                } else {
+                                    logEvent("boot: Setup finished")
+                                }
                                 try? Data().write(to: BootRecipe.setupDoneMark(overlay: host.overlay))
-                                logEvent("networking: Setup finished, lifting slirp restrict on wifi0")
                                 host.setupFinished(generation: generation)
                             } else {
                                 setupGate = gate

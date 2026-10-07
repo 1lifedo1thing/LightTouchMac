@@ -18,6 +18,8 @@ public protocol ReadinessHost: AnyObject {
     var isPainting: Bool { get }
     /// The helper's status block, read now.
     var status: SharedStatus? { get }
+    /// This boot ends in Setup (iOS 5+, not yet set up), not the Home screen.
+    var expectsSetup: Bool { get }
     /// The USB bridge sees the guest.
     func deviceReady() async -> Bool
     /// SpringBoard answers (its layout service, or with `agentCounts` the agent naming its screen frontmost).
@@ -104,7 +106,7 @@ public protocol ReadinessHost: AnyObject {
                 try Task.checkCancellation()
                 guard generation == host.bootScope.generation else { return }
                 noteBoot(.usbAttached)
-                preparationStatus = "Waiting for the Home screen…"
+                preparationStatus = host.expectsSetup ? "Waiting for Setup…" : "Waiting for the Home screen…"
                 // A framebuffer and lockdown can both respond while SpringBoard
                 // is still starting. Do not enable input until SpringBoard answers.
                 try await host.waitForSpringBoard(agentCounts: true)

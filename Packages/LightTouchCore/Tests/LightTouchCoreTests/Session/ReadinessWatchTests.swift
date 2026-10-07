@@ -42,6 +42,20 @@ struct ReadinessWatchTests {
         }
     }
 
+    @Test func aBootThatEndsInSetupWaitsForSetup() async throws {
+        try await withScratchDirectory { directory in
+            let c = session(directory)
+            c.expectsSetup = true
+            c.springBoardReady = false
+            c.readiness.start()
+            await eventually("SpringBoard asked") { c.springBoardChecks > 0 }
+            #expect(c.readiness.preparationStatus == "Waiting for Setup…")
+            #expect(c.bootStage.text(expectingSetup: true) == "Waiting for Setup")
+            c.springBoardReady = true
+            await c.readiness.current?.value
+        }
+    }
+
     @Test func staleCancelledAndStoppingBootsAreLeftAlone() async throws {
         try await withScratchDirectory { directory in
             let stale = session(directory, sleeping: true)

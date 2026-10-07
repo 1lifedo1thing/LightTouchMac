@@ -44,13 +44,15 @@ public nonisolated enum BootStage: Int, Comparable, Sendable {
     }
 
     /// The boot toast's subtitle, under "Starting iOS…".
-    public var text: String {
+    public var text: String { text(expectingSetup: false) }
+    /// `expectingSetup`: this boot ends in Setup (iOS 5+, not yet set up), not the Home screen.
+    public func text(expectingSetup: Bool) -> String {
         switch self {
         case .poweringOn: "Powering on"
         case .loading: "Loading iOS"
         case .kernel: "Starting the system"
         case .system: "Connecting over USB"
-        case .usb: "Waiting for the Home screen"
+        case .usb: expectingSetup ? "Waiting for Setup" : "Waiting for the Home screen"
         }
     }
 

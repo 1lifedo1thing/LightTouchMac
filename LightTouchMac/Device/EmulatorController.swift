@@ -329,13 +329,17 @@ final class EmulatorController {
         let usbSession = usbmux.start(paths: instance.paths)
         openSerialLog()
         let netdev: String?
+        let setupDone = FileManager.default.fileExists(atPath: BootRecipe.setupDoneMark(overlay: overlayURL).path)
+        expectsSetup = BootRecipe.setupPhonesHome(iosVersion: iosVersion) && !setupDone
+        // Setup's end is watched on every boot that shows it (the mark, the readiness text), networked or not.
+        foreground.setupGate = expectsSetup ? BootRecipe.SetupNetworkGate() : nil
+        foreground.liftsRestrict = false
         if profile.isKBoot {
-            let setupDone = FileManager.default.fileExists(atPath: BootRecipe.setupDoneMark(overlay: overlayURL).path)
-            let restrict = network && BootRecipe.setupPhonesHome(iosVersion: iosVersion) && !setupDone
+            let restrict = network && expectsSetup
             netdev = network ? proxy.forward().map {
                 BootRecipe.wifiNetdev(guestForward: $0, restricted: restrict, localNetwork: localNetworkEnabled)
             } : nil
-            foreground.setupGate = netdev != nil && restrict ? BootRecipe.SetupNetworkGate() : nil
+            foreground.liftsRestrict = netdev != nil && restrict
         } else {
             netdev = network ? BootRecipe.wifiNetdev(guestForward: proxy.forward() ?? "", restricted: false,
                                                      localNetwork: localNetworkEnabled) : nil
@@ -647,6 +651,8 @@ final class EmulatorController {
     @ObservationIgnored private var reachableSince: Date?
     /// it_ethlink reported LinkStatus 0 -> 1 on serial (the iPad's guest package).
     private(set) var ethlinkUp = false
+    /// This boot ends in Setup, not the Home screen: iOS 5 or later on an overlay that hasn't finished it.
+    private(set) var expectsSetup = false
     private var inRecovery = false
 
     /// Which libqemu-arm.dylib this device's helper loaded, and when it was
@@ -999,4 +1005,5 @@ extension EmulatorController: MachineHost, ConnectionHost, ActivationServices, R
     var helperLink: HelperLink? { link }
     var isPainting: Bool { state == .running }
     func readyForInput() { deviceReachable = true }
+    var bootStageText: String { bootStage.text(expectingSetup: expectsSetup) }
 }
