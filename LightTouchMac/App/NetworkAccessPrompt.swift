@@ -1,18 +1,11 @@
+import LightTouchCore
 import HostRuntime
 import Cocoa
 
-/// Resolve consent before QEMU can send any guest traffic. Loopback USB and
-/// Mac-side app downloads remain available when guest networking is off.
-enum NetworkAccessPreference {
-    static let key = "guestNetworkEnabled"
-
-    /// Whether the device about to start gets the Mac's network: `--network`/`--no-network`
-    /// on the command line (a choice that is not remembered), else the saved answer, else a prompt.
+extension NetworkAccessPreference {
+    /// Whether the device about to start gets the Mac's network: the decided answer, else a prompt whose answer is saved.
     static func resolve(profile: Board) -> Bool {
-        let arguments = CommandLine.arguments
-        if arguments.contains("--no-network") { return false }
-        if arguments.contains("--network") { return true }
-        if let enabled = UserDefaults.standard.object(forKey: key) as? Bool { return enabled }
+        if let enabled = decided() { return enabled }
         let alert = NSAlert()
         alert.icon = NSImage(systemSymbolName: "network", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 48, weight: .regular))

@@ -464,7 +464,11 @@ final class DisplayView: NSView {
         guard let window else { return nil }
         let center = window.convertPoint(toScreen: convert(CGPoint(x: bounds.midX, y: bounds.midY), to: nil))
         let screen = NSScreen.screens.first { $0.frame.contains(center) } ?? window.screen
-        return screen.flatMap { DisplayMeasurements.pointsPerMillimeter($0) }.map {
+        return screen.flatMap { screen in
+            (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber).flatMap {
+                DisplayMeasurements.pointsPerMillimeter(display: CGDirectDisplayID($0.uint32Value), logical: screen.frame.size)
+            }
+        }.map {
             let height = profile.physicalHeightMillimeters * $0
             return modelView?.physicalScale(heightInPoints: height) ?? height / shellPixels.height
         }
