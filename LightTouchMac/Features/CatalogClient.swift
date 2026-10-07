@@ -94,8 +94,18 @@ nonisolated enum CatalogError: LocalizedError {
     case invalidCopy(String)
     /// A response that didn't decode; the DecodingError (its coding path) is in app.log.
     case unreadable
+    /// A 400 naming the devices the server takes ("device must be one of …"): it doesn't know this one yet. `name` is
+    /// the device's marketing name, filled in by whoever knows it (AppsInspectorViewController).
+    case unsupportedDevice(name: String?)
+
+    /// The error for a non-200 answer and its body.
+    static func status(_ code: Int, body: Data) -> CatalogError {
+        code == 400 && String(decoding: body, as: UTF8.self).contains("device must be one of") ? .unsupportedDevice(name: nil) : .badStatus(code)
+    }
+
     var errorDescription: String? {
         switch self {
+        case .unsupportedDevice(let name): "Legacy Store doesn’t support \(name ?? "this device") yet."
         case .invalidCopy(let message): message
         case .unreadable: "Legacy Store sent a response Light Touch couldn’t read."
         case .badStatus(503): "The Internet Archive is busy — try again in a minute."
@@ -147,7 +157,7 @@ enum CatalogClient {
         let (data, response) = try await URLSession.shared.data(for: request(components.url!))
         if let code = (response as? HTTPURLResponse)?.statusCode, code != 200 {
             logEvent("Legacy Store: HTTP \(code) for \(components.url!.path)?\(components.url!.query ?? "")")
-            throw CatalogError.badStatus(code)
+            throw CatalogError.status(code, body: data)
         }
         struct Envelope: Decodable { let apps: [CatalogApp] }
         return try decode(Envelope.self, data, from: components.url!).apps
@@ -190,7 +200,7 @@ enum CatalogClient {
         guard let response = response as? HTTPURLResponse, response.statusCode == 200 else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             logEvent("Legacy Store: HTTP \(code) for \(url.path)?\(url.query ?? "")")
-            throw CatalogError.badStatus(code)
+            throw CatalogError.status(code, body: data)
         }
         try Task.checkCancellation()
         return try decode(T.self, data, from: url)

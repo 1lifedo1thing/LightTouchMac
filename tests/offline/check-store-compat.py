@@ -37,6 +37,8 @@ class Handler(BaseHTTPRequestHandler):
         query = {k: v[0] for k, v in parse_qs(url.query).items()}
         self.server.requests.append((url.path, query))
         device = query.get('device') if self.server.new else None
+        if device == 'iPhone9,9':   # a device the server doesn't take yet: its 400
+            return self.reply(400, {'error': 'device must be one of iPod1,1, iPod2,1, iPad1,1'})
         if url.path == '/api/emulator/apps':
             data = load(FILES[device] + ('-include' if 'ipa_id' in query or 'incompatible' in query else '') + '.json') \
                 if device else load('old-enigmo.json')
@@ -109,6 +111,12 @@ code = r'''import Foundation
   let appLog = { (try? String(contentsOf: Bundled.preparedLogsDirectory!.appendingPathComponent("app.log"), encoding: .utf8)) ?? "" }
   check(appLog().contains("Legacy Store: couldn’t read /api/v1/copies/7") && appLog().contains("typeMismatch") && appLog().contains("ipa_id"),
         "the DecodingError and its coding path are in app.log: \(appLog())")
+
+  // A device the server doesn't take yet: its 400 is "doesn't support <marketing name> yet", not "try again later".
+  do { _ = try await CatalogClient.search("", device: "iPhone9,9", os: "4.0"); preconditionFailure("an unknown device was served") }
+  catch CatalogError.unsupportedDevice {}
+  check(CatalogError.unsupportedDevice(name: "iPhone 4").localizedDescription == "Legacy Store doesn’t support iPhone 4 yet.", "unsupported words")
+  check(CatalogError.status(400, body: Data("{}".utf8)).localizedDescription == CatalogError.badStatus(400).localizedDescription, "another 400")
 
   // iPod touch 2G: Enigmo 3.3-H's armv6 slice is ARMv7 code, greyed with the reason; the other three run.
   let ipod2 = try await CatalogClient.search("enigmo", device: "iPod2,1", os: "3.1.3")

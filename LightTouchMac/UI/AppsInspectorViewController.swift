@@ -983,8 +983,12 @@ final class AppsInspectorViewController: NSViewController {
                 self.catalogFailed = true
                 self.reloadTablePreservingSelection()
                 // Legacy Store's own errors say it plainly; a network error needs the name.
-                self.showPlaceholder(error is CatalogError ? error.localizedDescription
-                                                           : "Couldn’t reach Legacy Store — \(error.localizedDescription)")
+                if case CatalogError.unsupportedDevice = error {
+                    self.showPlaceholder(CatalogError.unsupportedDevice(name: self.emulator.profile.marketingName).localizedDescription)
+                } else {
+                    self.showPlaceholder(error is CatalogError ? error.localizedDescription
+                                                               : "Couldn’t reach Legacy Store — \(error.localizedDescription)")
+                }
             }
             self.updateButtons()
         }
