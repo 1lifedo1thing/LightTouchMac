@@ -20,10 +20,15 @@ def imobiledevice_flags():
     return shlex.split(subprocess.check_output(['pkg-config', '--cflags', '--libs', 'libimobiledevice-1.0', 'libplist-2.0'],
                                                env=env, text=True))
 
-def build_worker(root, destination, flags, *, log=None):
+def build_worker(root, destination, flags, *, log=None, frameworks=None):
+    """`frameworks`: a directory holding libimobiledevice-1.0 and libplist-2.0 to link (and load) in place of
+    Homebrew's, e.g. an app's Contents/Frameworks (1.x's lockdownd needs its SSLv3 build)."""
     root, destination = Path(root), Path(destination)
     lockdown = root / 'LightTouchServices/Lockdown'
     native = imobiledevice_flags()
+    if frameworks:
+        native = [f for f in native if f.startswith('-I')] + ['-L', str(frameworks), '-limobiledevice-1.0', '-lplist-2.0',
+                                                                 '-Xlinker', '-rpath', '-Xlinker', str(frameworks)]
     objects = []
     for name in LOCKDOWN:
         obj = destination.parent / f'{name}.o'

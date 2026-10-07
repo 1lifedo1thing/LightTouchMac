@@ -183,7 +183,8 @@ def build(args, out):
         worker.symlink_to(Path(args.service_worker).resolve())
     else:
         with open(out / "service-swiftc.log", "w") as log:
-            host_service.build_worker(ROOT, worker, swift_subprocess.swift_flags(ROOT), log=log)
+            host_service.build_worker(ROOT, worker, swift_subprocess.swift_flags(ROOT), log=log,
+                                      frameworks=getattr(args, "frameworks", None))
     if args.helper:
         return Path(args.helper)
     qemu = sources.path("qemu-ios")
@@ -237,7 +238,7 @@ def main():
     ap.add_argument("--afc-race", type=int, metavar="N", help="--single: N boots, AFC at lockdown's first answer, then Stop (smoke.md #5)")
     ap.add_argument("--afc-race-dirty", action="store_true", help="--afc-race: install, upload and halt first, stopping mid-shutdown")
     ap.add_argument("--service-worker", help="explicit executable host-service worker (otherwise compile production sources)")
-    ap.add_argument("--frameworks", help="where libimobiledevice is loaded from (default Homebrew's)")
+    ap.add_argument("--frameworks", help="the libimobiledevice the services worker links (default Homebrew's; 1.x needs the app's SSLv3 build)")
     ap.add_argument("--ipad-itpack", type=Path, help="boot the iPad with the app's offer from this armv7.itpack and check "
                     "the loader's report and the agent (foreground app, lock state, launch)")
     args = ap.parse_args()
