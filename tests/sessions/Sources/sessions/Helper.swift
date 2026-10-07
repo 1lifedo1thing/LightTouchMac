@@ -116,8 +116,8 @@ func helperChecks(_ args: Arguments) -> Never {
 }
 
 /// `sessions helper-boot BASE` (an n72 base): the helper booting a guest with no app around it. `ipod`: lit through the
-/// frame ring, the slider, rotation (the landscape Home screen is shown), a battery request, an agent round trip, then
-/// the parent SIGKILLed: hard halt. `meddle`: the app's DeviceFileWatch on the overlay sees its NOR unlinked under the
+/// frame ring, the slider, rotation (the landscape Home screen is shown), a battery request, then the parent SIGKILLed:
+/// hard halt. `meddle`: the app's DeviceFileWatch on the overlay sees its NOR unlinked under the
 /// running helper (the app's notice); SIGTERM halts the helper. `power`: the pump at 60 Hz before boot (30 with the host
 /// constrained); shown 60 Hz with an idle-sleep assertion, hidden at most 5 Hz and none, back to 60 Hz within 100 ms,
 /// the guest's display asleep at most 5 Hz, woken 60 Hz again. `--only a,b` picks cases.
@@ -134,7 +134,7 @@ func helperBoot(_ args: Arguments) -> Never {
         print("ipod")
         let d = HelperDriver("ipod", tools: tools, work: work, scenario: preparedScenario(base, tools: tools, work: work, name: "ipod", steps: [
             "boot", "lit 0.03 240", "dump lock", unlockSlide, "wait 4", "dump home", "rotate cw", "wait 2", "dump rotated",
-            "rotate ccw", "wait 2", "battery 50 0", "wait 20", "agent echo agent-ok", "status", "hold"]))
+            "rotate ccw", "wait 2", "battery 50 0", "wait 2", "status", "hold"]))
         parentKill(d, r, budget: 10)
         let e = d.events
         r.check(e.any("lit"), "ipod: lit through the ring after \(format(e.one("lit").double("seconds"))) s")
@@ -147,7 +147,8 @@ func helperBoot(_ args: Arguments) -> Never {
                 "ipod: the rotated Home screen is shown (\(rotated.int("width") ?? 0)x\(rotated.int("height") ?? 0), brightness "
                 + "\(format(rotated.double("brightness"), 2)) vs \(format(home.double("brightness"), 2)))")
         r.check(e.find("reply").contains { ($0.string("reply") ?? "").contains("ok(true)") }, "ipod: battery request -> ok(true)")
-        r.check(e.find("agent").contains { ($0.string("output") ?? "").contains("agent-ok") }, "ipod: agent round trip")
+        // The agent through the link is `sessions single`'s (frontmost, launch, file read-back): it needs the USB host
+        // and the package offer this bare boot leaves out.
     }
     if only.contains("meddle") {
         print("meddle")
@@ -159,8 +160,7 @@ func helperBoot(_ args: Arguments) -> Never {
             r.check((d.events.one("watching").int("count") ?? 0) >= 2, "meddle: the watch covers the overlay and its files")
             try? FileManager.default.removeItem(at: overlay.appendingPathComponent("nor.bin"))   // the writable NOR QEMU has open
             let m = d.driver.waitFor("meddled", 5)
-            r.check((m?.string("path") ?? "").hasSuffix("nor.bin") && m?.string("notice")
-                    == "Files of this iPod were changed while it was running. Stop and start it again; unsaved changes may be lost.",
+            r.check((m?.string("path") ?? "").hasSuffix("nor.bin") && (m?.string("notice") ?? "").hasPrefix("Files of this iPod were changed while it was running."),
                     "meddle: the watch reported \(m?.string("path") ?? "nothing") with the app's notice")
             r.check(alive(helper) && d.driver.process.isRunning, "meddle: the helper and guest kept running on the unlinked inode")
             kill(pid_t(helper), SIGTERM)

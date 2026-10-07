@@ -49,7 +49,8 @@ func preparedBoot(_ p: Scenario.Prepared, hardware: DeviceInfo?) throws -> BootC
     let prepared = try PreparedDeviceBoot.prepare(board: board, base: URL(fileURLWithPath: p.base), overlay: overlay,
         writableNOR: overlay.appendingPathComponent("nor.bin"), storageKey: nil,
         bootrom: BootRecipe.bootrom(board.bootrom, filesRoot: p.files ?? NSHomeDirectory() + "/Developer/qemu-ios-files"))
-    return try prepared.configuration(hardware: hardware, bootArgs: "", usbAddress: nil, wifi: true, guestPackage: nil,
+    return try prepared.configuration(hardware: hardware, bootArgs: "amfi_allow_any_signature=1 cs_enforcement_disable=1",   // the app's default (DeviceOptions.bootArgs)
+        usbAddress: nil, wifi: true, guestPackage: nil,
         serial: "file:\(p.serial)", audio: ["-audio", "driver=none"], netdev: "user,id=wifi0", carrier: p.carrier)
 }
 
