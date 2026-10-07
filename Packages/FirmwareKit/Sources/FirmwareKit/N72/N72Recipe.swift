@@ -403,9 +403,12 @@ extension N72Board {
         return named.map(\.key).joined(separator: ", ") + " baked (no helpers)"
     }
 
-    /// bakePrefs' keys and values, it_prefs' SETTINGS and defaults() for SpringBoard.
+    /// bakePrefs' keys and values, it_prefs' SETTINGS and defaults() for SpringBoard: also the AC-power UI hidden
+    /// (SBHideACPower: no charging chime, plug or charging lock screen; the emulated cable is always in),
+    /// Auto-Brightness off (SBEnableALS) and Battery % off (SBShowBatteryPercentage, 3.x+).
     static var prefsBaked: [(key: String, value: Any)] { [(reorderTip, true), ("SBBacklightLevel2", 1.0), ("SBBacklightLevel", 1.0),
-                                                          ("SBAutoLockTime", -1), ("SBAutoDimTime", -1)] }
+                                                          ("SBAutoLockTime", -1), ("SBAutoDimTime", -1), ("SBHideACPower", true),
+                                                          ("SBEnableALS", false), ("SBShowBatteryPercentage", false)] }
 
     /// ipod2g_device.gles2x_front_end (ipod1g_device's for 1.x): (true, line) if the stock OpenGLES exports exactly
     /// the names in `exports` (contrib/it-gles/opengles-<1x|2x>.exports), so the package's hook may replace it;

@@ -214,10 +214,12 @@ import Testing
             #expect(try String(contentsOf: plist, encoding: .utf8).contains("<key>SBDidShowReorderText</key>\n\t<true/>"))
 
             try FileManager.default.removeItem(at: plist)   // 1.x: SBBacklightLevel, no reorder tip
-            try Data("\0SBBacklightLevel\0SBAutoLockTime\0".utf8).write(to: sb)
-            #expect(try N72Board.bakePrefs(m, dir: N72Board.prefs) == "SBBacklightLevel, SBAutoLockTime baked (no helpers)")
+            // 1.0's SpringBoard names these (and no SBShowBatteryPercentage): as it_prefs sets them on 2.x+
+            try Data("\0SBBacklightLevel\0SBAutoLockTime\0SBHideACPower\0SBEnableALS\0".utf8).write(to: sb)
+            #expect(try N72Board.bakePrefs(m, dir: N72Board.prefs) == "SBBacklightLevel, SBAutoLockTime, SBHideACPower, SBEnableALS baked (no helpers)")
             d = try baked()
             #expect(d["SBBacklightLevel"] as? Double == 1.0 && d["SBBacklightLevel2"] == nil && d[N72Board.reorderTip] == nil)
+            #expect(d["SBHideACPower"] as? Bool == true && d["SBEnableALS"] as? Bool == false && d["SBShowBatteryPercentage"] == nil)
 
             try FileManager.default.removeItem(at: plist)
             try Data("SpringBoard SBDidShowReorderTextX".utf8).write(to: sb)
