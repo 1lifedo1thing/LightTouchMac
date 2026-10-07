@@ -14,6 +14,7 @@ enum LibraryFixtures {
     static let isolatedAppState: URL = {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("ltm-tests-state-\(getpid())", isDirectory: true)
         setenv("LTM_STATE_DIR", url.path, 1)
+        atexit { try? FileManager.default.removeItem(at: FileManager.default.temporaryDirectory.appendingPathComponent("ltm-tests-state-\(getpid())")) }
         return url
     }()
 
