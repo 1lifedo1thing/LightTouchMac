@@ -145,7 +145,7 @@ func stagingNames() {
 with tempfile.TemporaryDirectory() as work:
     swift=Path(work)/'check.swift'; swift.write_text(source)
     # MediaStaging is the app's (it imports HostServiceClient); here it runs on the engine's stageFile.
-    staging=Path(work)/'MediaStaging.swift'; staging.write_text((app/'Services/MediaStaging.swift').read_text().replace('import HostServiceClient\n',''))
+    staging=Path(work)/'MediaStaging.swift'; staging.write_text((root/'Packages/LightTouchCore/Sources/LightTouchCore/Services/MediaStaging.swift').read_text().replace('import HostServiceClient\n','').replace('public ',''))
     exe=Path(work)/'check'
     subprocess.run(['swiftc', *engine(root), *leaves(root), *local_engine_stub(Path(work)),'-parse-as-library','-module-cache-path',str(Path(work)/'modules'),str(engine_dir/'AFC.swift'), str(staging),
                     str(engine_dir/'DeviceExecution.swift'),str(swift),'-o',str(exe)],check=True)

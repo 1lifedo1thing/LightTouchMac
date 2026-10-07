@@ -10,11 +10,11 @@ import sys
 sys.path.insert(0, str(ROOT / 'scripts'))
 import swift_subprocess
 package_flags = swift_subprocess.swift_flags(ROOT)
-source = (ROOT / 'LightTouchMac/Services/LockdownTools.swift').read_text()
+source = (ROOT / 'Packages/LightTouchCore/Sources/LightTouchCore/Services/LockdownTools.swift').read_text().replace('public ', '')
 methods = source[source.index('    static func setTimeZone(_ identifier:'):source.index('    /// Offer a CA')]
 methods += source[source.index('    private static func lockdownChild('):source.index('    /// Contents/MacOS/LightTouchServices')]
 methods = methods.replace('private static func', 'static func')
-agent_source = (ROOT / 'LightTouchMac/Guest/GuestAgent.swift').read_text()
+agent_source = (ROOT / 'Packages/LightTouchCore/Sources/LightTouchCore/Guest/GuestAgent.swift').read_text().replace('public ', '')
 wait = agent_source[agent_source.index('    func waitAlive(seconds:'):agent_source.rfind('\n}')]
 with tempfile.TemporaryDirectory(prefix='ltm-timezone-cancel-') as temporary:
     tmp = Path(temporary)

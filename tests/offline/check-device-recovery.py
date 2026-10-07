@@ -12,7 +12,7 @@ a=s.index('    private var connectionFailures =');b=s.index('    private var did
 recovery=s[a:b].replace('.seconds(2)','.milliseconds(1)').replace('    private var lastConnectionRecovery','    var lastConnectionRecovery')
 report=s[s.index('    private(set) var connectionIssue:'):a]
 errors=(root/'LightTouchServices/Engine/DeviceExecution.swift').read_text()
-issue=(root/'LightTouchMac/Device/DeviceConnectionIssue.swift').read_text()
+issue=(root/'Packages/LightTouchCore/Sources/LightTouchCore/Device/DeviceConnectionIssue.swift').read_text()
 source=r'''import Foundation
 @MainActor var agentReady=1
 struct FakeLink {}

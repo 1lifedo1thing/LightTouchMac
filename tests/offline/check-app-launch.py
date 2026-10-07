@@ -13,7 +13,7 @@ root = Path(__file__).resolve().parents[2]
 def method(source, signature):
     start = source.index(signature)
     return source[start:source.index('\n    }', start) + 6]
-tools = (root / 'LightTouchMac/Guest/GuestServices.swift').read_text()
+tools = (root / 'Packages/LightTouchCore/Sources/LightTouchCore/Guest/GuestServices.swift').read_text()
 controller = (root / 'LightTouchMac/Device/EmulatorController.swift').read_text()
 inspector = (root / 'LightTouchMac/UI/AppsInspectorViewController.swift').read_text()
 error = tools[tools.index('enum AppLaunchError:'):tools.index("/// The app's guest operations")]

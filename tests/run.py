@@ -92,6 +92,17 @@ for i, arg in enumerate(args):
         moved = core + os.path.abspath(arg)[len(app):]
         if os.path.exists(moved):
             args[i] = moved
+for i, arg in enumerate(args):
+    if arg.endswith('.swift') and os.path.abspath(arg).startswith(core + '/'):
+        # Compiled into one module with the check's stand-ins: drop `public`, which only the package needs.
+        import hashlib, re
+        text = open(arg).read()
+        flat = os.path.join({str(cache)!r}, 'core-sources', hashlib.sha256(text.encode()).hexdigest()[:16], os.path.basename(arg))
+        if not os.path.exists(flat):
+            os.makedirs(os.path.dirname(flat), exist_ok=True)
+            open(flat + '.tmp', 'w').write(re.sub(r"\\bpublic\\s+", "", text))
+            os.replace(flat + '.tmp', flat)
+        args[i] = flat
 if '-emit-module' not in args and any(arg.endswith('.swift') for arg in args):
     # ...and their `import LightTouchCore` (the app files beside them) finds an empty module of that name.
     empty = os.path.join({str(cache)!r}, 'empty-core')

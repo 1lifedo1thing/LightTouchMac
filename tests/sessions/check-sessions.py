@@ -169,6 +169,10 @@ def guest_checks(find, check, events):
 
 
 def build(args, out):
+    # tests/run.py's swiftc shim: app sources that moved into LightTouchCore resolve there (also run on its own).
+    shims = importlib.util.spec_from_file_location("ltm_run", ROOT / "tests/run.py")
+    run = importlib.util.module_from_spec(shims); shims.loader.exec_module(run)
+    os.environ["PATH"] = f"{run.module_cache_shims(Path(out))}:{os.environ['PATH']}"
     subprocess.run(["xcrun", "swiftc", *host_runtime.schema_flags(ROOT), *device_runtime.swift_flags(ROOT), "-swift-version", "5", "-default-isolation", "MainActor", "-module-cache-path", out / "modules",
                     *swift_subprocess.swift_flags(ROOT), *host_service.client_sources(ROOT),
                     ROOT / "LightTouchDevice/FrameTools.swift", *[ROOT / f"LightTouchMac/{n}.swift" for n in APP_SOURCES],

@@ -49,7 +49,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import device_runtime
-import argparse, json, os, shutil, signal, subprocess, sys, tempfile, time, uuid
+import argparse, importlib.util, json, os, shutil, signal, subprocess, sys, tempfile, time, uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -85,6 +85,10 @@ def wait_gone(pid, seconds):
 
 def build(args, out):
     """helper-driver (swiftc) and, unless given, the LightTouchDevice target (xcodebuild)."""
+    # tests/run.py's swiftc shim: app sources that moved into LightTouchCore resolve there (also run on its own).
+    shims = importlib.util.spec_from_file_location("ltm_run", ROOT / "tests/run.py")
+    run = importlib.util.module_from_spec(shims); shims.loader.exec_module(run)
+    os.environ["PATH"] = f"{run.module_cache_shims(Path(out))}:{os.environ['PATH']}"
     subprocess.run(["swiftc", *device_runtime.swift_flags(Path(__file__).resolve().parents[2]), "-O", "-swift-version", "5", ROOT / "LightTouchDevice/FrameTools.swift",
                     ROOT / "LightTouchMac/Device/DeviceFileWatch.swift",
                     ROOT / "tests/drivers/helper-driver/main.swift", "-o", out / "helper-driver"], check=True)
