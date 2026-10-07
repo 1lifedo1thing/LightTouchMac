@@ -37,6 +37,6 @@ import Metal
 '''
 with tempfile.TemporaryDirectory() as tmp:
     tmp = Path(tmp); (tmp / 'check.swift').write_text(code)
-    subprocess.run(['xcrun', 'swiftc', *device_runtime.swift_flags(root), '-parse-as-library', str(root / 'Shared/SharedStatus.swift'), str(tmp / 'check.swift'),
+    subprocess.run(['xcrun', 'swiftc', *device_runtime.swift_flags(root), '-parse-as-library', str(root / 'Packages/DeviceRuntime/Sources/DeviceRuntime/SharedStatus.swift'), str(tmp / 'check.swift'),
                     '-o', str(tmp / 'check')], check=True)
     subprocess.run([str(tmp / 'check')], check=True, timeout=60)

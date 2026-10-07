@@ -121,5 +121,5 @@ nonisolated func logEvent(_ s: String) {}
 '''
 with tempfile.TemporaryDirectory(prefix='ltm-halt-') as d:
     p = Path(d) / 'check.swift'; p.write_text(source)
-    subprocess.run(['swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-parse-as-library', '-module-cache-path', d + '/modules', str(root / 'Shared/DeviceLinkProtocol.swift'), str(root / 'LightTouchMac/Device/BootSessionScope.swift'), str(p), '-o', d + '/check'], check=True)
+    subprocess.run(['swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-parse-as-library', '-module-cache-path', d + '/modules', str(root / 'Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceLinkProtocol.swift'), str(root / 'LightTouchMac/Device/BootSessionScope.swift'), str(p), '-o', d + '/check'], check=True)
     subprocess.run([d + '/check'], check=True, timeout=8)

@@ -85,9 +85,9 @@ def build(out):
         'Library/StorageLocations.swift', 'Transport/NativeLogging.swift')]
     command += [str(ROOT / 'tests/fixtures/exit-wait.swift'), '-o', str(out / 'exit-wait')]
     inputs = [Path(arg) for arg in command if str(arg).endswith(('.swift', '.c'))]
-    inputs += [ROOT / 'Shared/CLink/ltm_link.c', ROOT / 'Shared/CLink/ltm_link.h',
-               ROOT / 'Shared/CLink/module.modulemap', ROOT / 'Shared/Package.swift',
-               *sorted((ROOT / 'Shared').glob('Device*.swift')), ROOT / 'Shared/SharedStatus.swift',
+    inputs += [ROOT / 'Packages/DeviceRuntime/Sources/LTMLinkC/ltm_link.c', ROOT / 'Packages/DeviceRuntime/Sources/LTMLinkC/ltm_link.h',
+               ROOT / 'Packages/DeviceRuntime/Sources/LTMLinkC/module.modulemap', ROOT / 'Packages/DeviceRuntime/Package.swift',
+               *sorted((ROOT / 'Packages/DeviceRuntime/Sources/DeviceRuntime').glob('Device*.swift')), ROOT / 'Packages/DeviceRuntime/Sources/DeviceRuntime/SharedStatus.swift',
                *sorted((ROOT / 'Packages/HostRuntime/Sources/HostRuntime').rglob('*.swift')),
                ROOT / 'Packages/HostRuntime/Package.swift', ROOT / 'scripts/device_runtime.py',
                ROOT / 'scripts/swift_package.py', Path(__file__).resolve()]

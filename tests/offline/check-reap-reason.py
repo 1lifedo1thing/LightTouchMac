@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The shared session owner classifies a helper's death by what was asked of it, not by which message won the exit race.
 
-The imported DeviceRuntime classification runs without replacement link/owner types, and Shared/DeviceSessionProcess.swift,
+The imported DeviceRuntime classification runs without replacement link/owner types, and Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceSessionProcess.swift,
 compiled whole, runs against a fake link whose exit report arrives one reap retry (10 ms) after the helper dies (the
 race through the real owner: boot, then Stop or a crash). The actual imported LinkChannel also drains a last frame before close. A requested stop whose qemuExited
 event was lost (the helper exited before sending it: DeviceHost.halt racing QEMU's own SIGTERM handler) is still
@@ -78,7 +78,7 @@ drain = r'''import Foundation
 
 # The race through the real session owner (DeviceSessionProcess.swift, compiled whole) against a fake DeviceLink:
 # the helper boots, then dies; its exit report lands 10 ms after any qemuExited event (or with none).
-link = (root / 'Shared/DeviceLink.swift').read_text()
+link = (root / 'Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceLink.swift').read_text()
 types = ''.join(link[link.index(f'nonisolated public enum {name}'):link.index('\n}\n', link.index(f'nonisolated public enum {name}')) + 3]
                 for name in ('DeviceLinkError', 'DeviceTermination'))
 race = 'import Foundation\nimport HostRuntime\n' + types + r'''
@@ -147,5 +147,5 @@ with tempfile.TemporaryDirectory(prefix='ltm-reap-') as d:
     subprocess.run([d + '/drain'], check=True, timeout=8)
     p = Path(d) / 'race.swift'; p.write_text(race)
     subprocess.run(['swiftc', *host_runtime.swift_flags(root), '-parse-as-library', '-module-cache-path', d + '/modules',
-                    str(root / 'Shared/DeviceLinkProtocol.swift'), str(root / 'Shared/DeviceSessionProcess.swift'), str(p), '-o', d + '/race'], check=True)
+                    str(root / 'Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceLinkProtocol.swift'), str(root / 'Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceSessionProcess.swift'), str(p), '-o', d + '/race'], check=True)
     subprocess.run([d + '/race'], check=True, timeout=8)

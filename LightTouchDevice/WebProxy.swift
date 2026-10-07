@@ -19,6 +19,7 @@
 //          tunnel (the origin's own certificate), HTTP forwarded uncached.
 // The location answer (origin-form /clls/wloc) is served in every mode.
 
+import DeviceRuntime
 import Foundation
 import Security
 

@@ -143,7 +143,7 @@ def main():
         subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(ROOT), *swift_subprocess.zip_flags(ROOT), *schema_sources(), '-O', '-suppress-warnings', '-swift-version', '5',
                         *capacity_sources(ROOT, tmp), '-default-isolation', 'MainActor', '-D', 'DEBUG',
                         '-parse-as-library', '-module-cache-path', tmp / 'modules', *[source(s) for s in SOURCES],
-                        ROOT / 'Shared/DeviceLinkProtocol.swift', tmp / 'stubs.swift', tmp / 'main.swift', '-o', tmp / 'check'], check=True)
+                        ROOT / 'Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceLinkProtocol.swift', tmp / 'stubs.swift', tmp / 'main.swift', '-o', tmp / 'check'], check=True)
 
         mirror = lambda path, sha=sha1: {'url': base + path, 'sha1': sha, 'bytes': SIZE}
         cases = [  # name, url, mirrors, outcome, the paths the server must have seen, in order

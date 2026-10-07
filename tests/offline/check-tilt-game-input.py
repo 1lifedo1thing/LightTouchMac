@@ -300,7 +300,7 @@ with tempfile.TemporaryDirectory(prefix="ltm-tilt-game-") as directory:
     ], check=True)
     subprocess.run([
         "swiftc", *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), "-parse-as-library", "-module-cache-path", str(work / "module-cache"),
-        "-import-objc-header", str(work / "bridge.h"), str(root / "Shared/DeviceLinkProtocol.swift"), str(work / "check.swift"),
+        "-import-objc-header", str(work / "bridge.h"), str(root / "Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceLinkProtocol.swift"), str(work / "check.swift"),
         str(work / "bridge.o"), "-o", str(work / "check"),
     ], check=True)
     subprocess.run([str(work / "check")], check=True)

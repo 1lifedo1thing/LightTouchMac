@@ -1,5 +1,5 @@
 // The helper's web proxy on its own, for tests/offline/check-web-proxy*.py. Built from
-// LightTouchDevice/WebProxy*.swift and Shared/WebProxyCA.swift:
+// LightTouchDevice/WebProxy*.swift, linked with DeviceRuntime (WebProxyCA):
 //
 //   web-proxy init-ca CONFIG                          WebProxyCA.prepare (what WebProxySetup does)
 //   web-proxy serve CONFIG SOCKET [ARCHIVE] [ROOT.der] WebProxy.listen, as the helper does; ARCHIVE replaces

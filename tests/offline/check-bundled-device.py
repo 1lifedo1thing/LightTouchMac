@@ -180,7 +180,7 @@ def main():
         (tmp / 'main.swift').write_text(CHECK)
         subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(ROOT), *swift_subprocess.zip_flags(ROOT), *schema_sources(), '-O', '-suppress-warnings', '-swift-version', '5',
                         *capacity_sources(ROOT, tmp), '-default-isolation', 'MainActor', '-D', 'DEBUG', '-parse-as-library',
-                        '-module-cache-path', tmp / 'modules', *[source(s) for s in SOURCES], ROOT / 'Shared/DeviceLinkProtocol.swift',
+                        '-module-cache-path', tmp / 'modules', *[source(s) for s in SOURCES], ROOT / 'Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceLinkProtocol.swift',
                         tmp / 'stubs.swift', tmp / 'main.swift', '-o', tmp / 'check'], check=True)
         catalog = APP / 'Resources/firmware-catalog.json'
 

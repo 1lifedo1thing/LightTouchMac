@@ -22,6 +22,6 @@ controller's or the view's own state, which none of E6's extractions moves:
 | offline/check-help, check-settings, check-termination, check-window-restoration | `App/AppDelegate.swift` | 300 lines that reach `MainWindowController`, `DeviceLibrary`, `FirmwareJobs`, `EmulatorController`; a stub for those is the app. Retired with the rows above. |
 
 Not production slices, listed so nobody hunts for them: `offline/check-model-startup` slices its sibling
-`check-model.py`'s fixture; `offline/check-reap-reason` cuts `DeviceTermination` out of `Shared/DeviceLink.swift`
+`check-model.py`'s fixture; `offline/check-reap-reason` cuts `DeviceTermination` out of `Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceLink.swift`
 (the link itself needs the C channel); `sessions/matrix.py`, `release/test-dependency-sources.py` use
 `index()` on their own data.

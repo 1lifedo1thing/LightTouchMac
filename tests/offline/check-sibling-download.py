@@ -151,7 +151,7 @@ def main():
         (tmp / 'main.swift').write_text(CHECK)
         subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), *swift_subprocess.zip_flags(Path(__file__).resolve().parents[2]), *schema_sources(), '-O', '-suppress-warnings', '-swift-version', '5', *capacity_sources(ROOT, tmp), '-default-isolation', 'MainActor', '-D', 'DEBUG',
                         '-parse-as-library', '-module-cache-path', tmp / 'modules', *[source(s) for s in SOURCES],
-                        ROOT / 'Shared/DeviceLinkProtocol.swift', tmp / 'stubs.swift', tmp / 'main.swift', '-o', tmp / 'check'], check=True)
+                        ROOT / 'Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceLinkProtocol.swift', tmp / 'stubs.swift', tmp / 'main.swift', '-o', tmp / 'check'], check=True)
 
         for case in ('download', 'import', 'cancel'):
             home, state = tmp / case / 'home', tmp / case / 'state'

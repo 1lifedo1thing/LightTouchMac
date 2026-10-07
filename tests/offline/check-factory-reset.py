@@ -88,5 +88,5 @@ nonisolated func logEvent(_ s:String){}
 '''
 with tempfile.TemporaryDirectory(prefix='ltm-erase-') as d:
  p=Path(d)/'check.swift';p.write_text(source)
- subprocess.run(['swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]),'-module-cache-path',d+'/modules',str(root/'LightTouchMac/Library/DeviceStateStorage.swift'),str(root/'Shared/DeviceLinkProtocol.swift'),str(p),'-o',d+'/check'],check=True)
+ subprocess.run(['swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]),'-module-cache-path',d+'/modules',str(root/'LightTouchMac/Library/DeviceStateStorage.swift'),str(root/'Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceLinkProtocol.swift'),str(p),'-o',d+'/check'],check=True)
  subprocess.run([d+'/check'],check=True,timeout=10)

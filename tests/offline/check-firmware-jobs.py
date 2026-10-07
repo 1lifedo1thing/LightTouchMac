@@ -428,7 +428,7 @@ def build(tmp):
     (tmp / 'stubs.swift').write_text(STUBS)
     (tmp / 'main.swift').write_text(CHECK)
     subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), *swift_subprocess.zip_flags(Path(__file__).resolve().parents[2]), *schema_sources(), '-O', '-suppress-warnings', '-swift-version', '5', *capacity_sources(ROOT, tmp), '-module-cache-path', str(tmp / 'modules'),
-                    *[str(APP / s) for s in SOURCES], str(ROOT / 'Shared/DeviceLinkProtocol.swift'),
+                    *[str(APP / s) for s in SOURCES], str(ROOT / 'Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceLinkProtocol.swift'),
                     str(tmp / 'stubs.swift'), str(tmp / 'main.swift'),
                     '-o', str(tmp / 'check')], check=True)
     return tmp / 'check'

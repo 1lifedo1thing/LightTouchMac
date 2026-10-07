@@ -171,7 +171,6 @@ def guest_checks(find, check, events):
 def build(args, out):
     subprocess.run(["xcrun", "swiftc", *host_runtime.schema_flags(ROOT), *device_runtime.swift_flags(ROOT), "-swift-version", "5", "-default-isolation", "MainActor", "-module-cache-path", out / "modules",
                     *swift_subprocess.swift_flags(ROOT),
-                    ROOT / "Shared/WebProxyCA.swift",
                     ROOT / "LightTouchDevice/FrameTools.swift", *[ROOT / f"LightTouchMac/{n}.swift" for n in APP_SOURCES],
                     ROOT / "tests/drivers/session-driver/main.swift", ROOT / "tests/drivers/session-driver/guest.swift",
                     ROOT / "tests/drivers/session-driver/single.swift", ROOT / "tests/drivers/session-driver/activation.swift",
@@ -190,7 +189,7 @@ def build(args, out):
         return Path(args.helper)
     qemu = sources.path("qemu-ios")
     r = subprocess.run(["xcodebuild", "-project", ROOT / "LightTouchMac.xcodeproj", "-target", "LightTouchDevice",
-                        "-configuration", "Debug", f"SYMROOT={out}/xcode", f"QEMU_IOS_DIR={qemu}", "build"],
+                        "-configuration", "Debug", f"SYMROOT={out}/xcode", "COMPILER_INDEX_STORE_ENABLE=NO", f"QEMU_IOS_DIR={qemu}", "build"],
                        stdout=open(out / "xcodebuild.log", "w"), stderr=subprocess.STDOUT)
     if r.returncode:
         sys.exit(f"FAIL: building LightTouchDevice; see {out}/xcodebuild.log")

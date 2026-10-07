@@ -3,7 +3,7 @@ import HostRuntime
 // Stands in for the app in tests/sessions/check-helper-boot.py: spawns LightTouchDevice
 // through DeviceLink (rendezvous, validation, status block, frame ring, link)
 // and runs a scripted scenario. JSON lines on stdout; built by the test with
-// swiftc from Shared/*.swift + LightTouchDevice/FrameTools.swift.
+// swiftc from Packages/DeviceRuntime/Sources/DeviceRuntime/*.swift + LightTouchDevice/FrameTools.swift.
 //
 //   helper-driver --helper PATH --scenario scenario.json --dump DIR [--log native.log] [--requirement R]
 //                 [--lease PATH] [--expect-failure TEXT]   (exit 0 if the start fails with TEXT)

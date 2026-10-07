@@ -114,5 +114,5 @@ struct FakeLink { func send(_ c: LinkCommand) {} }
 '''
 with tempfile.TemporaryDirectory(prefix='ltm-wake-') as d:
  p=Path(d)/'check.swift';p.write_text(source)
- subprocess.run(['swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), DEVICE_PROFILE,str(root/'LightTouchMac/Device/BootSessionScope.swift'),str(root/'Shared/DeviceLinkProtocol.swift'),str(root/'LightTouchMac/Device/BootStage.swift'),'-parse-as-library','-module-cache-path',d+'/modules',str(p),'-o',d+'/check'],check=True)
+ subprocess.run(['swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), DEVICE_PROFILE,str(root/'LightTouchMac/Device/BootSessionScope.swift'),str(root/'Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceLinkProtocol.swift'),str(root/'LightTouchMac/Device/BootStage.swift'),'-parse-as-library','-module-cache-path',d+'/modules',str(p),'-o',d+'/check'],check=True)
  subprocess.run([d+'/check'],check=True,timeout=10)

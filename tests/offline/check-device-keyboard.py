@@ -51,5 +51,5 @@ func logEvent(_ s: String) {}
 """
 with tempfile.TemporaryDirectory() as tmp:
  tmp=Path(tmp);(tmp/'check.swift').write_text(source)
- subprocess.run(['xcrun','swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]),'-parse-as-library',str(root/'Shared/DeviceLinkProtocol.swift'),str(tmp/'check.swift'),'-o',str(tmp/'check')],check=True)
+ subprocess.run(['xcrun','swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]),'-parse-as-library',str(root/'Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceLinkProtocol.swift'),str(tmp/'check.swift'),'-o',str(tmp/'check')],check=True)
  subprocess.run([str(tmp/'check')],check=True)

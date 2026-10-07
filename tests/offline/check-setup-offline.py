@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """5.x Setup runs offline, then networking opens in place (smoke #54), outside the app.
 
-Compiles BootRecipe.swift and Shared/DeviceLinkProtocol.swift with a fixture and checks what the
+Compiles BootRecipe.swift and Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceLinkProtocol.swift with a fixture and checks what the
 app's iPadBoot / foreground watch decide:
   - which firmware boots slirp restrict=on (5.x only), and the wifi0 netdev both ways: the proxy
     guestfwd kept, unrestricted byte-identical to the pre-#54 string;
@@ -119,7 +119,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='check-setup-offline.') as t:
         tmp = Path(t)
         (tmp / 'main.swift').write_text(CHECK)
-        subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-O', '-suppress-warnings', '-swift-version', '5', '-module-cache-path', str(tmp / 'modules'), str(ROOT / 'Shared/DeviceLinkProtocol.swift'), str(tmp / 'main.swift'),
+        subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-O', '-suppress-warnings', '-swift-version', '5', '-module-cache-path', str(tmp / 'modules'), str(ROOT / 'Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceLinkProtocol.swift'), str(tmp / 'main.swift'),
                         '-o', str(tmp / 'check')], check=True)
         seq = ROOT / 'tests/fixtures/frontmost-9B206-setup.tsv'
         return subprocess.run([str(tmp / 'check')] + ([str(seq)] if seq.exists() else [])).returncode

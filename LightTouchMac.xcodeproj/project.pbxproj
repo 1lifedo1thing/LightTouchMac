@@ -136,23 +136,12 @@
 		EB72984030B2091100000001 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-        A1D0C0DE36000000000000005 = {isa = PBXFileSystemSynchronizedBuildFileExceptionSet; membershipExceptions = (Package.swift, DeviceLink.swift, DeviceLinkProtocol.swift, DeviceRendezvous.swift, SharedStatus.swift, DeviceSessionProcess.swift, HostInputAutomation.swift, CLink/ltm_link.c, CLink/ltm_link.h, CLink/module.modulemap); target = EA17D83130239D9B00BDF83E; };
-        A1D0C0DE36000000000000006 = {isa = PBXFileSystemSynchronizedBuildFileExceptionSet; membershipExceptions = (Package.swift, DeviceLink.swift, DeviceLinkProtocol.swift, DeviceRendezvous.swift, SharedStatus.swift, DeviceSessionProcess.swift, HostInputAutomation.swift, CLink/ltm_link.c, CLink/ltm_link.h, CLink/module.modulemap); target = A1D0C0DE3100000000000006; };
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A1D0C0DE3A000000000000006 /* FirmwareKitCLI */ = {isa = PBXFileSystemSynchronizedRootGroup; path = Packages/FirmwareKit/Sources/FirmwareKitCLI; sourceTree = "<group>"; };
 		A1D0C0DE3200000000000000B /* LightTouchServices */ = {isa = PBXFileSystemSynchronizedRootGroup; path = LightTouchServices; sourceTree = "<group>"; };
 		A1D0C0DE3100000000000012 /* LightTouchDevice */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = LightTouchDevice;
-			sourceTree = "<group>";
-		};
-		A1D0C0DE3100000000000013 /* Shared */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (A1D0C0DE36000000000000005, A1D0C0DE36000000000000006);
-			path = Shared;
 			sourceTree = "<group>";
 		};
 		EA17D83430239D9B00BDF83E /* LightTouchMac */ = {
@@ -195,7 +184,6 @@
 				A1D0C0DE39000000000000050 /* Vendor */,
 				A1D0C0DE3100000000000012 /* LightTouchDevice */,
 				A1D0C0DE3200000000000000B /* LightTouchServices */,
-				A1D0C0DE3100000000000013 /* Shared */,
 				EB72984030B2091100000002 /* Configuration */,
 				EA17D83330239D9B00BDF83E /* Products */,
 			);
@@ -257,7 +245,6 @@
 			);
 			fileSystemSynchronizedGroups = (
 				A1D0C0DE3100000000000012 /* LightTouchDevice */,
-				A1D0C0DE3100000000000013 /* Shared */,
 			);
 			packageProductDependencies = (A1D0C0DE35000000000000002, A1D0C0DE36000000000000002);
 			name = LightTouchDevice;
@@ -286,7 +273,6 @@
 				A1D0C0DE3A000000000000004,
 			);
 			fileSystemSynchronizedGroups = (
-				A1D0C0DE3100000000000013 /* Shared */,
 				EA17D83430239D9B00BDF83E /* LightTouchMac */,
 			);
 			name = "Light Touch";
@@ -717,7 +703,7 @@
 /* Begin XCLocalSwiftPackageReference section */
 		A1D0C0DE3A000000000000010 = {isa = XCLocalSwiftPackageReference; relativePath = Packages/FirmwareKit; };
 		A1D0C0DE35000000000000001 = {isa = XCLocalSwiftPackageReference; relativePath = Packages/HostRuntime; };
-		A1D0C0DE36000000000000001 = {isa = XCLocalSwiftPackageReference; relativePath = Shared; };
+		A1D0C0DE36000000000000001 = {isa = XCLocalSwiftPackageReference; relativePath = Packages/DeviceRuntime; };
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */

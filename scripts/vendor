@@ -56,7 +56,7 @@ KEYED = ('build-support/sources.json', 'build-support/dependencies.json', 'scrip
          'scripts/merge-native.py')
 # The built-in iPod is prepared again when any of these change (firmwarekit, the helper it boots).
 DEVICE_SOURCES = ('Packages/FirmwareKit/Sources', 'Packages/FirmwareKit/Package.swift', 'Packages/HostRuntime/Sources',
-                  'LightTouchDevice', 'Shared')
+                  'LightTouchDevice', 'Packages/DeviceRuntime')
 
 
 def digest(path):
@@ -182,7 +182,7 @@ def firmwarekit(work):
     run(swift, log)
     tool = Path(out(*swift, '--show-bin-path')) / 'firmwarekit'
     run(['xcodebuild', '-project', ROOT / 'LightTouchMac.xcodeproj', '-target', 'LightTouchDevice', '-configuration',
-         'Release', f'SYMROOT={work}/xcode', f'OBJROOT={work}/xcode/obj', 'CODE_SIGNING_ALLOWED=NO', 'build'], log)
+         'Release', f'SYMROOT={work}/xcode', 'COMPILER_INDEX_STORE_ENABLE=NO', f'OBJROOT={work}/xcode/obj', 'CODE_SIGNING_ALLOWED=NO', 'build'], log)
     return tool, work / 'xcode/Release/LightTouchDevice', scratch / 'checkouts'
 
 

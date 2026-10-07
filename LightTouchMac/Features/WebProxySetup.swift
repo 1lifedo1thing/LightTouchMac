@@ -5,6 +5,7 @@
 
 import FirmwareSchema
 import CryptoKit
+import DeviceRuntime
 import Foundation
 import HostRuntime
 import Security

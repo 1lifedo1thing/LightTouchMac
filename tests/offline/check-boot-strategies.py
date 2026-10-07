@@ -74,5 +74,5 @@ require((try DeviceLock.read(lock)!).machineOptions(base: dir).isEmpty, "legacy 
 print("PASS: explicit kernel/iBoot/ROM strategies, missing inputs and unknown strategy rejection")
 ''')
     exe = work / 'check'
-    subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-swift-version', '5', '-module-cache-path', str(work/'modules'), str(root/'Shared/DeviceLinkProtocol.swift'), str(work/'main.swift'), '-o', str(exe)], check=True)
+    subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-swift-version', '5', '-module-cache-path', str(work/'modules'), str(root/'Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceLinkProtocol.swift'), str(work/'main.swift'), '-o', str(exe)], check=True)
     subprocess.run([str(exe)], check=True)

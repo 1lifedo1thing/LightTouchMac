@@ -48,5 +48,5 @@ struct Scope { subscript(_ k: ScopeKey) -> Task<Void, Never>? { get { nil } set 
 with tempfile.TemporaryDirectory() as tmp:
     tmp = Path(tmp); (tmp / 'check.swift').write_text(source)
     subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(root), '-parse-as-library',
-                    str(root / 'Shared/DeviceLinkProtocol.swift'), str(tmp / 'check.swift'), '-o', str(tmp / 'check')], check=True)
+                    str(root / 'Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceLinkProtocol.swift'), str(tmp / 'check.swift'), '-o', str(tmp / 'check')], check=True)
     subprocess.run([str(tmp / 'check')], check=True)

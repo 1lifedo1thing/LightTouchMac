@@ -8,15 +8,17 @@ import concurrent.futures, gzip, http.server, os, plistlib, socket, ssl, subproc
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'scripts'))
+import device_runtime  # noqa: E402  WebProxyCA
 SOURCES = [ROOT / 'LightTouchDevice/WebProxy.swift', ROOT / 'LightTouchDevice/WebProxyAdapters.swift',
-           ROOT / 'Shared/WebProxyCA.swift', ROOT / 'tests/drivers/web-proxy/main.swift']
+           ROOT / 'tests/drivers/web-proxy/main.swift']
 LOCATION = bytes.fromhex('00010005656e5f55530000000b332e322e322e3742353030000000010000001f'
                          '0a080800100018002000120f0a0d323a303a35653a31303a303a3118002000')
 
 
 def build(work):
     exe = work / 'web-proxy'
-    subprocess.run(['xcrun', 'swiftc', '-swift-version', '5', '-module-cache-path', str(work / 'modules'), *map(str, SOURCES),
+    subprocess.run(['xcrun', 'swiftc', *device_runtime.swift_flags(ROOT), '-swift-version', '5', '-module-cache-path', str(work / 'modules'), *map(str, SOURCES),
                     '-o', str(exe)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return exe
 

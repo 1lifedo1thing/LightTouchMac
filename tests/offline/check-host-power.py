@@ -95,7 +95,7 @@ func holdsIdleSleep() -> Bool {
 with tempfile.TemporaryDirectory(prefix="ltm-host-power-") as d:
     p = Path(d) / "check.swift"
     p.write_text(source)
-    subprocess.run(["swiftc", *host_runtime.swift_flags(root), str(root / "Shared/DeviceLinkProtocol.swift"),
+    subprocess.run(["swiftc", *host_runtime.swift_flags(root), str(root / "Packages/DeviceRuntime/Sources/DeviceRuntime/DeviceLinkProtocol.swift"),
                     str(root / "LightTouchMac/Features/InstallationQueue.swift"), str(root / "LightTouchMac/App/UserActivity.swift"),
                     "-parse-as-library", "-default-isolation", "MainActor", "-module-cache-path", d + "/modules", str(p), "-o", d + "/check"],
                    check=True)

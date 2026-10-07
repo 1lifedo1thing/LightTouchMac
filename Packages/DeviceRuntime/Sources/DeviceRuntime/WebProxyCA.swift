@@ -11,16 +11,16 @@
 import Foundation
 import Security
 
-nonisolated struct WebProxyCA: @unchecked Sendable {
-    let key: SecKey
-    let certificate: SecCertificate
+nonisolated public struct WebProxyCA: @unchecked Sendable {
+    public let key: SecKey
+    public let certificate: SecCertificate
     /// The certificate's subject, as encoded: every leaf's issuer.
-    let subject: Data
+    public let subject: Data
 
     enum Failure: Error { case unreadable(String), keyGeneration, signing, identity }
 
     /// Loads CONFIG.ca.pem, creating it on first use; (re)writes CONFIG.ca.der.
-    static func prepare(config: URL) throws -> WebProxyCA {
+    public static func prepare(config: URL) throws -> WebProxyCA {
         let lock = open(config.path + ".ca.lock", O_RDWR | O_CREAT | O_NOFOLLOW, 0o600)
         guard lock >= 0, flock(lock, LOCK_EX) == 0 else { throw Failure.unreadable("lock") }
         defer { close(lock) }
@@ -43,7 +43,7 @@ nonisolated struct WebProxyCA: @unchecked Sendable {
     }
 
     /// CONFIG.ca.pem, refused unless it is a regular file of this user's that nobody else can read.
-    static func load(config: URL) throws -> WebProxyCA {
+    public static func load(config: URL) throws -> WebProxyCA {
         let path = config.path + ".ca.pem"
         let fd = open(path, O_RDONLY | O_NOFOLLOW)
         guard fd >= 0 else { throw Failure.unreadable(path) }
@@ -64,7 +64,7 @@ nonisolated struct WebProxyCA: @unchecked Sendable {
     }
 
     /// A TLS server identity for `host` (a DNS name or an IP literal), valid for a week, under this CA.
-    func identity(for host: String, key leafKey: SecKey) throws -> SecIdentity {
+    public func identity(for host: String, key leafKey: SecKey) throws -> SecIdentity {
         let der = try Self.certificate(key: leafKey, issuerKey: key, issuer: subject,
                                        subject: DER.name(host.utf8.count <= 64 ? host : "Light Touch Device Proxy"), days: 7, host: host)
         guard let certificate = SecCertificateCreateWithData(nil, der as CFData),
@@ -72,7 +72,7 @@ nonisolated struct WebProxyCA: @unchecked Sendable {
         return identity
     }
 
-    static func newKey() throws -> SecKey {
+    public static func newKey() throws -> SecKey {
         guard let key = SecKeyCreateRandomKey([kSecAttrKeyType: kSecAttrKeyTypeRSA, kSecAttrKeySizeInBits: 2048] as CFDictionary, nil)
         else { throw Failure.keyGeneration }
         return key

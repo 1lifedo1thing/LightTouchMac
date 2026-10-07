@@ -85,14 +85,14 @@ def wait_gone(pid, seconds):
 
 def build(args, out):
     """helper-driver (swiftc) and, unless given, the LightTouchDevice target (xcodebuild)."""
-    subprocess.run(["swiftc", *device_runtime.swift_flags(Path(__file__).resolve().parents[2]), "-O", "-swift-version", "5", ROOT / "Shared/WebProxyCA.swift", ROOT / "LightTouchDevice/FrameTools.swift",
+    subprocess.run(["swiftc", *device_runtime.swift_flags(Path(__file__).resolve().parents[2]), "-O", "-swift-version", "5", ROOT / "LightTouchDevice/FrameTools.swift",
                     ROOT / "LightTouchMac/Device/DeviceFileWatch.swift",
                     ROOT / "tests/drivers/helper-driver/main.swift", "-o", out / "helper-driver"], check=True)
     if args.helper:
         return Path(args.helper)
     qemu = sources.path("qemu-ios")
     r = subprocess.run(["xcodebuild", "-project", ROOT / "LightTouchMac.xcodeproj", "-target", "LightTouchDevice",
-                        "-configuration", "Debug", f"SYMROOT={out}/xcode", f"QEMU_IOS_DIR={qemu}", "build"],
+                        "-configuration", "Debug", f"SYMROOT={out}/xcode", "COMPILER_INDEX_STORE_ENABLE=NO", f"QEMU_IOS_DIR={qemu}", "build"],
                        stdout=open(out / "xcodebuild.log", "w"), stderr=subprocess.STDOUT)
     if r.returncode:
         sys.exit(f"FAIL: building LightTouchDevice; see {out}/xcodebuild.log")
