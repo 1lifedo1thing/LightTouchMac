@@ -42,7 +42,7 @@ nonisolated public enum FirmwareWire {
             public var sha1: String?
             public var bytes: Int64?
             public var resource: String?
-            /// Copies of the same file elsewhere (scripts/catalog-mirrors.py), tried in order after `url`.
+            /// Copies of the same file elsewhere (archive.org, BetaArchive), tried in order after `url`.
             public var mirrors: [Mirror]?
             /// kind "rar": `url` is a RAR archive (a developer beta's only public copy) holding the IPSW as `member`.
             /// The download is checked against archive_sha1/archive_bytes, the extracted IPSW against sha1/bytes.

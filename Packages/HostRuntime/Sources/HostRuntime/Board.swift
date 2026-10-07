@@ -18,7 +18,7 @@ public enum Board: String, Sendable, CaseIterable, Codable {
 
     /// The device art, in shell-native pixels with a top-left origin. The flat art is the prepare screen's
     /// picture and the fallback while the 3D model loads: the 2G's shell.png (a product photo), the 1G's and 4G's
-    /// their N45/N81 models rendered face-on by scripts/render-shell-art.py, the 3G the 2G's chassis; the iPad the
+    /// their N45/N81 models rendered face-on (RealityRenderer, screen off), the 3G the 2G's chassis; the iPad the
     /// Xcode 3.2.4 iPhone Simulator's iPad chrome (852x1108, its 768x1024 screen centered); the iPhone 4 Xcode
     /// 4.6.3's Retina 3.5-inch chrome (730x1426 cropped); the iPhone 2G and 3GS iPhone SDK 3.1.3's frame.png.
     public struct Art: Sendable {
