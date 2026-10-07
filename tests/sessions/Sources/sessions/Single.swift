@@ -76,7 +76,8 @@ func single(_ args: Arguments) -> Never {
     let ids = events.find("identity", ["device": d])
     if d == "ipod" || d == "ipad" {
         r.check(!ids.isEmpty && ids.allSatisfy { $0.bool("matches") }, "\(d): lockdown's identity matches the prepared identity: "
-                + ids.map { "\($0["values"] ?? "") (want \($0["expected"] ?? ""))" }.joined(separator: ", "))
+                + ids.map { e in ((e["values"] as? [String: String]) ?? [:]).sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }
+                    .joined(separator: ", ") + (e.bool("matches") ? "" : " (want \(e["expected"] ?? ""))") }.joined(separator: "; "))
     }
     let afc = events.find("afc", ["device": d])
     for a in afc {
