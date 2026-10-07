@@ -15,19 +15,29 @@ public final class DeviceFilesystemEdits {
     private let state: URL, logs: URL
     /// Shows a mounted volume (Finder), and an error with nowhere else to go.
     private let open: (URL) -> Void, presentError: (any Error) -> Void
+    /// Whether a folder is a mount point now (the edit's volume is still mounted on it).
+    private let isMounted: (URL) -> Bool
+    /// Whether anything is writing to the volume mounted on a folder (a copy in progress).
+    private let isWriting: (URL) async -> Bool
+    private let poll: Duration
 
     public init(preparer: URL? = FirmwareJobs.preparer, state: URL = Bundled.stateDirectory, logs: URL = Bundled.logsDirectory,
-         open: @escaping (URL) -> Void, presentError: @escaping (any Error) -> Void) {
+         open: @escaping (URL) -> Void, presentError: @escaping (any Error) -> Void,
+         isMounted: @escaping (URL) -> Bool = DeviceFilesystemEdits.isMountPoint,
+         isWriting: @escaping (URL) async -> Bool = DeviceFilesystemEdits.isBeingWritten, poll: Duration = .seconds(1)) {
         self.preparer = preparer
         self.state = state
         self.logs = logs
         self.open = open
         self.presentError = presentError
+        self.isMounted = isMounted
+        self.isWriting = isWriting
+        self.poll = poll
     }
 
     /// Posted when a device's `activity` changes.
     public static let didChangeNotification = Notification.Name("DeviceFilesystemEditsDidChange")
-    /// What each device's filesystem operation is doing now ("Reading the file system…"), for the device area; a
+    /// What each device's filesystem operation is doing now ("Preparing to mount the file system…"), for the device area; a
     /// device with an entry here can't start or open another.
     public private(set) var activity: [UUID: String] = [:] {
         didSet { NotificationCenter.default.post(name: Self.didChangeNotification, object: self) }
@@ -51,6 +61,15 @@ public final class DeviceFilesystemEdits {
     }
     /// An edit open in Finder: Start asks to save or discard it first.
     public func hasOpenEdit(_ instance: DeviceInstance) -> Bool { !busy.contains(instance.id) && pending(instance)?.phase == "editing" }
+
+    /// Where an edit's volume is mounted: a folder named for the device, out of Finder's sidebar (nobrowse), opened in
+    /// a Finder window of its own. The volume keeps the device's /private/var, so this is the whole tree.
+    public func mountPoint(_ instance: DeviceInstance) -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("LightTouch-edit-\(instance.id.uuidString)", isDirectory: true)
+            .appendingPathComponent(instance.profile?.marketingName ?? instance.name, isDirectory: true)
+    }
+    /// The edit's volume is mounted (an edit can be open with it unmounted: after a restart of the Mac).
+    public func isEditMounted(_ instance: DeviceInstance) -> Bool { isMounted(mountPoint(instance)) }
     public func canPerform(_ action: DeviceAction, instance: DeviceInstance) -> Bool {
         guard preparer != nil, !busy.contains(instance.id) else { return false }
         guard instance.profile?.editableStopped == true else {
@@ -69,11 +88,15 @@ public final class DeviceFilesystemEdits {
                  releaseStopped: @escaping () async -> Bool) {
         guard let instance, let executable = preparer,
               canPerform(action, instance: instance) else { return }
+        // Already mounted: Show in Finder only shows it.
+        if action == .openFilesystem, instance.profile?.editableStopped == true, pending(instance)?.phase == "editing", isEditMounted(instance) {
+            return open(mountPoint(instance))
+        }
         activity[instance.id] = switch action {
         case .commitFilesystem: "Saving the file system…"
         case .discardFilesystem: "Discarding changes…"
         case .recoverFilesystem: "Recovering the file system…"
-        default: "Reading the file system…"
+        default: "Preparing to mount the file system…"
         }
         Task {
             defer {
@@ -83,9 +106,10 @@ public final class DeviceFilesystemEdits {
             }
             do {
                 guard await releaseStopped() else {
-                    throw DeviceToolsError.failed("Stop the device before opening its filesystem.")
+                    throw DeviceToolsError.failed("Shut down the device before showing its file system.")
                 }
                 guard instance.profile?.editableStopped == true else { return try await browse(instance, executable: executable) }
+                if action == .commitFilesystem { try await waitForCopies(instance) }
                 var intent = pending(instance)
                 let prefix = ["edit", "--device", paths(instance).directory.path, "--record-policy", "managed"]
                 if action == .openFilesystem, intent == nil {
@@ -99,13 +123,16 @@ public final class DeviceFilesystemEdits {
                 case .commitFilesystem: "commit"
                 case .discardFilesystem: "discard"
                 case .recoverFilesystem: "recover"
-                default: throw DeviceToolsError.failed("Unsupported filesystem action.")
+                default: throw DeviceToolsError.failed("Unsupported file system action.")
                 }
                 if action == .openFilesystem { activity[instance.id] = "Opening in Finder…" }
-                let result = try await FirmwareTool.run(prefix + ["--action", operation, "--session", intent.id.uuidString], executable: executable)
-                if action == .openFilesystem, let path = try JSONDecoder().decode(Mounted.self, from: result).mountPoint {
-                    open(URL(fileURLWithPath: path))
-                }
+                let mountPoint = mountPoint(instance)
+                _ = try await FirmwareTool.run(prefix + ["--action", operation, "--session", intent.id.uuidString]
+                                               + (action == .openFilesystem ? ["--mount-point", mountPoint.path] : []), executable: executable)
+                if action == .openFilesystem {
+                    open(mountPoint)
+                    watch(instance, library: library)
+                } else { removeMountFolder(instance) }
             } catch {
                 if "\(error)".contains("was not shut down cleanly"), let onUncleanShutdown { onUncleanShutdown(entry) }
                 else { presentError(error) }
@@ -121,27 +148,95 @@ public final class DeviceFilesystemEdits {
 
     private func browse(_ instance: DeviceInstance, executable: URL) async throws {
         try await endBrowsing(instance.id, executable: executable)
+        // One tree, as the device mounts it: system at the root, data on its private/var.
         let out = browseDirectory(instance.id)
-        let result = try await FirmwareTool.run(["mount", "--device", paths(instance).directory.path, "--record-policy", "managed",
-                                                 "--out", out.path], executable: executable)
-        struct Volume: Decodable { let mountPoint: String? }
-        for line in result.split(separator: UInt8(ascii: "\n")) {
-            if let path = (try? JSONDecoder().decode(Volume.self, from: Data(line)))?.mountPoint {
-                open(URL(fileURLWithPath: path))
-            }
-        }
+        let root = out.appendingPathComponent(instance.profile?.marketingName ?? instance.name, isDirectory: true)
+        _ = try await FirmwareTool.run(["mount", "--device", paths(instance).directory.path, "--record-policy", "managed",
+                                        "--out", out.path, "--root", root.path], executable: executable)
+        open(root)
     }
 
-    /// Before Start: the read-only view detached, or an open edit saved (`commit`) or discarded. Throws when an edit
-    /// couldn't be resolved; the view's detach is best effort (the device never reads the view's copies).
+    /// Before Start: the read-only view detached, or an open edit saved (`commit`) or discarded. Saving waits for
+    /// copies into the mounted volume to finish first. Throws when an edit couldn't be resolved; the view's detach is
+    /// best effort (the device never reads the view's copies).
     public func release(_ instance: DeviceInstance, library: DeviceLibrary, commit: Bool?) async throws {
         try? await endBrowsing(instance.id)
         guard let commit, hasOpenEdit(instance), let executable = preparer, let intent = pending(instance) else { return }
-        activity[instance.id] = commit ? "Saving the file system…" : "Discarding changes…"
         defer { activity[instance.id] = nil }
+        if commit { try await waitForCopies(instance) }
+        activity[instance.id] = commit ? "Saving the file system…" : "Discarding changes…"
         _ = try await FirmwareTool.run(["edit", "--device", paths(instance).directory.path, "--record-policy", "managed",
                                         "--action", commit ? "commit" : "discard", "--session", intent.id.uuidString], executable: executable)
+        removeMountFolder(instance)
         library.reload()
+    }
+
+    /// While an edit is open: its volume unmounted from outside (Eject in Finder, diskutil) saves it, as Save Changes
+    /// does. Only an unmount seen here counts; an edit found unmounted (after a restart of the Mac) waits for a choice.
+    public func watch(_ instance: DeviceInstance, library: DeviceLibrary) {
+        guard pending(instance)?.phase == "editing", watching.insert(instance.id).inserted else { return }
+        let mountPoint = mountPoint(instance)
+        Task {
+            defer { watching.remove(instance.id) }
+            var mounted = false
+            while pending(instance)?.phase == "editing" {
+                if isMounted(mountPoint) { mounted = true }
+                else if mounted, !busy.contains(instance.id) {
+                    do { try await release(instance, library: library, commit: true) } catch { presentError(error) }
+                    library.reload()
+                    NotificationCenter.default.post(name: DeviceLibrary.didChangeNotification, object: library)
+                    return
+                }
+                try? await Task.sleep(for: poll)
+            }
+        }
+    }
+    private var watching: Set<UUID> = []
+
+    /// Before a save of a mounted edit: until nothing is writing into the volume (a Finder copy in progress).
+    private func waitForCopies(_ instance: DeviceInstance) async throws {
+        let mountPoint = mountPoint(instance), saving = activity[instance.id]
+        guard isMounted(mountPoint), await isWriting(mountPoint) else { return }
+        activity[instance.id] = "Waiting for copies to finish…"
+        while await isWriting(mountPoint) { try await Task.sleep(for: poll) }
+        activity[instance.id] = saving
+    }
+
+    /// The mount point's folders, once nothing is mounted on them (rmdir: never into a volume).
+    private func removeMountFolder(_ instance: DeviceInstance) {
+        let mountPoint = mountPoint(instance)
+        guard !isMounted(mountPoint) else { return }
+        rmdir(mountPoint.path)
+        rmdir(mountPoint.deletingLastPathComponent().path)
+    }
+
+    /// statfs: `url` is where a file system is mounted.
+    public nonisolated static func isMountPoint(_ url: URL) -> Bool {
+        var fs = statfs()
+        guard statfs(url.path, &fs) == 0 else { return false }
+        let mountedOn = withUnsafeBytes(of: &fs.f_mntonname) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+        return mountedOn == url.resolvingSymlinksInPath().path
+    }
+
+    /// A file open for writing on the volume (lsof), or its free space or file count moving over half a second.
+    @concurrent public nonisolated static func isBeingWritten(_ url: URL) async -> Bool {
+        func counts() -> [UInt64] {
+            var fs = statfs()
+            return statfs(url.path, &fs) == 0 ? [fs.f_bfree, fs.f_ffree] : []
+        }
+        let before = counts()
+        let lsof = Process()
+        lsof.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        lsof.arguments = ["-F", "a", "+f", "--", url.path]
+        let pipe = Pipe()
+        lsof.standardOutput = pipe
+        lsof.standardError = FileHandle.nullDevice
+        guard (try? lsof.run()) != nil else { return false }
+        let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        lsof.waitUntilExit()
+        if output.split(separator: "\n").contains(where: { $0 == "aw" || $0 == "au" }) { return true }
+        try? await Task.sleep(for: .milliseconds(500))
+        return counts() != before
     }
 
     /// Detaches a device's read-only view (one left by an earlier run included).

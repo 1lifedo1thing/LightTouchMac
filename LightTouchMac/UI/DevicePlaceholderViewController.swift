@@ -27,6 +27,9 @@ final class DevicePlaceholderViewController: NSViewController {
     private let showLog = NSButton(title: "Show Logs", target: nil, action: nil)
     private let primary = NSButton(title: "", target: nil, action: nil)
     private let prepareAgain = NSButton(title: "Prepare Again…", target: nil, action: nil)
+    /// An edit open in Finder (DeviceFilesystemEdits.hasOpenEdit): Show in Finder and Don't Save beside Save Changes.
+    private let showFiles = NSButton(title: "Show in Finder", target: nil, action: nil)
+    private let dontSave = NSButton(title: "Don’t Save", target: nil, action: nil)
     private let space = NSTextField(wrappingLabelWithString: "")
     /// The build's catalog note (untested, experimental, where a beta came from), in a popover.
     private let info = NSButton(image: NSImage(systemSymbolName: "info.circle", accessibilityDescription: "About This Build")!,
@@ -64,7 +67,7 @@ final class DevicePlaceholderViewController: NSViewController {
         progressLine.textColor = .secondaryLabelColor
         progressLine.font = .monospacedDigitSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .subheadline).pointSize, weight: .regular)
         progressLine.alignment = .center
-        for button in [showLog, prepareAgain, primary] {
+        for button in [showLog, prepareAgain, showFiles, dontSave, primary] {
             button.bezelStyle = .push
             button.controlSize = .large
             button.target = self
@@ -72,6 +75,8 @@ final class DevicePlaceholderViewController: NSViewController {
         showLog.action = #selector(showLogClicked(_:))
         primary.action = #selector(primaryClicked(_:))
         prepareAgain.action = #selector(prepareAgainClicked(_:))
+        showFiles.action = #selector(showFilesClicked(_:))
+        dontSave.action = #selector(dontSaveClicked(_:))
 
         let versionLine = NSStackView(views: [version, info])
         versionLine.spacing = 4
@@ -83,7 +88,7 @@ final class DevicePlaceholderViewController: NSViewController {
         statusLine.spacing = 6
         statusLine.detachesHiddenViews = true
         let state = column([statusLine, progressSlot, progressLine, reason], spacing: 6)
-        let actions = NSStackView(views: [showLog, prepareAgain, primary])
+        let actions = NSStackView(views: [showLog, prepareAgain, showFiles, dontSave, primary])
         actions.spacing = 12
         // The row keeps its height with no button (running), so the lockup doesn't move between states.
         actions.heightAnchor.constraint(greaterThanOrEqualTo: primary.heightAnchor).isActive = true
@@ -117,9 +122,10 @@ final class DevicePlaceholderViewController: NSViewController {
         return stack
     }
 
-    /// `activity`: a file system operation in flight on the device ("Reading the file system…"): it stands in for
-    /// the state line, with a spinner, and holds the button.
-    func update(_ row: DeviceRow, canDownload: Bool, activity: String? = nil) {
+    /// `activity`: a file system operation in flight on the device ("Preparing to mount the file system…"): it stands
+    /// in for the state line, with a spinner, and holds the buttons. `editing`: its file system edit is open (true:
+    /// mounted in Finder), which the screen says over everything else, with Save Changes, Don't Save and Show in Finder.
+    func update(_ row: DeviceRow, canDownload: Bool, activity: String? = nil, editing: Bool? = nil) {
         loadViewIfNeeded()
         self.row = row
         let entry = row.entry
@@ -140,6 +146,8 @@ final class DevicePlaceholderViewController: NSViewController {
         reason.isHidden = true
         showLog.isHidden = true
         prepareAgain.isHidden = true
+        showFiles.isHidden = editing == nil
+        dontSave.isHidden = editing == nil
         status.isHidden = false
         switch row.state {
         case .bundled, .notDownloaded, .downloaded:
@@ -173,6 +181,14 @@ final class DevicePlaceholderViewController: NSViewController {
 
         if row.progressHeadline == nil { bars[entry.id] = nil }
 
+        if let editing {
+            status.stringValue = "Editing file system"
+            reason.stringValue = editing ? "It’s open in Finder. Ejecting it there also saves your changes."
+                : "Show it in Finder to keep editing."
+            reason.isHidden = false
+            prepareAgain.isHidden = true
+        }
+
         if let activity {
             status.stringValue = activity
             activitySpinner.isHidden = false
@@ -182,7 +198,15 @@ final class DevicePlaceholderViewController: NSViewController {
             activitySpinner.isHidden = true
         }
 
-        if let action = row.primaryAction, let title = row.primaryTitle {
+        showFiles.isEnabled = activity == nil
+        dontSave.isEnabled = activity == nil
+        if editing != nil {
+            primary.title = "Save Changes"
+            primary.keyEquivalent = "\r"
+            primary.isEnabled = activity == nil
+            primary.isHidden = false
+            primary.setAccessibilityLabel("Save Changes to \(model.stringValue)’s file system")
+        } else if let action = row.primaryAction, let title = row.primaryTitle {
             primary.title = title
             // Return does the next thing; it never cancels a download (Escape does).
             primary.keyEquivalent = action == .cancel ? "\u{1b}" : "\r"
@@ -269,9 +293,11 @@ final class DevicePlaceholderViewController: NSViewController {
     }
 
     @objc private func primaryClicked(_ sender: Any?) {
-        guard let action = row?.primaryAction else { return }
+        guard let action = showFiles.isHidden ? row?.primaryAction : .commitFilesystem else { return }
         onAction?(action)
     }
+    @objc private func showFilesClicked(_ sender: Any?) { onAction?(.openFilesystem) }
+    @objc private func dontSaveClicked(_ sender: Any?) { onAction?(.discardFilesystem) }
 
     @objc private func prepareAgainClicked(_ sender: Any?) { onAction?(.prepareAgain) }
 

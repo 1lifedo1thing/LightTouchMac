@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import HostRuntime
 @testable import LightTouchCore
 
 /// Show File System and Start (DeviceFilesystemEdits) against a firmwarekit stand-in that answers like the real one:
@@ -66,7 +67,7 @@ import Testing
             fm.createFile(atPath: dir.appendingPathComponent("hold").path, contents: nil)
             edits.perform(.openFilesystem, entry: entry, instance: ipod, library: library, releaseStopped: { true })
             await wait { calls().count == 1 }
-            #expect(edits.activity[ipod.id] == "Reading the file system…" && edits.blocksStart(ipod), "no activity while reading: \(edits.activity)")
+            #expect(edits.activity[ipod.id] == "Preparing to mount the file system…" && edits.blocksStart(ipod), "no activity while reading: \(edits.activity)")
             fm.createFile(atPath: dir.appendingPathComponent("gate").path, contents: nil)
             await wait { edits.activity[ipod.id] == nil }
             #expect(edits.activity[ipod.id] == nil, "activity left behind")
@@ -106,7 +107,71 @@ import Testing
             edits.perform(.openFilesystem, entry: oldEntry, instance: old, library: library, releaseStopped: { true })
             await wait { edits.activity.isEmpty && !offered.isEmpty }
             #expect(offered == [oldEntry.id] && edits.activity.isEmpty && errors.count == 1, "unclean 1.x: offered \(offered), errors \(errors)")
-            #expect(opened.isEmpty, "no mount point was reported")
+            // Each view opens one folder: the edit's mount point, the read-only view's one tree (system with data on it).
+            #expect(Set(opened) == [edits.mountPoint(ipod), view.appendingPathComponent(phone.profile!.marketingName, isDirectory: true)],
+                    "opened \(opened)")
+            #expect(calls().contains { $0.contains("--action mount") && $0.contains("--mount-point \(edits.mountPoint(ipod).path)") })
+            #expect(calls().contains { $0.hasPrefix("mount ") && $0.contains("--root ") })
+        }
+    }
+
+    /// The edit's volume mounted, then unmounted from outside (Eject in Finder): that saves it, as Save Changes does.
+    /// An edit already unmounted when watching starts (after a restart of the Mac) is left for the user.
+    @Test func ejectingTheMountedEditSavesIt() async throws {
+        try await LibraryFixtures.withScratch { dir in
+            let state = dir.appendingPathComponent("state")
+            let fk = try firmwarekit(dir)
+            var mounted = false, errors: [String] = []
+            let edits = DeviceFilesystemEdits(preparer: fk, state: state, logs: dir.appendingPathComponent("logs"), open: { _ in },
+                                              presentError: { errors.append("\($0)") }, isMounted: { _ in mounted },
+                                              isWriting: { _ in false }, poll: .milliseconds(20))
+            let library = DeviceLibrary(state: state)
+            let entry = try #require(try FirmwareCatalog.load(from: LibraryFixtures.shippedCatalog).entry(id: "n72ap-7E18"))
+            func calls() -> [String] { ((try? String(contentsOf: dir.appendingPathComponent("calls"), encoding: .utf8)) ?? "").split(separator: "\n").map(String.init) }
+
+            let ipod = try device("n72ap", state: state)
+            edits.perform(.openFilesystem, entry: entry, instance: ipod, library: library, releaseStopped: { mounted = true; return true })
+            await wait { edits.activity[ipod.id] == nil && edits.hasOpenEdit(ipod) }
+            try await Task.sleep(for: .milliseconds(100))
+            #expect(edits.hasOpenEdit(ipod) && !calls().contains { $0.contains("--action commit") }, "saved while still mounted: \(calls())")
+            mounted = false
+            await wait { !edits.hasOpenEdit(ipod) && edits.activity[ipod.id] == nil }
+            #expect(calls().last?.contains("--action commit") == true && errors.isEmpty, "Eject didn't save: \(calls()) \(errors)")
+
+            // Found unmounted: no save until the user chooses.
+            let other = try device("n72ap", state: state)
+            edits.perform(.openFilesystem, entry: entry, instance: other, library: library, releaseStopped: { true })
+            await wait { edits.activity[other.id] == nil && edits.hasOpenEdit(other) }
+            edits.watch(other, library: library)
+            try await Task.sleep(for: .milliseconds(150))
+            #expect(edits.hasOpenEdit(other), "an edit found unmounted was saved without asking")
+            try await edits.release(other, library: library, commit: false)
+        }
+    }
+
+    /// Start with the edit mounted (Save and Start): nothing is saved while a copy is still writing into the volume.
+    @Test func savingWaitsForCopiesInProgress() async throws {
+        try await LibraryFixtures.withScratch { dir in
+            let state = dir.appendingPathComponent("state")
+            let fk = try firmwarekit(dir)
+            var writing = true
+            let edits = DeviceFilesystemEdits(preparer: fk, state: state, logs: dir.appendingPathComponent("logs"), open: { _ in },
+                                              presentError: { _ in }, isMounted: { _ in true }, isWriting: { _ in writing },
+                                              poll: .milliseconds(20))
+            let library = DeviceLibrary(state: state)
+            let entry = try #require(try FirmwareCatalog.load(from: LibraryFixtures.shippedCatalog).entry(id: "n72ap-7E18"))
+            func calls() -> [String] { ((try? String(contentsOf: dir.appendingPathComponent("calls"), encoding: .utf8)) ?? "").split(separator: "\n").map(String.init) }
+
+            let ipod = try device("n72ap", state: state)
+            edits.perform(.openFilesystem, entry: entry, instance: ipod, library: library, releaseStopped: { true })
+            await wait { edits.activity[ipod.id] == nil && edits.hasOpenEdit(ipod) }
+            let start = Task { try await edits.release(ipod, library: library, commit: true) }
+            try await Task.sleep(for: .milliseconds(200))
+            #expect(edits.activity[ipod.id] == "Waiting for copies to finish…" && !calls().contains { $0.contains("--action commit") },
+                    "saved during a copy: \(calls()) \(edits.activity)")
+            writing = false
+            try await start.value
+            #expect(calls().last?.contains("--action commit") == true && !edits.hasOpenEdit(ipod), "\(calls())")
         }
     }
 }
