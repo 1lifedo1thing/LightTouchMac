@@ -19,7 +19,7 @@ extension FitCheck {
     static let msmKeys = ["UNSUPPORTED_FAILURE", "UNSUPPORTED_FAILURE_BODY"]
     static let msmCalls = ["_CFUserNotificationDisplayNotice", "_CFUserNotificationCreate"]
 
-    /// it_msmquiet fits when the mounter (`program`, the stock job's) raises the notice it recognises: its binary
+    /// it_msmquiet fits when the mounter (`program`, the stock job's) raises the notice it recognizes: its binary
     /// names one of the notice's keys and imports one of the calls it interposes, and the dylib loads in it.
     public static func msmQuiet(_ fw: Firmware, program: String, dylib: Data) -> Fit {
         let name = (program as NSString).lastPathComponent, piece = "it_msmquiet (\(name)'s USB \"not supported\" notice)"
@@ -28,7 +28,7 @@ extension FitCheck {
         }
         let keys = msmKeys.filter { bin.range(of: cString($0)) != nil }, calls = msmCalls.filter(imports(m).contains)
         guard !keys.isEmpty else {
-            return Fit(piece, fits: false, "\(name) names neither \(msmKeys.joined(separator: " nor ")): whatever raises this firmware's notice, it_msmquiet cannot recognise it")
+            return Fit(piece, fits: false, "\(name) names neither \(msmKeys.joined(separator: " nor ")): whatever raises this firmware's notice, it_msmquiet cannot recognize it")
         }
         guard !calls.isEmpty else { return Fit(piece, fits: false, "\(name) imports neither \(msmCalls.joined(separator: " nor ")), the calls it_msmquiet interposes") }
         let l = loads(piece, dylib, on: fw, host: program)

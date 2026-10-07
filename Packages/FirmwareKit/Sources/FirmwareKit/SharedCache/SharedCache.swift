@@ -152,7 +152,7 @@ public enum AppSyncCachePatch {
         if hw == 0xE92D { return hw2 & 0x4000 != 0 }                    // push.w with LR
         // iOS 5.x libmis exports MISValidateSignature as a tail-thunk `movs rN,#imm ; b.w <impl>`
         // (9A5288d..9B206: 0022 fff7). Overwriting its first word with `movs r0,#0 ; bx lr` returns
-        // success just as patching a framed entry does. Recognised by shape, not by build.
+        // success just as patching a framed entry does. Recognized by shape, not by build.
         if hw & 0xF800 == 0x2000 { return hw2 & 0xF800 == 0xF000 }      // movs rN,#imm then a 32-bit branch
         return false
     }

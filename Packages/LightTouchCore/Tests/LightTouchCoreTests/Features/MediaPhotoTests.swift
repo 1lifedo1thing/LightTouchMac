@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 @testable import LightTouchCore
 
 /// Photo preparation (MediaPhoto): upright by its EXIF orientation, at most 2048 px, a baseline JPEG, transparency
-/// flattened on white, one identity for the same picture, malformed input refused and cancellation honoured.
+/// flattened on white, one identity for the same picture, malformed input refused and cancellation honored.
 struct MediaPhotoTests {
     let red: MediaFixtures.RGBA = (220, 30, 30, 255), blue: MediaFixtures.RGBA = (30, 30, 220, 255)
 

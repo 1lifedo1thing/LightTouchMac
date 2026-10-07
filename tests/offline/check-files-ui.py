@@ -113,7 +113,7 @@ final class Sink: NSResponder {
     precondition(frame.minX>=0 && frame.maxX<=width,"clipped \(button.title): \(frame)")
    }
   }
-  // Several at once: both files selected export, drag out as two file promises, and fulfil into the drop folder.
+  // Several at once: both files selected export, drag out as two file promises, and fulfill into the drop folder.
   browser.selectRowIndexes(IndexSet([0,1]),inColumn:1);browser.sendAction(browser.action!,to:browser.target)
   precondition(vc.validateMenuItem(save) && export.isEnabled,"two files selected can be saved")
   precondition(vc.browser(browser,canDragRowsWith:IndexSet([0,1]),inColumn:1,with:NSEvent()),"files drag out")

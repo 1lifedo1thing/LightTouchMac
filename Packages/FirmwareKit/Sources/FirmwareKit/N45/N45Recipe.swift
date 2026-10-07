@@ -14,7 +14,7 @@
 // is also /private/var); activation as every board has it; owners patched in the catalog. Store: N45NAND.
 // No other guest tools on 1.x, no keybag, no seal.
 //
-// The recipe: storage "8g" (MA623; the only NAND geometry modelled), system_mib = the volume.
+// The recipe: storage "8g" (MA623; the only NAND geometry modeled), system_mib = the volume.
 //
 // The original iPhone (m68ap, recipe "m68", iPhone OS 1.0 1A543a) is this board with its own data: storage "4g"
 // (MA501: the four chip enables its DT's flash disk names, reg 0x0f, of the same chips), an iPhone identity (an IMEI,

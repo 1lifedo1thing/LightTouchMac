@@ -163,7 +163,7 @@ public enum CatalogClient {
     /// Apps matching `query` for this device, best copy each, server-ranked.
     /// An empty query is the storefront's default view: the server's
     /// suggested (most-archived compatible) list, compatible apps only. A
-    /// query also lists the apps the device can't run (API 2.1), greyed with
+    /// query also lists the apps the device can't run (API 2.1), grayed with
     /// the reason, so searching for one says why instead of nothing.
     public static func search(_ query: String, device: String? = nil, os: String = "3.1.3") async throws -> [CatalogApp] {
         var components = URLComponents(url: baseURL.appendingPathComponent("api/emulator/apps"),

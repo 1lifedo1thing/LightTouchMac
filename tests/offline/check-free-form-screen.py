@@ -5,7 +5,7 @@ display and touch mapping. Windows are built but never ordered in; nothing appea
 - Sizes: Board.snappedPanel clamps and snaps an upright size to what the board's panel= accepts (iPod
   touch 2G/3G and 3GS even width 64…1024 by 64…511 rows; iPad, iPhone 4 and iPod touch 4G scan width a multiple of
   16, 64…2047, within iBoot's 9 MB display region); every board but iPhone OS 1's; panelOption/uprightPanel turn it into device.plist's "WxH" as the panel scans (the iPad's landscape).
-- Display: an iPod at 320x504 shows its LCD alone at one point per guest pixel, centred; 2x zoom doubles it; a
+- Display: an iPod at 320x504 shows its LCD alone at one point per guest pixel, centered; 2x zoom doubles it; a
   click at a point of the LCD is a touch at that fraction. An iPad at 1280x768 (portrait 768x1280) likewise.
 - Drag: a press just outside the LCD's edge grabs it; dragging stretches the LCD (the frame squishes live) and the
   readout shows the snapped W × H; past the board's limit it clamps (iPod 511 rows); the iPad's height snaps to 16s.
@@ -127,11 +127,11 @@ source = prefix + stub + r'''
    check(touches.isEmpty, "a resize drag touched the guest: \(touches)")
   }
 
-  // iPod at 320x504: the LCD alone, a point per guest pixel, centred; touches land.
+  // iPod at 320x504: the LCD alone, a point per guest pixel, centered; touches land.
   frameWidth = 320; frameHeight = 504
   var (d, e, w) = try await make(pod, panel: size(320, 504))
   check(d.isFreeForm && near(box(d), 320, 504), "iPod 320x504 at 1x: \(box(d))")
-  check(abs(box(d).midX - 700) < 1 && abs(box(d).midY - 700) < 1, "off centre: \(box(d))")
+  check(abs(box(d).midX - 700) < 1 && abs(box(d).midY - 700) < 1, "off center: \(box(d))")
   check(!d.subviews.contains { $0 is DeviceModelView }, "free-form shows a device")
   for f in [CGPoint(x: 0.2, y: 0.3), CGPoint(x: 0.8, y: 0.95)] { touchLands(d, f) }
   d.zoom = .pixels(2 * one); try await settle(d)
@@ -167,7 +167,7 @@ source = prefix + stub + r'''
   d.zoom = .pixels(one); try await pane(CGRect(x: 0, y: 0, width: 1400, height: 1400), live: true)
   untouched("a window resize back")
 
-  // Drag the right edge 40 points: 40 more on each side of the centred screen.
+  // Drag the right edge 40 points: 40 more on each side of the centered screen.
   var b = box(d)
   drag(d, from: CGPoint(x: b.maxX + 4, y: b.midY), by: CGVector(dx: 40, dy: 0), release: false)
   check(d.panelReadoutText == "400 × 504", "readout \(d.panelReadoutText ?? "none")")

@@ -2,7 +2,7 @@
 """Simulator-style two fingers from a mouse (issue #18), through the production DisplayView compiled whole (check-model's
 fixture with a link that records each finger's phase, check-model-startup's stub model, the bezel off so the LCD alone
 takes the clicks): synthetic NSEvents through its mouse handlers, hover rings included. Option drags a second finger
-mirrored through the panel centre; Option-Shift locks the spacing and drags both in parallel. A plain drag stays one
+mirrored through the panel center; Option-Shift locks the spacing and drags both in parallel. A plain drag stays one
 finger. No window is shown. The pair's own rules are MouseTouchPairTests'."""
 import ast, subprocess, sys, tempfile
 from pathlib import Path
@@ -73,7 +73,7 @@ final class Cursor: NSWindow { var at = NSPoint.zero; override var mouseLocation
   }
   expect(drag([], [(30, 40), (20, 30)]), ["1:0@30,40", "1:1@20,30", "1:2@20,30"], "plain drag is one finger")
   expect(drag(.option, [(30, 40), (20, 30)]),
-         ["1:0@30,40", "2:0@70,60", "1:1@20,30", "2:1@80,70", "1:2@20,30", "2:2@80,70"], "Option mirrors through the centre")
+         ["1:0@30,40", "2:0@70,60", "1:1@20,30", "2:1@80,70", "1:2@20,30", "2:2@80,70"], "Option mirrors through the center")
   hover(30, 50, .option); expect(rings, ["30,50", "70,50"], "Option hover shows the mirrored pair")
   hover(30, 50, [.option, .shift]); hover(20, 50, [.option, .shift])
   expect(rings, ["20,50", "60,50"], "Option-Shift hover keeps the spacing locked when Shift went down")

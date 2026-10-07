@@ -2,11 +2,11 @@ import CoreGraphics
 import Testing
 @testable import LightTouchCore
 
-/// Physical Size's points per millimetre: measured sizes kept, CoreGraphics' 72-dpi fallback and bad metadata refused.
+/// Physical Size's points per millimeter: measured sizes kept, CoreGraphics' 72-dpi fallback and bad metadata refused.
 struct DisplayMeasurementsTests {
     let logical = CGSize(width: 1512, height: 982)
 
-    @Test func measuredSizeGivesPointsPerMillimetre() throws {
+    @Test func measuredSizeGivesPointsPerMillimeter() throws {
         let value = try #require(DisplayMeasurements.pointsPerMillimeter(logical: logical, hardware: CGSize(width: 302.4, height: 196.4), fallbackBounds: logical))
         #expect(abs(value * 110 - 550) < 0.01)
     }

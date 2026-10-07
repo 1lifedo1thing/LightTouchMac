@@ -255,8 +255,8 @@ elif args.tagged:
     QUADRANTS = [((0.25,0.25),(200,40,40)),((0.75,0.25),(40,180,60)),((0.25,0.75),(40,60,200)),((0.75,0.75),(240,220,30))]
     cover = Image.new('RGB',(1000,1000))
     draw = ImageDraw.Draw(cover)
-    for (x,y),colour in QUADRANTS:
-        draw.rectangle((int((x-0.25)*1000),int((y-0.25)*1000),int((x+0.25)*1000)-1,int((y+0.25)*1000)-1),fill=colour)
+    for (x,y),color in QUADRANTS:
+        draw.rectangle((int((x-0.25)*1000),int((y-0.25)*1000),int((x+0.25)*1000)-1,int((y+0.25)*1000)-1),fill=color)
     cover.save(out/'cover.png')
     with wave.open(str(out/'tone.wav'),'wb') as w:
         w.setnchannels(2); w.setsampwidth(2); w.setframerate(44100)
@@ -334,11 +334,11 @@ def readback(folder, quadrants):
     _, offset, length, width, height, row_bytes, bpp = large[0]
     assert (width, height, bpp) == (320, 320, 16), large
     pixels = (folder/'artwork.pix').read_bytes()[offset:offset+length]
-    for (x, y), colour in quadrants:
+    for (x, y), color in quadrants:
         at = int(y*height)*row_bytes + int(x*width)*2
         v = pixels[at] | pixels[at+1] << 8   # L555: x1r5g5b5, little-endian
         actual = tuple(((v >> s) & 31) * 255 // 31 for s in (10, 5, 0))
-        assert all(abs(a-b) <= 16 for a, b in zip(actual, colour)), ((x, y), actual, colour)
+        assert all(abs(a-b) <= 16 for a, b in zip(actual, color)), ((x, y), actual, color)
     print('PASS: tags and the cover read back over AFC from the device library and ArtworkCache', flush=True)
 
 d = r.Device(cfg,p,'device')

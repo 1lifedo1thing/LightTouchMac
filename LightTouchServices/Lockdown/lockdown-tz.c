@@ -162,9 +162,9 @@ static int finish_activation(lockdownd_client_t cli)
         return 5;
     }
     // Old releases need the first-connection state but may not expose this
-    // newer acknowledgement key. Do not invent a persistent cache entry.
+    // newer acknowledgment key. Do not invent a persistent cache entry.
     if (!legacy_ipod && !ensure_true(cli, "ActivationStateAcknowledged")) {
-        fprintf(stderr, "activation acknowledgement has not completed\n");
+        fprintf(stderr, "activation acknowledgment has not completed\n");
         return 6;
     }
     state = string_value(cli, "ActivationState");

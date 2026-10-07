@@ -186,7 +186,7 @@ public struct AppsInspectorRows {
             return .installing
         }
         if let id = app.bundleID, apps.contains(where: { $0.id == id }) { return .installed }
-        if app.incompatibility != nil { return .unavailable }   // greyed, with the server's reason
+        if app.incompatibility != nil { return .unavailable }   // grayed, with the server's reason
         // Busy with our own install means the device is fine, just serialized —
         // more jobs may queue behind it. (The poll deliberately parks
         // deviceReachable at nil while device work runs, so canReachDevice

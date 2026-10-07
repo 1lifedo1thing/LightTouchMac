@@ -190,7 +190,7 @@ final class N72Board: Board {
                         "nor": try Recipe.fileRecord(c, "nor.bin"), "iboot": major >= 3 ? try Recipe.fileRecord(c, "iBoot.bin") as Any : NSNull(),
                         "gid_blobs": try Recipe.fileRecord(c, "gid-blobs.bin")],
             "derived": derived,
-            // 3.x+ enters its decrypted iBoot directly (the bootrom rejects a personalised LLB); 2.x runs the real
+            // 3.x+ enters its decrypted iBoot directly (the bootrom rejects a personalized LLB); 2.x runs the real
             // bootrom -> NOR LLB -> iBoot chain and ships no iBoot.bin (ipod2g_device.py direct_iboot)
             "boot_strategy": major >= 3 ? "iboot" : "bootrom",
             // The BCM4325 CIS and NOR wifiaddr belong to the same unit. Older drivers

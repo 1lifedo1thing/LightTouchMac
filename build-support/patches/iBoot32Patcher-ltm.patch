@@ -4,7 +4,7 @@
      return NULL;
  }
  
-+/* A literal-pool word or pointer-table entry is word-aligned: an unaligned match is two neighbouring words
++/* A literal-pool word or pointer-table entry is word-aligned: an unaligned match is two neighboring words
 + * (iBoot-1219 of 9A5220p has one two bytes before the boot-args literal). LightTouchMac carries this patch. */
 +static void* find_aligned_word(struct iboot_img* iboot_in, uint32_t value) {
 +    for(size_t i = 0; i + sizeof(uint32_t) <= iboot_in->len; i += sizeof(uint32_t)) {

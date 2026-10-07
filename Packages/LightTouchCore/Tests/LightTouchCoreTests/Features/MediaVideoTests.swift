@@ -7,7 +7,7 @@ import Testing
 /// Movie preparation (MediaVideo): an iPod-playable export (H.264 Baseline, level 3.0 at most, at most 640×480 and
 /// 30 fps, AAC of at most two channels at 48 kHz), its library metadata, one identity for repeated and simultaneous
 /// drops, a private cache that recovers from damage, the source left untouched, invalid input refused,
-/// cancellation honoured; a 720p movie stays 720p for the iPad and is 640 wide for the iPod.
+/// cancellation honored; a 720p movie stays 720p for the iPad and is 640 wide for the iPod.
 struct MediaVideoTests {
     @Test func iPodExportMetadataIdentityAndCache() async throws {
         try await withTemporaryState { work in

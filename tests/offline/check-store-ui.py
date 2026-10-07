@@ -74,12 +74,12 @@ import SwiftUI
   let defaults = UserDefaults(suiteName: suite)!
   defer { defaults.removePersistentDomain(forName: suite) }
 
-  // iPod: the family choice dimmed (never hidden); the default shows unavailable apps greyed, the toggle hides them.
+  // iPod: the family choice dimmed (never hidden); the default shows unavailable apps grayed, the toggle hides them.
   let podButton = CatalogFilterButton(isIPad: false, defaults: defaults)
   let items = podButton.menu!.items
   check(items[1...4].allSatisfy { !$0.isHidden } && !items[1].isEnabled && !items[2].isEnabled && items[4].isEnabled
         && items[4].title == "Show Unavailable Apps", "iPod: family choice dimmed, the toggle live")
-  check(items[4].state == .on && podButton.apply(ipod).count == 4, "default: every app, unavailable ones greyed")
+  check(items[4].state == .on && podButton.apply(ipod).count == 4, "default: every app, unavailable ones grayed")
   var changes = 0
   podButton.onChange = { changes += 1 }
   podButton.menu!.performActionForItem(at: 4)

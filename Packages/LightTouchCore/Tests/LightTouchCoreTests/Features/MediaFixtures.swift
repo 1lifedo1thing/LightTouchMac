@@ -20,7 +20,7 @@ enum MediaFixtures {
             context.fill(CGRect(x: rect.minX, y: CGFloat(height) - rect.maxY, width: rect.width, height: rect.height))
         }
         paint(CGRect(x: 0, y: 0, width: width, height: height), background)
-        for (rect, colour) in fill { paint(rect, colour) }
+        for (rect, color) in fill { paint(rect, color) }
         let destination = CGImageDestinationCreateWithURL(url as CFURL, type.identifier as CFString, 1, nil)!
         var properties: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: 0.95]
         if let orientation { properties[kCGImagePropertyOrientation] = orientation }
@@ -109,7 +109,7 @@ enum MediaFixtures {
         try data.write(to: url)
     }
 
-    /// A `width`×`height` H.264 movie at 30 fps, `seconds` long, moving colour bars, with a stereo AAC tone track.
+    /// A `width`×`height` H.264 movie at 30 fps, `seconds` long, moving color bars, with a stereo AAC tone track.
     @concurrent nonisolated static func movie(_ url: URL, width: Int, height: Int, seconds: Int = 6) async throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         let video = AVAssetWriterInput(mediaType: .video, outputSettings: [AVVideoCodecKey: AVVideoCodecType.h264,

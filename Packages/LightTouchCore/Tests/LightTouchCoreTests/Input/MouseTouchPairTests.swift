@@ -2,7 +2,7 @@ import CoreGraphics
 import Testing
 @testable import LightTouchCore
 
-/// Simulator-style two fingers from a mouse (issue #18): Option mirrors a second finger through the panel centre;
+/// Simulator-style two fingers from a mouse (issue #18): Option mirrors a second finger through the panel center;
 /// Option-Shift locks the spacing and drags both in parallel; a plain drag stays one finger.
 struct MouseTouchPairTests {
     func near(_ a: CGPoint?, _ x: CGFloat, _ y: CGFloat) -> Bool {
@@ -17,7 +17,7 @@ struct MouseTouchPairTests {
         #expect(pair.secondFinger(for: CGPoint(x: 0.2, y: 0.3), .option) == nil, "Option pressed mid-drag doesn't add a finger")
     }
 
-    @Test func optionMirrorsThroughTheCentre() {
+    @Test func optionMirrorsThroughTheCenter() {
         var pair = MouseTouchPair()
         pair.down(at: CGPoint(x: 0.3, y: 0.4), .option)
         #expect(near(pair.secondFinger(for: CGPoint(x: 0.3, y: 0.4), .option), 0.7, 0.6))

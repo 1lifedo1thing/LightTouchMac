@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The live LCD's colours on a wide-gamut display: the helper's frame surface (Shared/SharedStatus.makeSurface) holding
+"""The live LCD's colors on a wide-gamut display: the helper's frame surface (Shared/SharedStatus.makeSurface) holding
 pure red (255, 0, 0), composited by Core Animation into a Display P3 target as a P3 screen would, must come out as
 sRGB red in P3 (about 234, 51, 35), not P3's own red (255, 0, 0, oversaturated)."""
 from pathlib import Path

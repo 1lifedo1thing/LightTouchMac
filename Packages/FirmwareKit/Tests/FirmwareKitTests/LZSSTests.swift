@@ -28,7 +28,7 @@ struct LZSSTests {
     }
 
     /// ipad1_kboot.selfcheck's logo: a 2x1 iBootIm, left pixel opaque white, right transparent.
-    @Test func logoIsCentredAndTurned() throws {
+    @Test func logoIsCenteredAndTurned() throws {
         var blob = Data("iBootIm\0".utf8) + Data(count: 4) + Data("sszlyerg".utf8) + Data([2, 0, 1, 0])
         blob += Data(count: 0x40 - blob.count)
         blob += Data([0xFF, 255, 0, 255, 255])

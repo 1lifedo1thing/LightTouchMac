@@ -22,8 +22,8 @@ def fixtures(out):
     from PIL import Image, ImageDraw
     cover = Image.new('RGB', (600, 600))
     draw = ImageDraw.Draw(cover)
-    for (x, y), colour in QUADRANTS:
-        draw.rectangle((int((x - .25) * 600), int((y - .25) * 600), int((x + .25) * 600) - 1, int((y + .25) * 600) - 1), fill=colour)
+    for (x, y), color in QUADRANTS:
+        draw.rectangle((int((x - .25) * 600), int((y - .25) * 600), int((x + .25) * 600) - 1, int((y + .25) * 600) - 1), fill=color)
     cover.save(out / 'cover.png')
     with wave.open(str(out / 'tone.wav'), 'wb') as w:
         w.setnchannels(2); w.setsampwidth(2); w.setframerate(44100)
@@ -62,15 +62,15 @@ def artwork_pixels(afc, artwork_id):
         return None, f'no uncompressed ArtworkCache rendering under key {artwork_id}: {formats}'
     fmt, offset, length, width, height, row, bpp = max(plain, key=lambda f: f[3] * f[4])
     data = pix.read_bytes()[offset:offset + length]
-    colours = []
+    colors = []
     for (x, y), _ in QUADRANTS:
         at = int(y * height) * row + int(x * width) * (bpp // 8)
         if bpp == 16:
             v = data[at] | data[at + 1] << 8   # x1r5g5b5, little-endian
-            colours.append(tuple(((v >> s) & 31) * 255 // 31 for s in (10, 5, 0)))
+            colors.append(tuple(((v >> s) & 31) * 255 // 31 for s in (10, 5, 0)))
         else:   # 32: BGRA/BGRX little-endian
-            colours.append((data[at + 2], data[at + 1], data[at]))
-    return {'formats': formats, 'chosen': [fmt, width, height, bpp], 'colours': colours}, None
+            colors.append((data[at + 2], data[at + 1], data[at]))
+    return {'formats': formats, 'chosen': [fmt, width, height, bpp], 'colors': colors}, None
 
 
 def ml3_artwork_pixels(afc, db, cache_id):
@@ -87,8 +87,8 @@ def ml3_artwork_pixels(afc, db, cache_id):
     _, path = max(found)
     with Image.open(path) as im:
         rgb = im.convert('RGB')
-        colours = [rgb.getpixel((int(x * im.width), int(y * im.height))) for (x, y), _ in QUADRANTS]
-        return {'formats': formats, 'chosen': [path.name, *im.size], 'colours': colours}, None
+        colors = [rgb.getpixel((int(x * im.width), int(y * im.height))) for (x, y), _ in QUADRANTS]
+        return {'formats': formats, 'chosen': [path.name, *im.size], 'colors': colors}, None
 
 
 def judge_library(afc):
@@ -135,8 +135,8 @@ def judge_library(afc):
         result['artwork'] = pixels
         if why:
             problems.append(why)
-        elif not all(close(a, e) for a, (_, e) in zip(pixels['colours'], QUADRANTS)):
-            problems.append(f'cover colours {pixels["colours"]}')
+        elif not all(close(a, e) for a, (_, e) in zip(pixels['colors'], QUADRANTS)):
+            problems.append(f'cover colors {pixels["colors"]}')
     result.update(ok=not problems, why='; '.join(problems))
     return result
 
@@ -148,10 +148,10 @@ def judge_photo(afc):
         return {'ok': False, 'why': f'{len(shots)} originals in DCIM/100APPLE'}
     with Image.open(shots[0]) as im:
         rgb = im.convert('RGB')
-        colours = [rgb.getpixel((int(x * im.width), int(y * im.height))) for (x, y), _ in PHOTO]
+        colors = [rgb.getpixel((int(x * im.width), int(y * im.height))) for (x, y), _ in PHOTO]
         size = im.size
-    ok = all(close(a, e, 30) for a, (_, e) in zip(colours, PHOTO))
-    return {'ok': ok, 'size': size, 'colours': colours, 'why': '' if ok else f'colours {colours}'}
+    ok = all(close(a, e, 30) for a, (_, e) in zip(colors, PHOTO))
+    return {'ok': ok, 'size': size, 'colors': colors, 'why': '' if ok else f'colors {colors}'}
 
 
 def played(wav):

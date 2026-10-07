@@ -9,7 +9,7 @@ public nonisolated struct CatalogFilter: Equatable {
         self.showUnavailable = showUnavailable
     }
     public var iPadOnly = false
-    /// Apps the server judged unable to run here, greyed with the reason.
+    /// Apps the server judged unable to run here, grayed with the reason.
     public var showUnavailable = true
 
     public static func load(_ defaults: UserDefaults = .standard) -> CatalogFilter {

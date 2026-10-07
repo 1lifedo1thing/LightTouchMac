@@ -6,7 +6,7 @@ import Testing
 @testable import LightTouchCore
 
 /// GuestPackageSession's qualification of one cold boot (health budgets, record verdicts, one-shot completion), its
-/// async owner under BootSessionScope, and GuestPackage's "not responding" judgement for an offer.
+/// async owner under BootSessionScope, and GuestPackage's "not responding" judgment for an offer.
 struct GuestPackageSessionTests {
     let offer = GuestPackage.Offer(bundled: 7, version: "1.7", serial: 7, glHook: true)
     let report = GuestPackageReport(serial: 7, result: 1)

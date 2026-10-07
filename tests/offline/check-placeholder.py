@@ -157,7 +157,7 @@ extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? sel
             }
             if name == "almost-done", !(texts[safe: v + 2] ?? "").hasSuffix("Almost done…") { fail("Almost done without its ellipsis: \(texts)") }
             if let bar = all(view).compactMap({ $0 as? NSProgressIndicator }).first(where: visible), !["Download progress", "Preparation progress"].contains(bar.accessibilityLabel() ?? "") {
-                fail("progress bar labelled \(bar.accessibilityLabel() ?? "nothing")")
+                fail("progress bar labeled \(bar.accessibilityLabel() ?? "nothing")")
             }
         }
 

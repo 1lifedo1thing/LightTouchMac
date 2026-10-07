@@ -557,7 +557,7 @@ struct SingleConfig: Decodable {
     static func appleIDUp(_ d: Device) -> Bool { kind(fingerprint(d)) == "apple id" }
 
     /// A Setup page's fingerprint: the white fraction of seven boxes (the two button columns and the gap between them,
-    /// a strip left of the centre art, the iPad outline's left edge, the centre, the left list column), measured on
+    /// a strip left of the center art, the iPad outline's left edge, the center, the left list column), measured on
     /// 5.0 beta 1 to 5.1.1.
     static let printBoxes: [Box] = [(795, 170, 830, 600), (860, 170, 895, 600), (840, 170, 852, 600),
                                     (180, 300, 230, 450), (255, 300, 285, 450), (330, 300, 560, 450), (100, 150, 135, 700)]
@@ -651,7 +651,7 @@ struct SingleConfig: Decodable {
             ("diagnostics", [0.0, 0.0, 0.0, 1.0, 0.27, 0.01, 0.0]), ("diagnostics", [0.0, 0.0, 0.0, 1.0, 0.29, 0.0, 0.0]),
             ("diagnostics", [0.0, 0.0, 0.0, 0.12, 0.0, 0.0, 0.95]), ("thank you", [0.0, 0.83, 0.17, 0.05, 0.0, 0.18, 0.0]),
             (nil, [0.0, 0.0, 0.0, 0.0, 0.0, 0.04, 0.0]), (nil, [0.78, 0.69, 0.86, 1.0, 1.0, 0.74, 0.92])]
-        for (want, f) in measured { expect("page \(want ?? "unrecognised") from \(f)", kind(f) == want) }
+        for (want, f) in measured { expect("page \(want ?? "unrecognized") from \(f)", kind(f) == want) }
         return ok
     }
 
@@ -682,7 +682,7 @@ struct SingleConfig: Decodable {
                     if let seen, let later = pages.indices.first(where: { $0 > index && kind(of: pages[$0].0) == seen }) {
                         walked.append("\(name) (absent)"); skipTo = later; continue page
                     }
-                    // Terms has no fingerprint: a lit, settled page nothing recognises, read twice, is it when it is the
+                    // Terms has no fingerprint: a lit, settled page nothing recognizes, read twice, is it when it is the
                     // next step (5.1.1 goes Wi-Fi -> Terms without Apple ID)
                     unknown = seen == nil && (d.brightness() ?? 0) > 0.05 ? unknown + 1 : 0
                     if unknown >= 2, index + 1 < pages.count, kind(of: pages[index + 1].0) == nil {
@@ -692,7 +692,7 @@ struct SingleConfig: Decodable {
                 }
                 guard seen == want else {
                     d.screenshot("setup-\(name.replacingOccurrences(of: " ", with: "-"))-unknown")
-                    return (false, "the \(name) page never showed in \(Int(budget)) s (screen: \(seen ?? "unrecognised"); after \(walked.joined(separator: ", ")))")
+                    return (false, "the \(name) page never showed in \(Int(budget)) s (screen: \(seen ?? "unrecognized"); after \(walked.joined(separator: ", ")))")
                 }
             }
             if name == "wi-fi" { try? await Task.sleep(for: .seconds(15)) }   // give the join time before Next
@@ -792,7 +792,7 @@ func lockdownInfo(_ socket: String, _ args: [String]) -> String {
 
 /// A phone's Setup Assistant (6.x and 7.x on the iPod touch 4G, iPhone 4 and 3GS), walked as qemu-ios
 /// tests/ipad1/app-install.py walk_setup does: Vision reads each page's labels off a screenshot; an alert's
-/// button labelled exactly as one of `alertYes` goes first, then the first of `picks` the page shows, then its
+/// button labeled exactly as one of `alertYes` goes first, then the first of `picks` the page shows, then its
 /// Next (the language page's is an arrow, top right). The welcome page (SpringBoard's "slide to set up", in a
 /// rotating language) has none of those and is slid. Done when the agent says the home screen is up.
 @MainActor enum SetupPhone {
@@ -802,7 +802,7 @@ func lockdownInfo(_ socket: String, _ args: [String]) -> String {
     static let alertYes = ["OK", "Skip", "Agree", "Continue", "Don't Use", "Don't Add"]
     static let nextArrow = (x: 587.0 / 640, y: 84.0 / 960)
 
-    /// Each label Vision reads on the screenshot, at its centre as a touch point (top-left origin, 0...1).
+    /// Each label Vision reads on the screenshot, at its center as a touch point (top-left origin, 0...1).
     static func labels(_ path: String) -> [String: (x: Double, y: Double)] {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate

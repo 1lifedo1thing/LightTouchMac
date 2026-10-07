@@ -124,7 +124,7 @@ public struct AppInstallPipeline: Sendable {
             }
             defer { Task { await services.removeStaged(staged) } }
 
-            // Cancelling during the upload is honoured here, at the last point
+            // Cancelling during the upload is honored here, at the last point
             // where it can be: instproxy_install runs on a detached thread that
             // ignores cancellation, so once it starts, the install finishes.
             try Task.checkCancellation()
@@ -166,7 +166,7 @@ public struct AppInstallPipeline: Sendable {
     /// If the .ipa stores its main binary without the exec bit, a copy repacked
     /// 0755 (via the bundled ipod-helper);
     /// nil if no repair is needed or anything is unreadable — callers fall back
-    /// to the original, which is exactly today's behaviour.
+    /// to the original, which is exactly today's behavior.
     private static func execBitRepaired(_ ipa: URL) async throws -> URL? {
         guard let member = await AppMetadataCache.executableMember(of: ipa),
               let helper = Bundled.tool("ipod-helper") else { return nil }

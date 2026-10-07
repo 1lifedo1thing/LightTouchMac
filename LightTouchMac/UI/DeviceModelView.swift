@@ -126,7 +126,7 @@ final class DeviceModelView: NSView {
             finish.baseColor = .init(tint: NSColor(white: 0.018, alpha: 1))
           }
           // Revision 7's Home glyph (K48, N45) is a dark steel that vanished on the black cap; a real
-          // iPad's and iPod's square reads as a light grey ring. N72's ceramic glyph already does.
+          // iPad's and iPod's square reads as a light gray ring. N72's ceramic glyph already does.
           if name == "glyph" {
             finish.baseColor = .init(tint: NSColor(white: 0.95, alpha: 1))
             finish.metallic = .init(floatLiteral: 0)

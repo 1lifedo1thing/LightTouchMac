@@ -1,4 +1,4 @@
-// The Apps pane's centred message (empty, loading, error) and its status caption.
+// The Apps pane's centered message (empty, loading, error) and its status caption.
 
 import Cocoa
 

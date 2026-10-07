@@ -54,7 +54,7 @@ func color(_ image: CGImage, _ p: CGPoint, in size: CGSize) -> NSColor {
 func save(_ image: CGImage, _ path: String) throws {
   try NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: path))
 }
-/// Upright quadrants (red, green / blue, yellow), a centre circle and TOP, then
+/// Upright quadrants (red, green / blue, yellow), a center circle and TOP, then
 /// turned into the panel's own scan-out orientation (the iPad's is landscape).
 func pattern(_ profile: Board, rotation: Int) -> CGImage {
   let turnsBack = profile.panelRotation != 0 ? 1 : rotation / 90
@@ -172,7 +172,7 @@ func pattern(_ profile: Board, rotation: Int) -> CGImage {
       let lcd = lcdBox()
       let offset = CGVector(dx: rect.midX - lcd.midX, dy: rect.midY - lcd.midY)
       precondition(offset.dx * down.dx + offset.dy * down.dy > 0.5 * max(lcd.width, lcd.height), "Home is not below the LCD at \(rotation): \(rect) vs \(lcd)")
-      // The same spot on the cap in every orientation (the device's right of centre).
+      // The same spot on the cap in every orientation (the device's right of center).
       let p = CGPoint(x: rect.midX + rect.width * 0.3 * cos(rest), y: rect.midY - rect.width * 0.3 * sin(rest))
       let level = color(snapshot, p, in: model.bounds.size)
       homeLevels.append(level.redComponent)
@@ -264,7 +264,7 @@ func pattern(_ profile: Board, rotation: Int) -> CGImage {
   try await Task.sleep(for: .seconds(0.1))
   let large = lcdBox().width
   precondition(abs(large/small-2)<0.001)
-  let centre = model.projectedPoint(CGPoint(x:0.5,y:0.5))
+  let center = model.projectedPoint(CGPoint(x:0.5,y:0.5))
   /// Opposite LCD edges' length differences: a translation (even in depth)
   /// keeps the face-on panel a rectangle, only a tilt makes it a trapezoid.
   /// (The box width is no measure: a tilt widens it, backing away narrows it,
@@ -282,7 +282,7 @@ func pattern(_ profile: Board, rotation: Int) -> CGImage {
   while CACurrentMediaTime() - shaken < 0.25 {
     try await Task.sleep(for: .seconds(0.01))
     model.advanceAnimations()
-    moved = max(moved, abs(model.projectedPoint(CGPoint(x:0.5,y:0.5)).x-centre.x))
+    moved = max(moved, abs(model.projectedPoint(CGPoint(x:0.5,y:0.5)).x-center.x))
     tilted = max(tilted, abs(skew().x-restSkew.x) + abs(skew().y-restSkew.y))
   }
   if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
@@ -291,11 +291,11 @@ func pattern(_ profile: Board, rotation: Int) -> CGImage {
   }
   try await Task.sleep(for: .seconds(0.5))
   model.advanceAnimations()
-  precondition(abs(model.projectedPoint(CGPoint(x:0.5,y:0.5)).x-centre.x)<0.01)
+  precondition(abs(model.projectedPoint(CGPoint(x:0.5,y:0.5)).x-center.x)<0.01)
   model.pose(scale: 0.5, rotation: 0, roll: 0, pitch: 0, animated: false)
   let face = try await render(model)
   try save(face, out+"/\(lower)-pattern.png")
-  // N45 against Apple's product shot (touch_topsongs.jpg, colour-managed from its CMYK to sRGB): a dark graphite
+  // N45 against Apple's product shot (touch_topsongs.jpg, color-managed from its CMYK to sRGB): a dark graphite
   // frame lit from the upper left, sRGB ~115-130 there falling to ~65-90 at the right and bottom, shot on white.
   // On the app's dark window that level already read as silver (Sam, 10-04: "mid-gray and even silver"), so the
   // frame sits a stop under the shot: luma ~0.34 upper left, ~0.18 lower right; anything at the old 0.5-0.75 is
@@ -315,8 +315,8 @@ func pattern(_ profile: Board, rotation: Int) -> CGImage {
     precondition(lit.min()! - shade.max()! > 0.1, "N45 frame has no upper-left light: \(lit) vs \(shade)")
     precondition(glass.allSatisfy { $0 > 0.06 && $0 < 0.15 } && sheen - glass.max()! > 0.05, "N45 glass is not blue-black with a sheen: \(glass) \(sheen)")
   }
-  // Nearest-neighbour upscaling: a 4x6 black/white checker blown up to ~600 px must keep hard edges.
-  // A linear mag filter ramps across each ~150 px cell, leaving a third or more of a scan mid-grey.
+  // Nearest-neighbor upscaling: a 4x6 black/white checker blown up to ~600 px must keep hard edges.
+  // A linear mag filter ramps across each ~150 px cell, leaving a third or more of a scan mid-gray.
   do {
     let cw = 4, ch = 6
     let checker = CGContext(data: nil, width: cw, height: ch, bitsPerComponent: 8, bytesPerRow: cw * 4,
@@ -333,8 +333,8 @@ func pattern(_ profile: Board, rotation: Int) -> CGImage {
       if c.greenComponent > 0.15 && c.greenComponent < 0.85 { mid += 1 }
       total += 1
     }
-    print("\(name): \(mid)/\(total) mid-grey samples across the upscaled checker")
-    precondition(mid * 100 < total * 3, "LCD upscaling is not nearest-neighbour: \(mid)/\(total) blurred samples")
+    print("\(name): \(mid)/\(total) mid-gray samples across the upscaled checker")
+    precondition(mid * 100 < total * 3, "LCD upscaling is not nearest-neighbor: \(mid)/\(total) blurred samples")
     model.updateFrame(pattern(profile, rotation: 0))
   }
   model.setScreenOff(true)
@@ -475,7 +475,7 @@ enum PreparedMedia { nonisolated static let extensions: Set<String> = [] }
  }
 }
 '''
-# DisplayView's flat LCD layer, built without a window: its framebuffer upscales nearest-neighbour too.
+# DisplayView's flat LCD layer, built without a window: its framebuffer upscales nearest-neighbor too.
 layer_source = display_source.split('@main')[0] + r'''@main struct Check {
  @MainActor static func main() {
   _ = fixtureMachines

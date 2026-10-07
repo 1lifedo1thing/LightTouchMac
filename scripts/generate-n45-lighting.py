@@ -14,7 +14,7 @@ from PIL import Image
 w, h = 1024, 512
 u, v = np.meshgrid((np.arange(w) + .5) / w, (np.arange(h) + .5) / h)
 lon = (u - .5) * 2 * np.pi; lat = (.5 - v) * np.pi
-# Direction per texel; the camera-facing (+z) side is the image centre.
+# Direction per texel; the camera-facing (+z) side is the image center.
 x, y, z = np.cos(lat) * np.sin(lon), np.sin(lat), np.cos(lat) * np.cos(lon)
 key = np.array([-.62, .62, -.48]); key /= np.linalg.norm(key)
 along = x * key[0] + y * key[1] + z * key[2]

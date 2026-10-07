@@ -2,7 +2,7 @@
 
 Light Touch always activates devices during FirmwareKit system preparation. The recognizer is statically linked into FirmwareKit from `Packages/FirmwareKit/Sources/CActivation`; Swift refreshes existing code signatures while preserving entitlements. Recognized pre-signing 1.x binaries remain unsigned. There is no hook path, preference, catalog switch, or separate shipped executable.
 
-After boot, Light Touch also completes activation acknowledgement and older iPods’ first-connection state automatically through lockdown. Preparation records the recognized patch in the device lock.
+After boot, Light Touch also completes activation acknowledgment and older iPods’ first-connection state automatically through lockdown. Preparation records the recognized patch in the device lock.
 
 The command-line wrapper here is only for developer diagnostics and sanitizer tests. It uses the same C source, but does not sign its output.
 

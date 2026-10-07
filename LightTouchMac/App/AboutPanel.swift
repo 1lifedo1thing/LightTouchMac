@@ -3,7 +3,7 @@ import Cocoa
 import SwiftUI
 
 /// About Light Touch: the standard panel with AboutCredits' runs as its credits. Show Licenses opens the Licenses
-/// window, which reads the licence files from the bundle (nothing is opened by file URL, so it works from any
+/// window, which reads the license files from the bundle (nothing is opened by file URL, so it works from any
 /// location, App Translocation's included).
 extension AboutCredits {
     @MainActor static func show() {
@@ -51,7 +51,7 @@ private final class LicensesLink: NSObject, NSTextViewDelegate {
     }
 }
 
-/// The Licenses window (About's Show Licenses): each bundled component's licences, read from licenses/.
+/// The Licenses window (About's Show Licenses): each bundled component's licenses, read from licenses/.
 enum LicensesWindow {
     @MainActor private static var window: NSWindow?
 

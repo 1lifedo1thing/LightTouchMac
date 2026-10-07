@@ -15,7 +15,7 @@ struct CatalogFilterTests {
     @Test func iPodShowsUnavailableAppsUntilToldNot() throws {
         let ipod = try Self.apps("ipod2-3.1.3-dash.json")
         var filter = CatalogFilter()
-        #expect(filter.apply(ipod, iPad: false).count == 4 && !filter.isActive(iPad: false), "default: every app, unavailable ones greyed")
+        #expect(filter.apply(ipod, iPad: false).count == 4 && !filter.isActive(iPad: false), "default: every app, unavailable ones grayed")
         filter.showUnavailable = false
         #expect(names(filter.apply(ipod, iPad: false)) == ["Hotel Dash", "Diner Dash"], "iPad-only and too-new apps hidden on the iPod")
         #expect(filter.isActive(iPad: false))

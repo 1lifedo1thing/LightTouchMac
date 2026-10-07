@@ -1,6 +1,6 @@
 // Created by Sam on 2026-08-05.
 //
-// The device window: device centred in the main column, an app-management
+// The device window: device centered in the main column, an app-management
 // inspector on the trailing edge, and a toolbar whose items mirror the menu bar
 // (same selectors, same validation). Menu actions route here through the
 // responder chain (the window controller is the window's next responder).
@@ -664,7 +664,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
             deadOverlay = nil
             return
         }
-        // Over the device pane only, centred where the device is laid out
+        // Over the device pane only, centered where the device is laid out
         // (its safe area), not on the whole window with the inspector.
         guard deadOverlay == nil else { return }
         let content = deviceVC.view
@@ -912,7 +912,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     }
     static func savedZoom() -> ZoomMode { ZoomMode(defaultsValue: UserDefaults.standard.string(forKey: ZoomMode.defaultsKey)) }
 
-    /// Grey out a direction there is no room left in.
+    /// Gray out a direction there is no room left in.
     private func syncZoomControls() {
         let step = zoom.percent.map { $0 / 100 }
         zoomControl.setEnabled(step != ZoomMode.steps.first, forSegment: 0)
@@ -1642,7 +1642,7 @@ private final class ContainerViewController: NSViewController {
     }
 }
 
-/// A pane's one centred line: the inspector while the device isn't running, the detail area with several rows selected.
+/// A pane's one centered line: the inspector while the device isn't running, the detail area with several rows selected.
 private final class PaneLabelViewController: NSViewController {
     private let label = NSTextField(labelWithString: "")
     var text = "" { didSet { label.stringValue = text } }

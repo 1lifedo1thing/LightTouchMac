@@ -70,7 +70,7 @@ def exposure(cap, ref):
     return r[len(r) // 2] if r else 1.0
 
 
-def normalise(cap, gain):
+def normalize(cap, gain):
     """Undo a backlight gain (see EXPOSURE_MIN); outside [EXPOSURE_MIN, 1) the capture stays as it is."""
     if not EXPOSURE_MIN <= gain < 1:
         return cap
@@ -83,13 +83,13 @@ def verdict(cap_path, ref_path, thr=THR):
         ref = signature(ref_path)
         cap = signature(cap_path, ref[0])
         gain = exposure(cap, ref)
-        frac = fraction_differing(normalise(cap, gain), ref)
+        frac = fraction_differing(normalize(cap, gain), ref)
     except Exception as e:  # aspect mismatch, unreadable frame: not the reference picture
         return {"ok": False, "frac": None, "thr": thr, "why": "could not compare: %s" % e}
     ok = frac <= thr
     return {"ok": ok, "frac": round(frac, 4), "thr": thr, "exposure": round(gain, 3),
             "why": ("matches the reference (%.3f <= %.2f)" % (frac, thr)) if ok else
-                   ("differs from the reference (%.3f > %.2f): flip / colour swap / stale surface"
+                   ("differs from the reference (%.3f > %.2f): flip / color swap / stale surface"
                     % (frac, thr))}
 
 
@@ -156,10 +156,10 @@ def _selftest():
     grad = (2, 2, [(40, 80, 120), (200, 160, 120), (120, 200, 40), (240, 240, 240)])
     dim = (2, 2, [tuple(round(v * 0.76) for v in px) for px in grad[2]])
     assert abs(exposure(dim, grad) - 0.76) < 0.01
-    assert fraction_differing(normalise(dim, exposure(dim, grad)), grad) == 0.0  # a dim backlight is undone
-    assert normalise(dim, 0.5) is dim                                             # below EXPOSURE_MIN: as is
+    assert fraction_differing(normalize(dim, exposure(dim, grad)), grad) == 0.0  # a dim backlight is undone
+    assert normalize(dim, 0.5) is dim                                             # below EXPOSURE_MIN: as is
     flip = (2, 2, dim[2][::-1])
-    assert fraction_differing(normalise(flip, exposure(flip, grad)), grad) > 0.5  # a dim flip still fails
+    assert fraction_differing(normalize(flip, exposure(flip, grad)), grad) > 0.5  # a dim flip still fails
     print("framecheck selftest ok")
 
 

@@ -399,7 +399,7 @@ extension String {
 }
 
 /// The installed app, opened from the Home screen: moved into page 1's first slot through SpringBoardServices (the
-/// Apps inspector's reorder), then tapped there (iPhone OS 2.x/3.x 320x480 grid: slot 0 centred at 47,62). With
+/// Apps inspector's reorder), then tapped there (iPhone OS 2.x/3.x 320x480 grid: slot 0 centered at 47,62). With
 /// `point` (2.x: no springboardservices) the icon is tapped where the caller says it is. The first install's
 /// "Edit Home Screen" tip is dismissed first (its button sits in a gap between icons when there is no tip).
 @MainActor func launch(_ d: Device, at point: [Double]? = nil, tap: [Double]? = nil) async {

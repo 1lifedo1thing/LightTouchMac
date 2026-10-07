@@ -6,7 +6,7 @@
 //
 // iPod (n72, base = cs<N>/<page>.page): the emulator stores every guest write where its logical block lives
 // in the generated layout (ipod_touch_fmss.c fmss_generated_layout, ftlmap.predict), so the volume is
-// dumpvol.py with overlay/cs<N>/<page>.page over the base and blk<B>.erased markers (written and honoured
+// dumpvol.py with overlay/cs<N>/<page>.page over the base and blk<B>.erased markers (written and honored
 // only under FMSS_ERASE) reading as blank.
 // One volume, "system" (the generated image keeps /private/var on it).
 //

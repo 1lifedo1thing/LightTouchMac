@@ -5,7 +5,7 @@ Builds an AAC M4A (afconvert, tagged by ffmpeg with iTunes atoms and a PNG cover
 (ffmpeg-encoded, with an iTunes-style ID3v2.3 tag: TCMP, TPE2, a JPEG APIC and an ID3v1-number genre), plus ID3-tagged ADTS AAC that must be converted without losing tags, runs the production
 MediaSong.prepare on each, then the guest's own itmedia mapping (qemu-ios contrib/it-media/itmedia.c built with
 -DITMEDIA_HOST_CHECK) on what AFC would stage. Checks the properties itmedia hands 7E18 MusicLibrary's
-insertItemFromPurchaseFolder, the year it writes, and the cover it hands ArtworkCache for the native library's artwork ID: each field's value, and the decoded art's size and four quadrant colours.
+insertItemFromPurchaseFolder, the year it writes, and the cover it hands ArtworkCache for the native library's artwork ID: each field's value, and the decoded art's size and four quadrant colors.
 A tag or the art dropped anywhere on the host or in the guest's mapping fails here; MusicLibrary itself
 is the booted check (tests/sessions/check-media-metadata-guest.py).
 """
@@ -51,8 +51,8 @@ with tempfile.TemporaryDirectory(prefix='ltm-media-metadata-') as work:
     subprocess.run(['xcrun', 'clang', '-DITMEDIA_HOST_CHECK', '-o', str(mapping), str(itmedia)], check=True)
     cover = Image.new('RGB', (1000, 1000))
     draw = ImageDraw.Draw(cover)
-    for (x, y), colour in QUADRANTS:
-        draw.rectangle((int((x-0.25)*1000), int((y-0.25)*1000), int((x+0.25)*1000)-1, int((y+0.25)*1000)-1), fill=colour)
+    for (x, y), color in QUADRANTS:
+        draw.rectangle((int((x-0.25)*1000), int((y-0.25)*1000), int((x+0.25)*1000)-1, int((y+0.25)*1000)-1), fill=color)
     cover.save(work/'cover.png'); cover.save(work/'cover.jpg', quality=95)
     with wave.open(str(work/'tone.wav'), 'wb') as w:
         w.setnchannels(2); w.setsampwidth(2); w.setframerate(44100)
@@ -123,10 +123,10 @@ with tempfile.TemporaryDirectory(prefix='ltm-media-metadata-') as work:
             if image.format != 'JPEG' or image.info.get('progressive') or image.size != (640, 640):
                 failures.append(f'{name}: artwork is {image.format} {image.size} progressive={image.info.get("progressive")}')
             rgb = image.convert('RGB')
-            for (x, y), colour in QUADRANTS:
+            for (x, y), color in QUADRANTS:
                 actual = rgb.getpixel((int(x*image.width), int(y*image.height)))
-                if any(abs(a-b) > 12 for a, b in zip(actual, colour)):
-                    failures.append(f'{name}: artwork pixel at {(x, y)} is {actual}, expected {colour}')
+                if any(abs(a-b) > 12 for a, b in zip(actual, color)):
+                    failures.append(f'{name}: artwork pixel at {(x, y)} is {actual}, expected {color}')
     other_out = work/'Other.aac.out'
     other_out.mkdir()
     other = subprocess.run([str(executable), str(work/'Other.aac'), str(other_out)],

@@ -93,7 +93,7 @@ struct AppsInspectorRowsTests {
         guard case .result("Install", false) = rows.catalogRow(for: app) else { Issue.record("device not ready"); return }
         rows.device.canQueueInstall = true
         guard case .result("Install", false) = rows.catalogRow(for: Apps.store(2, "new", unavailable: true)) else {
-            Issue.record("the server's verdict greys it"); return
+            Issue.record("the server's verdict grays it"); return
         }
 
         let downloading = Apps.job(bundleID: "test", catalog: 1, progress: 0.5)

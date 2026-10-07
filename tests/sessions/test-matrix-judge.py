@@ -13,7 +13,7 @@ gaps the 2026-09-29 audit found are now caught:
   - (matrix-holes) a lock-screen home shot and an agent that never answers FAIL `home`; with no
     agent (2.x/3.0) the frontmost is reported unknown; a dim-backlight capture of the reference
     picture passes (framecheck exposure) while a flipped one still fails;
-  - (matrix-load) a boot that hits a deadline is labelled "slow" when its serial log was written just before the
+  - (matrix-load) a boot that hits a deadline is labeled "slow" when its serial log was written just before the
     deadline and "stuck" when it had been silent, stays a FAIL either way, and the md shows the label and the load.
 """
 import importlib.util, json, os, sys, tempfile, time

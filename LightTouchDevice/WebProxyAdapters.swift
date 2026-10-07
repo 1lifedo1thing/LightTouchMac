@@ -64,7 +64,7 @@ enum WebProxyAdapters {
     /// request u16 version=1, three u16-length strings (locale, app id, OS build), u32 type=1, u32 length,
     /// ALSLocationRequest { 2: ALSWirelessAP { 1: macID } }; response u16 1, u32 type, u32 length,
     /// ALSLocationResponse { 2: ALSWirelessAP { 1: macID, 2: ALSLocation { 1: lat, 2: lon, 3: accuracy } } },
-    /// degrees as int64 x 1e8, accuracy in metres. nil: not a location request; 400: malformed.
+    /// degrees as int64 x 1e8, accuracy in meters. nil: not a location request; 400: malformed.
     static func location(target: String, method: String, body: Data, position: (Double, Double, Double)) -> (status: Int, body: Data)? {
         var path = Substring(target)
         if let scheme = target.range(of: "://") {

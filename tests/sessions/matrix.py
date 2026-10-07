@@ -51,7 +51,7 @@ fspec.loader.exec_module(framecheck)
 MATRIX_REFS = ROOT / "tests/sessions/matrix-refs"   # per-entry known-good home pictures, if committed
 HOME_FLOOR = 0.05   # a home screenshot below this luma is a slept/black panel (audit finding 3)
 SPRINGBOARD = "com.apple.springboard"
-# A deadline failure is labelled for triage (still a FAIL): "slow" if the serial log was written within this many
+# A deadline failure is labeled for triage (still a FAIL): "slow" if the serial log was written within this many
 # seconds of the deadline, else "stuck". A loaded host slows 5.x several-fold (09-30: 9B206 lit at 196 s under
 # load 55-160 against 45 s idle, on the tip and on the known-good pin alike) and still logs as it goes.
 SERIAL_QUIET_S = 60
@@ -528,7 +528,7 @@ path (hardware GL vs a software-composited fallback), any refusals, and the fram
 skips. Shutdown judges boot 2's clean power-off as well as boot 1. Helpers: what the prepare baked answers at boot (the
 agent names the frontmost app; on the iPad it_ethlink and it_prefs report on the console), per the lock's seed and fit
 checks; a loader baked with a package that never reports fails Package. Load is the host's 1-minute load average
-(uptime) at the row's start and end (all three averages in the JSON). A boot that hits a deadline stays a FAIL, labelled
+(uptime) at the row's start and end (all three averages in the JSON). A boot that hits a deadline stays a FAIL, labeled
 for triage: "slow" if the serial log was still being written in the last {SERIAL_QUIET_S} s before the deadline, else "stuck". Last write {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}.
 
 | Entry | iOS | Load | Keys | Prepare | Lit | Home | Lockdown | Activation | AFC | Install | Package | Helpers | GL | Persist | Shutdown | Restore | First failure |

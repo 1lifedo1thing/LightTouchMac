@@ -206,7 +206,7 @@ final class DisplayView: NSView {
         // downwards in portrait would fall sideways once the shell rotates.
         //
         // ponytail: no shadowPath, so Core Animation derives the shape from the
-        // artwork's alpha — correct for a rounded, bevelled device by
+        // artwork's alpha — correct for a rounded, beveled device by
         // construction. The layer's contents never change, so it renders once;
         // give it a rounded-rect path if it ever shows up in a profile.
         shellLayer.shadowColor = NSColor.black.cgColor
@@ -297,7 +297,7 @@ final class DisplayView: NSView {
         shellLayer.removeAnimation(forKey: "modelPresentation")
         shellLayer.contents = bare ? nil : NSImage(named: profile.shellImageName)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
         shellLayer.shadowOpacity = bare ? 0 : 0.4
-        // Bare, the transform turns and scales about the screen's centre, which layout() puts at the pane's.
+        // Bare, the transform turns and scales about the screen's center, which layout() puts at the pane's.
         shellLayer.anchorPoint = bare
             ? CGPoint(x: screenCutout.midX / shellPixels.width, y: screenCutout.midY / shellPixels.height)
             : CGPoint(x: 0.5, y: 0.5)
@@ -525,7 +525,7 @@ final class DisplayView: NSView {
         }
         appliedScale = scale
         contentLayer.magnificationFilter = Self.contentsFilter(pixelMultiple)
-        // Centre on the SAFE area, not the raw bounds: with .fullSizeContentView
+        // Center on the SAFE area, not the raw bounds: with .fullSizeContentView
         // the pane runs behind the toolbar, so centring on bounds would push the
         // device up under it. The gradient still fills the whole pane, which is
         // the point — only the device is inset.
@@ -536,7 +536,7 @@ final class DisplayView: NSView {
         let angle = (motionRestAngle ?? rest) + tiltAngle
 
         // The home button is an NSView, so it can't ride the shell's transform;
-        // project its shell-native centre through the same rotation by hand.
+        // project its shell-native center through the same rotation by hand.
         // NOTE: in this flipped (y-down) view the standard rotation matrix
         // turns a point visually clockwise for a positive angle — the SAME
         // visual direction a positive angle gives the layer transform here
@@ -655,7 +655,7 @@ final class DisplayView: NSView {
     // corner (nothing else: not the window, the sidebar or the inspector) stretches the current frame to the new
     // size live, with a W × H status snapped to what the board's panel= accepts. Zoom only draws it bigger or
     // smaller: Nx is N points per guest pixel, Fit scales the panel into the pane, Physical gives a guest pixel the
-    // shipped panel's physical pitch. Like the shipped screen's, a screen bigger than the pane is clipped, centred. A second after the drag ends the size is recorded and, if it changed, the
+    // shipped panel's physical pitch. Like the shipped screen's, a screen bigger than the pane is clipped, centered. A second after the drag ends the size is recorded and, if it changed, the
     // device restarts at it (Stop's hard halt, then a fresh helper): UIKit takes the panel's size at boot only.
     // The squished frame stays up, through the next session's view (`handoffs`), until the new boot's first frame.
 
@@ -741,10 +741,10 @@ final class DisplayView: NSView {
             screenCutout = profile.screenCutout
             return
         }
-        // One shell unit per guest pixel, centred where the shipped screen sits.
+        // One shell unit per guest pixel, centered where the shipped screen sits.
         nativeScreenPixels = size
-        let centre = CGPoint(x: profile.screenCutout.midX, y: profile.screenCutout.midY)
-        screenCutout = CGRect(x: centre.x - size.width / 2, y: centre.y - size.height / 2, width: size.width, height: size.height)
+        let center = CGPoint(x: profile.screenCutout.midX, y: profile.screenCutout.midY)
+        screenCutout = CGRect(x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height)
     }
 
     /// Upright ⇄ as seen: the device's quarter-turns swap the sides.
@@ -782,7 +782,7 @@ final class DisplayView: NSView {
             panelDrag = (p, edges, onScreen(freeFormTarget ?? profile.uprightScreenPixels))
         case .leftMouseDragged:
             guard let drag = panelDrag, let scale = dragScale else { return false }
-            // The screen stays centred: an edge moves half the size change, so the size changes twice the pointer's.
+            // The screen stays centered: an edge moves half the size change, so the size changes twice the pointer's.
             updatePanelTarget(onScreen: CGSize(width: drag.size.width + 2 * (p.x - drag.origin.x) * drag.edges.dx / scale,
                                                height: drag.size.height + 2 * (p.y - drag.origin.y) * drag.edges.dy / scale))
             needsLayout = true
@@ -893,7 +893,7 @@ final class DisplayView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         // The helper forces the alpha byte opaque (FrameRingWriter.copy): iBoot
-        // and the iPod's framebuffer leave it 0, which a layer would honour.
+        // and the iPod's framebuffer leave it 0, which a layer would honor.
         contentLayer.contents = frame.surface
         if let model = modelView ?? pendingModelView, let image = Self.image(frame.surface, colorSpace: colorSpace) {
             model.updateFrame(image)
@@ -1092,7 +1092,7 @@ final class DisplayView: NSView {
 
     // MARK: - Touch input
 
-    /// Normalise a point to 0…1 over the panel content. The content layer sits
+    /// Normalize a point to 0…1 over the panel content. The content layer sits
     /// inside the shell's scale+rotation transform, so convert through the
     /// layer tree rather than reading a frame. Returns nil for clicks outside
     /// it. (The emulator un-rotates touches itself — ipod_touch_lcd_map_touch —
@@ -1240,7 +1240,7 @@ final class DisplayView: NSView {
 
     /// Over the panel, a two-finger scroll IS a finger dragging the content:
     /// begin a touch where the cursor is and move it with the fingers, through
-    /// momentum too, so a flick keeps travelling and iOS's own inertia takes
+    /// momentum too, so a flick keeps traveling and iOS's own inertia takes
     /// over naturally. A two-finger swipe is the same stream at speed, so it
     /// needs no separate case.
     ///
@@ -1615,7 +1615,7 @@ final class DisplayView: NSView {
 
     private func send(_ phase: Int32, _ nx: Double, _ ny: Double) {
         sendVisualTouch(0, phase, nx, ny)
-        // Option: second finger mirrored through the panel centre (pinch).
+        // Option: second finger mirrored through the panel center (pinch).
         // Option-Shift: second finger at a locked offset (two-finger pan).
         let p = CGPoint(x: nx, y: ny)
         guard let q = touchPair.secondFinger(for: p, []) else { return }
@@ -1766,7 +1766,7 @@ final class DisplayView: NSView {
     private func dropOperation(_ sender: NSDraggingInfo) -> NSDragOperation {
         // Refuse at the drag system, not with an alert per file. During the boot
         // the menu and toolbar items for this same operation are correctly
-        // greyed out, but the drop still showed the green copy badge, accepted,
+        // grayed out, but the drop still showed the green copy badge, accepted,
         // and then queued one "The device isn't ready yet" sheet per .ipa to be
         // dismissed one at a time.
         // An IPSW is for the library, not this device: any time, from outside.

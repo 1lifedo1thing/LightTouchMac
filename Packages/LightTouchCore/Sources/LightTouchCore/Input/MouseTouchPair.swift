@@ -1,7 +1,7 @@
 import CoreGraphics
 
 /// Xcode Simulator's two fingers from one mouse. Option adds a second finger
-/// mirrored through the panel centre, so a drag pinches or rotates. Adding
+/// mirrored through the panel center, so a drag pinches or rotates. Adding
 /// Shift locks the pair's spacing where it is, and a drag then moves both
 /// fingers together: a two-finger pan. Points are 0…1 panel space.
 public struct MouseTouchPair {

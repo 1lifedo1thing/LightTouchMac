@@ -1,7 +1,7 @@
 // Created by Sam on 2026-08-05.
 //
 // Hosts the device screen in the window's main column. The DisplayView is the
-// main content; it centres its content and becomes first responder so
+// main content; it centers its content and becomes first responder so
 // keyboard passthrough works whenever the device area has focus.
 
 import LightTouchCore
@@ -86,7 +86,7 @@ final class DeviceViewController: NSViewController {
     /// A drop used to bypass all of them, so an .ipa dropped during the ~40s
     /// boot (or with app sync off) was accepted, put a spinner in a sidebar
     /// that wasn't even polling, and failed a moment later with a modal —
-    /// while the button for the identical operation sat greyed out.
+    /// while the button for the identical operation sat grayed out.
     func installDropped(_ url: URL) {
         // Deliberately NOT gated on isInstalling: AppInstaller queues each job
         // when their bytes are ready, so dropping another IPA is supported.

@@ -251,7 +251,7 @@ Thread.detachNewThread {
         case "wait": usleep(UInt32(Double(p[1])! * 1e6))
         case "dump": send(["op": "dump", "name": p[1]]); usleep(300_000)
         case "button": q.button(Int32(p[1])!, true); usleep(150_000); q.button(Int32(p[1])!, false)
-        case "drag":   // drag x0 y0 x1 y1 (normalised)
+        case "drag":   // drag x0 y0 x1 y1 (normalized)
             let v = p[1...4].map { Double($0)! }
             q.touch(0, 0, v[0], v[1]); usleep(150_000)
             for i in 1...30 { q.touch(0, 1, v[0] + (v[2] - v[0]) * Double(i) / 30, v[1] + (v[3] - v[1]) * Double(i) / 30); usleep(30_000) }

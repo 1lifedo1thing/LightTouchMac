@@ -194,7 +194,7 @@ public enum SystemEdits {
             let legacy = fw.precedent[MachO32.lcDyldInfoOnly] == nil
             let pick = { (n: String) in legacy ? Helpers.legacy(n) : n }
             if legacy { log("this dyld predates LC_DYLD_INFO_ONLY: the legacy-linked helpers and AppSync") }
-            // it_msmquiet only where the mounter raises the notice it recognises; else left out, job untouched
+            // it_msmquiet only where the mounter raises the notice it recognizes; else left out, job untouched
             // (3.1.x has no storage_mounter job at all)
             let msm = Helpers.tools[3]
             var quietJobs: [(String, String)] = []
@@ -299,7 +299,7 @@ public enum SystemEdits {
         if o.webProxy { try seedPlist(sc.appendingPathComponent("preferences.plist"), wifiProxyPrefs) }
         if o.dated {   // timed's own domain (it runs as mobile)
             try seedPlist(skeleton.appendingPathComponent("mobile/Library/Preferences/com.apple.timed.plist")) { d in
-                // Settings' "Set Automatically" (6.x's key; 7.x's). timed honours it only once the clock has been set
+                // Settings' "Set Automatically" (6.x's key; 7.x's). timed honors it only once the clock has been set
                 // (its cache's TMSystemTimeSet): a fresh unit takes NTP whatever the switch says.
                 d["TMAutomaticTimeEnabled"] = false
                 d["TMAutomaticTimeOnlyEnabled"] = false

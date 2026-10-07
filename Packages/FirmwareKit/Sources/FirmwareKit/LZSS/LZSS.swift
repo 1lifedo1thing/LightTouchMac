@@ -4,7 +4,7 @@
 //   LZSS.decompress(bytes, windowFill: 0x20)    // raw LZSS stream
 //   try LZSS.complzss(payload)                  // "complzss" header; length and Adler-32 checked
 //   Adler32.checksum(data)
-//   try BootLogo.segments(iBootIm: blob, framebufferPA: KBoot.vramPA)   // [KBoot.Segment], centred on black
+//   try BootLogo.segments(iBootIm: blob, framebufferPA: KBoot.vramPA)   // [KBoot.Segment], centered on black
 
 import Foundation
 
@@ -71,9 +71,9 @@ public enum Adler32 {
 }
 
 public enum BootLogo {
-    /// Framebuffer segments that put an iBootIm logo where iBoot puts it: centred on black.
+    /// Framebuffer segments that put an iBootIm logo where iBoot puts it: centered on black.
     ///
-    /// iBootIm: "iBootIm\0", adler32, "lzss", format tag (only "grey": grey + inverted alpha, composited
+    /// iBootIm: "iBootIm\0", adler32, "lzss", format tag (only "grey": gray + inverted alpha, composited
     /// over black), u16 width, height; LZSS data at 0x40. On a landscape panel (`turn`, K48) the portrait UI
     /// arrives turned a quarter counter-clockwise into it (its top along the panel's left edge; the app turns
     /// the panel a quarter clockwise to stand it up), so the logo is turned the same way.
@@ -94,8 +94,8 @@ public enum BootLogo {
         var rows = [UInt8](repeating: 0, count: stride * lh)
         for ly in 0..<h {
             for lx in 0..<w {
-                let grey = UInt32(px[(ly * w + lx) * 2]), clear = UInt32(px[(ly * w + lx) * 2 + 1])
-                let v = grey * (255 - clear) / 255, pixel = 0xFF00_0000 | v * 0x010101
+                let gray = UInt32(px[(ly * w + lx) * 2]), clear = UInt32(px[(ly * w + lx) * 2 + 1])
+                let v = gray * (255 - clear) / 255, pixel = 0xFF00_0000 | v * 0x010101
                 let at = turn ? (w - 1 - lx) * stride + (x0 + ly) * 4 : ly * stride + (x0 + lx) * 4
                 rows[at] = UInt8(pixel & 0xFF); rows[at + 1] = UInt8(pixel >> 8 & 0xFF)
                 rows[at + 2] = UInt8(pixel >> 16 & 0xFF); rows[at + 3] = 0xFF

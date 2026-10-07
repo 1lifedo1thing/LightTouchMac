@@ -10,7 +10,7 @@ import Subprocess
 import System
 
 extension DeviceServices {
-    /// Complete activation acknowledgement and an old iPod's first host connection.
+    /// Complete activation acknowledgment and an old iPod's first host connection.
     /// Uses the guest protocol, independently of the clock and timezone preferences.
     public func finishActivation() async throws {
         guard let tool = Self.servicesHelper else { throw DeviceToolsError.toolMissing("LightTouchServices") }

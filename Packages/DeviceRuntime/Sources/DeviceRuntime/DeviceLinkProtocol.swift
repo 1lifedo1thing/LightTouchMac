@@ -44,7 +44,7 @@ nonisolated public enum MachineOp: String, Codable, Sendable {
 }
 
 nonisolated public enum LinkCommand: Codable, Sendable, Equatable {
-    /// qemu_ios_ui_touch; phase is QEMU_IOS_TOUCH_*; x, y normalised, y down.
+    /// qemu_ios_ui_touch; phase is QEMU_IOS_TOUCH_*; x, y normalized, y down.
     case touch(slot: Int, phase: Int, x: Double, y: Double)
     case touch2(phase: Int, x: Double, y: Double)
     /// QEMU_IOS_BUTTON_*.

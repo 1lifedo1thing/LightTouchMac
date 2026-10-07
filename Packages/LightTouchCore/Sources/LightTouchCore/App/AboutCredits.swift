@@ -2,13 +2,13 @@ import Foundation
 
 /// About Light Touch's credits: the bundled components with their versions (build-inputs.json `components`, written
 /// by scripts/vendor; a development build has none), the open-source projects it includes, each linked to its site
-/// with its licence, and a link that opens the Licenses window (`licensesLink`). The app styles the runs (AboutPanel).
+/// with its license, and a link that opens the Licenses window (`licensesLink`). The app styles the runs (AboutPanel).
 public enum AboutCredits {
     public struct Run: Equatable {
         public var text: String
         public var isHeading = false
         public var link: URL?
-        /// Secondary text (a project's licence).
+        /// Secondary text (a project's license).
         public var isDetail = false
     }
 
@@ -16,7 +16,7 @@ public enum AboutCredits {
     public struct Project: Equatable, Sendable {
         public let name: String
         public let site: URL
-        public let licence: String
+        public let license: String
         public let directory: String
     }
 
@@ -70,7 +70,7 @@ public enum AboutCredits {
         out.append(Run(text: "Open-Source Software\n", isHeading: true))
         for project in projects {
             out.append(Run(text: project.name, link: project.site))
-            out.append(Run(text: "\t\(project.licence)\n", isDetail: true))
+            out.append(Run(text: "\t\(project.license)\n", isDetail: true))
         }
         if licenses { out.append(Run(text: "\nShow Licenses", link: licensesLink)) }
         return out
@@ -83,11 +83,11 @@ public enum AboutCredits {
         public var id: String { directory }
         public let name: String
         public let directory: String
-        /// Each licence or source note, under its file name.
+        /// Each license or source note, under its file name.
         public let text: String
     }
 
-    /// Every folder of `root` (licenses/, and each package of licenses/swift) with its licences and source notes,
+    /// Every folder of `root` (licenses/, and each package of licenses/swift) with its licenses and source notes,
     /// named after the projects it covers; the patches, scripts and sources beside them are left out.
     public static func licenses(in root: URL) -> [License] {
         let fm = FileManager.default
@@ -117,7 +117,7 @@ public enum AboutCredits {
 }
 
 private extension AboutCredits.Project {
-    init(_ name: String, _ site: String, _ licence: String, _ directory: String) {
-        self.init(name: name, site: URL(string: site)!, licence: licence, directory: directory)
+    init(_ name: String, _ site: String, _ license: String, _ directory: String) {
+        self.init(name: name, site: URL(string: site)!, license: license, directory: directory)
     }
 }

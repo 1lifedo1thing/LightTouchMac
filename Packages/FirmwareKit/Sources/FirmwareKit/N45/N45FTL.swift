@@ -1,5 +1,5 @@
 // N45FTL: the 1.x legacy FTL read back from a page store (N45NAND's bank<N>/<page>.page base plus the emulator's
-// overlay of the same layout, blk<N>.erased markers honoured), as the guest left it. The FTL's context is
+// overlay of the same layout, blk<N>.erased markers honored), as the guest left it. The FTL's context is
 // openiBoot's s5l8900 FTLCxt (the structure N45NAND.ftlMeta writes): the map's four 0x46 pages listed at +0x38,
 // the log-offset pages at +0x110, the log table at +0x1A4 (20-byte entries: usn, vbn, lbn), the context blocks at
 // +0x312. The context moves: the FTL takes new context blocks from its free pool (a booted M68 had it in

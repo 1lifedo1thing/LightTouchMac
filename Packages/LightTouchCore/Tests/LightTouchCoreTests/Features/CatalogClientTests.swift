@@ -164,7 +164,7 @@ extension SharedState {
                 do { _ = try await CatalogClient.search("", device: "iPhone9,9", os: "4.0"); Issue.record("an unknown device was served") }
                 catch CatalogError.unsupportedDevice {}
 
-                // iPod touch 2G: Enigmo 3.3-H's armv6 slice is ARMv7 code, greyed with the reason; the other three run.
+                // iPod touch 2G: Enigmo 3.3-H's armv6 slice is ARMv7 code, grayed with the reason; the other three run.
                 let ipod2 = try await CatalogClient.search("enigmo", device: "iPod2,1", os: "3.1.3")
                 #expect(names(ipod2) == ["Enigmo": "Needs a newer processor", "Enigmo 2": nil, "Enigmo!": nil, "Enigmous": nil])
                 #expect(ipod2[0].subtitle == "Needs a newer processor" && ipod2[1].subtitle.hasPrefix("Pangea Software"))

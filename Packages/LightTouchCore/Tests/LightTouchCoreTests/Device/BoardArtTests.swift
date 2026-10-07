@@ -7,7 +7,7 @@ import Testing
 
 private let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../../..").standardizedFileURL
 
-/// An asset's pixels, decoded as 8-bit RGBA in the image's own colour space (no conversion).
+/// An asset's pixels, decoded as 8-bit RGBA in the image's own color space (no conversion).
 private struct Pixels {
     let width: Int, height: Int
     private let bytes: [UInt8]

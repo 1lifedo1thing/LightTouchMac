@@ -148,7 +148,7 @@ struct SharedCacheTests {
 
     /// Must refuse: when the symbol's first word is not a Thumb function entry (here clobbered to data), the
     /// patch throws rather than scribble on the wrong bytes — the guard that lets 5.x through must still
-    /// reject a cache whose entry it cannot recognise.
+    /// reject a cache whose entry it cannot recognize.
     @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run")) func refusesNonEntry() throws {
         guard Fixtures.hasRootfs("9B206") else { try FixtureRequirements.missing(#"SharedCacheTests.swift: Fixtures.hasRootfs("9B206")"#) }
         let dir = try Fixtures.tempDir("dsc-refuse")

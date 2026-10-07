@@ -17,7 +17,7 @@ public nonisolated struct CatalogCopy: Decodable, Sendable {
         public let macho_min_os: String?
         public let device_family_macho: [String]?
         /// API 2.1: the armv6 slice's instructions are really ARMv7 (a
-        /// cracked release that relabelled its armv7 slice); nil = not scanned.
+        /// cracked release that relabeled its armv7 slice); nil = not scanned.
         public let armv7_code: Bool?
 
         public enum CodingKeys: String, CodingKey { case install_status, architectures, macho_min_os, device_family_macho, armv7_code }

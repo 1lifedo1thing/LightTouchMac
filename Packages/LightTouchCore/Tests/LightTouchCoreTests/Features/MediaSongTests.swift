@@ -5,7 +5,7 @@ import Testing
 
 /// Song preparation (MediaSong): the staged copy is the source's bytes with its duration and one identity, raw ADTS
 /// AAC becomes an M4A whose identity survives a second conversion, malformed audio is refused and cancellation
-/// honoured. The sources are six seconds each: AAC and Apple Lossless M4A, PCM WAV and silent MP3.
+/// honored. The sources are six seconds each: AAC and Apple Lossless M4A, PCM WAV and silent MP3.
 struct MediaSongTests {
     static func write(_ name: String, to url: URL) throws {
         switch name {

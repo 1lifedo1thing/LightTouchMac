@@ -39,7 +39,7 @@ use as the stable ones. Turn on **Show experimental** in the Add Device sheet to
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Licence and credits
+## License and credits
 
 Light Touch is free software under the GNU General Public License, version 2 or (at your option) any
 later version; see [LICENSE](LICENSE).
@@ -52,7 +52,7 @@ It stands on a lot of other work:
   [usbmuxd fork](https://github.com/samhenrigold/usbmuxd) for talking to the devices.
 - iBoot32Patcher, FFmpeg, GLib, libslirp, PCRE2, pixman, OpenSSL, and Unrar.swift with RARLAB's UnRAR.
 
-Each bundled component's licence (and, for GPL and LGPL components, where to get its source) is in
+Each bundled component's license (and, for GPL and LGPL components, where to get its source) is in
 the app under `Contents/Resources/licenses` and in **About Light Touch**.
 
 iPhone, iPod touch and iPad are trademarks of Apple Inc. Light Touch is not affiliated with Apple.

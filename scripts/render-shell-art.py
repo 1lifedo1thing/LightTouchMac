@@ -27,7 +27,7 @@ import Metal
   model.frame = NSRect(origin: .zero, size: size)
   // Scale 0.5 at 2x: one output pixel per shell pixel.
   model.pose(scale: 0.5, rotation: 0, roll: 0, pitch: 0, animated: false)
-  // The 2G shell's palette (a product photo): near-black glass (8, 7, 8) and a dark blue-grey LCD
+  // The 2G shell's palette (a product photo): near-black glass (8, 7, 8) and a dark blue-gray LCD
   // (14, 18, 22), so the two iPods read as siblings; the rim and Home keep the model's own lighting.
   let screen = CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
     space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!

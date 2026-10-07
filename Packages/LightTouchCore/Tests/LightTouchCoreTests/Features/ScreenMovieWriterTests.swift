@@ -174,11 +174,11 @@ struct ScreenMovieWriterTests {
             for seconds in [0.5, 2.5] {
                 let frame = try await movie.frame(at: seconds)
                 let turned = mode == .landscape || ((mode == .rotated || mode == .canvas) && seconds > 1.5)
-                let colour = turned ? Self.blue : Self.orange
-                #expect(near(frame.rgb(frame.width / 2, frame.height / 2), colour), "\(mode) at \(seconds) s: \(frame.rgb(frame.width / 2, frame.height / 2))")
+                let color = turned ? Self.blue : Self.orange
+                #expect(near(frame.rgb(frame.width / 2, frame.height / 2), color), "\(mode) at \(seconds) s: \(frame.rgb(frame.width / 2, frame.height / 2))")
                 switch mode {
                 case .portrait, .landscape:   // native crop reaches every corner: no padding, no scaling
-                    #expect(near(frame.rgb(4, 4), colour) && near(frame.rgb(frame.width - 5, frame.height - 5), colour))
+                    #expect(near(frame.rgb(4, 4), color) && near(frame.rgb(frame.width - 5, frame.height - 5), color))
                 case .canvas:
                     #expect(near(frame.rgb(4, 4), Self.blue), "canvas lost its background")
                 case .rotated:

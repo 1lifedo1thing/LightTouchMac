@@ -40,7 +40,7 @@ public struct UnitIdentity: Equatable, Sendable {
     public var udid: String? { self["udid"] }
 
     static let serialChars = Array("0123456789ABCDEFGHJKLMNPQRSTUVWXYZ")   // no I or O, as Apple serials
-    /// Wi-Fi iPad 1 model numbers by storage (the only NAND geometry modelled is 16 GB).
+    /// Wi-Fi iPad 1 model numbers by storage (the only NAND geometry modeled is 16 GB).
     public static let iPadModels = ["16g": "MB292"]
     public static let iPadRegion = "LL/A"
 

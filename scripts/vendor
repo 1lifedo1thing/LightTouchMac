@@ -349,7 +349,7 @@ def resources(vendor, work, universal, qemu, guest_root, manifest, developer, ch
         shutil.copyfile(patcher / name, licenses / 'iBoot32Patcher' / name)
     for package in sorted(checkouts.iterdir()):
         texts = [p for p in package.iterdir() if p.is_file() and p.name.upper().startswith(('LICENSE', 'LICENCE', 'COPYING', 'NOTICE'))]
-        unrar = package / 'Sources/Cunrar/license.txt'   # RARLAB's UnRAR licence travels with its source
+        unrar = package / 'Sources/Cunrar/license.txt'   # RARLAB's UnRAR license travels with its source
         (licenses / 'swift' / package.name).mkdir(parents=True, exist_ok=True)
         for text in texts:
             shutil.copyfile(text, licenses / 'swift' / package.name / text.name)

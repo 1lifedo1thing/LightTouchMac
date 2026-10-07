@@ -3,7 +3,7 @@
 rotation and zoom still work on it. Windows are built but never ordered in; nothing appears on screen.
 
 Bezels Off (DisplayView.bezel, persisted; the old showsDeviceBezel=false carries over): no 3D model is loaded or shown, the flat shell draws nothing and
-casts no shadow, there is no Home button, and the LCD alone fills the pane (inset) at its centre, in portrait and
+casts no shadow, there is no Home button, and the LCD alone fills the pane (inset) at its center, in portrait and
 landscape. A click at a point of the LCD sends that point as a touch in both orientations; a click just off the
 LCD sends nothing and doesn't grab a chassis to tilt. Zoom ▸ 2x shows two display pixels per guest pixel. Turning
 the bezel back on restores the shell art, its shadow and the model; 2D keeps the art and Home button but
@@ -63,11 +63,11 @@ source = prefix + stub + r'''
   check(shell.contents == nil && shell.shadowOpacity == 0 && !shell.isHidden, "bare shell draws nothing, casts no shadow")
   check(home.isHidden, "no Home button bare")
   check(!display.canPerformSpecialTrick, "the special trick is offered with no model")
-  // The LCD's on-screen box, centred, filling the pane less the inset in its long dimension.
+  // The LCD's on-screen box, centered, filling the pane less the inset in its long dimension.
   func box() -> CGRect { lcd.convert(lcd.bounds, to: display.layer!) }
   func fills(_ landscape: Bool) {
    let b = box(), side = 800 - 2 * DisplayView.zoomInset
-   check(abs(b.midX - 400) < 1 && abs(b.midY - 400) < 1, "LCD off centre: \(b)")
+   check(abs(b.midX - 400) < 1 && abs(b.midY - 400) < 1, "LCD off center: \(b)")
    check(landscape ? b.width > b.height : b.height > b.width, "LCD orientation: \(b)")
    check(abs(max(b.width, b.height) - side) < 1 && min(b.width, b.height) < side, "LCD doesn't fill the pane: \(b)")
   }
@@ -108,7 +108,7 @@ source = prefix + stub + r'''
   click(CGPoint(x: 0.5, y: -0.05))
   check(touches.isEmpty && e.attitude.angle == 0, "a click off the LCD touched or tilted: \(touches) \(e.attitude)")
 
-  // Landscape: the surface arrives turned; the LCD stays centred and fills the pane's width.
+  // Landscape: the surface arrives turned; the LCD stays centered and fills the pane's width.
   e.rotationDegrees = 90; frameWidth = 480; frameHeight = 320
   try await settle()
   fills(true)
@@ -164,7 +164,7 @@ source = prefix + stub + r'''
   touchLands(CGPoint(x: 0.5, y: 0.5))
   window.contentView = nil
 
-  // The iPad: its panel is mounted sideways in the shell; bare, the screen still stands upright, centred and fitted.
+  // The iPad: its panel is mounted sideways in the shell; bare, the screen still stands upright, centered and fitted.
   frameWidth = Int32(Board.k48.screenPixels.width); frameHeight = Int32(Board.k48.screenPixels.height)
   let pad = DisplayView(frame: NSRect(x: 0, y: 0, width: 800, height: 800), profile: .k48)
   let padEmulator = EmulatorController(); pad.emulator = padEmulator
@@ -177,7 +177,7 @@ source = prefix + stub + r'''
   check(abs(padBox.midX - 400) < 1 && abs(padBox.midY - 400) < 1 && padBox.height > padBox.width
         && abs(padBox.height - side) < 1, "iPad LCD \(padBox)")
   padWindow.contentView = nil
-  print("PASS: bezel off shows the LCD alone (no model, shell or Home button), centred and filling the pane in both orientations; touches land; 2x zoom; toggles back and persists")
+  print("PASS: bezel off shows the LCD alone (no model, shell or Home button), centered and filling the pane in both orientations; touches land; 2x zoom; toggles back and persists")
  }
 }
 '''
