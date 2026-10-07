@@ -114,8 +114,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func showAbout(_ sender: Any?) { AboutCredits.show() }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
-        // The boards' hardware facts are the emulator's: the bundled helper lists them once, on first use.
+        // The boards' hardware facts are the emulator's: the bundled helper lists them once, here off the main thread.
         Machines.helper = DeviceLink.Configuration.bundledHelper
+        Task.detached { _ = Board.n72.hardware }
         // Keep AppKit's native editing utilities for search fields and panels.
         // Device, Files, Help, and log windows have distinct jobs, not tabs.
         NSWindow.allowsAutomaticWindowTabbing = false
