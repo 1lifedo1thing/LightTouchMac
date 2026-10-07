@@ -1,5 +1,7 @@
 import DeviceRuntime
+import Foundation
 import HostRuntime
+
 // The guest-services scenario (tests/sessions/check-sessions.py --guest): iPods with no
 // SSH, through the app's own GuestServices/GuestAgent (typed agent ops, v1
 // exec fallback), DeviceServices (installs, AFC staging), GuestServices'
@@ -7,8 +9,6 @@ import HostRuntime
 // verdicts, a rollback). Each device: boot with an offer, capabilities, the
 // loader's report and verdict, the component upgrade, an install, a launch,
 // a respring, the time zone, a photo import, and a clean halt.
-
-import Foundation
 
 struct GuestDeviceConfig: Decodable {
     var name: String
@@ -41,13 +41,24 @@ struct GuestConfig: Decodable {
         self.spec = spec
         self.guest = guest
         device = Device(name: spec.name, profile: .n72)
-        device.ipod = .init(nand: spec.nand, nor: spec.nor, iBoot: spec.iBoot, gidBlobs: spec.gidBlobs,
-                            machine: spec.lock.flatMap { url in (try? DeviceLock.read(URL(fileURLWithPath: url)))??.machineOptions(base: URL(fileURLWithPath: url).deletingLastPathComponent()) } ?? [:])
+        device.ipod = .init(
+            nand: spec.nand,
+            nor: spec.nor,
+            iBoot: spec.iBoot,
+            gidBlobs: spec.gidBlobs,
+            machine: spec.lock.flatMap { url in
+                (try? DeviceLock.read(URL(fileURLWithPath: url)))??.machineOptions(
+                    base: URL(fileURLWithPath: url).deletingLastPathComponent()
+                )
+            } ?? [:]
+        )
     }
     var name: String { spec.name }
     var agent: GuestAgent { GuestAgent(link: device.process.link, cache: cache) }
     var status: SharedStatus? { device.process.status }
-    var lock: GuestPackage.LockRecord? { spec.lock.flatMap { GuestPackage.lockRecord((try? DeviceLock.read(URL(fileURLWithPath: $0))) ?? nil) } }
+    var lock: GuestPackage.LockRecord? {
+        spec.lock.flatMap { GuestPackage.lockRecord((try? DeviceLock.read(URL(fileURLWithPath: $0))) ?? nil) }
+    }
     var services: GuestServices { GuestServices(agent: agent, packaged: status?.guestPackage != nil) }
 
     func step<T>(_ what: String, _ body: () async throws -> T) async -> T {
@@ -60,17 +71,31 @@ struct GuestConfig: Decodable {
         try? FileManager.default.createDirectory(at: dir.deletingLastPathComponent(), withIntermediateDirectories: true)
         if record.seed == nil { record.seed = lock?.seed }
         do {
-            let offer = try GuestPackage.compose(itpack: URL(fileURLWithPath: guest.itpack), board: "n72ap", build: "7E18",
-                                                 lock: lock, guest: record, into: dir)
-            emit("offer", ["device": name, "serial": offer?.serial ?? -1, "bundled": offer?.bundled ?? -1,
-                           "text": (try? String(contentsOf: dir.appendingPathComponent("offer"), encoding: .utf8)) ?? ""])
+            let offer = try GuestPackage.compose(
+                itpack: URL(fileURLWithPath: guest.itpack),
+                board: "n72ap",
+                build: "7E18",
+                lock: lock,
+                guest: record,
+                into: dir
+            )
+            emit(
+                "offer",
+                [
+                    "device": name, "serial": offer?.serial ?? -1, "bundled": offer?.bundled ?? -1,
+                    "text": (try? String(contentsOf: dir.appendingPathComponent("offer"), encoding: .utf8)) ?? "",
+                ]
+            )
             return offer == nil ? nil : dir.path
         } catch { fail("\(name) offer: \(error)") }
     }
 
     /// Until the agent claims its channel (a new boot, or an upgraded agent).
     func waitAgent(_ seconds: Double) async {
-        guard await agent.waitAlive(seconds: seconds) else { device.screenshot("\(name)-no-agent"); fail("\(name): the agent never came up") }
+        guard await agent.waitAlive(seconds: seconds) else {
+            device.screenshot("\(name)-no-agent")
+            fail("\(name): the agent never came up")
+        }
     }
 
     /// EmulatorController.startGuestPackageWatch's loop: the report, then a verdict.
@@ -86,9 +111,17 @@ struct GuestConfig: Decodable {
             if healthy { healthySince = healthySince ?? .now } else { healthySince = nil }
             let steady = healthySince.map { ContinuousClock.now - $0 } ?? .zero
             let elapsed = ContinuousClock.now - started
-            if let verdict = GuestPackage.verdict(report: report, healthyFor: steady, elapsed: elapsed, record: record, restored: false) {
+            if let verdict = GuestPackage.verdict(
+                report: report,
+                healthyFor: steady,
+                elapsed: elapsed,
+                record: record,
+                restored: false
+            ) {
                 switch verdict {
-                case .good(let s): record.lastGood = s; record.bad.removeAll { $0 == s }
+                case .good(let s):
+                    record.lastGood = s
+                    record.bad.removeAll { $0 == s }
                 case .bad(let s): record.bad.append(s)
                 default: break
                 }
@@ -99,8 +132,14 @@ struct GuestConfig: Decodable {
     }
 
     func emitVerdict(_ label: String, _ result: (GuestPackageReport?, GuestPackage.Verdict)) {
-        emit("verdict", ["device": name, "label": label, "serial": result.0?.serial ?? -1, "result": result.0.map { Int($0.result) } ?? -99,
-                         "verdict": "\(result.1)", "lastGood": record.lastGood ?? -1, "bad": record.bad])
+        emit(
+            "verdict",
+            [
+                "device": name, "label": label, "serial": result.0?.serial ?? -1,
+                "result": result.0.map { Int($0.result) } ?? -99,
+                "verdict": "\(result.1)", "lastGood": record.lastGood ?? -1, "bad": record.bad,
+            ]
+        )
     }
 
     /// SpringBoard's pid in launchctl's job table (stock /bin/launchctl, spawned).
@@ -124,7 +163,8 @@ struct GuestConfig: Decodable {
     }
 
     func unlock() async {
-        device.process.link.send(.button(0, down: true)); try? await Task.sleep(for: .milliseconds(150))
+        device.process.link.send(.button(0, down: true))
+        try? await Task.sleep(for: .milliseconds(150))
         device.process.link.send(.button(0, down: false))
         try? await Task.sleep(for: .seconds(3))
         for _ in 0..<3 {
@@ -147,7 +187,7 @@ struct GuestConfig: Decodable {
         // P5: the loader's report and this boot's verdict (legacy when there is no loader).
         emitVerdict("boot", await judge(budget: .seconds(90)))
 
-        _ = await waitFrontmost(nil, 45)   // SpringBoard answers
+        _ = await waitFrontmost(nil, 45)  // SpringBoard answers
         emit("agent", ["device": name, "version": caps.version, "packaged": services.packaged])
 
         await unlock()
@@ -166,14 +206,21 @@ struct GuestConfig: Decodable {
         var respun: Int?
         for _ in 0..<45 {
             try? await Task.sleep(for: .seconds(1))
-            if let pid = await springBoardPID(), pid != before, (try? await agent.frontmost()) != nil { respun = pid; break }
+            if let pid = await springBoardPID(), pid != before, (try? await agent.frontmost()) != nil {
+                respun = pid
+                break
+            }
         }
         emit("respring", ["device": name, "before": before ?? -1, "after": respun ?? -1])
 
         // Time zone through the lockdown-tz child process (never an in-process lockdown write).
         let zone = await step("time zone") {
-            try await DeviceServices.setTimeZone(guest.timeZone, keepClock: device.ipod?.machine["rtc-epoch"] != nil,   // a dated device, as the app
-                                                 tool: guest.lockdownTZ, socket: device.mux.clientSocket)
+            try await DeviceServices.setTimeZone(
+                guest.timeZone,
+                keepClock: device.ipod?.machine["rtc-epoch"] != nil,  // a dated device, as the app
+                tool: guest.lockdownTZ,
+                socket: device.mux.clientSocket
+            )
         }
         emit("timezone", ["device": name, "zone": zone])
 
@@ -183,11 +230,21 @@ struct GuestConfig: Decodable {
         await step("photo stage") { try await device.services.stagePhoto(photo) { _ in } }
         let tool = { (name: String) in URL(fileURLWithPath: self.guest.tools[name] ?? "/nonexistent/\(name)") }
         let imported = await step("photo commit") {
-            try await services.commitMedia(id: photo.id, helper: "itphoto",
-                                           localHelper: { tool("itphoto") }, metadata: nil)
+            try await services.commitMedia(
+                id: photo.id,
+                helper: "itphoto",
+                localHelper: { tool("itphoto") },
+                metadata: nil
+            )
         }
         let receipt = (try? await agent.get("/var/mobile/Media/LightTouch/\(photo.id)/.photo-receipt")) ?? nil
-        emit("media", ["device": name, "imported": imported, "receipt": receipt.map { String(decoding: $0, as: UTF8.self) } ?? ""])
+        emit(
+            "media",
+            [
+                "device": name, "imported": imported,
+                "receipt": receipt.map { String(decoding: $0, as: UTF8.self) } ?? "",
+            ]
+        )
         try? FileManager.default.removeItem(at: photo.directory)
 
         // P5 rollback: judge the running package bad (as the app's verdict does), then
@@ -199,7 +256,9 @@ struct GuestConfig: Decodable {
             await halt()
             device.mux.stop()
             device.serial?.removeEndpoints()
-            do { try device.boot(generation: 2, guestPackage: composeOffer()) } catch { fail("\(name) restart: \(error)") }
+            do { try device.boot(generation: 2, guestPackage: composeOffer()) } catch {
+                fail("\(name) restart: \(error)")
+            }
             await waitLit(device, 0.03, 240)
             await waitAgent(180)
             emitVerdict("rollback", await judge(budget: .seconds(90)))
@@ -214,12 +273,19 @@ struct GuestConfig: Decodable {
     func halt() async {
         let halt = Date()
         let submitted = await agent.requestHalt()
-        while Date().timeIntervalSince(halt) < 40, status?.shutdownConfirmed != true { try? await Task.sleep(for: .milliseconds(100)) }
+        while Date().timeIntervalSince(halt) < 40, status?.shutdownConfirmed != true {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
         let confirmed = status?.shutdownConfirmed == true ? Date().timeIntervalSince(halt) : -1
         device.process.terminate()
         let exited = await device.process.waitForExit(timeout: 30)
-        emit("halted", ["device": name, "submitted": submitted, "confirmed": confirmed, "exited": exited,
-                        "reason": device.process.deathReason ?? ""])
+        emit(
+            "halted",
+            [
+                "device": name, "submitted": submitted, "confirmed": confirmed, "exited": exited,
+                "reason": device.process.deathReason ?? "",
+            ]
+        )
     }
 }
 

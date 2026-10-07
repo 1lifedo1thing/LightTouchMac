@@ -24,8 +24,9 @@ public nonisolated struct StorageBootProof: Codable, Sendable, Equatable {
 
     private static func storageBytes(_ data: Data) throws -> Data {
         guard let object = try? DeviceRecord.object(data),
-              let base = object["base"] as? [String: Any], let storage = object["storage"] as? [String: Any],
-              let key = storage["key"] as? String, !key.isEmpty else { throw Failure.malformedRecord }
+            let base = object["base"] as? [String: Any], let storage = object["storage"] as? [String: Any],
+            let key = storage["key"] as? String, !key.isEmpty
+        else { throw Failure.malformedRecord }
         var bound: [String: Any] = ["base": base, "storage": storage]
         for key in ["id", "board", "firmware", "identity"] {
             if let value = object[key] { bound[key] = value }

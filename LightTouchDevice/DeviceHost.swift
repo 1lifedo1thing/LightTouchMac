@@ -1,11 +1,11 @@
 import DeviceRuntime
+import Foundation
 import HostRuntime
+import IOSurface
+
 // One VM in this process: QEMU's thread, the frame/status pump, commands,
 // requests, agent RPC, audio capture and the bounded host halt. Mode-agnostic:
 // main.swift wires it to the app's link, or to the headless/one-shot runners.
-
-import Foundation
-import IOSurface
 
 final class DeviceHost: @unchecked Sendable {
     let qemu: Qemu
@@ -53,10 +53,15 @@ final class DeviceHost: @unchecked Sendable {
     var hasExited: Bool { stateLock.withLock { exited } }
 
     func info(board: String?) -> HelperInfo {
-        HelperInfo(protocolVersion: DeviceLinkWire.protocolVersion, pid: getpid(), dylibPath: qemu.path,
-                   dylibModified: qemu.modified, buildID: qemu.buildID?().map { String(cString: $0) },
-                   deviceInfo: board.flatMap { board in qemu.machines.first { $0.board == board } },
-                   storageProofValidation: true)
+        HelperInfo(
+            protocolVersion: DeviceLinkWire.protocolVersion,
+            pid: getpid(),
+            dylibPath: qemu.path,
+            dylibModified: qemu.modified,
+            buildID: qemu.buildID?().map { String(cString: $0) },
+            deviceInfo: board.flatMap { board in qemu.machines.first { $0.board == board } },
+            storageProofValidation: true
+        )
     }
 
     // MARK: Pump
@@ -69,11 +74,17 @@ final class DeviceHost: @unchecked Sendable {
         let timer = DispatchSource.makeTimerSource(queue: pumpQueue)
         timer.setEventHandler { [weak self] in self?.tick() }
         pump = timer
-        for name in [ProcessInfo.thermalStateDidChangeNotification, Notification.Name.NSProcessInfoPowerStateDidChange] {
-            powerObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: nil) { [weak self] _ in
-                guard let self else { return }
-                self.pumpQueue.async { self.constrained = DeviceHost.hostConstrained(); self.pace() }
-            })
+        for name in [ProcessInfo.thermalStateDidChangeNotification, Notification.Name.NSProcessInfoPowerStateDidChange]
+        {
+            powerObservers.append(
+                NotificationCenter.default.addObserver(forName: name, object: nil, queue: nil) { [weak self] _ in
+                    guard let self else { return }
+                    self.pumpQueue.async {
+                        self.constrained = DeviceHost.hostConstrained()
+                        self.pace()
+                    }
+                }
+            )
         }
         pumpQueue.sync { pace(force: true) }
         timer.resume()
@@ -88,12 +99,18 @@ final class DeviceHost: @unchecked Sendable {
 
     /// The app shows (or stopped showing) this device's screen.
     func setScreenVisible(_ visible: Bool) {
-        pumpQueue.async { [self] in screenVisible = visible; pace() }
+        pumpQueue.async { [self] in
+            screenVisible = visible
+            pace()
+        }
     }
 
     /// Input wakes a dark display: run live at once, so the lit screen's first frames are not 250 ms late.
     private func noteInput() {
-        pumpQueue.async { [self] in lastInput = DispatchTime.now().uptimeNanoseconds; pace() }
+        pumpQueue.async { [self] in
+            lastInput = DispatchTime.now().uptimeNanoseconds
+            pace()
+        }
     }
 
     /// pumpQueue: pick the pump's rate and the process activity for the current state.
@@ -115,7 +132,8 @@ final class DeviceHost: @unchecked Sendable {
         guard activity == nil || live != activityLive else { return }
         let next = ProcessInfo.processInfo.beginActivity(
             options: live ? [.userInitiated, .latencyCritical] : .userInitiatedAllowingIdleSystemSleep,
-            reason: "Running an emulated device (\(machine))")
+            reason: "Running an emulated device (\(machine))"
+        )
         if let activity { ProcessInfo.processInfo.endActivity(activity) }
         activity = next
         activityLive = live
@@ -127,9 +145,13 @@ final class DeviceHost: @unchecked Sendable {
         guard booted else { return }
         if !live || ticks % 3 == 0 { refreshStatus() }
         let on = !qemu.displaySleeping()
-        if on != displayOn || (live && !on) { displayOn = on; pace() }   // the latter: input's 2 s running out
+        if on != displayOn || (live && !on) {
+            displayOn = on
+            pace()
+        }  // the latter: input's 2 s running out
         var pixels: UnsafeRawPointer?
-        var w: Int32 = 0, h: Int32 = 0
+        var w: Int32 = 0
+        var h: Int32 = 0
         var serial = frameSerial
         guard qemu.ready(), qemu.frame(&pixels, &w, &h, &serial), let pixels, w > 0, h > 0 else { return }
         if Int(w) != ring.width || Int(h) != ring.height {
@@ -153,8 +175,9 @@ final class DeviceHost: @unchecked Sendable {
         status[.backlightLevel] = UInt64(bitPattern: Int64(qemu.backlightLevel?() ?? -1))
         status[.agentStatus] = UInt64(max(0, qemu.agentStatus()))
         status[.glesContexts] = UInt64(max(0, qemu.glesContexts()))
-        status[.iconGeneration] = 0 // Retired content-sniffing field; retain shared-status ABI.
-        var serial: Int64 = 0, result: Int32 = 0
+        status[.iconGeneration] = 0  // Retired content-sniffing field; retain shared-status ABI.
+        var serial: Int64 = 0
+        var result: Int32 = 0
         if let report = qemu.guestPackageReport, report(&serial, &result) {
             status[.guestPackage] = UInt64(bitPattern: serial)
             status[.guestPackageState] = UInt64(bitPattern: Int64(result))
@@ -185,9 +208,12 @@ final class DeviceHost: @unchecked Sendable {
         for (k, v) in config.environment { setenv(k, v, 1) }
         if let endpoint = config.webProxy {
             let proxy = WebProxy(config: URL(fileURLWithPath: endpoint.config))
-            proxy.offline = config.wifiRestricted   // Setup offline: the PAC's proxy too, not just slirp
+            proxy.offline = config.wifiRestricted  // Setup offline: the PAC's proxy too, not just slirp
             proxy.localNetwork = config.wifiLocalNetwork
-            do { try proxy.listen(socket: endpoint.socket); webProxy = proxy } catch { helperLog("web proxy: \(error)") }
+            do {
+                try proxy.listen(socket: endpoint.socket)
+                webProxy = proxy
+            } catch { helperLog("web proxy: \(error)") }
         }
         pumpQueue.async { [self] in pace() }
         qemu.attach(nil, nil)
@@ -202,7 +228,12 @@ final class DeviceHost: @unchecked Sendable {
             status[.exitCode] = UInt64(bitPattern: Int64(rc))
             status[.qemuState] = QemuState.exited.rawValue
             stateLock.withLock { exited = true }
-            pumpQueue.async { [self] in if let activity { ProcessInfo.processInfo.endActivity(activity); self.activity = nil } }
+            pumpQueue.async { [self] in
+                if let activity {
+                    ProcessInfo.processInfo.endActivity(activity)
+                    self.activity = nil
+                }
+            }
             DispatchQueue.main.async { [self] in
                 if let onExit { onExit(rc) } else { exit(rc) }
             }
@@ -219,32 +250,43 @@ final class DeviceHost: @unchecked Sendable {
 
     func perform(_ command: LinkCommand) {
         switch command {
-        case let .touch(slot, phase, x, y): noteInput(); qemu.touch(Int32(slot), Int32(phase), x, y)
-        case let .touch2(phase, x, y): noteInput(); qemu.touch2(Int32(phase), x, y)
-        case let .button(button, down): noteInput(); qemu.button(Int32(button), down)
-        case let .key(code, down): noteInput(); qemu.keyMac(Int32(code), down)
-        case let .screenVisible(visible): setScreenVisible(visible)
-        case let .rotate(clockwise): qemu.rotate(clockwise)
+        case .touch(let slot, let phase, let x, let y):
+            noteInput()
+            qemu.touch(Int32(slot), Int32(phase), x, y)
+        case .touch2(let phase, let x, let y):
+            noteInput()
+            qemu.touch2(Int32(phase), x, y)
+        case .button(let button, let down):
+            noteInput()
+            qemu.button(Int32(button), down)
+        case .key(let code, let down):
+            noteInput()
+            qemu.keyMac(Int32(code), down)
+        case .screenVisible(let visible): setScreenVisible(visible)
+        case .rotate(let clockwise): qemu.rotate(clockwise)
         case .shake: qemu.shake()
-        case let .attitude(pitch, roll, pose): qemu.attitude(pitch, roll, Int32(pose))
-        case let .paste(text): text.withCString { qemu.paste($0) }
-        case let .machine(op): machine(op)
-        case let .snapshotSave(path): path.withCString { qemu.snapshotSave2($0) }
+        case .attitude(let pitch, let roll, let pose): qemu.attitude(pitch, roll, Int32(pose))
+        case .paste(let text): text.withCString { qemu.paste($0) }
+        case .machine(let op): machine(op)
+        case .snapshotSave(let path): path.withCString { qemu.snapshotSave2($0) }
         case .snapshotResume: qemu.snapshotResume()
-        case let .agentCancel(id): agents.cancel(id)
-        case let .audioStop(generation): audio.stop(generation)
-        case let .netRestrict(on):
+        case .agentCancel(let id): agents.cancel(id)
+        case .audioStop(let generation): audio.stop(generation)
+        case .netRestrict(let on):
             webProxy?.offline = on
             "wifi0".withCString { p in qemu.netRestrict?(p, on) }
-        case let .netLocalNetwork(allowed):
+        case .netLocalNetwork(let allowed):
             webProxy?.localNetwork = allowed
-            "".withCString { p in qemu.netLAN?(p, allowed) }   // every user netdev: an iPhone's cell0 with wifi0
+            "".withCString { p in qemu.netLAN?(p, allowed) }  // every user netdev: an iPhone's cell0 with wifi0
         }
     }
 
     private func machine(_ op: MachineOp) {
         guard booted, !hasExited else {
-            if op == .quit { helperLog("quit before boot"); exit(0) }
+            if op == .quit {
+                helperLog("quit before boot")
+                exit(0)
+            }
             return
         }
         switch op {
@@ -262,51 +304,82 @@ final class DeviceHost: @unchecked Sendable {
     func handle(_ request: LinkRequest, reply: @escaping @Sendable (LinkReply) -> Void) {
         switch request {
         case .hello: reply(.failure("hello twice"))
-        case let .boot(config):
-            do { reply(try boot(config) ? .ok(true) : .failure("already booted")) }
-            catch { reply(.failure("Device storage admission refused: \(error)")) }
+        case .boot(let config):
+            do { reply(try boot(config) ? .ok(true) : .failure("already booted")) } catch {
+                reply(.failure("Device storage admission refused: \(error)"))
+            }
         case .snapshotStatus:
             var buffer = [CChar](repeating: 0, count: 512)
             let code = qemu.snapshotStatus(&buffer, UInt(buffer.count))
             reply(.snapshot(status: Int(code), error: code == 3 ? String(cString: buffer) : nil))
-        case let .agent(wire, deadline): agents.submit(wire, deadline: deadline, reply: reply)
+        case .agent(let wire, let deadline): agents.submit(wire, deadline: deadline, reply: reply)
         case .audioStart: reply(audio.start())
-        case let .battery(level, charging): reply(.ok(qemu.battery(Int32(level), Int32(charging))))
-        case let .usbConnection(attached): reply(.ok(qemu.usbConnection(attached)))
-        case let .hardwareKeyboard(attached): reply(.ok(qemu.hardwareKeyboard?(attached) ?? false))
-        case let .compass(heading): reply(.ok(qemu.compass(Int32(heading))))
-        case let .usbCharger(high): reply(.ok(qemu.usbCharger(high)))
-        case let .orientation(value): reply(.ok(qemu.orientation(Int32(value))))
-        case let .modemSet(property, value):
-            reply(.ok(qemu.modemSet.map { set in property.withCString { p in value.withCString { set(p, $0) } } } ?? false))
+        case .battery(let level, let charging): reply(.ok(qemu.battery(Int32(level), Int32(charging))))
+        case .usbConnection(let attached): reply(.ok(qemu.usbConnection(attached)))
+        case .hardwareKeyboard(let attached): reply(.ok(qemu.hardwareKeyboard?(attached) ?? false))
+        case .compass(let heading): reply(.ok(qemu.compass(Int32(heading))))
+        case .usbCharger(let high): reply(.ok(qemu.usbCharger(high)))
+        case .orientation(let value): reply(.ok(qemu.orientation(Int32(value))))
+        case .modemSet(let property, let value):
+            reply(
+                .ok(
+                    qemu.modemSet.map { set in property.withCString { p in value.withCString { set(p, $0) } } } ?? false
+                )
+            )
         case .modemStatus:
             guard let status = qemu.modemStatus, let raw = status() else { return reply(.modemStatus(nil)) }
             let json = String(cString: raw)
             qemu.modemFree?(raw)
             reply(.modemStatus(json))
-        case let .inputSequence(id, events):
+        case .inputSequence(let id, let events):
             guard let submit = qemu.inputSequence,
-                  VirtualInputEvent.valid(events) else {
-                reply(.failure("Virtual input unavailable or invalid sequence")); return
+                VirtualInputEvent.valid(events)
+            else {
+                reply(.failure("Virtual input unavailable or invalid sequence"))
+                return
             }
-            let at = events.map(\.atMilliseconds), kind = events.map(\.kind)
-            let value = events.map(\.value), phase = events.map(\.phase)
-            let x = events.map(\.x), y = events.map(\.y)
-            let queued = at.withUnsafeBufferPointer { a in kind.withUnsafeBufferPointer { k in
-                value.withUnsafeBufferPointer { v in phase.withUnsafeBufferPointer { p in
-                    x.withUnsafeBufferPointer { xx in y.withUnsafeBufferPointer { yy in
-                        submit(id, UInt(events.count), a.baseAddress!, k.baseAddress!,
-                               v.baseAddress!, p.baseAddress!, xx.baseAddress!, yy.baseAddress!)
-                    }}
-                }}
-            }}
+            let at = events.map(\.atMilliseconds)
+            let kind = events.map(\.kind)
+            let value = events.map(\.value)
+            let phase = events.map(\.phase)
+            let x = events.map(\.x)
+            let y = events.map(\.y)
+            let queued = at.withUnsafeBufferPointer { a in
+                kind.withUnsafeBufferPointer { k in
+                    value.withUnsafeBufferPointer { v in
+                        phase.withUnsafeBufferPointer { p in
+                            x.withUnsafeBufferPointer { xx in
+                                y.withUnsafeBufferPointer { yy in
+                                    submit(
+                                        id,
+                                        UInt(events.count),
+                                        a.baseAddress!,
+                                        k.baseAddress!,
+                                        v.baseAddress!,
+                                        p.baseAddress!,
+                                        xx.baseAddress!,
+                                        yy.baseAddress!
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             reply(.ok(queued))
-        case let .inputSequenceStatus(id):
-            if let status = qemu.inputSequenceStatus { reply(.inputSequenceStatus(Int(status(id)))) }
-            else { reply(.failure("Virtual input unavailable")) }
-        case let .inputSequenceCancel(id):
-            if let cancel = qemu.inputSequenceCancel { cancel(id); reply(.ok(true)) }
-            else { reply(.failure("Virtual input unavailable")) }
+        case .inputSequenceStatus(let id):
+            if let status = qemu.inputSequenceStatus {
+                reply(.inputSequenceStatus(Int(status(id))))
+            } else {
+                reply(.failure("Virtual input unavailable"))
+            }
+        case .inputSequenceCancel(let id):
+            if let cancel = qemu.inputSequenceCancel {
+                cancel(id)
+                reply(.ok(true))
+            } else {
+                reply(.failure("Virtual input unavailable"))
+            }
 
         }
     }
@@ -327,22 +400,33 @@ final class DeviceHost: @unchecked Sendable {
         }
         guard proceed else { return }
         helperLog("halt: \(reason)")
-        guard booted else { helperLog("halt: no VM running"); exit(0) }
+        guard booted else {
+            helperLog("halt: no VM running")
+            exit(0)
+        }
         // QEMU's own SIGTERM handler (os_setup_signal_handlers overrides our SIG_IGN) may
         // have returned its main loop already: onExit is queued and reports qemuExited
         // before exiting. An exit here would lose that event (the app then can't tell a
         // stop from a crash).
-        if hasExited { helperLog("halt: QEMU already returned"); return }
+        if hasExited {
+            helperLog("halt: QEMU already returned")
+            return
+        }
         Thread.detachNewThread { [self] in
             let start = Date()
             // Still in qemu_init: nothing can be scheduled on the VM yet, and nothing is written.
             while !qemu.ready(), !hasExited, Date().timeIntervalSince(start) < 5 { usleep(50_000) }
-            if qemu.ready() { qemu.pause() }   // vm_stop: storage flushed before the quit runs
+            if qemu.ready() { qemu.pause() }  // vm_stop: storage flushed before the quit runs
             if !hasExited { qemu.quit() }
             let quitDeadline = Date().addingTimeInterval(5)
             while !hasExited, Date() < quitDeadline { usleep(50_000) }
-            helperLog(String(format: "halt: %@ after %.1f s", hasExited ? "QEMU returned" : "QEMU did not return; exiting",
-                             Date().timeIntervalSince(start)))
+            helperLog(
+                String(
+                    format: "halt: %@ after %.1f s",
+                    hasExited ? "QEMU returned" : "QEMU did not return; exiting",
+                    Date().timeIntervalSince(start)
+                )
+            )
             if !hasExited { exit(1) }
         }
     }
@@ -401,7 +485,10 @@ final class AgentDispatcher: @unchecked Sendable {
             if running { id.withCString { qemu.agentCancel($0) } }
             entry.reply(running ? .agent(nil) : .failure("The device stopped before its command completed."))
         }
-        if pending.isEmpty { timer?.cancel(); timer = nil }
+        if pending.isEmpty {
+            timer?.cancel()
+            timer = nil
+        }
     }
 }
 
@@ -472,6 +559,8 @@ final class AudioPump: @unchecked Sendable {
 func helperLog(_ message: String) {
     var tv = timeval()
     gettimeofday(&tv, nil)
-    let line = String(format: "[LightTouchDevice %d %.3f] ", getpid(), Double(tv.tv_sec) + Double(tv.tv_usec) / 1e6) + message + "\n"
+    let line =
+        String(format: "[LightTouchDevice %d %.3f] ", getpid(), Double(tv.tv_sec) + Double(tv.tv_usec) / 1e6) + message
+        + "\n"
     FileHandle.standardError.write(Data(line.utf8))
 }

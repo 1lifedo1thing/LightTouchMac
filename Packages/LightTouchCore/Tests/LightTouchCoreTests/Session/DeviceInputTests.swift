@@ -1,7 +1,8 @@
-import Foundation
-import Testing
-import HostRuntime
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import Testing
+
 @testable import LightTouchCore
 
 /// The hardware buttons (pressed, then released off the main queue), shake, tilt in its pose, and composed text
@@ -30,7 +31,10 @@ struct DeviceInputTests {
 
     @Test func aButtonIsPressedThenReleased() async {
         let host = Host()
-        let input = DeviceInput(host: host, settings: DeviceSettingsFile(directory: URL(fileURLWithPath: "/nonexistent")))
+        let input = DeviceInput(
+            host: host,
+            settings: DeviceSettingsFile(directory: URL(fileURLWithPath: "/nonexistent"))
+        )
         input.tap(.power)
         #expect(host.link.commands == [.button(1, down: true)], "held down")
         await eventually("the release") { host.link.commands.count == 2 }
@@ -47,7 +51,11 @@ struct DeviceInputTests {
             #expect(observes({ _ = input.motionPose }) { input.setMotionPose(.flat) }, "the Motion menu follows")
             #expect(DeviceSettings.load(directory).motionPose == DeviceInput.MotionPose.flat.rawValue)
             input.setTilt(angle: 30, pitch: 10)
-            #expect(host.link.commands == [ChassisTilt.attitudeCommand(angle: 30, pitch: 10, pose: DeviceInput.MotionPose.flat.rawValue)])
+            #expect(
+                host.link.commands == [
+                    ChassisTilt.attitudeCommand(angle: 30, pitch: 10, pose: DeviceInput.MotionPose.flat.rawValue)
+                ]
+            )
             host.isSleeping = true
             input.setTilt(angle: 40)
             host.isSleeping = false
@@ -59,7 +67,10 @@ struct DeviceInputTests {
 
     @Test func textGoesThroughTheAgentElseAsKeysInOrder() async throws {
         let host = Host()
-        let input = DeviceInput(host: host, settings: DeviceSettingsFile(directory: URL(fileURLWithPath: "/nonexistent")))
+        let input = DeviceInput(
+            host: host,
+            settings: DeviceSettingsFile(directory: URL(fileURLWithPath: "/nonexistent"))
+        )
         input.keyGap = .zero
         host.agentTypes = true
         input.typeText("Hi", shiftHeld: false)
@@ -68,16 +79,23 @@ struct DeviceInputTests {
 
         host.agentTypes = false
         input.typeText("A", shiftHeld: false)
-        input.typeText("b", shiftHeld: false)   // waits for the first
+        input.typeText("b", shiftHeld: false)  // waits for the first
         await input.currentTyping?.value
-        let a = Int(GuestKeyboard.key(for: "A")!.0), b = Int(GuestKeyboard.key(for: "b")!.0)
-        #expect(host.link.commands == [.key(macKeyCode: 56, down: true), .key(macKeyCode: a, down: true),
-                                       .key(macKeyCode: a, down: false), .key(macKeyCode: 56, down: false),
-                                       .key(macKeyCode: b, down: true), .key(macKeyCode: b, down: false)])
+        let a = Int(GuestKeyboard.key(for: "A")!.0)
+        let b = Int(GuestKeyboard.key(for: "b")!.0)
+        #expect(
+            host.link.commands == [
+                .key(macKeyCode: 56, down: true), .key(macKeyCode: a, down: true),
+                .key(macKeyCode: a, down: false), .key(macKeyCode: 56, down: false),
+                .key(macKeyCode: b, down: true), .key(macKeyCode: b, down: false),
+            ]
+        )
         input.typeText("A", shiftHeld: true)
         await input.currentTyping?.value
-        #expect(host.link.commands.suffix(2) == [.key(macKeyCode: a, down: true), .key(macKeyCode: a, down: false)],
-                "Shift already held: not pressed again")
+        #expect(
+            host.link.commands.suffix(2) == [.key(macKeyCode: a, down: true), .key(macKeyCode: a, down: false)],
+            "Shift already held: not pressed again"
+        )
 
         host.keyboardInputEnabled = false
         input.typeText("c", shiftHeld: false)

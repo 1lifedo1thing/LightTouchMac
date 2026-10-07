@@ -16,7 +16,11 @@ import Darwin
         typealias Main = @convention(c) (Int32, UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?) -> Int32
         typealias Callback = @convention(c) (UnsafeMutableRawPointer?) -> Void
         typealias Attach = @convention(c) (Callback?, UnsafeMutableRawPointer?) -> Void
-        typealias Frame = @convention(c) (UnsafeMutablePointer<UnsafeRawPointer?>?, UnsafeMutablePointer<Int32>?, UnsafeMutablePointer<Int32>?, UnsafeMutablePointer<UInt64>?) -> Bool
+        typealias Frame =
+            @convention(c) (
+                UnsafeMutablePointer<UnsafeRawPointer?>?, UnsafeMutablePointer<Int32>?, UnsafeMutablePointer<Int32>?,
+                UnsafeMutablePointer<UInt64>?
+            ) -> Bool
         let run = symbol("qemu_ios_main", Main.self)
         let frame = symbol("qemu_ios_ui_frame", Frame.self)
         symbol("qemu_ios_ui_attach", Attach.self)(nil, nil)
@@ -34,26 +38,42 @@ import Darwin
         }
         let writer = ScreenMovieWriter()
         typealias Start = @convention(c) () -> UInt64
-        typealias Read = @convention(c) (UInt64, UnsafeMutableRawPointer?, Int32, UnsafeMutablePointer<Double>?) -> Int32
+        typealias Read =
+            @convention(c) (UInt64, UnsafeMutableRawPointer?, Int32, UnsafeMutablePointer<Double>?) -> Int32
         typealias Time = @convention(c) (UInt64) -> Double
         typealias Stop = @convention(c) (UInt64) -> Void
-        let read = symbol("qemu_ios_audio_capture_read", Read.self), time = symbol("qemu_ios_audio_capture_time", Time.self)
+        let read = symbol("qemu_ios_audio_capture_read", Read.self)
+        let time = symbol("qemu_ios_audio_capture_time", Time.self)
         let stop = symbol("qemu_ios_audio_capture_stop", Stop.self)
-        let audio = try pumpedGuestAudio(start: symbol("qemu_ios_audio_capture_start", Start.self),
-                                         read: { read($0, $1, $2, $3) }, time: { time($0) }, stop: { stop($0) })
+        let audio = try pumpedGuestAudio(
+            start: symbol("qemu_ios_audio_capture_start", Start.self),
+            read: { read($0, $1, $2, $3) },
+            time: { time($0) },
+            stop: { stop($0) }
+        )
         try await writer.start(url: directory.appendingPathComponent("recording.mov"), audio: audio)
         try Data().write(to: directory.appendingPathComponent("record-ready"))
         var serial: UInt64 = 0
         var latest: CGImage?
         while !fm.fileExists(atPath: directory.appendingPathComponent("record-stop").path) {
             var pixels: UnsafeRawPointer?
-            var width: Int32 = 0, height: Int32 = 0
+            var width: Int32 = 0
+            var height: Int32 = 0
             if frame(&pixels, &width, &height, &serial), let pixels, width > 0, height > 0 {
                 let data = Data(bytes: pixels, count: Int(width * height * 4))
-                latest = CGImage(width: Int(width), height: Int(height), bitsPerComponent: 8, bitsPerPixel: 32,
-                    bytesPerRow: Int(width * 4), space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                latest = CGImage(
+                    width: Int(width),
+                    height: Int(height),
+                    bitsPerComponent: 8,
+                    bitsPerPixel: 32,
+                    bytesPerRow: Int(width * 4),
+                    space: CGColorSpace(name: CGColorSpace.sRGB)!,
                     bitmapInfo: [.byteOrder32Little, CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue)],
-                    provider: CGDataProvider(data: data as CFData)!, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+                    provider: CGDataProvider(data: data as CFData)!,
+                    decode: nil,
+                    shouldInterpolate: false,
+                    intent: .defaultIntent
+                )
             }
             try await writer.append(latest, seconds: 0)
             try await Task.sleep(for: .milliseconds(33))

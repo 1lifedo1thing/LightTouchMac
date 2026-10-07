@@ -1,6 +1,6 @@
-import HostServiceWire
-import HostRuntime
 import Foundation
+import HostRuntime
+import HostServiceWire
 
 /// A stopped generation is mounted by FirmwareKit; a durable intent keeps the
 /// helper out even if this GUI quits. No filesystem writer lives in the GUI.
@@ -21,10 +21,16 @@ public final class DeviceFilesystemEdits {
     private let isWriting: (URL) async -> Bool
     private let poll: Duration
 
-    public init(preparer: URL? = FirmwareJobs.preparer, state: URL = Bundled.stateDirectory, logs: URL = Bundled.logsDirectory,
-         open: @escaping (URL) -> Void, presentError: @escaping (any Error) -> Void,
-         isMounted: @escaping (URL) -> Bool = DeviceFilesystemEdits.isMountPoint,
-         isWriting: @escaping (URL) async -> Bool = DeviceFilesystemEdits.isBeingWritten, poll: Duration = .seconds(1)) {
+    public init(
+        preparer: URL? = FirmwareJobs.preparer,
+        state: URL = Bundled.stateDirectory,
+        logs: URL = Bundled.logsDirectory,
+        open: @escaping (URL) -> Void,
+        presentError: @escaping (any Error) -> Void,
+        isMounted: @escaping (URL) -> Bool = DeviceFilesystemEdits.isMountPoint,
+        isWriting: @escaping (URL) async -> Bool = DeviceFilesystemEdits.isBeingWritten,
+        poll: Duration = .seconds(1)
+    ) {
         self.preparer = preparer
         self.state = state
         self.logs = logs
@@ -45,14 +51,24 @@ public final class DeviceFilesystemEdits {
     private var busy: Set<UUID> { Set(activity.keys) }
     /// A 1.x device whose storage wasn't shut down cleanly can't be opened; this offers to shut it down first.
     public var onUncleanShutdown: ((FirmwareCatalog.Entry) -> Void)?
-    public struct Intent: Decodable { public let id: UUID; public let phase: String }
-    public struct Mounted: Decodable { let id: UUID; let mountPoint: String? }
+    public struct Intent: Decodable {
+        public let id: UUID
+        public let phase: String
+    }
+    public struct Mounted: Decodable {
+        let id: UUID
+        let mountPoint: String?
+    }
     private func paths(_ instance: DeviceInstance) -> DeviceInstance.Paths { instance.paths(state: state, logs: logs) }
     public func pending(_ instance: DeviceInstance) -> Intent? {
-        try? JSONDecoder().decode(Intent.self, from: Data(contentsOf: paths(instance).work.appendingPathComponent("edit.json")))
+        try? JSONDecoder().decode(
+            Intent.self,
+            from: Data(contentsOf: paths(instance).work.appendingPathComponent("edit.json"))
+        )
     }
     public func blocked(_ instance: DeviceInstance) -> Bool {
-        busy.contains(instance.id) || FileManager.default.fileExists(atPath: paths(instance).work.appendingPathComponent("edit.json").path)
+        busy.contains(instance.id)
+            || FileManager.default.fileExists(atPath: paths(instance).work.appendingPathComponent("edit.json").path)
     }
     /// Start may go ahead after saving or discarding an open edit (`editing`, startAfterEdit); anything else in
     /// flight, or an edit stuck mid-commit (Finish Filesystem Recovery), holds it.
@@ -60,13 +76,18 @@ public final class DeviceFilesystemEdits {
         busy.contains(instance.id) || (blocked(instance) && pending(instance)?.phase != "editing")
     }
     /// An edit open in Finder: Start asks to save or discard it first.
-    public func hasOpenEdit(_ instance: DeviceInstance) -> Bool { !busy.contains(instance.id) && pending(instance)?.phase == "editing" }
+    public func hasOpenEdit(_ instance: DeviceInstance) -> Bool {
+        !busy.contains(instance.id) && pending(instance)?.phase == "editing"
+    }
 
     /// Where an edit's volume is mounted: a folder named for the device, out of Finder's sidebar (nobrowse), opened in
     /// a Finder window of its own. The volume keeps the device's /private/var, so this is the whole tree.
     public func mountPoint(_ instance: DeviceInstance) -> URL {
-        FileManager.default.temporaryDirectory.appendingPathComponent("LightTouch-edit-\(instance.id.uuidString)", isDirectory: true)
-            .appendingPathComponent(instance.profile?.marketingName ?? instance.name, isDirectory: true)
+        FileManager.default.temporaryDirectory.appendingPathComponent(
+            "LightTouch-edit-\(instance.id.uuidString)",
+            isDirectory: true
+        )
+        .appendingPathComponent(instance.profile?.marketingName ?? instance.name, isDirectory: true)
     }
     /// The edit's volume is mounted (an edit can be open with it unmounted: after a restart of the Mac).
     public func isEditMounted(_ instance: DeviceInstance) -> Bool { isMounted(mountPoint(instance)) }
@@ -84,20 +105,29 @@ public final class DeviceFilesystemEdits {
         }
     }
     /// `releaseStopped`: the session host lets go of the stopped device (false: it is running).
-    public func perform(_ action: DeviceAction, entry: FirmwareCatalog.Entry, instance: DeviceInstance?, library: DeviceLibrary,
-                 releaseStopped: @escaping () async -> Bool) {
+    public func perform(
+        _ action: DeviceAction,
+        entry: FirmwareCatalog.Entry,
+        instance: DeviceInstance?,
+        library: DeviceLibrary,
+        releaseStopped: @escaping () async -> Bool
+    ) {
         guard let instance, let executable = preparer,
-              canPerform(action, instance: instance) else { return }
+            canPerform(action, instance: instance)
+        else { return }
         // Already mounted: Show in Finder only shows it.
-        if action == .openFilesystem, instance.profile?.editableStopped == true, pending(instance)?.phase == "editing", isEditMounted(instance) {
+        if action == .openFilesystem, instance.profile?.editableStopped == true, pending(instance)?.phase == "editing",
+            isEditMounted(instance)
+        {
             return open(mountPoint(instance))
         }
-        activity[instance.id] = switch action {
-        case .commitFilesystem: "Saving the file system…"
-        case .discardFilesystem: "Discarding changes…"
-        case .recoverFilesystem: "Recovering the file system…"
-        default: "Preparing to mount the file system…"
-        }
+        activity[instance.id] =
+            switch action {
+            case .commitFilesystem: "Saving the file system…"
+            case .discardFilesystem: "Discarding changes…"
+            case .recoverFilesystem: "Recovering the file system…"
+            default: "Preparing to mount the file system…"
+            }
         Task {
             defer {
                 activity[instance.id] = nil
@@ -108,7 +138,9 @@ public final class DeviceFilesystemEdits {
                 guard await releaseStopped() else {
                     throw DeviceToolsError.failed("Shut down the device before showing its file system.")
                 }
-                guard instance.profile?.editableStopped == true else { return try await browse(instance, executable: executable) }
+                guard instance.profile?.editableStopped == true else {
+                    return try await browse(instance, executable: executable)
+                }
                 if action == .commitFilesystem { try await waitForCopies(instance) }
                 var intent = pending(instance)
                 let prefix = ["edit", "--device", paths(instance).directory.path, "--record-policy", "managed"]
@@ -118,24 +150,33 @@ public final class DeviceFilesystemEdits {
                     intent = Intent(id: created.id, phase: "editing")
                 }
                 guard let intent else { throw DeviceToolsError.failed("The edit session is unavailable.") }
-                let operation: String = switch action {
-                case .openFilesystem: "mount"
-                case .commitFilesystem: "commit"
-                case .discardFilesystem: "discard"
-                case .recoverFilesystem: "recover"
-                default: throw DeviceToolsError.failed("Unsupported file system action.")
-                }
+                let operation: String =
+                    switch action {
+                    case .openFilesystem: "mount"
+                    case .commitFilesystem: "commit"
+                    case .discardFilesystem: "discard"
+                    case .recoverFilesystem: "recover"
+                    default: throw DeviceToolsError.failed("Unsupported file system action.")
+                    }
                 if action == .openFilesystem { activity[instance.id] = "Opening in Finder…" }
                 let mountPoint = mountPoint(instance)
-                _ = try await FirmwareTool.run(prefix + ["--action", operation, "--session", intent.id.uuidString]
-                                               + (action == .openFilesystem ? ["--mount-point", mountPoint.path] : []), executable: executable)
+                _ = try await FirmwareTool.run(
+                    prefix + ["--action", operation, "--session", intent.id.uuidString]
+                        + (action == .openFilesystem ? ["--mount-point", mountPoint.path] : []),
+                    executable: executable
+                )
                 if action == .openFilesystem {
                     open(mountPoint)
                     watch(instance, library: library)
-                } else { removeMountFolder(instance) }
+                } else {
+                    removeMountFolder(instance)
+                }
             } catch {
-                if "\(error)".contains("was not shut down cleanly"), let onUncleanShutdown { onUncleanShutdown(entry) }
-                else { presentError(error) }
+                if "\(error)".contains("was not shut down cleanly"), let onUncleanShutdown {
+                    onUncleanShutdown(entry)
+                } else {
+                    presentError(error)
+                }
             }
         }
     }
@@ -143,7 +184,10 @@ public final class DeviceFilesystemEdits {
     // MARK: - Read-only view
 
     private func browseDirectory(_ id: UUID) -> URL {
-        FileManager.default.temporaryDirectory.appendingPathComponent("LightTouch-files-\(id.uuidString)", isDirectory: true)
+        FileManager.default.temporaryDirectory.appendingPathComponent(
+            "LightTouch-files-\(id.uuidString)",
+            isDirectory: true
+        )
     }
 
     private func browse(_ instance: DeviceInstance, executable: URL) async throws {
@@ -152,8 +196,13 @@ public final class DeviceFilesystemEdits {
         let out = browseDirectory(instance.id)
         let root = out.appendingPathComponent(instance.profile?.marketingName ?? instance.name, isDirectory: true)
         browsing.insert(instance.id)
-        _ = try await FirmwareTool.run(["mount", "--device", paths(instance).directory.path, "--record-policy", "managed",
-                                        "--out", out.path, "--root", root.path], executable: executable)
+        _ = try await FirmwareTool.run(
+            [
+                "mount", "--device", paths(instance).directory.path, "--record-policy", "managed",
+                "--out", out.path, "--root", root.path,
+            ],
+            executable: executable
+        )
         open(root)
     }
 
@@ -162,12 +211,19 @@ public final class DeviceFilesystemEdits {
     /// best effort (the device never reads the view's copies).
     public func release(_ instance: DeviceInstance, library: DeviceLibrary, commit: Bool?) async throws {
         try? await endBrowsing(instance.id)
-        guard let commit, hasOpenEdit(instance), let executable = preparer, let intent = pending(instance) else { return }
+        guard let commit, hasOpenEdit(instance), let executable = preparer, let intent = pending(instance) else {
+            return
+        }
         defer { activity[instance.id] = nil }
         if commit { try await waitForCopies(instance) }
         activity[instance.id] = commit ? "Saving the file system…" : "Discarding changes…"
-        _ = try await FirmwareTool.run(["edit", "--device", paths(instance).directory.path, "--record-policy", "managed",
-                                        "--action", commit ? "commit" : "discard", "--session", intent.id.uuidString], executable: executable)
+        _ = try await FirmwareTool.run(
+            [
+                "edit", "--device", paths(instance).directory.path, "--record-policy", "managed",
+                "--action", commit ? "commit" : "discard", "--session", intent.id.uuidString,
+            ],
+            executable: executable
+        )
         removeMountFolder(instance)
         library.reload()
     }
@@ -181,8 +237,9 @@ public final class DeviceFilesystemEdits {
             defer { watching.remove(instance.id) }
             var mounted = false
             while pending(instance)?.phase == "editing" {
-                if isMounted(mountPoint) { mounted = true }
-                else if mounted, !busy.contains(instance.id) {
+                if isMounted(mountPoint) {
+                    mounted = true
+                } else if mounted, !busy.contains(instance.id) {
                     do { try await release(instance, library: library, commit: true) } catch { presentError(error) }
                     library.reload()
                     NotificationCenter.default.post(name: DeviceLibrary.didChangeNotification, object: library)
@@ -196,7 +253,8 @@ public final class DeviceFilesystemEdits {
 
     /// Before a save of a mounted edit: until nothing is writing into the volume (a Finder copy in progress).
     private func waitForCopies(_ instance: DeviceInstance) async throws {
-        let mountPoint = mountPoint(instance), saving = activity[instance.id]
+        let mountPoint = mountPoint(instance)
+        let saving = activity[instance.id]
         guard isMounted(mountPoint), await isWriting(mountPoint) else { return }
         activity[instance.id] = "Waiting for copies to finish…"
         while await isWriting(mountPoint) { try await Task.sleep(for: poll) }
@@ -258,12 +316,13 @@ public final class DeviceFilesystemEdits {
     /// At quit: every read-only view this run attached, detached before the app goes; nothing to do, nothing run.
     public func endAllBrowsing() {
         guard let executable = preparer else { return }
-        let unmounts = browsing.map(browseDirectory).filter { FileManager.default.fileExists(atPath: $0.path) }.compactMap { out in
-            let process = Process()
-            process.executableURL = executable
-            process.arguments = ["unmount", "--out", out.path]
-            return (try? process.run()) == nil ? nil : process
-        }
+        let unmounts = browsing.map(browseDirectory).filter { FileManager.default.fileExists(atPath: $0.path) }
+            .compactMap { out in
+                let process = Process()
+                process.executableURL = executable
+                process.arguments = ["unmount", "--out", out.path]
+                return (try? process.run()) == nil ? nil : process
+            }
         unmounts.forEach { $0.waitUntilExit() }
         browsing = []
     }

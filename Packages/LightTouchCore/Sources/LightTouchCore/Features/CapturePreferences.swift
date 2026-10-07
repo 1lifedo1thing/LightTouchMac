@@ -31,8 +31,10 @@ public struct CapturePreferences {
 
     public var saveLocations: [URL] {
         var locations = [Self.desktopDirectory]
-        for url in [saveLocation] + (defaults.stringArray(forKey: "captureRecentFolders") ?? [])
-            .map({ URL(fileURLWithPath: $0, isDirectory: true).standardizedFileURL }) {
+        for url in [saveLocation]
+            + (defaults.stringArray(forKey: "captureRecentFolders") ?? [])
+            .map({ URL(fileURLWithPath: $0, isDirectory: true).standardizedFileURL })
+        {
             if !locations.contains(url) { locations.append(url) }
         }
         return locations
@@ -51,7 +53,10 @@ public struct CapturePreferences {
             return Self.previewApplicationURL
         }
         nonmutating set {
-            guard let newValue else { defaults.removeObject(forKey: "openInApplicationPath"); return }
+            guard let newValue else {
+                defaults.removeObject(forKey: "openInApplicationPath")
+                return
+            }
             guard Self.isApplication(newValue) else { return }
             defaults.set(newValue.standardizedFileURL.path, forKey: "openInApplicationPath")
         }
@@ -62,14 +67,16 @@ public struct CapturePreferences {
     }
 
     public static var previewApplicationURL: URL? {
-        (LSCopyApplicationURLsForBundleIdentifier("com.apple.Preview" as CFString, nil)?.takeRetainedValue() as? [URL])?.first
+        (LSCopyApplicationURLsForBundleIdentifier("com.apple.Preview" as CFString, nil)?.takeRetainedValue() as? [URL])?
+            .first
     }
 
     public static func isApplication(_ url: URL) -> Bool {
         var isDirectory: ObjCBool = false
         guard url.isFileURL, url.pathExtension.lowercased() == "app",
-              FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue,
-              let bundle = Bundle(url: url), bundle.object(forInfoDictionaryKey: "CFBundlePackageType") as? String == "APPL"
+            FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue,
+            let bundle = Bundle(url: url),
+            bundle.object(forInfoDictionaryKey: "CFBundlePackageType") as? String == "APPL"
         else { return false }
         return true
     }
@@ -125,9 +132,13 @@ public struct CapturePreferences {
 public enum CaptureReminderDuration: Int, CaseIterable {
     case never = 0
     #if DEBUG
-    case tenSeconds = 10
+        case tenSeconds = 10
     #endif
-    case oneMinute = 60, fiveMinutes = 300, tenMinutes = 600, thirtyMinutes = 1800, oneHour = 3600
+    case oneMinute = 60
+    case fiveMinutes = 300
+    case tenMinutes = 600
+    case thirtyMinutes = 1800
+    case oneHour = 3600
     public var title: String {
         if self == .never { return "Never" }
         return Duration.seconds(rawValue).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide))

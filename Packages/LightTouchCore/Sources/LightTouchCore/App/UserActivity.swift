@@ -12,8 +12,12 @@ public struct UserActivity {
         get { token != nil }
         set {
             guard newValue != held else { return }
-            if newValue { token = ProcessInfo.processInfo.beginActivity(options: .userInitiated, reason: reason) }
-            else if let token { ProcessInfo.processInfo.endActivity(token); self.token = nil }
+            if newValue {
+                token = ProcessInfo.processInfo.beginActivity(options: .userInitiated, reason: reason)
+            } else if let token {
+                ProcessInfo.processInfo.endActivity(token)
+                self.token = nil
+            }
         }
     }
 }

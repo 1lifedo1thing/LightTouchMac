@@ -12,11 +12,11 @@ static inline void ltm_store_seq(volatile uint64_t *p, uint64_t v) { __atomic_st
 
 #define LTM_MAX_PORTS 8
 typedef struct {
-    char token[64];                 // the one-time token from argv (NUL-terminated)
+    char token[64]; // the one-time token from argv (NUL-terminated)
     int nports;
     mach_port_t ports[LTM_MAX_PORTS];
-    audit_token_t audit;            // sender, from the kernel's audit trailer
-    pid_t pid;                      // audit_token_to_pid(audit)
+    audit_token_t audit; // sender, from the kernel's audit trailer
+    pid_t pid;           // audit_token_to_pid(audit)
 } ltm_hello;
 
 // Parent: check a name in with launchd (works for a plain process, unlike an XPC listener).

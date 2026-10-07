@@ -12,14 +12,17 @@ public nonisolated enum GuestKeyboard {
         15: ("r", "R"), 16: ("y", "Y"), 17: ("t", "T"), 18: ("1", "!"), 19: ("2", "@"), 20: ("3", "#"), 21: ("4", "$"),
         22: ("6", "^"), 23: ("5", "%"), 24: ("=", "+"), 25: ("9", "("), 26: ("7", "&"), 27: ("-", "_"), 28: ("8", "*"),
         29: ("0", ")"), 30: ("]", "}"), 31: ("o", "O"), 32: ("u", "U"), 33: ("[", "{"), 34: ("i", "I"), 35: ("p", "P"),
-        37: ("l", "L"), 38: ("j", "J"), 39: ("'", "\""), 40: ("k", "K"), 41: (";", ":"), 42: ("\\", "|"), 43: (",", "<"),
+        37: ("l", "L"), 38: ("j", "J"), 39: ("'", "\""), 40: ("k", "K"), 41: (";", ":"), 42: ("\\", "|"),
+        43: (",", "<"),
         44: ("/", "?"), 45: ("n", "N"), 46: ("m", "M"), 47: (".", ">"), 49: (" ", " "), 50: ("`", "~"),
     ]
 
     /// Whether a key-down goes to the guest as its key code: a non-character key (Return, arrows, Delete…),
     /// or a character key whose character here is the US one. `characters` is the event's, on the Mac's layout;
     /// `inputSource` the selected one's identifier: an input method (Japanese, Chinese…) composes every character key.
-    public static func passesThrough(keyCode: UInt16, characters: String?, shift: Bool, inputSource: String? = nil) -> Bool {
+    public static func passesThrough(keyCode: UInt16, characters: String?, shift: Bool, inputSource: String? = nil)
+        -> Bool
+    {
         guard let pair = us[keyCode] else { return true }
         if inputSource?.contains(".inputmethod.") == true { return false }
         return characters == (shift ? pair.1 : pair.0)

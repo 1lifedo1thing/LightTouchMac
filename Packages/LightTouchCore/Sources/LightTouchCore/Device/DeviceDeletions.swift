@@ -13,11 +13,15 @@ import Foundation
     public func contains(_ id: String) -> Bool { ids.contains(id) }
 
     /// Marks `id` deleting now and runs `work` on a background thread; the task finishes (or throws) when it has.
-    @discardableResult public func run(_ id: String, _ work: @escaping @Sendable () throws -> Void) -> Task<Void, Error> {
+    @discardableResult public func run(_ id: String, _ work: @escaping @Sendable () throws -> Void) -> Task<Void, Error>
+    {
         ids.insert(id)
         onChange()
         return Task {
-            defer { ids.remove(id); onChange() }
+            defer {
+                ids.remove(id)
+                onChange()
+            }
             try await Task.detached(priority: .userInitiated) { try work() }.value
         }
     }

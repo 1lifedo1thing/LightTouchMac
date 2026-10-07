@@ -1,6 +1,6 @@
-import LightTouchCore
-import HostRuntime
 import Cocoa
+import HostRuntime
+import LightTouchCore
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -30,14 +30,22 @@ struct CaptureOptionsView: View {
             Section {
                 Picker("Save location", selection: saveLocation) {
                     ForEach(preferences.saveLocations, id: \.self) { url in
-                        Label { Text(folderName(url)) } icon: { Image(nsImage: Self.icon(url)) }.tag(url)
+                        Label {
+                            Text(folderName(url))
+                        } icon: {
+                            Image(nsImage: Self.icon(url))
+                        }.tag(url)
                     }
                     Divider()
                     Text("Other…").tag(Self.other)
                 }
                 Picker("Open screenshots in", selection: application) {
                     ForEach(applications, id: \.self) { url in
-                        Label { Text(applicationTitle(url)) } icon: { Image(nsImage: Self.icon(url)) }.tag(Optional(url))
+                        Label {
+                            Text(applicationTitle(url))
+                        } icon: {
+                            Image(nsImage: Self.icon(url))
+                        }.tag(Optional(url))
                     }
                     Divider()
                     Text("Other…").tag(Optional(Self.other))
@@ -56,55 +64,102 @@ struct CaptureOptionsView: View {
             } footer: {
                 if notificationsDenied {
                     Button("Turn On Notifications in System Settings…") {
-                        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") { NSWorkspace.shared.open(url) }
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")
+                        {
+                            NSWorkspace.shared.open(url)
+                        }
                     }
                     .buttonStyle(.link)
                 }
             }
             .disabled(authorizing)
         }
-        .fileImporter(isPresented: $isChoosing, allowedContentTypes: choice == .application ? [.application] : [.folder]) { result in
+        .fileImporter(
+            isPresented: $isChoosing,
+            allowedContentTypes: choice == .application ? [.application] : [.folder]
+        ) { result in
             guard let url = try? result.get() else { return }
             if choice == .application { preferences.openInApplicationURL = url } else { preferences.saveLocation = url }
             changed()
         }
-        .fileDialogDefaultDirectory(choice == .application ? URL(fileURLWithPath: "/Applications") : preferences.saveLocation)
+        .fileDialogDefaultDirectory(
+            choice == .application ? URL(fileURLWithPath: "/Applications") : preferences.saveLocation
+        )
         .task(id: revision) { applications = Self.applications(selected: preferences.openInApplicationURL) }
     }
 
-    private func changed() { revision += 1; onChange() }
+    private func changed() {
+        revision += 1
+        onChange()
+    }
 
     private func binding<T>(_ key: WritableKeyPath<CapturePreferences, T>) -> Binding<T> {
-        Binding(get: { _ = revision; return preferences[keyPath: key] },
-                set: { var preferences = preferences; preferences[keyPath: key] = $0; changed() })   // nonmutating setters
+        Binding(
+            get: {
+                _ = revision
+                return preferences[keyPath: key]
+            },
+            set: {
+                var preferences = preferences
+                preferences[keyPath: key] = $0
+                changed()
+            }
+        )  // nonmutating setters
     }
 
     /// The save location pop-up: Other… asks for a folder instead of being chosen.
     private var saveLocation: Binding<URL> {
         let plain = binding(\.saveLocation)
-        return Binding(get: { plain.wrappedValue }, set: { if $0 == Self.other { choice = .folder; isChoosing = true } else { plain.wrappedValue = $0 } })
+        return Binding(
+            get: { plain.wrappedValue },
+            set: {
+                if $0 == Self.other {
+                    choice = .folder
+                    isChoosing = true
+                } else {
+                    plain.wrappedValue = $0
+                }
+            }
+        )
     }
 
     /// The screenshot app pop-up: Other… asks for an app.
     private var application: Binding<URL?> {
         let plain = binding(\.openInApplicationURL)
-        return Binding(get: { plain.wrappedValue }, set: { if $0 == Self.other { choice = .application; isChoosing = true } else { plain.wrappedValue = $0 } })
+        return Binding(
+            get: { plain.wrappedValue },
+            set: {
+                if $0 == Self.other {
+                    choice = .application
+                    isChoosing = true
+                } else {
+                    plain.wrappedValue = $0
+                }
+            }
+        )
     }
 
     /// A notification choice: turning it on asks for permission first, and it stays off without it.
-    private func notifying<T>(_ key: WritableKeyPath<CapturePreferences, T>, isOff: @escaping (T) -> Bool) -> Binding<T> {
+    private func notifying<T>(_ key: WritableKeyPath<CapturePreferences, T>, isOff: @escaping (T) -> Bool) -> Binding<T>
+    {
         let plain = binding(key)
-        return Binding(get: { plain.wrappedValue }, set: { value in
-            guard !isOff(value) else { plain.wrappedValue = value; return }
-            guard !authorizing else { return }
-            authorizing = true
-            Task {
-                let allowed = await authorizeNotifications()
-                notificationsDenied = !allowed
-                if allowed { plain.wrappedValue = value } else { changed() }
-                authorizing = false
+        return Binding(
+            get: { plain.wrappedValue },
+            set: { value in
+                guard !isOff(value) else {
+                    plain.wrappedValue = value
+                    return
+                }
+                guard !authorizing else { return }
+                authorizing = true
+                Task {
+                    let allowed = await authorizeNotifications()
+                    notificationsDenied = !allowed
+                    if allowed { plain.wrappedValue = value } else { changed() }
+                    authorizing = false
+                }
             }
-        })
+        )
     }
 
     private func folderName(_ url: URL) -> String {
@@ -124,9 +179,14 @@ struct CaptureOptionsView: View {
     static func applications(selected: URL?) -> [URL] {
         let preview = CapturePreferences.previewApplicationURL
         var seen = Set<String>()
-        let others = (NSWorkspace.shared.urlsForApplications(toOpen: URL(fileURLWithPath: "/Screenshot.png")) + [selected].compactMap { $0 })
+        let others =
+            (NSWorkspace.shared.urlsForApplications(toOpen: URL(fileURLWithPath: "/Screenshot.png"))
+            + [selected].compactMap { $0 })
             .filter { $0 != preview && CapturePreferences.isApplication($0) && seen.insert($0.path).inserted }
-            .sorted { CapturePreferences.applicationName($0).localizedStandardCompare(CapturePreferences.applicationName($1)) == .orderedAscending }
+            .sorted {
+                CapturePreferences.applicationName($0).localizedStandardCompare(CapturePreferences.applicationName($1))
+                    == .orderedAscending
+            }
         return [preview].compactMap { $0 } + others
     }
 

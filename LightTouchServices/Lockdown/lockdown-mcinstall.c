@@ -17,19 +17,18 @@
  * made in-process from the app have corrupted its heap. Finds the device via
  * USBMUXD_SOCKET_ADDRESS. Exits 0 when the device acknowledges the request.
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "Lockdown.h"
 #include <libimobiledevice/libimobiledevice.h>
 #include <libimobiledevice/lockdown.h>
 #include <libimobiledevice/property_list_service.h>
 #include <plist/plist.h>
-#include "Lockdown.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define PROFILE_ID "com.lighttouch.webproxy"
 
-static plist_t payload(const char *type, const char *id, const char *uuid, const char *name)
-{
+static plist_t payload(const char *type, const char *id, const char *uuid, const char *name) {
     plist_t p = plist_new_dict();
     plist_dict_set_item(p, "PayloadType", plist_new_string(type));
     plist_dict_set_item(p, "PayloadVersion", plist_new_uint(1));
@@ -40,8 +39,7 @@ static plist_t payload(const char *type, const char *id, const char *uuid, const
     return p;
 }
 
-int ltm_lockdown_mcinstall(int argc, char **argv)
-{
+int ltm_lockdown_mcinstall(int argc, char **argv) {
     idevice_t dev = NULL;
     lockdownd_client_t ld = NULL;
     lockdownd_service_descriptor_t svc = NULL;
@@ -96,7 +94,8 @@ int ltm_lockdown_mcinstall(int argc, char **argv)
             for (i = 0; i < count && !found; i++) {
                 char *id = NULL;
                 plist_get_string_val(plist_array_get_item(ids, i), &id);
-                if (id && !strcmp(id, PROFILE_ID)) found = 1;
+                if (id && !strcmp(id, PROFILE_ID))
+                    found = 1;
                 free(id);
             }
         }
@@ -105,13 +104,14 @@ int ltm_lockdown_mcinstall(int argc, char **argv)
     }
 
     /* Fixed identifiers and UUIDs: a new CA replaces the old profile instead of piling up. */
-    plist_t root = payload("com.apple.security.root", PROFILE_ID ".ca",
-                           "5F1A7C3E-9D2B-4E61-8A0F-4C54504341AA", "Light Touch Web Proxy CA");
+    plist_t root = payload("com.apple.security.root", PROFILE_ID ".ca", "5F1A7C3E-9D2B-4E61-8A0F-4C54504341AA",
+                           "Light Touch Web Proxy CA");
     plist_dict_set_item(root, "PayloadContent", plist_new_data(cert, n));
-    plist_t profile = payload("Configuration", PROFILE_ID,
-                              "5F1A7C3E-9D2B-4E61-8A0F-4C5450524F46", "Light Touch Web Proxy");
-    plist_dict_set_item(profile, "PayloadDescription", plist_new_string(
-        "Lets Safari open secure sites through Light Touch's web proxy. Trusts this device's own proxy certificate."));
+    plist_t profile =
+        payload("Configuration", PROFILE_ID, "5F1A7C3E-9D2B-4E61-8A0F-4C5450524F46", "Light Touch Web Proxy");
+    plist_dict_set_item(profile, "PayloadDescription",
+                        plist_new_string("Lets Safari open secure sites through Light Touch's web proxy. Trusts this "
+                                         "device's own proxy certificate."));
     plist_t content = plist_new_array();
     plist_array_append_item(content, root);
     plist_dict_set_item(profile, "PayloadContent", content);

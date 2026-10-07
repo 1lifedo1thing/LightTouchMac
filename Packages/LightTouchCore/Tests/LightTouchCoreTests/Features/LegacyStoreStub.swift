@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import LightTouchCore
 
 /// The suites that share process-wide state (CatalogClient's base URL and scratch, IPALibrary's root, the install
@@ -38,10 +39,16 @@ nonisolated final class LegacyStoreStub: URLProtocol, @unchecked Sendable {
 
     /// Answer with `respond` for the life of `body`, with CatalogClient pointed at it, its scratch under
     /// `state`/work, IPALibrary rooted at `state` and the client's diagnostics going to `log`.
-    @MainActor static func serving<T>(state: URL, log: @escaping (String) -> Void = { _ in },
-                                      _ respond: @escaping @Sendable (URLComponents) -> Reply,
-                                      _ body: () async throws -> T) async rethrows -> T {
-        lock.withLock { self.respond = respond; seen = [] }
+    @MainActor static func serving<T>(
+        state: URL,
+        log: @escaping (String) -> Void = { _ in },
+        _ respond: @escaping @Sendable (URLComponents) -> Reply,
+        _ body: () async throws -> T
+    ) async rethrows -> T {
+        lock.withLock {
+            self.respond = respond
+            seen = []
+        }
         URLProtocol.registerClass(LegacyStoreStub.self)
         let before = (CatalogClient.baseURL, CatalogClient.scratchDirectory, CatalogClient.log, IPALibrary.stateRoot)
         CatalogClient.baseURL = URL(string: "http://catalog.test")!
@@ -61,13 +68,23 @@ nonisolated final class LegacyStoreStub: URLProtocol, @unchecked Sendable {
 
     override func startLoading() {
         let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!
-        guard let respond = Self.lock.withLock({ Self.seen.append(components); return Self.respond }) else {
-            client?.urlProtocol(self, didFailWithError: URLError(.cancelled)); return
+        guard
+            let respond = Self.lock.withLock({
+                Self.seen.append(components)
+                return Self.respond
+            })
+        else {
+            client?.urlProtocol(self, didFailWithError: URLError(.cancelled))
+            return
         }
         let reply = respond(components)
         Thread.detachNewThread { [self] in
-            let response = HTTPURLResponse(url: request.url!, statusCode: reply.status, httpVersion: "HTTP/1.1",
-                                           headerFields: ["Content-Length": String(reply.body.count)])!
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: reply.status,
+                httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Length": String(reply.body.count)]
+            )!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             let size = reply.chunk > 0 ? reply.chunk : max(reply.body.count, 1)
             var offset = 0
@@ -94,7 +111,10 @@ nonisolated extension URLComponents {
 
 /// A fresh directory for async work, removed afterwards (TestSupport's helpers take synchronous bodies).
 func withTemporaryState<T>(_ body: (URL) async throws -> T) async throws -> T {
-    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ltm-tests-" + UUID().uuidString, isDirectory: true)
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "ltm-tests-" + UUID().uuidString,
+        isDirectory: true
+    )
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
     return try await body(directory)

@@ -1,19 +1,19 @@
-import LightTouchCore
-import HostServiceWire
-import HostServiceClient
-import HostRuntime
-import DeviceRuntime
 // Created by Sam on 2026-08-05.
-//
+
+import Cocoa
+import DeviceRuntime
+import HostRuntime
+import HostServiceClient
+import HostServiceWire
+import LightTouchCore
+import UniformTypeIdentifiers
+
 // The right-hand inspector: a plain AppKit table of the apps installed on the
 // device, in the order they sit on the home screen, with add (install an .ipa)
 // and remove (uninstall) controls beneath it, source-list style. Rows can be
 // dragged to reorder the home screen itself, and right-clicked for the same
 // operations. While an install runs, the app appears as a pending row carrying
 // the script's own progress, cancellable from its context menu.
-
-import Cocoa
-import UniformTypeIdentifiers
 
 final class AppsInspectorViewController: NSViewController {
 
@@ -55,12 +55,18 @@ final class AppsInspectorViewController: NSViewController {
     // Legacy Store results. Never both — a third section interleaved into the
     // installed list would have to reconcile with prunePending/visibleApps at
     // every step.
-    enum PaneMode: Int { case installed = 0, store = 1 }
+    enum PaneMode: Int {
+        case installed = 0
+        case store = 1
+    }
     /// Store first: the default view is the suggested list, ready to install.
     private var mode: PaneMode = .store
-    private let modeControl = NSSegmentedControl(labels: ["Installed", "Store"],
-                                                 trackingMode: .selectOne,
-                                                 target: nil, action: nil)
+    private let modeControl = NSSegmentedControl(
+        labels: ["Installed", "Store"],
+        trackingMode: .selectOne,
+        target: nil,
+        action: nil
+    )
     /// What the server returned; the table shows catalogResults, these through the filter menu.
     private var catalogFetched: [CatalogApp] = []
     private var catalogResults: [CatalogApp] { filterButton.apply(catalogFetched) }
@@ -142,9 +148,13 @@ final class AppsInspectorViewController: NSViewController {
         // bulk uninstall in Installed.
         tableView.allowsMultipleSelection = true
 
-        for (button, action) in [(browseButton, #selector(browseStore)), (installButton, #selector(installLocal)),
-                                 (retryButton, #selector(refreshClicked(_:))), (resumeButton, #selector(resumeInstallsClicked(_:)))] {
-            button.target = self; button.action = action; button.bezelStyle = .rounded
+        for (button, action) in [
+            (browseButton, #selector(browseStore)), (installButton, #selector(installLocal)),
+            (retryButton, #selector(refreshClicked(_:))), (resumeButton, #selector(resumeInstallsClicked(_:))),
+        ] {
+            button.target = self
+            button.action = action
+            button.bezelStyle = .rounded
         }
         for button in [browseButton, installButton, retryButton] { emptyActions.addArrangedSubview(button) }
         emptyActions.spacing = 8
@@ -155,7 +165,9 @@ final class AppsInspectorViewController: NSViewController {
         filterButton.translatesAutoresizingMaskIntoConstraints = false
         filterButton.isEnabled = mode == .store
         filterButton.onChange = { [weak self] in self?.filterChanged() }
-        [modeControl, filterButton, banner, scroll, placeholder, emptyActions, resumeButton].forEach(container.addSubview)
+        [modeControl, filterButton, banner, scroll, placeholder, emptyActions, resumeButton].forEach(
+            container.addSubview
+        )
         // Everything hangs below the safe area — a hard edge at the toolbar,
         // so rows can never slide behind the search field (full-bleed +
         // automatic insets let them scroll under the glass, unblurred and
@@ -198,7 +210,7 @@ final class AppsInspectorViewController: NSViewController {
             footer.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             footer.bottomAnchor.constraint(equalTo: container.bottomAnchor), footerHeight!,
             addRemove.leadingAnchor.constraint(equalTo: footer.leadingAnchor, constant: 10),
-            addRemove.centerYAnchor.constraint(equalTo: footer.centerYAnchor)
+            addRemove.centerYAnchor.constraint(equalTo: footer.centerYAnchor),
         ]
         NSLayoutConstraint.activate(constraints)
 
@@ -255,12 +267,24 @@ final class AppsInspectorViewController: NSViewController {
         nc.addObserver(self, selector: #selector(appsChanged(_:)), name: .ltmAppsChanged, object: nil)
         nc.addObserver(self, selector: #selector(installStarted(_:)), name: .ltmInstallStarted, object: nil)
         nc.addObserver(self, selector: #selector(installProgressed(_:)), name: .ltmInstallProgress, object: nil)
-        nc.addObserver(self, selector: #selector(refreshIconDimming), name: NSApplication.didBecomeActiveNotification, object: nil)
-        nc.addObserver(self, selector: #selector(refreshIconDimming), name: NSApplication.didResignActiveNotification, object: nil)
-        statusTracking = ObservationLoop(read: { [weak self] in self?.trackedDeviceState() },
-                                         onChange: { [weak self] in self?.deviceStatusChanged() })
+        nc.addObserver(
+            self,
+            selector: #selector(refreshIconDimming),
+            name: NSApplication.didBecomeActiveNotification,
+            object: nil
+        )
+        nc.addObserver(
+            self,
+            selector: #selector(refreshIconDimming),
+            name: NSApplication.didResignActiveNotification,
+            object: nil
+        )
+        statusTracking = ObservationLoop(
+            read: { [weak self] in self?.trackedDeviceState() },
+            onChange: { [weak self] in self?.deviceStatusChanged() }
+        )
         startInitialLoad()
-        scheduleSearch()   // Store is the default view — fetch the suggested list
+        scheduleSearch()  // Store is the default view — fetch the suggested list
     }
 
     // MARK: - Loading / refresh
@@ -309,7 +333,10 @@ final class AppsInspectorViewController: NSViewController {
                         if !self.readsSuppressed {
                             self.emulator.reportConnectionFailure(error, operation: "Checking USB connection")
                             if !self.haveLoaded, self.pending.isEmpty {
-                                self.showInstalledPlaceholder(self.emulator.connectionIssue?.summary ?? "Connecting to \(self.emulator.profile.shortName)…")
+                                self.showInstalledPlaceholder(
+                                    self.emulator.connectionIssue?.summary
+                                        ?? "Connecting to \(self.emulator.profile.shortName)…"
+                                )
                             } else if self.haveLoaded {
                                 self.showStaleBanner()
                             }
@@ -324,7 +351,9 @@ final class AppsInspectorViewController: NSViewController {
                 // for what the guest never publishes (icon reordering) and for
                 // a dropped session, neither of which needs a 3 s cadence. An
                 // unactivated guest refuses every service: nothing to press for.
-                try? await Task.sleep(for: .seconds(self.haveLoaded || self.emulator.connectionIssue?.persistent == true ? 15 : 1))
+                try? await Task.sleep(
+                    for: .seconds(self.haveLoaded || self.emulator.connectionIssue?.persistent == true ? 15 : 1)
+                )
             }
         }
     }
@@ -350,7 +379,7 @@ final class AppsInspectorViewController: NSViewController {
             if job.dismissed { return true }
             guard job.isFinished else { return false }
             if job.failed { return false }
-            if job.isCancelled { return true }   // nothing will ever appear
+            if job.isCancelled { return true }  // nothing will ever appear
             guard let id = job.bundleID else {
                 return Date().timeIntervalSince(job.finishedAt ?? Date()) > 15
             }
@@ -372,19 +401,36 @@ final class AppsInspectorViewController: NSViewController {
 
     /// What the inspector knows, as the table's rows (LightTouchCore's AppsInspectorRows).
     private var rows: AppsInspectorRows {
-        AppsInspectorRows(searching: searching, apps: apps, pending: pending, installedQuery: queries[.installed, default: ""],
-                          catalogResults: catalogResults, uninstalling: uninstalling, removingApp: removingApp, device: device,
-                          displayName: { [unowned self] in displayName($0) },
-                          icons: AppRowIcons(catalog: { [unowned self] in catalogIcon($0).map(ObjectIdentifier.init) },
-                                             pending: { [unowned self] in pendingIcon($0).map(ObjectIdentifier.init) },
-                                             installed: { AppMetadataCache.shared.icon(for: $0).map(ObjectIdentifier.init) }))
+        AppsInspectorRows(
+            searching: searching,
+            apps: apps,
+            pending: pending,
+            installedQuery: queries[.installed, default: ""],
+            catalogResults: catalogResults,
+            uninstalling: uninstalling,
+            removingApp: removingApp,
+            device: device,
+            displayName: { [unowned self] in displayName($0) },
+            icons: AppRowIcons(
+                catalog: { [unowned self] in catalogIcon($0).map(ObjectIdentifier.init) },
+                pending: { [unowned self] in pendingIcon($0).map(ObjectIdentifier.init) },
+                installed: { AppMetadataCache.shared.icon(for: $0).map(ObjectIdentifier.init) }
+            )
+        )
     }
 
     /// The device, as the rows and menus weigh it.
     private var device: AppsDevice {
-        AppsDevice(id: emulator.instance.id, canQueueInstall: emulator.canQueueInstall, canReachDevice: emulator.canReachDevice,
-                   installing: installing, preparingDevice: emulator.preparingDevice, hasFileTransfer: emulator.hasFileTransfer,
-                   isReconnecting: emulator.isReconnecting, transfersPaused: AppInstaller.isPaused(emulator.instance.id))
+        AppsDevice(
+            id: emulator.instance.id,
+            canQueueInstall: emulator.canQueueInstall,
+            canReachDevice: emulator.canReachDevice,
+            installing: installing,
+            preparingDevice: emulator.preparingDevice,
+            hasFileTransfer: emulator.hasFileTransfer,
+            isReconnecting: emulator.isReconnecting,
+            transfersPaused: AppInstaller.isPaused(emulator.instance.id)
+        )
     }
 
     /// Keep selection attached to objects, rebuilding only changed rows. An
@@ -431,7 +477,10 @@ final class AppsInspectorViewController: NSViewController {
         if AppsInspector.revealsTransfer(job) {
             setMode(.installed)
             if let split = parent as? NSSplitViewController,
-               let item = split.splitViewItem(for: self) { item.animator().isCollapsed = false }
+                let item = split.splitViewItem(for: self)
+            {
+                item.animator().isCollapsed = false
+            }
         }
         showInstalledPlaceholder(nil)
         reloadTablePreservingSelection()
@@ -472,11 +521,17 @@ final class AppsInspectorViewController: NSViewController {
         // is already stale. Notification-driven refreshes, the post-reorder
         // re-read and the user's own Refresh all went through this path, which
         // is a large part of "the list and the home screen fall out of sync".
-        guard !isLoading else { needsReload = true; return }
+        guard !isLoading else {
+            needsReload = true
+            return
+        }
         isLoading = true
         defer {
             isLoading = false
-            if needsReload { needsReload = false; Task { await loadOnce() } }
+            if needsReload {
+                needsReload = false
+                Task { await loadOnce() }
+            }
         }
         do {
             let live = try await emulator.services.installedApps()
@@ -502,7 +557,7 @@ final class AppsInspectorViewController: NSViewController {
             // until something else happens to refresh it.
             //
             sortApps()
-            prunePending()   // the list just changed; a row may have earned its exit
+            prunePending()  // the list just changed; a row may have earned its exit
             reloadTablePreservingSelection()
             showInstalledPlaceholder(installedPlaceholderText)
             updateButtons()
@@ -525,13 +580,15 @@ final class AppsInspectorViewController: NSViewController {
                 if case DeviceError.unavailable = error {
                     // Permanent and host-side: "Waiting" is the wrong frame and
                     // names no remedy.
-                    showInstalledPlaceholder("App services are missing from this copy of Light Touch. Reinstall Light Touch.")
+                    showInstalledPlaceholder(
+                        "App services are missing from this copy of Light Touch. Reinstall Light Touch."
+                    )
                 } else {
                     showInstalledPlaceholder(emulator.connectionIssue?.summary ?? "Couldn’t update apps. Retrying…")
                 }
                 placeholder.toolTip = emulator.connectionIssue?.detail
             } else if haveLoaded {
-                showStaleBanner()   // keep the list, mark it stale
+                showStaleBanner()  // keep the list, mark it stale
             }
             // Also on the failure path: when usbmuxd dies the session goes away
             // and canManageApps flips false, but nothing told the inspector, so
@@ -548,7 +605,9 @@ final class AppsInspectorViewController: NSViewController {
     /// Subscribe to the guest's own install/uninstall notifications.
     private func startGuestNotifications() {
         guard let services = try? emulator.services else {
-            notifications?.stop(); notifications = nil; notificationEndpoint = nil
+            notifications?.stop()
+            notifications = nil
+            notificationEndpoint = nil
             return
         }
         let endpoint = services.endpoint
@@ -560,7 +619,8 @@ final class AppsInspectorViewController: NSViewController {
         let emulator = self.emulator
         watcher.start(attachAllowed: {
             await MainActor.run {
-                emulator.isRunning && !emulator.preparingDevice && emulator.usbConnected && !AppInstaller.isUsingDevice(emulator.instance.id)
+                emulator.isRunning && !emulator.preparingDevice && emulator.usbConnected
+                    && !AppInstaller.isUsingDevice(emulator.instance.id)
                     && !emulator.isInstalling && !emulator.hasFileTransfer && !emulator.isReconnecting
             }
         }) {
@@ -574,15 +634,22 @@ final class AppsInspectorViewController: NSViewController {
 
     // NotificationProxy cancels its own loops in its deinit, which is what
     // this releasing it triggers; nothing else here may touch main-actor state.
-    deinit { loadTask?.cancel(); searchTask?.cancel() }
+    deinit {
+        loadTask?.cancel()
+        searchTask?.cancel()
+    }
 
     private func showStaleBanner() {
         let when = AppsInspector.freshnessText(since: lastLoaded)
-        if emulator.isPoweredOff { banner.stringValue = "Device powered off" }
-        else if emulator.shuttingDown { banner.stringValue = "Device powering off…" }
-        else if emulator.isReconnecting { banner.stringValue = "Reconnecting app services…" }
-        else {
-            banner.stringValue = usbUnavailable
+        if emulator.isPoweredOff {
+            banner.stringValue = "Device powered off"
+        } else if emulator.shuttingDown {
+            banner.stringValue = "Device powering off…"
+        } else if emulator.isReconnecting {
+            banner.stringValue = "Reconnecting app services…"
+        } else {
+            banner.stringValue =
+                usbUnavailable
                 ? "USB connection unavailable"
                 : emulator.connectionIssue?.summary ?? "Connecting to \(emulator.profile.shortName)…"
         }
@@ -620,8 +687,13 @@ final class AppsInspectorViewController: NSViewController {
     private func showPlaceholder(_ text: String?) {
         placeholder.stringValue = text ?? ""
         placeholder.isHidden = (text == nil)
-        let actions = AppsInspector.placeholderActions(message: text, searching: searching, haveLoaded: haveLoaded,
-                                                       nothingListed: apps.isEmpty && pending.isEmpty, catalogFailed: catalogFailed)
+        let actions = AppsInspector.placeholderActions(
+            message: text,
+            searching: searching,
+            haveLoaded: haveLoaded,
+            nothingListed: apps.isEmpty && pending.isEmpty,
+            catalogFailed: catalogFailed
+        )
         browseButton.isHidden = !actions.browseAndInstall
         installButton.isHidden = !actions.browseAndInstall
         installButton.isEnabled = emulator.canQueueInstall
@@ -698,10 +770,12 @@ final class AppsInspectorViewController: NSViewController {
     private func remove(_ appsToRemove: [InstalledApp]) {
         guard canUninstall(appsToRemove) else { return }
         let alert = NSAlert()
-        alert.messageText = appsToRemove.count == 1
+        alert.messageText =
+            appsToRemove.count == 1
             ? "Uninstall “\(displayName(appsToRemove[0]))”?"
             : "Uninstall \(appsToRemove.count) apps?"
-        alert.informativeText = appsToRemove.count == 1
+        alert.informativeText =
+            appsToRemove.count == 1
             ? "This removes the app and its data from the device."
             : "This removes the apps and their data from the device."
         alert.addButton(withTitle: "Uninstall")
@@ -713,8 +787,12 @@ final class AppsInspectorViewController: NSViewController {
             // reachability temporarily unknown until the next probe. The
             // already accepted removal must still enter the queue.
             guard self.emulator.isRunning, self.emulator.canManageApps else {
-                AppInstaller.presentError(DeviceToolsError.failed("The \(emulator.profile.shortName) is unavailable. Try again when it reconnects."),
-                                          self.view.window)
+                AppInstaller.presentError(
+                    DeviceToolsError.failed(
+                        "The \(emulator.profile.shortName) is unavailable. Try again when it reconnects."
+                    ),
+                    self.view.window
+                )
                 return
             }
             let remaining = appsToRemove.filter { !self.uninstalling.contains($0.id) }
@@ -740,8 +818,11 @@ final class AppsInspectorViewController: NSViewController {
     }
 
     @objc private func uninstallClicked(_ sender: NSMenuItem) {
-        if let apps = sender.representedObject as? [InstalledApp] { remove(apps) }
-        else if let app = sender.representedObject as? InstalledApp { remove([app]) }
+        if let apps = sender.representedObject as? [InstalledApp] {
+            remove(apps)
+        } else if let app = sender.representedObject as? InstalledApp {
+            remove([app])
+        }
     }
 
     @objc private func dismissInstallClicked(_ sender: NSMenuItem) {
@@ -781,7 +862,10 @@ final class AppsInspectorViewController: NSViewController {
     }
 
     @objc private func refreshClicked(_ sender: Any?) {
-        if searching { scheduleSearch(); return }
+        if searching {
+            scheduleSearch()
+            return
+        }
         Task { await loadOnce() }
     }
 
@@ -790,7 +874,9 @@ final class AppsInspectorViewController: NSViewController {
     private func filterChanged() {
         reloadTablePreservingSelection()
         if searching, !catalogFetched.isEmpty {
-            showPlaceholder(AppsInspector.searchFinished(query: "", fetched: catalogFetched.count, shown: catalogResults.count))
+            showPlaceholder(
+                AppsInspector.searchFinished(query: "", fetched: catalogFetched.count, shown: catalogResults.count)
+            )
         }
         updateButtons()
     }
@@ -823,7 +909,10 @@ final class AppsInspectorViewController: NSViewController {
     func focusSearch() {
         guard let window = view.window ?? parent?.view.window else { return }
         if let split = window.contentViewController as? NSSplitViewController,
-           let item = split.splitViewItem(for: self) { item.isCollapsed = false }
+            let item = split.splitViewItem(for: self)
+        {
+            item.isCollapsed = false
+        }
         window.contentView?.layoutSubtreeIfNeeded()
         // The field may be collapsed into a search icon or toolbar overflow.
         // AppKit owns attaching and expanding it before assigning focus.
@@ -837,7 +926,9 @@ final class AppsInspectorViewController: NSViewController {
         if mode == .installed {
             reloadTablePreservingSelection()
             showPlaceholder(installedPlaceholderText)
-        } else { scheduleSearch() }
+        } else {
+            scheduleSearch()
+        }
     }
 
     /// Fetch what the Store view should show for the current search text —
@@ -853,14 +944,20 @@ final class AppsInspectorViewController: NSViewController {
         // iPhone OS 1 predates the App Store: Legacy Store's suggested list is empty for it by definition,
         // which read as the store being broken. A search still runs (and says why each app can't install).
         // Replace the other mode's overlay before any debounce/network await.
-        showPlaceholder(AppsInspector.searchStarting(query: query, iosVersion: emulator.iosVersion, haveResults: !catalogResults.isEmpty))
+        showPlaceholder(
+            AppsInspector.searchStarting(
+                query: query,
+                iosVersion: emulator.iosVersion,
+                haveResults: !catalogResults.isEmpty
+            )
+        )
         guard AppsInspector.searchRuns(query: query, iosVersion: emulator.iosVersion) else {
             updateButtons()
             return
         }
         searchTask = Task { [weak self] in
             if !query.isEmpty {
-                try? await Task.sleep(for: .milliseconds(300))   // debounce typing
+                try? await Task.sleep(for: .milliseconds(300))  // debounce typing
             }
             guard let self, !Task.isCancelled else { return }
             // Only the response to what's in the field now may land — a slower
@@ -870,19 +967,26 @@ final class AppsInspectorViewController: NSViewController {
                     && self.searchField.stringValue.trimmingCharacters(in: .whitespaces) == query
             }
             do {
-                let results = try await CatalogClient.search(query, device: self.emulator.productType,
-                                                             os: self.emulator.iosVersion)
+                let results = try await CatalogClient.search(
+                    query,
+                    device: self.emulator.productType,
+                    os: self.emulator.iosVersion
+                )
                 guard !Task.isCancelled, current() else { return }
                 self.catalogFetched = results
                 self.reloadTablePreservingSelection()
-                self.showPlaceholder(AppsInspector.searchFinished(query: query, fetched: results.count, shown: self.catalogResults.count))
+                self.showPlaceholder(
+                    AppsInspector.searchFinished(query: query, fetched: results.count, shown: self.catalogResults.count)
+                )
                 self.fetchCatalogIcons(results)
             } catch {
                 guard !Task.isCancelled, current() else { return }
                 self.catalogFetched = []
                 self.catalogFailed = true
                 self.reloadTablePreservingSelection()
-                self.showPlaceholder(AppsInspector.searchFailed(error, marketingName: self.emulator.profile.marketingName))
+                self.showPlaceholder(
+                    AppsInspector.searchFailed(error, marketingName: self.emulator.profile.marketingName)
+                )
             }
             self.updateButtons()
         }
@@ -893,7 +997,7 @@ final class AppsInspectorViewController: NSViewController {
     private func fetchCatalogIcons(_ results: [CatalogApp]) {
         for app in results {
             guard let url = app.iconURL,
-                  CatalogClient.iconMemo.object(forKey: url.absoluteString as NSString) == nil
+                CatalogClient.iconMemo.object(forKey: url.absoluteString as NSString) == nil
             else { continue }
             Task { [weak self] in
                 guard await CatalogClient.icon(for: app) != nil else { return }
@@ -920,8 +1024,11 @@ final class AppsInspectorViewController: NSViewController {
     @objc fileprivate func catalogInstallClicked(_ sender: NSButton) {
         guard searching, catalogResults.indices.contains(sender.tag) else { return }
         let app = catalogResults[sender.tag]
-        if let installed = apps.first(where: { $0.id == app.bundleID }) { launch(installed) }
-        else { install(catalog: app) }
+        if let installed = apps.first(where: { $0.id == app.bundleID }) {
+            launch(installed)
+        } else {
+            install(catalog: app)
+        }
     }
 
     @objc private func rowDoubleClicked() {
@@ -949,7 +1056,8 @@ final class AppsInspectorViewController: NSViewController {
                 let alert = NSAlert()
                 if case AppLaunchError.locked = error {
                     alert.alertStyle = .informational
-                    alert.messageText = "“\(displayName(app))” couldn’t open because the \(emulator.profile.shortName) is locked."
+                    alert.messageText =
+                        "“\(displayName(app))” couldn’t open because the \(emulator.profile.shortName) is locked."
                     alert.informativeText = "Unlock it, then try again."
                 } else {
                     alert.alertStyle = .warning
@@ -961,8 +1069,7 @@ final class AppsInspectorViewController: NSViewController {
                         alert.informativeText = AppLaunchError.failed.message(for: emulator.profile)
                     }
                 }
-                if let window = view.window { _ = await alert.beginSheetModal(for: window) }
-                else { alert.runModal() }
+                if let window = view.window { _ = await alert.beginSheetModal(for: window) } else { alert.runModal() }
             }
         }
     }
@@ -982,9 +1089,14 @@ final class AppsInspectorViewController: NSViewController {
             guard let self else { return false }
             return self.emulator.canQueueInstall && self.catalogJob(for: app)?.isFinished != false
         }
-        let sheet = CatalogDetailsViewController(app: app, device: emulator.productType, deviceOS: emulator.iosVersion, arch: emulator.guestArch,
-                                                 installedVersion: apps.first { $0.id == app.bundleID }?.version,
-                                                 canInstall: canInstall) { [weak self] copy in
+        let sheet = CatalogDetailsViewController(
+            app: app,
+            device: emulator.productType,
+            deviceOS: emulator.iosVersion,
+            arch: emulator.guestArch,
+            installedVersion: apps.first { $0.id == app.bundleID }?.version,
+            canInstall: canInstall
+        ) { [weak self] copy in
             guard let self, canInstall() else { return }
             AppInstaller.startCatalog(copy, with: self.emulator, presenting: self.view.window)
         }
@@ -1024,37 +1136,47 @@ extension AppsInspectorViewController: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let isMainMenu = menu !== tableView.menu
-        let model = AppsMenu(rows: rows, isMainMenu: isMainMenu, row: isMainMenu ? tableView.selectedRow : tableView.clickedRow,
-                             selection: tableView.selectedRowIndexes, inFrontWindow: view.window === NSApp.mainWindow,
-                             retainedCopy: { [emulator] in IPALibrary.url(for: $0, device: emulator.instance) },
-                             targets: (DeviceSessionHost.shared?.sessions ?? []).map { session in
-                                 let entry = FirmwareCatalog.bundled.entry(id: session.instance.firmware)
-                                 return AppsMenuTarget(title: entry.map { "\($0.marketingName) iOS \($0.version)" } ?? session.instance.name,
-                                                       canQueueInstall: session.emulator.canQueueInstall,
-                                                       isThisDevice: session.emulator === emulator, device: session.emulator)
-                             })
+        let model = AppsMenu(
+            rows: rows,
+            isMainMenu: isMainMenu,
+            row: isMainMenu ? tableView.selectedRow : tableView.clickedRow,
+            selection: tableView.selectedRowIndexes,
+            inFrontWindow: view.window === NSApp.mainWindow,
+            retainedCopy: { [emulator] in IPALibrary.url(for: $0, device: emulator.instance) },
+            targets: (DeviceSessionHost.shared?.sessions ?? []).map { session in
+                let entry = FirmwareCatalog.bundled.entry(id: session.instance.firmware)
+                return AppsMenuTarget(
+                    title: entry.map { "\($0.marketingName) iOS \($0.version)" } ?? session.instance.name,
+                    canQueueInstall: session.emulator.canQueueInstall,
+                    isThisDevice: session.emulator === emulator,
+                    device: session.emulator
+                )
+            }
+        )
         for item in model.items { menu.addItem(menuItem(item)) }
     }
 
     private func menuItem(_ item: AppsMenuItem) -> NSMenuItem {
         if item.isSeparator { return .separator() }
-        let (action, object): (Selector?, Any?) = switch item.action {
-        case .installApp: (#selector(MainWindowController.installApp(_:)), nil)
-        case .importMedia: (#selector(MainWindowController.syncMedia(_:)), nil)
-        case .resumeTransfers: (#selector(resumeInstallsClicked(_:)), nil)
-        case .refresh: (#selector(refreshClicked(_:)), nil)
-        case .install(let app): (#selector(installCatalogClicked(_:)), app)
-        case .installBatch(let apps): (#selector(installSelectedCatalogClicked(_:)), apps)
-        case .chooseVersion(let app): (#selector(catalogDetailsClicked(_:)), app)
-        case .viewOnLegacyStore(let app): (#selector(viewOnLegacyStoreClicked(_:)), app)
-        case .cancelInstall(let job): (#selector(cancelInstallClicked(_:)), job)
-        case .dismissInstall(let job): (#selector(dismissInstallClicked(_:)), job)
-        case .open(let app): (#selector(openClicked(_:)), app)
-        case .uninstall(let apps): (#selector(uninstallClicked(_:)), apps.count == 1 ? apps[0] : apps)
-        case .showInLegacyStore(let app): (#selector(showInLegacyStoreClicked(_:)), app)
-        case .installOn(let file, let device): (#selector(installOnClicked(_:)), (file: file, emulator: device as! EmulatorController))
-        case .none, .separator: (nil, nil)
-        }
+        let (action, object): (Selector?, Any?) =
+            switch item.action {
+            case .installApp: (#selector(MainWindowController.installApp(_:)), nil)
+            case .importMedia: (#selector(MainWindowController.syncMedia(_:)), nil)
+            case .resumeTransfers: (#selector(resumeInstallsClicked(_:)), nil)
+            case .refresh: (#selector(refreshClicked(_:)), nil)
+            case .install(let app): (#selector(installCatalogClicked(_:)), app)
+            case .installBatch(let apps): (#selector(installSelectedCatalogClicked(_:)), apps)
+            case .chooseVersion(let app): (#selector(catalogDetailsClicked(_:)), app)
+            case .viewOnLegacyStore(let app): (#selector(viewOnLegacyStoreClicked(_:)), app)
+            case .cancelInstall(let job): (#selector(cancelInstallClicked(_:)), job)
+            case .dismissInstall(let job): (#selector(dismissInstallClicked(_:)), job)
+            case .open(let app): (#selector(openClicked(_:)), app)
+            case .uninstall(let apps): (#selector(uninstallClicked(_:)), apps.count == 1 ? apps[0] : apps)
+            case .showInLegacyStore(let app): (#selector(showInLegacyStoreClicked(_:)), app)
+            case .installOn(let file, let device):
+                (#selector(installOnClicked(_:)), (file: file, emulator: device as! EmulatorController))
+            case .none, .separator: (nil, nil)
+            }
         let result = NSMenuItem(title: item.title, action: action, keyEquivalent: item.keyEquivalent)
         if item.shift { result.keyEquivalentModifierMask = [.shift, .command] }
         // The responder chain finds the window controller's own actions; the rest are this inspector's.
@@ -1080,8 +1202,11 @@ extension AppsInspectorViewController: NSTableViewDataSource, NSTableViewDelegat
         searching ? catalogResults.count : pending.count + visibleApps.count
     }
 
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?,
-                   row: Int) -> NSView? {
+    func tableView(
+        _ tableView: NSTableView,
+        viewFor tableColumn: NSTableColumn?,
+        row: Int
+    ) -> NSView? {
         if searching {
             guard catalogResults.indices.contains(row) else { return nil }
             return catalogCell(for: catalogResults[row], row: row)
@@ -1101,19 +1226,28 @@ extension AppsInspectorViewController: NSTableViewDataSource, NSTableViewDelegat
                 cell.textField?.stringValue = job.name
                 (cell.viewWithTag(Self.appSubtitleTag) as? NSTextField)?.stringValue =
                     job.bundleID ?? job.status
-                AppRowCells.setIcon(job.bundleID.flatMap { AppMetadataCache.shared.icon(for: $0) },
-                             on: cell.imageView)
+                AppRowCells.setIcon(
+                    job.bundleID.flatMap { AppMetadataCache.shared.icon(for: $0) },
+                    on: cell.imageView
+                )
                 cell.imageView?.layer?.opacity = NSApp.isActive ? 1 : 0.5
                 return cell
             }
-            return progressCell(icon: pendingIcon(job), title: job.name,
-                                subtitle: job.isCancelled ? "Cancelling…" : job.status,
-                                fraction: job.downloadProgress, job: job)
+            return progressCell(
+                icon: pendingIcon(job),
+                title: job.name,
+                subtitle: job.isCancelled ? "Cancelling…" : job.status,
+                fraction: job.downloadProgress,
+                job: job
+            )
         }
         guard let app = app(at: row) else { return nil }
         if uninstalling.contains(app.id) {
-            return progressCell(icon: AppMetadataCache.shared.icon(for: app.id),
-                                title: displayName(app), subtitle: removalStatus(for: app.id))
+            return progressCell(
+                icon: AppMetadataCache.shared.icon(for: app.id),
+                title: displayName(app),
+                subtitle: removalStatus(for: app.id)
+            )
         }
         let cell = appCell(tableView)
         cell.textField?.stringValue = displayName(app)
@@ -1163,13 +1297,16 @@ extension AppsInspectorViewController: NSTableViewDataSource, NSTableViewDelegat
         return item
     }
 
-    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo,
-                   proposedRow row: Int,
-                   proposedDropOperation operation: NSTableView.DropOperation) -> NSDragOperation {
+    func tableView(
+        _ tableView: NSTableView,
+        validateDrop info: NSDraggingInfo,
+        proposedRow row: Int,
+        proposedDropOperation operation: NSTableView.DropOperation
+    ) -> NSDragOperation {
         if info.draggingSource as? NSTableView !== tableView {
             // From outside: an .ipa to install, if the device can take one.
             guard emulator.canReachDevice, !Self.droppedIPAs(info).isEmpty else { return [] }
-            tableView.setDropRow(-1, dropOperation: .on)   // the list as a whole
+            tableView.setDropRow(-1, dropOperation: .on)  // the list as a whole
             return .copy
         }
         // Reorder: only the installed list, only against a known home-screen
@@ -1177,8 +1314,9 @@ extension AppsInspectorViewController: NSTableViewDataSource, NSTableViewDelegat
         // lockdown session the install can't afford), and one row at a time
         // (moveOnHomeScreen takes one id).
         guard !searching, queries[.installed, default: ""].isEmpty, !homeOrder.isEmpty, !installing,
-              info.draggingPasteboard.pasteboardItems?.count == 1,
-              operation == .above, row >= pending.count else { return [] }
+            info.draggingPasteboard.pasteboardItems?.count == 1,
+            operation == .above, row >= pending.count
+        else { return [] }
         return .move
     }
 
@@ -1186,8 +1324,12 @@ extension AppsInspectorViewController: NSTableViewDataSource, NSTableViewDelegat
         DroppedFiles.files(info.draggingPasteboard.readObjects(forClasses: [NSURL.self]) as? [URL] ?? [], .ipa)
     }
 
-    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo,
-                   row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
+    func tableView(
+        _ tableView: NSTableView,
+        acceptDrop info: NSDraggingInfo,
+        row: Int,
+        dropOperation: NSTableView.DropOperation
+    ) -> Bool {
         let ipas = Self.droppedIPAs(info)
         if !ipas.isEmpty, info.draggingSource as? NSTableView !== tableView {
             ipas.forEach { AppInstaller.start($0, with: emulator, presenting: view.window) }
@@ -1259,7 +1401,7 @@ extension AppsInspectorViewController: NSTableViewDataSource, NSTableViewDelegat
         subtitle.tag = Self.appSubtitleTag
         subtitle.textColor = .secondaryLabelColor
         subtitle.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        subtitle.lineBreakMode = .byTruncatingMiddle   // bundle ids differ at both ends
+        subtitle.lineBreakMode = .byTruncatingMiddle  // bundle ids differ at both ends
         subtitle.allowsExpansionToolTips = true
         subtitle.translatesAutoresizingMaskIntoConstraints = false
         [image, text, subtitle].forEach(cell.addSubview)
@@ -1287,10 +1429,23 @@ extension AppsInspectorViewController: NSTableViewDataSource, NSTableViewDelegat
     private func catalogCell(for app: CatalogApp, row: Int) -> NSTableCellView {
         switch rows.catalogRow(for: app) {
         case .progress(let subtitle, let fraction, let job):
-            return progressCell(icon: catalogIcon(app), title: app.name, subtitle: subtitle, fraction: fraction, job: job)
+            return progressCell(
+                icon: catalogIcon(app),
+                title: app.name,
+                subtitle: subtitle,
+                fraction: fraction,
+                job: job
+            )
         case .result(let button, let enabled):
-            return AppRowCells.catalogCell(app, icon: catalogIcon(app), button: button, enabled: enabled, row: row,
-                                           target: self, action: #selector(catalogInstallClicked(_:)))
+            return AppRowCells.catalogCell(
+                app,
+                icon: catalogIcon(app),
+                button: button,
+                enabled: enabled,
+                row: row,
+                target: self,
+                action: #selector(catalogInstallClicked(_:))
+            )
         }
     }
 
@@ -1304,15 +1459,22 @@ extension AppsInspectorViewController: NSTableViewDataSource, NSTableViewDelegat
     /// bundle id (reinstalls), else the generic placeholder.
     private func pendingIcon(_ job: InstallJob) -> NSImage? {
         if let url = job.catalogIconURL,
-           let memo = CatalogClient.iconMemo.object(forKey: url.absoluteString as NSString) {
+            let memo = CatalogClient.iconMemo.object(forKey: url.absoluteString as NSString)
+        {
             return memo
         }
         return job.bundleID.flatMap { AppMetadataCache.shared.icon(for: $0) }
     }
 
-    private func progressCell(icon: NSImage?, title: String, subtitle: String,
-                              fraction: Double? = nil, job: InstallJob? = nil) -> NSTableCellView {
-        AppRowCells.progressCell(icon: icon, title: title, subtitle: subtitle, fraction: fraction, job: job) { [weak self] in
+    private func progressCell(
+        icon: NSImage?,
+        title: String,
+        subtitle: String,
+        fraction: Double? = nil,
+        job: InstallJob? = nil
+    ) -> NSTableCellView {
+        AppRowCells.progressCell(icon: icon, title: title, subtitle: subtitle, fraction: fraction, job: job) {
+            [weak self] in
             self?.resumeInstallsClicked(nil)
         }
     }

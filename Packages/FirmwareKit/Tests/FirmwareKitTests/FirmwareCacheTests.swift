@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import Testing
+
 @testable import FirmwareKit
 
 struct FirmwareCacheTests {
@@ -16,7 +17,8 @@ struct FirmwareCacheTests {
             #expect(try Data(contentsOf: file) == Data("cached".utf8))
         }
         try reader()
-        var before = stat(), after = stat()
+        var before = stat()
+        var after = stat()
         #expect(lstat(root.appendingPathComponent(".lease").path, &before) == 0)
         try FirmwareCache.prune(root: root)
         #expect(!FileManager.default.fileExists(atPath: file.path))

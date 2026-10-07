@@ -2,9 +2,9 @@
 // started again in the order the first boot started them. A device without a guest to sync through, or whose
 // helper is gone, gets a fresh helper instead (DeviceSessionHost.restart).
 
+import DeviceRuntime
 import Foundation
 import HostRuntime
-import DeviceRuntime
 import HostServiceWire
 
 /// What a reset and a power-on read and do on the session, each step as the session names it.
@@ -65,7 +65,10 @@ public final class BootCycle {
     /// filesystem is concerned — it loses the HFS+ catalog updates still in memory, which is how a device ends up on
     /// the Connect-to-iTunes screen.
     public func reset() {
-        if isPoweredOff { powerOn(); return }
+        if isPoweredOff {
+            powerOn()
+            return
+        }
         guard !host.shuttingDown else { return }
         guard !host.storageFailed else { return }
         let preparation = host.readiness.current
@@ -84,12 +87,19 @@ public final class BootCycle {
                 return
             }
             let synced = await withSoftDeadline(syncBudget) { @MainActor in
-                do { try await host.syncGuest(); return true }
-                catch { return false }
+                do {
+                    try await host.syncGuest()
+                    return true
+                } catch { return false }
             }
-            guard !Task.isCancelled, generation == host.bootScope.generation, !host.storageFailed, !host.shuttingDown, !host.state.isDead else { return }
+            guard !Task.isCancelled, generation == host.bootScope.generation, !host.storageFailed, !host.shuttingDown,
+                !host.state.isDead
+            else { return }
             guard synced == true else {
-                host.notices.report("Couldn’t restart because the device didn’t finish saving its files.", for: .powerOff)
+                host.notices.report(
+                    "Couldn’t restart because the device didn’t finish saving its files.",
+                    for: .powerOff
+                )
                 if host.state == .booting { host.readiness.start() }
                 return
             }
@@ -100,8 +110,10 @@ public final class BootCycle {
             // only this transition after old workers are reaped; a concurrent
             // halt/death prevents renewing the scope.
             await host.workers.task?.value
-            guard retiredGeneration == host.bootScope.generation, !host.isReleased, !host.storageFailed, !host.shuttingDown,
-                  !host.state.isDead, host.state != .poweredOff else { return }
+            guard retiredGeneration == host.bootScope.generation, !host.isReleased, !host.storageFailed,
+                !host.shuttingDown,
+                !host.state.isDead, host.state != .poweredOff
+            else { return }
             host.bootScope.renew()
             host.publishDeveloperConnection()
             host.reconnectUSB()
@@ -123,7 +135,10 @@ public final class BootCycle {
     /// opening a second NAND writer. Stopped by a halt, the helper is gone: a fresh one starts.
     public func powerOn() {
         guard isPoweredOff, !host.storageFailed, !host.shuttingDown else { return }
-        if host.helper?.isDead != false { host.restart(); return }
+        if host.helper?.isDead != false {
+            host.restart()
+            return
+        }
         host.bootScope.renew()
         host.publishDeveloperConnection()
         host.reconnectUSB()

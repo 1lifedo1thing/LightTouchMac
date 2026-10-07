@@ -14,7 +14,11 @@ final class Link {
         source.setEventHandler { [unowned self] in
             var chunk = [UInt8](repeating: 0, count: 65536)
             let n = read(fd, &chunk, chunk.count)
-            if n <= 0 { source.cancel(); onEOF(); return }
+            if n <= 0 {
+                source.cancel()
+                onEOF()
+                return
+            }
             buffer.append(contentsOf: chunk[0..<n])
             while let nl = buffer.firstIndex(of: 0x0a) {
                 let line = buffer[buffer.startIndex..<nl]
@@ -27,17 +31,19 @@ final class Link {
     func send(_ m: [String: Any]) {
         var d = try! JSONSerialization.data(withJSONObject: m)
         d.append(0x0a)
-        writeLock.lock(); defer { writeLock.unlock() }
+        writeLock.lock()
+        defer { writeLock.unlock() }
         _ = d.withUnsafeBytes { write(fd, $0.baseAddress, d.count) }
     }
 }
 
 /// Status block layout: uint64 slots in IOSurface #0.
 enum Slot: Int {
-    case magic = 0, heartbeat, frameSerial, front, width, height, publishTicks, uiReady,
-         glesContexts, snapshotStatus, shutdownConfirmed, held  // held: 1 + ring index the parent is reading, 0 none
+    case magic = 0
+    case heartbeat, frameSerial, front, width, height, publishTicks, uiReady,
+        glesContexts, snapshotStatus, shutdownConfirmed, held  // held: 1 + ring index the parent is reading, 0 none
 }
-let statusMagic: UInt64 = 0x4C544D5354415431   // "LTMSTAT1"
+let statusMagic: UInt64 = 0x4C54_4D53_5441_5431  // "LTMSTAT1"
 
 struct Status {
     let base: UnsafeMutablePointer<UInt64>
@@ -49,19 +55,31 @@ struct Status {
 }
 
 func makeSurface(width: Int, height: Int, bytesPerElement: Int = 4) -> IOSurface {
-    IOSurface(properties: [.width: width, .height: height, .bytesPerElement: bytesPerElement,
-                           .pixelFormat: 0x42475241 /* 'BGRA' */])!
+    IOSurface(properties: [
+        .width: width, .height: height, .bytesPerElement: bytesPerElement,
+        .pixelFormat: 0x4247_5241 /* 'BGRA' */,
+    ])!
 }
 
-var timebase: mach_timebase_info_data_t = { var t = mach_timebase_info_data_t(); mach_timebase_info(&t); return t }()
+var timebase: mach_timebase_info_data_t = {
+    var t = mach_timebase_info_data_t()
+    mach_timebase_info(&t)
+    return t
+}()
 func ticksToMs(_ t: UInt64) -> Double { Double(t) * Double(timebase.numer) / Double(timebase.denom) / 1e6 }
 
 func cpuSeconds() -> Double {
-    var r = rusage(); getrusage(RUSAGE_SELF, &r)
+    var r = rusage()
+    getrusage(RUSAGE_SELF, &r)
     return Double(r.ru_utime.tv_sec + r.ru_stime.tv_sec) + Double(r.ru_utime.tv_usec + r.ru_stime.tv_usec) / 1e6
 }
 
 func log(_ s: String) {
-    var tv = timeval(); gettimeofday(&tv, nil)
-    FileHandle.standardError.write("[\(String(format: "%.3f", Double(tv.tv_sec) + Double(tv.tv_usec) / 1e6)) \(getpid())] \(s)\n".data(using: .utf8)!)
+    var tv = timeval()
+    gettimeofday(&tv, nil)
+    FileHandle.standardError.write(
+        "[\(String(format: "%.3f", Double(tv.tv_sec) + Double(tv.tv_usec) / 1e6)) \(getpid())] \(s)\n".data(
+            using: .utf8
+        )!
+    )
 }

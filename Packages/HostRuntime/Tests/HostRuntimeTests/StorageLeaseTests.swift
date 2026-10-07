@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
-import Testing
 import HostRuntime
+import Testing
 
 struct StorageLeaseTests {
     private func fixture(_ body: (URL) throws -> Void) throws {
@@ -33,7 +33,9 @@ struct StorageLeaseTests {
                 withExtendedLifetime(owner) {}
             }
             let owner = try StorageLease(path)
-            #expect(try FileManager.default.attributesOfItem(atPath: path.path)[.systemFileNumber] as? NSNumber == inode)
+            #expect(
+                try FileManager.default.attributesOfItem(atPath: path.path)[.systemFileNumber] as? NSNumber == inode
+            )
             withExtendedLifetime(owner) {}
         }
     }
@@ -89,26 +91,38 @@ struct StorageLeaseTests {
             previous?.close()
             previous = nil
             #expect(throws: StorageLease.Failure.inUse) { _ = try StorageLease(path) }
-            #expect(try FileManager.default.attributesOfItem(atPath: path.path)[.systemFileNumber] as? NSNumber == inode)
+            #expect(
+                try FileManager.default.attributesOfItem(atPath: path.path)[.systemFileNumber] as? NSNumber == inode
+            )
             withExtendedLifetime(successor) {}
         }
     }
 
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["FK_ISOLATED_DESCRIPTOR_REUSE"] == "1", "Run alone with FK_ISOLATED_DESCRIPTOR_REUSE=1; descriptor-number allocation is process-wide"))
+    @Test(
+        .enabled(
+            if: ProcessInfo.processInfo.environment["FK_ISOLATED_DESCRIPTOR_REUSE"] == "1",
+            "Run alone with FK_ISOLATED_DESCRIPTOR_REUSE=1; descriptor-number allocation is process-wide"
+        )
+    )
     func closedOwnerCannotCloseReusedDescriptor() throws {
         try fixture { root in
             let path = root.appendingPathComponent("work/lease")
             var previous: StorageLease? = try StorageLease(path)
-            let inode = try #require(try FileManager.default.attributesOfItem(atPath: path.path)[.systemFileNumber] as? NSNumber)
-            let old = try #require(FileManager.default.contentsOfDirectory(atPath: "/dev/fd").compactMap(Int32.init).first { fd in
-                var values = stat()
-                return fstat(fd, &values) == 0 && values.st_ino == inode.uint64Value
-            })
+            let inode = try #require(
+                try FileManager.default.attributesOfItem(atPath: path.path)[.systemFileNumber] as? NSNumber
+            )
+            let old = try #require(
+                FileManager.default.contentsOfDirectory(atPath: "/dev/fd").compactMap(Int32.init).first { fd in
+                    var values = stat()
+                    return fstat(fd, &values) == 0 && values.st_ino == inode.uint64Value
+                }
+            )
             previous?.close()
             let reused = open("/dev/null", O_RDONLY | O_CLOEXEC)
             defer { if reused >= 0 { Darwin.close(reused) } }
             #expect(reused == old, "run this descriptor-number reuse fixture in isolation")
-            previous?.close(); previous = nil
+            previous?.close()
+            previous = nil
             #expect(fcntl(reused, F_GETFD) >= 0)
         }
     }
@@ -124,7 +138,8 @@ struct StorageLeaseTests {
             await group.waitForAll()
         }
         let successor = try StorageLease(path)
-        previous = nil; owner.close()
+        previous = nil
+        owner.close()
         #expect(throws: StorageLease.Failure.inUse) { _ = try StorageLease(path) }
         withExtendedLifetime((owner, successor)) {}
     }

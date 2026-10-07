@@ -1,13 +1,13 @@
-import HostServiceWire
 import DeviceRuntime
+import Foundation
+import HostServiceWire
+
 // The guest agent's wire (qemu-ios contrib/it-agent/README.md): one request per
 // op through the device's helper (LinkRequest.agent), the ping's capabilities
 // cached per device, and the typed v2 ops with their v1 `exec` fallbacks. The
 // app's operations on top of it are GuestServices.
 //
 // Foundation only, so tests/drivers/session-driver compiles it as the app does.
-
-import Foundation
 
 /// A command the agent ran and refused, with its (negative errno or exit) status.
 public nonisolated struct GuestAgentError: LocalizedError, CustomStringConvertible {
@@ -17,7 +17,9 @@ public nonisolated struct GuestAgentError: LocalizedError, CustomStringConvertib
     public static let notFound = -2, tooBig = -27, again = -35, connectionReset = -54, notImplemented = -78
     /// The alert's words; `description` (what logs interpolate) keeps the status and output.
     public var errorDescription: String? { "The device couldn’t do that. Try again." }
-    public var description: String { "agent \(operation) failed (\(status)): \(String(decoding: output.prefix(4096), as: UTF8.self))" }
+    public var description: String {
+        "agent \(operation) failed (\(status)): \(String(decoding: output.prefix(4096), as: UTF8.self))"
+    }
 }
 
 /// What `ping` said: `it_agent v2\nops …` or a v1's bare `it_agent v1`.
@@ -27,8 +29,12 @@ public nonisolated struct GuestAgentCapabilities: Sendable, Equatable {
 
     public static func parse(_ reply: String) -> GuestAgentCapabilities? {
         let lines = reply.split(separator: "\n")
-        guard let first = lines.first, first.hasPrefix("it_agent v"), let version = Int(first.dropFirst(10)) else { return nil }
-        let ops = lines.first { $0.hasPrefix("ops ") }.map { Set($0.dropFirst(4).split(separator: " ").map(String.init)) } ?? []
+        guard let first = lines.first, first.hasPrefix("it_agent v"), let version = Int(first.dropFirst(10)) else {
+            return nil
+        }
+        let ops =
+            lines.first { $0.hasPrefix("ops ") }.map { Set($0.dropFirst(4).split(separator: " ").map(String.init)) }
+            ?? []
         return GuestAgentCapabilities(version: version, ops: ops)
     }
 
@@ -78,9 +84,15 @@ public nonisolated struct GuestAgent: Sendable {
     // MARK: Wire
 
     /// Status and body of one op; throws only when no status came back.
-    public func raw(_ operation: String, _ arguments: String = "", body: Data = Data(),
-             deadline: Double = 65) async throws -> (status: Int, output: Data) {
-        guard let link, isAlive else { throw DeviceToolsError.failed("The device isn’t ready yet. Try again when it has finished starting.") }
+    public func raw(
+        _ operation: String,
+        _ arguments: String = "",
+        body: Data = Data(),
+        deadline: Double = 65
+    ) async throws -> (status: Int, output: Data) {
+        guard let link, isAlive else {
+            throw DeviceToolsError.failed("The device isn’t ready yet. Try again when it has finished starting.")
+        }
         try Task.checkCancellation()
         let id = UUID().uuidString
         let request = "\(id) \(operation) \(arguments)\n\(body.base64EncodedString())"
@@ -98,17 +110,18 @@ public nonisolated struct GuestAgent: Sendable {
         }
         try Task.checkCancellation()
         switch reply {
-        case let .agent(wire?):
+        case .agent(let wire?):
             // "<id> <status>\n<base64 output>"
             let parts = wire.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
             let header = parts.first?.split(separator: " ", maxSplits: 1) ?? []
             guard parts.count == 2, header.count == 2, header[0] == id, let code = Int(header[1]),
-                  let output = Data(base64Encoded: String(parts[1])) else {
+                let output = Data(base64Encoded: String(parts[1]))
+            else {
                 throw DeviceToolsError.failed("The device returned an invalid command result.")
             }
             return (code, output)
         case .agent(nil): throw DeviceToolsError.failed("The device command timed out; its outcome is unknown.")
-        case let .failure(message): throw DeviceToolsError.failed(message)
+        case .failure(let message): throw DeviceToolsError.failed(message)
         default: throw DeviceToolsError.failed("The device returned an invalid command result.")
         }
     }
@@ -125,7 +138,9 @@ public nonisolated struct GuestAgent: Sendable {
         if let known = cache.capabilities { return known }
         let reply = String(decoding: try await perform("ping"), as: UTF8.self)
         guard let parsed = GuestAgentCapabilities.parse(reply) else {
-            throw DeviceToolsError.failed("The device’s guest tools didn’t respond as expected. Restart the device to update them.")
+            throw DeviceToolsError.failed(
+                "The device’s guest tools didn’t respond as expected. Restart the device to update them."
+            )
         }
         cache.capabilities = parsed
         return parsed
@@ -144,12 +159,17 @@ public nonisolated struct GuestAgent: Sendable {
     /// argv[0] absolute; no shell. The child's stdout+stderr on success.
     @discardableResult
     public func spawn(_ argv: [String]) async throws -> Data {
-        guard try await capabilities().has("spawn") else { return try await shell(argv.map(Self.quote).joined(separator: " ")) }
+        guard try await capabilities().has("spawn") else {
+            return try await shell(argv.map(Self.quote).joined(separator: " "))
+        }
         return try await perform("spawn", body: Data(argv.map { $0 + "\u{0}" }.joined().utf8))
     }
 
     public func sync() async throws {
-        guard try await capabilities().has("sync") else { try await shell("sync"); return }
+        guard try await capabilities().has("sync") else {
+            try await shell("sync")
+            return
+        }
         try await perform("sync")
     }
 
@@ -157,16 +177,25 @@ public nonisolated struct GuestAgent: Sendable {
     /// request (256 KiB with its header) it goes as v3 `putpart` chunks, still
     /// renamed into place by the final one.
     public func put(_ path: String, mode: Int, _ data: Data) async throws {
-        let octal = String(mode, radix: 8), part = 256 * 1024 - 4097
-        guard data.count > part else { try await perform("put", "\(path) \(octal)", body: data); return }
+        let octal = String(mode, radix: 8)
+        let part = 256 * 1024 - 4097
+        guard data.count > part else {
+            try await perform("put", "\(path) \(octal)", body: data)
+            return
+        }
         guard try await capabilities().has("putpart") else {
-            throw DeviceToolsError.failed("The device’s guest tools are too old to receive this file. Restart the device to update them.")
+            throw DeviceToolsError.failed(
+                "The device’s guest tools are too old to receive this file. Restart the device to update them."
+            )
         }
         var offset = 0
         while offset < data.count {
             let end = min(offset + part, data.count)
-            try await perform("putpart", "\(offset) \(end == data.count ? 1 : 0) \(octal) \(path)",
-                              body: Data(data[(data.startIndex + offset)..<(data.startIndex + end)]))
+            try await perform(
+                "putpart",
+                "\(offset) \(end == data.count ? 1 : 0) \(octal) \(path)",
+                body: Data(data[(data.startIndex + offset)..<(data.startIndex + end)])
+            )
             offset = end
         }
     }
@@ -188,13 +217,19 @@ public nonisolated struct GuestAgent: Sendable {
     }
 
     public func chown(_ uid: Int, _ gid: Int, _ path: String) async throws {
-        guard try await capabilities().has("chown") else { try await shell("chown \(uid):\(gid) \(Self.quote(path))"); return }
+        guard try await capabilities().has("chown") else {
+            try await shell("chown \(uid):\(gid) \(Self.quote(path))")
+            return
+        }
         try await perform("chown", "\(uid) \(gid) \(path)")
     }
 
     /// Absent is fine.
     public func unlink(_ path: String) async throws {
-        guard try await capabilities().has("unlink") else { try await shell("rm -f \(Self.quote(path))"); return }
+        guard try await capabilities().has("unlink") else {
+            try await shell("rm -f \(Self.quote(path))")
+            return
+        }
         let (status, output) = try await raw("unlink", path)
         guard status == 0 || status == GuestAgentError.notFound else {
             throw GuestAgentError(operation: "unlink", status: status, output: output)
@@ -205,7 +240,9 @@ public nonisolated struct GuestAgent: Sendable {
 
     /// SpringBoard's foreground bundle id and localized name; `Lock Screen` when locked.
     public func frontmost() async throws -> (bundleID: String, name: String) {
-        let lines = String(decoding: try await perform("frontmost"), as: UTF8.self).split(separator: "\n").map(String.init)
+        let lines = String(decoding: try await perform("frontmost"), as: UTF8.self).split(separator: "\n").map(
+            String.init
+        )
         return (lines.first ?? "", lines.dropFirst().first ?? "")
     }
 
@@ -215,7 +252,9 @@ public nonisolated struct GuestAgent: Sendable {
 
     public func orientation() async throws -> Int {
         let text = String(decoding: try await perform("orientation"), as: UTF8.self)
-        guard let degrees = Int(text.trimmingCharacters(in: .whitespacesAndNewlines)), [0, 90, 180, -90].contains(degrees) else {
+        guard let degrees = Int(text.trimmingCharacters(in: .whitespacesAndNewlines)),
+            [0, 90, 180, -90].contains(degrees)
+        else {
             throw DeviceToolsError.failed("The device returned an invalid orientation.")
         }
         return degrees
@@ -225,7 +264,10 @@ public nonisolated struct GuestAgent: Sendable {
     @discardableResult
     public func placeholder(_ action: String, id: String, bundleID: String? = nil) async throws -> Bool {
         guard try await capabilities().has("dlicon") else { return false }
-        try await perform("dlicon", ([action, id] + (action == "add" ? [bundleID].compactMap { $0 } : [])).joined(separator: " "))
+        try await perform(
+            "dlicon",
+            ([action, id] + (action == "add" ? [bundleID].compactMap { $0 } : [])).joined(separator: " ")
+        )
         return true
     }
 

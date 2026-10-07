@@ -1,6 +1,7 @@
 import Foundation
 import HostServiceWire
 import Testing
+
 @testable import LightTouchCore
 
 /// DeviceServices.setTimeZone and its lockdown child (LockdownTools) against fake lockdown-tz scripts and a fake guest
@@ -20,15 +21,28 @@ import Testing
         echo "$2"
         """
 
-    func run(_ dir: URL, drops: Int, guest: GuestServices?) async -> (result: Result<String, Error>, writes: Int, seconds: Double) {
+    func run(_ dir: URL, drops: Int, guest: GuestServices?) async -> (
+        result: Result<String, Error>, writes: Int, seconds: Double
+    ) {
         let state = dir.appendingPathComponent("state-\(UUID().uuidString)").path
         try! "\(drops)".write(toFile: state + ".drops", atomically: true, encoding: .utf8)
         let start = Date()
         let result: Result<String, Error>
-        do { result = .success(try await DeviceServices.setTimeZone("America/New_York", tool: dir.appendingPathComponent("lockdown-tz").path,
-                                                                    socket: state, guest: guest)) }
-        catch { result = .failure(error) }
-        let writes = Int((try? String(contentsOfFile: state, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "0") ?? 0
+        do {
+            result = .success(
+                try await DeviceServices.setTimeZone(
+                    "America/New_York",
+                    tool: dir.appendingPathComponent("lockdown-tz").path,
+                    socket: state,
+                    guest: guest
+                )
+            )
+        } catch { result = .failure(error) }
+        let writes =
+            Int(
+                (try? String(contentsOfFile: state, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    ?? "0"
+            ) ?? 0
         return (result, writes, Date().timeIntervalSince(start))
     }
 
@@ -47,8 +61,16 @@ import Testing
             try script(dir.appendingPathComponent("lockdown-tz"), Self.droppingTool)
             let link = FakeGuestLink()
             let cache = "/var/root/Library/Caches/locationd/cache.plist"
-            link.files[cache] = try PropertyListSerialization.data(fromPropertyList: ["PreviousTimeZone": "US/Pacific"], format: .binary, options: 0)
-            let r = await run(dir, drops: 1, guest: GuestServices(agent: GuestAgent(link: link, cache: GuestAgentCache())))
+            link.files[cache] = try PropertyListSerialization.data(
+                fromPropertyList: ["PreviousTimeZone": "US/Pacific"],
+                format: .binary,
+                options: 0
+            )
+            let r = await run(
+                dir,
+                drops: 1,
+                guest: GuestServices(agent: GuestAgent(link: link, cache: GuestAgentCache()))
+            )
             #expect((try? r.result.get()) == "America/New_York" && r.writes == 2 && r.seconds < 4, "\(r)")
             #expect(link.spawns.count == 2 && link.ops.contains("put"), "locationd's record cleared once: \(link.ops)")
         }
@@ -59,7 +81,8 @@ import Testing
             try script(dir.appendingPathComponent("lockdown-tz"), Self.droppingTool)
             let r = await run(dir, drops: 99, guest: nil)
             guard case .failure(DeviceToolsError.zoneKept("US/Pacific")) = r.result else {
-                Issue.record("not zoneKept: \(r)"); return
+                Issue.record("not zoneKept: \(r)")
+                return
             }
             #expect(r.writes == 4)
         }
@@ -74,7 +97,8 @@ import Testing
 
     @Test func cancelledChildIsReaped() async throws {
         try await withTemporaryDirectoryAsync { root in
-            let slow = root.appendingPathComponent("slow.sh"), marker = root.appendingPathComponent("late-marker")
+            let slow = root.appendingPathComponent("slow.sh")
+            let marker = root.appendingPathComponent("late-marker")
             let started = root.appendingPathComponent("started")
             try script(slow, Self.slowTool(started: started, marker: marker))
             let child = Task { try await DeviceServices.lockdownChild(slow.path, [], socket: "127.0.0.1:31411") }
@@ -92,13 +116,16 @@ import Testing
 
     @Test func childPastItsDeadlineIsReaped() async throws {
         try await withTemporaryDirectoryAsync { root in
-            let slow = root.appendingPathComponent("slow.sh"), marker = root.appendingPathComponent("late-marker")
+            let slow = root.appendingPathComponent("slow.sh")
+            let marker = root.appendingPathComponent("late-marker")
             try script(slow, Self.slowTool(started: root.appendingPathComponent("started"), marker: marker))
             let saved = Timeouts.query
             Timeouts.query = 0.1
             defer { Timeouts.query = saved }
-            do { _ = try await DeviceServices.lockdownChild(slow.path, [], socket: "127.0.0.1:31411"); Issue.record("deadline succeeded") }
-            catch DeviceToolsError.failed {}
+            do {
+                _ = try await DeviceServices.lockdownChild(slow.path, [], socket: "127.0.0.1:31411")
+                Issue.record("deadline succeeded")
+            } catch DeviceToolsError.failed {}
             try await Task.sleep(for: .milliseconds(500))
             #expect(!FileManager.default.fileExists(atPath: marker.path), "deadline left a delayed writer")
         }
@@ -107,20 +134,31 @@ import Testing
     /// Cancelled during zoneKept's readiness wait, just as the agent comes up: no forget, no retry.
     @Test func cancelledZoneRetryNeitherClearsGuestStateNorWritesAgain() async throws {
         try await withTemporaryDirectoryAsync { root in
-            let zone = root.appendingPathComponent("zone.sh"), attempts = root.appendingPathComponent("attempts")
+            let zone = root.appendingPathComponent("zone.sh")
+            let attempts = root.appendingPathComponent("attempts")
             try script(zone, "#!/bin/sh\nprintf 'attempt\\n' >> '\(attempts.path)'\nprintf 'UTC\\n'\nexit 4\n")
             let link = FakeGuestLink()
             link.agent = 0
             link.files["/var/root/Library/Caches/locationd/cache.plist"] = try PropertyListSerialization.data(
-                fromPropertyList: ["PreviousTimeZone": "UTC"], format: .binary, options: 0)
+                fromPropertyList: ["PreviousTimeZone": "UTC"],
+                format: .binary,
+                options: 0
+            )
             let guest = GuestServices(agent: GuestAgent(link: link, cache: GuestAgentCache()))
-            let operation = Task { try await DeviceServices.setTimeZone("Etc/UTC", tool: zone.path, socket: "127.0.0.1:31411", guest: guest) }
+            let operation = Task {
+                try await DeviceServices.setTimeZone(
+                    "Etc/UTC",
+                    tool: zone.path,
+                    socket: "127.0.0.1:31411",
+                    guest: guest
+                )
+            }
             let deadline = ContinuousClock.now + .seconds(5)
             while !FileManager.default.fileExists(atPath: attempts.path) {
                 try #require(ContinuousClock.now < deadline, "the first write never ran")
                 try await Task.sleep(for: .milliseconds(2))
             }
-            try await Task.sleep(for: .milliseconds(100))   // in waitAlive by now
+            try await Task.sleep(for: .milliseconds(100))  // in waitAlive by now
             link.lock.withLock { link.agent = 1 }
             operation.cancel()
             await #expect(throws: CancellationError.self) { _ = try await operation.value }

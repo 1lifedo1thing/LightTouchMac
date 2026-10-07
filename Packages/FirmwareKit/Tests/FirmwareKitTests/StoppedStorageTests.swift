@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import Testing
+
 @testable import FirmwareKit
 
 struct StoppedStorageTests {
@@ -30,7 +31,10 @@ struct StoppedStorageTests {
             #expect(throws: FirmwareError.self) { try OwnedStorageRecord.acquire(device: dir, allowRaw: true) }
             withExtendedLifetime(lease) {}
         }
-        do { let lease = try OwnedStorageRecord.acquire(device: dir, allowRaw: true); withExtendedLifetime(lease) {} }
+        do {
+            let lease = try OwnedStorageRecord.acquire(device: dir, allowRaw: true)
+            withExtendedLifetime(lease) {}
+        }
         try Data("{}".utf8).write(to: dir.appendingPathComponent("work/edit.json"))
         #expect(throws: FirmwareError.self) { try OwnedStorageRecord.acquire(device: dir, allowRaw: true) }
         try FileManager.default.removeItem(at: dir.appendingPathComponent("work/edit.json"))
@@ -71,8 +75,15 @@ struct StoppedStorageTests {
         try Data("not json".utf8).write(to: VolumeExport.manifest(dir))
         await #expect(throws: (any Error).self) { try await VolumeExport.unmount(out: dir) }
         #expect(FileManager.default.fileExists(atPath: dir.path))
-        let foreign = VolumeExport.Exported(volume: "system", image: "/tmp/another-device.img", clean: true,
-            repaired: false, device: "/dev/disk1", mountPoint: nil, seconds: 0)
+        let foreign = VolumeExport.Exported(
+            volume: "system",
+            image: "/tmp/another-device.img",
+            clean: true,
+            repaired: false,
+            device: "/dev/disk1",
+            mountPoint: nil,
+            seconds: 0
+        )
         try VolumeExport.write([foreign], dir)
         await #expect(throws: FirmwareError.self) { try await VolumeExport.unmount(out: dir) }
         #expect(FileManager.default.fileExists(atPath: dir.path))

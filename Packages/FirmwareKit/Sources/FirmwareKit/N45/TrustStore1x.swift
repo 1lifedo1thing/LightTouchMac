@@ -7,27 +7,30 @@
 // chain and Safari opens HTTPS through a TLS 1.0 relay; without it, 3 (deny).
 
 import CryptoKit
-import Foundation
 import FirmwareSchema
+import Foundation
 import HostRuntime
 import SQLite3
 
 public enum TrustStore1x {
     static let path = "System/Library/Frameworks/Security.framework/TrustStore.sqlite3"
     /// The stock rows' tset: an empty trust-settings array.
-    static let emptySettings = Data("""
+    static let emptySettings = Data(
+        """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0">
         <array/>
         </plist>
 
-        """.utf8)
+        """.utf8
+    )
 
     /// A DER element at `o`: (tag, header length, content length).
     private static func element(_ d: [UInt8], _ o: Int) throws -> (tag: UInt8, header: Int, length: Int) {
         guard o + 1 < d.count else { throw FirmwareError(.unsupported, "certificate truncated") }
-        var length = Int(d[o + 1]), header = 2
+        var length = Int(d[o + 1])
+        var header = 2
         if length & 0x80 != 0 {
             let n = length & 0x7f
             guard n <= 3, o + 2 + n <= d.count else { throw FirmwareError(.unsupported, "certificate length") }
@@ -41,10 +44,16 @@ public enum TrustStore1x {
     /// The certificate's subject Name content, normalized as 1.x stores it.
     static func normalizedSubject(_ certificate: Data) throws -> Data {
         let d = [UInt8](certificate)
-        var o = try element(d, 0).header                     // Certificate
-        o += try element(d, o).header                         // TBSCertificate
-        if d[o] == 0xa0 { let e = try element(d, o); o += e.header + e.length }   // version
-        for _ in 0..<4 { let e = try element(d, o); o += e.header + e.length }    // serial, signature, issuer, validity
+        var o = try element(d, 0).header  // Certificate
+        o += try element(d, o).header  // TBSCertificate
+        if d[o] == 0xa0 {
+            let e = try element(d, o)
+            o += e.header + e.length
+        }  // version
+        for _ in 0..<4 {
+            let e = try element(d, o)
+            o += e.header + e.length
+        }  // serial, signature, issuer, validity
         let name = try element(d, o)
         var out = Array(d[(o + name.header)..<(o + name.header + name.length)])
         // Walk the RDNs: SET { SEQUENCE { OID, value } }; uppercase PrintableString (0x13) values in place.
@@ -58,7 +67,8 @@ public enum TrustStore1x {
                 let v = q + atv.header + oid.header + oid.length
                 let value = try element(out, v)
                 if value.tag == 0x13 {
-                    for i in (v + value.header)..<(v + value.header + value.length) where (0x61...0x7a).contains(out[i]) { out[i] -= 0x20 }
+                    for i in (v + value.header)..<(v + value.header + value.length) where (0x61...0x7a).contains(out[i])
+                    { out[i] -= 0x20 }
                 }
                 q += atv.header + atv.length
             }
@@ -77,12 +87,22 @@ public enum TrustStore1x {
         }
         defer { sqlite3_close(db) }
         var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "INSERT OR REPLACE INTO tsettings(sha1,subj,tset,data) VALUES(?,?,?,?)", -1, &stmt, nil) == SQLITE_OK
+        guard
+            sqlite3_prepare_v2(
+                db,
+                "INSERT OR REPLACE INTO tsettings(sha1,subj,tset,data) VALUES(?,?,?,?)",
+                -1,
+                &stmt,
+                nil
+            ) == SQLITE_OK
         else { throw FirmwareError(.unsupported, "\(store.path): no tsettings table") }
         defer { sqlite3_finalize(stmt) }
         let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-        for (i, blob) in [Data(Insecure.SHA1.hash(data: certificate)), subject, emptySettings, certificate].enumerated() {
-            _ = blob.withUnsafeBytes { sqlite3_bind_blob(stmt, Int32(i + 1), $0.baseAddress, Int32(blob.count), transient) }
+        for (i, blob) in [Data(Insecure.SHA1.hash(data: certificate)), subject, emptySettings, certificate].enumerated()
+        {
+            _ = blob.withUnsafeBytes {
+                sqlite3_bind_blob(stmt, Int32(i + 1), $0.baseAddress, Int32(blob.count), transient)
+            }
         }
         guard sqlite3_step(stmt) == SQLITE_DONE else {
             throw FirmwareError(.unsupported, "\(store.path): \(String(cString: sqlite3_errmsg(db)))")
@@ -95,8 +115,12 @@ public enum TrustStore1x {
 
     /// Makes `certificate` an anchor in a stopped 1.x device's system volume, through a stopped edit (begin, mount,
     /// the row, commit: the 1.x FTL is written in place). False when the device already trusts it.
-    nonisolated(nonsending) public static func trust(device: URL, certificate: Data, policy: StorageRecordPolicy = .standalone,
-                                                     log: (String) -> Void = { _ in }) async throws -> Bool {
+    nonisolated(nonsending) public static func trust(
+        device: URL,
+        certificate: Data,
+        policy: StorageRecordPolicy = .standalone,
+        log: (String) -> Void = { _ in }
+    ) async throws -> Bool {
         let sha1 = Insecure.SHA1.hash(data: certificate).map { String(format: "%02x", $0) }.joined()
         func storageKey() throws -> String? {
             let record = try DeviceRecord.object(Data(contentsOf: DeviceRecord.url(device)))
@@ -112,12 +136,14 @@ public enum TrustStore1x {
             return owner.paths?.overlay.appendingPathComponent(".trust-anchor")
         }
         let markerURL = device.appendingPathComponent(marker)
-        if let data = try? Data(contentsOf: markerURL), let m = try? JSONSerialization.jsonObject(with: data) as? [String: String],
-           m["sha1"] == sha1, m["key"] == (try storageKey()),
-           let stamp = try overlayStamp(), (try? String(contentsOf: stamp, encoding: .utf8)) == sha1 {
+        if let data = try? Data(contentsOf: markerURL),
+            let m = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+            m["sha1"] == sha1, m["key"] == (try storageKey()),
+            let stamp = try overlayStamp(), (try? String(contentsOf: stamp, encoding: .utf8)) == sha1
+        {
             return false
         }
-        _ = try normalizedSubject(certificate)               // a certificate this can parse, before any work
+        _ = try normalizedSubject(certificate)  // a certificate this can parse, before any work
         let session = try await StoppedVolumeEdit.begin(device: device, policy: policy, log: log)
         do {
             let point = session.image.deletingLastPathComponent().appendingPathComponent("trust-anchor-mount")
@@ -131,7 +157,10 @@ public enum TrustStore1x {
             throw error
         }
         if let stamp = try overlayStamp() { try N72NAND.writeDurably(Data(sha1.utf8), to: stamp) }
-        let record = try JSONSerialization.data(withJSONObject: ["sha1": sha1, "key": try storageKey() ?? ""], options: [.sortedKeys])
+        let record = try JSONSerialization.data(
+            withJSONObject: ["sha1": sha1, "key": try storageKey() ?? ""],
+            options: [.sortedKeys]
+        )
         try record.write(to: markerURL, options: .atomic)
         return true
     }

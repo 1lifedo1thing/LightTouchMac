@@ -4,19 +4,22 @@
 // main content; it centers its content and becomes first responder so
 // keyboard passthrough works whenever the device area has focus.
 
-import LightTouchCore
-import HostRuntime
 import Cocoa
+import HostRuntime
+import LightTouchCore
 
 final class DeviceViewController: NSViewController {
-    
+
     let emulator: EmulatorController
     private let displayView: DisplayView
     private let panelStatus = CaptureStatusView()
-    
+
     init(emulator: EmulatorController) {
         self.emulator = emulator
-        self.displayView = DisplayView(frame: NSRect(origin: .zero, size: emulator.profile.screenPixels), profile: emulator.profile)
+        self.displayView = DisplayView(
+            frame: NSRect(origin: .zero, size: emulator.profile.screenPixels),
+            profile: emulator.profile
+        )
         super.init(nibName: nil, bundle: nil)
         displayView.emulator = emulator
         let profile = emulator.profile
@@ -28,11 +31,15 @@ final class DeviceViewController: NSViewController {
         panelStatus.isHidden = true
         displayView.onPanelStatus = { [weak self] text in
             guard let self else { return }
-            if let text { panelStatus.update(title: text, busy: text.hasSuffix("…")) } else { panelStatus.isHidden = true }
+            if let text {
+                panelStatus.update(title: text, busy: text.hasSuffix("…"))
+            } else {
+                panelStatus.isHidden = true
+            }
             updateStatusVisibility()
         }
         displayView.onDropIPA = { [weak self] url in self?.installDropped(url) }
-        displayView.onDropIPSW = { FirmwareJobs.shared.importIPSW($0, for: nil) }   // matched by its SHA1
+        displayView.onDropIPSW = { FirmwareJobs.shared.importIPSW($0, for: nil) }  // matched by its SHA1
         // Media the firmware can't take is refused on its row, with why (MediaSupport), before anything runs.
         displayView.onDropMedia = { [weak self] url in
             guard let self, self.emulator.canQueueInstall else { return }
@@ -43,9 +50,9 @@ final class DeviceViewController: NSViewController {
             AppInstaller.startCatalog(app, with: self.emulator, presenting: self.view.window)
         }
     }
-    
+
     required init?(coder: NSCoder) { fatalError("not used") }
-    
+
     override func loadView() {
         let content = DeviceContentView(screen: displayView)
         view = content
@@ -54,14 +61,17 @@ final class DeviceViewController: NSViewController {
 
     func addStatus(_ status: NSView) { (view as? DeviceContentView)?.addStatus(status) }
     func updateStatusVisibility() { (view as? DeviceContentView)?.updateStatusVisibility() }
-    
+
     override func viewDidAppear() {
         super.viewDidAppear()
         view.window?.makeFirstResponder(displayView)
         // Covered, minimized, on another Space or the app hidden: the window's occlusion covers them all.
         occlusion.map(NotificationCenter.default.removeObserver)
-        occlusion = NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification,
-                                                           object: view.window, queue: .main) { [weak self] _ in
+        occlusion = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification,
+            object: view.window,
+            queue: .main
+        ) { [weak self] _ in
             MainActor.assumeIsolated { self?.updateScreenVisible() }
         }
         updateScreenVisible()
@@ -76,12 +86,14 @@ final class DeviceViewController: NSViewController {
 
     /// EmulatorController.screenVisible: the helper paces itself by it.
     private var occlusion: NSObjectProtocol?
-    private func updateScreenVisible() { emulator.screenVisible = view.window?.occlusionState.contains(.visible) == true }
+    private func updateScreenVisible() {
+        emulator.screenVisible = view.window?.occlusionState.contains(.visible) == true
+    }
 
     var screen: DisplayView { displayView }
-    
+
     func setZoom(_ zoom: ZoomMode) { displayView.zoom = zoom }
-    
+
     /// The same preconditions the menu and toolbar enforce for Install App…
     /// A drop used to bypass all of them, so an .ipa dropped during the ~40s
     /// boot (or with app sync off) was accepted, put a spinner in a sidebar
@@ -96,8 +108,7 @@ final class DeviceViewController: NSViewController {
             let alert = NSAlert()
             alert.messageText = "The \(emulator.profile.shortName) isn’t ready yet"
             alert.informativeText = "Try again when it has finished starting up."
-            if let window = view.window { alert.beginSheetModal(for: window) { _ in } }
-            else { alert.runModal() }
+            if let window = view.window { alert.beginSheetModal(for: window) { _ in } } else { alert.runModal() }
             return
         }
         AppInstaller.start(url, with: emulator, presenting: view.window)

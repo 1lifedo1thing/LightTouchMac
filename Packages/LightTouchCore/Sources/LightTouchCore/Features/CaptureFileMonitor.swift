@@ -8,8 +8,11 @@ public final class CaptureFileMonitor {
     public init?(url: URL, onRemoval: @escaping @MainActor () -> Void) {
         let descriptor = open(url.path, O_EVTONLY)
         guard descriptor >= 0 else { return nil }
-        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: descriptor,
-            eventMask: [.delete, .rename, .revoke], queue: .main)
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: descriptor,
+            eventMask: [.delete, .rename, .revoke],
+            queue: .main
+        )
         self.source = source
         source.setEventHandler { [weak self] in
             Task { @MainActor [weak self] in

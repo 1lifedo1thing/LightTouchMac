@@ -28,5 +28,3 @@ public nonisolated final class AppEventLog: Sendable {
         }
     }
 }
-
-

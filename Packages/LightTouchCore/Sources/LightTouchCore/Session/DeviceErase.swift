@@ -2,9 +2,9 @@
 // device) or leave it ready (a stopped one). The app keeps running. No request is left behind for an unrelated
 // future launch.
 
+import DeviceRuntime
 import Foundation
 import HostRuntime
-import DeviceRuntime
 
 /// What the erase reads and does on the session.
 public protocol EraseHost: AnyObject {
@@ -56,8 +56,9 @@ public final class DeviceErase {
         host.discardInstalls()
         host.isErasing = true
         host.stopGuestWatches()
-        let exitWait = exitWait, exitPoll = exitPoll
-        let host = host   // the session stays until its erase ends
+        let exitWait = exitWait
+        let exitPoll = exitPoll
+        let host = host  // the session stays until its erase ends
         Task {
             if !host.state.isDead, host.state != .notStarted {
                 _ = await withCheckedContinuation { continuation in
@@ -72,14 +73,22 @@ public final class DeviceErase {
                 }
                 guard host.helper?.isDead != false else {
                     host.isErasing = false
-                    host.notices.report("Couldn’t stop the \(host.profile.shortName) to erase it. Try again.", for: .erase)
+                    host.notices.report(
+                        "Couldn’t stop the \(host.profile.shortName) to erase it. Try again.",
+                        for: .erase
+                    )
                     return
                 }
             }
             let targets = host.eraseTargets
             do {
                 try await Task.detached {
-                    try DeviceStateStorage.erase(overlay: targets.overlay, snapshots: targets.snapshots, state: targets.state, owner: targets.owner)
+                    try DeviceStateStorage.erase(
+                        overlay: targets.overlay,
+                        snapshots: targets.snapshots,
+                        state: targets.state,
+                        owner: targets.owner
+                    )
                     if let preparedNOR = targets.preparedNOR, FileManager.default.fileExists(atPath: preparedNOR.path) {
                         try DeviceStateStorage.checkRemovable(preparedNOR, state: targets.state, owner: targets.owner)
                         try FileManager.default.removeItem(at: preparedNOR)
@@ -96,7 +105,10 @@ public final class DeviceErase {
                 }
             } catch {
                 host.isErasing = false
-                host.notices.report("Couldn’t finish erasing the \(host.profile.shortName): \(error.localizedDescription)", for: .erase)
+                host.notices.report(
+                    "Couldn’t finish erasing the \(host.profile.shortName): \(error.localizedDescription)",
+                    for: .erase
+                )
             }
         }
     }

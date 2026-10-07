@@ -1,10 +1,10 @@
 // Never "Booting…" forever: the boot deadline, recovery mode on serial, a boot that can't be built, and the
 // helper's death all end a boot as `.dead` with a named reason (the row and the overlay show it).
 
-import Foundation
-import Observation
-import HostRuntime
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import Observation
 
 /// What the boot watch reads and changes on the session.
 public protocol BootWatchHost: AnyObject {
@@ -40,8 +40,11 @@ public protocol BootWatchHost: AnyObject {
     }
     /// A boot file the base lacks (BootRecipe.preparedFiles), else the storage error as it is.
     public static func bootFilesReason(_ error: Error, profile: Board) -> String {
-        if let cocoa = error as? CocoaError, cocoa.code == .fileNoSuchFile, let path = cocoa.userInfo[NSFilePathErrorKey] as? String {
-            return "This \(profile.shortName)’s system files are incomplete: \(URL(fileURLWithPath: path).lastPathComponent) is missing. Delete it and prepare it again."
+        if let cocoa = error as? CocoaError, cocoa.code == .fileNoSuchFile,
+            let path = cocoa.userInfo[NSFilePathErrorKey] as? String
+        {
+            return
+                "This \(profile.shortName)’s system files are incomplete: \(URL(fileURLWithPath: path).lastPathComponent) is missing. Delete it and prepare it again."
         }
         return "Couldn’t prepare the \(profile.shortName)’s storage: \(error.localizedDescription)"
     }
@@ -76,9 +79,13 @@ public protocol BootWatchHost: AnyObject {
         let budget = budget
         task = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(Int(budget * 1000)))
-            guard let self, !Task.isCancelled, generation == host.bootScope.generation, !host.bootFinished else { return }
+            guard let self, !Task.isCancelled, generation == host.bootScope.generation, !host.bootFinished else {
+                return
+            }
             guard host.readiness.deadlineVerdict == .stop else {
-                logEvent("boot: iOS is up (\(host.readiness.bootStage.text)) but USB didn’t answer in \(Int(host.profile.bootBudget)) s; keeping it running")
+                logEvent(
+                    "boot: iOS is up (\(host.readiness.bootStage.text)) but USB didn’t answer in \(Int(host.profile.bootBudget)) s; keeping it running"
+                )
                 return
             }
             abort(Self.deadlineReason(host.profile))
@@ -89,7 +96,8 @@ public protocol BootWatchHost: AnyObject {
     /// `reason`; the row offers Start again.
     public func abort(_ reason: String) {
         guard !host.state.isDead, host.state != .poweredOff, !host.shuttingDown, !host.halting,
-              let process = host.helper, !process.isDead else { return }
+            let process = host.helper, !process.isDead
+        else { return }
         logEvent("boot: \(reason)")
         deathReason = reason
         task?.cancel()
@@ -105,7 +113,7 @@ public protocol BootWatchHost: AnyObject {
     public func helperDied(_ reason: String) {
         guard !host.state.isDead else { return }
         host.retireBoot()
-        if !host.halting, deathReason == nil { deathReason = reason }   // an aborted boot keeps its own reason
+        if !host.halting, deathReason == nil { deathReason = reason }  // an aborted boot keeps its own reason
         host.releaseBootResources()
         host.state = host.halting ? .poweredOff : .dead(exitCode: nil)
     }

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import FirmwareKit
 
 @Suite(.serialized) struct VolumeMountTests {
@@ -9,16 +10,27 @@ import Testing
 
     /// A fresh volume against ipad1_nand.make_hfs_image; files written through the mount land in the catalog,
     /// the junk is gone, fsck passed and nothing stays attached.
-    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run")) func makeMountEdit() async throws {
+    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"))
+    func makeMountEdit() async throws {
         try await Oracle.withTemp { dir in
-            let img = dir.appendingPathComponent("data.img"), mnt = dir.appendingPathComponent("mnt")
+            let img = dir.appendingPathComponent("data.img")
+            let mnt = dir.appendingPathComponent("mnt")
             try await VolumeMount.makeHFS(img, size: 64 << 20 + 123)
             #expect(try VolumeMount.size(img) == 64 << 20)
             try await VolumeMount.withMounted(img, at: mnt) { root in
-                try FileManager.default.createDirectory(at: root.appendingPathComponent("a/b"), withIntermediateDirectories: true)
+                try FileManager.default.createDirectory(
+                    at: root.appendingPathComponent("a/b"),
+                    withIntermediateDirectories: true
+                )
                 try Data("hi\n".utf8).write(to: root.appendingPathComponent("a/b/c.txt"))
-                try FileManager.default.createSymbolicLink(atPath: root.appendingPathComponent("a/l").path, withDestinationPath: "b/c.txt")
-                try FileManager.default.createDirectory(at: root.appendingPathComponent(".fseventsd"), withIntermediateDirectories: true)
+                try FileManager.default.createSymbolicLink(
+                    atPath: root.appendingPathComponent("a/l").path,
+                    withDestinationPath: "b/c.txt"
+                )
+                try FileManager.default.createDirectory(
+                    at: root.appendingPathComponent(".fseventsd"),
+                    withIntermediateDirectories: true
+                )
             }
             #expect(!(try await Self.attached(img)))
             let vol = try HFSPlusVolume(img)
@@ -29,16 +41,22 @@ import Testing
             #expect(!l.contains { $0.path.hasPrefix(".fseventsd") })
 
             // A host-written journal (header bytes, need-init clear) handed to the device: zeroed, need-init set.
-            let w = try HFSPlusVolume(img, writable: true), j = try #require(try w.journal())
+            let w = try HFSPlusVolume(img, writable: true)
+            let j = try #require(try w.journal())
             let jib = try Data(contentsOf: img)[1036..<1040].reduce(0) { $0 << 8 | Int($1) } * w.blockSize
             try w.restore([(j.offset, Data(repeating: 0xAB, count: 512)), (jib, Data([0, 0, 0, 1]))])
             #expect(try w.journal()?.needsInit == false)
             try w.leaveJournalToDevice()
             #expect(try w.journal()?.needsInit == true && w.journalSnapshot()?.last?.bytes == Data(count: j.size))
 
-            guard HFSOracle.available else { try FixtureRequirements.missing(#"VolumeMountTests.swift: HFSOracle.available"#) }
+            guard HFSOracle.available else {
+                try FixtureRequirements.missing(#"VolumeMountTests.swift: HFSOracle.available"#)
+            }
             let py = dir.appendingPathComponent("py.img")
-            _ = try HFSOracle.python("import ipad1_nand; ipad1_nand.make_hfs_image(sys.argv[1], int(sys.argv[2]))", [py.path, String(64 << 20 + 123)])
+            _ = try HFSOracle.python(
+                "import ipad1_nand; ipad1_nand.make_hfs_image(sys.argv[1], int(sys.argv[2]))",
+                [py.path, String(64 << 20 + 123)]
+            )
             let a = try HFSPlusVolume(dir.appendingPathComponent("py.img"))
             let fresh = dir.appendingPathComponent("fresh.img")
             try await VolumeMount.makeHFS(fresh, size: 64 << 20 + 123)
@@ -59,7 +77,8 @@ import Testing
                 let d = try Data(contentsOf: img)
                 return d[at + 4..<at + 8].reduce(0) { $0 << 8 | UInt32($1) }
             }
-            let before = try attrs(1024), size = try Int(VolumeMount.size(img))
+            let before = try attrs(1024)
+            let size = try Int(VolumeMount.size(img))
             try HFSPlusVolume(img, writable: true).setContentProtection()
             #expect(try attrs(1024) == before | 0x4000_0000 && before & 0x4000_0000 == 0)
             #expect(try attrs(size - 1024) & 0x4000_0000 != 0)
@@ -86,10 +105,16 @@ import Testing
     /// and clean; a wrong item count (valence), alone or beside a folder count, still fails and nothing is set.
     @Test func folderCountsAloneAreRepaired() async throws {
         try await Oracle.withTemp { dir in
-            let img = dir.appendingPathComponent("v.img"), mnt = dir.appendingPathComponent("mnt")
+            let img = dir.appendingPathComponent("v.img")
+            let mnt = dir.appendingPathComponent("mnt")
             try await VolumeMount.makeHFS(img, size: 16 << 20)
             try await VolumeMount.withMounted(img, at: mnt) { root in
-                for d in ["a/b", "a/c", "d/e"] { try FileManager.default.createDirectory(at: root.appendingPathComponent(d), withIntermediateDirectories: true) }
+                for d in ["a/b", "a/c", "d/e"] {
+                    try FileManager.default.createDirectory(
+                        at: root.appendingPathComponent(d),
+                        withIntermediateDirectories: true
+                    )
+                }
             }
             let pristine = try Data(contentsOf: img)
             func corrupt(folderCount: String?, valence: String?) throws {
@@ -97,21 +122,36 @@ import Testing
                 let v = try HFSPlusVolume(img, writable: true)
                 if let folderCount { try v.setFolderCounts([try v.record(at: folderCount).cnid: 0]) }
                 if let valence {
-                    let r = try v.record(at: valence), t = try v.btree(v.catalogFork, fileID: HFSPlusVolume.catalogID)
-                    try v.write(v.catalogFork, fileID: HFSPlusVolume.catalogID, offset: r.node * t.nodeSize + r.bodyOffset + 4, bytes: [0, 0, 0, 9])
+                    let r = try v.record(at: valence)
+                    let t = try v.btree(v.catalogFork, fileID: HFSPlusVolume.catalogID)
+                    try v.write(
+                        v.catalogFork,
+                        fileID: HFSPlusVolume.catalogID,
+                        offset: r.node * t.nodeSize + r.bodyOffset + 4,
+                        bytes: [0, 0, 0, 9]
+                    )
                 }
             }
             func edit() async throws {
-                try await VolumeMount.withMounted(img, at: mnt) { root in try Data("x".utf8).write(to: root.appendingPathComponent("x")) }
+                try await VolumeMount.withMounted(img, at: mnt) { root in
+                    try Data("x".utf8).write(to: root.appendingPathComponent("x"))
+                }
             }
             func fsck() async throws -> (ok: Bool, output: String) {
                 let dev = try await VolumeMount.attach(img)
-                do { let r = try await VolumeMount.check(dev); try await VolumeMount.detach(dev); return r }
-                catch { await VolumeMount.cleanupDetach(dev); throw error }
+                do {
+                    let r = try await VolumeMount.check(dev)
+                    try await VolumeMount.detach(dev)
+                    return r
+                } catch {
+                    await VolumeMount.cleanupDetach(dev)
+                    throw error
+                }
             }
 
             try corrupt(folderCount: "a", valence: nil)
-            let before = try await fsck(), a = try HFSPlusVolume(img).record(at: "a").cnid
+            let before = try await fsck()
+            let a = try HFSPlusVolume(img).record(at: "a").cnid
             #expect(!before.ok && VolumeMount.folderCountFindings(before.output) == [a: 2], "\(before.output)")
             try await edit()
             let after = try await fsck()
@@ -122,7 +162,10 @@ import Testing
                 await #expect(throws: FirmwareError.self) { try await edit() }
                 let left = try await fsck()
                 #expect(left.output.contains("Invalid directory item count"), "\(left.output)")
-                #expect(left.output.contains("Incorrect folder count") == (fc != nil), "a folder count was set beside another finding")
+                #expect(
+                    left.output.contains("Incorrect folder count") == (fc != nil),
+                    "a folder count was set beside another finding"
+                )
                 #expect(!(try await Self.attached(img)))
             }
         }
@@ -130,22 +173,37 @@ import Testing
 
     /// Growing the raw 7B500 / 8C148 system volume to partition 1 (1280 MiB) against grow_to_partition:
     /// same size, same volume-header geometry, same tree.
-    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"), arguments: HFSOracle.ipads) func growMatchesPython(_ fw: Oracle.Firmware) async throws {
+    @Test(
+        .enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"),
+        arguments: HFSOracle.ipads
+    ) func growMatchesPython(_ fw: Oracle.Firmware) async throws {
         try await Oracle.withTemp { dir in
-            guard HFSOracle.available, let raw = try await HFSOracle.rawSystem(fw, in: dir) else { try FixtureRequirements.missing(#"VolumeMountTests.swift: HFSOracle.available, let raw = try await HFSOracle.rawSystem(fw, in: dir)"#) }
+            guard HFSOracle.available, let raw = try await HFSOracle.rawSystem(fw, in: dir) else {
+                try FixtureRequirements.missing(
+                    #"VolumeMountTests.swift: HFSOracle.available, let raw = try await HFSOracle.rawSystem(fw, in: dir)"#
+                )
+            }
             let py = dir.appendingPathComponent("py.hfs")
             try FileManager.default.copyItem(at: raw, to: py)
             let blocks = 1280 << 20 / 4096
-            _ = try HFSOracle.python("import ipad1_rootfs as r; r.grow_to_partition(sys.argv[1], int(sys.argv[2]))", [py.path, String(blocks)])
+            _ = try HFSOracle.python(
+                "import ipad1_rootfs as r; r.grow_to_partition(sys.argv[1], int(sys.argv[2]))",
+                [py.path, String(blocks)]
+            )
             try await Oracle.time("grow \(fw.entryID)") { try await VolumeMount.grow(raw, toBytes: blocks * 4096) }
             #expect(try VolumeMount.size(raw) == blocks * 4096 && VolumeMount.size(py) == blocks * 4096)
-            let a = try HFSPlusVolume(raw), b = try HFSPlusVolume(py)
-            #expect(a.totalBlocks == b.totalBlocks && a.freeBlocks == b.freeBlocks && a.blockSize == b.blockSize,
-                    "swift \(a.totalBlocks) x \(a.blockSize), \(a.freeBlocks) free; python \(b.totalBlocks) x \(b.blockSize), \(b.freeBlocks) free")
+            let a = try HFSPlusVolume(raw)
+            let b = try HFSPlusVolume(py)
+            #expect(
+                a.totalBlocks == b.totalBlocks && a.freeBlocks == b.freeBlocks && a.blockSize == b.blockSize,
+                "swift \(a.totalBlocks) x \(a.blockSize), \(a.freeBlocks) free; python \(b.totalBlocks) x \(b.blockSize), \(b.freeBlocks) free"
+            )
             #expect(try a.listing(hashes: false) == b.listing(hashes: false))
             let avh = { (u: URL) throws -> Data in
-                let f = try FileHandle(forReadingFrom: u); defer { try? f.close() }
-                try f.seek(toOffset: UInt64(blocks * 4096 - 1024)); return try f.read(upToCount: 2) ?? Data()
+                let f = try FileHandle(forReadingFrom: u)
+                defer { try? f.close() }
+                try f.seek(toOffset: UInt64(blocks * 4096 - 1024))
+                return try f.read(upToCount: 2) ?? Data()
             }
             #expect(try avh(raw) == Data("HX".utf8))
             let dev = try await VolumeMount.attach(raw)
@@ -159,11 +217,16 @@ import Testing
         private var arrival: CheckedContinuation<Void, Never>?
         private var release: CheckedContinuation<Void, Never>?
         func pause() async {
-            reached = true; arrival?.resume(); arrival = nil
+            reached = true
+            arrival?.resume()
+            arrival = nil
             await withCheckedContinuation { release = $0 }
         }
         func wait() async { if !reached { await withCheckedContinuation { arrival = $0 } } }
-        func open() { release?.resume(); release = nil }
+        func open() {
+            release?.resume()
+            release = nil
+        }
     }
 
     @Test func cancelledAttachAfterActualSideEffectCleansOnlyNewOwnedDevice() async throws {
@@ -176,19 +239,33 @@ import Testing
             do {
                 let gate = AttachGate()
                 let tool = Task {
-                    try await DiskImage.attach(image, execute: { argv in
-                        let output = try await DiskImage.run(argv)
-                        await gate.pause()
-                        return output
-                    })
+                    try await DiskImage.attach(
+                        image,
+                        execute: { argv in
+                            let output = try await DiskImage.run(argv)
+                            await gate.pause()
+                            return output
+                        }
+                    )
                 }
                 await gate.wait()
                 let observed = try await DiskImage.checkedAttachedImages()
-                #expect(observed.contains { URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path == image.resolvingSymlinksInPath().path })
-                tool.cancel(); await gate.open()
+                #expect(
+                    observed.contains {
+                        URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path
+                            == image.resolvingSymlinksInPath().path
+                    }
+                )
+                tool.cancel()
+                await gate.open()
                 await #expect(throws: CancellationError.self) { _ = try await tool.value }
                 let after = try await DiskImage.checkedAttachedImages()
-                #expect(!after.contains { URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path == image.resolvingSymlinksInPath().path })
+                #expect(
+                    !after.contains {
+                        URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path
+                            == image.resolvingSymlinksInPath().path
+                    }
+                )
                 #expect(after.contains { $0.device == retained.device })
             } catch {
                 try await DiskImage.detach(retained.device)
@@ -208,10 +285,17 @@ import Testing
                     await gate.pause()
                 }
             }
-            await gate.wait(); operation.cancel(); await gate.open()
+            await gate.wait()
+            operation.cancel()
+            await gate.open()
             await #expect(throws: CancellationError.self) { try await operation.value }
             let attached = try await DiskImage.checkedAttachedImages()
-            #expect(!attached.contains { URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path == image.resolvingSymlinksInPath().path })
+            #expect(
+                !attached.contains {
+                    URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path
+                        == image.resolvingSymlinksInPath().path
+                }
+            )
         }
     }
 

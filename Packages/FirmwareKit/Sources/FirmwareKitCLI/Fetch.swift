@@ -10,22 +10,37 @@ import FirmwareKit
 import Foundation
 
 private func done(_ object: [String: Any], _ code: Int32) -> Never {
-    FileHandle.standardOutput.write(try! JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes]) + Data("\n".utf8))
+    // FIXME: uglyyyyy
+    FileHandle.standardOutput.write(
+        try! JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes])
+            + Data("\n".utf8)
+    )
     exit(code)
 }
 
 private func flags(_ argv: [String], _ known: Set<String>, _ usage: String) -> [String: URL] {
-    var out: [String: URL] = [:], rest = argv[...]
+    var out: [String: URL] = [:]
+    var rest = argv[...]
     while let a = rest.popFirst() {
-        guard known.contains(a), let v = rest.popFirst() else { FileHandle.standardError.write(Data("usage: \(usage)\n".utf8)); exit(64) }
+        guard known.contains(a), let v = rest.popFirst() else {
+            FileHandle.standardError.write(Data("usage: \(usage)\n".utf8))
+            exit(64)
+        }
         out[a] = URL(fileURLWithPath: (v as NSString).expandingTildeInPath).standardizedFileURL
     }
-    guard out.count == known.count else { FileHandle.standardError.write(Data("usage: \(usage)\n".utf8)); exit(64) }
+    guard out.count == known.count else {
+        FileHandle.standardError.write(Data("usage: \(usage)\n".utf8))
+        exit(64)
+    }
     return out
 }
 
 func unwrapCommand(_ argv: [String]) -> Never {
-    let f = flags(argv, ["--entry", "--archive", "--out"], "firmwarekit unwrap --entry ENTRY.json --archive FILE --out IPSW")
+    let f = flags(
+        argv,
+        ["--entry", "--archive", "--out"],
+        "firmwarekit unwrap --entry ENTRY.json --archive FILE --out IPSW"
+    )
     do {
         let entry = try FirmwareEntry.load(from: f["--entry"]!)
         try RARSource.unwrap(f["--archive"]!, source: entry.source, to: f["--out"]!)
@@ -40,8 +55,12 @@ func fetchCommand(_ argv: [String]) -> Never {
     let out = f["--out"]!
     do {
         let source = try FirmwareEntry.load(from: f["--entry"]!).source
-        guard source.sha1 != nil, !source.urls.isEmpty else { throw FirmwareError(.unsupported, "the entry's source has no URL and SHA-1") }
-        let from = try SourceFetch.fetch(source, to: out, download: fetch) { FileHandle.standardError.write(Data("fetch: \($0)\n".utf8)) }
+        guard source.sha1 != nil, !source.urls.isEmpty else {
+            throw FirmwareError(.unsupported, "the entry's source has no URL and SHA-1")
+        }
+        let from = try SourceFetch.fetch(source, to: out, download: fetch) {
+            FileHandle.standardError.write(Data("fetch: \($0)\n".utf8))
+        }
         done(["ipsw": out.path, "sha1": source.sha1 ?? "", "bytes": source.bytes ?? 0, "from": from.absoluteString], 0)
     } catch {
         done(["error": "\(error)"], 1)
@@ -54,10 +73,14 @@ private func fetch(_ url: URL, to file: URL) throws {
     nonisolated(unsafe) var result: Result<Void, Error> = .failure(FirmwareError(.internal, "no response"))
     URLSession.shared.downloadTask(with: url) { location, response, error in
         defer { finished.signal() }
-        if let error { result = .failure(error); return }
+        if let error {
+            result = .failure(error)
+            return
+        }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 200
         guard let location, (200..<300).contains(status) else {
-            result = .failure(FirmwareError(.internal, "HTTP \(status)")); return
+            result = .failure(FirmwareError(.internal, "HTTP \(status)"))
+            return
         }
         result = Result {
             try? FileManager.default.removeItem(at: file)

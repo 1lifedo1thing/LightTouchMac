@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import LightTouchCore
 
 /// The sidebar's list (SidebarList) over the shipped catalog: which entries it shows, in what order, what each row
@@ -10,7 +11,8 @@ struct SidebarListTests {
     static let iPod2G = "iPod touch (2nd generation)"
 
     func withDefaults(_ body: (UserDefaults) throws -> Void) rethrows {
-        let suite = "ltm-sidebar-\(UUID().uuidString)", defaults = UserDefaults(suiteName: suite)!
+        let suite = "ltm-sidebar-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         try body(defaults)
     }
@@ -25,7 +27,10 @@ struct SidebarListTests {
             defaults.removeObject(forKey: SidebarList.entriesKey)
             let owned: Set = ["n72ap-7E18", "n72ap-8B117", "k48ap-8C148"]
             list = SidebarList.load(defaults, catalog: catalog) { owned.contains($0.id) }
-            #expect(list.entries(in: catalog).map(\.id) == ["k48ap-8C148", "n72ap-7E18", "n72ap-8B117"], "migration keeps what the user owns")
+            #expect(
+                list.entries(in: catalog).map(\.id) == ["k48ap-8C148", "n72ap-7E18", "n72ap-8B117"],
+                "migration keeps what the user owns"
+            )
             list.remove("n72ap-7E18")
             list.save(defaults)
             list = SidebarList.load(defaults, catalog: catalog) { owned.contains($0.id) }
@@ -43,7 +48,11 @@ struct SidebarListTests {
         var list = SidebarList()
         list.add(["n72ap-8C148", "n72ap-8B117", "k48ap-7B500", "n72ap-8B5080c", "n72ap-5F138", "k48ap-7B367"])
         #expect(list.add(["n72ap-8B117"]) == false, "added twice")
-        #expect(list.entries(in: catalog).map(\.id) == ["k48ap-7B367", "k48ap-7B500", "n72ap-5F138", "n72ap-8B5080c", "n72ap-8B117", "n72ap-8C148"])
+        #expect(
+            list.entries(in: catalog).map(\.id) == [
+                "k48ap-7B367", "k48ap-7B500", "n72ap-5F138", "n72ap-8B5080c", "n72ap-8B117", "n72ap-8C148",
+            ]
+        )
     }
 
     /// Always two lines, the marketing name over the version and its badge, whatever else is listed.
@@ -52,7 +61,10 @@ struct SidebarListTests {
         #expect(list.label(for: entry("n72ap-8B117")) == .init(title: Self.iPod2G, subtitle: "iOS 4.1"))
         #expect(list.label(for: entry("n72ap-8B5080c")) == .init(title: Self.iPod2G, subtitle: "iOS 4.1 beta 1"))
         list.add(["k48ap-7B500", "n45ap-4B1"])
-        #expect(list.label(for: entry("n72ap-8B117")) == .init(title: Self.iPod2G, subtitle: "iOS 4.1"), "a mixed list changed the label")
+        #expect(
+            list.label(for: entry("n72ap-8B117")) == .init(title: Self.iPod2G, subtitle: "iOS 4.1"),
+            "a mixed list changed the label"
+        )
         #expect(list.label(for: entry("k48ap-7B500")) == .init(title: "iPad", subtitle: "iOS 3.2.2"))
         #expect(list.label(for: entry("n45ap-4B1")) == .init(title: "iPod touch", subtitle: "iOS 1.1.5"))
         let gm = list.label(for: entry("k48ap-8C134")).subtitle
@@ -65,9 +77,14 @@ struct SidebarListTests {
         withDefaults { defaults in
             var list = SidebarList(ids: ["n72ap-8B117", "n72ap-8B5080c", "k48ap-7B500"])
             list.rename("n72ap-8B117", to: "  Test Rig ", defaultTitle: Self.iPod2G)
-            #expect(list.label(for: entry("n72ap-8B117")) == .init(title: "Test Rig", subtitle: "\(Self.iPod2G), iOS 4.1"))
+            #expect(
+                list.label(for: entry("n72ap-8B117")) == .init(title: "Test Rig", subtitle: "\(Self.iPod2G), iOS 4.1")
+            )
             list.rename("n72ap-8B5080c", to: "Beta Rig", defaultTitle: Self.iPod2G)
-            #expect(list.label(for: entry("n72ap-8B5080c")) == .init(title: "Beta Rig", subtitle: "\(Self.iPod2G), iOS 4.1 beta 1"))
+            #expect(
+                list.label(for: entry("n72ap-8B5080c"))
+                    == .init(title: "Beta Rig", subtitle: "\(Self.iPod2G), iOS 4.1 beta 1")
+            )
             list.rename("n72ap-8B5080c", to: "", defaultTitle: Self.iPod2G)
             list.remove("k48ap-7B500")
             list.save(defaults)
@@ -89,18 +106,35 @@ struct SidebarListTests {
     /// or in flight can leave; a deleting row offers nothing.
     @Test func removal() {
         let e = entry("n72ap-8B117")
-        func row(_ instance: UUID?, session: SessionPhase? = nil, job: FirmwareJob? = nil, downloaded: Bool = false) -> DeviceRow {
+        func row(_ instance: UUID?, session: SessionPhase? = nil, job: FirmwareJob? = nil, downloaded: Bool = false)
+            -> DeviceRow
+        {
             DeviceRow(entry: e, instanceID: instance, session: session, job: job, downloaded: downloaded)
         }
         let prepared = row(UUID())
         #expect(prepared.removeTitle == "Delete Device…" && prepared.canRemoveFromSidebar)
-        #expect(row(nil).removeTitle == "Remove Device" && row(nil).canRemoveFromSidebar && row(nil, downloaded: true).canRemoveFromSidebar)
+        #expect(
+            row(nil).removeTitle == "Remove Device" && row(nil).canRemoveFromSidebar
+                && row(nil, downloaded: true).canRemoveFromSidebar
+        )
         #expect(!row(UUID(), session: .running).canRemoveFromSidebar, "a running device left the sidebar")
-        #expect(!row(nil, job: .downloading(fraction: 0.3)).canRemoveFromSidebar, "a download in flight left the sidebar")
-        #expect(!row(nil, job: .preparing(Preparation(name: "x"))).canRemoveFromSidebar, "a preparation in flight left the sidebar")
+        #expect(
+            !row(nil, job: .downloading(fraction: 0.3)).canRemoveFromSidebar,
+            "a download in flight left the sidebar"
+        )
+        #expect(
+            !row(nil, job: .preparing(Preparation(name: "x"))).canRemoveFromSidebar,
+            "a preparation in flight left the sidebar"
+        )
         let deleting = DeviceRow(entry: e, instanceID: UUID(), session: nil, job: nil, deleting: true)
-        #expect(deleting.state == .deleting && deleting.accessory == .stopping && deleting.stateDescription == "Deleting")
-        #expect(DeviceAction.allCases.allSatisfy { !deleting.allows($0, canDownload: true) } && deleting.primaryAction == nil
-                && !deleting.canRemoveFromSidebar, "a deleting row offers an action")
+        #expect(
+            deleting.state == .deleting && deleting.accessory == .stopping && deleting.stateDescription == "Deleting"
+        )
+        #expect(
+            DeviceAction.allCases.allSatisfy { !deleting.allows($0, canDownload: true) }
+                && deleting.primaryAction == nil
+                && !deleting.canRemoveFromSidebar,
+            "a deleting row offers an action"
+        )
     }
 }

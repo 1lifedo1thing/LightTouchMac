@@ -1,7 +1,8 @@
-import Foundation
-import Testing
-import HostRuntime
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import Testing
+
 @testable import LightTouchCore
 
 /// The device's quarter turns (the iPod steps its machine, the iPad sets its accelerometer outright) and
@@ -23,7 +24,10 @@ struct DeviceRotationTests {
 
     func rotation(_ directory: URL, iPad: Bool = false) -> (DeviceRotation, Host) {
         let host = Host()
-        return (DeviceRotation(host: host, settings: DeviceSettingsFile(directory: directory), setsAccelerometer: iPad), host)
+        return (
+            DeviceRotation(host: host, settings: DeviceSettingsFile(directory: directory), setsAccelerometer: iPad),
+            host
+        )
     }
 
     @Test func theIPodStepsItsMachineAQuarterTurnAtATime() throws {
@@ -33,14 +37,23 @@ struct DeviceRotationTests {
             #expect(rotation.degrees == 270 && rotation.isLandscape, "landscape is entered counter-clockwise")
             #expect(host.link.commands == [.rotate(clockwise: false)])
             rotation.toggle()
-            #expect(rotation.degrees == 0 && host.link.commands.last == .rotate(clockwise: true), "and left the short way back")
+            #expect(
+                rotation.degrees == 0 && host.link.commands.last == .rotate(clockwise: true),
+                "and left the short way back"
+            )
             rotation.rotate(clockwise: true)
             rotation.rotate(clockwise: true)
             #expect(rotation.degrees == 180 && !rotation.isLandscape && host.link.requests.isEmpty)
             rotation.rotate(toward: 90)
-            #expect(rotation.degrees == 90 && host.link.commands.suffix(1) == [.rotate(clockwise: false)], "the short way round")
+            #expect(
+                rotation.degrees == 90 && host.link.commands.suffix(1) == [.rotate(clockwise: false)],
+                "the short way round"
+            )
             rotation.rotate(toward: 270)
-            #expect(rotation.degrees == 270 && host.link.commands.suffix(2) == [.rotate(clockwise: true), .rotate(clockwise: true)])
+            #expect(
+                rotation.degrees == 270
+                    && host.link.commands.suffix(2) == [.rotate(clockwise: true), .rotate(clockwise: true)]
+            )
         }
     }
 

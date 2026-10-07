@@ -1,5 +1,6 @@
 import HostRuntime
 import Testing
+
 @testable import LightTouchCore
 
 /// A modem that reports what it's told to report.
@@ -7,8 +8,14 @@ import Testing
     var carrierSettings = CarrierSettings()
     var reported = ModemStatus()
     var actions: [String] = []
-    func setCarrierSettings(_ settings: CarrierSettings) -> Bool { carrierSettings = settings; return true }
-    func modem(_ property: String, _ value: String, done: @escaping @MainActor (Bool) -> Void) { actions.append("\(property)=\(value)"); done(true) }
+    func setCarrierSettings(_ settings: CarrierSettings) -> Bool {
+        carrierSettings = settings
+        return true
+    }
+    func modem(_ property: String, _ value: String, done: @escaping @MainActor (Bool) -> Void) {
+        actions.append("\(property)=\(value)")
+        done(true)
+    }
     func modemStatus(_ done: @escaping @MainActor (ModemStatus?) -> Void) { done(reported) }
 }
 
@@ -17,7 +24,8 @@ import Testing
 struct CarrierPanelModelTests {
     @Test func applyingUntilTheModemReportsTheNewNetwork() {
         let modem = Modem()
-        modem.reported.carrier = modem.carrierSettings.carrier; modem.reported.mccMNC = modem.carrierSettings.mccMNC
+        modem.reported.carrier = modem.carrierSettings.carrier
+        modem.reported.mccMNC = modem.carrierSettings.mccMNC
         let model = CarrierPanelModel(backend: modem)
         #expect(!model.applyingNetwork, "nothing polled yet")
         model.poll()
@@ -28,7 +36,8 @@ struct CarrierPanelModelTests {
         #expect(modem.carrierSettings.carrier == "Fictional" && !model.networkEdited)
         model.poll()
         #expect(model.applyingNetwork, "no progress while the modem still reports the old carrier")
-        modem.reported.carrier = "Fictional"; modem.reported.mccMNC = modem.carrierSettings.mccMNC
+        modem.reported.carrier = "Fictional"
+        modem.reported.mccMNC = modem.carrierSettings.mccMNC
         model.poll()
         #expect(!model.applyingNetwork, "still applying once the modem reports it")
     }
@@ -50,7 +59,10 @@ struct CarrierPanelModelTests {
         #expect(modem.actions.isEmpty && model.message != nil)
         model.smsText = "hello"
         model.sendSMS()
-        #expect(modem.actions == ["incoming-sms=+15555550100|hello"] && model.smsText.isEmpty, "a sent message clears the field")
+        #expect(
+            modem.actions == ["incoming-sms=+15555550100|hello"] && model.smsText.isEmpty,
+            "a sent message clears the field"
+        )
         model.callNumber = "not a number"
         model.ring()
         #expect(modem.actions.count == 1)

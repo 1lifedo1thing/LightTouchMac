@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import Testing
+
 @testable import LightTouchCore
 
 /// Overlay pinning, the writable NOR, erase, the stopped-device lease and the managed boot-path authority
@@ -23,7 +24,8 @@ struct DeviceStateStorageTests {
 
     @Test func writableNORIsAPrivateCompleteCopy() throws {
         try withTemporaryDirectory { root in
-            let base = root.appendingPathComponent("base-nor"), overlay = root.appendingPathComponent("nor-overlay")
+            let base = root.appendingPathComponent("base-nor")
+            let overlay = root.appendingPathComponent("nor-overlay")
             try Data(repeating: 0xff, count: 1_048_576).write(to: base)
             let writable = try DeviceStateStorage.writableNOR(base: base, overlay: overlay)
             var changed = try Data(contentsOf: writable)
@@ -45,7 +47,8 @@ struct DeviceStateStorageTests {
     @Test func eraseRemovesTheOverlayAndSnapshotsButNotTheBase() throws {
         try withTemporaryDirectory { root in
             let device = root.appendingPathComponent("erase-device")
-            let overlay = device.appendingPathComponent("nandrw"), snapshot = device.appendingPathComponent("snapshot")
+            let overlay = device.appendingPathComponent("nandrw")
+            let snapshot = device.appendingPathComponent("snapshot")
             try fm.createDirectory(at: overlay, withIntermediateDirectories: true)
             for url in [overlay.appendingPathComponent("nor.bin"), snapshot, snapshot.appendingPathExtension("meta")] {
                 try Data("device".utf8).write(to: url)
@@ -53,10 +56,12 @@ struct DeviceStateStorageTests {
             let base = device.appendingPathComponent("base-image")
             try Data("base".utf8).write(to: base)
             try DeviceStateStorage.erase(overlay: overlay, snapshots: [snapshot], state: root, owner: nil)
-            #expect(!fm.fileExists(atPath: overlay.path) && !fm.fileExists(atPath: snapshot.path)
-                    && !fm.fileExists(atPath: snapshot.appendingPathExtension("meta").path))
+            #expect(
+                !fm.fileExists(atPath: overlay.path) && !fm.fileExists(atPath: snapshot.path)
+                    && !fm.fileExists(atPath: snapshot.appendingPathExtension("meta").path)
+            )
             #expect(try String(contentsOf: base, encoding: .utf8) == "base")
-            try DeviceStateStorage.erase(overlay: overlay, snapshots: [snapshot], state: root, owner: nil)   // idempotent
+            try DeviceStateStorage.erase(overlay: overlay, snapshots: [snapshot], state: root, owner: nil)  // idempotent
         }
     }
 
@@ -66,14 +71,17 @@ struct DeviceStateStorageTests {
         try withTemporaryDirectory { state in
             let id = UUID()
             let device = state.appendingPathComponent("Devices/\(id.uuidString)")
-            let work = device.appendingPathComponent("work"), overlay = device.appendingPathComponent("overlay")
+            let work = device.appendingPathComponent("work")
+            let overlay = device.appendingPathComponent("overlay")
             try fm.createDirectory(at: work, withIntermediateDirectories: true)
             try fm.createDirectory(at: overlay, withIntermediateDirectories: true)
             let marker = overlay.appendingPathComponent("keep")
             try Data("unchanged".utf8).write(to: marker)
             try Data("<plist><dict/></plist>".utf8).write(to: device.appendingPathComponent("device.plist"))
             func refused() {
-                #expect(throws: CocoaError.self) { try DeviceStateStorage.erase(overlay: overlay, snapshots: [], state: state, owner: id) }
+                #expect(throws: CocoaError.self) {
+                    try DeviceStateStorage.erase(overlay: overlay, snapshots: [], state: state, owner: id)
+                }
                 #expect(throws: CocoaError.self) { try DeviceStateStorage.removeDevice(id, state: state) }
                 #expect((try? Data(contentsOf: marker)) == Data("unchanged".utf8))
             }
@@ -96,17 +104,32 @@ struct DeviceStateStorageTests {
         init(_ root: URL) throws {
             let fm = FileManager.default
             self.root = root
-            state = root.appendingPathComponent("state"); logs = root.appendingPathComponent("logs")
-            owner = UUID(); other = UUID()
+            state = root.appendingPathComponent("state")
+            logs = root.appendingPathComponent("logs")
+            owner = UUID()
+            other = UUID()
             func record(_ id: UUID) -> DeviceInstance {
                 let prefix = "Devices/\(id.uuidString)"
-                return DeviceInstance(id: id, name: "fixture", board: "n72ap", firmware: "n72ap-7E18", created: DeviceInstance.now,
+                return DeviceInstance(
+                    id: id,
+                    name: "fixture",
+                    board: "n72ap",
+                    firmware: "n72ap-7E18",
+                    created: DeviceInstance.now,
                     base: .init(kind: .prepared, path: prefix + "/base"),
-                    storage: .init(key: "fixture", overlay: prefix + "/overlay", writableNOR: prefix + "/nor.bin",
-                                   snapshot: prefix + "/snapshot", usbmuxConf: prefix + "/usbmuxd-conf"))
+                    storage: .init(
+                        key: "fixture",
+                        overlay: prefix + "/overlay",
+                        writableNOR: prefix + "/nor.bin",
+                        snapshot: prefix + "/snapshot",
+                        usbmuxConf: prefix + "/usbmuxd-conf"
+                    )
+                )
             }
-            ordinary = record(owner); otherRecord = record(other)
-            try ordinary.write(state: state); try otherRecord.write(state: state)
+            ordinary = record(owner)
+            otherRecord = record(other)
+            try ordinary.write(state: state)
+            try otherRecord.write(state: state)
             own = ordinary.paths(state: state, logs: logs).directory
             try fm.createDirectory(at: own.appendingPathComponent("base"), withIntermediateDirectories: true)
             try Data("base-sentinel".utf8).write(to: own.appendingPathComponent("base/sentinel"))
@@ -119,28 +142,49 @@ struct DeviceStateStorageTests {
         func validate(_ i: DeviceInstance, in selected: URL? = nil) throws {
             let selected = selected ?? state
             let p = i.paths(state: selected, logs: logs)
-            try DeviceStateStorage.checkBootPaths(base: p.base,
-                mutable: [p.overlay, p.snapshot, p.snapshotMeta, p.snapshotTmp, p.snapshotBad, p.usbmuxConf, p.work, p.lease]
-                    + [p.writableNOR].compactMap { $0 }, state: selected, owner: i.id)
+            try DeviceStateStorage.checkBootPaths(
+                base: p.base,
+                mutable: [
+                    p.overlay, p.snapshot, p.snapshotMeta, p.snapshotTmp, p.snapshotBad, p.usbmuxConf, p.work, p.lease,
+                ]
+                    + [p.writableNOR].compactMap { $0 },
+                state: selected,
+                owner: i.id
+            )
         }
 
         /// Refused, read-only: no lease or work directory, private NOR or overlay made; record, base and external untouched.
         func refused(_ label: Comment, _ i: DeviceInstance) throws {
             let fm = FileManager.default
             #expect(throws: CocoaError.self, label) { try validate(i) }
-            for name in ["work", "overlay", "nor.bin"] { #expect(!fm.fileExists(atPath: own.appendingPathComponent(name).path), label) }
-            #expect(try Data(contentsOf: own.appendingPathComponent(DeviceInstance.recordName)) == originalRecord, label)
-            #expect(try String(contentsOf: own.appendingPathComponent("base/sentinel"), encoding: .utf8) == "base-sentinel", label)
-            #expect(try String(contentsOf: external.appendingPathComponent("sentinel"), encoding: .utf8) == "external-sentinel", label)
+            for name in ["work", "overlay", "nor.bin"] {
+                #expect(!fm.fileExists(atPath: own.appendingPathComponent(name).path), label)
+            }
+            #expect(
+                try Data(contentsOf: own.appendingPathComponent(DeviceInstance.recordName)) == originalRecord,
+                label
+            )
+            #expect(
+                try String(contentsOf: own.appendingPathComponent("base/sentinel"), encoding: .utf8) == "base-sentinel",
+                label
+            )
+            #expect(
+                try String(contentsOf: external.appendingPathComponent("sentinel"), encoding: .utf8)
+                    == "external-sentinel",
+                label
+            )
         }
     }
 
     @Test func supportedLayoutsAreAccepted() throws {
         try withTemporaryDirectory { root in
             let lib = try Library(root)
-            let own = lib.own, ordinary = lib.ordinary, state = lib.state
+            let own = lib.own
+            let ordinary = lib.ordinary
+            let state = lib.state
             try lib.validate(ordinary)
-            var development = ordinary; development.base.path = lib.external.path   // an external read-only base
+            var development = ordinary
+            development.base.path = lib.external.path  // an external read-only base
             try lib.validate(development)
             var absolute = ordinary
             absolute.storage.overlay = own.appendingPathComponent("overlay").path
@@ -151,8 +195,10 @@ struct DeviceStateStorageTests {
             // StorageGeneration records: relative or absolute generation descendants.
             var generation = ordinary
             let relative = "Devices/\(lib.owner.uuidString)/generations/\(UUID().uuidString)"
-            generation.base.path = relative + "/base"; generation.storage.overlay = relative + "/overlay"
-            generation.storage.writableNOR = relative + "/nor.bin"; generation.storage.snapshot = relative + "/snapshot"
+            generation.base.path = relative + "/base"
+            generation.storage.overlay = relative + "/overlay"
+            generation.storage.writableNOR = relative + "/nor.bin"
+            generation.storage.snapshot = relative + "/snapshot"
             try lib.validate(generation)
             generation.base.path = DeviceInstance.url(generation.base.path, state: state).path
             generation.storage.overlay = DeviceInstance.url(generation.storage.overlay, state: state).path
@@ -171,7 +217,8 @@ struct DeviceStateStorageTests {
             try fm.createDirectory(at: privateStorage, withIntermediateDirectories: true)
             let privateLink = own.appendingPathComponent("private-link")
             try fm.createSymbolicLink(at: privateLink, withDestinationURL: privateStorage)
-            var linked = ordinary; linked.storage.overlay = privateLink.appendingPathComponent("pages").path
+            var linked = ordinary
+            linked.storage.overlay = privateLink.appendingPathComponent("pages").path
             try lib.validate(linked)
         }
     }
@@ -179,27 +226,38 @@ struct DeviceStateStorageTests {
     @Test func escapingAndSharedPathsAreRefusedWithoutMutation() throws {
         try withTemporaryDirectory { root in
             let lib = try Library(root)
-            let own = lib.own, ordinary = lib.ordinary, owner = lib.owner
-            var bad = ordinary; bad.storage.overlay = "../outside-overlay"
+            let own = lib.own
+            let ordinary = lib.ordinary
+            let owner = lib.owner
+            var bad = ordinary
+            bad.storage.overlay = "../outside-overlay"
             try lib.refused("relative escape", bad)
-            bad = ordinary; bad.storage.writableNOR = root.appendingPathComponent("outside-nor").path
+            bad = ordinary
+            bad.storage.writableNOR = root.appendingPathComponent("outside-nor").path
             try lib.refused("external mutable NOR", bad)
-            bad = ordinary; bad.storage.overlay = lib.otherRecord.storage.overlay
+            bad = ordinary
+            bad.storage.overlay = lib.otherRecord.storage.overlay
             try lib.refused("other-record/shared overlay", bad)
-            bad = ordinary; bad.storage.snapshot = "Devices/\(owner.uuidString)"
+            bad = ordinary
+            bad.storage.snapshot = "Devices/\(owner.uuidString)"
             try lib.refused("whole record as snapshot", bad)
-            bad = ordinary; bad.storage.overlay = "Devices/\(owner.uuidString)/base/overlay"
+            bad = ordinary
+            bad.storage.overlay = "Devices/\(owner.uuidString)/base/overlay"
             try lib.refused("mutable under base", bad)
-            bad = ordinary; bad.base.path = ordinary.storage.overlay + "/nested-base"
+            bad = ordinary
+            bad.base.path = ordinary.storage.overlay + "/nested-base"
             try lib.refused("base under mutable", bad)
             try fm.createSymbolicLink(at: own.appendingPathComponent("escape-link"), withDestinationURL: lib.external)
-            bad = ordinary; bad.storage.overlay = "Devices/\(owner.uuidString)/escape-link/not-yet-created"
+            bad = ordinary
+            bad.storage.overlay = "Devices/\(owner.uuidString)/escape-link/not-yet-created"
             try lib.refused("existing link with missing suffix", bad)
-            bad = ordinary; bad.storage.overlay = "Devices/\(owner.uuidString)/escape-link/../outside-pages"
+            bad = ordinary
+            bad.storage.overlay = "Devices/\(owner.uuidString)/escape-link/../outside-pages"
             try lib.refused("parent traversal after symlink", bad)
             let dangling = own.appendingPathComponent("dangling")
             try fm.createSymbolicLink(at: dangling, withDestinationURL: root.appendingPathComponent("missing-external"))
-            bad = ordinary; bad.storage.overlay = dangling.appendingPathComponent("pages").path
+            bad = ordinary
+            bad.storage.overlay = dangling.appendingPathComponent("pages").path
             try lib.refused("dangling link with missing suffix", bad)
             let meta = own.appendingPathComponent("snapshot.meta")
             try fm.createSymbolicLink(at: meta, withDestinationURL: own.appendingPathComponent("base/sentinel"))

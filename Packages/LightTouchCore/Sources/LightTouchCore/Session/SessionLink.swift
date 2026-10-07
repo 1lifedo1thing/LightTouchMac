@@ -1,9 +1,9 @@
 // What a device session drives: its helper process and that helper's link. DeviceProcess and DeviceLink in the
 // app; recorders in LightTouchCoreTests, so the session's state machines run without a helper.
 
+import DeviceRuntime
 import Foundation
 import HostRuntime
-import DeviceRuntime
 
 /// The helper's link as the session uses it: ordered commands, and requests whose reply runs on the main queue.
 nonisolated public protocol HelperLink: AnyObject {
@@ -27,7 +27,11 @@ extension BootSessionScope {
     /// A control request for this boot; `done(true)` when the machine applied it (false on a machine without the
     /// control, the iPod, or from a helper that's gone). A reply that lands after this boot retired, or in a later
     /// boot, is dropped: it must not change the next boot.
-    public func control(_ request: LinkRequest, on link: HelperLink?, _ done: @escaping @MainActor (Bool) -> Void = { _ in }) {
+    public func control(
+        _ request: LinkRequest,
+        on link: HelperLink?,
+        _ done: @escaping @MainActor (Bool) -> Void = { _ in }
+    ) {
         guard let link, !retired else { return done(false) }
         let session = id
         link.request(request, timeout: 10) { [weak self] reply in
@@ -59,12 +63,21 @@ public final class WorkerRetirement {
     public func awaitTeardown(budget: TimeInterval) async -> Bool {
         guard let retirement = task else { return true }
         let (done, signal) = AsyncStream<Bool>.makeStream()
-        Task { await retirement.value; signal.yield(true) }
-        let timer = Task { try? await Task.sleep(for: .seconds(budget)); signal.yield(false) }
+        Task {
+            await retirement.value
+            signal.yield(true)
+        }
+        let timer = Task {
+            try? await Task.sleep(for: .seconds(budget))
+            signal.yield(false)
+        }
         var first = done.makeAsyncIterator()
         let finished = await first.next() ?? false
-        timer.cancel(); signal.finish()
-        if !finished { logEvent("stop: the services worker did not finish in \(Int(budget)) s; it is reaped in the background") }
+        timer.cancel()
+        signal.finish()
+        if !finished {
+            logEvent("stop: the services worker did not finish in \(Int(budget)) s; it is reaped in the background")
+        }
         return finished
     }
 }

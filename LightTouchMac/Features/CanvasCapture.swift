@@ -1,7 +1,7 @@
-import LightTouchCore
-import HostRuntime
 import AppKit
 import CoreImage
+import HostRuntime
+import LightTouchCore
 import ScreenCaptureKit
 
 /// A crop of this process's device window. Never requests desktop permission.
@@ -19,17 +19,25 @@ final class CanvasCapture {
 
     private let profile: Board
 
-    init(view: NSView, profile: Board) { self.view = view; self.profile = profile }
+    init(view: NSView, profile: Board) {
+        self.view = view
+        self.profile = profile
+    }
 
     private func configuration() throws -> SCStreamConfiguration {
         guard let view, let window = view.window, window.isVisible, !window.isMiniaturized,
-              view.bounds.width > 1, view.bounds.height > 1 else {
+            view.bounds.width > 1, view.bounds.height > 1
+        else {
             throw CaptureError.failed("Open the \(profile.shortName) window to capture it.")
         }
         let rect = view.convert(view.safeAreaRect, to: nil)
         // SCK's independent-window crop is top-left based, in window points.
-        let geometry = CGRect(x: rect.minX, y: window.frame.height - rect.maxY,
-                          width: rect.width, height: rect.height)
+        let geometry = CGRect(
+            x: rect.minX,
+            y: window.frame.height - rect.maxY,
+            width: rect.width,
+            height: rect.height
+        )
         let config = SCStreamConfiguration()
         config.sourceRect = geometry
         config.width = max(2, Int(rect.width * window.backingScaleFactor) / 2 * 2)
@@ -46,11 +54,17 @@ final class CanvasCapture {
     }
 
     private func contentFilter() async throws -> SCContentFilter {
-        guard let window = view?.window else { throw CaptureError.failed("The \(profile.shortName) window is unavailable.") }
+        guard let window = view?.window else {
+            throw CaptureError.failed("The \(profile.shortName) window is unavailable.")
+        }
         let id = CGWindowID(window.windowNumber)
         if windowID == id, let filter { return filter }
         let content = try await SCShareableContent.currentProcess
-        guard let ownWindow = content.windows.first(where: { $0.windowID == id && $0.owningApplication?.processID == getpid() }) else {
+        guard
+            let ownWindow = content.windows.first(where: {
+                $0.windowID == id && $0.owningApplication?.processID == getpid()
+            })
+        else {
             throw CaptureError.failed("The \(profile.shortName) window is unavailable for capture.")
         }
         let filter = SCContentFilter(desktopIndependentWindow: ownWindow)
@@ -83,7 +97,10 @@ final class CanvasCapture {
             if let error = frames.failure { throw error }
             try await Task.sleep(for: .milliseconds(16))
         }
-        guard frames.image != nil else { await stop(); throw CaptureError.failed("Couldn’t capture the screen.") }
+        guard frames.image != nil else {
+            await stop()
+            throw CaptureError.failed("Couldn’t capture the screen.")
+        }
         refresh = Task { [weak self] in
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
@@ -99,7 +116,10 @@ final class CanvasCapture {
                         installedSize = size
                         frames.resume()
                     }
-                } catch { frames.fail(error); return }
+                } catch {
+                    frames.fail(error)
+                    return
+                }
             }
         }
     }
@@ -114,8 +134,10 @@ final class CanvasCapture {
     }
 
     func stop() async {
-        refresh?.cancel(); refresh = nil
-        let old = stream; stream = nil
+        refresh?.cancel()
+        refresh = nil
+        let old = stream
+        stream = nil
         try? await old?.stopCapture()
         frames.clear()
     }
@@ -132,22 +154,41 @@ private nonisolated final class CanvasFrames: NSObject, SCStreamOutput, SCStream
     private var earliestFrame = CMTime.zero
     var image: CGImage? { lock.withLock { latest } }
     var failure: Error? { lock.withLock { error } }
-    func clear() { lock.withLock { latest = nil; error = nil; suspended = false; earliestFrame = .zero } }
+    func clear() {
+        lock.withLock {
+            latest = nil
+            error = nil
+            suspended = false
+            earliestFrame = .zero
+        }
+    }
     func suspend() { lock.withLock { suspended = true } }
-    func resume() { lock.withLock {
-        earliestFrame = CMClockGetTime(CMClockGetHostTimeClock())
-        suspended = false
-    } }
+    func resume() {
+        lock.withLock {
+            earliestFrame = CMClockGetTime(CMClockGetHostTimeClock())
+            suspended = false
+        }
+    }
     func fail(_ error: Error) { lock.withLock { self.error = error } }
     func stream(_ stream: SCStream, didStopWithError error: Error) { fail(error) }
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen, !lock.withLock({ suspended }), sampleBuffer.isValid,
-              let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
-              let raw = attachments.first?[.status] as? Int, SCFrameStatus(rawValue: raw) == .complete,
-              let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+            let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false)
+                as? [[SCStreamFrameInfo: Any]],
+            let raw = attachments.first?[.status] as? Int, SCFrameStatus(rawValue: raw) == .complete,
+            let buffer = CMSampleBufferGetImageBuffer(sampleBuffer)
+        else { return }
         let ci = CIImage(cvPixelBuffer: buffer)
-        guard let image = context.createCGImage(ci, from: ci.extent, format: .BGRA8,
-                                               colorSpace: CGColorSpace(name: CGColorSpace.sRGB)) else { return }
-        lock.withLock { if !suspended && CMSampleBufferGetPresentationTimeStamp(sampleBuffer) >= earliestFrame { latest = image } }
+        guard
+            let image = context.createCGImage(
+                ci,
+                from: ci.extent,
+                format: .BGRA8,
+                colorSpace: CGColorSpace(name: CGColorSpace.sRGB)
+            )
+        else { return }
+        lock.withLock {
+            if !suspended && CMSampleBufferGetPresentationTimeStamp(sampleBuffer) >= earliestFrame { latest = image }
+        }
     }
 }

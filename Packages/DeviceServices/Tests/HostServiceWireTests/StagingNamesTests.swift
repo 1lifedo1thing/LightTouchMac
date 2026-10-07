@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import HostServiceWire
 
 /// The staging names an upload uses and which of them a late startup sweep may remove: another session's
@@ -7,7 +8,8 @@ import Testing
 struct StagingNamesTests {
     @Test func stagingNamesAreUniqueAndOnlyOrphansAreSwept() {
         let file = URL(fileURLWithPath: "/tmp/Temple Run.ipa")
-        let first = DeviceServices.stagingName(file), second = DeviceServices.stagingName(file)
+        let first = DeviceServices.stagingName(file)
+        let second = DeviceServices.stagingName(file)
         #expect(first != second)
         #expect(!first.contains("/"))
         let old = "Temple_Run-01234567.ipa"
@@ -20,7 +22,10 @@ struct StagingNamesTests {
         #expect(DeviceServices.isOrphanedMediaUpload("audio.m4a.upload-" + uuid))
         #expect(DeviceServices.isOrphanedMediaUpload("image.jpg.upload-" + uuid + "-" + UUID().uuidString))
         #expect(!DeviceServices.isOrphanedMediaUpload("audio.m4a.upload-" + DeviceServices.stagingSession + "-" + uuid))
-        for name in ["audio.m4a", "image.jpg", ".photo-receipt", "song.json", "audio.m4a.upload-invalid", "../image.jpg.upload-" + uuid] {
+        for name in [
+            "audio.m4a", "image.jpg", ".photo-receipt", "song.json", "audio.m4a.upload-invalid",
+            "../image.jpg.upload-" + uuid,
+        ] {
             #expect(!DeviceServices.isOrphanedMediaUpload(name), "\(name)")
         }
     }

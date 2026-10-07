@@ -17,7 +17,7 @@ final class DropHighlight: NSView {
     func show(for operation: NSDragOperation) -> NSDragOperation {
         isHidden = operation.isEmpty
         if !isHidden, let parent = superview, parent.subviews.last !== self {
-            parent.addSubview(self, positioned: .above, relativeTo: nil)   // stay above later subviews
+            parent.addSubview(self, positioned: .above, relativeTo: nil)  // stay above later subviews
         }
         return operation
     }

@@ -12,8 +12,12 @@ import Foundation
 public enum SourceFetch {
     /// The URL that served the IPSW now at `out`; the last alternative's error when none did.
     @discardableResult
-    public static func fetch(_ source: FirmwareWire.Entry.Source, to out: URL, download: (URL, URL) throws -> Void,
-                             log: (String) -> Void = { _ in }) throws -> URL {
+    public static func fetch(
+        _ source: FirmwareWire.Entry.Source,
+        to out: URL,
+        download: (URL, URL) throws -> Void,
+        log: (String) -> Void = { _ in }
+    ) throws -> URL {
         let file = out.deletingLastPathComponent().appendingPathComponent(".\(out.lastPathComponent).download")
         defer { try? FileManager.default.removeItem(at: file) }
         var last: Error = FirmwareError(.unsupported, "the entry's source has no URL")
@@ -39,7 +43,9 @@ public enum SourceFetch {
                 return url
             } catch {
                 last = error
-                log("\(url.absoluteString) failed: \((error as? FirmwareError).map { "\($0)" } ?? error.localizedDescription)")
+                log(
+                    "\(url.absoluteString) failed: \((error as? FirmwareError).map { "\($0)" } ?? error.localizedDescription)"
+                )
             }
         }
         throw last

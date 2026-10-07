@@ -41,10 +41,14 @@ public nonisolated final class FirmwareDownloads: NSObject, URLSessionDownloadDe
     /// download (sha1, file, the URL it came from) into the IPSW: a "rar" source or mirror is unwrapped; nil: size and
     /// sha1 checked.
     /// Events arrive on a private serial queue.
-    public init(store: IPSWStore, configuration: URLSessionConfiguration = .background(withIdentifier: identifier),
-         expectedBytes: @escaping @Sendable (String) -> Int64?, sources: @escaping @Sendable (String) -> [URL] = { _ in [] },
-         install: (@Sendable (String, URL, URL?) throws -> URL)? = nil,
-         onEvent: @escaping @Sendable (String, Event) -> Void) {
+    public init(
+        store: IPSWStore,
+        configuration: URLSessionConfiguration = .background(withIdentifier: identifier),
+        expectedBytes: @escaping @Sendable (String) -> Int64?,
+        sources: @escaping @Sendable (String) -> [URL] = { _ in [] },
+        install: (@Sendable (String, URL, URL?) throws -> URL)? = nil,
+        onEvent: @escaping @Sendable (String, Event) -> Void
+    ) {
         self.store = store
         self.expectedBytes = expectedBytes
         self.sources = sources
@@ -93,9 +97,12 @@ public nonisolated final class FirmwareDownloads: NSObject, URLSessionDownloadDe
     private func next(after task: URLSessionTask, sha1: String) -> Bool {
         let urls = sources(sha1)
         guard let failed = task.originalRequest?.url, let index = urls.firstIndex(of: failed), index + 1 < urls.count,
-              !lock.withLock({ cancelling.contains(sha1) }) else { return false }
+            !lock.withLock({ cancelling.contains(sha1) })
+        else { return false }
         let url = urls[index + 1]
-        logEvent("firmware: \(failed.host ?? failed.absoluteString) failed for \(sha1); trying \(url.host ?? url.absoluteString)")
+        logEvent(
+            "firmware: \(failed.host ?? failed.absoluteString) failed for \(sha1); trying \(url.host ?? url.absoluteString)"
+        )
         try? FileManager.default.removeItem(at: store.resumeData(sha1))
         let task = session.downloadTask(with: url)
         task.taskDescription = sha1
@@ -114,14 +121,23 @@ public nonisolated final class FirmwareDownloads: NSObject, URLSessionDownloadDe
 
     // MARK: - URLSessionDownloadDelegate
 
-    public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didResumeAtOffset fileOffset: Int64,
-                    expectedTotalBytes: Int64) {
+    public func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didResumeAtOffset fileOffset: Int64,
+        expectedTotalBytes: Int64
+    ) {
         guard let sha1 = downloadTask.taskDescription else { return }
         onEvent(sha1, .resumed(offset: fileOffset))
     }
 
-    public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
-                    totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+    public func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
         guard let sha1 = downloadTask.taskDescription, Self.succeeded(downloadTask) else { return }
         let total = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : expectedBytes(sha1) ?? 0
         if total > 0 { onEvent(sha1, .progress(min(1, Double(totalBytesWritten) / Double(total)))) }
@@ -129,24 +145,35 @@ public nonisolated final class FirmwareDownloads: NSObject, URLSessionDownloadDe
 
     /// The file at `location` is deleted when this returns, so it moves out
     /// first; checking it is quick enough for the delegate queue (about 1 s for 500 MB).
-    public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+    public func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didFinishDownloadingTo location: URL
+    ) {
         guard let sha1 = downloadTask.taskDescription else { return }
         let partial = store.partial(sha1)
         let status = (downloadTask.response as? HTTPURLResponse)?.statusCode ?? 200
         do {
-            guard Self.succeeded(downloadTask) else { throw FirmwareError.failed("The download failed (HTTP \(status)).") }
+            guard Self.succeeded(downloadTask) else {
+                throw FirmwareError.failed("The download failed (HTTP \(status)).")
+            }
             try StorageLocations.privateDirectory(store.downloads)
             try? FileManager.default.removeItem(at: partial)
             try FileManager.default.moveItem(at: location, to: partial)
             // ponytail: an archive's extraction (about 30 s for 900 MB) holds the delegate queue; a job of its own if
             // several archive downloads ever finish together.
-            onEvent(sha1, .finished(try install.map { try $0(sha1, partial, downloadTask.originalRequest?.url) }
-                                    ?? store.install(partial, sha1: sha1, bytes: expectedBytes(sha1))))
+            onEvent(
+                sha1,
+                .finished(
+                    try install.map { try $0(sha1, partial, downloadTask.originalRequest?.url) }
+                        ?? store.install(partial, sha1: sha1, bytes: expectedBytes(sha1))
+                )
+            )
         } catch {
             try? FileManager.default.removeItem(at: partial)
             // An HTTP error or other bytes than the catalog's: the next source, if any.
             let error = error as? FirmwareError ?? .failed(error.localizedDescription)
-            if (error == .corrupted || !Self.succeeded(downloadTask)), next(after: downloadTask, sha1: sha1) { return }
+            if error == .corrupted || !Self.succeeded(downloadTask), next(after: downloadTask, sha1: sha1) { return }
             onEvent(sha1, .failed(error))
         }
     }
@@ -157,16 +184,23 @@ public nonisolated final class FirmwareDownloads: NSObject, URLSessionDownloadDe
     }
 
     /// Errors that mean the source is gone rather than the network flaking: the next source, not resume data.
-    private static let unreachable: Set<Int> = [NSURLErrorCannotFindHost, NSURLErrorDNSLookupFailed, NSURLErrorCannotConnectToHost,
-                                                NSURLErrorFileDoesNotExist, NSURLErrorBadServerResponse]
+    private static let unreachable: Set<Int> = [
+        NSURLErrorCannotFindHost, NSURLErrorDNSLookupFailed, NSURLErrorCannotConnectToHost,
+        NSURLErrorFileDoesNotExist, NSURLErrorBadServerResponse,
+    ]
 
     public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
         guard let error, let sha1 = task.taskDescription else { return }
         let nsError = error as NSError
         // A cancel reports through its own completion and keeps nothing.
         if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorCancelled,
-           lock.withLock({ cancelling.contains(sha1) }) { return }
-        if nsError.domain == NSURLErrorDomain, Self.unreachable.contains(nsError.code), next(after: task, sha1: sha1) { return }
+            lock.withLock({ cancelling.contains(sha1) })
+        {
+            return
+        }
+        if nsError.domain == NSURLErrorDomain, Self.unreachable.contains(nsError.code), next(after: task, sha1: sha1) {
+            return
+        }
         if let data = nsError.userInfo[NSURLSessionDownloadTaskResumeData] as? Data { saveResumeData(data, sha1: sha1) }
         onEvent(sha1, .failed(.failed("The download stopped: \(error.localizedDescription)")))
     }

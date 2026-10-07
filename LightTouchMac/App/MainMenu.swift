@@ -2,8 +2,8 @@
 //
 // Programmatic rebuild of the app-template MainMenu.xib.
 
-import HostRuntime
 import Cocoa
+import HostRuntime
 
 /// First-responder actions AppKit dispatches by selector but exposes no Swift
 /// symbol for. Declaring them here lets the menu use `#selector` (verified at
@@ -18,13 +18,14 @@ import Cocoa
 enum MainMenuBuilder {
 
     static func install(profile: Board) {
-        let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+        let appName =
+            Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
             ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Light Touch"
         let main = NSMenu(title: "Main Menu")
         // Menu titles remain discoverable even when the front window cannot
         // perform any of their commands. Submenus still validate their items.
         main.autoenablesItems = false
-        
+
         main.addItem(submenu(appMenu(appName), title: appName))
         main.addItem(submenu(fileMenu(profile), title: "File"))
         main.addItem(submenu(editMenu(profile), title: "Edit"))
@@ -36,14 +37,14 @@ enum MainMenuBuilder {
         main.addItem(submenu(captureMenu(), title: "Capture"))
         main.addItem(submenu(windowMenu(profile), title: "Window"))
         main.addItem(submenu(helpMenu(appName), title: "Help"))
-        
+
         NSApp.mainMenu = main
         NSApp.windowsMenu = main.item(withTitle: "Window")?.submenu
         NSApp.helpMenu = main.item(withTitle: "Help")?.submenu
     }
-    
+
     // MARK: - Menus
-    
+
     private static func appMenu(_ appName: String) -> NSMenu {
         let menu = NSMenu(title: appName)
         menu.addItem(item("About \(appName)", #selector(AppDelegate.showAbout(_:))))
@@ -61,11 +62,13 @@ enum MainMenuBuilder {
         menu.addItem(item("Quit \(appName)", #selector(AppDelegate.quit(_:)), "q"))
         return menu
     }
-    
+
     private static func captureMenu() -> NSMenu {
         let menu = CaptureMenu(title: "Capture")
         menu.addItem(item("Save Screenshot", #selector(MainWindowController.saveScreenshot(_:)), "s"))
-        menu.addItem(item("Save Screenshot As…", #selector(MainWindowController.saveScreenshotAs(_:)), "s", [.shift, .command]))
+        menu.addItem(
+            item("Save Screenshot As…", #selector(MainWindowController.saveScreenshotAs(_:)), "s", [.shift, .command])
+        )
         menu.addItem(item("Copy Screenshot", #selector(MainWindowController.copyScreen(_:))))
         menu.addItem(item("Open Screenshot in Preview", #selector(MainWindowController.openScreenshot(_:))))
         menu.addItem(.separator())
@@ -102,7 +105,7 @@ enum MainMenuBuilder {
         menu.addItem(item("Close", #selector(NSWindow.performClose(_:)), "w"))
         return menu
     }
-    
+
     private static func editMenu(_ profile: Board) -> NSMenu {
         // Preserve native editing in search, Help, logs, and file panels.
         // Device-specific editing never takes over the standard Copy/Paste keys.
@@ -116,11 +119,25 @@ enum MainMenuBuilder {
         menu.addItem(item("Delete", #selector(NSText.delete(_:))))
         menu.addItem(item("Select All", #selector(NSResponder.selectAll(_:)), "a"))
         menu.addItem(.separator())
-        menu.addItem(item("Paste Text to \(profile.shortName)", #selector(MainWindowController.pasteToGuest(_:)), "v", [.control, .command]))
+        menu.addItem(
+            item(
+                "Paste Text to \(profile.shortName)",
+                #selector(MainWindowController.pasteToGuest(_:)),
+                "v",
+                [.control, .command]
+            )
+        )
         menu.addItem(.separator())
         // Find searches the front window (the device window's is its app
         // search); Search Apps is its Option alternate, always the device window's field.
-        menu.addItem(item("Find…", #selector(NSTextView.performFindPanelAction(_:)), "f", tag: NSTextFinder.Action.showFindInterface.rawValue))
+        menu.addItem(
+            item(
+                "Find…",
+                #selector(NSTextView.performFindPanelAction(_:)),
+                "f",
+                tag: NSTextFinder.Action.showFindInterface.rawValue
+            )
+        )
         let searchApps = item("Search Apps", #selector(MainWindowController.findCatalog(_:)), "f", [.option, .command])
         searchApps.isAlternate = true
         menu.addItem(searchApps)
@@ -132,8 +149,12 @@ enum MainMenuBuilder {
     private static func viewMenu() -> NSMenu {
         let menu = NSMenu(title: "View")
         // Panes first: NSSplitViewController answers Toggle Sidebar and titles it.
-        menu.addItem(item("Show Sidebar", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.control, .command]))
-        menu.addItem(item("Show Inspector", #selector(MainWindowController.toggleAppInspector(_:)), "i", [.option, .command]))
+        menu.addItem(
+            item("Show Sidebar", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.control, .command])
+        )
+        menu.addItem(
+            item("Show Inspector", #selector(MainWindowController.toggleAppInspector(_:)), "i", [.option, .command])
+        )
         // Xcode's Show Debug Area key.
         menu.addItem(item("Show Console", #selector(MainWindowController.toggleConsole(_:)), "y", [.shift, .command]))
         menu.addItem(.separator())
@@ -171,17 +192,27 @@ enum MainMenuBuilder {
         menu.addItem(item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.control, .command]))
         return menu
     }
-    
+
     private static func deviceMenu(_ profile: Board) -> NSMenu {
         // Emulated hardware only; nil targets route through the active window's responder chain.
         let menu = NSMenu(title: "Device")
         menu.addItem(item("Home Screen", #selector(MainWindowController.deviceHome(_:)), "h", [.shift, .command]))
         menu.addItem(item("Lock", #selector(MainWindowController.deviceLock(_:)), "l"))
         menu.addItem(.separator())
-        menu.addItem(item("Rotate Left", #selector(MainWindowController.deviceRotateLeft(_:)),
-                          String(UnicodeScalar(NSLeftArrowFunctionKey)!)))
-        menu.addItem(item("Rotate Right", #selector(MainWindowController.deviceRotateRight(_:)),
-                          String(UnicodeScalar(NSRightArrowFunctionKey)!)))
+        menu.addItem(
+            item(
+                "Rotate Left",
+                #selector(MainWindowController.deviceRotateLeft(_:)),
+                String(UnicodeScalar(NSLeftArrowFunctionKey)!)
+            )
+        )
+        menu.addItem(
+            item(
+                "Rotate Right",
+                #selector(MainWindowController.deviceRotateRight(_:)),
+                String(UnicodeScalar(NSRightArrowFunctionKey)!)
+            )
+        )
         menu.addItem(item("Rotate Automatically", #selector(AppDelegate.toggleAutomaticRotation(_:))))
         menu.addItem(.separator())
         let motion = motionMenu()
@@ -194,11 +225,32 @@ enum MainMenuBuilder {
         }
         menu.addItem(submenu(compass, title: "Compass Heading"))
         let input = NSMenu(title: "Input")
-        input.addItem(item("Volume Up", #selector(MainWindowController.deviceVolumeUp(_:)), String(UnicodeScalar(NSUpArrowFunctionKey)!), [.option, .command]))
-        input.addItem(item("Volume Down", #selector(MainWindowController.deviceVolumeDown(_:)), String(UnicodeScalar(NSDownArrowFunctionKey)!), [.option, .command]))
+        input.addItem(
+            item(
+                "Volume Up",
+                #selector(MainWindowController.deviceVolumeUp(_:)),
+                String(UnicodeScalar(NSUpArrowFunctionKey)!),
+                [.option, .command]
+            )
+        )
+        input.addItem(
+            item(
+                "Volume Down",
+                #selector(MainWindowController.deviceVolumeDown(_:)),
+                String(UnicodeScalar(NSDownArrowFunctionKey)!),
+                [.option, .command]
+            )
+        )
         input.addItem(.separator())
         input.addItem(item("Send Keyboard Input", #selector(MainWindowController.toggleKeyboardInput(_:))))
-        input.addItem(item("Connect Hardware Keyboard", #selector(MainWindowController.toggleHardwareKeyboard(_:)), "k", [.shift, .command]))
+        input.addItem(
+            item(
+                "Connect Hardware Keyboard",
+                #selector(MainWindowController.toggleHardwareKeyboard(_:)),
+                "k",
+                [.shift, .command]
+            )
+        )
         menu.addItem(submenu(input, title: "Input"))
         let network = NSMenu(title: "Network")
         network.addItem(item("Connect to the Internet", #selector(AppDelegate.toggleInternetAccess(_:))))
@@ -259,7 +311,7 @@ enum MainMenuBuilder {
         menu.addItem(item("Bring All to Front", #selector(NSApplication.arrangeInFront(_:))))
         return menu
     }
-    
+
     private static func helpMenu(_ appName: String) -> NSMenu {
         let menu = NSMenu(title: "Help")
         menu.addItem(item("\(appName) Help", #selector(AppDelegate.showHelp(_:)), "?"))
@@ -284,34 +336,36 @@ enum MainMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(item("Reset Tilt", #selector(MainWindowController.resetMotion(_:)), target: target))
     }
-    
+
     // MARK: - Helpers
-    
-    private static func item(_ title: String,
-                             _ action: Selector?,
-                             _ key: String = "",
-                             _ modifiers: NSEvent.ModifierFlags = .command,
-                             tag: Int = 0,
-                             target: AnyObject? = nil) -> NSMenuItem {
+
+    private static func item(
+        _ title: String,
+        _ action: Selector?,
+        _ key: String = "",
+        _ modifiers: NSEvent.ModifierFlags = .command,
+        tag: Int = 0,
+        target: AnyObject? = nil
+    ) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.keyEquivalentModifierMask = modifiers
         item.tag = tag
         item.target = target
         return item
     }
-    
+
     private static func submenu(_ menu: NSMenu, title: String) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.submenu = menu
         return item
     }
-    
+
 }
 
 /// The Capture menu. Escape is Discard Recording's (which asks first) only while a recording can be discarded in the
 /// key device window, with no sheet on it and no text being edited; otherwise the key passes on to text fields,
 /// sheets, alerts and the rest. A plain NSMenu takes a matching key equivalent even from a disabled item.
-nonisolated final class CaptureMenu: NSMenu {   // NSMenu's own initializers are nonisolated; AppKit calls it on main
+nonisolated final class CaptureMenu: NSMenu {  // NSMenu's own initializers are nonisolated; AppKit calls it on main
     /// `window` is the key window.
     @MainActor static func escapeDiscards(in window: NSWindow?) -> Bool {
         guard let window, window.windowController is MainWindowController else { return false }

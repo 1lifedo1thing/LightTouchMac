@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import HostServiceWire
 
 /// withSoftDeadline and ResumeOnce, which check-deadlines' gate and cancellation races are measured with: the work's
@@ -14,8 +15,10 @@ struct SoftDeadlineTests {
         let cancelled = ResumeOnce<Bool>()
         let start = ContinuousClock.now
         let result: Int? = await withSoftDeadline(0.05) {
-            do { try await Task.sleep(for: .seconds(30)); cancelled.resume(.success(false)) }
-            catch { cancelled.resume(.success(true)) }
+            do {
+                try await Task.sleep(for: .seconds(30))
+                cancelled.resume(.success(false))
+            } catch { cancelled.resume(.success(true)) }
             return 1
         }
         #expect(result == nil && ContinuousClock.now - start < .seconds(5))
@@ -23,7 +26,12 @@ struct SoftDeadlineTests {
     }
 
     @Test func callerCancellationStopsTheWait() async {
-        let waiter = Task { await withSoftDeadline(30) { try? await Task.sleep(for: .seconds(30)); return 1 } }
+        let waiter = Task {
+            await withSoftDeadline(30) {
+                try? await Task.sleep(for: .seconds(30))
+                return 1
+            }
+        }
         try? await Task.sleep(for: .milliseconds(20))
         waiter.cancel()
         #expect(await waiter.value == nil)
@@ -34,7 +42,11 @@ struct SoftDeadlineTests {
         #expect(early.resume(.success(1)) && !early.resume(.success(2)))
         #expect(try await withCheckedThrowingContinuation { early.attach($0) } == 1)
         let late = ResumeOnce<Int>()
-        Task { try? await Task.sleep(for: .milliseconds(10)); late.resume(.success(3)); late.resume(.success(4)) }
+        Task {
+            try? await Task.sleep(for: .milliseconds(10))
+            late.resume(.success(3))
+            late.resume(.success(4))
+        }
         #expect(try await withCheckedThrowingContinuation { late.attach($0) } == 3)
     }
 }

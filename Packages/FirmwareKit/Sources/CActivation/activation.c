@@ -103,18 +103,16 @@ static void parse(Image *m) {
         if (cmd == 1) {
             if (len < 56)
                 fail("truncated segment");
-            uint32_t va = u32(d + o + 24), vs = u32(d + o + 28), off = u32(d + o + 32),
-                     fs = u32(d + o + 36), ns = u32(d + o + 48);
-            if (ns > (len - 56) / 68 || !fits(off, fs, n) || fs > vs ||
-                (uint64_t)va + vs > UINT64_C(0x100000000))
+            uint32_t va = u32(d + o + 24), vs = u32(d + o + 28), off = u32(d + o + 32), fs = u32(d + o + 36),
+                     ns = u32(d + o + 48);
+            if (ns > (len - 56) / 68 || !fits(off, fs, n) || fs > vs || (uint64_t)va + vs > UINT64_C(0x100000000))
                 fail("invalid segment bounds");
             if (fs) {
                 if (m->count == 64)
                     fail("too many segments");
                 for (size_t k = 0; k < m->count; k++) {
                     Segment s = m->segments[k];
-                    if ((uint64_t)va < s.va + (uint64_t)s.size &&
-                        (uint64_t)s.va < va + (uint64_t)fs)
+                    if ((uint64_t)va < s.va + (uint64_t)s.size && (uint64_t)s.va < va + (uint64_t)fs)
                         fail("overlapping mapped segments");
                 }
                 m->segments[m->count++] = (Segment){va, fs, off};
@@ -123,9 +121,8 @@ static void parse(Image *m) {
                 const uint8_t *s = d + o + 56 + 68 * j;
                 if (named(s, "__text") && named(s + 16, "__TEXT")) {
                     uint32_t a = u32(s + 32), z = u32(s + 36), f = u32(s + 40);
-                    if (!named(d + o + 8, "__TEXT") || a < va || f < off || !z ||
-                        !fits((uint64_t)a - va, z, fs) || !fits((uint64_t)f - off, z, fs) ||
-                        (uint64_t)a - va != (uint64_t)f - off)
+                    if (!named(d + o + 8, "__TEXT") || a < va || f < off || !z || !fits((uint64_t)a - va, z, fs) ||
+                        !fits((uint64_t)f - off, z, fs) || (uint64_t)a - va != (uint64_t)f - off)
                         fail("invalid text section");
                     m->text_va = a;
                     m->text_size = z;
@@ -171,8 +168,8 @@ static bool log_message(const Image *m, uint32_t va) {
         return true;
     size_t o = fileoff(m, va, 16);
     /* Constant CFString: validate ASCII flags, character pointer and length. */
-    return o != NO_OFF && u32(m->bytes + o + 4) == 0x7c8 &&
-           u32(m->bytes + o + 8) == m->message_va && u32(m->bytes + o + 12) == sizeof(message) - 1;
+    return o != NO_OFF && u32(m->bytes + o + 4) == 0x7c8 && u32(m->bytes + o + 8) == m->message_va &&
+           u32(m->bytes + o + 12) == sizeof(message) - 1;
 }
 /* Accept only straight-line argument construction ending in a direct log call.
  * All register values used as evidence must have been established in this block. */
@@ -196,8 +193,7 @@ static bool log_block(const Image *m, uint32_t pc, bool thumb, uint32_t *after) 
                 rd = (hi >> 8) & 15;
                 if ((hi & 0x8000) || rd == 15)
                     return false;
-                uint32_t imm = ((ins & 15) << 12) | (((ins >> 10) & 1) << 11) |
-                               (((hi >> 12) & 7) << 8) | (hi & 255);
+                uint32_t imm = ((ins & 15) << 12) | (((ins >> 10) & 1) << 11) | (((hi >> 12) & 7) << 8) | (hi & 255);
                 if ((ins & 0xfbf0) == 0xf2c0) {
                     if (!(known & (1u << rd)))
                         return false;
@@ -247,8 +243,8 @@ static bool log_block(const Image *m, uint32_t pc, bool thumb, uint32_t *after) 
                        (u16(m->bytes + o + 2) & 0xd000) == 0xd000) {
                 uint16_t hi = u16(m->bytes + o + 2); /* BL immediate T1, includes Thumb-1 form */
                 uint32_t s = (ins >> 10) & 1, j1 = (hi >> 13) & 1, j2 = (hi >> 11) & 1;
-                uint32_t imm = (s << 24) | ((!(j1 ^ s)) << 23) | ((!(j2 ^ s)) << 22) |
-                               ((ins & 1023) << 12) | ((hi & 2047) << 1);
+                uint32_t imm =
+                    (s << 24) | ((!(j1 ^ s)) << 23) | ((!(j2 ^ s)) << 22) | ((ins & 1023) << 12) | ((hi & 2047) << 1);
                 int32_t delta = (int32_t)(imm << 7) >> 7;
                 if (!text_address(m, pc + 4 + (uint32_t)delta, 2))
                     return false;
@@ -268,12 +264,10 @@ static bool log_block(const Image *m, uint32_t pc, bool thumb, uint32_t *after) 
                 regs[rd] = val;
                 known |= 1u << rd;
                 pc += 4;
-            } else if ((ins & 0xfff00000) == 0xe0800000 &&
-                       !(ins & 0x00000ff0)) { /* ADD register, no shifts */
+            } else if ((ins & 0xfff00000) == 0xe0800000 && !(ins & 0x00000ff0)) { /* ADD register, no shifts */
                 rd = (ins >> 12) & 15;
                 unsigned rn = (ins >> 16) & 15, rm = ins & 15;
-                if (rd == 15 || (rn != 15 && !(known & (1u << rn))) ||
-                    (rm != 15 && !(known & (1u << rm))))
+                if (rd == 15 || (rn != 15 && !(known & (1u << rn))) || (rm != 15 && !(known & (1u << rm))))
                     return false;
                 regs[rd] = (rn == 15 ? pc + 8 : regs[rn]) + (rm == 15 ? pc + 8 : regs[rm]);
                 known |= 1u << rd;
@@ -288,10 +282,8 @@ static bool log_block(const Image *m, uint32_t pc, bool thumb, uint32_t *after) 
                 return false;
         }
     }
-    return *after &&
-           (((known & 3) == 3 && cstring(m, regs[0], function) && log_message(m, regs[1])) ||
-            ((known & 7) == 7 && regs[0] == 0 && cstring(m, regs[1], function) &&
-             log_message(m, regs[2])));
+    return *after && (((known & 3) == 3 && cstring(m, regs[0], function) && log_message(m, regs[1])) ||
+                      ((known & 7) == 7 && regs[0] == 0 && cstring(m, regs[1], function) && log_message(m, regs[2])));
 }
 static void encode16(uint8_t *d, uint16_t v) {
     d[0] = (uint8_t)v;
@@ -301,13 +293,11 @@ static void encode32(uint8_t *d, uint32_t v) {
     encode16(d, (uint16_t)v);
     encode16(d + 2, (uint16_t)(v >> 16));
 }
-static bool bounded_target(uint32_t from, uint32_t target) {
-    return llabs((long long)target - from) <= 4096;
-}
+static bool bounded_target(uint32_t from, uint32_t target) { return llabs((long long)target - from) <= 4096; }
 static bool cfstring(const Image *m, uint32_t va, const char *text) {
     size_t o = fileoff(m, va, 16);
-    return o != NO_OFF && u32(m->bytes + o + 4) == 0x7c8 &&
-           u32(m->bytes + o + 12) == strlen(text) && cstring(m, u32(m->bytes + o + 8), text);
+    return o != NO_OFF && u32(m->bytes + o + 4) == 0x7c8 && u32(m->bytes + o + 12) == strlen(text) &&
+           cstring(m, u32(m->bytes + o + 8), text);
 }
 static bool arm_literal(const Image *m, uint32_t pc, uint32_t ins, uint32_t *value) {
     if ((ins & 0xff7f0000) != 0xe51f0000)
@@ -338,8 +328,7 @@ static bool nearby_function(const Image *m, uint32_t va) {
  */
 static bool legacy_initializer(const Image *m, size_t o, uint32_t va, Match *out) {
     uint32_t ins = u32(m->bytes + o), value;
-    if (!arm_literal(m, va, ins, &value) || !cfstring(m, value, "Unactivated") ||
-        !nearby_function(m, va))
+    if (!arm_literal(m, va, ins, &value) || !cfstring(m, value, "Unactivated") || !nearby_function(m, va))
         return false;
     unsigned state = (ins >> 12) & 15, flag = 0, slot1, slot2, slot3;
     if (state >= 13 || !text_address(m, va, 24))
@@ -352,27 +341,31 @@ static bool legacy_initializer(const Image *m, size_t o, uint32_t va, Match *out
     if ((a & 0xffff0fff) == 0xe3a00001) {
         /* Early 1.x keeps the no-record state and brick boolean in stack slots. */
         flag = (a >> 12) & 15;
-        if (flag >= 13 || flag == state || va < m->text_va + 12 ||
-            !stack_store(b, flag, &slot1) || !stack_store(c, state, &slot2) || slot1 == slot2 ||
-            (e & 0xff000000) != 0xea000000) return false;
+        if (flag >= 13 || flag == state || va < m->text_va + 12 || !stack_store(b, flag, &slot1) ||
+            !stack_store(c, state, &slot2) || slot1 == slot2 || (e & 0xff000000) != 0xea000000)
+            return false;
         uint32_t cmp = u32(m->bytes + o - 12), mov = u32(m->bytes + o - 8), guard = u32(m->bytes + o - 4);
         if ((cmp & 0xfff0ffff) != 0xe3500000 || (mov & 0xffff0ff0) != 0xe1a00000 ||
-            (guard & 0xff000000) != 0x1a000000 ||
-            va + 4 + (uint32_t)((int32_t)(guard << 8) >> 6) != va + 20) return false;
+            (guard & 0xff000000) != 0x1a000000 || va + 4 + (uint32_t)((int32_t)(guard << 8) >> 6) != va + 20)
+            return false;
         dest = va + 24 + (uint32_t)((int32_t)(e << 8) >> 6);
-        if (!text_address(m, dest, 4) || dest <= va + 24 || !bounded_target(va, dest)) return false;
+        if (!text_address(m, dest, 4) || dest <= va + 24 || !bounded_target(va, dest))
+            return false;
         change = 4;
     } else {
-        if ((c & 0xfff00fff) != 0xe2800001) return false;
+        if ((c & 0xfff00fff) != 0xe2800001)
+            return false;
         flag = (c >> 12) & 15;
         if (flag >= 13 || ((c >> 16) & 15) != flag || state == flag || va < m->text_va + 8)
             return false;
-        if (!stack_store(a, flag, &slot1) || !stack_store(b, flag, &slot2)) return false;
+        if (!stack_store(a, flag, &slot1) || !stack_store(b, flag, &slot2))
+            return false;
         if ((e & 0xff000000) == 0xea000000) {
             shared = true;
             /* 2.x iPod: the no-record block jumps to a shared state store. The old
              * matcher patched the later factory-cache fallback, which never ran. */
-            if (va < m->text_va + 36) return false;
+            if (va < m->text_va + 36)
+                return false;
             uint32_t cmp = u32(m->bytes + o - 36), guard = u32(m->bytes + o - 32);
             uint32_t fn, msg;
             if (cmp != (0xe3500000 | (flag << 16)) || (guard & 0xff000000) != 0x1a000000 ||
@@ -381,8 +374,7 @@ static bool legacy_initializer(const Image *m, size_t o, uint32_t va, Match *out
                 !arm_literal(m, va - 24, u32(m->bytes + o - 24), &msg) ||
                 !cstring(m, msg, "There is no activation record?") ||
                 (u32(m->bytes + o - 20) & 0xff000000) != 0xeb000000 ||
-                (u32(m->bytes + o - 12) & 0xff000000) != 0xeb000000 ||
-                u32(m->bytes + o - 8) != 0xe3500000 ||
+                (u32(m->bytes + o - 12) & 0xff000000) != 0xeb000000 || u32(m->bytes + o - 8) != 0xe3500000 ||
                 (u32(m->bytes + o - 4) & 0xff000000) != 0x1a000000)
                 return false;
             dest = va + 24 + (uint32_t)((int32_t)(e << 8) >> 6);
@@ -392,14 +384,15 @@ static bool legacy_initializer(const Image *m, size_t o, uint32_t va, Match *out
         } else {
             uint32_t cmp = u32(m->bytes + o - 8), guard = u32(m->bytes + o - 4);
             if (cmp != (0xe3500000 | (flag << 16)) || (guard & 0xff000000) != 0x1a000000 ||
-                va + 4 + (uint32_t)((int32_t)(guard << 8) >> 6) != va + 24 ||
-                !stack_store(e, state, &slot3) || (jump & 0xff000000) != 0xea000000)
+                va + 4 + (uint32_t)((int32_t)(guard << 8) >> 6) != va + 24 || !stack_store(e, state, &slot3) ||
+                (jump & 0xff000000) != 0xea000000)
                 return false;
             dest = va + 28 + (uint32_t)((int32_t)(jump << 8) >> 6);
         }
         change = 12;
-        if (slot1 == slot2 || slot1 == slot3 || slot2 == slot3 ||
-            !text_address(m, dest, 4) || dest <= va + 24 || !bounded_target(va, dest)) return false;
+        if (slot1 == slot2 || slot1 == slot3 || slot2 == slot3 || !text_address(m, dest, 4) || dest <= va + 24 ||
+            !bounded_target(va, dest))
+            return false;
     }
     /* Reuse a nearby literal that already points to the firmware's Activated
      * CFString. Do not overwrite a shared constant or synthesize an object. */
@@ -416,12 +409,16 @@ static bool legacy_initializer(const Image *m, size_t o, uint32_t va, Match *out
     }
     if (best == UINT64_MAX)
         return false;
-    *out = (Match){
-        .off = o, .va = va, .target = dest, .width = change + 4, .isa = "arm", .legacy = !shared, .shared_no_record = shared};
+    *out = (Match){.off = o,
+                   .va = va,
+                   .target = dest,
+                   .width = change + 4,
+                   .isa = "arm",
+                   .legacy = !shared,
+                   .shared_no_record = shared};
     memcpy(out->replacement, m->bytes + o, out->width);
     long long delta = (long long)literal - (va + 8);
-    encode32(out->replacement,
-             0xe51f0000 | (state << 12) | (delta >= 0 ? 0x800000 : 0) | (uint32_t)llabs(delta));
+    encode32(out->replacement, 0xe51f0000 | (state << 12) | (delta >= 0 ? 0x800000 : 0) | (uint32_t)llabs(delta));
     encode32(out->replacement + change, 0xe3a00000 | (flag << 12));
     return true;
 }
@@ -456,8 +453,8 @@ static bool conditional_initializer(const Image *m, size_t o, uint32_t va, Match
         return false;
     uint32_t cmp = u32(m->bytes + o - 8), set = u32(m->bytes + o - 4);
     unsigned state = (ins >> 12) & 15, flag = (set >> 12) & 15;
-    if ((cmp & 0xfff0ffff) != 0xe3500000 || (set & 0xffff0fff) != 0x03a00001 ||
-        state >= 13 || flag >= 13 || state == flag || ((cmp >> 16) & 15) == state)
+    if ((cmp & 0xfff0ffff) != 0xe3500000 || (set & 0xffff0fff) != 0x03a00001 || state >= 13 || flag >= 13 ||
+        state == flag || ((cmp >> 16) & 15) == state)
         return false;
     uint32_t dest = 0;
     for (unsigned k = 1; k <= 3 && !dest; k++) {
@@ -465,7 +462,7 @@ static bool conditional_initializer(const Image *m, size_t o, uint32_t va, Match
         if ((b & 0xff000000) == 0x0a000000)
             dest = va + 4 * k + 8 + (uint32_t)((int32_t)(b << 8) >> 6);
         else if ((b & 0x0e000000) == 0x0a000000 || ((b >> 12) & 15) == state || ((b >> 12) & 15) == flag)
-            return false;   /* other control flow, or the two values overwritten before the store */
+            return false; /* other control flow, or the two values overwritten before the store */
     }
     if (!dest || dest <= va || !bounded_target(va, dest) || !text_address(m, dest, 4))
         return false;
@@ -478,8 +475,8 @@ static bool conditional_initializer(const Image *m, size_t o, uint32_t va, Match
     uint32_t load;
     if (!logged || !activated_literal(m, va, ins, &load))
         return false;
-    *out = (Match){.off = o - 4, .va = va - 4, .target = dest, .width = 8, .isa = "arm", .legacy = true,
-                   .conditional = true};
+    *out = (Match){
+        .off = o - 4, .va = va - 4, .target = dest, .width = 8, .isa = "arm", .legacy = true, .conditional = true};
     encode32(out->replacement, 0x03a00000 | (flag << 12));
     encode32(out->replacement + 4, load);
     return true;
@@ -499,25 +496,19 @@ static Match locate(const Image *m) {
                 target = va + 6 + (uint32_t)((int32_t)(int8_t)(b & 255) * 2);
             } else if ((b & 0xfbc0) == 0xf000 && (u16(m->bytes + o + 4) & 0xd000) == 0x8000) {
                 uint16_t hi = u16(m->bytes + o + 4);
-                uint32_t imm = (((b >> 10) & 1) << 20) | (((hi >> 11) & 1) << 19) |
-                               (((hi >> 13) & 1) << 18) | ((b & 63) << 12) | ((hi & 2047) << 1);
+                uint32_t imm = (((b >> 10) & 1) << 20) | (((hi >> 11) & 1) << 19) | (((hi >> 13) & 1) << 18) |
+                               ((b & 63) << 12) | ((hi & 2047) << 1);
                 width = 4;
                 target = va + 6 + (uint32_t)((int32_t)(imm << 11) >> 11);
             }
             if (width && bounded_target(va, target) && text_address(m, target, 2)) {
-                bool fall =
-                    log_block(m, va + 2 + width, true, &after) && (target < va || target >= after);
+                bool fall = log_block(m, va + 2 + width, true, &after) && (target < va || target >= after);
                 uint32_t target_after = 0;
-                bool take = (target < va || target > va + 2 + width) &&
-                            log_block(m, target, true, &target_after);
+                bool take = (target < va || target > va + 2 + width) && log_block(m, target, true, &target_after);
                 if (fall && take)
                     fail("ambiguous branch destinations; file unchanged");
                 if (fall || take) {
-                    result = (Match){.off = o + 2,
-                                     .va = va + 2,
-                                     .target = target,
-                                     .width = width,
-                                     .isa = "thumb"};
+                    result = (Match){.off = o + 2, .va = va + 2, .target = target, .width = width, .isa = "thumb"};
                     count++;
                     if (fall) {
                         encode16(result.replacement, 0xbf00);
@@ -526,16 +517,13 @@ static Match locate(const Image *m) {
                     } else {
                         int32_t delta = (int32_t)(target - (va + 6));
                         if (width == 2)
-                            encode16(result.replacement,
-                                     (uint16_t)(0xe000 | (((uint32_t)delta >> 1) & 2047)));
+                            encode16(result.replacement, (uint16_t)(0xe000 | (((uint32_t)delta >> 1) & 2047)));
                         else {
                             uint32_t imm = (uint32_t)delta, sign = (imm >> 24) & 1;
-                            encode16(result.replacement,
-                                     (uint16_t)(0xf000 | (sign << 10) | ((imm >> 12) & 1023)));
+                            encode16(result.replacement, (uint16_t)(0xf000 | (sign << 10) | ((imm >> 12) & 1023)));
                             encode16(result.replacement + 2,
                                      (uint16_t)(0x9000 | ((!(((imm >> 23) & 1) ^ sign)) << 13) |
-                                                ((!(((imm >> 22) & 1) ^ sign)) << 11) |
-                                                ((imm >> 1) & 2047)));
+                                                ((!(((imm >> 22) & 1) ^ sign)) << 11) | ((imm >> 1) & 2047)));
                         }
                     }
                 }
@@ -555,16 +543,13 @@ static Match locate(const Image *m) {
                 int32_t delta = (int32_t)(br << 8) >> 6;
                 target = va + 12 + (uint32_t)delta;
                 if (bounded_target(va, target) && text_address(m, target, 4)) {
-                    bool fall =
-                        log_block(m, va + 8, false, &after) && (target < va || target >= after);
+                    bool fall = log_block(m, va + 8, false, &after) && (target < va || target >= after);
                     uint32_t target_after = 0;
-                    bool take = (target < va || target > va + 8) &&
-                                log_block(m, target, false, &target_after);
+                    bool take = (target < va || target > va + 8) && log_block(m, target, false, &target_after);
                     if (fall && take)
                         fail("ambiguous branch destinations; file unchanged");
                     if (fall || take) {
-                        result = (Match){
-                            .off = o + 4, .va = va + 4, .target = target, .width = 4, .isa = "arm"};
+                        result = (Match){.off = o + 4, .va = va + 4, .target = target, .width = 4, .isa = "arm"};
                         count++;
                         encode32(result.replacement, fall ? 0xe1a00000 : br | 0xe0000000);
                     }
@@ -579,16 +564,22 @@ static Match locate(const Image *m) {
 }
 #ifdef LT_ACTIVATION_LIBRARY
 int lt_activate_report(uint8_t *bytes, size_t size, LTActivationReport *report, const char **error) {
-    if (report) memset(report, 0, sizeof(*report));
-    if (setjmp(failure)) { *error = failure_message; return 0; }
-    if (size < 28 || size > LIMIT) fail("invalid input size");
+    if (report)
+        memset(report, 0, sizeof(*report));
+    if (setjmp(failure)) {
+        *error = failure_message;
+        return 0;
+    }
+    if (size < 28 || size > LIMIT)
+        fail("invalid input size");
     Image m = {.bytes = bytes, .size = size};
     parse(&m);
     Match match = locate(&m);
     if (report) {
-        report->strategy = match.conditional ? "conditional-no-record-initializer" :
-            match.legacy ? "legacy-no-record-initializer" :
-            match.shared_no_record ? "ipod-no-record-initializer" : "development-activation-shortcut";
+        report->strategy = match.conditional        ? "conditional-no-record-initializer"
+                           : match.legacy           ? "legacy-no-record-initializer"
+                           : match.shared_no_record ? "ipod-no-record-initializer"
+                                                    : "development-activation-shortcut";
         report->isa = match.isa;
         report->offset = match.off;
         report->width = match.width;
@@ -697,10 +688,10 @@ int main(int argc, char **argv) {
     printf("{\"mode\":\"%s\",\"strategy\":\"%s\",\"isa\":\"%s\",\"file_offset\":%zu,\"virtual_"
            "address\":%" PRIu32 ",\"size\":%u,\"old\":\"%s\",\"new\":\"%s\"}\n",
            probe ? "probe" : "apply",
-           match.conditional ? "conditional-no-record-initializer"
-           : match.legacy ? "legacy-no-record-initializer"
-                        : match.shared_no_record ? "ipod-no-record-initializer"
-                                                 : "development-activation-shortcut",
+           match.conditional        ? "conditional-no-record-initializer"
+           : match.legacy           ? "legacy-no-record-initializer"
+           : match.shared_no_record ? "ipod-no-record-initializer"
+                                    : "development-activation-shortcut",
            match.isa, match.off, match.va, match.width, old, replacement);
     free(m.bytes);
     return 0;

@@ -6,7 +6,10 @@ import Foundation
     var allowRaw = false
     var args = argv.makeIterator()
     while let flag = args.next() {
-        if flag == "--allow-raw" { allowRaw = true; continue }
+        if flag == "--allow-raw" {
+            allowRaw = true
+            continue
+        }
         guard ["--device", "--record-policy"].contains(flag), let value = args.next(), flags[flag] == nil else {
             FirmwareDiagnostics.write(Data("firmwarekit boot-admit: bad argument \(flag)\n".utf8))
             return 64

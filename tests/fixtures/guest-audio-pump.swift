@@ -13,9 +13,15 @@ nonisolated func pumpedGuestAudio(
 ) throws -> GuestAudioCapture {
     let generation = start()
     guard generation != 0 else { throw CaptureError.failed("The device is not ready to record audio.") }
-    final class Flag: @unchecked Sendable { let lock = NSLock(); var stopped = false }
+    final class Flag: @unchecked Sendable {
+        let lock = NSLock()
+        var stopped = false
+    }
     let flag = Flag()
-    let capture = GuestAudioCapture(clock: { time(generation) }, stop: { _ in flag.lock.withLock { flag.stopped = true } })
+    let capture = GuestAudioCapture(
+        clock: { time(generation) },
+        stop: { _ in flag.lock.withLock { flag.stopped = true } }
+    )
     capture.begin(generation: generation)
     Thread.detachNewThread {
         var buffer = [UInt8](repeating: 0, count: 16384)

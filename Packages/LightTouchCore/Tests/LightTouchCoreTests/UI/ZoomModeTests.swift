@@ -1,5 +1,6 @@
 import CoreGraphics
 import Testing
+
 @testable import LightTouchCore
 
 /// Zoom: pixel scale at either backing scale, nearest at whole steps and linear between, the ladder's steps out of
@@ -9,10 +10,21 @@ struct ZoomModeTests {
     let native: CGFloat = 320, cutout: CGFloat = 594
 
     func multiple(_ applied: CGFloat, backing: CGFloat = 2) -> CGFloat {
-        ZoomMode.pixelMultiple(appliedScale: applied, cutoutWidth: cutout, nativeWidth: native, backingScale: backing, freeForm: false)
+        ZoomMode.pixelMultiple(
+            appliedScale: applied,
+            cutoutWidth: cutout,
+            nativeWidth: native,
+            backingScale: backing,
+            freeForm: false
+        )
     }
     func scale(_ step: Int, backing: CGFloat = 2) -> CGFloat {
-        ZoomMode.shellScale(guestPixelsPerDisplayPixel: step, cutoutWidth: cutout, nativeWidth: native, backingScale: backing)
+        ZoomMode.shellScale(
+            guestPixelsPerDisplayPixel: step,
+            cutoutWidth: cutout,
+            nativeWidth: native,
+            backingScale: backing
+        )
     }
 
     @Test(arguments: [1.0, 2.0] as [CGFloat])
@@ -25,7 +37,15 @@ struct ZoomModeTests {
     }
 
     @Test func freeFormScaleIsAlreadyPointsPerGuestPixel() {
-        #expect(ZoomMode.pixelMultiple(appliedScale: 3, cutoutWidth: cutout, nativeWidth: native, backingScale: 2, freeForm: true) == 3)
+        #expect(
+            ZoomMode.pixelMultiple(
+                appliedScale: 3,
+                cutoutWidth: cutout,
+                nativeWidth: native,
+                backingScale: 2,
+                freeForm: true
+            ) == 3
+        )
     }
 
     @Test func fractionalFitIsFiltered() {
@@ -47,6 +67,8 @@ struct ZoomModeTests {
     }
 
     @Test func unknownSavedZoomIsFit() {
-        for value in [nil, "", "pixels:5", "pixels:x", "zoom"] as [String?] { #expect(ZoomMode(defaultsValue: value) == .fit) }
+        for value in [nil, "", "pixels:5", "pixels:x", "zoom"] as [String?] {
+            #expect(ZoomMode(defaultsValue: value) == .fit)
+        }
     }
 }

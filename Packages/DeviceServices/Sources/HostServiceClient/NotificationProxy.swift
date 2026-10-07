@@ -27,14 +27,20 @@ public final class NotificationProxy {
     /// blocking one parked on a cooperative-pool thread, which is core-count
     /// sized and shared with every other async task in the app.
     private var watcher: Task<Void, Never>?
-    public typealias Observer = @Sendable (HostServiceEndpoint, @escaping @Sendable () async -> Bool, @escaping @Sendable () -> Void) async -> Bool
+    public typealias Observer =
+        @Sendable (HostServiceEndpoint, @escaping @Sendable () async -> Bool, @escaping @Sendable () -> Void) async ->
+        Bool
     private let observe: Observer
 
-    public init(clientSocket: String, udid: String? = nil, session: UUID = DeviceServices.session,
-         observe: @escaping Observer = { endpoint, allowed, change in
-             guard await allowed() else { return false }
-             return await HostServiceWorkers.shared.observe(endpoint: endpoint, onChange: change)
-         }) {
+    public init(
+        clientSocket: String,
+        udid: String? = nil,
+        session: UUID = DeviceServices.session,
+        observe: @escaping Observer = { endpoint, allowed, change in
+            guard await allowed() else { return false }
+            return await HostServiceWorkers.shared.observe(endpoint: endpoint, onChange: change)
+        }
+    ) {
         self.endpoint = HostServiceEndpoint(socket: clientSocket, udid: udid, session: session)
         self.observe = observe
     }
@@ -42,8 +48,10 @@ public final class NotificationProxy {
     /// Only inspect host activity in `attachAllowed`; existing subscriptions
     /// stay open during installs. The library reports loss of this specific
     /// service, so there is no extra USB health probe to queue behind transfers.
-    public func start(attachAllowed: @escaping @Sendable () async -> Bool,
-               onChange: @escaping @Sendable () -> Void) {
+    public func start(
+        attachAllowed: @escaping @Sendable () async -> Bool,
+        onChange: @escaping @Sendable () -> Void
+    ) {
         guard !running else { return }
         running = true
         let endpoint = self.endpoint
@@ -69,7 +77,8 @@ public final class NotificationProxy {
     /// Ends the session. Called when the inspector goes away or USB does.
     public func stop() {
         running = false
-        watcher?.cancel();  watcher = nil
+        watcher?.cancel()
+        watcher = nil
     }
 
     deinit { watcher?.cancel() }

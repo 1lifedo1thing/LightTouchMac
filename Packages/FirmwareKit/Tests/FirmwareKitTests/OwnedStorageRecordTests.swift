@@ -1,6 +1,7 @@
 import Foundation
 import HostRuntime
 import Testing
+
 @testable import FirmwareKit
 
 struct OwnedStorageRecordTests {
@@ -11,25 +12,36 @@ struct OwnedStorageRecordTests {
         return dir
     }
     private func record(_ device: URL, base: String) throws -> Data {
-        try DeviceRecord.data(["id": device.lastPathComponent,
-            "unknown": ["preserved": true], "base": ["path": base], "storage": ["overlay": "missing-overlay"]])
+        try DeviceRecord.data([
+            "id": device.lastPathComponent,
+            "unknown": ["preserved": true], "base": ["path": base], "storage": ["overlay": "missing-overlay"],
+        ])
     }
     @Test func selectedDeviceResolvesLatestRecordOnlyAfterAdmission() async throws {
         let device = try fixture()
-        defer { try? FileManager.default.removeItem(at: device.deletingLastPathComponent().deletingLastPathComponent()) }
+        defer {
+            try? FileManager.default.removeItem(at: device.deletingLastPathComponent().deletingLastPathComponent())
+        }
         let url = device.appendingPathComponent(DeviceRecord.name)
         try Data("not yet valid".utf8).write(to: url)
-        let selected = try VolumeExport.Source(device: device) // No read, parse or lock.
+        let selected = try VolumeExport.Source(device: device)  // No read, parse or lock.
         let latest = try record(device, base: "latest-generation")
         try latest.write(to: url)
         do {
             let (owner, resolved) = try selected.admit()
             let admitted = try #require(owner)
             #expect(admitted.bytes == latest)
-            #expect(resolved.base == device.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("latest-generation"))
+            #expect(
+                resolved.base
+                    == device.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent(
+                        "latest-generation"
+                    )
+            )
             let transaction = try StorageGeneration.begin(owner: admitted)
             #expect(try Data(contentsOf: transaction.root.appendingPathComponent("original-device.plist")) == latest)
-            #expect(throws: StorageLease.Failure.inUse) { _ = try StorageLease(device.appendingPathComponent("work/lease")) }
+            #expect(throws: StorageLease.Failure.inUse) {
+                _ = try StorageLease(device.appendingPathComponent("work/lease"))
+            }
             let candidateBytes = try await transaction.candidateRecord()
             let candidate = try DeviceRecord.object(candidateBytes)
             #expect((candidate["unknown"] as? [String: Bool])?["preserved"] == true)
@@ -41,7 +53,9 @@ struct OwnedStorageRecordTests {
     }
     @Test func exportFailureReleasesLeaseWithSelectionStillAlive() async throws {
         let device = try fixture()
-        defer { try? FileManager.default.removeItem(at: device.deletingLastPathComponent().deletingLastPathComponent()) }
+        defer {
+            try? FileManager.default.removeItem(at: device.deletingLastPathComponent().deletingLastPathComponent())
+        }
         try record(device, base: "missing-generation").write(to: device.appendingPathComponent(DeviceRecord.name))
         let selected = try VolumeExport.Source(device: device)
         let out = device.appendingPathComponent("export")
@@ -52,7 +66,9 @@ struct OwnedStorageRecordTests {
     }
     @Test func busyRecordRefusesBeforeParseOrStagingAndUnsupportedEditLeavesNoIntent() async throws {
         let device = try fixture()
-        defer { try? FileManager.default.removeItem(at: device.deletingLastPathComponent().deletingLastPathComponent()) }
+        defer {
+            try? FileManager.default.removeItem(at: device.deletingLastPathComponent().deletingLastPathComponent())
+        }
         let recordURL = device.appendingPathComponent(DeviceRecord.name)
         try Data("malformed".utf8).write(to: recordURL)
         let selected = try VolumeExport.Source(device: device)
@@ -72,7 +88,9 @@ struct OwnedStorageRecordTests {
     }
     @Test(arguments: 0..<16) func awaitedCloseReleasesTransactionOwner(_ iteration: Int) async throws {
         let device = try fixture()
-        defer { try? FileManager.default.removeItem(at: device.deletingLastPathComponent().deletingLastPathComponent()) }
+        defer {
+            try? FileManager.default.removeItem(at: device.deletingLastPathComponent().deletingLastPathComponent())
+        }
         try record(device, base: "original").write(to: device.appendingPathComponent(DeviceRecord.name))
         weak var previous: StorageGeneration?
         func start() async throws -> UUID {

@@ -166,7 +166,6 @@ static void oldfixture(uint8_t *d, bool second) {
         put32(d + 0x20c, 0xe2866001);
         put32(d + 0x210, 0xea00003a); // shared store at 0x300
         put32(d + 0x300, 0xe58d2004);
-
     }
 }
 int main(void) {
@@ -239,26 +238,36 @@ int main(void) {
         put32(d + 0x208, 0xe58d100c);
         put32(d + 0x20c, 0xe58d2004);
         put32(d + 0x210, 0xea00004e);
-        if (bad == 1) put32(d + 0x1fc, 0x1a000003);
-        if (bad == 2) put32(d + 0x20c, 0xe58d200c);
-        if (bad == 3) put32(d + 0x204, 0xe3a02001);
+        if (bad == 1)
+            put32(d + 0x1fc, 0x1a000003);
+        if (bad == 2)
+            put32(d + 0x20c, 0xe58d200c);
+        if (bad == 3)
+            put32(d + 0x204, 0xe3a02001);
         save(p, d, sizeof(d));
-        if (bad) { assert(run(p, false)); same(p, d, sizeof(d)); }
-        else {
-            assert(!run(p, true)); same(p, d, sizeof(d));
+        if (bad) {
+            assert(run(p, false));
+            same(p, d, sizeof(d));
+        } else {
+            assert(!run(p, true));
+            same(p, d, sizeof(d));
             assert(!run(p, false));
             put32(d + 0x200, 0xe59f208c);
             put32(d + 0x204, 0xe3a01000);
             same(p, d, sizeof(d));
-            assert(run(p, false)); same(p, d, sizeof(d));
+            assert(run(p, false));
+            same(p, d, sizeof(d));
         }
     }
     // The shared-store strategy must prove the no-record guard, diagnostic, and store.
     for (int kind = 0; kind < 3; kind++) {
         oldfixture(d, true);
-        if (kind == 0) put32(d + 0x1dc, 0xe3550000);
-        if (kind == 1) d[0x740] = 'X';
-        if (kind == 2) put32(d + 0x300, 0xe58d3004);
+        if (kind == 0)
+            put32(d + 0x1dc, 0xe3550000);
+        if (kind == 1)
+            d[0x740] = 'X';
+        if (kind == 2)
+            put32(d + 0x300, 0xe58d3004);
         save(p, d, sizeof(d));
         assert(run(p, false));
         same(p, d, sizeof(d));

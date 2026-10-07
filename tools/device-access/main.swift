@@ -17,7 +17,8 @@ func endpoint(_ value: String) throws -> String {
 }
 func executable(_ value: String) throws -> String {
     guard value.hasPrefix("/"), !value.contains("\n"), !value.contains("\r"),
-          FileManager.default.isExecutableFile(atPath: value) else {
+        FileManager.default.isExecutableFile(atPath: value)
+    else {
         try fail("Tool must be an executable absolute path: \(value)")
     }
     return value
@@ -25,19 +26,27 @@ func executable(_ value: String) throws -> String {
 func run() throws -> Int32 {
     var args = Array(CommandLine.arguments.dropFirst())
     guard let mode = args.first, ["ssh", "sftp", "config", "gdb", "enable", "disable"].contains(mode) else {
-        try fail("Usage: ltm-device-access {enable|disable|ssh|sftp|config|gdb} --instance UUID --usbmux 127.0.0.1:PORT --inetcat /path/to/inetcat [--identity /path/to/private-key] [--state /private/directory] [--gdb 127.0.0.1:PORT] [-- remote-command]")
+        try fail(
+            "Usage: ltm-device-access {enable|disable|ssh|sftp|config|gdb} --instance UUID --usbmux 127.0.0.1:PORT --inetcat /path/to/inetcat [--identity /path/to/private-key] [--state /private/directory] [--gdb 127.0.0.1:PORT] [-- remote-command]"
+        )
     }
     args.removeFirst()
     var options: [String: String] = [:]
     var command: [String] = []
     while !args.isEmpty {
         let key = args.removeFirst()
-        if key == "--" { command = args; break }
+        if key == "--" {
+            command = args
+            break
+        }
         guard ["--instance", "--usbmux", "--inetcat", "--identity", "--state", "--gdb", "--batch"].contains(key),
-              !args.isEmpty, options[key] == nil else { try fail("Unknown, duplicate or incomplete option: \(key)") }
+            !args.isEmpty, options[key] == nil
+        else { try fail("Unknown, duplicate or incomplete option: \(key)") }
         options[key] = args.removeFirst()
     }
-    guard let id = options["--instance"].flatMap(UUID.init(uuidString:)) else { try fail("A device instance UUID is required.") }
+    guard let id = options["--instance"].flatMap(UUID.init(uuidString:)) else {
+        try fail("A device instance UUID is required.")
+    }
     guard command.isEmpty || mode == "ssh" else { try fail("Remote commands are supported only for ssh.") }
     if let supplied = options["--usbmux"] { _ = try endpoint(supplied) }
     if mode == "gdb", let supplied = options["--gdb"] {
@@ -48,15 +57,30 @@ func run() throws -> Int32 {
     if let directory = options["--state"], !directory.hasPrefix("/") {
         try fail("State directory must be an absolute path.")
     }
-    let base = options["--state"].map { URL(fileURLWithPath: $0, isDirectory: true) }
-        ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Light Touch/DeveloperSSH", isDirectory: true)
-    guard base.path.hasPrefix("/"), !base.path.contains("\n"), !base.path.contains("\r") else { try fail("State directory must be an absolute path without newlines.") }
+    let base =
+        options["--state"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+        ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
+            "Library/Application Support/Light Touch/DeveloperSSH",
+            isDirectory: true
+        )
+    guard base.path.hasPrefix("/"), !base.path.contains("\n"), !base.path.contains("\r") else {
+        try fail("State directory must be an absolute path without newlines.")
+    }
     let state = base.appendingPathComponent(id.uuidString.lowercased(), isDirectory: true)
-    try FileManager.default.createDirectory(at: state, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    try FileManager.default.createDirectory(
+        at: state,
+        withIntermediateDirectories: true,
+        attributes: [.posixPermissions: 0o700]
+    )
     try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: state.path)
     let profile = state.appendingPathComponent("connection.json")
     if FileManager.default.fileExists(atPath: profile.path), mode != "enable", mode != "disable" {
-        struct Connection: Decodable { let instance: UUID; let usbmux: String; let inetcat: String; let gdb: String? }
+        struct Connection: Decodable {
+            let instance: UUID
+            let usbmux: String
+            let inetcat: String
+            let gdb: String?
+        }
         let connection = try JSONDecoder().decode(Connection.self, from: Data(contentsOf: profile))
         guard connection.instance == id else { try fail("Connection profile belongs to another instance.") }
         options["--usbmux"] = options["--usbmux"] ?? connection.usbmux
@@ -85,16 +109,28 @@ func run() throws -> Int32 {
     let socketAddress = try endpoint(socket)
     let inetcat = try executable(tool)
     let knownHosts = state.appendingPathComponent("known_hosts").path
-    let proxy = "exec /usr/bin/env " + shellQuote("USBMUXD_SOCKET_ADDRESS=" + socketAddress) + " " + shellQuote(sshLiteral(inetcat)) + " -l %p"
-    var sshOptions = ["HostName=localhost", "Port=22", "User=root", "HostKeyAlias=" + alias,
-                      "UserKnownHostsFile=" + shellQuote(sshLiteral(knownHosts)), "StrictHostKeyChecking=" + (FileManager.default.fileExists(atPath: knownHosts) ? "yes" : "ask"),
-                      "ProxyCommand=" + proxy, "ConnectTimeout=10", "ServerAliveInterval=15", "ServerAliveCountMax=2"]
+    let proxy =
+        "exec /usr/bin/env " + shellQuote("USBMUXD_SOCKET_ADDRESS=" + socketAddress) + " "
+        + shellQuote(sshLiteral(inetcat)) + " -l %p"
+    var sshOptions = [
+        "HostName=localhost", "Port=22", "User=root", "HostKeyAlias=" + alias,
+        "UserKnownHostsFile=" + shellQuote(sshLiteral(knownHosts)),
+        "StrictHostKeyChecking=" + (FileManager.default.fileExists(atPath: knownHosts) ? "yes" : "ask"),
+        "ProxyCommand=" + proxy, "ConnectTimeout=10", "ServerAliveInterval=15", "ServerAliveCountMax=2",
+    ]
     let provisionedIdentity = state.appendingPathComponent("id_ecdsa").path
-    if let identity = options["--identity"] ?? (FileManager.default.fileExists(atPath: provisionedIdentity) ? provisionedIdentity : nil) {
-        guard identity.hasPrefix("/"), !identity.contains("\n"), !identity.contains("\r"), FileManager.default.fileExists(atPath: identity) else {
+    if let identity = options["--identity"]
+        ?? (FileManager.default.fileExists(atPath: provisionedIdentity) ? provisionedIdentity : nil)
+    {
+        guard identity.hasPrefix("/"), !identity.contains("\n"), !identity.contains("\r"),
+            FileManager.default.fileExists(atPath: identity)
+        else {
             try fail("Identity must name an existing absolute private-key path.")
         }
-        sshOptions += ["IdentityFile=" + shellQuote(sshLiteral(identity)), "IdentitiesOnly=yes", "PreferredAuthentications=publickey"]
+        sshOptions += [
+            "IdentityFile=" + shellQuote(sshLiteral(identity)), "IdentitiesOnly=yes",
+            "PreferredAuthentications=publickey",
+        ]
     }
     if mode == "config" {
         print("Host \(alias)")
@@ -122,5 +158,7 @@ func run() throws -> Int32 {
     child.waitUntilExit()
     return child.terminationStatus
 }
-do { exit(try run()) }
-catch { FileHandle.standardError.write(Data(("ltm-device-access: \(error)\n").utf8)); exit(2) }
+do { exit(try run()) } catch {
+    FileHandle.standardError.write(Data(("ltm-device-access: \(error)\n").utf8))
+    exit(2)
+}

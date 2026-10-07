@@ -8,7 +8,8 @@ public enum NetworkAccessPreference {
     /// Whether the device about to start gets the Mac's network without asking: `--network`/`--no-network`
     /// on the command line (a choice that is not remembered), else the saved answer; nil when there is neither
     /// and the user is asked (NetworkAccessPrompt).
-    public static func decided(arguments: [String] = CommandLine.arguments, defaults: UserDefaults = .standard) -> Bool? {
+    public static func decided(arguments: [String] = CommandLine.arguments, defaults: UserDefaults = .standard) -> Bool?
+    {
         if arguments.contains("--no-network") { return false }
         if arguments.contains("--network") { return true }
         return defaults.object(forKey: key) as? Bool

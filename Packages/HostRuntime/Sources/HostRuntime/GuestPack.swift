@@ -42,7 +42,8 @@ public enum GuestPack {
         /// only where the preparer installed the front end.
         public static let glTargets: Set<String> = [
             "/System/Library/Frameworks/OpenGLES.framework/MBXGLEngine.bundle/MBXGLEngine",
-            "/System/Library/Frameworks/OpenGLES.framework/OpenGLES"]
+            "/System/Library/Frameworks/OpenGLES.framework/OpenGLES",
+        ]
 
         /// Drop hooks (and their payload files) by file name.
         public mutating func dropHooks(_ files: Set<String>) {
@@ -54,22 +55,36 @@ public enum GuestPack {
     /// "ITPACK01", a little-endian u32 index length, the JSON index, then one zlib stream; entries in index order.
     public static func read(_ url: URL) throws -> [(name: String, data: Data)] {
         func invalid(_ why: String) -> Error {
-            CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: url.path,
-                                                        NSLocalizedDescriptionKey: "\(url.lastPathComponent): \(why)"])
+            CocoaError(
+                .fileReadCorruptFile,
+                userInfo: [
+                    NSFilePathErrorKey: url.path,
+                    NSLocalizedDescriptionKey: "\(url.lastPathComponent): \(why)",
+                ]
+            )
         }
         let blob = try Data(contentsOf: url)
         guard blob.count >= 12, blob.prefix(8) == magic else { throw invalid("not an .itpack") }
-        let n = Int(blob[blob.startIndex + 8]) | Int(blob[blob.startIndex + 9]) << 8
+        let n =
+            Int(blob[blob.startIndex + 8]) | Int(blob[blob.startIndex + 9]) << 8
             | Int(blob[blob.startIndex + 10]) << 16 | Int(blob[blob.startIndex + 11]) << 24
         guard blob.count >= 12 + n + 2 else { throw invalid("truncated") }
-        struct Index: Decodable { struct Entry: Decodable { var name: String; var size: Int }; var entries: [Entry] }
+        struct Index: Decodable {
+            struct Entry: Decodable {
+                var name: String
+                var size: Int
+            }
+            var entries: [Entry]
+        }
         let index = try JSONDecoder().decode(Index.self, from: blob.subdata(in: 12..<12 + n))
         // zlib's 2-byte header off: Compression's zlib is raw deflate (the adler trailer is ignored).
         let stream = try (blob.subdata(in: 12 + n + 2..<blob.count) as NSData).decompressed(using: .zlib) as Data
-        var entries: [(String, Data)] = [], offset = 0
+        var entries: [(String, Data)] = []
+        var offset = 0
         for e in index.entries {
             guard !e.name.hasPrefix("/"), !e.name.split(separator: "/").contains(".."), e.size >= 0,
-                  offset + e.size <= stream.count else { throw invalid("bad entry \(e.name)") }
+                offset + e.size <= stream.count
+            else { throw invalid("bad entry \(e.name)") }
             entries.append((e.name, stream.subdata(in: offset..<offset + e.size)))
             offset += e.size
         }
@@ -86,13 +101,20 @@ public enum GuestPack {
 
     /// The packages in `entries` whose builds take `build` (and `board`, when given), with their family directory
     /// and payloads by package path; stubs (a family with nothing to run yet) only with `stubs`.
-    public static func packages(_ entries: [(name: String, data: Data)], board: String? = nil, build: String, stubs: Bool = false) throws
-        -> [(family: String, manifest: Manifest, payloads: [String: Data])] {
+    public static func packages(
+        _ entries: [(name: String, data: Data)],
+        board: String? = nil,
+        build: String,
+        stubs: Bool = false
+    ) throws
+        -> [(family: String, manifest: Manifest, payloads: [String: Data])]
+    {
         var found: [(String, Manifest, [String: Data])] = []
         for (name, data) in entries where name.hasSuffix("/manifest.json") {
             let manifest = try JSONDecoder().decode(Manifest.self, from: data)
             guard board.map(manifest.requires.boards.contains) ?? true, buildMatches(manifest.requires.builds, build),
-                  stubs || manifest.stub != true else { continue }
+                stubs || manifest.stub != true
+            else { continue }
             let prefix = String(name.dropLast("manifest.json".count))
             var payloads: [String: Data] = [:]
             for (entry, bytes) in entries where entry.hasPrefix(prefix) && entry != name {
@@ -105,7 +127,13 @@ public enum GuestPack {
 
     /// The offer text it_boot reads (mkpkg.py offer_text): payload lines indexed in manifest order, after the
     /// verdicts. `serial` other than the manifest's (0: the built-in package) carries no payload lines.
-    public static func offerText(_ m: Manifest, build: String, serial: Int64? = nil, good: [Int64] = [], bad: [Int64] = []) -> String {
+    public static func offerText(
+        _ m: Manifest,
+        build: String,
+        serial: Int64? = nil,
+        good: [Int64] = [],
+        bad: [Int64] = []
+    ) -> String {
         var lines = ["ltpkg \(packageProtocol)", "build \(build)", "serial \(serial ?? m.serial) \(m.version)"]
         lines += good.map { "verdict good \($0)" } + bad.map { "verdict bad \($0)" }
         if serial == nil || serial == m.serial {

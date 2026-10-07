@@ -19,14 +19,18 @@ extension DeviceServices {
             do {
                 return try await withDeadline(seconds, label) {
                     var device: OpaquePointer?
-                    let opened = endpoint.udid.map { id in id.withCString { idevice_new(&device, $0) } } ?? idevice_new(&device, nil)
+                    let opened =
+                        endpoint.udid.map { id in id.withCString { idevice_new(&device, $0) } }
+                        ?? idevice_new(&device, nil)
                     guard opened.ok, let device else { throw DeviceError.notAttached }
                     defer { _ = idevice_free(device) }
                     return try body(device)
                 }
             } catch {
                 if !(error is CancellationError) {
-                    logEvent("device operation \(label) failed after \(started.duration(to: .now)): \(error.localizedDescription)")
+                    logEvent(
+                        "device operation \(label) failed after \(started.duration(to: .now)): \(error.localizedDescription)"
+                    )
                 }
                 throw error
             }

@@ -1,14 +1,17 @@
 import Foundation
 import Testing
+
 @testable import FirmwareKit
 
 struct IMG3Tests {
     /// ipad1_fw.selfcheck: an odd-length payload through encrypt -> img3 -> decrypt, both tail conventions.
     @Test func partialBlockRoundTrip() throws {
-        let iv = Data(count: 16), key = Data(0..<32), plain = Data(0..<37)
+        let iv = Data(count: 16)
+        let key = Data(0..<32)
+        let plain = Data(0..<37)
         func img3(_ payload: Data) -> Data {
             let le = { (v: Int) in DeviceTree.Value.le([UInt32(v)]) }
-            let tag = Data("ATAD".utf8) + le(12 + payload.count) + le(plain.count) + payload   // magics are byte-reversed
+            let tag = Data("ATAD".utf8) + le(12 + payload.count) + le(plain.count) + payload  // magics are byte-reversed
             return Data("3gmI".utf8) + le(0x14 + tag.count) + Data(count: 12) + tag
         }
         // 3.x+: the tail block is encrypted into the tag's padding.
@@ -22,7 +25,10 @@ struct IMG3Tests {
     }
 
     /// Every ipad1_fw.py output but rootfs.dmg (VFDecryptTests), byte for byte.
-    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"), arguments: Oracle.firmwares)
+    @Test(
+        .enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"),
+        arguments: Oracle.firmwares
+    )
     func decryptMatchesPython(_ fw: Oracle.Firmware) throws {
         guard fw.available else { try FixtureRequirements.missing(fw.ipsw.path) }
         try Oracle.withTemp { dir in

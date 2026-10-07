@@ -5,7 +5,10 @@
 // The engine that calls libimobiledevice is the LightTouchServices target's own (LightTouchServices/Engine): it
 // links the vendored C library, which a package can't see.
 import PackageDescription
-let package = Package(name: "DeviceServices", platforms: [.macOS(.v13)],
+
+let package = Package(
+    name: "DeviceServices",
+    platforms: [.macOS(.v13)],
     products: [
         .library(name: "HostServiceWire", type: .static, targets: ["HostServiceWire"]),
         .library(name: "HostServiceClient", type: .static, targets: ["HostServiceClient"]),
@@ -13,7 +16,13 @@ let package = Package(name: "DeviceServices", platforms: [.macOS(.v13)],
     dependencies: [.package(url: "https://github.com/swiftlang/swift-subprocess.git", exact: "1.0.0")],
     targets: [
         .target(name: "HostServiceWire"),
-        .target(name: "HostServiceClient", dependencies: ["HostServiceWire",
-            .product(name: "Subprocess", package: "swift-subprocess")]),
+        .target(
+            name: "HostServiceClient",
+            dependencies: [
+                "HostServiceWire",
+                .product(name: "Subprocess", package: "swift-subprocess"),
+            ]
+        ),
         .testTarget(name: "HostServiceWireTests", dependencies: ["HostServiceWire"]),
-    ])
+    ]
+)

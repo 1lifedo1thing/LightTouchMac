@@ -18,7 +18,10 @@ import Foundation
 import HostRuntime
 
 public struct UnitIdentity: Equatable, Sendable {
-    public enum Value: Equatable, Sendable { case string(String), list([String]) }
+    public enum Value: Equatable, Sendable {
+        case string(String)
+        case list([String])
+    }
     public private(set) var fields: [(key: String, value: Value)]
 
     public init(fields: [(key: String, value: Value)]) { self.fields = fields }
@@ -39,7 +42,7 @@ public struct UnitIdentity: Equatable, Sendable {
 
     public var udid: String? { self["udid"] }
 
-    static let serialChars = Array("0123456789ABCDEFGHJKLMNPQRSTUVWXYZ")   // no I or O, as Apple serials
+    static let serialChars = Array("0123456789ABCDEFGHJKLMNPQRSTUVWXYZ")  // no I or O, as Apple serials
     /// Wi-Fi iPad 1 model numbers by storage (the only NAND geometry modeled is 16 GB).
     public static let iPadModels = ["16g": "MB292"]
     public static let iPadRegion = "LL/A"
@@ -51,11 +54,16 @@ public struct UnitIdentity: Equatable, Sendable {
     /// A made-up but well-formed iPad 1 identity: 11-character serial, 13-character MLB, 40-bit ECID, two
     /// die-id words, a locally administered Wi-Fi MAC (02:...) and Bluetooth = Wi-Fi + 1.
     /// `modelNumber`: another A4 board's (the iPod touch 4G's MC540), in place of the iPad's by storage.
-    public static func synthesize(seed: String, storage: String = "16g", modelNumber: String? = nil) throws -> UnitIdentity {
-        guard let model = modelNumber ?? iPadModels[storage] else { throw FirmwareError(.unsupported, "no iPad 1 model for storage \(storage)") }
+    public static func synthesize(seed: String, storage: String = "16g", modelNumber: String? = nil) throws
+        -> UnitIdentity
+    {
+        guard let model = modelNumber ?? iPadModels[storage] else {
+            throw FirmwareError(.unsupported, "no iPad 1 model for storage \(storage)")
+        }
         let h = Array(SHA256.hash(data: Data(seed.utf8)))
-        let chars = { (from: Int, n: Int) in String(h[from..<from + n].map { serialChars[Int($0) % serialChars.count] }) }
-        let wifi = [0x02] + h[28..<32] + [h[27] & 0xFE]          // even last byte: BT = +1 never carries
+        let chars = { (from: Int, n: Int) in String(h[from..<from + n].map { serialChars[Int($0) % serialChars.count] })
+        }
+        let wifi = [0x02] + h[28..<32] + [h[27] & 0xFE]  // even last byte: BT = +1 never carries
         let bt = Array(wifi[0..<5]) + [wifi[5] + 1]
         let beInt = { (b: [UInt8]) in b.reduce(UInt64(0)) { $0 << 8 | UInt64($1) } }
         let ecid: UInt64 = UnitSeed.ecid(seed: seed)
@@ -72,23 +80,38 @@ public struct UnitIdentity: Equatable, Sendable {
             ("wifi-mac", .string(mac(wifi))), ("bt-mac", .string(mac(bt))),
             ("model-number", .string(model)), ("region-info", .string(iPadRegion)), ("seed", .string(seed)),
         ])
-        id.fields.append(("udid", .string(udid(serial: id["serial-number"]!, wifiMAC: id["wifi-mac"]!, btMAC: id["bt-mac"]!))))
+        id.fields.append(
+            ("udid", .string(udid(serial: id["serial-number"]!, wifiMAC: id["wifi-mac"]!, btMAC: id["bt-mac"]!)))
+        )
         return id
     }
 
     /// The iPod touch 2G identity: the iPad's serial and MACs plus a 12-digit battery serial; model and
     /// region are the recipe's. `bluetooth: false` is the 1G, which has no Bluetooth: no bt-mac, and lockdownd's
     /// UDID hashes an empty BT address (SHA1(serial + Wi-Fi MAC)).
-    public static func synthesizeIPod(seed: String, modelNumber: String, regionInfo: String, bluetooth: Bool = true) throws -> UnitIdentity {
+    public static func synthesizeIPod(seed: String, modelNumber: String, regionInfo: String, bluetooth: Bool = true)
+        throws -> UnitIdentity
+    {
         let base = try synthesize(seed: seed)
         let h = Array(SHA256.hash(data: Data(("battery:" + seed).utf8)))
-        var id = UnitIdentity(fields: [("serial-number", .string(base["serial-number"]!)), ("wifi-mac", .string(base["wifi-mac"]!))]
-            + (bluetooth ? [("bt-mac", .string(base["bt-mac"]!))] : []) + [
-            ("battery-serial", .string(h[0..<12].map { String($0 % 10) }.joined())),
-            ("model-number", .string(modelNumber)), ("region-info", .string(regionInfo)), ("seed", .string(seed)),
-        ])
+        var id = UnitIdentity(
+            fields: [("serial-number", .string(base["serial-number"]!)), ("wifi-mac", .string(base["wifi-mac"]!))]
+                + (bluetooth ? [("bt-mac", .string(base["bt-mac"]!))] : []) + [
+                    ("battery-serial", .string(h[0..<12].map { String($0 % 10) }.joined())),
+                    ("model-number", .string(modelNumber)), ("region-info", .string(regionInfo)),
+                    ("seed", .string(seed)),
+                ]
+        )
         if bluetooth { id.fields.append(("unique-chip-id", .string(base["unique-chip-id"]!))) }
-        id.fields.append(("udid", .string(bluetooth ? base["udid"]! : udid(serial: base["serial-number"]!, wifiMAC: base["wifi-mac"]!, btMAC: ""))))
+        id.fields.append(
+            (
+                "udid",
+                .string(
+                    bluetooth
+                        ? base["udid"]! : udid(serial: base["serial-number"]!, wifiMAC: base["wifi-mac"]!, btMAC: "")
+                )
+            )
+        )
         return id
     }
 
@@ -107,8 +130,19 @@ public struct UnitIdentity: Equatable, Sendable {
         let imei = IPhoneIdentity.imei(seed: seed)
         id.fields.removeAll { $0.key == "udid" || $0.key == "imei" }
         id.fields.insert(("imei", .string(imei)), at: 1)
-        id.fields.append(("udid", .string(IPhoneIdentity.udid(serial: id["serial-number"]!, imei: imei,
-                                                              wifiMAC: id["wifi-mac"]!, btMAC: id["bt-mac"]!))))
+        id.fields.append(
+            (
+                "udid",
+                .string(
+                    IPhoneIdentity.udid(
+                        serial: id["serial-number"]!,
+                        imei: imei,
+                        wifiMAC: id["wifi-mac"]!,
+                        btMAC: id["bt-mac"]!
+                    )
+                )
+            )
+        )
         return id
     }
 
@@ -142,7 +176,9 @@ public struct UnitIdentity: Equatable, Sendable {
         let body = fields.map { k, v -> String in
             switch v {
             case .string(let s): return " \(q(k)): \(q(s))"
-            case .list(let l): return l.isEmpty ? " \(q(k)): []" : " \(q(k)): [\n" + l.map { "  " + q($0) }.joined(separator: ",\n") + "\n ]"
+            case .list(let l):
+                return l.isEmpty
+                    ? " \(q(k)): []" : " \(q(k)): [\n" + l.map { "  " + q($0) }.joined(separator: ",\n") + "\n ]"
             }
         }
         return Data((fields.isEmpty ? "{}" : "{\n" + body.joined(separator: ",\n") + "\n}").utf8)
@@ -162,12 +198,18 @@ public struct UnitIdentity: Equatable, Sendable {
         guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw FirmwareError(.unsupported, "\(url.lastPathComponent) is not a JSON object")
         }
-        return UnitIdentity(fields: try obj.keys.sorted().map { k in
-            switch obj[k] {
-            case let s as String: return (k, .string(s))
-            case let l as [String]: return (k, .list(l))
-            default: throw FirmwareError(.unsupported, "\(url.lastPathComponent): \(k) is not a string or a list of strings")
+        return UnitIdentity(
+            fields: try obj.keys.sorted().map { k in
+                switch obj[k] {
+                case let s as String: return (k, .string(s))
+                case let l as [String]: return (k, .list(l))
+                default:
+                    throw FirmwareError(
+                        .unsupported,
+                        "\(url.lastPathComponent): \(k) is not a string or a list of strings"
+                    )
+                }
             }
-        })
+        )
     }
 }

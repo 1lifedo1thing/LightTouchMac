@@ -1,7 +1,7 @@
 // The installed apps' icons as AppKit images, decoded once from AppMetadataCache's files (LightTouchCore).
 
-import LightTouchCore
 import Cocoa
+import LightTouchCore
 
 extension AppMetadataCache {
     func icon(for bundleID: String) -> NSImage? {

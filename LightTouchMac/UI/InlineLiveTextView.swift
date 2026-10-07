@@ -45,8 +45,11 @@ final class InlineLiveTextView: NSView, ImageAnalysisOverlayViewDelegate {
         analysisTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let analysis = try await analyzer.analyze(imageView.image!, orientation: .up,
-                                                        configuration: ImageAnalyzer.Configuration([.text]))
+                let analysis = try await analyzer.analyze(
+                    imageView.image!,
+                    orientation: .up,
+                    configuration: ImageAnalyzer.Configuration([.text])
+                )
                 try Task.checkCancellation()
                 overlay.analysis = analysis
                 hasHighlightedItems = !analysis.transcript.isEmpty
@@ -56,7 +59,10 @@ final class InlineLiveTextView: NSView, ImageAnalysisOverlayViewDelegate {
                 needsLayout = true
                 window?.makeFirstResponder(overlay)
             } catch {
-                if !Task.isCancelled { statusLabel.stringValue = "Text recognition unavailable"; needsLayout = true }
+                if !Task.isCancelled {
+                    statusLabel.stringValue = "Text recognition unavailable"
+                    needsLayout = true
+                }
             }
         }
     }
@@ -70,7 +76,11 @@ final class InlineLiveTextView: NSView, ImageAnalysisOverlayViewDelegate {
         statusLabel.sizeToFit()
         statusLabel.frame.origin = CGPoint(x: 6, y: bounds.height - statusLabel.frame.height - 6)
     }
-    func stop() { overlay.delegate = nil; analysisTask?.cancel(); removeFromSuperview() }
+    func stop() {
+        overlay.delegate = nil
+        analysisTask?.cancel()
+        removeFromSuperview()
+    }
     @objc private func done(_ sender: Any?) { onClose?() }
     override func mouseDown(with event: NSEvent) {}
     override func mouseDragged(with event: NSEvent) {}
@@ -81,10 +91,11 @@ final class InlineLiveTextView: NSView, ImageAnalysisOverlayViewDelegate {
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 { onClose?() } else { super.keyDown(with: event) }
     }
-    func overlayView(_ overlayView: ImageAnalysisOverlayView,
-                     highlightSelectedItemsDidChange highlighted: Bool) {
-        if highlighted { hasHighlightedItems = true }
-        else if hasHighlightedItems { onClose?() }
+    func overlayView(
+        _ overlayView: ImageAnalysisOverlayView,
+        highlightSelectedItemsDidChange highlighted: Bool
+    ) {
+        if highlighted { hasHighlightedItems = true } else if hasHighlightedItems { onClose?() }
     }
     func contentsRect(for overlayView: ImageAnalysisOverlayView) -> CGRect {
         CGRect(x: 0, y: 0, width: 1, height: 1)

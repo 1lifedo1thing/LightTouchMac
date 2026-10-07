@@ -36,7 +36,10 @@ public enum VolumeRebuild {
         if fm.fileExists(atPath: base.appendingPathComponent("geometry.json").path) { return .ipad }
         if fm.fileExists(atPath: base.appendingPathComponent("cs0").path) { return .ipod }
         if fm.fileExists(atPath: base.appendingPathComponent("bank0").path) { return .legacy }
-        throw FirmwareError(.unsupported, "\(base.path): neither an iPad store (geometry.json) nor an iPod page directory (cs0/ or bank0/)")
+        throw FirmwareError(
+            .unsupported,
+            "\(base.path): neither an iPad store (geometry.json) nor an iPod page directory (cs0/ or bank0/)"
+        )
     }
 
     /// Rebuilds the volumes named in `only` (all when nil) into `<dir>/<name>.img`.
@@ -69,7 +72,8 @@ public enum VolumeRebuild {
             guard let d else { return [] }
             return Set((try? fm.contentsOfDirectory(atPath: d.appendingPathComponent("cs\(cs)").path)) ?? [])
         }
-        let baseNames = (0..<4).map { names(base, $0) }, ovlNames = (0..<4).map { names(overlay, $0) }
+        let baseNames = (0..<4).map { names(base, $0) }
+        let ovlNames = (0..<4).map { names(overlay, $0) }
         func source(_ cs: Int, _ pg: Int) -> URL? {
             let n = "\(pg).page"
             if let overlay, ovlNames[cs].contains(n) { return overlay.appendingPathComponent("cs\(cs)/\(n)") }
@@ -131,7 +135,9 @@ public enum VolumeRebuild {
         guard only.map({ $0.contains("system") }) ?? true else {
             throw FirmwareError(.unsupported, "a 1.x device has one volume, system (/private/var is on it)")
         }
-        let ftl = try N45FTL(base: base, overlay: overlay), first = N45NAND.firstLBA, ps = N45NAND.page
+        let ftl = try N45FTL(base: base, overlay: overlay)
+        let first = N45NAND.firstLBA
+        let ps = N45NAND.page
         guard let vh = ftl.read(lpn: first)?.data, vh[1024] == 0x48, vh[1025] == 0x2B || vh[1025] == 0x58 else {
             throw FirmwareError(.unsupported, "\(base.path): no HFS+ volume header at logical page \(first)")
         }
@@ -164,7 +170,8 @@ public enum VolumeRebuild {
         }
         let parts = K48NAND.partitions(mbr: mbr)
         var vols: [Volume] = []
-        for (name, p) in [("system", parts[0]), ("data", parts[1])] where p.type != 0 && only.map({ $0.contains(name) }) ?? true {
+        for (name, p) in [("system", parts[0]), ("data", parts[1])]
+        where p.type != 0 && only.map({ $0.contains(name) }) ?? true {
             let out = dir.appendingPathComponent("\(name).img")
             let fd = try create(out, bytes: p.count * geo.pageSize)
             defer { close(fd) }
@@ -182,19 +189,22 @@ public enum VolumeRebuild {
     /// lpn -> vpn + 1 (0 = unmapped) of the newest copy of every user page.
     static func yaftlMap(_ st: K48NAND.StoreReader) -> [UInt32] {
         let geo = st.geo
-        var vpnOf = [UInt32](repeating: 0, count: geo.totalPages), usnOf = [UInt32](repeating: 0, count: geo.totalPages)
+        var vpnOf = [UInt32](repeating: 0, count: geo.totalPages)
+        var usnOf = [UInt32](repeating: 0, count: geo.totalPages)
         for v in 0..<geo.numBlocks where !geo.ctrlBlocks.contains(v) {
             for j in 0..<geo.ppsublk {
                 let vpn = v * geo.ppsublk + j
                 let (cs, pp) = geo.vpnToPhys(vpn)
-                guard let m = st.meta(cs, pp) else { break }      // pages of a vblock are programmed in order
+                guard let m = st.meta(cs, pp) else { break }  // pages of a vblock are programmed in order
                 let typ = m[9]
                 guard typ & K48NAND.tUser != 0, typ & (K48NAND.tIndex | K48NAND.tClosed) == 0 else { continue }
-                let lpn = Int(K48NAND.le32(m, 0)), usn = K48NAND.le32(m, 4)
+                let lpn = Int(K48NAND.le32(m, 0))
+                let usn = K48NAND.le32(m, 4)
                 guard lpn < geo.totalPages else { continue }
                 // equal USN: the later vpn (a later page of the same block) wins
                 if vpnOf[lpn] == 0 || usn > usnOf[lpn] || (usn == usnOf[lpn] && UInt32(vpn + 1) > vpnOf[lpn]) {
-                    vpnOf[lpn] = UInt32(vpn + 1); usnOf[lpn] = usn
+                    vpnOf[lpn] = UInt32(vpn + 1)
+                    usnOf[lpn] = usn
                 }
             }
         }
@@ -208,7 +218,10 @@ public enum VolumeRebuild {
         let fd = open(u.path, O_RDWR | O_CREAT | O_TRUNC, 0o600)
         guard fd >= 0, ftruncate(fd, off_t(bytes)) == 0 else {
             if fd >= 0 { close(fd) }
-            throw FirmwareError(errno == ENOSPC ? .diskFull : .internal, "\(u.path): \(String(cString: strerror(errno)))")
+            throw FirmwareError(
+                errno == ENOSPC ? .diskFull : .internal,
+                "\(u.path): \(String(cString: strerror(errno)))"
+            )
         }
         return fd
     }
@@ -216,7 +229,10 @@ public enum VolumeRebuild {
     static func pwriteAll(_ fd: Int32, _ b: [UInt8], _ off: Int, _ u: URL) throws {
         let n = b.withUnsafeBytes { pwrite(fd, $0.baseAddress, $0.count, off_t(off)) }
         guard n == b.count else {
-            throw FirmwareError(errno == ENOSPC ? .diskFull : .internal, "\(u.path): \(String(cString: strerror(errno)))")
+            throw FirmwareError(
+                errno == ENOSPC ? .diskFull : .internal,
+                "\(u.path): \(String(cString: strerror(errno)))"
+            )
         }
     }
 

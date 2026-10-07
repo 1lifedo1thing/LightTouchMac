@@ -15,16 +15,18 @@ typedef struct {
     char token[64];
 } hello_msg;
 
-typedef struct { hello_msg m; mach_msg_audit_trailer_t trailer; } hello_rcv;
+typedef struct {
+    hello_msg m;
+    mach_msg_audit_trailer_t trailer;
+} hello_rcv;
 
-kern_return_t ltm_check_in(const char *name, mach_port_t *rx) {
-    return bootstrap_check_in(bootstrap_port, name, rx);
-}
+kern_return_t ltm_check_in(const char *name, mach_port_t *rx) { return bootstrap_check_in(bootstrap_port, name, rx); }
 
 kern_return_t ltm_send_hello(const char *name, const char *token, const mach_port_t *ports, int n) {
     mach_port_t dest;
     kern_return_t kr = bootstrap_look_up(bootstrap_port, name, &dest);
-    if (kr) return kr;
+    if (kr)
+        return kr;
     hello_msg m;
     memset(&m, 0, sizeof m);
     m.h.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0) | MACH_MSGH_BITS_COMPLEX;
@@ -49,9 +51,11 @@ kern_return_t ltm_recv_hello(mach_port_t rx, int timeout_ms, ltm_hello *out) {
     memset(&r, 0, sizeof r);
     mach_msg_option_t opt = MACH_RCV_MSG | MACH_RCV_TRAILER_TYPE(MACH_MSG_TRAILER_FORMAT_0) |
                             MACH_RCV_TRAILER_ELEMENTS(MACH_RCV_TRAILER_AUDIT);
-    if (timeout_ms >= 0) opt |= MACH_RCV_TIMEOUT;
+    if (timeout_ms >= 0)
+        opt |= MACH_RCV_TIMEOUT;
     kern_return_t kr = mach_msg(&r.m.h, opt, 0, sizeof r, rx, timeout_ms < 0 ? 0 : timeout_ms, 0);
-    if (kr) return kr;
+    if (kr)
+        return kr;
     mach_msg_audit_trailer_t *t = (mach_msg_audit_trailer_t *)((uint8_t *)&r.m + r.m.h.msgh_size);
     out->audit = t->msgh_audit;
     out->pid = audit_token_to_pid(t->msgh_audit);
@@ -61,7 +65,8 @@ kern_return_t ltm_recv_hello(mach_port_t rx, int timeout_ms, ltm_hello *out) {
         return KERN_SUCCESS;
     }
     out->nports = r.m.nports > LTM_MAX_PORTS ? LTM_MAX_PORTS : r.m.nports;
-    for (int i = 0; i < LTM_MAX_PORTS; i++) out->ports[i] = r.m.ports[i].name;
+    for (int i = 0; i < LTM_MAX_PORTS; i++)
+        out->ports[i] = r.m.ports[i].name;
     memcpy(out->token, r.m.token, sizeof out->token);
     out->token[63] = 0;
     return KERN_SUCCESS;
@@ -71,7 +76,8 @@ pid_t ltm_spawn(const char *path, char *const argv[], int fd3) {
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
     posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", 0, 0);
-    if (fd3 >= 0) posix_spawn_file_actions_adddup2(&fa, fd3, 3);
+    if (fd3 >= 0)
+        posix_spawn_file_actions_adddup2(&fa, fd3, 3);
     pid_t pid = -1;
     int rc = posix_spawn(&pid, path, &fa, NULL, argv, environ);
     posix_spawn_file_actions_destroy(&fa);

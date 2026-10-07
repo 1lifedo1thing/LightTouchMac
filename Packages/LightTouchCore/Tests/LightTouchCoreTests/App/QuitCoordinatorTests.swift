@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import LightTouchCore
 
 /// Quit's ladder: what holds it, what asks, the halts it waits for, one reply, and the budget's backstop.
@@ -7,16 +8,38 @@ struct QuitCoordinatorTests {
     final class Log { var events: [String] = [] }
 
     /// A quit request with every guard clear unless overridden; records what the coordinator asked for.
-    func request(_ quit: QuitCoordinator, _ log: Log, erasing: Bool = false, recording: Bool = false, preparing: Int = 0,
-                 confirmPreparation: Bool = true, hasDevices: Bool = true, changes: Bool = false, confirmChanges: Bool = true,
-                 running: [(@escaping () -> Void) -> Void]) -> QuitCoordinator.Answer {
-        quit.shouldTerminate(erasing: erasing,
-                             finishRecording: { log.events.append("recording"); return recording },
-                             preparing: preparing, confirmPreparation: { log.events.append("confirm preparing \($0)"); return confirmPreparation },
-                             hasDevices: hasDevices,
-                             changesInProgress: changes, confirmChanges: { log.events.append("confirm changes"); return confirmChanges },
-                             cancelChanges: { log.events.append("cancel changes") },
-                             running: running)
+    func request(
+        _ quit: QuitCoordinator,
+        _ log: Log,
+        erasing: Bool = false,
+        recording: Bool = false,
+        preparing: Int = 0,
+        confirmPreparation: Bool = true,
+        hasDevices: Bool = true,
+        changes: Bool = false,
+        confirmChanges: Bool = true,
+        running: [(@escaping () -> Void) -> Void]
+    ) -> QuitCoordinator.Answer {
+        quit.shouldTerminate(
+            erasing: erasing,
+            finishRecording: {
+                log.events.append("recording")
+                return recording
+            },
+            preparing: preparing,
+            confirmPreparation: {
+                log.events.append("confirm preparing \($0)")
+                return confirmPreparation
+            },
+            hasDevices: hasDevices,
+            changesInProgress: changes,
+            confirmChanges: {
+                log.events.append("confirm changes")
+                return confirmChanges
+            },
+            cancelChanges: { log.events.append("cancel changes") },
+            running: running
+        )
     }
 
     /// Lets the main queue run (the coordinator replies there).
@@ -26,13 +49,19 @@ struct QuitCoordinatorTests {
         let log = Log()
         let quit = QuitCoordinator(budget: 60) { log.events.append("reply") }
         let halt: (@escaping () -> Void) -> Void = { _ in log.events.append("halt") }
-        #expect(request(quit, log, erasing: true, running: [halt]) == .cancel && log.events.isEmpty, "an erase holds quit before anything is asked")
+        #expect(
+            request(quit, log, erasing: true, running: [halt]) == .cancel && log.events.isEmpty,
+            "an erase holds quit before anything is asked"
+        )
         #expect(request(quit, log, recording: true, running: [halt]) == .cancel && log.events == ["recording"])
         log.events = []
         #expect(request(quit, log, preparing: 2, confirmPreparation: false, running: [halt]) == .cancel)
         #expect(log.events == ["recording", "confirm preparing 2"])
         log.events = []
-        #expect(request(quit, log, preparing: 1, hasDevices: false, changes: true, running: []) == .now, "no device: nothing to halt or cancel")
+        #expect(
+            request(quit, log, preparing: 1, hasDevices: false, changes: true, running: []) == .now,
+            "no device: nothing to halt or cancel"
+        )
         #expect(log.events == ["recording", "confirm preparing 1"])
         log.events = []
         #expect(request(quit, log, changes: true, confirmChanges: false, running: [halt]) == .cancel)
@@ -46,7 +75,19 @@ struct QuitCoordinatorTests {
     @Test func confirmedChangesStillHalt() async throws {
         let log = Log()
         let quit = QuitCoordinator(budget: 60) { log.events.append("reply") }
-        #expect(request(quit, log, changes: true, running: [{ done in log.events.append("halt"); done() }]) == .later)
+        #expect(
+            request(
+                quit,
+                log,
+                changes: true,
+                running: [
+                    { done in
+                        log.events.append("halt")
+                        done()
+                    }
+                ]
+            ) == .later
+        )
         #expect(log.events == ["recording", "confirm changes", "cancel changes", "halt"])
         try await settle()
         #expect(log.events.last == "reply")
@@ -58,13 +99,19 @@ struct QuitCoordinatorTests {
         var finish: [() -> Void] = []
         #expect(request(quit, log, running: [{ finish.append($0) }, { finish.append($0) }]) == .later)
         #expect(quit.awaitingTermination && finish.count == 2)
-        #expect(request(quit, log, running: [{ _ in log.events.append("halted again") }]) == .later, "a repeated quit waits")
+        #expect(
+            request(quit, log, running: [{ _ in log.events.append("halted again") }]) == .later,
+            "a repeated quit waits"
+        )
         #expect(!log.events.contains("halted again"))
-        finish[0](); try await settle()
+        finish[0]()
+        try await settle()
         #expect(!log.events.contains("reply"), "one device still running")
-        finish[1](); try await settle()
+        finish[1]()
+        try await settle()
         #expect(log.events.filter { $0 == "reply" }.count == 1 && !quit.awaitingTermination)
-        finish[1](); try await settle()
+        finish[1]()
+        try await settle()
         #expect(log.events.filter { $0 == "reply" }.count == 1, "a late callback replies nothing")
     }
 
@@ -88,7 +135,8 @@ struct QuitCoordinatorTests {
         let deadline = Date().addingTimeInterval(10)
         while !log.events.contains("reply") && Date() < deadline { try await Task.sleep(for: .milliseconds(10)) }
         #expect(log.events.filter { $0 == "reply" }.count == 1 && !quit.awaitingTermination)
-        late?(); try await settle()
+        late?()
+        try await settle()
         #expect(log.events.filter { $0 == "reply" }.count == 1)
     }
 

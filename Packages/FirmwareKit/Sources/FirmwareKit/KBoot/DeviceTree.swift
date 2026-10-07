@@ -17,9 +17,9 @@ import Foundation
 
 public struct DeviceTree: Sendable {
     public enum Value: Sendable {
-        case string(String)      // UTF-8 + NUL
+        case string(String)  // UTF-8 + NUL
         case u32(UInt32)
-        case words([UInt32])     // little-endian u32s
+        case words([UInt32])  // little-endian u32s
         case bytes(Data)
 
         var encoded: Data {
@@ -36,7 +36,10 @@ public struct DeviceTree: Sendable {
         }
     }
 
-    public struct Slot: Equatable, Sendable { public var offset: Int; public var length: Int }
+    public struct Slot: Equatable, Sendable {
+        public var offset: Int
+        public var length: Int
+    }
 
     public private(set) var data: Data
     /// Node path -> property name -> the property record's offset (name at +0, length at +32, value at +36).
@@ -47,7 +50,7 @@ public struct DeviceTree: Sendable {
     private var ends: [String: Int] = [:]
 
     public init(_ blob: Data) throws {
-        data = blob.withUnsafeBytes { Data($0) }   // rebased: offsets are from 0
+        data = blob.withUnsafeBytes { Data($0) }  // rebased: offsets are from 0
         try reparse()
     }
 
@@ -61,7 +64,9 @@ public struct DeviceTree: Sendable {
     public mutating func set(_ path: String, _ prop: String, _ value: Value) throws {
         guard let s = props[path]?[prop] else { throw FirmwareError(.unsupported, "DeviceTree: no \(path):\(prop)") }
         let v = value.encoded
-        guard v.count <= s.length else { throw FirmwareError(.unsupported, "DeviceTree: \(path):\(prop) holds \(s.length) bytes, got \(v.count)") }
+        guard v.count <= s.length else {
+            throw FirmwareError(.unsupported, "DeviceTree: \(path):\(prop) holds \(s.length) bytes, got \(v.count)")
+        }
         data.replaceSubrange(s.offset + 36..<s.offset + 36 + s.length, with: v + Data(count: s.length - v.count))
     }
 
@@ -77,7 +82,9 @@ public struct DeviceTree: Sendable {
 
     /// Appends a child node (its name first, then `props`) to `parent`; the blob grows, as add().
     public mutating func addNode(_ parent: String, _ name: String, _ props: [(String, Value)] = []) throws {
-        guard let node = nodes[parent], let end = ends[parent] else { throw FirmwareError(.unsupported, "DeviceTree: no node \(parent)") }
+        guard let node = nodes[parent], let end = ends[parent] else {
+            throw FirmwareError(.unsupported, "DeviceTree: no node \(parent)")
+        }
         var rec = Value.le([UInt32(1 + props.count), 0])
         for (k, v) in [("name", Value.string(name))] + props {
             let e = v.encoded
@@ -89,7 +96,9 @@ public struct DeviceTree: Sendable {
     }
 
     public mutating func rename(_ path: String, _ old: String, _ new: String) throws {
-        guard let s = props[path]?.removeValue(forKey: old) else { throw FirmwareError(.unsupported, "DeviceTree: no \(path):\(old)") }
+        guard let s = props[path]?.removeValue(forKey: old) else {
+            throw FirmwareError(.unsupported, "DeviceTree: no \(path):\(old)")
+        }
         data.replaceSubrange(s.offset..<s.offset + 32, with: Self.name32(new))
         props[path]![new] = s
     }
@@ -101,15 +110,21 @@ public struct DeviceTree: Sendable {
     }
 
     private mutating func reparse() throws {
-        props = [:]; nodes = [:]; ends = [:]
+        props = [:]
+        nodes = [:]
+        ends = [:]
         let end = try node(at: 0, parent: nil)
-        guard end == data.count else { throw FirmwareError(.unsupported, "DeviceTree: trailing bytes after the device tree") }
+        guard end == data.count else {
+            throw FirmwareError(.unsupported, "DeviceTree: trailing bytes after the device tree")
+        }
     }
 
     private mutating func node(at start: Int, parent: String?) throws -> Int {
         guard start + 8 <= data.count else { throw FirmwareError(.unsupported, "DeviceTree: truncated") }
-        let nprops = Int(u32(start)), nchildren = Int(u32(start + 4))
-        var off = start + 8, mine: [String: Slot] = [:]
+        let nprops = Int(u32(start))
+        let nchildren = Int(u32(start + 4))
+        var off = start + 8
+        var mine: [String: Slot] = [:]
         for _ in 0..<nprops {
             guard off + 36 <= data.count else { throw FirmwareError(.unsupported, "DeviceTree: truncated") }
             let name = String(decoding: data[off..<off + 32].prefix { $0 != 0 }, as: UTF8.self)

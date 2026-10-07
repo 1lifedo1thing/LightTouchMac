@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import Testing
+
 @testable import FirmwareKit
 
 struct VolumeRebuildTests {
@@ -11,25 +12,38 @@ struct VolumeRebuildTests {
     @Test func iPadStoreAndOverlay() async throws {
         let dir = try Fixtures.tempDir("rebuild-ipad")
         defer { try? FileManager.default.removeItem(at: dir) }
-        let ps = 4096, geo = K48NAND.Geometry.selfcheck
+        let ps = 4096
+        let geo = K48NAND.Geometry.selfcheck
         var mbr = [UInt8](repeating: 0, count: ps * 63)
-        mbr[510] = 0x55; mbr[511] = 0xAA
+        mbr[510] = 0x55
+        mbr[511] = 0xAA
         for (i, (typ, lba, cnt)) in [(0xAF, 63, 700), (0xAF, 800, 400)].enumerated() {
             let o = 0x1be + 16 * i
             mbr[o + 4] = UInt8(typ)
-            K48NAND.put32(&mbr, o + 8, UInt32(lba)); K48NAND.put32(&mbr, o + 12, UInt32(cnt))
+            K48NAND.put32(&mbr, o + 8, UInt32(lba))
+            K48NAND.put32(&mbr, o + 12, UInt32(cnt))
         }
         var rng = SystemRandomNumberGenerator()
         var sys = (0..<ps * 700).map { _ in UInt8.random(in: 0...255, using: &rng) }
-        sys[1024] = UInt8(ascii: "H"); sys[1025] = UInt8(ascii: "X")
+        sys[1024] = UInt8(ascii: "H")
+        sys[1025] = UInt8(ascii: "X")
         var data = [UInt8](repeating: 0, count: ps * 400)
-        data[1024] = UInt8(ascii: "H"); data[1025] = UInt8(ascii: "+")
+        data[1024] = UInt8(ascii: "H")
+        data[1025] = UInt8(ascii: "+")
         for i in ps * 100..<ps * 103 { data[i] = UInt8(truncatingIfNeeded: i) }
         let paths = ["mbr", "system.img", "data.img"].map { dir.appendingPathComponent($0) }
-        try Data(mbr).write(to: paths[0]); try Data(sys).write(to: paths[1]); try Data(data).write(to: paths[2])
+        try Data(mbr).write(to: paths[0])
+        try Data(sys).write(to: paths[1])
+        try Data(data).write(to: paths[2])
         let base = dir.appendingPathComponent("base")
-        try await K48NAND.build(geometry: geo, mbr: paths[0], kernelVersion: Array("Darwin Kernel Version selfcheck".utf8),
-                          system: paths[1], data: .image(paths[2]), out: base)
+        try await K48NAND.build(
+            geometry: geo,
+            mbr: paths[0],
+            kernelVersion: Array("Darwin Kernel Version selfcheck".utf8),
+            system: paths[1],
+            data: .image(paths[2]),
+            out: base
+        )
         let baseDigest = try digest(base)
 
         let out1 = dir.appendingPathComponent("out1")
@@ -37,7 +51,7 @@ struct VolumeRebuildTests {
         #expect(vols.map(\.name) == ["system", "data"])
         #expect(try Data(contentsOf: vols[0].image) == Data(sys))
         #expect(try Data(contentsOf: vols[1].image) == Data(data))
-        #expect(vols[1].pagesWritten == 4)       // header page + 3 data pages; the rest stays a hole
+        #expect(vols[1].pagesWritten == 4)  // header page + 3 data pages; the rest stays a hole
 
         // overlay: vblock N-2 holds system page 5 at USN 1000 (wins), vblock N-3 page 6 at USN 0 (loses)
         let ovl = dir.appendingPathComponent("overlay")
@@ -56,7 +70,11 @@ struct VolumeRebuildTests {
             try Data(dirty[cs]).write(to: ovl.appendingPathComponent("bus\(b)-ce\(c).dirty"))
         }
         let out2 = dir.appendingPathComponent("out2")
-        let sys2 = [UInt8](try Data(contentsOf: try VolumeRebuild.rebuild(base: base, overlay: ovl, into: out2, only: ["system"])[0].image))
+        let sys2 = [UInt8](
+            try Data(
+                contentsOf: try VolumeRebuild.rebuild(base: base, overlay: ovl, into: out2, only: ["system"])[0].image
+            )
+        )
         #expect(sys2[5 * ps..<6 * ps].allSatisfy { $0 == 0xA1 })
         #expect(sys2[6 * ps..<7 * ps] == sys[6 * ps..<7 * ps])
         #expect(sys2[..<(5 * ps)] == sys[..<(5 * ps)] && sys2[(7 * ps)...] == sys[(7 * ps)...])
@@ -67,7 +85,8 @@ struct VolumeRebuildTests {
     @Test func iPodOverlay() throws {
         let dir = try Fixtures.tempDir("rebuild-ipod")
         defer { try? FileManager.default.removeItem(at: dir) }
-        let base = dir.appendingPathComponent("base"), ovl = dir.appendingPathComponent("overlay")
+        let base = dir.appendingPathComponent("base")
+        let ovl = dir.appendingPathComponent("overlay")
         let blocks = 600
         func page(_ root: URL, _ n: Int, _ bytes: [UInt8]) throws {
             let (cs, pg) = VolumeRebuild.predict(n)
@@ -76,14 +95,18 @@ struct VolumeRebuildTests {
             try Data(bytes + [UInt8](repeating: 0, count: 64)).write(to: d.appendingPathComponent("\(pg).page"))
         }
         var vh = [UInt8](repeating: 0, count: 4096)
-        vh[1024] = UInt8(ascii: "H"); vh[1025] = UInt8(ascii: "X")
-        K48NAND.put32(&vh, 1024 + 40, UInt32(4096).byteSwapped)       // big-endian
+        vh[1024] = UInt8(ascii: "H")
+        vh[1025] = UInt8(ascii: "X")
+        K48NAND.put32(&vh, 1024 + 40, UInt32(4096).byteSwapped)  // big-endian
         K48NAND.put32(&vh, 1024 + 44, UInt32(blocks).byteSwapped)
         try page(base, 0, vh)
         for n in 1..<400 { try page(base, n, [UInt8](repeating: UInt8(n % 251 + 1), count: 4096)) }
         try page(ovl, 7, [UInt8](repeating: 0xEE, count: 4096))
         let (cs9, pg9) = VolumeRebuild.predict(9)
-        try FileManager.default.createDirectory(at: ovl.appendingPathComponent("cs\(cs9)"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: ovl.appendingPathComponent("cs\(cs9)"),
+            withIntermediateDirectories: true
+        )
         try Data().write(to: ovl.appendingPathComponent("cs\(cs9)/blk\(pg9 / 128).erased"))
 
         let v = try VolumeRebuild.rebuild(base: base, overlay: ovl, into: dir.appendingPathComponent("out"))[0]
@@ -91,7 +114,7 @@ struct VolumeRebuildTests {
         #expect(img.count == blocks * 4096)
         func blk(_ n: Int) -> ArraySlice<UInt8> { img[n * 4096..<(n + 1) * 4096] }
         #expect(blk(7).allSatisfy { $0 == 0xEE })
-        #expect(blk(9).allSatisfy { $0 == 0 })                         // its whole erase block reads blank
+        #expect(blk(9).allSatisfy { $0 == 0 })  // its whole erase block reads blank
         #expect(blk(8).allSatisfy { $0 == 9 } && blk(399).allSatisfy { $0 == 149 })
         #expect(blk(450).allSatisfy { $0 == 0 })
     }
@@ -99,15 +122,22 @@ struct VolumeRebuildTests {
     // MARK: fixtures
 
     /// The shipped bases rebuild into volumes fsck_hfs accepts (skips without them).
-    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"), arguments: ["nand-current", "ipad1/userland/golden-pristine"])
+    @Test(
+        .enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"),
+        arguments: ["nand-current", "ipad1/userland/golden-pristine"]
+    )
     func baseRebuildsClean(_ name: String) async throws {
         let base = Fixtures.files.appendingPathComponent(name)
-        guard Fixtures.exists(base) else { try FixtureRequirements.missing(#"VolumeRebuildTests.swift: Fixtures.exists(base)"#) }
+        guard Fixtures.exists(base) else {
+            try FixtureRequirements.missing(#"VolumeRebuildTests.swift: Fixtures.exists(base)"#)
+        }
         let dir = try Fixtures.tempDir("rebuild-base")
         defer { try? FileManager.default.removeItem(at: dir) }
         let t0 = Date()
         let vols = try VolumeRebuild.rebuild(base: base, overlay: nil, into: dir)
-        print("\(name): rebuilt \(vols.map { "\($0.name) \($0.pagesWritten) pages" }) in \(String(format: "%.1f", Date().timeIntervalSince(t0))) s")
+        print(
+            "\(name): rebuilt \(vols.map { "\($0.name) \($0.pagesWritten) pages" }) in \(String(format: "%.1f", Date().timeIntervalSince(t0))) s"
+        )
         for v in vols {
             let dev = try await VolumeMount.attach(v.image)
             let r = try await VolumeMount.exec("/sbin/fsck_hfs", ["-fn", dev])
@@ -117,9 +147,12 @@ struct VolumeRebuildTests {
     }
 
     /// The pipeline on the iPod base: mount read-only (never-index marker, writes refused), unmount cleans up.
-    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run")) func mountAndUnmount() async throws {
+    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"))
+    func mountAndUnmount() async throws {
         let base = Fixtures.files.appendingPathComponent("nand-current")
-        guard Fixtures.exists(base) else { try FixtureRequirements.missing(#"VolumeRebuildTests.swift: Fixtures.exists(base)"#) }
+        guard Fixtures.exists(base) else {
+            try FixtureRequirements.missing(#"VolumeRebuildTests.swift: Fixtures.exists(base)"#)
+        }
         let out = FileManager.default.temporaryDirectory.appendingPathComponent("fk-mount-\(UUID().uuidString)")
 
         let vols = try await VolumeExport.mount(.init(base: base, overlay: nil), out: out)
@@ -130,8 +163,7 @@ struct VolumeRebuildTests {
             #expect(Fixtures.exists(mnt.appendingPathComponent("System/Library/CoreServices/SpringBoard.app")))
             #expect(!FileManager.default.createFile(atPath: mnt.appendingPathComponent("x").path, contents: Data()))
         } catch {
-            do { try await VolumeExport.unmount(out: out) }
-            catch { Issue.record("fixture unmount failed: \(error)") }
+            do { try await VolumeExport.unmount(out: out) } catch { Issue.record("fixture unmount failed: \(error)") }
             throw error
         }
         try await VolumeExport.unmount(out: out)
@@ -142,38 +174,59 @@ struct VolumeRebuildTests {
     /// U1 (FK_U1=DIR, written by tests/volume-rebuild-oracle.py or by hand for the iPod): the rebuilt volumes
     /// hold exactly the files the guest reported (size + sha256), none of the deleted ones, and each installed
     /// IPA's Payload; fsck_hfs -n passes; base and overlay are untouched.
-    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run")) func guestOracle() async throws {
-        guard let u1 = ProcessInfo.processInfo.environment["FK_U1"] else { try FixtureRequirements.missing(#"VolumeRebuildTests.swift: let u1 = ProcessInfo.processInfo.environment["FK_U1"]"#) }
+    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"))
+    func guestOracle() async throws {
+        guard let u1 = ProcessInfo.processInfo.environment["FK_U1"] else {
+            try FixtureRequirements.missing(
+                #"VolumeRebuildTests.swift: let u1 = ProcessInfo.processInfo.environment["FK_U1"]"#
+            )
+        }
         struct Guest: Decodable {
-            struct File: Decodable { var size: UInt64; var sha256: String }
-            struct IPA: Decodable { var ipa: String; var app: String }
+            struct File: Decodable {
+                var size: UInt64
+                var sha256: String
+            }
+            struct IPA: Decodable {
+                var ipa: String
+                var app: String
+            }
             var base: String, overlay: String, clean: Bool
             var files: [String: File], deleted: [String], ipas: [IPA]
-            var volume: String?          // the volume the paths are on; default data
-            var reference: String?       // an independent image of that volume (tests/ipod/regress.py's fsck compose)
+            var volume: String?  // the volume the paths are on; default data
+            var reference: String?  // an independent image of that volume (tests/ipod/regress.py's fsck compose)
         }
         let root = URL(fileURLWithPath: u1)
         let g = try JSONDecoder().decode(Guest.self, from: Data(contentsOf: root.appendingPathComponent("guest.json")))
-        let base = URL(fileURLWithPath: g.base), overlay = URL(fileURLWithPath: g.overlay)
+        let base = URL(fileURLWithPath: g.base)
+        let overlay = URL(fileURLWithPath: g.overlay)
         let before = try digest(base).merging(try digest(overlay)) { a, _ in a }
         let out = root.appendingPathComponent("rebuild")
         try? FileManager.default.removeItem(at: out)
         defer { try? FileManager.default.removeItem(at: out) }
         let t0 = Date()
         // After an unclean stop the journal must be replayed first: the export pipeline's fsck -fy + mount.
-        let vols = g.clean ? try VolumeRebuild.rebuild(base: base, overlay: overlay, into: out)
+        let vols =
+            g.clean
+            ? try VolumeRebuild.rebuild(base: base, overlay: overlay, into: out)
             : try await VolumeExport.export(.init(base: base, overlay: overlay), out: out) { print($0) }.map {
                 VolumeRebuild.Volume(name: $0.volume, image: URL(fileURLWithPath: $0.image), bytes: 0, pagesWritten: -1)
             }
-        print("U1 rebuild: \(vols.map { "\($0.name) \($0.pagesWritten) pages" }) in \(String(format: "%.1f", Date().timeIntervalSince(t0))) s")
+        print(
+            "U1 rebuild: \(vols.map { "\($0.name) \($0.pagesWritten) pages" }) in \(String(format: "%.1f", Date().timeIntervalSince(t0))) s"
+        )
         for v in vols {
             let dev = try await VolumeMount.attach(v.image)
             let r = try await VolumeMount.exec("/sbin/fsck_hfs", ["-fn", dev])
             try await VolumeMount.detach(dev)
-            print("fsck_hfs -n \(v.name): exit \(r.0); \(r.1.split(separator: "\n").suffix(2).joined(separator: " | "))")
+            print(
+                "fsck_hfs -n \(v.name): exit \(r.0); \(r.1.split(separator: "\n").suffix(2).joined(separator: " | "))"
+            )
             #expect(r.0 == 0 || !g.clean, "\(v.name) (clean shutdown): \(r.1.suffix(400))")
         }
-        guard let data = vols.first(where: { $0.name == (g.volume ?? "data") }) else { Issue.record("no \(g.volume ?? "data") volume"); return }
+        guard let data = vols.first(where: { $0.name == (g.volume ?? "data") }) else {
+            Issue.record("no \(g.volume ?? "data") volume")
+            return
+        }
         if let ref = g.reference {
             #expect(try Fixtures.run(["cmp", ref, data.image.path]).status == 0, "\(data.name) differs from \(ref)")
         }
@@ -181,7 +234,9 @@ struct VolumeRebuildTests {
         let listing = Dictionary(try vol.listing().map { ($0.path, $0) }, uniquingKeysWith: { a, _ in a })
         var bad: [String] = []
         for (p, f) in g.files where listing[p]?.size != f.size || listing[p]?.sha256 != f.sha256 {
-            bad.append("\(p): guest \(f.size) \(f.sha256.prefix(12)), rebuilt \(listing[p].map { "\($0.size) \($0.sha256?.prefix(12) ?? "-")" } ?? "missing")")
+            bad.append(
+                "\(p): guest \(f.size) \(f.sha256.prefix(12)), rebuilt \(listing[p].map { "\($0.size) \($0.sha256?.prefix(12) ?? "-")" } ?? "missing")"
+            )
         }
         print("U1: \(g.files.count - bad.count)/\(g.files.count) guest files identical")
         #expect(bad.isEmpty, "\(bad.prefix(20))")
@@ -194,17 +249,22 @@ struct VolumeRebuildTests {
             let installed = listing.keys.filter { $0.contains("mobile/Applications/") && $0.hasSuffix("/\(ipa.app)") }
             #expect(installed.count == 1, "\(ipa.app) installed \(installed.count) times")
             guard let appDir = installed.first else { continue }
-            var n = 0, mismatched: [String] = []
+            var n = 0
+            var mismatched: [String] = []
             let e = FileManager.default.enumerator(at: payload, includingPropertiesForKeys: [.isRegularFileKey])!
             while let u = e.nextObject() as? URL {
                 guard (try? u.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
-                let rel = String(u.resolvingSymlinksInPath().path.dropFirst(payload.resolvingSymlinksInPath().path.count + 1))
+                let rel = String(
+                    u.resolvingSymlinksInPath().path.dropFirst(payload.resolvingSymlinksInPath().path.count + 1)
+                )
                 let want = SHA256.hash(data: try Data(contentsOf: u)).map { String(format: "%02x", $0) }.joined()
                 n += 1
                 if listing["\(appDir)/\(rel)"]?.sha256 != want { mismatched.append(rel) }
             }
-            print("U1: \(ipa.app): \(n - mismatched.count)/\(n) Payload files identical; differ: \(mismatched.prefix(8))")
-            #expect(n > 0 && mismatched.count <= 2, "\(ipa.app): \(mismatched)")     // installd may rewrite Info.plist / sign
+            print(
+                "U1: \(ipa.app): \(n - mismatched.count)/\(n) Payload files identical; differ: \(mismatched.prefix(8))"
+            )
+            #expect(n > 0 && mismatched.count <= 2, "\(ipa.app): \(mismatched)")  // installd may rewrite Info.plist / sign
         }
         #expect(try digest(base).merging(try digest(overlay)) { a, _ in a } == before, "base or overlay changed")
     }
@@ -212,7 +272,10 @@ struct VolumeRebuildTests {
     /// path -> (size, mtime) of every file under `dir`: cheap evidence nothing wrote there.
     func digest(_ dir: URL) throws -> [String: String] {
         var out: [String: String] = [:]
-        let e = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey])!
+        let e = FileManager.default.enumerator(
+            at: dir,
+            includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey]
+        )!
         for case let u as URL in e {
             let v = try u.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
             out[u.path] = "\(v.fileSize ?? -1) \(v.contentModificationDate?.timeIntervalSince1970 ?? 0)"

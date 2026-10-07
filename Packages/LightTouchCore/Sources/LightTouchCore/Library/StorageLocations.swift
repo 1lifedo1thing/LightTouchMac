@@ -25,7 +25,10 @@ public nonisolated enum StorageLocations {
     public static func prepare(applicationSupport: URL, library: URL, override: URL? = nil) throws -> Layout {
         let state = override ?? stateRoot(applicationSupport: applicationSupport)
         if override == nil {
-            try adoptUnsuffixedRoot(applicationSupport.appendingPathComponent(bundleIdentifier, isDirectory: true), as: state)
+            try adoptUnsuffixedRoot(
+                applicationSupport.appendingPathComponent(bundleIdentifier, isDirectory: true),
+                as: state
+            )
         }
         try privateDirectory(state)
         // Device storage is recreatable from the IPSW or lives only for the
@@ -34,7 +37,8 @@ public nonisolated enum StorageLocations {
             let url = state.appendingPathComponent(name, isDirectory: true)
             if (try? privateDirectory(url)) != nil { excludeFromBackup(url) }
         }
-        let logs = override?.appendingPathComponent("Logs", isDirectory: true)
+        let logs =
+            override?.appendingPathComponent("Logs", isDirectory: true)
             ?? library.appendingPathComponent("Logs/\(bundleIdentifier)", isDirectory: true)
         try privateDirectory(logs)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: logs.path)
@@ -51,7 +55,10 @@ public nonisolated enum StorageLocations {
         guard fd >= 0 else { throw posixError() }
         defer { close(fd) }
         guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
-            throw CocoaError(.fileLocking, userInfo: [NSLocalizedDescriptionKey: "Light Touch is already running with this library."])
+            throw CocoaError(
+                .fileLocking,
+                userInfo: [NSLocalizedDescriptionKey: "Light Touch is already running with this library."]
+            )
         }
         try fm.moveItem(at: old, to: state)
     }
@@ -63,8 +70,11 @@ public nonisolated enum StorageLocations {
                 throw CocoaError(.fileWriteFileExists, userInfo: [NSFilePathErrorKey: url.path])
             }
         } else {
-            try fm.createDirectory(at: url, withIntermediateDirectories: true,
-                                   attributes: [.posixPermissions: 0o700])
+            try fm.createDirectory(
+                at: url,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
         }
     }
 
@@ -78,14 +88,25 @@ public nonisolated enum StorageLocations {
 
     public static func daemonIdentity(_ pid: pid_t) -> DaemonIdentity? {
         var info = proc_bsdinfo()
-        guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info,
-                           Int32(MemoryLayout<proc_bsdinfo>.size)) == MemoryLayout<proc_bsdinfo>.size,
-              info.pbi_status != 5 else { return nil } // A zombie cannot write files.
+        guard
+            proc_pidinfo(
+                pid,
+                PROC_PIDTBSDINFO,
+                0,
+                &info,
+                Int32(MemoryLayout<proc_bsdinfo>.size)
+            ) == MemoryLayout<proc_bsdinfo>.size,
+            info.pbi_status != 5
+        else { return nil }  // A zombie cannot write files.
         var path = [CChar](repeating: 0, count: 4096)
         guard proc_pidpath(pid, &path, UInt32(path.count)) > 0 else { return nil }
-        return DaemonIdentity(parent: info.pbi_ppid, uid: info.pbi_uid,
-                              started: info.pbi_start_tvsec, micros: info.pbi_start_tvusec,
-                              path: String(decoding: path.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self))
+        return DaemonIdentity(
+            parent: info.pbi_ppid,
+            uid: info.pbi_uid,
+            started: info.pbi_start_tvsec,
+            micros: info.pbi_start_tvusec,
+            path: String(decoding: path.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+        )
     }
 
     /// Time Machine skips it (an xattr, so it survives renames).
@@ -102,7 +123,9 @@ public nonisolated enum StorageLocations {
     /// storage, so the system caches; an isolated run keeps even its cache under
     /// LTM_STATE_DIR.
     public static func appMetadataDirectory(state: URL, caches: URL, isolated: Bool) -> URL {
-        let root = isolated ? state.appendingPathComponent("Caches", isDirectory: true)
+        let root =
+            isolated
+            ? state.appendingPathComponent("Caches", isDirectory: true)
             : caches.appendingPathComponent(bundleIdentifier, isDirectory: true)
         let directory = root.appendingPathComponent("AppMetadata", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -112,8 +135,10 @@ public nonisolated enum StorageLocations {
     /// macOS can remove disposable cache files while the app is running.
     /// Recreate the parent for each write, then publish complete bytes together.
     public static func writeCacheData(_ data: Data, to url: URL) throws {
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
-                                                withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         try data.write(to: url, options: .atomic)
     }
 }

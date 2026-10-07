@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import ReleaseChecks
 
 /// The built app as it ships: signatures, slices, entitlements per executable, the load closure, the bundled tools,
@@ -21,18 +22,28 @@ struct ReleaseAppStaticTests {
     }
 
     @Test func everyExecutableIsHardenedUniversalAndEntitledAsDeclared() throws {
-        let qemu = try PropertyListSerialization.propertyList(
-            from: Data(contentsOf: repository.appendingPathComponent("Configuration/LightTouchDevice.entitlements")), format: nil) as! NSDictionary
+        let qemu =
+            try PropertyListSerialization.propertyList(
+                from: Data(
+                    contentsOf: repository.appendingPathComponent("Configuration/LightTouchDevice.entitlements")
+                ),
+                format: nil
+            ) as! NSDictionary
         let binaries = ReleaseApp.binaries(in: app)
         #expect(binaries.count > 5)
         let resources = binaries.filter { $0.path.hasPrefix(contents.appendingPathComponent("Resources").path + "/") }
         #expect(resources.isEmpty, "Mach-O under Resources: \(resources.map(\.lastPathComponent))")
         for binary in binaries {
             let name = String(binary.path.dropFirst(app.path.count + 1))
-            #expect(try run(["codesign", "-dv", binary.path]).error.contains("(runtime)"), "\(name): no hardened runtime")
+            #expect(
+                try run(["codesign", "-dv", binary.path]).error.contains("(runtime)"),
+                "\(name): no hardened runtime"
+            )
             #expect(Set(try MachOClosure.architectures(binary)) == Self.archs, "\(name): slices")
             let dump = try run(["codesign", "-d", "--entitlements", "-", "--xml", binary.path]).output
-            let granted = dump.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? NSDictionary()
+            let granted =
+                dump.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? NSDictionary()
                 : try PropertyListSerialization.propertyList(from: Data(dump.utf8), format: nil) as! NSDictionary
             let want = binary.lastPathComponent == "LightTouchDevice" ? qemu : NSDictionary()
             #expect(granted == want, "\(name): entitlements \(granted), want \(want)")
@@ -40,14 +51,26 @@ struct ReleaseAppStaticTests {
     }
 
     @Test func hostCodeLoadsOnlyFromTheBundleAtTheAppsMinimum() throws {
-        let info = try PropertyListSerialization.propertyList(from: Data(contentsOf: contents.appendingPathComponent("Info.plist")), format: nil) as! [String: Any]
+        let info =
+            try PropertyListSerialization.propertyList(
+                from: Data(contentsOf: contents.appendingPathComponent("Info.plist")),
+                format: nil
+            ) as! [String: Any]
         let minimum = try #require(info["LSMinimumSystemVersion"] as? String)
         #expect(minimum == "14.4")
-        let host = ReleaseApp.binaries(in: app).filter { ["MacOS", "Frameworks"].contains($0.deletingLastPathComponent().lastPathComponent) }
+        let host = ReleaseApp.binaries(in: app).filter {
+            ["MacOS", "Frameworks"].contains($0.deletingLastPathComponent().lastPathComponent)
+        }
         for binary in host {
             for arch in Self.archs.sorted() {
                 #expect(throws: Never.self, "\(binary.lastPathComponent) \(arch)") {
-                    try MachOClosure.check(binary, minimum: minimum, arch: arch, bundle: app, executable: contents.appendingPathComponent("MacOS"))
+                    try MachOClosure.check(
+                        binary,
+                        minimum: minimum,
+                        arch: arch,
+                        bundle: app,
+                        executable: contents.appendingPathComponent("MacOS")
+                    )
                 }
             }
         }
@@ -56,20 +79,44 @@ struct ReleaseAppStaticTests {
     @Test func theBundledHelperWorkerAndBridgeRunFromTheBundle() throws {
         let helper = contents.appendingPathComponent("MacOS/LightTouchDevice")
         let details = try run(["codesign", "-dvv", helper.path])
-        #expect(details.succeeded && details.error.contains("Identifier=gold.samhenri.LightTouchMac.LightTouchDevice"), "\(details.error)")
-        let info = try PropertyListSerialization.propertyList(from: Data(contentsOf: contents.appendingPathComponent("Info.plist")), format: nil) as! [String: Any]
+        #expect(
+            details.succeeded && details.error.contains("Identifier=gold.samhenri.LightTouchMac.LightTouchDevice"),
+            "\(details.error)"
+        )
+        let info =
+            try PropertyListSerialization.propertyList(
+                from: Data(contentsOf: contents.appendingPathComponent("Info.plist")),
+                format: nil
+            ) as! [String: Any]
         // IPSWs and .ipa files open here from Finder and the Dock, never taken over: Alternate.
         let types = (info["CFBundleDocumentTypes"] as? [[String: Any]] ?? []).flatMap { type in
-            (type["LSItemContentTypes"] as? [String] ?? []).map { ($0, type["LSHandlerRank"] as? String) } }
-        #expect(Dictionary(uniqueKeysWithValues: types) == ["com.apple.itunes.ipsw": "Alternate", "com.apple.itunes.ipa": "Alternate"])
-        #expect(info["NSSupportsAutomaticGraphicsSwitching"] as? Bool == true, "a dual-GPU Intel Mac would switch to its discrete GPU")
+            (type["LSItemContentTypes"] as? [String] ?? []).map { ($0, type["LSHandlerRank"] as? String) }
+        }
+        #expect(
+            Dictionary(uniqueKeysWithValues: types) == [
+                "com.apple.itunes.ipsw": "Alternate", "com.apple.itunes.ipa": "Alternate",
+            ]
+        )
+        #expect(
+            info["NSSupportsAutomaticGraphicsSwitching"] as? Bool == true,
+            "a dual-GPU Intel Mac would switch to its discrete GPU"
+        )
 
         let worker = contents.appendingPathComponent("MacOS/LightTouchServices")
         #expect(try run(["codesign", "--verify", "--strict", worker.path]).succeeded)
-        #expect(!(try run(["otool", "-L", worker.path]).output.contains("libqemu")), "the services worker must not load the emulator")
+        #expect(
+            !(try run(["otool", "-L", worker.path]).output.contains("libqemu")),
+            "the services worker must not load the emulator"
+        )
         // No request is sent: the packaged worker launches and exits without probing a device or loading QEMU.
-        var env = ReleaseApp.cleanEnvironment; env["USBMUXD_SOCKET_ADDRESS"] = "127.0.0.1:1"
-        let empty = try Shell.run([worker.path, "--socket", "127.0.0.1:1", "--udid", "", "--session", UUID().uuidString], input: "", environment: env, timeout: 10)
+        var env = ReleaseApp.cleanEnvironment
+        env["USBMUXD_SOCKET_ADDRESS"] = "127.0.0.1:1"
+        let empty = try Shell.run(
+            [worker.path, "--socket", "127.0.0.1:1", "--udid", "", "--session", UUID().uuidString],
+            input: "",
+            environment: env,
+            timeout: 10
+        )
         #expect(empty.succeeded && empty.output.isEmpty, "\(empty)")
         #expect(try run([contents.appendingPathComponent("MacOS/inetcat").path, "--version"]).succeeded)
 
@@ -77,60 +124,107 @@ struct ReleaseAppStaticTests {
         try #require(probe.succeeded, "\(probe.error)")
         let listing = try JSONSerialization.jsonObject(with: Data(probe.output.utf8)) as! [String: Any]
         let dylib = contents.appendingPathComponent("Frameworks/libqemu-arm.dylib")
-        #expect(URL(fileURLWithPath: listing["dylibPath"] as! String).resolvingSymlinksInPath() == dylib.resolvingSymlinksInPath(),
-                "the helper loaded \(listing["dylibPath"] ?? ""), not the bundled dylib")
+        #expect(
+            URL(fileURLWithPath: listing["dylibPath"] as! String).resolvingSymlinksInPath()
+                == dylib.resolvingSymlinksInPath(),
+            "the helper loaded \(listing["dylibPath"] ?? ""), not the bundled dylib"
+        )
         let machines = listing["machines"] as! [[String: Any]]
-        let catalog = try JSONSerialization.jsonObject(with: Data(contentsOf: contents.appendingPathComponent("Resources/firmware-catalog.json"))) as! [String: Any]
+        let catalog =
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: contents.appendingPathComponent("Resources/firmware-catalog.json"))
+            ) as! [String: Any]
         let entries = catalog["entries"] as! [[String: Any]]
-        #expect(Set(machines.compactMap { $0["board"] as? String }).isSuperset(of: entries.compactMap { $0["board"] as? String }),
-                "the emulator lacks a catalog board")
-        let recorded = try JSONSerialization.jsonObject(with: Data(contentsOf: repository.appendingPathComponent("tests/fixtures/machines.json"))) as! [[String: Any]]
-        let stale = recorded.filter { r in !machines.contains { NSDictionary(dictionary: $0) == NSDictionary(dictionary: r) } }.compactMap { $0["board"] as? String }
-        #expect(stale.isEmpty, "tests/fixtures/machines.json differs from the emulator for \(stale): record `LightTouchDevice --machines` again")
+        #expect(
+            Set(machines.compactMap { $0["board"] as? String }).isSuperset(
+                of: entries.compactMap { $0["board"] as? String }
+            ),
+            "the emulator lacks a catalog board"
+        )
+        let recorded =
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: repository.appendingPathComponent("tests/fixtures/machines.json"))
+            ) as! [[String: Any]]
+        let stale = recorded.filter { r in
+            !machines.contains { NSDictionary(dictionary: $0) == NSDictionary(dictionary: r) }
+        }.compactMap { $0["board"] as? String }
+        #expect(
+            stale.isEmpty,
+            "tests/fixtures/machines.json differs from the emulator for \(stale): record `LightTouchDevice --machines` again"
+        )
 
         // iPhone OS 1.x lockdownd is SSLv3 only: the bundled OpenSSL must have it (build-static-deps.sh).
         let imd = contents.appendingPathComponent("Frameworks/libimobiledevice-1.0.dylib")
-        #expect(try run(["nm", "-gU", imd.path]).output.contains("_SSLv3_client_method"), "libimobiledevice links an OpenSSL without SSLv3")
+        #expect(
+            try run(["nm", "-gU", imd.path]).output.contains("_SSLv3_client_method"),
+            "libimobiledevice links an OpenSSL without SSLv3"
+        )
     }
 
     @Test func theDeviceAssetsAndTheFirstRunEntry() throws {
-        let catalog = try JSONSerialization.jsonObject(with: Data(contentsOf: contents.appendingPathComponent("Resources/firmware-catalog.json"))) as! [String: Any]
+        let catalog =
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: contents.appendingPathComponent("Resources/firmware-catalog.json"))
+            ) as! [String: Any]
         #expect(catalog["bundled"] as? [String: String] == ["n72ap-7E18": "Device/n72ap-7E18.itbase"])
         let device = contents.appendingPathComponent("Resources/Device")
         let assets = ["bootrom_240_4", "bootrom_s5l8900", "n72ap-7E18.itbase"]
-        #expect(Set(try FileManager.default.contentsOfDirectory(atPath: device.path).filter { !$0.hasPrefix(".") }) == Set(assets),
-                "the SecureROMs and the built-in iPod only (no raw pages, no iBoot)")
+        #expect(
+            Set(try FileManager.default.contentsOfDirectory(atPath: device.path).filter { !$0.hasPrefix(".") })
+                == Set(assets),
+            "the SecureROMs and the built-in iPod only (no raw pages, no iBoot)"
+        )
         let head = try FileHandle(forReadingFrom: device.appendingPathComponent("n72ap-7E18.itbase")).read(upToCount: 8)
         #expect(head == Data("ITPACK01".utf8), "the built-in iPod is not a packed device")
         let entries = catalog["entries"] as! [[String: Any]]
         let first = try #require(entries.first { $0["id"] as? String == catalog["first_run"] as? String })
         #expect(first["status"] as? String == "available")
-        #expect(((first["source"] as? [String: Any])?["url"] as? String)?.hasPrefix("https://secure-appldnld.apple.com/") == true)
+        #expect(
+            ((first["source"] as? [String: Any])?["url"] as? String)?.hasPrefix("https://secure-appldnld.apple.com/")
+                == true
+        )
     }
 
     @Test func theBundleIsBuiltFromTheCurrentPins() throws {
-        let inputs = try JSONSerialization.jsonObject(with: Data(contentsOf: contents.appendingPathComponent("Resources/build-inputs.json"))) as! [String: Any]
-        let pins = try JSONSerialization.jsonObject(with: Data(contentsOf: repository.appendingPathComponent("build-support/sources.json"))) as! [String: Any]
+        let inputs =
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: contents.appendingPathComponent("Resources/build-inputs.json"))
+            ) as! [String: Any]
+        let pins =
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: repository.appendingPathComponent("build-support/sources.json"))
+            ) as! [String: Any]
         for name in ["qemu-ios", "usbmuxd"] {
             let built = ((inputs["pins"] as? [String: Any])?[name] as? [String: Any])?["commit"] as? String
             let pinned = (pins[name] as? [String: Any])?["commit"] as? String
-            #expect(built != nil && built == pinned, "\(name): built from \(built ?? "?"), pinned \(pinned ?? "?"): run scripts/vendor and archive again")
+            #expect(
+                built != nil && built == pinned,
+                "\(name): built from \(built ?? "?"), pinned \(pinned ?? "?"): run scripts/vendor and archive again"
+            )
         }
     }
 
     @Test func hygieneLicensesAndNoLocalPaths() throws {
-        let resolved = [repository.appendingPathComponent("LightTouchMac.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"),
-                        repository.appendingPathComponent("Packages/FirmwareKit/Package.resolved")]
+        let resolved = [
+            repository.appendingPathComponent(
+                "LightTouchMac.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+            ),
+            repository.appendingPathComponent("Packages/FirmwareKit/Package.resolved"),
+        ]
         let found = try BundleHygiene.problems(app: app, packages: try BundleHygiene.swiftPackages(resolved: resolved))
         #expect(found.isEmpty, "\(found.joined(separator: "\n"))")
     }
 
     /// The identity scan of a zip of the app (Sam's scrub tooling: LTM_SCRUB_DIR, default ~/Developer/qemu-ios-files/scrub).
     @Test func identityScanOfTheZippedApp() throws {
-        let scrub = ProcessInfo.processInfo.environment["LTM_SCRUB_DIR"].map { URL(fileURLWithPath: $0) }
+        let scrub =
+            ProcessInfo.processInfo.environment["LTM_SCRUB_DIR"].map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Developer/qemu-ios-files/scrub")
         let scanner = scrub.appendingPathComponent("scan-release-zip.py")
-        try #require(FileManager.default.fileExists(atPath: scanner.path), "no identity scanner at \(scanner.path) (LTM_SCRUB_DIR)")
+        try #require(
+            FileManager.default.fileExists(atPath: scanner.path),
+            "no identity scanner at \(scanner.path) (LTM_SCRUB_DIR)"
+        )
         try withScratch { root in
             let zip = root.appendingPathComponent("LightTouchMac.zip")
             try #require(try Shell.run(["ditto", "-c", "-k", "--keepParent", app.path, zip.path]).succeeded)
@@ -144,6 +238,9 @@ struct ReleaseAppStaticTests {
     func anExportIsStapledAndPassesGatekeeper() throws {
         #expect(try run(["xcrun", "stapler", "validate", app.path]).succeeded, "no stapled notarization ticket")
         let assess = try run(["spctl", "-a", "-vv", "-t", "exec", app.path])
-        #expect(assess.succeeded && (assess.output + assess.error).contains("source=Notarized Developer ID"), "\(assess.error)")
+        #expect(
+            assess.succeeded && (assess.output + assess.error).contains("source=Notarized Developer ID"),
+            "\(assess.error)"
+        )
     }
 }

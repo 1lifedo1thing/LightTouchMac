@@ -1,13 +1,18 @@
 import Foundation
 import HostRuntime
 import Testing
+
 @testable import FirmwareKit
 
 /// Required separately from the small synthetic HFS test: leaves a published
 /// generation for independent cold-boot/AFC/persistence acceptance.
 struct StoppedVolumeEditNativeTests {
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["FK_EDIT_NATIVE_SOURCE"] != nil,
-                   "Set FK_EDIT_NATIVE_SOURCE/FK_EDIT_NATIVE_OUT for firmware publication acceptance"))
+    @Test(
+        .enabled(
+            if: ProcessInfo.processInfo.environment["FK_EDIT_NATIVE_SOURCE"] != nil,
+            "Set FK_EDIT_NATIVE_SOURCE/FK_EDIT_NATIVE_OUT for firmware publication acceptance"
+        )
+    )
     func publishedFirmwareCandidate() async throws {
         let env = ProcessInfo.processInfo.environment
         let source = URL(fileURLWithPath: try #require(env["FK_EDIT_NATIVE_SOURCE"]))
@@ -18,23 +23,47 @@ struct StoppedVolumeEditNativeTests {
         try fm.createDirectory(at: device, withIntermediateDirectories: true)
         let base = device.appendingPathComponent("base")
         try #require(clonefile(source.path, base.path, 0) == 0)
-        let record: [String: Any] = ["id": device.lastPathComponent, "board": "n72ap", "firmware": "7E18",
+        let record: [String: Any] = [
+            "id": device.lastPathComponent, "board": "n72ap", "firmware": "7E18",
             "base": ["kind": "prepared", "path": base.path],
-            "storage": ["key": "initial", "overlay": device.appendingPathComponent("overlay").path,
-                        "snapshot": device.appendingPathComponent("snapshot").path,
-                        "writableNOR": device.appendingPathComponent("nor.bin").path,
-                        "usbmuxConf": device.appendingPathComponent("conf").path]]
+            "storage": [
+                "key": "initial", "overlay": device.appendingPathComponent("overlay").path,
+                "snapshot": device.appendingPathComponent("snapshot").path,
+                "writableNOR": device.appendingPathComponent("nor.bin").path,
+                "usbmuxConf": device.appendingPathComponent("conf").path,
+            ],
+        ]
         try DeviceRecord.data(record).write(to: device.appendingPathComponent(DeviceRecord.name))
-        let edit = try await StoppedVolumeEdit.begin(device: device, policy: try .managedDeviceDirectory(device), log: { print($0) })
-        let marker = Data("<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>probe</key><string>published-storage-generation</string></dict></plist>".utf8)
+        let edit = try await StoppedVolumeEdit.begin(
+            device: device,
+            policy: try .managedDeviceDirectory(device),
+            log: { print($0) }
+        )
+        let marker = Data(
+            "<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>probe</key><string>published-storage-generation</string></dict></plist>"
+                .utf8
+        )
         try await VolumeMount.withMounted(edit.image, at: out.appendingPathComponent("edit")) { root in
             let plist = root.appendingPathComponent("System/Library/CoreServices/SystemVersion.plist")
-            var value = try #require(try PropertyListSerialization.propertyList(from: Data(contentsOf: plist), format: nil) as? [String: Any])
+            var value = try #require(
+                try PropertyListSerialization.propertyList(from: Data(contentsOf: plist), format: nil) as? [String: Any]
+            )
             value["LTStorageGenerationProbe"] = edit.id.uuidString
-            try PropertyListSerialization.data(fromPropertyList: value, format: .xml, options: 0).write(to: plist, options: .atomic)
-            try marker.write(to: root.appendingPathComponent("private/var/mobile/Media/ltm-stopped-edit.plist"), options: .atomic)
+            try PropertyListSerialization.data(fromPropertyList: value, format: .xml, options: 0).write(
+                to: plist,
+                options: .atomic
+            )
+            try marker.write(
+                to: root.appendingPathComponent("private/var/mobile/Media/ltm-stopped-edit.plist"),
+                options: .atomic
+            )
         }
-        try await StoppedVolumeEdit.commit(device: device, id: edit.id, policy: try .managedDeviceDirectory(device), log: { print($0) })
+        try await StoppedVolumeEdit.commit(
+            device: device,
+            id: edit.id,
+            policy: try .managedDeviceDirectory(device),
+            log: { print($0) }
+        )
         let published = try DeviceRecord.object(Data(contentsOf: device.appendingPathComponent(DeviceRecord.name)))
         let generation = try #require((published["base"] as? [String: String])?["path"])
         try marker.write(to: out.appendingPathComponent("expected-marker.plist"))

@@ -1,12 +1,12 @@
 // App management on a running device: whether its services can be reached, its lockdown services and install
 // pipeline, installs and media imports (which hold the device), and restarting the Home screen.
 
-import Foundation
-import Observation
-import HostRuntime
-import HostServiceWire
-import HostServiceClient
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import HostServiceClient
+import HostServiceWire
+import Observation
 
 /// What app management reads of the session.
 public protocol AppsHost: AnyObject {
@@ -47,12 +47,15 @@ public protocol AppsHost: AnyObject {
     /// inspector's own buttons already waited for a real round trip; the menu
     /// and toolbar were the ones still guessing. `deviceReachable` is that round
     /// trip, set by the list poll, and nil until the first one lands.
-    public var canReachDevice: Bool { host.usbConnected && canManageApps && host.isRunning && host.deviceReachable == true }
+    public var canReachDevice: Bool {
+        host.usbConnected && canManageApps && host.isRunning && host.deviceReachable == true
+    }
 
     /// Adding to the ready queue opens no guest session. A probe suppressed by
     /// our own install must not disable File → Install App or drag-and-drop.
     public var canQueueInstall: Bool {
-        host.usbConnected && canManageApps && host.isRunning && (host.deviceReachable == true || host.installerUsesDevice || isInstalling)
+        host.usbConnected && canManageApps && host.isRunning
+            && (host.deviceReachable == true || host.installerUsesDevice || isInstalling)
     }
 
     /// True while any install is running — the quit guard reads this so ⌘Q
@@ -87,7 +90,9 @@ public protocol AppsHost: AnyObject {
 
     public func checkDeviceConnection() async throws {
         try Task.checkCancellation()
-        guard host.usbConnected, !host.isPoweredOff, !host.shuttingDown, host.usbmuxSession != nil else { throw DeviceError.notAttached }
+        guard host.usbConnected, !host.isPoweredOff, !host.shuttingDown, host.usbmuxSession != nil else {
+            throw DeviceError.notAttached
+        }
         try await services.checkAttachment()
     }
 
@@ -98,15 +103,21 @@ public protocol AppsHost: AnyObject {
         return try await body()
     }
 
-    public func install(_ ipa: URL, placeholderRaised: Bool = false,
-                        progress: @escaping @Sendable (String) -> Void = { _ in }) async throws -> String {
+    public func install(
+        _ ipa: URL,
+        placeholderRaised: Bool = false,
+        progress: @escaping @Sendable (String) -> Void = { _ in }
+    ) async throws -> String {
         try await holdingDevice {
             try await installPipeline.install(ipa, placeholderRaised: placeholderRaised, progress: progress)
         }
     }
 
-    public func importMedia(_ media: PreparedMedia, progress: @escaping @Sendable (Double) -> Void,
-                            willCommit: () -> Void) async throws {
+    public func importMedia(
+        _ media: PreparedMedia,
+        progress: @escaping @Sendable (Double) -> Void,
+        willCommit: () -> Void
+    ) async throws {
         guard canQueueInstall else { throw DeviceToolsError.failed("The device is not ready for media import.") }
         try await holdingDevice {
             let device = MediaImport(services: try services, guest: host.guest)
@@ -144,12 +155,16 @@ public protocol AppsHost: AnyObject {
         while ContinuousClock.now < deadline {
             try Task.checkCancellation()
             if (try? await services.homeScreenOrder()) != nil { return }
-            if agentCounts, host.guestAgent.isAlive, SpringBoardAnswer.up(frontmost: try? await host.guest.foreground().bundleID) {
+            if agentCounts, host.guestAgent.isAlive,
+                SpringBoardAnswer.up(frontmost: try? await host.guest.foreground().bundleID)
+            {
                 logEvent("boot: SpringBoard answers through the guest agent (its layout service did not)")
                 return
             }
             try await Task.sleep(for: .seconds(1))
         }
-        throw DeviceToolsError.failed("The Home screen didn’t come back. Restart the \(host.profile.shortName); your apps are kept.")
+        throw DeviceToolsError.failed(
+            "The Home screen didn’t come back. Restart the \(host.profile.shortName); your apps are kept."
+        )
     }
 }

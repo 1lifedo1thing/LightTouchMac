@@ -11,12 +11,31 @@ enum MediaFixtures {
 
     /// An image `width`×`height` painted by `fill` (rectangles in pixel coordinates, top-left origin), written as
     /// `type` with the given EXIF orientation.
-    static func image(_ url: URL, width: Int, height: Int, type: UTType, orientation: Int? = nil,
-                      background: RGBA = (0, 0, 0, 0), fill: [(CGRect, RGBA)]) throws {
-        let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
-                                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    static func image(
+        _ url: URL,
+        width: Int,
+        height: Int,
+        type: UTType,
+        orientation: Int? = nil,
+        background: RGBA = (0, 0, 0, 0),
+        fill: [(CGRect, RGBA)]
+    ) throws {
+        let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
         func paint(_ rect: CGRect, _ c: RGBA) {
-            context.setFillColor(red: CGFloat(c.0) / 255, green: CGFloat(c.1) / 255, blue: CGFloat(c.2) / 255, alpha: CGFloat(c.3) / 255)
+            context.setFillColor(
+                red: CGFloat(c.0) / 255,
+                green: CGFloat(c.1) / 255,
+                blue: CGFloat(c.2) / 255,
+                alpha: CGFloat(c.3) / 255
+            )
             context.fill(CGRect(x: rect.minX, y: CGFloat(height) - rect.maxY, width: rect.width, height: rect.height))
         }
         paint(CGRect(x: 0, y: 0, width: width, height: height), background)
@@ -30,25 +49,39 @@ enum MediaFixtures {
 
     /// The decoded pixels of an image file, and a sampler at (x, y) from the top left.
     static func pixels(_ url: URL) throws -> (width: Int, height: Int, at: (Int, Int) -> RGBA) {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil), let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+            let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else {
             throw CocoaError(.fileReadCorruptFile)
         }
-        let width = image.width, height = image.height
+        let width = image.width
+        let height = image.height
         var data = [UInt8](repeating: 0, count: width * height * 4)
-        let context = CGContext(data: &data, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
-                                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        let context = CGContext(
+            data: &data,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         let copy = data
-        return (width, height, { x, y in
-            let i = (y * width + x) * 4
-            return (copy[i], copy[i + 1], copy[i + 2], copy[i + 3])
-        })
+        return (
+            width, height,
+            { x, y in
+                let i = (y * width + x) * 4
+                return (copy[i], copy[i + 1], copy[i + 2], copy[i + 3])
+            }
+        )
     }
 
     static func isProgressiveJPEG(_ url: URL) -> Bool {
         let source = CGImageSourceCreateWithURL(url as CFURL, nil)!
         let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
-        return (properties?[kCGImagePropertyJFIFDictionary] as? [CFString: Any])?[kCGImagePropertyJFIFIsProgressive] as? Bool == true
+        return (properties?[kCGImagePropertyJFIFDictionary] as? [CFString: Any])?[kCGImagePropertyJFIFIsProgressive]
+            as? Bool == true
     }
 
     /// A stereo 440 Hz tone, `seconds` long at 44.1 kHz, in `format` (kAudioFormatMPEG4AAC or
@@ -56,9 +89,17 @@ enum MediaFixtures {
     static func tone(_ url: URL, seconds: Double = 6, format: AudioFormatID) throws {
         let pcm = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 2)!
         var settings: [String: Any] = [AVFormatIDKey: format, AVSampleRateKey: 44100, AVNumberOfChannelsKey: 2]
-        if format == kAudioFormatLinearPCM { settings[AVLinearPCMBitDepthKey] = 16; settings[AVLinearPCMIsFloatKey] = false }
+        if format == kAudioFormatLinearPCM {
+            settings[AVLinearPCMBitDepthKey] = 16
+            settings[AVLinearPCMIsFloatKey] = false
+        }
         if format == kAudioFormatAppleLossless { settings[AVEncoderBitDepthHintKey] = 16 }
-        let file = try AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+        let file = try AVAudioFile(
+            forWriting: url,
+            settings: settings,
+            commonFormat: .pcmFormatFloat32,
+            interleaved: false
+        )
         let frames = AVAudioFrameCount(seconds * 44100)
         let buffer = AVAudioPCMBuffer(pcmFormat: pcm, frameCapacity: frames)!
         buffer.frameLength = frames
@@ -89,8 +130,15 @@ enum MediaFixtures {
         var data = Data()
         while let buffer = output.copyNextSampleBuffer() {
             guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
-            var length = 0, pointer: UnsafeMutablePointer<CChar>?
-            CMBlockBufferGetDataPointer(block, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &pointer)
+            var length = 0
+            var pointer: UnsafeMutablePointer<CChar>?
+            CMBlockBufferGetDataPointer(
+                block,
+                atOffset: 0,
+                lengthAtOffsetOut: nil,
+                totalLengthOut: &length,
+                dataPointerOut: &pointer
+            )
             let bytes = Data(bytes: pointer!, count: length)
             var offset = 0
             for index in 0..<CMSampleBufferGetNumSamples(buffer) {
@@ -100,8 +148,10 @@ enum MediaFixtures {
                 offset += size
                 let total = packet.count + 7
                 // AAC LC (profile 1 = object type 2 - 1), 44.1 kHz (index 4), two channels, no CRC.
-                data.append(contentsOf: [0xFF, 0xF1, UInt8(1 << 6 | 4 << 2 | 2 >> 2), UInt8((2 & 3) << 6 | (total >> 11)),
-                                         UInt8((total >> 3) & 0xFF), UInt8((total & 7) << 5 | 0x1F), 0xFC])
+                data.append(contentsOf: [
+                    0xFF, 0xF1, UInt8(1 << 6 | 4 << 2 | 2 >> 2), UInt8((2 & 3) << 6 | (total >> 11)),
+                    UInt8((total >> 3) & 0xFF), UInt8((total & 7) << 5 | 0x1F), 0xFC,
+                ])
                 data.append(packet)
             }
         }
@@ -112,13 +162,28 @@ enum MediaFixtures {
     /// A `width`×`height` H.264 movie at 30 fps, `seconds` long, moving color bars, with a stereo AAC tone track.
     @concurrent nonisolated static func movie(_ url: URL, width: Int, height: Int, seconds: Int = 6) async throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
-        let video = AVAssetWriterInput(mediaType: .video, outputSettings: [AVVideoCodecKey: AVVideoCodecType.h264,
-                                                                           AVVideoWidthKey: width, AVVideoHeightKey: height])
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: video, sourcePixelBufferAttributes: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA, kCVPixelBufferWidthKey as String: width,
-            kCVPixelBufferHeightKey as String: height])
-        let audio = AVAssetWriterInput(mediaType: .audio, outputSettings: [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 44100,
-                                                                           AVNumberOfChannelsKey: 2, AVEncoderBitRateKey: 128_000])
+        let video = AVAssetWriterInput(
+            mediaType: .video,
+            outputSettings: [
+                AVVideoCodecKey: AVVideoCodecType.h264,
+                AVVideoWidthKey: width, AVVideoHeightKey: height,
+            ]
+        )
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+            assetWriterInput: video,
+            sourcePixelBufferAttributes: [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferWidthKey as String: width,
+                kCVPixelBufferHeightKey as String: height,
+            ]
+        )
+        let audio = AVAssetWriterInput(
+            mediaType: .audio,
+            outputSettings: [
+                AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 44100,
+                AVNumberOfChannelsKey: 2, AVEncoderBitRateKey: 128_000,
+            ]
+        )
         video.expectsMediaDataInRealTime = true
         audio.expectsMediaDataInRealTime = true
         writer.add(video)
@@ -142,17 +207,36 @@ enum MediaFixtures {
                 buffer.frameLength = AVAudioFrameCount(count)
                 for i in 0..<count {
                     let v = Float(0.25 * sin(2 * Double.pi * 440 * Double(audioTime + i) / 44100))
-                    buffer.floatChannelData![0][2 * i] = v; buffer.floatChannelData![0][2 * i + 1] = v
+                    buffer.floatChannelData![0][2 * i] = v
+                    buffer.floatChannelData![0][2 * i + 1] = v
                 }
                 var sample: CMSampleBuffer?
-                var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: 44100),
-                                                presentationTimeStamp: CMTime(value: CMTimeValue(audioTime), timescale: 44100),
-                                                decodeTimeStamp: .invalid)
-                CMSampleBufferCreate(allocator: nil, dataBuffer: nil, dataReady: false, makeDataReadyCallback: nil, refcon: nil,
-                                     formatDescription: format.formatDescription, sampleCount: count, sampleTimingEntryCount: 1,
-                                     sampleTimingArray: &timing, sampleSizeEntryCount: 0, sampleSizeArray: nil, sampleBufferOut: &sample)
-                CMSampleBufferSetDataBufferFromAudioBufferList(sample!, blockBufferAllocator: nil, blockBufferMemoryAllocator: nil,
-                                                               flags: 0, bufferList: buffer.audioBufferList)
+                var timing = CMSampleTimingInfo(
+                    duration: CMTime(value: 1, timescale: 44100),
+                    presentationTimeStamp: CMTime(value: CMTimeValue(audioTime), timescale: 44100),
+                    decodeTimeStamp: .invalid
+                )
+                CMSampleBufferCreate(
+                    allocator: nil,
+                    dataBuffer: nil,
+                    dataReady: false,
+                    makeDataReadyCallback: nil,
+                    refcon: nil,
+                    formatDescription: format.formatDescription,
+                    sampleCount: count,
+                    sampleTimingEntryCount: 1,
+                    sampleTimingArray: &timing,
+                    sampleSizeEntryCount: 0,
+                    sampleSizeArray: nil,
+                    sampleBufferOut: &sample
+                )
+                CMSampleBufferSetDataBufferFromAudioBufferList(
+                    sample!,
+                    blockBufferAllocator: nil,
+                    blockBufferMemoryAllocator: nil,
+                    flags: 0,
+                    bufferList: buffer.audioBufferList
+                )
                 audio.append(sample!)
                 audioTime += count
             }
@@ -171,7 +255,11 @@ enum MediaFixtures {
                 let bar = ((x + frame * 8) / max(width / 8, 1)) % 8
                 return [UInt8((bar & 1) * 255), UInt8(((bar >> 1) & 1) * 255), UInt8(((bar >> 2) & 1) * 255), 255]
             }
-            for y in 0..<height { pattern.withUnsafeBytes { (base + y * row).update(from: $0.bindMemory(to: UInt8.self).baseAddress!, count: width * 4) } }
+            for y in 0..<height {
+                pattern.withUnsafeBytes {
+                    (base + y * row).update(from: $0.bindMemory(to: UInt8.self).baseAddress!, count: width * 4)
+                }
+            }
             CVPixelBufferUnlockBaseAddress(buffer!, [])
             adaptor.append(buffer!, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: 30))
         }
@@ -193,11 +281,19 @@ enum MediaFixtures {
         let track = try await asset.loadTracks(withMediaType: .video)[0]
         let description = try await track.load(.formatDescriptions)[0]
         let size = CMVideoFormatDescriptionGetDimensions(description)
-        result.width = Int(size.width); result.height = Int(size.height)
+        result.width = Int(size.width)
+        result.height = Int(size.height)
         result.frameRate = try await track.load(.nominalFrameRate)
         result.codec = CMFormatDescriptionGetMediaSubType(description)
-        let atoms = CMFormatDescriptionGetExtension(description, extensionKey: kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms) as? [String: Any]
-        if let avcC = atoms?["avcC"] as? Data, avcC.count > 3 { result.profile = Int(avcC[1]); result.level = Int(avcC[3]) }
+        let atoms =
+            CMFormatDescriptionGetExtension(
+                description,
+                extensionKey: kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms
+            ) as? [String: Any]
+        if let avcC = atoms?["avcC"] as? Data, avcC.count > 3 {
+            result.profile = Int(avcC[1])
+            result.level = Int(avcC[3])
+        }
         for audio in try await asset.loadTracks(withMediaType: .audio) {
             for format in try await audio.load(.formatDescriptions) {
                 let stream = CMAudioFormatDescriptionGetStreamBasicDescription(format)!.pointee

@@ -13,9 +13,9 @@
 //
 // Foundation only, so tests/drivers/session-driver compiles it as the app does.
 
-import HostServiceWire
-import HostRuntime
 import Foundation
+import HostRuntime
+import HostServiceWire
 
 public enum AppLaunchError: Error {
     case locked, unavailable, failed
@@ -48,7 +48,9 @@ public nonisolated struct GuestServices: Sendable {
     /// Commit staged media into the library with itmedia (Music, Videos: a
     /// metadata plist) or itphoto (Saved Photos). Always use the app's helper:
     /// older installed packages may silently ignore new metadata fields.
-    public func commitMedia(id: String, helper: String, localHelper: () throws -> URL, metadata: URL?) async throws -> Bool {
+    public func commitMedia(id: String, helper: String, localHelper: () throws -> URL, metadata: URL?) async throws
+        -> Bool
+    {
         guard UUID(uuidString: id) != nil else { throw DeviceToolsError.failed("Invalid media staging identifier.") }
         try await agent.chown(501, 501, "/var/mobile/Media/LightTouch")
         try await agent.chown(501, 501, "/var/mobile/Media/LightTouch/\(id)")
@@ -85,8 +87,10 @@ public nonisolated struct GuestServices: Sendable {
         let cert = "/tmp/ltm-ca-\(UUID().uuidString).der"
         try await agent.put(cert, mode: 0o644, der)
         let output: String
-        do { output = try await runTool("ittrust", ["add", cert], localTool: localTool) }
-        catch { try? await agent.unlink(cert); throw error }
+        do { output = try await runTool("ittrust", ["add", cert], localTool: localTool) } catch {
+            try? await agent.unlink(cert)
+            throw error
+        }
         try? await agent.unlink(cert)
         guard output.contains("Guest trust add: 0") else {
             throw DeviceToolsError.failed("The device didn’t accept the certificate: \(output)")
@@ -111,16 +115,24 @@ public nonisolated struct GuestServices: Sendable {
     public static let legacyProxyPAC = "/usr/local/share/ltm/proxy.pac"
 
     /// A guest tool's output: the package's copy, or the app's uploaded to /tmp for the one run.
-    private func runTool(_ name: String, _ arguments: [String], localTool: (String) throws -> Data) async throws -> String {
+    private func runTool(_ name: String, _ arguments: [String], localTool: (String) throws -> Data) async throws
+        -> String
+    {
         if packaged {
-            do { return String(decoding: try await agent.spawn(["\(Self.packageBin)/\(name)"] + arguments), as: UTF8.self) }
-            catch let error as GuestAgentError where error.status == GuestAgentError.notFound {}
+            do {
+                return String(
+                    decoding: try await agent.spawn(["\(Self.packageBin)/\(name)"] + arguments),
+                    as: UTF8.self
+                )
+            } catch let error as GuestAgentError where error.status == GuestAgentError.notFound {}
         }
         let executable = "/tmp/ltm-\(name)-\(UUID().uuidString)"
         try await agent.put(executable, mode: 0o755, try localTool(name))
         let output: Data
-        do { output = try await agent.spawn([executable] + arguments) }
-        catch { try? await agent.unlink(executable); throw error }
+        do { output = try await agent.spawn([executable] + arguments) } catch {
+            try? await agent.unlink(executable)
+            throw error
+        }
         try? await agent.unlink(executable)
         return String(decoding: output, as: UTF8.self)
     }
@@ -136,11 +148,13 @@ public nonisolated struct GuestServices: Sendable {
     /// as it exits), so its next external zone applies as on a fresh device.
     /// False, touching nothing, when the cache holds no such record.
     public func forgetExternalTimeZone() async throws -> Bool {
-        let cache = "/var/root/Library/Caches/locationd/cache.plist", job = "/System/Library/LaunchDaemons/com.apple.locationd.plist"
+        let cache = "/var/root/Library/Caches/locationd/cache.plist"
+        let job = "/System/Library/LaunchDaemons/com.apple.locationd.plist"
         func withoutRecord() async throws -> Data? {
             guard let data = try await agent.get(cache),
-                  var plist = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
-                  plist.removeValue(forKey: "PreviousTimeZone") != nil else { return nil }
+                var plist = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+                plist.removeValue(forKey: "PreviousTimeZone") != nil
+            else { return nil }
             return try PropertyListSerialization.data(fromPropertyList: plist, format: .binary, options: 0)
         }
         guard try await withoutRecord() != nil else { return false }
@@ -161,14 +175,14 @@ public nonisolated struct GuestServices: Sendable {
     public func respring() async throws { try await agent.spawn([Self.launchctl, "stop", "com.apple.SpringBoard"]) }
 
     /// launchd owns and relaunches lockdownd.
-    public func reconnectManagement() async throws { try await agent.spawn([Self.launchctl, "stop", "com.apple.mobile.lockdown"]) }
+    public func reconnectManagement() async throws {
+        try await agent.spawn([Self.launchctl, "stop", "com.apple.mobile.lockdown"])
+    }
 
     /// SpringBoardServices' launch, the same path a tap on the icon takes. It
     /// refuses a locked device, which lockstatus then tells apart.
     public func launch(_ bundleID: String) async throws {
-        do { try await agent.launch(bundleID) }
-        catch is CancellationError { throw CancellationError() }
-        catch {
+        do { try await agent.launch(bundleID) } catch is CancellationError { throw CancellationError() } catch {
             logEvent("launch \(bundleID): \(error.localizedDescription)")
             if (try? await agent.isLocked()) == true { throw AppLaunchError.locked }
             throw AppLaunchError.failed

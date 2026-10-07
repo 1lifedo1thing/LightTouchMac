@@ -21,11 +21,20 @@ enum N72Keybag {
 
     /// `out` holds nand/, nor.bin, iBoot.bin and gid-blobs.bin (writable); `dec` the decrypt cache (the kernelcache);
     /// `ramdisk` the decrypted restore ramdisk to boot (this build's, or a sibling's: Recipe.keybagRamdisk).
-    nonisolated(nonsending) static func run(out: URL, dec: URL, ramdisk: URL, itKeybag: URL, bootrom: URL, helper: URL, work: URL,
-                    log: (String) -> Void) async throws -> Int {
+    nonisolated(nonsending) static func run(
+        out: URL,
+        dec: URL,
+        ramdisk: URL,
+        itKeybag: URL,
+        bootrom: URL,
+        helper: URL,
+        work: URL,
+        log: (String) -> Void
+    ) async throws -> Int {
         let fm = FileManager.default
         let rd = try await Preparer.ramdiskWithHelper(ramdisk, helper: itKeybag, work: work)
-        let nor = work.appendingPathComponent("nor.rw"), ovl = work.appendingPathComponent("keybag-overlay")
+        let nor = work.appendingPathComponent("nor.rw")
+        let ovl = work.appendingPathComponent("keybag-overlay")
         let serial = work.appendingPathComponent("keybag.log")
         try fm.copyItem(at: out.appendingPathComponent("nor.bin"), to: nor)
         chmod(nor.path, 0o644)
@@ -36,24 +45,40 @@ enum N72Keybag {
         guard let hardware = HostRuntime.Board.n72.hardware else {
             throw FirmwareError(.internal, "\(helper.lastPathComponent)'s emulator library has no machine for n72ap")
         }
-        let machine = ["\(hardware.machine),bootrom=\(Preparer.esc(bootrom))", "nand=\(file("nand"))", "nor=\(file("nor.bin"))",
-                       "nor-rw=\(Preparer.esc(nor))", "nandrw=\(Preparer.esc(ovl))", "direct-iboot=\(file("iBoot.bin"))",
-                       "gid-blobs=\(file("gid-blobs.bin"))", "aes-uid=engine", "boot-args="]
-            .joined(separator: ",")
-        let argv = ["LightTouchDevice", "-M", machine, "-m", "128M", "-display", "none", "-audio", "driver=none", "-monitor", "none",
-                    "-serial", "file:\(serial.path)", "-gdb", "tcp:127.0.0.1:\(port)", "-S"]
+        let machine = [
+            "\(hardware.machine),bootrom=\(Preparer.esc(bootrom))", "nand=\(file("nand"))", "nor=\(file("nor.bin"))",
+            "nor-rw=\(Preparer.esc(nor))", "nandrw=\(Preparer.esc(ovl))", "direct-iboot=\(file("iBoot.bin"))",
+            "gid-blobs=\(file("gid-blobs.bin"))", "aes-uid=engine", "boot-args=",
+        ]
+        .joined(separator: ",")
+        let argv = [
+            "LightTouchDevice", "-M", machine, "-m", "128M", "-display", "none", "-audio", "driver=none", "-monitor",
+            "none",
+            "-serial", "file:\(serial.path)", "-gdb", "tcp:127.0.0.1:\(port)", "-S",
+        ]
         let kc = try Data(contentsOf: dec.appendingPathComponent("kernelcache.mach"))
         let image = try Data(contentsOf: rd)
         final class Note: @unchecked Sendable { var text = "" }
         let note = Note()
-        let (r, text) = try Preparer.oneshot(helper, argv: argv, machine: hardware.machine, serial: serial, stop: "panic(", timeout: 300,
-                                             work: work, log: log) {
+        let (r, text) = try Preparer.oneshot(
+            helper,
+            argv: argv,
+            machine: hardware.machine,
+            serial: serial,
+            stop: "panic(",
+            timeout: 300,
+            work: work,
+            log: log
+        ) {
             note.text = try handoff(GDBRemote(port: port), kernelcache: kc, ramdisk: image)
         }
         log(note.text)
-        for line in text.split(separator: "\n") where line.contains("it_keybag:") { log(line.trimmingCharacters(in: .whitespaces)) }
+        for line in text.split(separator: "\n") where line.contains("it_keybag:") {
+            log(line.trimmingCharacters(in: .whitespaces))
+        }
         guard text.contains(Preparer.keybagDone) else {
-            let why = text.split(separator: "\n").first { $0.contains("panic(") }.map { String($0.prefix(160)) }
+            let why =
+                text.split(separator: "\n").first { $0.contains("panic(") }.map { String($0.prefix(160)) }
                 ?? (r.exited ? "halted without the keybag" : "no halt")
             throw FirmwareError(.oneshotFailed, "keybag boot: \(why) after \(Int(r.seconds)) s")
         }
@@ -71,22 +96,34 @@ enum N72Keybag {
     /// (entry pc, link base): LC_UNIXTHREAD's pc and __TEXT's vmaddr top nibble.
     static func kernelEntry(_ d: Data) throws -> (pc: UInt32, base: UInt32) {
         let b = [UInt8](d)
-        func u32(_ o: Int) -> UInt32 { UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24 }
-        var off = 28, pc: UInt32?, base: UInt32?
+        func u32(_ o: Int) -> UInt32 {
+            UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24
+        }
+        var off = 28
+        var pc: UInt32?
+        var base: UInt32?
         for _ in 0..<Int(u32(16)) {
-            let cmd = u32(off), size = Int(u32(off + 4))
+            let cmd = u32(off)
+            let size = Int(u32(off + 4))
             if cmd == 5 { pc = u32(off + 16 + 15 * 4) }
-            if cmd == 1, String(decoding: b[off + 8..<off + 24].prefix { $0 != 0 }, as: UTF8.self) == "__TEXT" { base = u32(off + 24) & 0xF000_0000 }
+            if cmd == 1, String(decoding: b[off + 8..<off + 24].prefix { $0 != 0 }, as: UTF8.self) == "__TEXT" {
+                base = u32(off + 24) & 0xF000_0000
+            }
             off += size
         }
-        guard let pc, let base else { throw FirmwareError(.unsupported, "no LC_UNIXTHREAD / __TEXT in the kernelcache") }
+        guard let pc, let base else {
+            throw FirmwareError(.unsupported, "no LC_UNIXTHREAD / __TEXT in the kernelcache")
+        }
         return (pc, base)
     }
 
     /// ipod2g_keybag.add_ramdisk: a RAMDisk memory-map entry in the first spare reserved slot, no root-matching.
     static func addRamdisk(_ blob: Data, pa: UInt32, length: UInt32) throws -> Data {
         var dt = try DeviceTree(blob)
-        guard let spare = dt.props["chosen/memory-map"]?.keys.filter({ $0.hasPrefix("MemoryMapReserved-") }).sorted().first else {
+        guard
+            let spare = dt.props["chosen/memory-map"]?.keys.filter({ $0.hasPrefix("MemoryMapReserved-") }).sorted()
+                .first
+        else {
             throw FirmwareError(.unsupported, "no spare chosen/memory-map slot")
         }
         try dt.rename("chosen/memory-map", spare, "RAMDisk")
@@ -100,19 +137,33 @@ enum N72Keybag {
     static func handoff(_ gdb: GDBRemote, kernelcache: Data, ramdisk: Data) throws -> String {
         let (pc, base) = try kernelEntry(kernelcache)
         let entry = pc &- base &+ physBase
-        guard try gdb.command(String(format: "Z0,%x,4", entry)) == "OK" else { throw FirmwareError(.oneshotFailed, "gdbstub refused the breakpoint") }
+        guard try gdb.command(String(format: "Z0,%x,4", entry)) == "OK" else {
+            throw FirmwareError(.oneshotFailed, "gdbstub refused the breakpoint")
+        }
         let stop = try gdb.command("c")
         let regs = try gdb.registers()
         guard stop.hasPrefix("T"), regs[15] == entry else {
-            throw FirmwareError(.oneshotFailed, "keybag boot did not stop at the kernel entry: \(stop) pc=\(String(regs[15], radix: 16))")
+            throw FirmwareError(
+                .oneshotFailed,
+                "keybag boot did not stop at the kernel entry: \(stop) pc=\(String(regs[15], radix: 16))"
+            )
         }
         _ = try gdb.command(String(format: "z0,%x,4", entry))
         let ba = regs[0]
         var args = try gdb.read(ba, 0x138)
-        func u32(_ o: Int) -> UInt32 { args.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: o, as: UInt32.self)) } }
+        func u32(_ o: Int) -> UInt32 {
+            args.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: o, as: UInt32.self)) }
+        }
         let rev = UInt16(args[0]) | UInt16(args[1]) << 8
-        let virt = u32(4), phys = u32(8), mem = u32(12), top = u32(16), dtp = u32(0x30), dtlen = u32(0x34)
-        guard rev == 1, phys == physBase, virt == base else { throw FirmwareError(.oneshotFailed, "unexpected boot_args at 0x\(String(ba, radix: 16))") }
+        let virt = u32(4)
+        let phys = u32(8)
+        let mem = u32(12)
+        let top = u32(16)
+        let dtp = u32(0x30)
+        let dtlen = u32(0x34)
+        guard rev == 1, phys == physBase, virt == base else {
+            throw FirmwareError(.oneshotFailed, "unexpected boot_args at 0x\(String(ba, radix: 16))")
+        }
         let rdPA = (top + 0xFFF) & ~0xFFF
         let newTop = (rdPA + UInt32(ramdisk.count) + 0x3FFF) & ~0x3FFF
         guard newTop < phys + mem else { throw FirmwareError(.oneshotFailed, "the ramdisk does not fit below memSize") }
@@ -120,13 +171,22 @@ enum N72Keybag {
         try gdb.write(dtPA, try addRamdisk(try gdb.read(dtPA, Int(dtlen)), pa: rdPA, length: UInt32(ramdisk.count)))
         try gdb.write(rdPA, ramdisk)
         var command = Data(bootArgs.utf8)
-        guard command.count < cmdlineLength else { throw FirmwareError(.internal, "keybag command line exceeds boot_args capacity") }
+        guard command.count < cmdlineLength else {
+            throw FirmwareError(.internal, "keybag command line exceeds boot_args capacity")
+        }
         command.append(Data(repeating: 0, count: cmdlineLength - command.count))
         args.replaceSubrange(cmdlineOffset..<cmdlineOffset + cmdlineLength, with: command)
         withUnsafeBytes(of: newTop.littleEndian) { args.replaceSubrange(0x10..<0x14, with: $0) }
         try gdb.write(ba, args)
         try gdb.send("c")
-        return String(format: "keybag boot: ramdisk %d bytes at 0x%08x, topOfKernelData 0x%08x -> 0x%08x, [%@]", ramdisk.count, rdPA, top, newTop, bootArgs)
+        return String(
+            format: "keybag boot: ramdisk %d bytes at 0x%08x, topOfKernelData 0x%08x -> 0x%08x, [%@]",
+            ramdisk.count,
+            rdPA,
+            top,
+            newTop,
+            bootArgs
+        )
     }
 
     /// ipod2g_keybag.fold_overlay: the overlay's page files over the device's.
@@ -135,7 +195,9 @@ enum N72Keybag {
         var n = 0
         for cs in try fm.contentsOfDirectory(atPath: ovl.path).sorted() {
             for name in try fm.contentsOfDirectory(atPath: ovl.appendingPathComponent(cs).path) {
-                if name.hasSuffix(".erased") { throw FirmwareError(.oneshotFailed, "erase markers in the keybag overlay; not folding") }
+                if name.hasSuffix(".erased") {
+                    throw FirmwareError(.oneshotFailed, "erase markers in the keybag overlay; not folding")
+                }
                 guard name.hasSuffix(".page"), !name.hasPrefix(".") else { continue }
                 let dst = nand.appendingPathComponent(cs).appendingPathComponent(name)
                 try? fm.removeItem(at: dst)
@@ -156,11 +218,18 @@ final class GDBRemote {
     static func freePort() throws -> Int {
         let s = socket(AF_INET, SOCK_STREAM, 0)
         defer { close(s) }
-        var a = sockaddr_in(sin_len: UInt8(MemoryLayout<sockaddr_in>.size), sin_family: sa_family_t(AF_INET), sin_port: 0,
-                            sin_addr: in_addr(s_addr: inet_addr("127.0.0.1")), sin_zero: (0, 0, 0, 0, 0, 0, 0, 0))
+        var a = sockaddr_in(
+            sin_len: UInt8(MemoryLayout<sockaddr_in>.size),
+            sin_family: sa_family_t(AF_INET),
+            sin_port: 0,
+            sin_addr: in_addr(s_addr: inet_addr("127.0.0.1")),
+            sin_zero: (0, 0, 0, 0, 0, 0, 0, 0)
+        )
         var len = socklen_t(MemoryLayout<sockaddr_in>.size)
         let ok = withUnsafeMutablePointer(to: &a) { p in
-            p.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(s, $0, len) == 0 && getsockname(s, $0, &len) == 0 }
+            p.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                bind(s, $0, len) == 0 && getsockname(s, $0, &len) == 0
+            }
         }
         guard ok else { throw FirmwareError(.internal, "no free TCP port") }
         return Int(UInt16(bigEndian: a.sin_port))
@@ -170,11 +239,20 @@ final class GDBRemote {
     init(port: Int) throws {
         for _ in 0..<100 {
             let s = socket(AF_INET, SOCK_STREAM, 0)
-            var a = sockaddr_in(sin_len: UInt8(MemoryLayout<sockaddr_in>.size), sin_family: sa_family_t(AF_INET),
-                                sin_port: UInt16(port).bigEndian, sin_addr: in_addr(s_addr: inet_addr("127.0.0.1")), sin_zero: (0, 0, 0, 0, 0, 0, 0, 0))
-            let ok = withUnsafePointer(to: &a) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(s, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) == 0 } }
+            var a = sockaddr_in(
+                sin_len: UInt8(MemoryLayout<sockaddr_in>.size),
+                sin_family: sa_family_t(AF_INET),
+                sin_port: UInt16(port).bigEndian,
+                sin_addr: in_addr(s_addr: inet_addr("127.0.0.1")),
+                sin_zero: (0, 0, 0, 0, 0, 0, 0, 0)
+            )
+            let ok = withUnsafePointer(to: &a) {
+                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    connect(s, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) == 0
+                }
+            }
             if ok {
-                var tv = timeval(tv_sec: 120, tv_usec: 0)   // `c` waits for iBoot to reach the kernel
+                var tv = timeval(tv_sec: 120, tv_usec: 0)  // `c` waits for iBoot to reach the kernel
                 setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
                 fd = s
                 return
@@ -190,7 +268,8 @@ final class GDBRemote {
     func send(_ text: String) throws { try send(bytes: Array(text.utf8)) }
 
     func send(bytes body: [UInt8]) throws {
-        let packet = Array("$".utf8) + body + Array(String(format: "#%02x", body.reduce(0) { ($0 + Int($1)) & 0xFF }).utf8)
+        let packet =
+            Array("$".utf8) + body + Array(String(format: "#%02x", body.reduce(0) { ($0 + Int($1)) & 0xFF }).utf8)
         guard packet.withUnsafeBytes({ Darwin.send(fd, $0.baseAddress, $0.count, 0) }) == packet.count else {
             throw FirmwareError(.oneshotFailed, "gdbstub send failed")
         }
@@ -198,7 +277,9 @@ final class GDBRemote {
 
     func receive() throws -> String {
         while true {
-            if let i = buffer.firstIndex(of: UInt8(ascii: "$")), let j = buffer[i...].firstIndex(of: UInt8(ascii: "#")), buffer.count >= j + 3 {
+            if let i = buffer.firstIndex(of: UInt8(ascii: "$")), let j = buffer[i...].firstIndex(of: UInt8(ascii: "#")),
+                buffer.count >= j + 3
+            {
                 let data = String(decoding: buffer[(i + 1)..<j], as: UTF8.self)
                 buffer.removeFirst(j + 3)
                 _ = Darwin.send(fd, "+", 1, 0)
@@ -211,8 +292,14 @@ final class GDBRemote {
         }
     }
 
-    func command(_ text: String) throws -> String { try send(text); return try receive() }
-    func command(bytes: [UInt8]) throws -> String { try send(bytes: bytes); return try receive() }
+    func command(_ text: String) throws -> String {
+        try send(text)
+        return try receive()
+    }
+    func command(bytes: [UInt8]) throws -> String {
+        try send(bytes: bytes)
+        return try receive()
+    }
 
     func registers() throws -> [UInt32] {
         let g = Array(try command("g").utf8)
@@ -228,7 +315,12 @@ final class GDBRemote {
         while out.count < count {
             let k = min(0x800, count - out.count)
             let r = Array(try command(String(format: "m%x,%x", address + UInt32(out.count), k)).utf8)
-            guard r.count == 2 * k else { throw FirmwareError(.oneshotFailed, "gdb read at 0x\(String(address, radix: 16)): \(String(decoding: r.prefix(8), as: UTF8.self))") }
+            guard r.count == 2 * k else {
+                throw FirmwareError(
+                    .oneshotFailed,
+                    "gdb read at 0x\(String(address, radix: 16)): \(String(decoding: r.prefix(8), as: UTF8.self))"
+                )
+            }
             out += Self.unhex(r[...])
         }
         return out
@@ -240,9 +332,14 @@ final class GDBRemote {
         for off in stride(from: 0, to: b.count, by: 0x400) {
             let part = b[off..<min(off + 0x400, b.count)]
             var packet = Array(String(format: "M%x,%x:", address + UInt32(off), part.count).utf8)
-            for x in part { packet.append(Self.digits[Int(x >> 4)]); packet.append(Self.digits[Int(x & 15)]) }
+            for x in part {
+                packet.append(Self.digits[Int(x >> 4)])
+                packet.append(Self.digits[Int(x & 15)])
+            }
             let r = try command(bytes: packet)
-            guard r == "OK" else { throw FirmwareError(.oneshotFailed, "gdb write at 0x\(String(address + UInt32(off), radix: 16)): \(r)") }
+            guard r == "OK" else {
+                throw FirmwareError(.oneshotFailed, "gdb write at 0x\(String(address + UInt32(off), radix: 16)): \(r)")
+            }
         }
     }
 

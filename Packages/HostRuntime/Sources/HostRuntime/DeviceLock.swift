@@ -6,17 +6,31 @@ import Foundation
 
 /// A JSON value, for the lock's members that carry free-form records (inputs, outputs, fit, derived, ...).
 public enum JSONValue: Codable, Sendable, Equatable {
-    case null, bool(Bool), int(Int64), double(Double), string(String), array([JSONValue]), object([String: JSONValue])
+    case null
+    case bool(Bool)
+    case int(Int64)
+    case double(Double)
+    case string(String)
+    case array([JSONValue])
+    case object([String: JSONValue])
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()
-        if c.decodeNil() { self = .null }
-        else if let v = try? c.decode(Bool.self) { self = .bool(v) }
-        else if let v = try? c.decode(Int64.self) { self = .int(v) }
-        else if let v = try? c.decode(Double.self) { self = .double(v) }
-        else if let v = try? c.decode(String.self) { self = .string(v) }
-        else if let v = try? c.decode([JSONValue].self) { self = .array(v) }
-        else { self = .object(try c.decode([String: JSONValue].self)) }
+        if c.decodeNil() {
+            self = .null
+        } else if let v = try? c.decode(Bool.self) {
+            self = .bool(v)
+        } else if let v = try? c.decode(Int64.self) {
+            self = .int(v)
+        } else if let v = try? c.decode(Double.self) {
+            self = .double(v)
+        } else if let v = try? c.decode(String.self) {
+            self = .string(v)
+        } else if let v = try? c.decode([JSONValue].self) {
+            self = .array(v)
+        } else {
+            self = .object(try c.decode([String: JSONValue].self))
+        }
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -42,7 +56,8 @@ public enum JSONValue: Codable, Sendable, Equatable {
         case let v as String: self = .string(v)
         case let v as [Any]: self = .array(try v.map(JSONValue.init))
         case let v as [String: Any]: self = .object(try v.mapValues(JSONValue.init))
-        default: throw CocoaError(.coderInvalidValue, userInfo: [NSLocalizedDescriptionKey: "not JSON: \(type(of: any!))"])
+        default:
+            throw CocoaError(.coderInvalidValue, userInfo: [NSLocalizedDescriptionKey: "not JSON: \(type(of: any!))"])
         }
     }
 
@@ -89,8 +104,13 @@ public struct DeviceLock: Codable, Sendable, Equatable {
     public var other: [String: JSONValue] = [:]
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case board, build, productType = "product_type", productVersion = "product_version", bootStrategy = "boot_strategy"
-        case machine, identity, entry, inputs, guestPackage = "guest_package", derived
+        case board, build
+        case productType = "product_type"
+        case productVersion = "product_version"
+        case bootStrategy = "boot_strategy"
+        case machine, identity, entry, inputs
+        case guestPackage = "guest_package"
+        case derived
     }
 
     struct AnyKey: CodingKey {
@@ -146,34 +166,45 @@ public struct DeviceLock: Codable, Sendable, Equatable {
     /// The file's bytes: JSONSerialization's sorted keys (its order, which isn't JSONEncoder's), pretty-printed,
     /// slashes as they are; the bytes FirmwareKit has always written.
     public func data() throws -> Data {
-        try JSONSerialization.data(withJSONObject: JSONSerialization.jsonObject(with: JSONEncoder().encode(self)),
-                                   options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        try JSONSerialization.data(
+            withJSONObject: JSONSerialization.jsonObject(with: JSONEncoder().encode(self)),
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        )
     }
 
     // MARK: Reading
 
     private static let cacheLock = NSLock()
-    nonisolated(unsafe) private static var cache: [String: (stamp: [FileAttributeKey: AnyHashable], lock: DeviceLock)] = [:]
+    nonisolated(unsafe) private static var cache: [String: (stamp: [FileAttributeKey: AnyHashable], lock: DeviceLock)] =
+        [:]
 
     /// The lock at `url`, decoded once while the file is unchanged (path, size, modification date, inode). nil for a
     /// missing file (a legacy base without one); a present unreadable or malformed lock throws, so it never silently
     /// picks another boot path.
     public static func read(_ url: URL) throws -> DeviceLock? {
         let attributes: [FileAttributeKey: Any]
-        do { attributes = try FileManager.default.attributesOfItem(atPath: url.path) }
-        catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile { return nil }
-        let stamp = [FileAttributeKey.size, .modificationDate, .systemFileNumber].reduce(into: [FileAttributeKey: AnyHashable]()) {
+        do { attributes = try FileManager.default.attributesOfItem(atPath: url.path) } catch let error as CocoaError
+            where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile
+        { return nil }
+        let stamp = [FileAttributeKey.size, .modificationDate, .systemFileNumber].reduce(
+            into: [FileAttributeKey: AnyHashable]()
+        ) {
             $0[$1] = attributes[$1] as? AnyHashable
         }
         if let hit = cacheLock.withLock({ cache[url.path] }), hit.stamp == stamp { return hit.lock }
         let data: Data
-        do { data = try Data(contentsOf: url) }
-        catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile { return nil }
+        do { data = try Data(contentsOf: url) } catch let error as CocoaError
+            where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile
+        { return nil }
         let lock: DeviceLock
-        do { lock = try JSONDecoder().decode(DeviceLock.self, from: data) }
-        catch {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: url.path, NSUnderlyingErrorKey: error,
-                NSLocalizedDescriptionKey: "Invalid boot lock at \(url.path): \(error)"])
+        do { lock = try JSONDecoder().decode(DeviceLock.self, from: data) } catch {
+            throw CocoaError(
+                .fileReadCorruptFile,
+                userInfo: [
+                    NSFilePathErrorKey: url.path, NSUnderlyingErrorKey: error,
+                    NSLocalizedDescriptionKey: "Invalid boot lock at \(url.path): \(error)",
+                ]
+            )
         }
         cacheLock.withLock { cache[url.path] = (stamp, lock) }
         return lock
@@ -207,7 +238,8 @@ public struct DeviceLock: Codable, Sendable, Equatable {
         let board = self.board.flatMap(Board.init(rawValue:))
         let upgrades = board == .n72 || board == .k48 || board?.kbootPhone == true
         guard upgrades, let data = try? Data(contentsOf: base.appendingPathComponent("identity.json")),
-              let identity = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return options }
+            let identity = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return options }
         if board == .n72 || board == .k48 {
             // The iPad machine has wifi-mac only; its unit identity otherwise comes from die-id.
             for key in board == .k48 ? ["wifi-mac"] : ["wifi-mac", "bt-mac"] where options[key] == nil {
@@ -218,7 +250,7 @@ public struct DeviceLock: Codable, Sendable, Equatable {
             if let ecid = identity["unique-chip-id"] as? String {
                 options["ecid"] = ecid
             } else if let seed = identity["seed"] as? String {
-                options["ecid"] = UnitSeed.ecid(seed: seed)   // legacy N72 identities omitted it
+                options["ecid"] = UnitSeed.ecid(seed: seed)  // legacy N72 identities omitted it
             }
         }
         if board?.kbootPhone == true, options["imei"] == nil, let upgraded = IPhoneIdentity.upgraded(identity) {

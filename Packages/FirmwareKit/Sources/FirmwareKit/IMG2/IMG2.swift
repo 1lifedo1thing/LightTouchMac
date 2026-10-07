@@ -18,8 +18,11 @@ public enum Apple8900 {
     /// The payload, decrypted when the container says so. A final partial block is stored in the clear.
     public static func body(_ d: Data) throws -> Data {
         let b = [UInt8](d.prefix(headerSize))
-        guard b.count == headerSize, isContainer(d), b[4..<7].elementsEqual("1.0".utf8) else { throw FirmwareError(.unsupported, "not an 8900 v1.0 container") }
-        let size = Int(b.u32(0xC)), start = d.startIndex + headerSize
+        guard b.count == headerSize, isContainer(d), b[4..<7].elementsEqual("1.0".utf8) else {
+            throw FirmwareError(.unsupported, "not an 8900 v1.0 container")
+        }
+        let size = Int(b.u32(0xC))
+        let start = d.startIndex + headerSize
         guard start + size <= d.endIndex else { throw FirmwareError(.unsupported, "8900 payload runs past the file") }
         let body = d[start..<start + size]
         switch b[7] {
@@ -42,15 +45,22 @@ public enum IMG2 {
         public var paddedLength: Int, dataLength: Int
         public init(_ body: Data) throws {
             let b = [UInt8](body.prefix(headerSize))
-            guard b.count == headerSize, b[0..<4].elementsEqual("2gmI".utf8) else { throw FirmwareError(.unsupported, "not an IMG2 image") }
+            guard b.count == headerSize, b[0..<4].elementsEqual("2gmI".utf8) else {
+                throw FirmwareError(.unsupported, "not an IMG2 image")
+            }
             type = String(decoding: b[4..<8].reversed(), as: UTF8.self)
-            loadAddress = b.u32(0xC); paddedLength = Int(b.u32(0x10)); dataLength = Int(b.u32(0x14))
-            guard dataLength <= paddedLength, headerSize + paddedLength <= body.count else { throw FirmwareError(.unsupported, "IMG2 \(type) data runs past the image") }
+            loadAddress = b.u32(0xC)
+            paddedLength = Int(b.u32(0x10))
+            dataLength = Int(b.u32(0x14))
+            guard dataLength <= paddedLength, headerSize + paddedLength <= body.count else {
+                throw FirmwareError(.unsupported, "IMG2 \(type) data runs past the image")
+            }
         }
     }
 
     public static func payload(_ body: Data) throws -> Data {
-        let h = try Header(body), s = body.startIndex + headerSize
+        let h = try Header(body)
+        let s = body.startIndex + headerSize
         return Data(body[s..<s + h.dataLength])
     }
 }

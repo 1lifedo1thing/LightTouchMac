@@ -1,5 +1,8 @@
 import DeviceRuntime
+import Foundation
 import HostRuntime
+import IOSurface
+
 // Stands in for the app in tests/sessions/check-sessions.py: two devices at once, each in
 // its own LightTouchDevice helper through the app's own DeviceSessionProcess and
 // BootRecipe (DeviceSession.swift), each with its own usbmuxd (USBMux's flags),
@@ -12,9 +15,6 @@ import HostRuntime
 // With `guest` it runs the guest-services scenario instead (guest.swift); with `single`, one prepared
 // device (single.swift). `frameworks` is where libimobiledevice is loaded from (default Homebrew's).
 // `ipadItpack` boots the iPad with the app's composed offer and checks the loader and the agent.
-
-import Foundation
-import IOSurface
 
 struct Config: Decodable {
     var helper: String, usbmuxd: String, ipa: String, bundleID: String
@@ -56,7 +56,12 @@ nonisolated func logEvent(_ message: String, _ arguments: CVarArg...) { emit("lo
 @MainActor var liveDevices: [Device] = []
 func fail(_ why: String) -> Never {
     emit("fail", ["why": why])
-    MainActor.assumeIsolated { for d in liveDevices { d.process?.kill(); d.serial?.finish() } }
+    MainActor.assumeIsolated {
+        for d in liveDevices {
+            d.process?.kill()
+            d.serial?.finish()
+        }
+    }
     exit(1)
 }
 
@@ -69,7 +74,9 @@ nonisolated enum Bundled {
     static var filesRoot: String { config.files }
     static func tool(_ name: String) -> String? { nil }
     /// The guest helpers MediaImport uploads (single's mediaTools).
-    static func resolve(_ name: String, fallbacks: [String]) -> String? { config.single?.mediaTools.map { "\($0)/\(name)" } }
+    static func resolve(_ name: String, fallbacks: [String]) -> String? {
+        config.single?.mediaTools.map { "\($0)/\(name)" }
+    }
     static var binarySearchPaths: [String] { [] }
 }
 extension DeviceInstance { var paths: Paths { paths(state: Bundled.stateDirectory, logs: Bundled.logsDirectory) } }
@@ -78,10 +85,16 @@ extension DeviceInstance { var paths: Paths { paths(state: Bundled.stateDirector
 // (SetupPhone.plan) against recorded labels, no emulator
 // (tests/sessions/check-setup-walk.py).
 if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "--selftest-walk" {
-    Task { @MainActor in let phone = SetupPhone.selfTest(); exit(await Setup5.selfTest() && phone ? 0 : 1) }
+    Task { @MainActor in
+        let phone = SetupPhone.selfTest()
+        exit(await Setup5.selfTest() && phone ? 0 : 1)
+    }
     CFRunLoopRun()
 }
-nonisolated(unsafe) let config = try! JSONDecoder().decode(Config.self, from: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1])))
+nonisolated(unsafe) let config = try! JSONDecoder().decode(
+    Config.self,
+    from: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]))
+)
 // Standalone matrix callers pass resource paths in config, while the app gets
 // them from its bundle. Forward the fixed library directory to owned children.
 setenv("LTM_SERVICE_FRAMEWORKS", config.frameworks ?? "/opt/homebrew/lib", 1)
@@ -100,29 +113,48 @@ final class Mux {
         let conf = work.appendingPathComponent("\(name)/usbmuxd-conf")
         try FileManager.default.createDirectory(at: conf, withIntermediateDirectories: true)
         process.executableURL = URL(fileURLWithPath: config.usbmuxd)
-        process.arguments = ["-f", "-v", "-S", String(clientSocket.dropFirst("UNIX:".count)), "-P", "NONE", "-C", conf.path]
-        process.environment = ProcessInfo.processInfo.environment.merging(["USBMUXD_QEMU_ADDR": guestAddress, "USBMUXD_QEMU_DELAY": "0"]) { $1 }
-        let log = FileHandle(forWritingAtPath: work.appendingPathComponent("\(name)/usbmuxd.log").path)
-            ?? { FileManager.default.createFile(atPath: work.appendingPathComponent("\(name)/usbmuxd.log").path, contents: nil)
-                 return FileHandle(forWritingAtPath: work.appendingPathComponent("\(name)/usbmuxd.log").path)! }()
+        process.arguments = [
+            "-f", "-v", "-S", String(clientSocket.dropFirst("UNIX:".count)), "-P", "NONE", "-C", conf.path,
+        ]
+        process.environment = ProcessInfo.processInfo.environment.merging([
+            "USBMUXD_QEMU_ADDR": guestAddress, "USBMUXD_QEMU_DELAY": "0",
+        ]) { $1 }
+        let log =
+            FileHandle(forWritingAtPath: work.appendingPathComponent("\(name)/usbmuxd.log").path)
+            ?? {
+                FileManager.default.createFile(
+                    atPath: work.appendingPathComponent("\(name)/usbmuxd.log").path,
+                    contents: nil
+                )
+                return FileHandle(forWritingAtPath: work.appendingPathComponent("\(name)/usbmuxd.log").path)!
+            }()
         log.seekToEndOfFile()
         process.standardOutput = log
         process.standardError = log
         process.standardInput = FileHandle.nullDevice
         try process.run()
         try "\(process.processIdentifier)\n".appendLine(to: work.appendingPathComponent("pids"))
-        emit("usbmuxd", ["device": name, "pid": process.processIdentifier, "client": clientSocket, "guest": guestAddress])
+        emit(
+            "usbmuxd",
+            ["device": name, "pid": process.processIdentifier, "client": clientSocket, "guest": guestAddress]
+        )
     }
     func stop() {
-        process.terminate(); process.waitUntilExit()
+        process.terminate()
+        process.waitUntilExit()
         [String(clientSocket.dropFirst("UNIX:".count)), guestAddress].forEach { unlink($0) }
     }
 }
 
 extension String {
     func appendLine(to url: URL) throws {
-        if !FileManager.default.fileExists(atPath: url.path) { FileManager.default.createFile(atPath: url.path, contents: nil) }
-        let h = try FileHandle(forWritingTo: url); h.seekToEndOfFile(); h.write(Data(utf8)); try h.close()
+        if !FileManager.default.fileExists(atPath: url.path) {
+            FileManager.default.createFile(atPath: url.path, contents: nil)
+        }
+        let h = try FileHandle(forWritingTo: url)
+        h.seekToEndOfFile()
+        h.write(Data(utf8))
+        try h.close()
     }
 }
 
@@ -143,7 +175,11 @@ extension String {
     private(set) var bootError: String?
     private(set) var helloPID: pid_t?
     /// An iPod's own files (a device.py device); nil: the shipping image in `files`.
-    struct IPodFiles { var nand, nor, iBoot: String; var gidBlobs: String?; var machine: [String: String] = [:] }
+    struct IPodFiles {
+        var nand, nor, iBoot: String
+        var gidBlobs: String?
+        var machine: [String: String] = [:]
+    }
     var ipod: IPodFiles?
     /// Prepared bases use typed runtime strategy validation; raw historical fixtures use legacyN72.
     var preparedBase: URL?
@@ -152,15 +188,20 @@ extension String {
     var webProxy: WebProxyEndpoint?
     /// The device's Attach to Local Network, off as the app's default (BootRecipe.wifiNetdev's lan=off).
     var localNetwork = false
-    init(name: String, profile: Board) { self.name = name; self.profile = profile }
+    init(name: String, profile: Board) {
+        self.name = name
+        self.profile = profile
+    }
     var dir: URL { work.appendingPathComponent(name) }
     /// When `dir` is an app state's device (a link to Devices/<uuid> with its device.plist): its storage key, and the
     /// boot is admitted and pinned as the app's (EmulatorController: managed admission, instance.storage.key).
     var managedKey: String? {
         let device = dir.resolvingSymlinksInPath()
-        guard device.deletingLastPathComponent().lastPathComponent == "Devices", UUID(uuidString: device.lastPathComponent) != nil,
-              let data = try? Data(contentsOf: DeviceRecord.url(device)),
-              let record = try? DeviceRecord.object(data) else { return nil }
+        guard device.deletingLastPathComponent().lastPathComponent == "Devices",
+            UUID(uuidString: device.lastPathComponent) != nil,
+            let data = try? Data(contentsOf: DeviceRecord.url(device)),
+            let record = try? DeviceRecord.object(data)
+        else { return nil }
         return (record["storage"] as? [String: Any])?["key"] as? String
     }
 
@@ -172,41 +213,88 @@ extension String {
         bootError = nil
         helloPID = nil
         mux = try Mux(name: name)
-        serial = try SerialLogCapture(url: dir.appendingPathComponent("serial.log"), temporaryRoot: work,
-                                      watch: serialWatch?.phrases ?? [], onMatch: serialWatch?.onMatch ?? { _ in })
+        serial = try SerialLogCapture(
+            url: dir.appendingPathComponent("serial.log"),
+            temporaryRoot: work,
+            watch: serialWatch?.phrases ?? [],
+            onMatch: serialWatch?.onMatch ?? { _ in }
+        )
         // Preparation runs after hello, when the helper owns the storage lease.
         func configuration(_ hardware: DeviceInfo?) throws -> BootConfig {
             let overlay = dir.appendingPathComponent("overlay")
             let prepared: PreparedDeviceBoot
             var offer = guestPackage
             if profile.isKBoot || profile == .n45 || profile == .m68 {
-                let base = profile.isKBoot ? preparedBase ?? URL(fileURLWithPath: Self.ipadBase)
+                let base =
+                    profile.isKBoot
+                    ? preparedBase ?? URL(fileURLWithPath: Self.ipadBase)
                     : URL(fileURLWithPath: ipod!.nand).deletingLastPathComponent()
-                let nor = !profile.isKBoot || FileManager.default.fileExists(atPath: base.appendingPathComponent("nor.bin").path)
+                let nor =
+                    !profile.isKBoot
+                        || FileManager.default.fileExists(atPath: base.appendingPathComponent("nor.bin").path)
                     ? dir.appendingPathComponent("nor.bin") : nil
-                prepared = try PreparedDeviceBoot.prepare(board: profile,
-                    base: base, overlay: overlay, writableNOR: nor, storageKey: managedKey,
-                    bootrom: BootRecipe.bootrom(profile.bootrom, filesRoot: Self.files))
+                prepared = try PreparedDeviceBoot.prepare(
+                    board: profile,
+                    base: base,
+                    overlay: overlay,
+                    writableNOR: nor,
+                    storageKey: managedKey,
+                    bootrom: BootRecipe.bootrom(profile.bootrom, filesRoot: Self.files)
+                )
                 if profile.isKBoot { offer = try iPadOffer(base: base) }
             } else if let base = preparedBase {
-                prepared = try PreparedDeviceBoot.prepare(board: .n72, base: base, overlay: overlay,
-                    writableNOR: dir.appendingPathComponent("nor.bin"), storageKey: managedKey,
-                    bootrom: BootRecipe.bootrom(profile.bootrom, filesRoot: Self.files))
+                prepared = try PreparedDeviceBoot.prepare(
+                    board: .n72,
+                    base: base,
+                    overlay: overlay,
+                    writableNOR: dir.appendingPathComponent("nor.bin"),
+                    storageKey: managedKey,
+                    bootrom: BootRecipe.bootrom(profile.bootrom, filesRoot: Self.files)
+                )
             } else {
-                let files = ipod ?? IPodFiles(nand: Self.ipodNAND, nor: Self.files + "/ios3/nor_7E18.bin", iBoot: Self.files + "/ios3/iBoot.bin")
-                prepared = try PreparedDeviceBoot.legacyN72(nand: URL(fileURLWithPath: files.nand),
-                    nor: URL(fileURLWithPath: files.nor), iBoot: files.iBoot, gidBlobs: files.gidBlobs,
-                    machine: files.machine, overlay: overlay, bootrom: Self.files + "/bootrom_240_4")
+                let files =
+                    ipod
+                    ?? IPodFiles(
+                        nand: Self.ipodNAND,
+                        nor: Self.files + "/ios3/nor_7E18.bin",
+                        iBoot: Self.files + "/ios3/iBoot.bin"
+                    )
+                prepared = try PreparedDeviceBoot.legacyN72(
+                    nand: URL(fileURLWithPath: files.nand),
+                    nor: URL(fileURLWithPath: files.nor),
+                    iBoot: files.iBoot,
+                    gidBlobs: files.gidBlobs,
+                    machine: files.machine,
+                    overlay: overlay,
+                    bootrom: Self.files + "/bootrom_240_4"
+                )
             }
-            let netdev = profile.isKBoot ? netdevExtra.map { BootRecipe.wifiNetdev(guestForward: $0, restricted: false, localNetwork: localNetwork) }
+            let netdev =
+                profile.isKBoot
+                ? netdevExtra.map {
+                    BootRecipe.wifiNetdev(guestForward: $0, restricted: false, localNetwork: localNetwork)
+                }
                 : BootRecipe.wifiNetdev(guestForward: netdevExtra ?? "", restricted: false, localNetwork: localNetwork)
-            return try prepared.configuration(hardware: hardware, bootArgs: "amfi_allow_any_signature=1 cs_enforcement_disable=1",
-                usbAddress: mux.guestAddress, wifi: true, guestPackage: offer, serial: serial!.argument,
-                audio: ["-audio", config.single?.audioWAV.map { "driver=wav,path=\($0)" } ?? "driver=none"], netdev: netdev, webProxy: webProxy)
+            return try prepared.configuration(
+                hardware: hardware,
+                bootArgs: "amfi_allow_any_signature=1 cs_enforcement_disable=1",
+                usbAddress: mux.guestAddress,
+                wifi: true,
+                guestPackage: offer,
+                serial: serial!.argument,
+                audio: ["-audio", config.single?.audioWAV.map { "driver=wav,path=\($0)" } ?? "driver=none"],
+                netdev: netdev,
+                webProxy: webProxy
+            )
         }
         processLog = try ProcessLogCapture(url: dir.appendingPathComponent("native.log"))
-        let process = makeProcess(profile: profile, log: processLog!, lease: dir.appendingPathComponent("work/lease"),
-                                  helper: URL(fileURLWithPath: Self.helper), requirement: Self.requirement)
+        let process = makeProcess(
+            profile: profile,
+            log: processLog!,
+            lease: dir.appendingPathComponent("work/lease"),
+            helper: URL(fileURLWithPath: Self.helper),
+            requirement: Self.requirement
+        )
         self.process = process
         process.onDeath = { [weak self] reason in
             let text = self?.process.deathReason ?? "unknown"
@@ -216,31 +304,51 @@ extension String {
         }
         if !liveDevices.contains(where: { $0 === self }) { liveDevices.append(self) }
         let started = Date()
-        process.start({ info in
-            self.helloPID = info.pid
-            emit("hello", ["device": self.name, "pid": info.pid, "dylib": info.dylibPath, "build": info.buildID ?? "",
-                           "width": info.deviceInfo?.screenWidth ?? 0, "height": info.deviceInfo?.screenHeight ?? 0])
-            do { return try configuration(info.deviceInfo) }
-            catch {
-                self.preparationError = "\(error)"
-                emit("configurationFailed", ["device": self.name, "error": self.preparationError!])
-                return nil
+        process.start(
+            { info in
+                self.helloPID = info.pid
+                emit(
+                    "hello",
+                    [
+                        "device": self.name, "pid": info.pid, "dylib": info.dylibPath, "build": info.buildID ?? "",
+                        "width": info.deviceInfo?.screenWidth ?? 0, "height": info.deviceInfo?.screenHeight ?? 0,
+                    ]
+                )
+                do { return try configuration(info.deviceInfo) } catch {
+                    self.preparationError = "\(error)"
+                    emit("configurationFailed", ["device": self.name, "error": self.preparationError!])
+                    return nil
+                }
+            },
+            preparation: {
+                // This explicit fixture tests a missing boot configuration after
+                // real hello/lease, independently of stopped-format admission.
+                if config.preparationFailure == true { return }
+                let executable = URL(fileURLWithPath: config.firmwarekit ?? Self.helper)
+                let worker =
+                    config.firmwarekit == nil
+                    ? executable.deletingLastPathComponent().appendingPathComponent("firmwarekit") : executable
+                guard FileManager.default.isExecutableFile(atPath: worker.path) else {
+                    throw DeviceError.preflight("firmwarekit boot admission worker missing: \(worker.path)")
+                }
+                let changed = try await FirmwareTool.admitBoot(
+                    device: self.dir.resolvingSymlinksInPath(),
+                    managed: self.managedKey != nil,
+                    executable: worker
+                )
+                emit("bootAdmission", ["device": self.name, "changed": changed, "generation": generation])
             }
-        }, preparation: {
-            // This explicit fixture tests a missing boot configuration after
-            // real hello/lease, independently of stopped-format admission.
-            if config.preparationFailure == true { return }
-            let executable = URL(fileURLWithPath: config.firmwarekit ?? Self.helper)
-            let worker = config.firmwarekit == nil ? executable.deletingLastPathComponent().appendingPathComponent("firmwarekit") : executable
-            guard FileManager.default.isExecutableFile(atPath: worker.path) else {
-                throw DeviceError.preflight("firmwarekit boot admission worker missing: \(worker.path)")
-            }
-            let changed = try await FirmwareTool.admitBoot(device: self.dir.resolvingSymlinksInPath(), managed: self.managedKey != nil, executable: worker)
-            emit("bootAdmission", ["device": self.name, "changed": changed, "generation": generation])
-        }) { result in
+        ) { result in
             switch result {
-            case .success: emit("booted", ["device": self.name, "pid": process.link.pid, "seconds": Date().timeIntervalSince(started), "generation": generation])
-            case let .failure(error):
+            case .success:
+                emit(
+                    "booted",
+                    [
+                        "device": self.name, "pid": process.link.pid, "seconds": Date().timeIntervalSince(started),
+                        "generation": generation,
+                    ]
+                )
+            case .failure(let error):
                 self.bootError = self.preparationError ?? "\(error)"
                 emit("bootFailed", ["device": self.name, "error": self.bootError!])
             }
@@ -261,16 +369,31 @@ extension String {
         try FileManager.default.createDirectory(at: dir.deletingLastPathComponent(), withIntermediateDirectories: true)
         var record = guestRecord
         if record.seed == nil { record.seed = GuestPackage.lockRecord(lock)?.seed }
-        let offer = try GuestPackage.compose(itpack: URL(fileURLWithPath: itpack), board: board, build: lock?.build ?? "",
-                                             lock: GuestPackage.lockRecord(lock), guest: record, into: dir)
-        emit("offer", ["device": name, "serial": offer?.serial ?? -1, "seed": GuestPackage.lockRecord(lock)?.seed ?? -1,
-                       "lastGood": record.lastGood ?? -1])
+        let offer = try GuestPackage.compose(
+            itpack: URL(fileURLWithPath: itpack),
+            board: board,
+            build: lock?.build ?? "",
+            lock: GuestPackage.lockRecord(lock),
+            guest: record,
+            into: dir
+        )
+        emit(
+            "offer",
+            [
+                "device": name, "serial": offer?.serial ?? -1, "seed": GuestPackage.lockRecord(lock)?.seed ?? -1,
+                "lastGood": record.lastGood ?? -1,
+            ]
+        )
         return offer == nil ? nil : dir.path
     }
 
     /// The driver's device.plist `guest`: kept beside the overlay, so a device's later driver runs offer its verdicts.
     var guestRecord: DeviceInstance.Guest {
-        get { (try? Data(contentsOf: dir.appendingPathComponent("guest-record.json"))).flatMap { try? JSONDecoder().decode(DeviceInstance.Guest.self, from: $0) } ?? .init() }
+        get {
+            (try? Data(contentsOf: dir.appendingPathComponent("guest-record.json"))).flatMap {
+                try? JSONDecoder().decode(DeviceInstance.Guest.self, from: $0)
+            } ?? .init()
+        }
         set { try? JSONEncoder().encode(newValue).write(to: dir.appendingPathComponent("guest-record.json")) }
     }
 
@@ -289,8 +412,14 @@ extension String {
         guard let frame = process.link.frontSurface() else { return nil }
         let url = dir.appendingPathComponent("\(label).png")
         guard FrameTools.writePNG(frame.surface, to: url) else { return nil }
-        emit("screenshot", ["device": name, "path": url.path, "serial": frame.serial,
-                            "width": frame.surface.width, "height": frame.surface.height, "brightness": FrameTools.brightness(frame.surface)])
+        emit(
+            "screenshot",
+            [
+                "device": name, "path": url.path, "serial": frame.serial,
+                "width": frame.surface.width, "height": frame.surface.height,
+                "brightness": FrameTools.brightness(frame.surface),
+            ]
+        )
         return url.path
     }
 
@@ -302,7 +431,8 @@ extension String {
     func wakeForShot(_ label: String, floor: Double = 0.05, tries: Int = 5) async -> String? {
         for _ in 0..<tries {
             if (brightness() ?? 0) >= floor { break }
-            process.link.send(.button(0, down: true)); try? await Task.sleep(for: .milliseconds(150))
+            process.link.send(.button(0, down: true))
+            try? await Task.sleep(for: .milliseconds(150))
             process.link.send(.button(0, down: false))
             try? await Task.sleep(for: .seconds(2))
         }
@@ -313,7 +443,8 @@ extension String {
     /// miss (4.2.1's iPod, rejudge 09-29; 4.2.1's iPad first boot under host load, smoke #66), and the lock screen
     /// sleeps a few seconds after a miss, so each retry wakes the panel first (`unlockN-M.png`). Emits `unlock`.
     func slideToUnlock(_ generation: Int, agent: GuestAgent?) async {
-        var attempts = 0, locked: Bool?
+        var attempts = 0
+        var locked: Bool?
         for attempt in 0..<3 {
             if attempt > 0 { await wakeForShot("unlock\(generation)-\(attempt)") }
             if profile == .k48 { await drag(0.9365, 0.621, 0.9365, 0.0612) } else { await drag(0.18, 0.9, 0.92, 0.9) }
@@ -322,12 +453,16 @@ extension String {
             locked = try? await agent?.isLocked()
             guard locked == true else { break }
         }
-        emit("unlock", ["device": name, "generation": generation, "attempts": attempts, "locked": locked.map { $0 ? 1 : 0 } ?? -1])
+        emit(
+            "unlock",
+            ["device": name, "generation": generation, "attempts": attempts, "locked": locked.map { $0 ? 1 : 0 } ?? -1]
+        )
     }
 
     func drag(_ x0: Double, _ y0: Double, _ x1: Double, _ y1: Double) async {
         let link = process.link
-        link.send(.touch(slot: 0, phase: 0, x: x0, y: y0)); try? await Task.sleep(for: .milliseconds(150))
+        link.send(.touch(slot: 0, phase: 0, x: x0, y: y0))
+        try? await Task.sleep(for: .milliseconds(150))
         for i in 1...30 {
             let f = Double(i) / 30
             link.send(.touch(slot: 0, phase: 1, x: x0 + (x1 - x0) * f, y: y0 + (y1 - y0) * f))
@@ -339,7 +474,8 @@ extension String {
 
     /// A short tap (a drag holds long enough to start SpringBoard's icon editing).
     func tap(_ x: Double, _ y: Double) async {
-        process.link.send(.touch(slot: 0, phase: 0, x: x, y: y)); try? await Task.sleep(for: .milliseconds(80))
+        process.link.send(.touch(slot: 0, phase: 0, x: x, y: y))
+        try? await Task.sleep(for: .milliseconds(80))
         process.link.send(.touch(slot: 0, phase: 2, x: x, y: y))
     }
 
@@ -360,7 +496,10 @@ extension String {
             emit("lit", ["device": d.name, "seconds": Date().timeIntervalSince(start), "brightness": b])
             return
         }
-        if Date().timeIntervalSince(start) > seconds { d.screenshot("never-lit"); fail("\(d.name) never lit") }
+        if Date().timeIntervalSince(start) > seconds {
+            d.screenshot("never-lit")
+            fail("\(d.name) never lit")
+        }
         try? await Task.sleep(for: .milliseconds(250))
     }
 }
@@ -384,10 +523,18 @@ extension String {
     for attempt in 1...6 {
         do {
             let staged = try await d.services.stage(URL(fileURLWithPath: config.ipa)) { _ in }
-            try await d.services.install(URL(fileURLWithPath: config.ipa), staged: staged, bundleID: config.bundleID) { _, _ in }
+            try await d.services.install(URL(fileURLWithPath: config.ipa), staged: staged, bundleID: config.bundleID) {
+                _,
+                _ in
+            }
             let apps = try await d.services.installedApps()
-            emit("installed", ["device": d.name, "attempt": attempt, "seconds": Date().timeIntervalSince(start),
-                               "apps": apps.map(\.id), "has": apps.contains { $0.id == config.bundleID }])
+            emit(
+                "installed",
+                [
+                    "device": d.name, "attempt": attempt, "seconds": Date().timeIntervalSince(start),
+                    "apps": apps.map(\.id), "has": apps.contains { $0.id == config.bundleID },
+                ]
+            )
             return
         } catch {
             lastError = error.localizedDescription
@@ -415,7 +562,7 @@ extension String {
             if let path = d.screenshot("launched\(i + 1)") { event["shot\(i + 1)"] = path }
             if let f = try? await agent.frontmost() { event["frontmost\(i + 1)"] = f.bundleID }
         }
-        if let tap, tap.count >= 2 {   // a row of the launched app (Harness: "GL: rotating triangle"), two frames apart
+        if let tap, tap.count >= 2 {  // a row of the launched app (Harness: "GL: rotating triangle"), two frames apart
             await d.tap(tap[0], tap[1])
             try? await Task.sleep(for: .seconds(8))
             if let path = d.screenshot("gl1") { event["gl1"] = path }
@@ -430,7 +577,7 @@ extension String {
     d.screenshot("tip")
     await d.tap(0.5, 330.0 / 480)
     try? await Task.sleep(for: .seconds(2))
-    if let point, point.count >= 2 {   // [x, y, page]: page 1+ is a swipe left per page
+    if let point, point.count >= 2 {  // [x, y, page]: page 1+ is a swipe left per page
         target = (point[0], point[1])
         event["at"] = point
         for _ in 0..<Int(point.count > 2 ? point[2] : 0) {
@@ -454,7 +601,7 @@ extension String {
         try? await Task.sleep(for: .seconds(wait))
         if let path = d.screenshot("launched\(i + 1)") { event["shot\(i + 1)"] = path }
     }
-    if let tap, tap.count >= 2 {   // single.swift tapAfterLaunch (normalized portrait on the iPod)
+    if let tap, tap.count >= 2 {  // single.swift tapAfterLaunch (normalized portrait on the iPod)
         await d.tap(tap[0], tap[1])
         for i in 1...2 {
             try? await Task.sleep(for: .seconds(3))
@@ -462,7 +609,8 @@ extension String {
         }
     }
     emit("launched", event)
-    d.process.link.send(.button(0, down: true)); try? await Task.sleep(for: .milliseconds(150))
+    d.process.link.send(.button(0, down: true))
+    try? await Task.sleep(for: .milliseconds(150))
     d.process.link.send(.button(0, down: false))
     try? await Task.sleep(for: .seconds(3))
     d.screenshot("afterlaunch")
@@ -472,7 +620,9 @@ extension String {
 /// title's foreground app, the sidebar's launch) and the lock state.
 @MainActor func iPadGuest(_ d: Device) async {
     let start = Date()
-    while d.process.status?.guestPackage == nil, Date().timeIntervalSince(start) < 60 { try? await Task.sleep(for: .seconds(1)) }
+    while d.process.status?.guestPackage == nil, Date().timeIntervalSince(start) < 60 {
+        try? await Task.sleep(for: .seconds(1))
+    }
     let report = d.process.status?.guestPackage
     emit("ipadReport", ["serial": report?.serial ?? -1, "result": report?.result ?? -99])
     let agent = GuestAgent(link: d.process.link, cache: GuestAgentCache())
@@ -487,15 +637,20 @@ extension String {
         launched = try? await guest.foregroundAppName()
     }
     d.screenshot("ipad-launched")
-    emit("ipadAgent", ["alive": alive, "home": home ?? "", "locked": locked.map { $0 ? 1 : 0 } ?? -1, "launched": launched ?? ""])
+    emit(
+        "ipadAgent",
+        ["alive": alive, "home": home ?? "", "locked": locked.map { $0 ? 1 : 0 } ?? -1, "launched": launched ?? ""]
+    )
     // The app's key path (EmulatorController.sendKey -> .key -> the helper's usb-kbd): tap Safari's address
     // field (panel frame: portrait top is x≈0, portrait left is y≈1) and type "hello"; ipad-typed.png shows it.
     if launched == "Safari" {
         await d.drag(0.065, 0.55, 0.065, 0.55)
         try? await Task.sleep(for: .seconds(2))
-        for code in [4, 14, 37, 37, 31] {   // h e l l o (macOS virtual key codes)
-            d.process.link.send(.key(macKeyCode: code, down: true)); try? await Task.sleep(for: .milliseconds(80))
-            d.process.link.send(.key(macKeyCode: code, down: false)); try? await Task.sleep(for: .milliseconds(120))
+        for code in [4, 14, 37, 37, 31] {  // h e l l o (macOS virtual key codes)
+            d.process.link.send(.key(macKeyCode: code, down: true))
+            try? await Task.sleep(for: .milliseconds(80))
+            d.process.link.send(.key(macKeyCode: code, down: false))
+            try? await Task.sleep(for: .milliseconds(120))
         }
         try? await Task.sleep(for: .seconds(2))
         d.screenshot("ipad-typed")
@@ -506,45 +661,67 @@ extension String {
 
 func checkPreparedFiles() throws {
     let fm = FileManager.default
-    let base = work.appendingPathComponent("fake-base"), state = work.appendingPathComponent("fake-state")
+    let base = work.appendingPathComponent("fake-base")
+    let state = work.appendingPathComponent("fake-state")
     try fm.createDirectory(at: base.appendingPathComponent("nand"), withIntermediateDirectories: true)
     try Data("kboot".utf8).write(to: base.appendingPathComponent("kboot.bin"))
     let nor = Data((0..<1_048_576).map { UInt8($0 % 251) })
     try nor.write(to: base.appendingPathComponent("nor.bin"))
     for path in ["kboot.bin", "nor.bin", "nand", ""] {
-        try fm.setAttributes([.posixPermissions: path == "nand" || path == "" ? 0o555 : 0o444], ofItemAtPath: base.appendingPathComponent(path).path)
+        try fm.setAttributes(
+            [.posixPermissions: path == "nand" || path == "" ? 0o555 : 0o444],
+            ofItemAtPath: base.appendingPathComponent(path).path
+        )
     }
     let listing = { try fm.subpathsOfDirectory(atPath: base.path).sorted() }
     let before = try listing()
-    let overlay = state.appendingPathComponent("overlay"), clone = state.appendingPathComponent("nor.bin")
+    let overlay = state.appendingPathComponent("overlay")
+    let clone = state.appendingPathComponent("nor.bin")
     let files = try BootRecipe.preparedFiles(base: base, overlay: overlay, writableNOR: clone)
     let cloneMatches = try Data(contentsOf: clone) == nor
     let mode = (try fm.attributesOfItem(atPath: clone.path)[.posixPermissions] as! NSNumber).intValue
     let stamp = try fm.attributesOfItem(atPath: clone.path)[.modificationDate] as! Date
-    try Data("guest write".utf8).write(to: clone, options: [])   // owner-writable, as QEMU needs
+    try Data("guest write".utf8).write(to: clone, options: [])  // owner-writable, as QEMU needs
     _ = try BootRecipe.preparedFiles(base: base, overlay: overlay, writableNOR: clone)
     let kept = try Data(contentsOf: clone) == Data("guest write".utf8)
     var missingThrows = false
-    do { _ = try BootRecipe.preparedFiles(base: state, overlay: overlay, writableNOR: nil) } catch { missingThrows = true }
-    emit("preparedFiles", ["kboot": files.boot.path == base.appendingPathComponent("kboot.bin").path,
-                           "nand": files.nand.path == base.appendingPathComponent("nand").path,
-                           "overlay": fm.fileExists(atPath: overlay.path), "cloneMode": mode, "cloneMatches": cloneMatches,
-                           "secondBootKeeps": kept, "stamp": stamp.timeIntervalSince1970, "missingThrows": missingThrows,
-                           "baseUntouched": try listing() == before && (try Data(contentsOf: base.appendingPathComponent("nor.bin"))) == nor])
+    do { _ = try BootRecipe.preparedFiles(base: state, overlay: overlay, writableNOR: nil) } catch {
+        missingThrows = true
+    }
+    emit(
+        "preparedFiles",
+        [
+            "kboot": files.boot.path == base.appendingPathComponent("kboot.bin").path,
+            "nand": files.nand.path == base.appendingPathComponent("nand").path,
+            "overlay": fm.fileExists(atPath: overlay.path), "cloneMode": mode, "cloneMatches": cloneMatches,
+            "secondBootKeeps": kept, "stamp": stamp.timeIntervalSince1970, "missingThrows": missingThrows,
+            "baseUntouched": try listing() == before
+                && (try Data(contentsOf: base.appendingPathComponent("nor.bin"))) == nor,
+        ]
+    )
 }
 
 // MARK: - Scenario
 
 @MainActor func run() async {
     do { try checkPreparedFiles() } catch { fail("prepared files: \(error)") }
-    let ipod = Device(name: "ipod", profile: .n72), ipad = Device(name: "ipad", profile: .k48)
-    do { try ipod.boot(generation: 1); try ipad.boot(generation: 1) } catch { fail("boot: \(error)") }
+    let ipod = Device(name: "ipod", profile: .n72)
+    let ipad = Device(name: "ipad", profile: .k48)
+    do {
+        try ipod.boot(generation: 1)
+        try ipad.boot(generation: 1)
+    } catch { fail("boot: \(error)") }
     async let a: Void = waitLit(ipod, 0.03, 240)
     async let b: Void = waitLit(ipad, 0.2, 240)
     _ = await (a, b)
     // Both helpers are live at once, and distinct.
-    emit("concurrent", ["ipodPID": ipod.process.link.pid, "ipadPID": ipad.process.link.pid,
-                        "ipodHeartbeat": ipod.process.status?.heartbeat ?? 0, "ipadHeartbeat": ipad.process.status?.heartbeat ?? 0])
+    emit(
+        "concurrent",
+        [
+            "ipodPID": ipod.process.link.pid, "ipadPID": ipad.process.link.pid,
+            "ipodHeartbeat": ipod.process.status?.heartbeat ?? 0, "ipadHeartbeat": ipad.process.status?.heartbeat ?? 0,
+        ]
+    )
     // USB first: lockdown answering means SpringBoard is up (a lit boot logo doesn't).
     // Each socket must reach its own device.
     async let s1: Void = waitUSB(ipod, expecting: "iPod2,1", 240)
@@ -552,38 +729,54 @@ func checkPreparedFiles() throws {
     _ = await (s1, s2)
     // Wake the iPod (its display may have slept while it booted), then input to each:
     // the lock screen sliders (tests/sessions/check-helper-boot.py).
-    ipod.process.link.send(.button(0, down: true)); try? await Task.sleep(for: .milliseconds(150))
+    ipod.process.link.send(.button(0, down: true))
+    try? await Task.sleep(for: .milliseconds(150))
     ipod.process.link.send(.button(0, down: false))
     try? await Task.sleep(for: .seconds(3))
-    ipod.screenshot("ipod-lock"); ipad.screenshot("ipad-lock")
+    ipod.screenshot("ipod-lock")
+    ipad.screenshot("ipad-lock")
     async let u1: Void = ipod.drag(0.18, 0.9, 0.92, 0.9)
     async let u2: Void = ipad.drag(0.9365, 0.621, 0.9365, 0.0612)
     _ = await (u1, u2)
     try? await Task.sleep(for: .seconds(5))
-    ipod.screenshot("ipod-home"); ipad.screenshot("ipad-home")
+    ipod.screenshot("ipod-home")
+    ipad.screenshot("ipad-home")
 
     // One IPA into each at once: the gate serializes them and points each at its own daemon.
     async let i1: Void = install(ipod)
     async let i2: Void = install(ipad)
     _ = await (i1, i2)
-    ipod.screenshot("ipod-installed"); ipad.screenshot("ipad-installed")
+    ipod.screenshot("ipod-installed")
+    ipad.screenshot("ipad-installed")
     if config.ipadItpack != nil { await iPadGuest(ipad) }
 
     // kill -9 the iPad's helper: it dies, the iPod doesn't notice.
     let killedPID = ipad.process.link.pid
-    let beat0 = ipod.process.status?.heartbeat ?? 0, frames0 = ipod.process.status?.frameSerial ?? 0
+    let beat0 = ipod.process.status?.heartbeat ?? 0
+    let frames0 = ipod.process.status?.frameSerial ?? 0
     kill(killedPID, SIGKILL)
     let killed = Date()
     while !ipad.process.isDead, Date().timeIntervalSince(killed) < 5 { try? await Task.sleep(for: .milliseconds(10)) }
-    emit("killed", ["device": "ipad", "pid": killedPID, "noticed": ipad.process.isDead,
-                    "seconds": Date().timeIntervalSince(killed), "reason": ipad.process.deathReason ?? ""])
-    ipod.process.link.send(.button(0, down: true)); try? await Task.sleep(for: .milliseconds(150))
+    emit(
+        "killed",
+        [
+            "device": "ipad", "pid": killedPID, "noticed": ipad.process.isDead,
+            "seconds": Date().timeIntervalSince(killed), "reason": ipad.process.deathReason ?? "",
+        ]
+    )
+    ipod.process.link.send(.button(0, down: true))
+    try? await Task.sleep(for: .milliseconds(150))
     ipod.process.link.send(.button(0, down: false))
     try? await Task.sleep(for: .seconds(3))
     let ipodType = await ipod.productType()
-    emit("survivor", ["device": "ipod", "dead": ipod.process.isDead,
-                      "heartbeat": (ipod.process.status?.heartbeat ?? 0) - beat0,
-                      "frames": (ipod.process.status?.frameSerial ?? 0) - frames0, "productType": ipodType ?? ""])
+    emit(
+        "survivor",
+        [
+            "device": "ipod", "dead": ipod.process.isDead,
+            "heartbeat": (ipod.process.status?.heartbeat ?? 0) - beat0,
+            "frames": (ipod.process.status?.frameSerial ?? 0) - frames0, "productType": ipodType ?? "",
+        ]
+    )
     ipod.screenshot("ipod-after-kill")
 
     // Restart: as DeviceSessionHost.restart, a fresh helper (and usbmuxd) on the same overlay.
@@ -600,12 +793,21 @@ func checkPreparedFiles() throws {
     // Stop both through SIGTERM and the bounded helper halt, as GUI Stop does.
     // Semantic guest shutdown (system_powerdown) is a separate regression contract.
     let quit = Date()
-    ipod.process.terminate(); ipad.process.terminate()
-    let exited0 = await ipod.process.waitForExit(timeout: 10), exited1 = await ipad.process.waitForExit(timeout: 10)
-    emit("quit", ["ipodExited": exited0, "ipadExited": exited1, "seconds": Date().timeIntervalSince(quit),
-                  "ipodReason": ipod.process.deathReason ?? "", "ipadReason": ipad.process.deathReason ?? ""])
-    ipod.mux.stop(); ipad.mux.stop()
-    ipod.serial?.finish(); ipad.serial?.finish()
+    ipod.process.terminate()
+    ipad.process.terminate()
+    let exited0 = await ipod.process.waitForExit(timeout: 10)
+    let exited1 = await ipad.process.waitForExit(timeout: 10)
+    emit(
+        "quit",
+        [
+            "ipodExited": exited0, "ipadExited": exited1, "seconds": Date().timeIntervalSince(quit),
+            "ipodReason": ipod.process.deathReason ?? "", "ipadReason": ipad.process.deathReason ?? "",
+        ]
+    )
+    ipod.mux.stop()
+    ipad.mux.stop()
+    ipod.serial?.finish()
+    ipad.serial?.finish()
     emit("done")
     exit(0)
 }
@@ -614,11 +816,17 @@ func checkPreparedFiles() throws {
 @MainActor func runPreparationFailure() async {
     let d = Device(name: "preparation-failure", profile: .n72)
     let missing = work.appendingPathComponent("missing-nor.bin")
-    d.ipod = .init(nand: work.appendingPathComponent("missing-nand").path,
-                   nor: missing.path, iBoot: "unused")
+    d.ipod = .init(
+        nand: work.appendingPathComponent("missing-nand").path,
+        nor: missing.path,
+        iBoot: "unused"
+    )
     do { try d.boot(generation: 1) } catch { fail("preparation scenario could not start: \(error)") }
     let exited = await d.process.waitForExit(timeout: 20)
-    if !exited { d.process.kill(); _ = await d.process.waitForExit(timeout: 5) }
+    if !exited {
+        d.process.kill()
+        _ = await d.process.waitForExit(timeout: 5)
+    }
     d.mux.stop()
     d.serial?.finish()
     guard exited, let pid = d.helloPID else { fail("helper did not reach hello and reap after preparation failure") }
@@ -626,8 +834,11 @@ func checkPreparedFiles() throws {
     errno = 0
     guard waitpid(pid, &status, WNOHANG) == -1, errno == ECHILD else { fail("owned helper was not reaped") }
     guard let original = d.preparationError, d.bootError == original,
-          !original.isEmpty, original != "not booted" else { fail("original preparation diagnostic lost") }
-    guard d.deaths.count == 1, d.process.link.pid == 0, !d.mux.process.isRunning else { fail("owned process cleanup incomplete") }
+        !original.isEmpty, original != "not booted"
+    else { fail("original preparation diagnostic lost") }
+    guard d.deaths.count == 1, d.process.link.pid == 0, !d.mux.process.isRunning else {
+        fail("owned process cleanup incomplete")
+    }
     let lease = d.dir.appendingPathComponent("work/lease")
     let fd = open(lease.path, O_RDWR)
     guard fd >= 0 else { fail("helper lease missing") }
@@ -636,8 +847,13 @@ func checkPreparedFiles() throws {
     guard acquired else { fail("reaped helper still owns storage lease") }
     let overlay = d.dir.appendingPathComponent("overlay")
     let entries = (try? FileManager.default.contentsOfDirectory(atPath: overlay.path)) ?? []
-    guard entries.isEmpty, !FileManager.default.fileExists(atPath: missing.path) else { fail("preparation failure published storage files") }
-    emit("preparationFailureVerified", ["pid": pid, "error": original, "reaped": true, "leaseReleased": true, "guestStarted": false])
+    guard entries.isEmpty, !FileManager.default.fileExists(atPath: missing.path) else {
+        fail("preparation failure published storage files")
+    }
+    emit(
+        "preparationFailureVerified",
+        ["pid": pid, "error": original, "reaped": true, "leaseReleased": true, "guestStarted": false]
+    )
     exit(0)
 }
 
@@ -664,31 +880,51 @@ func checkPreparedFiles() throws {
         let intent = lease.deletingLastPathComponent().appendingPathComponent("edit.json")
         if name == "pending" { try! Data("unfinished-edit".utf8).write(to: intent) }
         let capture = try! ProcessLogCapture(url: work.appendingPathComponent("\(name).log"))
-        let process = makeProcess(profile: .n72, log: capture, lease: lease,
-            helper: URL(fileURLWithPath: config.helper), requirement: config.requirement)
+        let process = makeProcess(
+            profile: .n72,
+            log: capture,
+            lease: lease,
+            helper: URL(fileURLWithPath: config.helper),
+            requirement: config.requirement
+        )
         var hello = false
         var completionError: DeviceLinkError?
         var deaths = 0
         process.onDeath = { _ in deaths += 1 }
-        process.start({ _ in hello = true; return nil }) { result in
-            if case let .failure(error) = result { completionError = error }
-            else { fail("lease test unexpectedly booted") }
+        process.start({ _ in
+            hello = true
+            return nil
+        }) { result in
+            if case .failure(let error) = result {
+                completionError = error
+            } else {
+                fail("lease test unexpectedly booted")
+            }
         }
         let pid = process.link.pid
         let exited = await process.waitForExit(timeout: 20)
-        if !exited { process.kill(); _ = await process.waitForExit(timeout: 5) }
+        if !exited {
+            process.kill()
+            _ = await process.waitForExit(timeout: 5)
+        }
         var status: Int32 = 0
         errno = 0
         let reaped = pid > 0 && waitpid(pid, &status, WNOHANG) == -1 && errno == ECHILD
         let expected: DeviceLinkError = .helperFailure(admitted ? "not booted" : DeviceLinkWire.leaseRefusal)
         guard exited, reaped, deaths == 1, process.link.pid == 0,
-              hello == admitted, completionError == expected else {
-            fail("\(name) lease: expected admission \(admitted), hello \(hello), error \(String(describing: completionError)), reaped \(reaped)")
+            hello == admitted, completionError == expected
+        else {
+            fail(
+                "\(name) lease: expected admission \(admitted), hello \(hello), error \(String(describing: completionError)), reaped \(reaped)"
+            )
         }
         if name == "busy" || name == "pending" {
-            let diagnostic = (try? String(contentsOf: work.appendingPathComponent("\(name).log"), encoding: .utf8)) ?? ""
+            let diagnostic =
+                (try? String(contentsOf: work.appendingPathComponent("\(name).log"), encoding: .utf8)) ?? ""
             let reason = name == "busy" ? "is held" : "unfinished storage edit"
-            guard diagnostic.contains(reason) else { fail("\(name) lease missed actual helper diagnostic: \(diagnostic)") }
+            guard diagnostic.contains(reason) else {
+                fail("\(name) lease missed actual helper diagnostic: \(diagnostic)")
+            }
         }
         if admitted {
             let fd = open(lease.path, O_RDWR | O_NOFOLLOW)
@@ -699,12 +935,19 @@ func checkPreparedFiles() throws {
         }
         guard (try? Data(contentsOf: target)) == sentinel else { fail("lease symlink target mutated") }
         if name == "pending" {
-            guard (try? Data(contentsOf: intent)) == Data("unfinished-edit".utf8) else { fail("helper mutated pending intent") }
+            guard (try? Data(contentsOf: intent)) == Data("unfinished-edit".utf8) else {
+                fail("helper mutated pending intent")
+            }
             try! fm.removeItem(at: intent)
         }
         withExtendedLifetime((held, capture)) {}
-        emit("leaseAdmissionVerified", ["case": name, "admitted": admitted, "hello": hello,
-            "reaped": reaped, "targetUnchanged": true, "guestStarted": false])
+        emit(
+            "leaseAdmissionVerified",
+            [
+                "case": name, "admitted": admitted, "hello": hello,
+                "reaped": reaped, "targetUnchanged": true, "guestStarted": false,
+            ]
+        )
     }
     exit(0)
 }
@@ -712,14 +955,24 @@ func checkPreparedFiles() throws {
 @MainActor func runKillBeforeBoot() async {
     let capture = try! ProcessLogCapture(url: work.appendingPathComponent("kill-before-boot.log"))
     let lease = work.appendingPathComponent("device/work/lease")
-    let process = makeProcess(profile: .n72, log: capture, lease: lease,
-        helper: URL(fileURLWithPath: config.helper), requirement: config.requirement)
-    var configured = false, completions = 0, deaths = 0
+    let process = makeProcess(
+        profile: .n72,
+        log: capture,
+        lease: lease,
+        helper: URL(fileURLWithPath: config.helper),
+        requirement: config.requirement
+    )
+    var configured = false
+    var completions = 0
+    var deaths = 0
     process.onDeath = { death in
         guard death == .stopped else { fail("kill before boot classified as \(death)") }
         deaths += 1
     }
-    process.start({ _ in configured = true; return nil }) { result in
+    process.start({ _ in
+        configured = true
+        return nil
+    }) { result in
         completions += 1
         guard case .failure(.closed) = result else { fail("kill before boot completion: \(result)") }
     }
@@ -732,28 +985,53 @@ func checkPreparedFiles() throws {
     errno = 0
     let reaped = waitpid(pid, &status, WNOHANG) == -1 && errno == ECHILD
     guard exited, reaped, completions == 1, deaths == 1, !configured, process.link.pid == 0 else {
-        fail("kill-before-boot: exit \(exited), reap \(reaped), completions \(completions), deaths \(deaths), configure \(configured)")
+        fail(
+            "kill-before-boot: exit \(exited), reap \(reaped), completions \(completions), deaths \(deaths), configure \(configured)"
+        )
     }
-    let next = try! StorageLease(lease); next.close()
-    emit("killBeforeBootVerified", ["pid": pid, "configured": configured, "completions": completions,
-                                   "deaths": deaths, "reaped": reaped, "guestStarted": false])
+    let next = try! StorageLease(lease)
+    next.close()
+    emit(
+        "killBeforeBootVerified",
+        [
+            "pid": pid, "configured": configured, "completions": completions,
+            "deaths": deaths, "reaped": reaped, "guestStarted": false,
+        ]
+    )
     exit(0)
 }
 
 Task { @MainActor in
-    if config.killBeforeBoot == true { await runKillBeforeBoot() }
-    else if config.leaseAdmission == true { await runLeaseAdmission() }
-    else if config.preparationFailure == true { await runPreparationFailure() }
-    else if let guest = config.guest { await runGuest(guest) } else if let single = config.single { await runSingle(single) }
-    else if let activation = config.activation { await runActivation(activation) }
-    else if let deadline = config.deadline { await runDeadline(deadline) }
-    else if let proxy = config.proxy { await runProxy(proxy) } else { await run() }
+    if config.killBeforeBoot == true {
+        await runKillBeforeBoot()
+    } else if config.leaseAdmission == true {
+        await runLeaseAdmission()
+    } else if config.preparationFailure == true {
+        await runPreparationFailure()
+    } else if let guest = config.guest {
+        await runGuest(guest)
+    } else if let single = config.single {
+        await runSingle(single)
+    } else if let activation = config.activation {
+        await runActivation(activation)
+    } else if let deadline = config.deadline {
+        await runDeadline(deadline)
+    } else if let proxy = config.proxy {
+        await runProxy(proxy)
+    } else {
+        await run()
+    }
 }
 DispatchQueue.main.asyncAfter(deadline: .now() + (config.timeout ?? 560)) { fail("driver timed out") }
 CFRunLoopRun()
 
-@MainActor private func makeProcess(profile: Board, log: ProcessLogCapture, lease: URL,
-                                    helper: URL, requirement: String?) -> DeviceSessionProcess {
+@MainActor private func makeProcess(
+    profile: Board,
+    log: ProcessLogCapture,
+    lease: URL,
+    helper: URL,
+    requirement: String?
+) -> DeviceSessionProcess {
     var configuration = DeviceLink.Configuration(instance: UUID(), outputDescriptor: log.writeDescriptor)
     configuration.board = profile.rawValue
     configuration.helper = helper

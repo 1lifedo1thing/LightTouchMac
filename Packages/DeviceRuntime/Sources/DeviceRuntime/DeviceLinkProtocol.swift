@@ -1,4 +1,6 @@
+import Foundation
 import HostRuntime
+
 // The app <-> LightTouchDevice wire protocol.
 //
 // Control travels over a socketpair (the helper's end is fd 3) as length-framed
@@ -7,8 +9,6 @@ import HostRuntime
 // whose Mach ports arrive in the rendezvous hello (DeviceRendezvous.swift).
 //
 // Imported by the GUI, helper and standalone clients through DeviceRuntime.
-
-import Foundation
 
 nonisolated public enum DeviceLinkWire {
     /// Bumped on any incompatible change to the messages below, the status block
@@ -138,7 +138,15 @@ nonisolated public struct HelperInfo: Codable, Sendable, Equatable {
     public var deviceInfo: DeviceInfo?
     /// The helper rechecks admitted storage under its lease before boot.
     public var storageProofValidation: Bool?
-    public init(protocolVersion: Int, pid: Int32, dylibPath: String, dylibModified: Double, buildID: String? = nil, deviceInfo: DeviceInfo? = nil, storageProofValidation: Bool? = nil) {
+    public init(
+        protocolVersion: Int,
+        pid: Int32,
+        dylibPath: String,
+        dylibModified: Double,
+        buildID: String? = nil,
+        deviceInfo: DeviceInfo? = nil,
+        storageProofValidation: Bool? = nil
+    ) {
         self.protocolVersion = protocolVersion
         self.pid = pid
         self.dylibPath = dylibPath
@@ -161,18 +169,25 @@ nonisolated public enum DeviceLinkWireError: Error, Equatable {
 /// Reads run on a dispatch read source; writes go through a private serial
 /// queue, so a wedged peer can never block the caller (the app's main thread).
 /// `onClose` fires once: EOF, a read error, or a protocol violation.
-nonisolated public final class LinkChannel<Incoming: Decodable & SendableMetatype, Outgoing: Encodable & SendableMetatype>: @unchecked Sendable {
+nonisolated public final class LinkChannel<
+    Incoming: Decodable & SendableMetatype,
+    Outgoing: Encodable & SendableMetatype
+>: @unchecked Sendable {
     public let fd: Int32
     private let source: DispatchSourceRead
     private let writeQueue: DispatchQueue
     private let queue: DispatchQueue
     private var buffer = Data()
-    private var closed = false          // on `queue`
+    private var closed = false  // on `queue`
     private let lock = NSLock()
-    private var writeFailed = false     // under lock
+    private var writeFailed = false  // under lock
 
-    public init(fd: Int32, queue: DispatchQueue, onMessage: @escaping (Incoming) -> Void,
-         onClose: @escaping (Error?) -> Void) {
+    public init(
+        fd: Int32,
+        queue: DispatchQueue,
+        onMessage: @escaping (Incoming) -> Void,
+        onClose: @escaping (Error?) -> Void
+    ) {
         self.fd = fd
         self.queue = queue
         self.onMessage = onMessage
@@ -187,7 +202,10 @@ nonisolated public final class LinkChannel<Incoming: Decodable & SendableMetatyp
             var chunk = [UInt8](repeating: 0, count: 65536)
             let n = read(fd, &chunk, chunk.count)
             if n < 0, errno == EAGAIN || errno == EINTR { return }
-            if n <= 0 { finish(n == 0 ? nil : POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)); return }
+            if n <= 0 {
+                finish(n == 0 ? nil : POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO))
+                return
+            }
             buffer.append(contentsOf: chunk[0..<n])
             deliverFrames()
         }
@@ -243,9 +261,15 @@ nonisolated public final class LinkChannel<Incoming: Decodable & SendableMetatyp
     public func send(_ message: Outgoing) -> Bool {
         guard let frame = try? Self.frame(message) else { return false }
         writeQueue.async { [self] in
-            lock.lock(); let failed = writeFailed; lock.unlock()
+            lock.lock()
+            let failed = writeFailed
+            lock.unlock()
             guard !failed else { return }
-            if !Self.writeAll(fd, frame) { lock.lock(); writeFailed = true; lock.unlock() }
+            if !Self.writeAll(fd, frame) {
+                lock.lock()
+                writeFailed = true
+                lock.unlock()
+            }
         }
         return true
     }
@@ -309,22 +333,27 @@ nonisolated public struct VirtualInputEvent: Codable, Sendable, Equatable {
     }
     public static func valid(_ events: [Self]) -> Bool {
         guard !events.isEmpty, events.count <= 256 else { return false }
-        var buttons = [Bool](repeating: false, count: 4), touch = false
+        var buttons = [Bool](repeating: false, count: 4)
+        var touch = false
         var previous: Int64 = 0
         for event in events {
             guard event.atMilliseconds >= previous, event.atMilliseconds <= 600_000 else { return false }
             previous = event.atMilliseconds
             if event.kind == 0 {
                 guard (0...3).contains(event.value), (0...1).contains(event.phase),
-                      buttons[Int(event.value)] != (event.phase == 1) else { return false }
+                    buttons[Int(event.value)] != (event.phase == 1)
+                else { return false }
                 buttons[Int(event.value)] = event.phase == 1
             } else if event.kind == 1 {
                 guard event.value == 0, (0...2).contains(event.phase),
-                      event.x.isFinite, event.y.isFinite,
-                      (0...1).contains(event.x), (0...1).contains(event.y),
-                      event.phase == 0 ? !touch : touch else { return false }
+                    event.x.isFinite, event.y.isFinite,
+                    (0...1).contains(event.x), (0...1).contains(event.y),
+                    event.phase == 0 ? !touch : touch
+                else { return false }
                 touch = event.phase != 2
-            } else { return false }
+            } else {
+                return false
+            }
         }
         return !touch && !buttons.contains(true)
     }

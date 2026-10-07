@@ -22,12 +22,19 @@ public nonisolated final class HeldLease: Sendable {
             case .openFailed(let code): log("lease \(path): \(String(cString: strerror(code)))")
             case .inUse: log("lease \(path) is held")
             case .pendingEdit:
-                log("unfinished storage edit \(URL(fileURLWithPath: path).deletingLastPathComponent().appendingPathComponent("edit.json").path); resolve it before booting")
+                log(
+                    "unfinished storage edit \(URL(fileURLWithPath: path).deletingLastPathComponent().appendingPathComponent("edit.json").path); resolve it before booting"
+                )
             }
         } catch { log("lease \(path): \(error.localizedDescription)") }
         return false
     }
 
     /// Give the lease up (tests; a helper keeps it until it exits).
-    public func release() { held.withLock { $0?.close(); $0 = nil } }
+    public func release() {
+        held.withLock {
+            $0?.close()
+            $0 = nil
+        }
+    }
 }

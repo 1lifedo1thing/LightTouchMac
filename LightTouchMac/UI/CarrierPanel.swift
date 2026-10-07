@@ -2,9 +2,9 @@
 // Network settings are the device's (EmulatorController.carrierSettings, applied at every boot); calls and SMS go
 // straight to the modem (qemu-ios ios-baseband's actions), and its state is polled once a second while visible.
 
-import LightTouchCore
 import Cocoa
 import HostRuntime
+import LightTouchCore
 import SwiftUI
 
 extension EmulatorController: CarrierBackend {}
@@ -31,12 +31,24 @@ struct CarrierPanel: View {
                         Text("Applying…").foregroundStyle(.secondary)
                     }
                 }
-                Toggle("Registered", isOn: Binding(get: { model.settings.registered }, set: { model.set(registered: $0) }))
-                Toggle("SIM Present", isOn: Binding(get: { model.settings.simPresent }, set: { model.set(simPresent: $0) }))
+                Toggle(
+                    "Registered",
+                    isOn: Binding(get: { model.settings.registered }, set: { model.set(registered: $0) })
+                )
+                Toggle(
+                    "SIM Present",
+                    isOn: Binding(get: { model.settings.simPresent }, set: { model.set(simPresent: $0) })
+                )
                 LabeledContent("Signal") {
                     HStack {
-                        Slider(value: Binding(get: { Double(model.settings.bars) }, set: { model.set(bars: Int($0.rounded())) }),
-                               in: 0...5, step: 1)
+                        Slider(
+                            value: Binding(
+                                get: { Double(model.settings.bars) },
+                                set: { model.set(bars: Int($0.rounded())) }
+                            ),
+                            in: 0...5,
+                            step: 1
+                        )
                         Text("\(model.settings.bars) bars").monospacedDigit().foregroundStyle(.secondary)
                     }
                 }
@@ -57,7 +69,10 @@ struct CarrierPanel: View {
                         .help("The other end ends the call, ringing or connected")
                 }
                 LabeledContent("State", value: model.callState.capitalized)
-                LabeledContent("Last Dialed", value: model.status?.lastDialed.isEmpty == false ? model.status!.lastDialed : "—")
+                LabeledContent(
+                    "Last Dialed",
+                    value: model.status?.lastDialed.isEmpty == false ? model.status!.lastDialed : "—"
+                )
             }
             Section("SMS") {
                 TextField("From", text: $model.smsNumber)
@@ -110,18 +125,26 @@ struct CarrierPanel: View {
 }
 
 #if DEBUG
-@MainActor private final class PreviewBackend: CarrierBackend {
-    var carrierSettings = CarrierSettings()
-    func setCarrierSettings(_ settings: CarrierSettings) -> Bool { carrierSettings = settings; return true }
-    func modem(_ property: String, _ value: String, done: @escaping @MainActor (Bool) -> Void) { done(true) }
-    func modemStatus(_ done: @escaping @MainActor (ModemStatus?) -> Void) {
-        done(ModemStatus(json: #"{"carrier": "LightTouch", "mcc-mnc": "00101", "call-state": "incoming", "last-dialed": "15555550123", "#
-            + #""last-mo-sms": "15555550100|On my way", "registered": true, "sim-present": true, "signal-dbm": -63, "mo-sms-count": 1}"#))
+    @MainActor private final class PreviewBackend: CarrierBackend {
+        var carrierSettings = CarrierSettings()
+        func setCarrierSettings(_ settings: CarrierSettings) -> Bool {
+            carrierSettings = settings
+            return true
+        }
+        func modem(_ property: String, _ value: String, done: @escaping @MainActor (Bool) -> Void) { done(true) }
+        func modemStatus(_ done: @escaping @MainActor (ModemStatus?) -> Void) {
+            done(
+                ModemStatus(
+                    json:
+                        #"{"carrier": "LightTouch", "mcc-mnc": "00101", "call-state": "incoming", "last-dialed": "15555550123", "#
+                        + #""last-mo-sms": "15555550100|On my way", "registered": true, "sim-present": true, "signal-dbm": -63, "mo-sms-count": 1}"#
+                )
+            )
+        }
     }
-}
 
-#Preview("Carrier") {
-    CarrierPanel(model: CarrierPanelModel(backend: PreviewBackend()))
-        .frame(width: 380, height: 640)
-}
+    #Preview("Carrier") {
+        CarrierPanel(model: CarrierPanelModel(backend: PreviewBackend()))
+            .frame(width: 380, height: 640)
+    }
 #endif

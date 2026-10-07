@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import FirmwareKit
 
 /// Oracle plumbing for the HFS+ tests: the Python in Oracle.qemuIOS/imgtools, run on temp copies.
@@ -9,15 +10,21 @@ enum HFSOracle {
 
     /// python3 -c SCRIPT ARGS..., with imgtools importable; stdout.
     static func python(_ script: String, _ args: [String]) throws -> Data {
-        let p = Process(), out = Pipe(), err = Pipe()
+        let p = Process()
+        let out = Pipe()
+        let err = Pipe()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        p.arguments = ["python3", "-c", "import sys; sys.path.insert(0, \(String(reflecting: imgtools.path)))\n" + script] + args
+        p.arguments =
+            ["python3", "-c", "import sys; sys.path.insert(0, \(String(reflecting: imgtools.path)))\n" + script] + args
         p.standardOutput = out
         p.standardError = err
         try p.run()
-        let o = out.fileHandleForReading.readDataToEndOfFile(), e = err.fileHandleForReading.readDataToEndOfFile()
+        let o = out.fileHandleForReading.readDataToEndOfFile()
+        let e = err.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
-        guard p.terminationStatus == 0 else { throw FirmwareError(.internal, "python: \(String(decoding: e, as: UTF8.self))") }
+        guard p.terminationStatus == 0 else {
+            throw FirmwareError(.internal, "python: \(String(decoding: e, as: UTF8.self))")
+        }
         return o
     }
 
@@ -104,20 +111,36 @@ enum HFSOracle {
 @Suite(.serialized) struct HFSPlusTests {
     /// Every catalog path, owner, mode, flags, size, content sha256 and symlink target against a listing of
     /// the same image through hdiutil mounts, and the (parent, name) -> CNID index against setowner.py.
-    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"), arguments: HFSOracle.ipads) func readerMatchesMountAndSetowner(_ fw: Oracle.Firmware) async throws {
+    @Test(
+        .enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"),
+        arguments: HFSOracle.ipads
+    ) func readerMatchesMountAndSetowner(_ fw: Oracle.Firmware) async throws {
         try await Oracle.withTemp { dir in
-            guard HFSOracle.available, let raw = try await HFSOracle.rawSystem(fw, in: dir) else { try FixtureRequirements.missing(#"HFSPlusTests.swift: HFSOracle.available, let raw = try await HFSOracle.rawSystem(fw, in: dir)"#) }
+            guard HFSOracle.available, let raw = try await HFSOracle.rawSystem(fw, in: dir) else {
+                try FixtureRequirements.missing(
+                    #"HFSPlusTests.swift: HFSOracle.available, let raw = try await HFSOracle.rawSystem(fw, in: dir)"#
+                )
+            }
             let vol = try HFSPlusVolume(raw)
             #expect(vol.signature == "HX" && vol.blockSize == 8192)
             let mine = try Oracle.time("HFSPlus listing \(fw.entryID)") { try vol.listing() }
-            let walked = try JSONSerialization.jsonObject(with: HFSOracle.python(HFSOracle.walk, [raw.path])) as! [String: [Any]]
+            let walked =
+                try JSONSerialization.jsonObject(with: HFSOracle.python(HFSOracle.walk, [raw.path])) as! [String: [Any]]
             #expect(mine.count == walked.count)
             var diffs: [String] = []
             for e in mine {
-                guard let w = walked[e.path] else { diffs.append("only in the catalog: \(e.path)"); continue }
-                let uid = w[0] as? Int, gid = w[1] as? Int
-                if let uid, let gid, (uid, gid) != (Int(e.uid), Int(e.gid)) { diffs.append("\(e.path): owner \(e.uid):\(e.gid) vs \(uid):\(gid)") }
-                if w[2] as? Int != Int(e.mode) { diffs.append("\(e.path): mode \(String(e.mode, radix: 8)) vs \(String(w[2] as! Int, radix: 8))") }
+                guard let w = walked[e.path] else {
+                    diffs.append("only in the catalog: \(e.path)")
+                    continue
+                }
+                let uid = w[0] as? Int
+                let gid = w[1] as? Int
+                if let uid, let gid, (uid, gid) != (Int(e.uid), Int(e.gid)) {
+                    diffs.append("\(e.path): owner \(e.uid):\(e.gid) vs \(uid):\(gid)")
+                }
+                if w[2] as? Int != Int(e.mode) {
+                    diffs.append("\(e.path): mode \(String(e.mode, radix: 8)) vs \(String(w[2] as! Int, radix: 8))")
+                }
                 if w[3] as? Int != Int(e.flags) { diffs.append("\(e.path): flags \(e.flags) vs \(w[3])") }
                 if w[4] as? Int != Int(e.size) { diffs.append("\(e.path): size \(e.size) vs \(w[4])") }
                 if let s = w[5] as? String, s != e.sha256 { diffs.append("\(e.path): sha256") }
@@ -125,7 +148,8 @@ enum HFSOracle {
             }
             #expect(diffs.isEmpty, "\(diffs.prefix(20))")
 
-            let py = try JSONSerialization.jsonObject(with: HFSOracle.python(HFSOracle.index, [raw.path])) as! [String: Int]
+            let py =
+                try JSONSerialization.jsonObject(with: HFSOracle.python(HFSOracle.index, [raw.path])) as! [String: Int]
             let idx = try vol.index()
             #expect(py.count == idx.count)
             #expect(idx.allSatisfy { py["\($0.key.parent)/\($0.key.name)"] == Int($0.value.cnid) })
@@ -133,19 +157,33 @@ enum HFSOracle {
     }
 
     /// In-place owner and mode edits: the image bytes after Swift's edits equal those after Python's.
-    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"), arguments: HFSOracle.ipads) func ownershipEditsMatchPython(_ fw: Oracle.Firmware) async throws {
+    @Test(
+        .enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"),
+        arguments: HFSOracle.ipads
+    ) func ownershipEditsMatchPython(_ fw: Oracle.Firmware) async throws {
         try await Oracle.withTemp { dir in
-            guard HFSOracle.available, let raw = try await HFSOracle.rawSystem(fw, in: dir) else { try FixtureRequirements.missing(#"HFSPlusTests.swift: HFSOracle.available, let raw = try await HFSOracle.rawSystem(fw, in: dir)"#) }
+            guard HFSOracle.available, let raw = try await HFSOracle.rawSystem(fw, in: dir) else {
+                try FixtureRequirements.missing(
+                    #"HFSPlusTests.swift: HFSOracle.available, let raw = try await HFSOracle.rawSystem(fw, in: dir)"#
+                )
+            }
             let py = dir.appendingPathComponent("py.hfs")
             try FileManager.default.copyItem(at: raw, to: py)
-            let specs = ["private/var/mobile:0:0", "System/Library/LaunchDaemons/com.apple.SpringBoard.plist:501:20",
-                         "usr/libexec/lockdownd:0:0:4755", "private/var/Keychains:64:0:700", "Applications:0:80"]
+            let specs = [
+                "private/var/mobile:0:0", "System/Library/LaunchDaemons/com.apple.SpringBoard.plist:501:20",
+                "usr/libexec/lockdownd:0:0:4755", "private/var/Keychains:64:0:700", "Applications:0:80",
+            ]
             _ = try HFSOracle.python(HFSOracle.setOwner, [py.path] + specs)
             let vol = try HFSPlusVolume(raw, writable: true)
             var changed = 0
             for s in specs {
                 let p = s.split(separator: ":").map(String.init)
-                changed += try vol.setOwner([p[0]], uid: UInt32(p[1])!, gid: UInt32(p[2])!, mode: p.count > 3 ? UInt16(p[3], radix: 8) : nil)
+                changed += try vol.setOwner(
+                    [p[0]],
+                    uid: UInt32(p[1])!,
+                    gid: UInt32(p[2])!,
+                    mode: p.count > 3 ? UInt16(p[3], radix: 8) : nil
+                )
             }
             #expect(changed >= 3)
             #expect(try Oracle.sha256(file: raw) == Oracle.sha256(file: py))

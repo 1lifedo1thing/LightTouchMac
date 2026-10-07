@@ -1,17 +1,22 @@
 import Foundation
 import HostRuntime
 import Testing
+
 @testable import FirmwareKit
 
 struct StorageGenerationTests {
     enum Interrupted: Error { case crash }
     private func fixture() throws -> URL {
         let device = try Fixtures.tempDir("storage-generation")
-        let record: [String: Any] = ["id": UUID().uuidString, "board": "n72ap", "firmware": "7E18",
+        let record: [String: Any] = [
+            "id": UUID().uuidString, "board": "n72ap", "firmware": "7E18",
             "identity": ["udid": "keep-this-identity"], "unknown": ["preserved": true],
             "base": ["path": "original", "kind": "prepared"],
-            "storage": ["key": "original", "overlay": "overlay", "snapshot": "old-snapshot",
-                        "writableNOR": "nor.bin", "usbmuxConf": "conf"]]
+            "storage": [
+                "key": "original", "overlay": "overlay", "snapshot": "old-snapshot",
+                "writableNOR": "nor.bin", "usbmuxConf": "conf",
+            ],
+        ]
         try DeviceRecord.data(record).write(to: device.appendingPathComponent(DeviceRecord.name))
         return device
     }
@@ -33,13 +38,17 @@ struct StorageGenerationTests {
             try await edit.close()
             return edit.id
         }
-        let id = try await stoppedOwner() // Owner exits; intent must continue excluding boot.
+        let id = try await stoppedOwner()  // Owner exits; intent must continue excluding boot.
         #expect(throws: FirmwareError.self) { try OwnedStorageRecord.acquire(device: device) }
         let resumed = try StorageGeneration.resume(device: device, id: id)
         try await resumed.discard()
         try await resumed.close()
         #expect(!FileManager.default.fileExists(atPath: device.appendingPathComponent("work/edit.json").path))
-        #expect(try String(contentsOf: device.appendingPathComponent(DeviceRecord.name), encoding: .utf8).contains("original"))
+        #expect(
+            try String(contentsOf: device.appendingPathComponent(DeviceRecord.name), encoding: .utf8).contains(
+                "original"
+            )
+        )
     }
 
     @Test(arguments: [StorageGeneration.Checkpoint.ready, .recordPublished])
@@ -50,12 +59,16 @@ struct StorageGenerationTests {
         let expected: Data
         do {
             let edit = try StorageGeneration.begin(device: device)
-            id = edit.id; expected = try await candidate(edit)
+            id = edit.id
+            expected = try await candidate(edit)
             await #expect(throws: Interrupted.crash) {
                 try await edit.publish(record: expected) { if $0 == interruption { throw Interrupted.crash } }
             }
             let current = try Data(contentsOf: device.appendingPathComponent(DeviceRecord.name))
-            #expect((StorageGeneration.hash(current) == StorageGeneration.hash(expected)) == (interruption == .recordPublished))
+            #expect(
+                (StorageGeneration.hash(current) == StorageGeneration.hash(expected))
+                    == (interruption == .recordPublished)
+            )
             try await edit.close()
         }
         do {
@@ -101,7 +114,11 @@ struct StorageGenerationTests {
         }
         let resumed = try StorageGeneration.resume(device: device, id: id)
         await #expect(throws: FirmwareError.self) { try await resumed.recoverPublication() }
-        #expect(try String(contentsOf: device.appendingPathComponent(DeviceRecord.name), encoding: .utf8).contains("original"))
+        #expect(
+            try String(contentsOf: device.appendingPathComponent(DeviceRecord.name), encoding: .utf8).contains(
+                "original"
+            )
+        )
         try await resumed.discard()
         try await resumed.close()
     }
@@ -112,7 +129,8 @@ struct StorageGenerationTests {
         let original = try Data(contentsOf: device.appendingPathComponent(DeviceRecord.name))
         func start() async throws -> UUID {
             let edit = try StorageGeneration.begin(device: device)
-            try await edit.close(); return edit.id
+            try await edit.close()
+            return edit.id
         }
         let id = try await start()
         #expect(throws: FirmwareError.self) { _ = try StorageGeneration.resume(device: device, id: UUID()) }
@@ -129,13 +147,18 @@ struct StorageGenerationTests {
         private var arrival: CheckedContinuation<Void, Never>?
         private var release: CheckedContinuation<Void, Never>?
         func pause() async {
-            reached = true; arrival?.resume(); arrival = nil
+            reached = true
+            arrival?.resume()
+            arrival = nil
             await withCheckedContinuation { release = $0 }
         }
         func wait() async {
             if !reached { await withCheckedContinuation { arrival = $0 } }
         }
-        func open() { release?.resume(); release = nil }
+        func open() {
+            release?.resume()
+            release = nil
+        }
     }
 
     @Test(arguments: [false, true])
@@ -155,8 +178,10 @@ struct StorageGenerationTests {
         await #expect(throws: FirmwareError.self) { _ = try await edit.candidateRecord() }
         #expect(throws: FirmwareError.self) { _ = try OwnedStorageRecord.acquire(device: device, resume: true) }
         let expected: Data
-        if cancel { operation.cancel(); expected = original }
-        else {
+        if cancel {
+            operation.cancel()
+            expected = original
+        } else {
             expected = original + Data(" \n".utf8)
             try expected.write(to: device.appendingPathComponent(DeviceRecord.name))
         }
@@ -175,7 +200,8 @@ struct StorageGenerationTests {
         defer { try? FileManager.default.removeItem(at: device) }
         let edit = try StorageGeneration.begin(device: device)
         let candidate = try await candidate(edit)
-        try await edit.close(); try await edit.close()
+        try await edit.close()
+        try await edit.close()
         await #expect(throws: FirmwareError.self) { _ = try await edit.candidateRecord() }
         await #expect(throws: FirmwareError.self) { try await edit.publish(record: candidate) }
         await #expect(throws: FirmwareError.self) { try await edit.discard() }

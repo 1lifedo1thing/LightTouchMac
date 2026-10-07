@@ -1,5 +1,9 @@
-import HostServiceWire
+import CryptoKit
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import HostServiceWire
+
 // Guest packages: the app's side.
 //
 // Each boot, the app composes Devices/<uuid>/work/guest-offer/ from the
@@ -12,10 +16,6 @@ import DeviceRuntime
 // carries those verdicts. No report: the image has no loader (legacy baked
 // tools), and the app keeps them current itself (GuestServices). The .itpack and offer formats are
 // HostRuntime's GuestPack, which FirmwareKit's seed writes too.
-
-import CryptoKit
-import Foundation
-import HostRuntime
 
 public nonisolated enum GuestPackage {
     public typealias Manifest = GuestPack.Manifest
@@ -50,8 +50,10 @@ public nonisolated enum GuestPackage {
             candidates.append(URL(fileURLWithPath: dir).appendingPathComponent("\(arch).itpack"))
         }
         for checkout in ["qemu-ios-ipad1", "qemu-ios"] {
-            candidates.append(URL(fileURLWithPath: filesRoot).deletingLastPathComponent()
-                .appendingPathComponent("\(checkout)/build/guest-package/\(arch).itpack"))
+            candidates.append(
+                URL(fileURLWithPath: filesRoot).deletingLastPathComponent()
+                    .appendingPathComponent("\(checkout)/build/guest-package/\(arch).itpack")
+            )
         }
         return candidates.first { FileManager.default.isReadableFile(atPath: $0.path) }
     }
@@ -59,7 +61,9 @@ public nonisolated enum GuestPackage {
     /// The package in an itpack for this board and build, with its payloads by package path; nil when there is
     /// none (or only a stub).
     static func package(in itpack: URL, board: String, build: String) throws -> (Manifest, [String: Data])? {
-        try GuestPack.packages(GuestPack.read(itpack), board: board, build: build).first.map { ($0.manifest, $0.payloads) }
+        try GuestPack.packages(GuestPack.read(itpack), board: board, build: build).first.map {
+            ($0.manifest, $0.payloads)
+        }
     }
 
     // MARK: - Offer
@@ -69,37 +73,60 @@ public nonisolated enum GuestPackage {
     /// hooks when it installed no shim, and hooks whose targets the
     /// device lacks (libappsync without AppSync), are dropped.
     /// Nil (and no directory) when the itpack has nothing for this device.
-    public static func compose(itpack: URL, board: String, build: String, lock: LockRecord?, guest: DeviceInstance.Guest?,
-                        into dir: URL, augment: ((URL, Int64) throws -> (serial: Int64, version: String))? = nil) throws -> Offer? {
+    public static func compose(
+        itpack: URL,
+        board: String,
+        build: String,
+        lock: LockRecord?,
+        guest: DeviceInstance.Guest?,
+        into dir: URL,
+        augment: ((URL, Int64) throws -> (serial: Int64, version: String))? = nil
+    ) throws -> Offer? {
         let fm = FileManager.default
         try? fm.removeItem(at: dir)
         guard let found = try package(in: itpack, board: board, build: build) else { return nil }
         var (manifest, payloads) = found
         if let range = manifest.requires.host?["guest-package"], range.count == 2,
-           !(range[0]...range[1]).contains(GuestPack.packageProtocol) { return nil }
+            !(range[0]...range[1]).contains(GuestPack.packageProtocol)
+        {
+            return nil
+        }
         if let lock {
-            let dropped = Set(manifest.hooks.filter { hook in
-                (!lock.gles && Manifest.glTargets.contains(hook.target)) || (lock.hooks.map { !$0.contains(hook.target) } ?? false)
-            }.map(\.file))
+            let dropped = Set(
+                manifest.hooks.filter { hook in
+                    (!lock.gles && Manifest.glTargets.contains(hook.target))
+                        || (lock.hooks.map { !$0.contains(hook.target) } ?? false)
+                }.map(\.file)
+            )
             manifest.dropHooks(dropped)
         }
         let builtIn = guest?.builtIn == manifest.serial
-        let staging = dir.deletingLastPathComponent().appendingPathComponent(".\(dir.lastPathComponent)-\(UUID().uuidString)")
+        let staging = dir.deletingLastPathComponent().appendingPathComponent(
+            ".\(dir.lastPathComponent)-\(UUID().uuidString)"
+        )
         defer { try? fm.removeItem(at: staging) }
         try fm.createDirectory(at: staging, withIntermediateDirectories: true)
         if !builtIn {
             for f in manifest.files {
                 guard let data = payloads[f.name], data.count == f.size,
-                      SHA256.hash(data: data).map({ String(format: "%02x", $0) }).joined() == f.sha256 else {
-                    throw DeviceToolsError.failed("\(itpack.lastPathComponent): \(manifest.family)/\(f.name) does not match its manifest")
+                    SHA256.hash(data: data).map({ String(format: "%02x", $0) }).joined() == f.sha256
+                else {
+                    throw DeviceToolsError.failed(
+                        "\(itpack.lastPathComponent): \(manifest.family)/\(f.name) does not match its manifest"
+                    )
                 }
                 let url = staging.appendingPathComponent(f.name)
                 try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try data.write(to: url)
             }
         }
-        let text = GuestPack.offerText(manifest, build: build, serial: builtIn ? 0 : nil,
-                             good: guest?.lastGood.map { [$0] } ?? [], bad: guest?.bad ?? [])
+        let text = GuestPack.offerText(
+            manifest,
+            build: build,
+            serial: builtIn ? 0 : nil,
+            good: guest?.lastGood.map { [$0] } ?? [],
+            bad: guest?.bad ?? []
+        )
         try Data(text.utf8).write(to: staging.appendingPathComponent("offer"))
         var offeredSerial = builtIn ? 0 : manifest.serial
         var offeredVersion = manifest.version
@@ -109,15 +136,21 @@ public nonisolated enum GuestPackage {
             offeredVersion = developer.version
         }
         try fm.moveItem(at: staging, to: dir)
-        return Offer(bundled: manifest.serial, version: offeredVersion, serial: offeredSerial,
-                     glHook: !builtIn && manifest.hooks.contains { Manifest.glTargets.contains($0.target) },
-                     ethlink: manifest.jobs.contains { $0.hasSuffix("/com.qemu.it-ethlink.plist") })
+        return Offer(
+            bundled: manifest.serial,
+            version: offeredVersion,
+            serial: offeredSerial,
+            glHook: !builtIn && manifest.hooks.contains { Manifest.glTargets.contains($0.target) },
+            ethlink: manifest.jobs.contains { $0.hasSuffix("/com.qemu.it-ethlink.plist") }
+        )
     }
 
     /// "Not responding" for a board without an agent: the offered package runs it_ethlink, the loader reported it
     /// installed, lockdown has answered for a minute, and it_ethlink's link line never came. Never for a package
     /// that carries no it_ethlink (1.x's n45-ios1), which has nothing to answer.
-    public static func ethlinkSilent(offer: Offer?, reportedSerial: Int64?, ethlinkUp: Bool, reachableForAMinute: Bool) -> Bool {
+    public static func ethlinkSilent(offer: Offer?, reportedSerial: Int64?, ethlinkUp: Bool, reachableForAMinute: Bool)
+        -> Bool
+    {
         guard let offer, offer.serial > 0, offer.ethlink else { return false }
         return (reportedSerial ?? 0) > 0 && !ethlinkUp && reachableForAMinute
     }
@@ -133,9 +166,11 @@ public nonisolated enum GuestPackage {
 
     public static func lockRecord(_ lock: DeviceLock?) -> LockRecord? {
         guard let record = lock?.guestPackage?.object else { return nil }
-        return LockRecord(seed: record["seed"]?.int.map(Int64.init),
-                          gles: record["gles"]?.bool ?? (record["gli"]?.string != nil),   // locks before gl-runtime: a gli id
-                          hooks: record["hooks"]?.strings)
+        return LockRecord(
+            seed: record["seed"]?.int.map(Int64.init),
+            gles: record["gles"]?.bool ?? (record["gli"]?.string != nil),  // locks before gl-runtime: a gli id
+            hooks: record["hooks"]?.strings
+        )
     }
 
     // MARK: - Verdicts
@@ -158,8 +193,13 @@ public nonisolated enum GuestPackage {
     /// This boot's verdict so far; nil: keep watching. A restored session never
     /// re-runs the loader, so it has no report and says nothing about tools. Only
     /// a package that isn't the seed or the last good one can be judged bad.
-    public static func verdict(report: GuestPackageReport?, healthyFor: Duration, elapsed: Duration,
-                        record: DeviceInstance.Guest?, restored: Bool) -> Verdict? {
+    public static func verdict(
+        report: GuestPackageReport?,
+        healthyFor: Duration,
+        elapsed: Duration,
+        record: DeviceInstance.Guest?,
+        restored: Bool
+    ) -> Verdict? {
         if let report, healthyFor >= goodAfter { return .good(report.serial) }
         if report == nil, healthyFor >= legacyAfter { return restored ? .undecided : .legacy }
         guard elapsed >= badAfter else { return nil }
@@ -204,9 +244,11 @@ public nonisolated enum GuestPackage {
             case .legacy: "Won’t update — erase and prepare again to get updates"
             case .current: "Up to date"
             case .builtIn: "Built in"
-            case let .reverted(_, why):
-                "Using an earlier version — " + (why == .revertedBad ? "the update didn’t work"
-                                                  : why == .revertedTries ? "the update kept failing" : "the update was refused")
+            case .reverted(_, let why):
+                "Using an earlier version — "
+                    + (why == .revertedBad
+                        ? "the update didn’t work"
+                        : why == .revertedTries ? "the update kept failing" : "the update was refused")
             case .outOfDate: "Out of date — restart to update"
             case .notResponding: "Not responding"
             case .recovery: "Unavailable in recovery mode"
@@ -216,18 +258,26 @@ public nonisolated enum GuestPackage {
     }
 
     /// The UI state for a report (nil: none this boot) against the offer.
-    public static func status(report: GuestPackageReport?, offer: Offer?, record: DeviceInstance.Guest?,
-                       glesProtocol: Int32) -> Status {
+    public static func status(
+        report: GuestPackageReport?,
+        offer: Offer?,
+        record: DeviceInstance.Guest?,
+        glesProtocol: Int32
+    ) -> Status {
         guard let offer else { return report.map { .current(serial: $0.serial) } ?? .unknown }
         guard let report else {
             // A restored snapshot keeps running what the last cold boot installed.
             if let active = record?.active, active < offer.bundled, record?.bad.contains(offer.bundled) != true,
-               record?.builtIn != offer.bundled { return .outOfDate }
+                record?.builtIn != offer.bundled
+            {
+                return .outOfDate
+            }
             return .unknown
         }
         if !glesProtocols.contains(Int(glesProtocol)) { return .outOfDate }
         switch ReportCode(rawValue: report.result) {
-        case let code? where [.revertedBad, .revertedTries, .refused].contains(code): return .reverted(serial: report.serial, why: code)
+        case let code? where [.revertedBad, .revertedTries, .refused].contains(code):
+            return .reverted(serial: report.serial, why: code)
         default: break
         }
         if offer.serial == 0 { return .builtIn(serial: report.serial) }
@@ -236,14 +286,18 @@ public nonisolated enum GuestPackage {
     }
 }
 
-
 /// Qualifies one cold boot's automatic additions without owning a window or
 /// emulator. The caller owns the task (BootSessionScope in the GUI), supplies
 /// fresh device observations, and persists emitted record changes.
 @MainActor
 public struct GuestPackageSession {
     public struct Observation {
-        public init(report: GuestPackageReport? = nil, record: DeviceInstance.Guest? = nil, glesProtocol: Int32, healthy: Bool) {
+        public init(
+            report: GuestPackageReport? = nil,
+            record: DeviceInstance.Guest? = nil,
+            glesProtocol: Int32,
+            healthy: Bool
+        ) {
             self.report = report
             self.record = record
             self.glesProtocol = glesProtocol
@@ -261,7 +315,10 @@ public struct GuestPackageSession {
 
         public var changesRecord: Bool {
             if changedReport != nil { return true }
-            switch verdict { case .good?, .bad?: return true; default: return false }
+            switch verdict {
+            case .good?, .bad?: return true
+            default: return false
+            }
         }
 
         public func apply(to record: inout DeviceInstance.Guest) {
@@ -291,29 +348,44 @@ public struct GuestPackageSession {
         let report = observation.report
         let changedReport = report != seen ? report : nil
         if let changedReport { seen = changedReport }
-        if observation.healthy { healthySince = healthySince ?? elapsed }
-        else { healthySince = nil }
+        if observation.healthy { healthySince = healthySince ?? elapsed } else { healthySince = nil }
         let steady = healthySince.map { elapsed - $0 } ?? .zero
-        let verdict = GuestPackage.verdict(report: report, healthyFor: steady, elapsed: elapsed,
-                                          record: observation.record, restored: false)
+        let verdict = GuestPackage.verdict(
+            report: report,
+            healthyFor: steady,
+            elapsed: elapsed,
+            record: observation.record,
+            restored: false
+        )
         finished = verdict != nil
-        let status = verdict == .legacy ? GuestPackage.Status.legacy
-            : GuestPackage.status(report: report, offer: offer, record: observation.record,
-                                  glesProtocol: observation.glesProtocol)
+        let status =
+            verdict == .legacy
+            ? GuestPackage.Status.legacy
+            : GuestPackage.status(
+                report: report,
+                offer: offer,
+                record: observation.record,
+                glesProtocol: observation.glesProtocol
+            )
         return Update(status: status, changedReport: changedReport, verdict: verdict)
     }
 
     /// Nil observation retires this watch. Cancellation is checked after every
     /// suspension before sampling or publishing, so an old boot cannot write
     /// a verdict even if the caller still has a valid status block.
-    public static func watch(offer: GuestPackage.Offer, interval: Duration = .seconds(1),
-                      sample: () -> Observation?, publish: (Update) -> Void) async {
+    public static func watch(
+        offer: GuestPackage.Offer,
+        interval: Duration = .seconds(1),
+        sample: () -> Observation?,
+        publish: (Update) -> Void
+    ) async {
         let started = ContinuousClock.now
         var session = Self(offer: offer)
         while !Task.isCancelled {
             do { try await Task.sleep(for: interval) } catch { return }
             guard !Task.isCancelled, let observation = sample(),
-                  let update = session.observe(observation, elapsed: ContinuousClock.now - started) else { return }
+                let update = session.observe(observation, elapsed: ContinuousClock.now - started)
+            else { return }
             guard !Task.isCancelled else { return }
             publish(update)
             if update.verdict != nil { return }

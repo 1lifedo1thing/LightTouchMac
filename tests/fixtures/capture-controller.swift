@@ -3,18 +3,29 @@
 // banner, the reminder notifications, and a selected device whose screen captures nothing. Compiled with the real
 // CapturePreferences, CaptureSound and Board.
 
-import HostRuntime
 import Cocoa
+import HostRuntime
 
 nonisolated func logEvent(_ message: String) {}
 enum CaptureError: Error { case failed(String) }
 
 @MainActor final class ScreenRecordingSession {
-    enum Phase: Equatable { case idle, starting, recording, saving, saved(URL), recovery(URL) }
-    enum Completion: Equatable { case saved(URL), discarded, recovery(URL), failed }
+    enum Phase: Equatable {
+        case idle, starting, recording, saving
+        case saved(URL)
+        case recovery(URL)
+    }
+    enum Completion: Equatable {
+        case saved(URL)
+        case discarded
+        case recovery(URL)
+        case failed
+    }
     struct RecoveryReport { var saved: [URL] = [], deleted: [URL] = [], remaining: [URL] = [] }
     static let recoveryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("ltm-recovery-fixture")
-    static func recoverRecordings(createdBefore cutoff: Date, destination: (URL) throws -> URL) async throws -> RecoveryReport { .init() }
+    static func recoverRecordings(createdBefore cutoff: Date, destination: (URL) throws -> URL) async throws
+        -> RecoveryReport
+    { .init() }
 
     var phase = Phase.idle, failure: Error?, previewImage: CGImage?
     var id = UUID(), canStop = true
@@ -25,10 +36,24 @@ enum CaptureError: Error { case failed(String) }
     var onBeganRecording: (() -> Void)?, onStoppedRecording: (() -> Void)?
     /// Every stop, true when it discards.
     var stops: [Bool] = []
-    func stop(discard: Bool = false) { stops.append(discard); canStop = false }
-    func reset() { id = UUID(); canStop = true; stops = [] }
-    func start(frame: @escaping () throws -> CGImage?, audio: @escaping () async throws -> Void, prepare: @escaping () async throws -> CGSize?,
-               cleanup: @escaping () async -> Void, background: CGImage?, screenSide: CGFloat, destination: @escaping () throws -> URL) {}
+    func stop(discard: Bool = false) {
+        stops.append(discard)
+        canStop = false
+    }
+    func reset() {
+        id = UUID()
+        canStop = true
+        stops = []
+    }
+    func start(
+        frame: @escaping () throws -> CGImage?,
+        audio: @escaping () async throws -> Void,
+        prepare: @escaping () async throws -> CGSize?,
+        cleanup: @escaping () async -> Void,
+        background: CGImage?,
+        screenSide: CGFloat,
+        destination: @escaping () throws -> URL
+    ) {}
     func dismiss() {}
     func retrySave(to url: URL) {}
 }
@@ -38,8 +63,18 @@ enum CaptureError: Error { case failed(String) }
     var fileURL: URL?
     var onPrimary: (() -> Void)?, onSecondary: (() -> Void)?, onDismiss: (() -> Void)?, onLink: (() -> Void)?
     var link: String?
-    func showCapture(title: String, image: NSImage, fileURL: URL?, link: String? = nil) { self.fileURL = fileURL; self.link = link }
-    func update(title: String, detail: String, primary: String?, secondary: String?, dismissible: Bool, appearance: Appearance) {}
+    func showCapture(title: String, image: NSImage, fileURL: URL?, link: String? = nil) {
+        self.fileURL = fileURL
+        self.link = link
+    }
+    func update(
+        title: String,
+        detail: String,
+        primary: String?,
+        secondary: String?,
+        dismissible: Bool,
+        appearance: Appearance
+    ) {}
 }
 
 @MainActor final class CaptureNotifications {
@@ -47,7 +82,9 @@ enum CaptureError: Error { case failed(String) }
     enum RecordingAction { case stopAndSave, stopAndDelete }
     var onRecordingAction: ((UUID, RecordingAction) -> Void)?
     var reminders: [(TimeInterval, UUID)] = [], cancellations = 0
-    func scheduleReminder(after delay: TimeInterval, recordingID: UUID, profile: Board) async { reminders.append((delay, recordingID)) }
+    func scheduleReminder(after delay: TimeInterval, recordingID: UUID, profile: Board) async {
+        reminders.append((delay, recordingID))
+    }
     func cancelReminder() { cancellations += 1 }
     func notifyRecoveredRecording(_ url: URL) async -> Bool { false }
 }

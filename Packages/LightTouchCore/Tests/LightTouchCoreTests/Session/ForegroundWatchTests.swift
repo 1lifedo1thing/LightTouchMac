@@ -1,7 +1,8 @@
-import Foundation
-import Testing
-import HostRuntime
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import Testing
+
 @testable import LightTouchCore
 
 /// The guest's front app while the device answers (and nothing while it sleeps, installs or has queued work),
@@ -29,8 +30,14 @@ struct ForegroundWatchTests {
             guard !fronts.isEmpty, let front = fronts.removeFirst() else { throw NoAgent() }
             return front
         }
-        func applyWebProxy(since applied: Int?, generation: Int) async throws -> Int? { proxyPasses += 1; return applied }
-        func setupFinished(generation: Int) { finished.append(generation); remainingAtFinish = fronts.count }
+        func applyWebProxy(since applied: Int?, generation: Int) async throws -> Int? {
+            proxyPasses += 1
+            return applied
+        }
+        func setupFinished(generation: Int) {
+            finished.append(generation)
+            remainingAtFinish = fronts.count
+        }
     }
 
     func watch(_ host: Host) -> ForegroundWatch {
@@ -62,16 +69,28 @@ struct ForegroundWatchTests {
             let host = Host(overlay: overlay)
             let watch = watch(host)
             watch.setupGate = BootRecipe.SetupNetworkGate()
-            host.fronts = [("com.apple.purplebuddy", "Setup"), ("com.apple.springboard", "Home"), nil,
-                           ("com.apple.springboard", "Home"), ("com.apple.mobilesafari", "Safari"), ("com.apple.springboard", "Home")]
+            host.fronts = [
+                ("com.apple.purplebuddy", "Setup"), ("com.apple.springboard", "Home"), nil,
+                ("com.apple.springboard", "Home"), ("com.apple.mobilesafari", "Safari"),
+                ("com.apple.springboard", "Home"),
+            ]
             watch.start()
             await eventually("lifted") { !host.finished.isEmpty }
             await eventually("every poll seen") { host.fronts.isEmpty }
             watch.stop()
-            #expect(host.link.commands == [.netRestrict(false)] && host.finished == [host.bootScope.generation], "once, after two unlocked polls in a row")
-            #expect(host.remainingAtFinish == 1, "the failed poll broke the streak: lifted at Safari, not the Home before it")
+            #expect(
+                host.link.commands == [.netRestrict(false)] && host.finished == [host.bootScope.generation],
+                "once, after two unlocked polls in a row"
+            )
+            #expect(
+                host.remainingAtFinish == 1,
+                "the failed poll broke the streak: lifted at Safari, not the Home before it"
+            )
             #expect(watch.setupGate == nil)
-            #expect(FileManager.default.fileExists(atPath: BootRecipe.setupDoneMark(overlay: overlay).path), "the overlay remembers Setup is done")
+            #expect(
+                FileManager.default.fileExists(atPath: BootRecipe.setupDoneMark(overlay: overlay).path),
+                "the overlay remembers Setup is done"
+            )
         }
     }
 
@@ -82,7 +101,10 @@ struct ForegroundWatchTests {
             let watch = watch(host)
             watch.setupGate = BootRecipe.SetupNetworkGate()
             watch.liftsRestrict = false
-            host.fronts = [("com.apple.purplebuddy", "Setup"), ("com.apple.springboard", "Home"), ("com.apple.springboard", "Home")]
+            host.fronts = [
+                ("com.apple.purplebuddy", "Setup"), ("com.apple.springboard", "Home"),
+                ("com.apple.springboard", "Home"),
+            ]
             watch.start()
             await eventually("finished") { !host.finished.isEmpty }
             watch.stop()

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import LightTouchCore
 
 /// The boot toast's stage comes from the device's own signals, never a timer: a recorded iPad 4.2.1 serial log
@@ -8,7 +9,8 @@ import Testing
 /// own (each phrase once, across write boundaries, every byte logged).
 struct BootStageTests {
     final class Seen: @unchecked Sendable {
-        private let lock = NSLock(); private var all: [String] = []
+        private let lock = NSLock()
+        private var all: [String] = []
         func add(_ s: String) { lock.withLock { all.append(s) } }
         var phrases: [String] { lock.withLock { all } }
     }
@@ -19,9 +21,14 @@ struct BootStageTests {
             var fds: [Int32] = [-1, -1]
             #expect(pipe(&fds) == 0)
             let seen = Seen()
-            let reader = try LogPipeReader(descriptor: fds[0], log: RotatingLog(url: dir.appendingPathComponent("serial.log")),
-                                           watch: .init(phrases: Array(BootStage.serialMarkers.keys)) { seen.add($0) })
-            let log = try Data(contentsOf: repositoryRoot.appendingPathComponent("tests/fixtures/serial-k48ap-8C148.log"))
+            let reader = try LogPipeReader(
+                descriptor: fds[0],
+                log: RotatingLog(url: dir.appendingPathComponent("serial.log")),
+                watch: .init(phrases: Array(BootStage.serialMarkers.keys)) { seen.add($0) }
+            )
+            let log = try Data(
+                contentsOf: repositoryRoot.appendingPathComponent("tests/fixtures/serial-k48ap-8C148.log")
+            )
             // 64 bytes at a time: markers split across writes.
             for start in stride(from: 0, to: log.count, by: 64) {
                 let chunk = log[start..<min(start + 64, log.count)]
@@ -37,7 +44,10 @@ struct BootStageTests {
             #expect(seen.phrases.map(BootStage.Event.serial).reduce(BootStage.poweringOn) { $0.after($1) } == .system)
 
             let text = String(decoding: log, as: UTF8.self)
-            #expect(Self.recorded == Self.recorded.sorted { text.range(of: $0)!.lowerBound < text.range(of: $1)!.lowerBound })
+            #expect(
+                Self.recorded
+                    == Self.recorded.sorted { text.range(of: $0)!.lowerBound < text.range(of: $1)!.lowerBound }
+            )
         }
     }
 
@@ -50,7 +60,12 @@ struct BootStageTests {
             if next != stage { said.append(next.text) }
             stage = next
         }
-        #expect(said == ["Powering on", "Loading iOS", "Starting the system", "Connecting over USB", "Waiting for the Home screen"])
+        #expect(
+            said == [
+                "Powering on", "Loading iOS", "Starting the system", "Connecting over USB",
+                "Waiting for the Home screen",
+            ]
+        )
         #expect(stage == .usb)
         // Only forward: a late marker (a reset reprinting iBoot, the loader reporting after USB) changes nothing.
         #expect(BootStage.usb.after(.serial(":: iBoot for")) == .usb && BootStage.usb.after(.guestTools) == .usb)
@@ -62,26 +77,47 @@ struct BootStageTests {
     }
 
     @Test func theDeadlineKeepsIOSOnScreenAndStopsNoPicture() {
-        #expect(ReadinessDeadline.verdict(painted: true, stage: .system) == .keepRunning, "slide to set up, no USB: keep it")
+        #expect(
+            ReadinessDeadline.verdict(painted: true, stage: .system) == .keepRunning,
+            "slide to set up, no USB: keep it"
+        )
         #expect(ReadinessDeadline.verdict(painted: true, stage: .usb) == .keepRunning)
-        #expect(ReadinessDeadline.verdict(painted: false, stage: .system) == .stop, "iOS runs but never shows a picture")
+        #expect(
+            ReadinessDeadline.verdict(painted: false, stage: .system) == .stop,
+            "iOS runs but never shows a picture"
+        )
         #expect(ReadinessDeadline.verdict(painted: false, stage: .poweringOn) == .stop)
-        #expect(ReadinessDeadline.verdict(painted: true, stage: .loading) == .stop && ReadinessDeadline.verdict(painted: true, stage: .kernel) == .stop,
-                "iBoot lights the display too: its logo alone is not iOS")
+        #expect(
+            ReadinessDeadline.verdict(painted: true, stage: .loading) == .stop
+                && ReadinessDeadline.verdict(painted: true, stage: .kernel) == .stop,
+            "iBoot lights the display too: its logo alone is not iOS"
+        )
         let recordedStage = Self.recorded.map(BootStage.Event.serial).reduce(BootStage.poweringOn) { $0.after($1) }
-        #expect(ReadinessDeadline.verdict(painted: true, stage: recordedStage) == .keepRunning, "the recorded boot, had USB never come: kept")
-        #expect(ReadinessDeadline.notice(shortName: "iPad") == "Apps and files will be available when the iPad connects.")
+        #expect(
+            ReadinessDeadline.verdict(painted: true, stage: recordedStage) == .keepRunning,
+            "the recorded boot, had USB never come: kept"
+        )
+        #expect(
+            ReadinessDeadline.notice(shortName: "iPad") == "Apps and files will be available when the iPad connects."
+        )
     }
 
     @Test func springBoardIsUpByTheAgentsFrontmost() {
-        #expect(SpringBoardAnswer.up(frontmost: "com.apple.springboard") && SpringBoardAnswer.up(frontmost: "com.apple.purplebuddy"),
-                "slide to set up / Setup Assistant: SpringBoard is up")
+        #expect(
+            SpringBoardAnswer.up(frontmost: "com.apple.springboard")
+                && SpringBoardAnswer.up(frontmost: "com.apple.purplebuddy"),
+            "slide to set up / Setup Assistant: SpringBoard is up"
+        )
         #expect(!SpringBoardAnswer.up(frontmost: nil) && !SpringBoardAnswer.up(frontmost: ""), "no answer is not ready")
-        #expect(!SpringBoardAnswer.up(frontmost: "com.apple.mobilesafari"), "an app in front says nothing about readiness")
+        #expect(
+            !SpringBoardAnswer.up(frontmost: "com.apple.mobilesafari"),
+            "an app in front says nothing about readiness"
+        )
     }
 
     final class Matches: @unchecked Sendable {
-        private let lock = NSLock(); private var seen: [String] = []
+        private let lock = NSLock()
+        private var seen: [String] = []
         func add(_ phrase: String) { lock.withLock { seen.append(phrase) } }
         var all: [String] { lock.withLock { seen } }
     }
@@ -91,15 +127,21 @@ struct BootStageTests {
             var fds: [Int32] = [-1, -1]
             #expect(pipe(&fds) == 0)
             let matches = Matches()
-            let reader = try LogPipeReader(descriptor: fds[0], log: RotatingLog(url: dir.appendingPathComponent("serial.log")),
-                                           watch: .init(phrases: ["Entering recovery mode", "root filesystem mount failed"]) { matches.add($0) })
+            let reader = try LogPipeReader(
+                descriptor: fds[0],
+                log: RotatingLog(url: dir.appendingPathComponent("serial.log")),
+                watch: .init(phrases: ["Entering recovery mode", "root filesystem mount failed"]) { matches.add($0) }
+            )
             // Each write is drained (flush waits on the reader's queue) before the next: every write is its own chunk.
-            func write(_ text: String) { _ = text.withCString { Darwin.write(fds[1], $0, strlen($0)) }; reader.flush() }
+            func write(_ text: String) {
+                _ = text.withCString { Darwin.write(fds[1], $0, strlen($0)) }
+                reader.flush()
+            }
             write("iBoot-636.66\nroot filesystem mou")
             write("nt failed\nEntering reco")
             #expect(matches.all == ["root filesystem mount failed"])
             write("very mode\n")
-            write("Entering recovery mode\n")   // once only
+            write("Entering recovery mode\n")  // once only
             reader.flush()
             #expect(matches.all == ["root filesystem mount failed", "Entering recovery mode"])
             Darwin.close(fds[1])

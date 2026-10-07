@@ -1,7 +1,8 @@
-import Foundation
 import CoreGraphics
-import Testing
 import DeviceRuntime
+import Foundation
+import Testing
+
 @testable import LightTouchCore
 
 /// Tilt's gesture math: drags from the grab point, scrolls (points or lines, both signs), twists, their clamps,
@@ -12,7 +13,10 @@ struct ChassisTiltTests {
     func close(_ a: CGFloat, _ b: CGFloat) -> Bool { abs(a - b) < 1e-9 }
     /// A drag of `right`/`up` degrees from `grab` (the view is flipped: up is a smaller y).
     func point(_ grab: CGPoint, right: CGFloat, up: CGFloat) -> CGPoint {
-        CGPoint(x: grab.x + right * Self.degree / ChassisTilt.dragGain, y: grab.y - up * Self.degree / ChassisTilt.dragGain)
+        CGPoint(
+            x: grab.x + right * Self.degree / ChassisTilt.dragGain,
+            y: grab.y - up * Self.degree / ChassisTilt.dragGain
+        )
     }
 
     @Test func restAnglesTakeTheShortWayRound() {
@@ -59,7 +63,10 @@ struct ChassisTiltTests {
                 tilt.scroll(by: ChassisTilt.scrollMovement(dx: points / (precise ? 1 : 10), dy: 0, precise: precise))
                 #expect(tilt.scrollTilting && close(tilt.tiltAngle, sign * .pi / 6), "\(precise) \(sign)")
                 tilt.scroll(by: ChassisTilt.scrollMovement(dx: 0, dy: points / (precise ? 1 : 10), precise: precise))
-                #expect(close(tilt.tiltAngle, sign * .pi / 6) && close(tilt.pitchAngle, sign * .pi / 6), "a second movement adds")
+                #expect(
+                    close(tilt.tiltAngle, sign * .pi / 6) && close(tilt.pitchAngle, sign * .pi / 6),
+                    "a second movement adds"
+                )
             }
         }
         var clamp = ChassisTilt()
@@ -92,7 +99,10 @@ struct ChassisTiltTests {
         tilt.beginDrag(at: .zero, rotation: rotation)
         tilt.drag(to: point(.zero, right: 30, up: 10))
         let attitude = tilt.attitude(rotation: rotation, flat: false)
-        #expect(close(attitude.angle, ChassisTilt.layerAngle(rotation) + 30 * Self.degree) && close(attitude.pitch, 10 * Self.degree))
+        #expect(
+            close(attitude.angle, ChassisTilt.layerAngle(rotation) + 30 * Self.degree)
+                && close(attitude.pitch, 10 * Self.degree)
+        )
     }
 
     @Test func flatAttitudeTurnsScreenAxesIntoSensorAxes() {
@@ -107,7 +117,10 @@ struct ChassisTiltTests {
         tilt.beginDrag(at: .zero, rotation: 90)
         tilt.drag(to: point(.zero, right: 30, up: 0))
         a = tilt.attitude(rotation: 90, flat: true)
-        #expect(close(a.angle, 0) && close(a.pitch, 30 * Self.degree), "landscape: the screen's right is the sensor's pitch")
+        #expect(
+            close(a.angle, 0) && close(a.pitch, 30 * Self.degree),
+            "landscape: the screen's right is the sensor's pitch"
+        )
         tilt.reset()
         tilt.beginDrag(at: .zero, rotation: 180)
         tilt.drag(to: point(.zero, right: 0, up: 30))
@@ -116,12 +129,29 @@ struct ChassisTiltTests {
     }
 
     @Test func attitudeCommandsAreDegreesNormalizedAcrossTheSeam() {
-        guard case let .attitude(pitch, roll, pose) = ChassisTilt.attitudeCommand(angle: .pi / 6, pitch: .pi / 12, pose: 1) else {
-            Issue.record("not an attitude"); return
+        guard
+            case .attitude(let pitch, let roll, let pose) = ChassisTilt.attitudeCommand(
+                angle: .pi / 6,
+                pitch: .pi / 12,
+                pose: 1
+            )
+        else {
+            Issue.record("not an attitude")
+            return
         }
-        #expect(abs(pitch - 15) < 1e-9 && abs(roll + 30) < 1e-9 && pose == 1, "layer rotation and device roll have opposite signs")
-        guard case let .attitude(_, seam, _) = ChassisTilt.attitudeCommand(angle: 1.5 * .pi + 10 * .pi / 180 + 2 * .pi, pitch: 0, pose: 0) else {
-            Issue.record("not an attitude"); return
+        #expect(
+            abs(pitch - 15) < 1e-9 && abs(roll + 30) < 1e-9 && pose == 1,
+            "layer rotation and device roll have opposite signs"
+        )
+        guard
+            case .attitude(_, let seam, _) = ChassisTilt.attitudeCommand(
+                angle: 1.5 * .pi + 10 * .pi / 180 + 2 * .pi,
+                pitch: 0,
+                pose: 0
+            )
+        else {
+            Issue.record("not an attitude")
+            return
         }
         #expect(abs(seam - 80) < 1e-9, "past the upside-down seam the roll is the short way: \(seam)")
     }

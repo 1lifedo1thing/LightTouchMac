@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import Testing
+
 @testable import LightTouchCore
 
 /// Song preparation (MediaSong): the staged copy is the source's bytes with its duration and one identity, raw ADTS
@@ -23,8 +24,13 @@ struct MediaSongTests {
             try Self.write(name, to: source)
             let song = try await MediaSong.prepare(source)
             defer { try? FileManager.default.removeItem(at: song.directory) }
-            #expect(try Data(contentsOf: song.audio) == Data(contentsOf: source), "the staged copy is the source's bytes")
-            let metadata = try PropertyListSerialization.propertyList(from: Data(contentsOf: song.metadata), format: nil) as? [String: Any]
+            #expect(
+                try Data(contentsOf: song.audio) == Data(contentsOf: source),
+                "the staged copy is the source's bytes"
+            )
+            let metadata =
+                try PropertyListSerialization.propertyList(from: Data(contentsOf: song.metadata), format: nil)
+                as? [String: Any]
             let duration = try #require(metadata?["duration_ms"] as? Double)
             #expect(abs(duration - 6000) < 100, "\(duration) ms")
             #expect(metadata?["filename"] as? String == song.audio.lastPathComponent)
@@ -37,7 +43,8 @@ struct MediaSongTests {
 
     @Test func rawAACBecomesM4AWithAStableIdentity() async throws {
         try await withTemporaryState { work in
-            let m4a = work.appendingPathComponent("source.m4a"), raw = work.appendingPathComponent("raw.aac")
+            let m4a = work.appendingPathComponent("source.m4a")
+            let raw = work.appendingPathComponent("raw.aac")
             try MediaFixtures.tone(m4a, format: kAudioFormatMPEG4AAC)
             try await MediaFixtures.adts(from: m4a, to: raw)
             let converted = try await MediaSong.prepare(raw)
@@ -45,7 +52,9 @@ struct MediaSongTests {
             #expect(converted.audio.pathExtension == "m4a")
             let decoded = try AVAudioFile(forReading: converted.audio)
             #expect(abs(Double(decoded.length) / decoded.processingFormat.sampleRate - 6) < 0.15)
-            #expect(!FileManager.default.fileExists(atPath: converted.directory.appendingPathComponent("audio.aac").path))
+            #expect(
+                !FileManager.default.fileExists(atPath: converted.directory.appendingPathComponent("audio.aac").path)
+            )
             // A second conversion a second later writes new timestamps; the identity ignores them.
             try await Task.sleep(for: .seconds(1.1))
             let repeated = try await MediaSong.prepare(raw)

@@ -11,7 +11,10 @@ import Foundation
 
     public func acquire() async throws {
         try Task.checkCancellation()
-        if !isBusy && !isPaused { isBusy = true; return }
+        if !isBusy && !isPaused {
+            isBusy = true
+            return
+        }
         let id = UUID()
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -36,7 +39,6 @@ import Foundation
     }
 
     public func release() {
-        if waiters.isEmpty || isPaused { isBusy = false }
-        else { waiters.removeFirst().1.resume() }
+        if waiters.isEmpty || isPaused { isBusy = false } else { waiters.removeFirst().1.resume() }
     }
 }

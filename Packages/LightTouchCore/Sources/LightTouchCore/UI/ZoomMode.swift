@@ -19,9 +19,11 @@ nonisolated public enum ZoomMode: Equatable, Sendable {
     /// out of Fit starts from whatever size Fit happens to be showing, so the first press nudges the device rather
     /// than jumping it; the ends of the ladder stay put.
     public static func step(from pixelMultiple: CGFloat, direction: Int) -> ZoomMode {
-        .pixels(direction > 0
-            ? steps.first { CGFloat($0) > pixelMultiple + 0.001 } ?? steps.last!
-            : steps.last { CGFloat($0) < pixelMultiple - 0.001 } ?? steps.first!)
+        .pixels(
+            direction > 0
+                ? steps.first { CGFloat($0) > pixelMultiple + 0.001 } ?? steps.last!
+                : steps.last { CGFloat($0) < pixelMultiple - 0.001 } ?? steps.first!
+        )
     }
 
     /// The saved form ("fit", "physical", "pixels:N").
@@ -46,14 +48,23 @@ nonisolated public enum ZoomMode: Equatable, Sendable {
     /// Guest pixels per display pixel for a shell drawn at `appliedScale` points per shell pixel: the shell's
     /// `cutoutWidth` pixels show the panel's `nativeWidth` guest pixels. Free-form's scale is already points per
     /// guest pixel, the unit its Nx is in.
-    public static func pixelMultiple(appliedScale: CGFloat, cutoutWidth: CGFloat, nativeWidth: CGFloat,
-                                     backingScale: CGFloat, freeForm: Bool) -> CGFloat {
+    public static func pixelMultiple(
+        appliedScale: CGFloat,
+        cutoutWidth: CGFloat,
+        nativeWidth: CGFloat,
+        backingScale: CGFloat,
+        freeForm: Bool
+    ) -> CGFloat {
         freeForm ? appliedScale : appliedScale * cutoutWidth / nativeWidth * backingScale
     }
 
     /// The shell scale that shows `multiple` display pixels per guest pixel (pixelMultiple's inverse).
-    public static func shellScale(guestPixelsPerDisplayPixel multiple: Int, cutoutWidth: CGFloat, nativeWidth: CGFloat,
-                                  backingScale: CGFloat) -> CGFloat {
+    public static func shellScale(
+        guestPixelsPerDisplayPixel multiple: Int,
+        cutoutWidth: CGFloat,
+        nativeWidth: CGFloat,
+        backingScale: CGFloat
+    ) -> CGFloat {
         CGFloat(multiple) / backingScale * nativeWidth / cutoutWidth
     }
 

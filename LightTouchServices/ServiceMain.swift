@@ -1,5 +1,5 @@
-import Foundation
 import Darwin
+import Foundation
 import HostServiceWire
 
 /// stdout is exclusively the typed service protocol; logs go to stderr.
@@ -27,8 +27,9 @@ nonisolated final class EventWriter: @unchecked Sendable {
             exit(operation(CommandLine.argc - 1, CommandLine.unsafeArgv + 1))
         }
         guard args.count == 6, args[0] == "--socket", args[2] == "--udid", args[4] == "--session",
-              let session = UUID(uuidString: args[5]),
-              ProcessInfo.processInfo.environment["USBMUXD_SOCKET_ADDRESS"] == args[1] else { exit(2) }
+            let session = UUID(uuidString: args[5]),
+            ProcessInfo.processInfo.environment["USBMUXD_SOCKET_ADDRESS"] == args[1]
+        else { exit(2) }
         // A GUI killed without cancellation cannot leave a blocked C call or
         // idle notification process orphaned. This observes only our parent,
         // never the independently owned QEMU process.
@@ -38,25 +39,33 @@ nonisolated final class EventWriter: @unchecked Sendable {
         parentWatch.setEventHandler { exit(0) }
         parentWatch.resume()
         defer { parentWatch.cancel() }
-        if getppid() != parent { exit(0) }   // it went before the source was watching
-        let socket = args[1], udid = args[3].isEmpty ? nil : args[3]
+        if getppid() != parent { exit(0) }  // it went before the source was watching
+        let socket = args[1]
+        let udid = args[3].isEmpty ? nil : args[3]
         let service = DeviceServices(clientSocket: socket, udid: udid, session: session)
         let writer = EventWriter()
         while let line = readLine() {
             guard let request = try? JSONDecoder().decode(HostServiceRequest.self, from: Data(line.utf8)),
-                  request.version == HostServiceRequest.version, request.session == session else { exit(2) }
+                request.version == HostServiceRequest.version, request.session == session
+            else { exit(2) }
             let emit: @Sendable (HostServiceEvent.Payload) -> Void = { payload in
                 writer.send(HostServiceEvent(id: request.id, session: session, payload: payload))
             }
-            do { emit(.result(try await execute(request.operation, service: service, emit: emit))) }
-            catch { emit(.failure(HostServiceFailure(error))) }
+            do { emit(.result(try await execute(request.operation, service: service, emit: emit))) } catch {
+                emit(.failure(HostServiceFailure(error)))
+            }
         }
     }
 
-    static func execute(_ operation: HostServiceOperation, service: DeviceServices,
-                        emit: @escaping @Sendable (HostServiceEvent.Payload) -> Void) async throws -> HostServiceValue {
+    static func execute(
+        _ operation: HostServiceOperation,
+        service: DeviceServices,
+        emit: @escaping @Sendable (HostServiceEvent.Payload) -> Void
+    ) async throws -> HostServiceValue {
         switch operation {
-        case .attachment: try await service.checkAttachment(); return .none
+        case .attachment:
+            try await service.checkAttachment()
+            return .none
         case .apps: return .apps(try await service.installedApps())
         case .archives: return .strings(try await service.archivedApps())
         case .freeSpace: return .integer(try await service.freeSpaceBytes())
@@ -64,22 +73,43 @@ nonisolated final class EventWriter: @unchecked Sendable {
         case .installReady: return .boolean(await service.installProxyReady())
         case .homeOrder: return .strings(try await service.homeScreenOrder())
         case .orientation: return .integer(Int64(try await service.interfaceOrientation()))
-        case .uninstall(let id): try await service.uninstall(id); return .none
+        case .uninstall(let id):
+            try await service.uninstall(id)
+            return .none
         case .install(let ipa, let staged, let bundleID):
-            try await service.install(URL(fileURLWithPath: ipa), staged: staged, bundleID: bundleID) { emit(.progress(.install($0, $1))) }; return .none
+            try await service.install(URL(fileURLWithPath: ipa), staged: staged, bundleID: bundleID) {
+                emit(.progress(.install($0, $1)))
+            }
+            return .none
         case .upload(let source, let remote, let reuse, let allowEmpty):
-            return .string(try await service.stageFile(URL(fileURLWithPath: source), remote: remote,
-                reuseIdentical: reuse, allowEmpty: allowEmpty) { emit(.progress(.fraction($0))) })
-        case .sweep: await service.sweepStaging(); return .none
-        case .remove(let path): await service.removeStaged(path); return .none
+            return .string(
+                try await service.stageFile(
+                    URL(fileURLWithPath: source),
+                    remote: remote,
+                    reuseIdentical: reuse,
+                    allowEmpty: allowEmpty
+                ) { emit(.progress(.fraction($0))) }
+            )
+        case .sweep:
+            await service.sweepStaging()
+            return .none
+        case .remove(let path):
+            await service.removeStaged(path)
+            return .none
         case .files(let path): return .files(try await service.files(in: path))
         case .download(let file, let destination):
-            try await service.download(file, to: URL(fileURLWithPath: destination)) { emit(.progress(.fraction($0))) }; return .none
+            try await service.download(file, to: URL(fileURLWithPath: destination)) { emit(.progress(.fraction($0))) }
+            return .none
         case .move(let bundle, let before, let name):
             return .strings(try await service.moveOnHomeScreen(bundle, before: before, deviceName: name))
         case .observe:
-            return .boolean(await NotificationEngine.observeOnce(socket: service.clientSocket,
-                attachAllowed: { true }, onChange: { emit(.progress(.notification)) }))
+            return .boolean(
+                await NotificationEngine.observeOnce(
+                    socket: service.clientSocket,
+                    attachAllowed: { true },
+                    onChange: { emit(.progress(.notification)) }
+                )
+            )
         }
     }
 }

@@ -1,13 +1,13 @@
 // Created by Sam on 2026-08-05.
 
-import LightTouchCore
 import Cocoa
 import DeviceRuntime
 import HostRuntime
+import LightTouchCore
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
-    
+
     private var windowController: MainWindowController?
     private let dockProgress = DockProgress()
     private var host: DeviceSessionHost?
@@ -15,12 +15,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var emulators: [EmulatorController] { host?.sessions.map(\.emulator) ?? [] }
     /// The selected device's session (DeviceSettingsMenu.target): nil when the selection isn't running.
     private var emulator: EmulatorController? {
-        DeviceSettingsMenu.target(hasWindow: windowController != nil, selected: windowController?.session?.emulator, running: emulators)
+        DeviceSettingsMenu.target(
+            hasWindow: windowController != nil,
+            selected: windowController?.session?.emulator,
+            running: emulators
+        )
     }
     /// The selected device when it isn't running: its settings for its next start.
     private var stoppedSelection: DeviceInstance? { emulator == nil ? windowController?.selectedInstance : nil }
     private var helpController: HelpWindowController?
-    private let quitting = QuitCoordinator(budget: EmulatorController.stopBudget) { NSApp.reply(toApplicationShouldTerminate: true) }
+    private let quitting = QuitCoordinator(budget: EmulatorController.stopBudget) {
+        NSApp.reply(toApplicationShouldTerminate: true)
+    }
 
     /// Quit, from a menu or an alert (QuitRequest): not while one is already waiting on the devices.
     static func requestTermination() {
@@ -28,7 +34,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     @objc func quit(_ sender: Any?) { Self.requestTermination() }
-
 
     @objc func showDeviceWindow(_ sender: Any?) { windowController?.focusDeviceScreen(sender) }
     @objc func showFilesWindow(_ sender: Any?) { windowController?.toggleFiles(sender) }
@@ -38,10 +43,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func showDebugPort(_ sender: Any?) {
         guard let emulator, let window = NSApp.mainWindow, window.attachedSheet == nil else { return }
         var sheet: NSWindow?
-        let view = DebugPortView(shortName: emulator.profile.shortName, port: emulator.debugPort,
-                                 lldbWithSymbols: emulator.lldbAttachCommand, enabled: emulator.debugPortEnabled,
-                                 onToggle: { [weak emulator] in emulator?.toggleDebugPort() },
-                                 onDone: { sheet.map { window.endSheet($0) } })
+        let view = DebugPortView(
+            shortName: emulator.profile.shortName,
+            port: emulator.debugPort,
+            lldbWithSymbols: emulator.lldbAttachCommand,
+            enabled: emulator.debugPortEnabled,
+            onToggle: { [weak emulator] in emulator?.toggleDebugPort() },
+            onDone: { sheet.map { window.endSheet($0) } }
+        )
         let panel = NSWindow(contentViewController: NSHostingController(rootView: view))
         sheet = panel
         window.beginSheet(panel)
@@ -55,7 +64,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func toggleLocalNetwork(_ sender: Any?) {
         if let emulator { return emulator.toggleLocalNetwork() }
         guard let instance = stoppedSelection else { return }
-        DeviceOptions(settings: DeviceSettingsFile(directory: instance.paths.directory), board: instance.board, link: { nil }).toggleLocalNetwork()
+        DeviceOptions(
+            settings: DeviceSettingsFile(directory: instance.paths.directory),
+            board: instance.board,
+            link: { nil }
+        ).toggleLocalNetwork()
     }
 
     /// The settings items for the running device (DeviceSettingsMenu).
@@ -68,16 +81,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 return device
             }
         }
-        return DeviceSettingsMenu(device: stopped ?? emulator.map {
-            var device = DeviceSettingsMenu.Device(marketingName: $0.profile.marketingName, shortName: $0.profile.shortName)
-            device.localNetworkEnabled = $0.localNetworkEnabled
-            device.autoRotateEnabled = $0.autoRotateEnabled
-            device.debugPortEnabled = $0.debugPortEnabled
-            device.debugPort = $0.debugPort
-            device.lldbAttachCommand = $0.lldbAttachCommand
-            device.network = $0.network
-            return device
-        }, desiredNetwork: NetworkAccessPreference.desired(running: emulator?.network))
+        return DeviceSettingsMenu(
+            device: stopped
+                ?? emulator.map {
+                    var device = DeviceSettingsMenu.Device(
+                        marketingName: $0.profile.marketingName,
+                        shortName: $0.profile.shortName
+                    )
+                    device.localNetworkEnabled = $0.localNetworkEnabled
+                    device.autoRotateEnabled = $0.autoRotateEnabled
+                    device.debugPortEnabled = $0.debugPortEnabled
+                    device.debugPort = $0.debugPort
+                    device.lldbAttachCommand = $0.lldbAttachCommand
+                    device.network = $0.network
+                    return device
+                },
+            desiredNetwork: NetworkAccessPreference.desired(running: emulator?.network)
+        )
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -99,8 +119,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc func showHelp(_ sender: Any?) {
         if helpController == nil {
-            helpController = HelpWindowController(text: Bundle.main.url(forResource: "Help", withExtension: "txt")
-                .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "# Help\nHelp is missing from this copy of Light Touch.")
+            helpController = HelpWindowController(
+                text: Bundle.main.url(forResource: "Help", withExtension: "txt")
+                    .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+                    ?? "# Help\nHelp is missing from this copy of Light Touch."
+            )
         }
         helpController?.show(deviceName: emulator?.profile.shortName ?? "iPod")
         helpController?.showWindow(sender)
@@ -110,9 +133,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         guard let windowController else { return nil }
         let menu = NSMenu()
-        for (title, action) in [("Home Screen", #selector(MainWindowController.deviceHome(_:))),
-                                ("Lock", #selector(MainWindowController.deviceLock(_:))),
-                                ("Restart…", #selector(MainWindowController.deviceReset(_:)))] {
+        for (title, action) in [
+            ("Home Screen", #selector(MainWindowController.deviceHome(_:))),
+            ("Lock", #selector(MainWindowController.deviceLock(_:))),
+            ("Restart…", #selector(MainWindowController.deviceReset(_:))),
+        ] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = windowController
             menu.addItem(item)
@@ -133,10 +158,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         MainMenuBuilder.install(profile: .n72)
     }
-    
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        do { try Bundled.requireStorage() }
-        catch {
+        do { try Bundled.requireStorage() } catch {
             let alert = NSAlert()
             if (error as? CocoaError)?.code == .fileLocking {
                 alert.messageText = Bundled.appLockMessage
@@ -152,12 +176,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             Self.requestTermination()
             return
         }
-        do { try NativeLogging.start() }
-        catch { logEvent("logging: native output capture unavailable: \(error.localizedDescription)") }
+        do { try NativeLogging.start() } catch {
+            logEvent("logging: native output capture unavailable: \(error.localizedDescription)")
+        }
         // State from before devices were prepared from IPSWs: erased once, or the app quits. The erase
         // runs off the main actor behind a progress window; a launch after a quit midway resumes without asking.
-        if let legacy = LegacyState.find(state: Bundled.stateDirectory, applicationSupport: ProcessInfo.processInfo.environment["LTM_STATE_DIR"] == nil
-                                            ? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0] : nil) {
+        if let legacy = LegacyState.find(
+            state: Bundled.stateDirectory,
+            applicationSupport: ProcessInfo.processInfo.environment["LTM_STATE_DIR"] == nil
+                ? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0] : nil
+        ) {
             if !legacy.resuming {
                 let alert = NSAlert()
                 alert.messageText = LegacyState.message
@@ -165,7 +193,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 alert.addButton(withTitle: "Erase and Continue")
                 alert.addButton(withTitle: "Quit")
                 alert.buttons.first?.hasDestructiveAction = true
-                guard alert.runModal() == .alertFirstButtonReturn else { Self.requestTermination(); return }
+                guard alert.runModal() == .alertFirstButtonReturn else {
+                    Self.requestTermination()
+                    return
+                }
             }
             let progress = MigrationProgress()
             progress.window.makeKeyAndOrderFront(nil)
@@ -191,7 +222,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         Self.sweepStorage()
         Self.adoptDevelopmentBase(catalog: host.catalog)
         // A fresh install starts unpacking the built-in iPod and selects it (it starts once published).
-        if let bundled = FirmwareJobs.shared.prepareBundledIfFresh(sidebarSaved: UserDefaults.standard.object(forKey: SidebarList.entriesKey) != nil) {
+        if let bundled = FirmwareJobs.shared.prepareBundledIfFresh(
+            sidebarSaved: UserDefaults.standard.object(forKey: SidebarList.entriesKey) != nil
+        ) {
             host.lastSelection = bundled
         }
         let profile = host.launchSelection?.profile ?? .n72
@@ -202,7 +235,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         self.windowController = controller
         controller.selectLaunchDevice()
         dockProgress.start()
-        if !pendingOpen.isEmpty { controller.open(pendingOpen); pendingOpen = [] }
+        if !pendingOpen.isEmpty {
+            controller.open(pendingOpen)
+            pendingOpen = []
+        }
     }
 
     /// Development runs: LTM_DEV_BASE names a `firmwarekit create` output directory to run as a
@@ -212,7 +248,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         guard let path = ProcessInfo.processInfo.environment["LTM_DEV_BASE"] else { return }
         let base = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
         let state = Bundled.stateDirectory
-        guard !DeviceInstance.all(state: state).contains(where: { DeviceInstance.url($0.base.path, state: state).standardizedFileURL == base }) else { return }
+        guard
+            !DeviceInstance.all(state: state).contains(where: {
+                DeviceInstance.url($0.base.path, state: state).standardizedFileURL == base
+            })
+        else { return }
         guard let id = (try? DeviceLock.read(base: base))??.entryID, let entry = catalog.entry(id: id) else {
             return logEvent("LTM_DEV_BASE: \(path) has no device.lock.json naming a catalog entry")
         }
@@ -226,7 +266,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Launch, with the library's lock held: finish what a crash or an older
     /// build left. FirmwareJobs' own init sweeps Preparing/ and the IPSW stores.
     private static func sweepStorage() {
-        let state = Bundled.stateDirectory, logs = Bundled.logsDirectory
+        let state = Bundled.stateDirectory
+        let logs = Bundled.logsDirectory
         let records = DeviceInstance.all(state: state)
         _ = FirmwareJobs.shared
         DeviceStateStorage.sweepDeleting(state: state)
@@ -242,7 +283,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let fm = FileManager.default
         let deviceLogs = logs.appendingPathComponent("Devices", isDirectory: true)
         let ids = Set(records.map(\.id.uuidString))
-        for name in (try? fm.contentsOfDirectory(atPath: deviceLogs.path)) ?? [] where UUID(uuidString: name) != nil && !ids.contains(name) {
+        for name in (try? fm.contentsOfDirectory(atPath: deviceLogs.path)) ?? []
+        where UUID(uuidString: name) != nil && !ids.contains(name) {
             try? DeviceStateStorage.removeTree(deviceLogs.appendingPathComponent(name))
         }
         for name in (try? fm.contentsOfDirectory(atPath: logs.path)) ?? []
@@ -270,14 +312,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             confirmPreparation: { preparing in
                 let alert = NSAlert()
                 alert.messageText = preparing == 1 ? "A device is being prepared" : "Devices are being prepared"
-                alert.informativeText = "Quitting stops the preparation. It starts over the next time you prepare the device."
+                alert.informativeText =
+                    "Quitting stops the preparation. It starts over the next time you prepare the device."
                 alert.addButton(withTitle: "Quit Anyway")
                 alert.addButton(withTitle: "Cancel")
                 alert.buttons.first?.hasDestructiveAction = true
                 return alert.runModal() == .alertFirstButtonReturn
             },
             hasDevices: !emulators.isEmpty,
-            changesInProgress: emulators.contains(where: \.isInstalling) || AppInstaller.hasPendingWork || windowController?.hasFileTransfer == true,
+            changesInProgress: emulators.contains(where: \.isInstalling) || AppInstaller.hasPendingWork
+                || windowController?.hasFileTransfer == true,
             confirmChanges: {
                 let alert = NSAlert()
                 alert.messageText = "Device changes are in progress"
@@ -291,7 +335,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 AppInstaller.cancelPendingWork()
                 windowController?.cancelFileTransfer()
             },
-            running: emulators.filter { !$0.isDead && !$0.isPoweredOff }.map { emulator in { done in emulator.halt { _ in done() } } })
+            running: emulators.filter { !$0.isDead && !$0.isPoweredOff }.map { emulator in
+                { done in emulator.halt { _ in done() } }
+            }
+        )
         switch answer {
         case .now: return .terminateNow
         case .cancel: return .terminateCancel
@@ -311,12 +358,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     /// Reopen the retained device window even when Files or Help is still visible.
-    func applicationShouldHandleReopen(_ sender: NSApplication,
-                                       hasVisibleWindows flag: Bool) -> Bool {
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows flag: Bool
+    ) -> Bool {
         if windowController?.window?.isVisible != true { windowController?.showWindow(nil) }
         return true
     }
-    
+
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         // This selects secure coding if AppKit consults the delegate; returning
         // false would select legacy coding, not disable window restoration.
@@ -327,7 +376,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
 /// A small window while the legacy erase runs off the main actor.
 private final class MigrationProgress {
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 80), styleMask: [.titled], backing: .buffered, defer: false)
+    let window = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 360, height: 80),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false
+    )
     private let bar = NSProgressIndicator()
 
     init() {

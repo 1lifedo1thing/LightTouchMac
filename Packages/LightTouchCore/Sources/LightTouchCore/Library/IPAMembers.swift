@@ -23,8 +23,11 @@ public nonisolated enum IPAMembers {
     public static func iconMember(_ members: [String], root: String, info: [String: Any]) -> String? {
         var names: [String] = []
         if let icons = info["CFBundleIcons"] as? [String: Any],
-           let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
-           let files = primary["CFBundleIconFiles"] as? [String] { names += files }
+            let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
+            let files = primary["CFBundleIconFiles"] as? [String]
+        {
+            names += files
+        }
         if let files = info["CFBundleIconFiles"] as? [String] { names += files }
         if let file = info["CFBundleIconFile"] as? String { names.append(file) }
         names.append("Icon")
@@ -36,7 +39,10 @@ public nonisolated enum IPAMembers {
             let base = root + (name.hasSuffix(".png") ? String(name.dropLast(4)) : name)
             if let hit = pngs.first(where: { $0 == "\(base)@2x.png" })
                 ?? pngs.first(where: { $0 == "\(base).png" })
-                ?? pngs.first(where: { $0.hasPrefix(base) }) { return hit }
+                ?? pngs.first(where: { $0.hasPrefix(base) })
+            {
+                return hit
+            }
         }
         return nil
     }

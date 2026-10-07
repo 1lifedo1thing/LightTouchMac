@@ -24,8 +24,15 @@ import Observation
     /// The revalidated copy Install will fetch.
     public var candidate: CatalogApp?
 
-    public init(app: CatalogApp, device: String?, deviceOS: String, arch: String, installedVersion: String?,
-         canInstall: @escaping () -> Bool, install: @escaping (CatalogApp) -> Void) {
+    public init(
+        app: CatalogApp,
+        device: String?,
+        deviceOS: String,
+        arch: String,
+        installedVersion: String?,
+        canInstall: @escaping () -> Bool,
+        install: @escaping (CatalogApp) -> Void
+    ) {
         self.app = app
         self.device = device
         self.deviceOS = deviceOS
@@ -48,7 +55,8 @@ import Observation
     /// Choosing an older version than the one installed: the only case where data is at risk.
     public var downgradeNote: String? {
         guard let installedVersion, let chosen = selectedRow?.version.version,
-              chosen.compare(installedVersion, options: .numeric) == .orderedAscending else { return nil }
+            chosen.compare(installedVersion, options: .numeric) == .orderedAscending
+        else { return nil }
         return "Version \(installedVersion) is installed. An older version may not read its data."
     }
 
@@ -58,10 +66,10 @@ import Observation
             let records = try await CatalogClient.versions(for: app)
             let found: [Row] = records.flatMap { version in
                 version.copies.filter { copy in
-                    copy.ipa_id == String(app.ipaID) || (
-                        copy.install_status == "installable" && CatalogCopy.runs(copy.architectures, on: arch)
-                        && CatalogCopy.osIssue(version.minimum_os_version, deviceOS: deviceOS) == nil
-                        && CatalogCopy.osIssue(copy.macho_min_os, deviceOS: deviceOS) == nil)
+                    copy.ipa_id == String(app.ipaID)
+                        || (copy.install_status == "installable" && CatalogCopy.runs(copy.architectures, on: arch)
+                            && CatalogCopy.osIssue(version.minimum_os_version, deviceOS: deviceOS) == nil
+                            && CatalogCopy.osIssue(copy.macho_min_os, deviceOS: deviceOS) == nil)
                 }.map { (version, $0) }
             }
             rows = found
@@ -90,7 +98,11 @@ import Observation
             let copy = try await CatalogClient.copyDetails(id)
             try Task.checkCancellation()
             details = copy
-            if let issue = copy.unavailableReason(minimumOS: row.version.minimum_os_version, deviceOS: deviceOS, arch: arch) {
+            if let issue = copy.unavailableReason(
+                minimumOS: row.version.minimum_os_version,
+                deviceOS: deviceOS,
+                arch: arch
+            ) {
                 problem = issue
                 return
             }

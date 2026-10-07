@@ -8,10 +8,10 @@
 // Shut Down: the guest powers itself off, as the slider does (qemu_ios_ui_shutdown: the guest agent's halt, or
 // 1.x's power-off gesture), so its storage is left clean; the helper stays, powered off, as after the slider.
 
-import Foundation
-import Observation
-import HostRuntime
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import Observation
 
 /// What Stop and Shut Down read and do on the session.
 public protocol ShutdownHost: AnyObject {
@@ -60,11 +60,14 @@ public protocol ShutdownHost: AnyObject {
     private var isDead: Bool { host.state.isDead }
 
     /// A live helper whose VM can be stopped, including mid-boot.
-    public var canStop: Bool { !isDead && !isPoweredOff && !shuttingDown && !host.isErasing && host.state != .notStarted }
+    public var canStop: Bool {
+        !isDead && !isPoweredOff && !shuttingDown && !host.isErasing && host.state != .notStarted
+    }
     /// Force Stop: Stop's hard halt, also while a Shut Down is under way (one the guest never finishes).
     public var canForceStop: Bool { canStop || (cleanShutdown != nil && haltTask == nil && !isPoweredOff && !isDead) }
     public var canShutDown: Bool {
-        host.state == .running && !shuttingDown && !host.isErasing && !host.storageFailed && host.helper?.isDead == false
+        host.state == .running && !shuttingDown && !host.isErasing && !host.storageFailed
+            && host.helper?.isDead == false
     }
     public var isShuttingDownCleanly: Bool { cleanShutdown != nil && haltTask == nil }
 
@@ -84,25 +87,39 @@ public protocol ShutdownHost: AnyObject {
             }
             guard let self else { return }
             // A Force Stop that took over owns the flag until its halt ends, and counts as stopped.
-            let forced = haltTask != nil, off = isPoweredOff || isDead
+            let forced = haltTask != nil
+            let off = isPoweredOff || isDead
             cleanShutdown = nil
             if !forced { shuttingDown = false }
-            logEvent(off ? "shut down: the guest powered off" : forced ? "shut down: force stopped" : "shut down: the guest didn't power off")
+            logEvent(
+                off
+                    ? "shut down: the guest powered off"
+                    : forced ? "shut down: force stopped" : "shut down: the guest didn't power off"
+            )
             completion(off || forced)
         }
     }
 
     /// Force Stop (and the guest's power-off from the menu): the halt, once queued installs are dropped.
     public func forceStop(completion: @escaping (Bool) -> Void) {
-        guard canForceStop else { completion(false); return }
+        guard canForceStop else {
+            completion(false)
+            return
+        }
         host.willStop()
         halt(completion: completion)
     }
 
     /// `completion(true)` iff the helper is gone. Multiple requests join one halt.
     public func halt(completion: @escaping (Bool) -> Void) {
-        if isPoweredOff || host.helper?.isDead != false { completion(true); return }
-        if haltTask != nil { haltCompletions.append(completion); return }
+        if isPoweredOff || host.helper?.isDead != false {
+            completion(true)
+            return
+        }
+        if haltTask != nil {
+            haltCompletions.append(completion)
+            return
+        }
         shuttingDown = true
         halting = true
         host.retireBoot()

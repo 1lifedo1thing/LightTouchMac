@@ -1,7 +1,7 @@
-import HostServiceWire
-import HostRuntime
-import Foundation
 import AVFoundation
+import Foundation
+import HostRuntime
+import HostServiceWire
 
 /// A private, iPod-compatible movie prepared before it joins the device queue.
 public struct MediaVideo: Sendable {
@@ -13,7 +13,9 @@ public struct MediaVideo: Sendable {
 
     public nonisolated static let extensions: Set<String> = ["mp4", "m4v", "mov"]
 
-    public nonisolated static func prepare(_ source: URL, cacheDirectory: URL? = nil, profile: Board) async throws -> MediaVideo {
+    public nonisolated static func prepare(_ source: URL, cacheDirectory: URL? = nil, profile: Board) async throws
+        -> MediaVideo
+    {
         let worker = Task.detached {
             try Task.checkCancellation()
             guard extensions.contains(source.pathExtension.lowercased()) else {
@@ -25,8 +27,11 @@ public struct MediaVideo: Sendable {
             }
             let directory = FileManager.default.temporaryDirectory
                 .appendingPathComponent("ltm-video-" + UUID().uuidString, isDirectory: true)
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
-                                                    attributes: [.posixPermissions: 0o700])
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: false,
+                attributes: [.posixPermissions: 0o700]
+            )
             var complete = false
             defer { if !complete { try? FileManager.default.removeItem(at: directory) } }
             // The original can be renamed or edited after the drop. Keep a
@@ -34,8 +39,13 @@ public struct MediaVideo: Sendable {
             let snapshot = directory.appendingPathComponent("source." + source.pathExtension.lowercased())
             let input = try FileHandle(forReadingFrom: source)
             defer { try? input.close() }
-            guard FileManager.default.createFile(atPath: snapshot.path, contents: nil,
-                                                  attributes: [.posixPermissions: 0o600]) else {
+            guard
+                FileManager.default.createFile(
+                    atPath: snapshot.path,
+                    contents: nil,
+                    attributes: [.posixPermissions: 0o600]
+                )
+            else {
                 throw DeviceToolsError.failed("Couldn’t prepare the video.")
             }
             let copy = try FileHandle(forWritingTo: snapshot)
@@ -56,23 +66,35 @@ public struct MediaVideo: Sendable {
             let asset = AVURLAsset(url: snapshot)
             let duration = try await asset.load(.duration).seconds
             guard duration.isFinite, duration > 0, duration <= 86400,
-                  try await !asset.load(.hasProtectedContent),
-                  try await asset.loadTracks(withMediaType: .video).count == 1,
-                  try await asset.loadTracks(withMediaType: .audio).count <= 1 else {
-                throw DeviceToolsError.failed("Choose an unprotected video with one video track and no more than one audio track.")
+                try await !asset.load(.hasProtectedContent),
+                try await asset.loadTracks(withMediaType: .video).count == 1,
+                try await asset.loadTracks(withMediaType: .audio).count <= 1
+            else {
+                throw DeviceToolsError.failed(
+                    "Choose an unprotected video with one video track and no more than one audio track."
+                )
             }
             var title = source.deletingPathExtension().lastPathComponent
             for item in try await asset.load(.commonMetadata) where item.commonKey == .commonKeyTitle {
-                if let value = try await item.load(.stringValue), !value.isEmpty, value.utf8.count <= 4096 { title = value }
+                if let value = try await item.load(.stringValue), !value.isEmpty, value.utf8.count <= 4096 {
+                    title = value
+                }
             }
             let output = directory.appendingPathComponent("video.m4v")
-            let cache = cacheDirectory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            let cache =
+                cacheDirectory
+                ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("gold.samhenri.LightTouchMac/Converted Videos", isDirectory: true)
-            try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true,
-                                                    attributes: [.posixPermissions: 0o700])
+            try FileManager.default.createDirectory(
+                at: cache,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: cache.path)
-            let cached = cache.appendingPathComponent(try MediaIdentity.identifier(for: snapshot)
-                                                      + (MediaVideoExport.playsHD(profile) ? "-720p" : "") + ".m4v")
+            let cached = cache.appendingPathComponent(
+                try MediaIdentity.identifier(for: snapshot)
+                    + (MediaVideoExport.playsHD(profile) ? "-720p" : "") + ".m4v"
+            )
             var reused = false
             if FileManager.default.fileExists(atPath: cached.path) {
                 do {
@@ -108,7 +130,9 @@ public struct MediaVideo: Sendable {
                 try FileManager.default.copyItem(at: output, to: publishing)
                 if renamex_np(publishing.path, cached.path, UInt32(RENAME_EXCL)) != 0 {
                     guard errno == EEXIST else {
-                        throw DeviceToolsError.failed("Couldn’t save the converted video (\(String(cString: strerror(errno)))).")
+                        throw DeviceToolsError.failed(
+                            "Couldn’t save the converted video (\(String(cString: strerror(errno))))."
+                        )
                     }
                     try FileManager.default.removeItem(at: output)
                     try FileManager.default.copyItem(at: cached, to: output)
@@ -125,8 +149,13 @@ public struct MediaVideo: Sendable {
             ]
             try PropertyListSerialization.data(fromPropertyList: properties, format: .xml, options: 0)
                 .write(to: metadata, options: .atomic)
-            let result = MediaVideo(id: try MediaIdentity.identifier(for: output), directory: directory,
-                                    video: output, metadata: metadata, title: title)
+            let result = MediaVideo(
+                id: try MediaIdentity.identifier(for: output),
+                directory: directory,
+                video: output,
+                metadata: metadata,
+                title: title
+            )
             try FileManager.default.removeItem(at: snapshot)
             complete = true
             return result
@@ -138,23 +167,31 @@ public struct MediaVideo: Sendable {
                 throw CancellationError()
             }
             return video
-        } onCancel: { worker.cancel() }
+        } onCancel: {
+            worker.cancel()
+        }
     }
 
-    nonisolated private static func validatedDuration(of file: URL, expected duration: Double, profile: Board) async throws -> Double {
+    nonisolated private static func validatedDuration(of file: URL, expected duration: Double, profile: Board)
+        async throws -> Double
+    {
         let values = try file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
         let asset = AVURLAsset(url: file)
         let exportedDuration = try await asset.load(.duration).seconds
         guard values.isRegularFile == true, values.isSymbolicLink != true,
-              let size = values.fileSize, size > 0 else {
+            let size = values.fileSize, size > 0
+        else {
             throw DeviceToolsError.failed("The prepared video couldn’t be read.")
         }
         guard size <= 1 << 30 else {
             throw DeviceToolsError.failed("The prepared video is too large. Choose a shorter video.")
         }
         guard exportedDuration.isFinite, abs(exportedDuration - duration) < 0.2,
-              try await asset.loadTracks(withMediaType: .video).count == 1 else {
-            throw DeviceToolsError.failed("The whole video couldn’t be converted for the \(profile.shortName). Try a shorter video.")
+            try await asset.loadTracks(withMediaType: .video).count == 1
+        else {
+            throw DeviceToolsError.failed(
+                "The whole video couldn’t be converted for the \(profile.shortName). Try a shorter video."
+            )
         }
         return exportedDuration
     }
@@ -173,7 +210,9 @@ private final class MediaVideoExport {
     public nonisolated static func playsHD(_ profile: Board) -> Bool { profile.soc == .s5l8930 }
 
     public init(source: URL, destination: URL, profile: Board) {
-        self.source = source; self.destination = destination; self.profile = profile
+        self.source = source
+        self.destination = destination
+        self.profile = profile
     }
 
     public func run() async throws {
@@ -196,7 +235,8 @@ private final class MediaVideoExport {
             await session.export()
             try Task.checkCancellation()
             guard session.status == .completed else {
-                throw session.error ?? DeviceToolsError.failed("This video couldn’t be converted for the \(profile.shortName).")
+                throw session.error
+                    ?? DeviceToolsError.failed("This video couldn’t be converted for the \(profile.shortName).")
             }
         }
     }

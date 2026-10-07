@@ -1,8 +1,8 @@
-import Foundation
 import CoreFoundation
 import Darwin
-import HostRuntime
 import DeviceRuntime
+import Foundation
+import HostRuntime
 
 nonisolated enum Bundled {
     static var logsDirectory: URL { URL(fileURLWithPath: CommandLine.arguments[2]) }
@@ -15,8 +15,13 @@ nonisolated func logEvent(_ message: String, _ arguments: CVarArg...) {
 @main struct ExitWaitAudit {
     static func main() {
         Task { @MainActor in
-            do { try await run(); exit(0) }
-            catch { print("FAIL \(error)"); exit(1) }
+            do {
+                try await run()
+                exit(0)
+            } catch {
+                print("FAIL \(error)")
+                exit(1)
+            }
         }
         CFRunLoopRun()
     }
@@ -44,13 +49,17 @@ nonisolated func logEvent(_ message: String, _ arguments: CVarArg...) {
                 process.link.start { continuation.resume(with: $0) }
                 ownedPID = process.link.pid
                 if let identity = StorageLocations.daemonIdentity(ownedPID) {
-                    emit(["event": "spawn", "pid": ownedPID, "parent": identity.parent,
-                          "uid": identity.uid, "started": identity.started,
-                          "micros": identity.micros, "path": identity.path])
+                    emit([
+                        "event": "spawn", "pid": ownedPID, "parent": identity.parent,
+                        "uid": identity.uid, "started": identity.started,
+                        "micros": identity.micros, "path": identity.path,
+                    ])
                 }
             }
-            emit(["event": "hello", "pid": info.pid, "dylib": info.dylibPath,
-                  "buildID": info.buildID ?? "unknown", "guestStarted": false])
+            emit([
+                "event": "hello", "pid": info.pid, "dylib": info.dylibPath,
+                "buildID": info.buildID ?? "unknown", "guestStarted": false,
+            ])
             let pid = process.link.pid
             guard pid > 0, info.pid == pid, !process.isDead else { throw Failure.invalidHello }
             if CommandLine.arguments[3] == "failure" { throw Failure.injected }
@@ -83,8 +92,14 @@ nonisolated func logEvent(_ message: String, _ arguments: CVarArg...) {
             let returnedAt = began.duration(to: clock.now)
             var usageAfter = rusage()
             getrusage(RUSAGE_SELF, &usageAfter)
-            let userCPU = Double(usageAfter.ru_utime.tv_sec - usageBefore.ru_utime.tv_sec) + Double(usageAfter.ru_utime.tv_usec - usageBefore.ru_utime.tv_usec) / 1_000_000
-            let systemCPU = Double(usageAfter.ru_stime.tv_sec - usageBefore.ru_stime.tv_sec) + Double(usageAfter.ru_stime.tv_usec - usageBefore.ru_stime.tv_usec) / 1_000_000
+            let userCPU =
+                Double(usageAfter.ru_utime.tv_sec - usageBefore.ru_utime.tv_sec) + Double(
+                    usageAfter.ru_utime.tv_usec - usageBefore.ru_utime.tv_usec
+                ) / 1_000_000
+            let systemCPU =
+                Double(usageAfter.ru_stime.tv_sec - usageBefore.ru_stime.tv_sec) + Double(
+                    usageAfter.ru_stime.tv_usec - usageBefore.ru_stime.tv_usec
+                ) / 1_000_000
             let deadAtReturn = process.isDead
             let pidAtReturn = process.link.pid
             // Explicit fresh cleanup owner: cancellation never abandons reaping.
@@ -93,7 +108,7 @@ nonisolated func logEvent(_ message: String, _ arguments: CVarArg...) {
                     let premature = try StorageLease(dir.appendingPathComponent("lease"))
                     premature.close()
                     throw Failure.prematureLeaseRelease
-                } catch StorageLease.Failure.inUse { }
+                } catch StorageLease.Failure.inUse {}
             }
             let cleanup = Task { @MainActor in await process.waitForExit(timeout: 5) }
             let reaped = await cleanup.value
@@ -111,14 +126,16 @@ nonisolated func logEvent(_ message: String, _ arguments: CVarArg...) {
                 let parts = duration.components
                 return Double(parts.seconds) + Double(parts.attoseconds) / 1e18
             }
-            emit(["event": "result", "mode": CommandLine.arguments[3],
-                  "timeout": waitTimeout, "killDelay": killDelay,
-                  "wait": reportedExit, "returned": seconds(returnedAt),
-                  "cpu": userCPU + systemCPU,
-                  "heartbeat": heartbeat.map(seconds) ?? -1,
-                  "deadAtReturn": deadAtReturn, "pidAtReturn": pidAtReturn,
-                  "reaped": reaped, "deathCount": deathCount,
-                  "guestStarted": false, "alreadyDead": alreadyDead])
+            emit([
+                "event": "result", "mode": CommandLine.arguments[3],
+                "timeout": waitTimeout, "killDelay": killDelay,
+                "wait": reportedExit, "returned": seconds(returnedAt),
+                "cpu": userCPU + systemCPU,
+                "heartbeat": heartbeat.map(seconds) ?? -1,
+                "deadAtReturn": deadAtReturn, "pidAtReturn": pidAtReturn,
+                "reaped": reaped, "deathCount": deathCount,
+                "guestStarted": false, "alreadyDead": alreadyDead,
+            ])
         } catch {
             exitTimer?.cancel()
             if ownedPID > 0, process.link.pid == ownedPID { process.kill() }
@@ -127,11 +144,14 @@ nonisolated func logEvent(_ message: String, _ arguments: CVarArg...) {
             let reaped = await cleanup.value
             var status: Int32 = 0
             errno = 0
-            let exclusivelyReaped = ownedPID > 0 && reaped && waitpid(ownedPID, &status, WNOHANG) == -1 && errno == ECHILD
-            emit(["event": "failureCleanup", "pid": ownedPID,
-                  "exclusiveReap": exclusivelyReaped,
-                  "reaped": reaped, "remainingPID": process.link.pid,
-                  "error": String(describing: error)])
+            let exclusivelyReaped =
+                ownedPID > 0 && reaped && waitpid(ownedPID, &status, WNOHANG) == -1 && errno == ECHILD
+            emit([
+                "event": "failureCleanup", "pid": ownedPID,
+                "exclusiveReap": exclusivelyReaped,
+                "reaped": reaped, "remainingPID": process.link.pid,
+                "error": String(describing: error),
+            ])
             throw error
         }
     }

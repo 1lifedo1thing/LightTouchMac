@@ -8,7 +8,20 @@ import Foundation
 import HostRuntime
 
 public nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Sendable {
-    public init(format: Int = 1, id: UUID, name: String, board: String, firmware: String, created: Date, base: Base, storage: Storage, identity: Identity? = nil, provenance: Provenance? = nil, guest: Guest? = nil, panel: String? = nil) {
+    public init(
+        format: Int = 1,
+        id: UUID,
+        name: String,
+        board: String,
+        firmware: String,
+        created: Date,
+        base: Base,
+        storage: Storage,
+        identity: Identity? = nil,
+        provenance: Provenance? = nil,
+        guest: Guest? = nil,
+        panel: String? = nil
+    ) {
         self.format = format
         self.id = id
         self.name = name
@@ -61,7 +74,10 @@ public nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Send
         public var seed: String?
         public var udid: String?
         public var dieID: String?
-        public enum CodingKeys: String, CodingKey { case seed, udid, dieID = "die_id" }
+        public enum CodingKeys: String, CodingKey {
+            case seed, udid
+            case dieID = "die_id"
+        }
     }
 
     public struct Provenance: Codable, Equatable, Sendable {
@@ -161,14 +177,16 @@ public nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Send
     /// `logs` is the app's log root (Bundled.logsDirectory).
     public func paths(state: URL, logs: URL) -> Paths {
         let directory = Self.directory(id, state: state)
-        return Paths(directory: directory,
-                     base: Self.url(base.path, state: state),
-                     overlay: Self.url(storage.overlay, state: state),
-                     writableNOR: storage.writableNOR.map { Self.url($0, state: state) },
-                     snapshot: Self.url(storage.snapshot, state: state),
-                     usbmuxConf: Self.url(storage.usbmuxConf, state: state),
-                     work: directory.appendingPathComponent("work", isDirectory: true),
-                     logs: logs.appendingPathComponent("Devices/\(id.uuidString)", isDirectory: true))
+        return Paths(
+            directory: directory,
+            base: Self.url(base.path, state: state),
+            overlay: Self.url(storage.overlay, state: state),
+            writableNOR: storage.writableNOR.map { Self.url($0, state: state) },
+            snapshot: Self.url(storage.snapshot, state: state),
+            usbmuxConf: Self.url(storage.usbmuxConf, state: state),
+            work: directory.appendingPathComponent("work", isDirectory: true),
+            logs: logs.appendingPathComponent("Devices/\(id.uuidString)", isDirectory: true)
+        )
     }
 
     /// The preparer records what activated the volume in device.lock.json
@@ -210,8 +228,9 @@ public nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Send
         let names = (try? FileManager.default.contentsOfDirectory(atPath: devices.path)) ?? []
         return names.compactMap { name in
             guard let id = UUID(uuidString: name),
-                  let record = try? read(devices.appendingPathComponent(name, isDirectory: true)),
-                  record.id == id else { return nil }
+                let record = try? read(devices.appendingPathComponent(name, isDirectory: true)),
+                record.id == id
+            else { return nil }
             return record
         }.sorted { ($0.created, $0.id.uuidString) < ($1.created, $1.id.uuidString) }
     }

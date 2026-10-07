@@ -1,4 +1,8 @@
+import Foundation
 import HostRuntime
+import IOSurface
+import LTMLinkC
+
 // The app's handle on one running LightTouchDevice helper.
 //
 //     let link = DeviceLink(configuration: .init(instance: id, outputDescriptor: capture.writeDescriptor))
@@ -15,10 +19,6 @@ import HostRuntime
 //
 // Every callback runs on `queue` (main by default). All methods may be called
 // from any thread except `frontSurface()`, which belongs to one reader.
-
-import Foundation
-import IOSurface
-import LTMLinkC
 
 nonisolated public enum DeviceLinkError: Error, Equatable, CustomStringConvertible {
     case spawnFailed(Int32)
@@ -137,8 +137,13 @@ nonisolated public final class DeviceLink: @unchecked Sendable {
         let server = DeviceRendezvousServer.shared
         let kr = server.start()
         guard kr == 0 else { return queue.async { completion(.failure(.rendezvous("bootstrap_check_in: \(kr)"))) } }
-        guard let requirement = configuration.requirement ?? DeviceRendezvous.defaultRequirement(helper: configuration.helper) else {
-            return queue.async { completion(.failure(.rendezvous("no code requirement for \(self.configuration.helper.path)"))) }
+        guard
+            let requirement = configuration.requirement
+                ?? DeviceRendezvous.defaultRequirement(helper: configuration.helper)
+        else {
+            return queue.async {
+                completion(.failure(.rendezvous("no code requirement for \(self.configuration.helper.path)")))
+            }
         }
         var sv: [Int32] = [-1, -1]
         guard socketpair(AF_UNIX, SOCK_STREAM, 0, &sv) == 0 else {
@@ -146,26 +151,34 @@ nonisolated public final class DeviceLink: @unchecked Sendable {
             return queue.async { completion(.failure(.spawnFailed(e))) }
         }
         _ = fcntl(sv[0], F_SETFD, FD_CLOEXEC)
-        _ = fcntl(sv[1], F_SETFD, FD_CLOEXEC)   // the child gets it via dup2 onto 3
+        _ = fcntl(sv[1], F_SETFD, FD_CLOEXEC)  // the child gets it via dup2 onto 3
         let token = (0..<4).map { _ in String(format: "%08x", arc4random()) }.joined()
-        var argv = [configuration.helper.path, "--connect", server.serviceName, "--token", token,
-                    "--instance", configuration.instance.uuidString] + configuration.arguments
+        var argv =
+            [
+                configuration.helper.path, "--connect", server.serviceName, "--token", token,
+                "--instance", configuration.instance.uuidString,
+            ] + configuration.arguments
         var environment = ProcessInfo.processInfo.environment.merging(configuration.environment) { $1 }
         if let dylib = configuration.dylib { environment["LTM_QEMU_DYLIB"] = dylib }
         let envp = environment.map { "\($0)=\($1)" }
         lock.withLock { startCompletion = completion }
 
         let registration = DeviceRendezvousServer.Registration(
-            token: token, requirement: requirement,
+            token: token,
+            requirement: requirement,
             deliver: { [weak self] hello in self?.surfacesArrived(hello) },
-            reject: { [weak self] reason in self?.invalidate(.rejected(reason), kill: true) })
-        let pid = server.spawnAndRegister({
-            withCStrings(argv) { cargv in
-                withCStrings(envp) { cenv in
-                    ltm_spawn(configuration.helper.path, cargv, cenv, configuration.outputDescriptor, sv[1])
+            reject: { [weak self] reason in self?.invalidate(.rejected(reason), kill: true) }
+        )
+        let pid = server.spawnAndRegister(
+            {
+                withCStrings(argv) { cargv in
+                    withCStrings(envp) { cenv in
+                        ltm_spawn(configuration.helper.path, cargv, cenv, configuration.outputDescriptor, sv[1])
+                    }
                 }
-            }
-        }, registration: registration)
+            },
+            registration: registration
+        )
         argv.removeAll()
         close(sv[1])
         guard pid > 0 else {
@@ -181,13 +194,19 @@ nonisolated public final class DeviceLink: @unchecked Sendable {
         exit.resume()
 
         let channel = LinkChannel<HelperMessage, AppMessage>(
-            fd: sv[0], queue: queue,
+            fd: sv[0],
+            queue: queue,
             onMessage: { [weak self] in self?.received($0) },
-            onClose: { [weak self] error in self?.invalidate(.closed(error.map { "\($0)" } ?? "end of file"), kill: false) })
+            onClose: { [weak self] error in
+                self?.invalidate(.closed(error.map { "\($0)" } ?? "end of file"), kill: false)
+            }
+        )
         lock.withLock { self.channel = channel }
 
-        request(.hello(protocolVersion: DeviceLinkWire.protocolVersion, board: configuration.board),
-                timeout: configuration.connectTimeout) { [weak self] result in
+        request(
+            .hello(protocolVersion: DeviceLinkWire.protocolVersion, board: configuration.board),
+            timeout: configuration.connectTimeout
+        ) { [weak self] result in
             guard let self else { return }
             switch result {
             case .success(.hello(let info)):
@@ -214,7 +233,11 @@ nonisolated public final class DeviceLink: @unchecked Sendable {
             ring?.release()
             statusBlock = status
             if hello.generation > 0 {
-                ring = FrameRingReader(status: status, generation: hello.generation, surfaces: Array(hello.surfaces.dropFirst()))
+                ring = FrameRingReader(
+                    status: status,
+                    generation: hello.generation,
+                    surfaces: Array(hello.surfaces.dropFirst())
+                )
             }
         }
         queue.async { [weak self] in self?.finishStartIfReady() }
@@ -278,26 +301,39 @@ nonisolated public final class DeviceLink: @unchecked Sendable {
     // MARK: Teardown
 
     /// SIGTERM: the helper runs its clean shutdown (bounded) and exits.
-    public func terminate() { let p = pid; if p > 0 { _ = Darwin.kill(p, SIGTERM) } }
+    public func terminate() {
+        let p = pid
+        if p > 0 { _ = Darwin.kill(p, SIGTERM) }
+    }
     /// SIGKILL.
-    public func kill() { let p = pid; if p > 0 { _ = Darwin.kill(p, SIGKILL) } }
+    public func kill() {
+        let p = pid
+        if p > 0 { _ = Darwin.kill(p, SIGKILL) }
+    }
 
     private func invalidate(_ error: DeviceLinkError, kill shouldKill: Bool) {
-        let (fire, channel, waiting, completion): (Bool, LinkChannel<HelperMessage, AppMessage>?, [Pending], (@Sendable (Result<HelperInfo, DeviceLinkError>) -> Void)?) = lock.withLock {
-            guard !invalidated else { return (false, nil, [], nil) }
-            invalidated = true
-            let waiting = Array(pending.values)
-            pending.removeAll()
-            let c = startCompletion
-            startCompletion = nil
-            ring?.release()
-            return (true, self.channel, waiting, c)
-        }
+        let (fire, channel, waiting, completion):
+            (
+                Bool, LinkChannel<HelperMessage, AppMessage>?, [Pending],
+                (@Sendable (Result<HelperInfo, DeviceLinkError>) -> Void)?
+            ) = lock.withLock {
+                guard !invalidated else { return (false, nil, [], nil) }
+                invalidated = true
+                let waiting = Array(pending.values)
+                pending.removeAll()
+                let c = startCompletion
+                startCompletion = nil
+                ring?.release()
+                return (true, self.channel, waiting, c)
+            }
         guard fire else { return }
         if shouldKill { self.kill() }
         channel?.close()
         queue.async { [self] in
-            for entry in waiting { entry.timer.cancel(); entry.reply(.failure(error)) }
+            for entry in waiting {
+                entry.timer.cancel()
+                entry.reply(.failure(error))
+            }
             completion?(.failure(error))
             onInvalidated?(error)
         }
@@ -309,8 +345,11 @@ nonisolated public final class DeviceLink: @unchecked Sendable {
         let r = waitpid(p, &status, WNOHANG)
         let termination: DeviceTermination
         if r == p {
-            if status & 0x7f == 0 { termination = .exited((status >> 8) & 0xff) }
-            else { termination = .signaled(status & 0x7f) }
+            if status & 0x7f == 0 {
+                termination = .exited((status >> 8) & 0xff)
+            } else {
+                termination = .signaled(status & 0x7f)
+            }
         } else if r == 0 {
             // NOTE_EXIT is one-shot: if the kernel hasn't finished the exit yet
             // (seen once in 300 SIGKILLs under load), poll again instead of losing it.
@@ -320,7 +359,11 @@ nonisolated public final class DeviceLink: @unchecked Sendable {
             termination = .unknown
         }
         // Zero the pid now: a late terminate() or kill() must not signal a reused one.
-        lock.withLock { exitSource?.cancel(); exitSource = nil; _pid = 0 }
+        lock.withLock {
+            exitSource?.cancel()
+            exitSource = nil
+            _pid = 0
+        }
         DeviceRendezvousServer.shared.unregister(p)
         // Its last messages (qemuExited) may still be unread: deliver them before the close.
         lock.withLock { channel }?.drainIncoming()
@@ -329,7 +372,10 @@ nonisolated public final class DeviceLink: @unchecked Sendable {
     }
 }
 
-nonisolated private func withCStrings<R>(_ strings: [String], _ body: (UnsafePointer<UnsafeMutablePointer<CChar>?>) -> R) -> R {
+nonisolated private func withCStrings<R>(
+    _ strings: [String],
+    _ body: (UnsafePointer<UnsafeMutablePointer<CChar>?>) -> R
+) -> R {
     var pointers = strings.map { strdup($0) }
     pointers.append(nil)
     defer { for p in pointers { free(p) } }

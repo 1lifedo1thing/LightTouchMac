@@ -23,9 +23,11 @@ public enum Activation {
             var result: [String: Any] = ["input_sha256": inputSHA256, "output_sha256": outputSHA256]
             if let dataArk { result["data_ark"] = dataArk }
             if let patch {
-                result["patch"] = ["strategy": patch.strategy, "isa": patch.isa, "offset": patch.offset,
-                                   "original": patch.original.map { String(format: "%02x", $0) }.joined(),
-                                   "replacement": patch.replacement.map { String(format: "%02x", $0) }.joined()]
+                result["patch"] = [
+                    "strategy": patch.strategy, "isa": patch.isa, "offset": patch.offset,
+                    "original": patch.original.map { String(format: "%02x", $0) }.joined(),
+                    "replacement": patch.replacement.map { String(format: "%02x", $0) }.joined(),
+                ]
             }
             return result
         }
@@ -61,7 +63,10 @@ public enum Activation {
             close(metadata)
             throw ActivationFailure("Activation target is not a regular file")
         }
-        defer { _ = fchmod(metadata, original.st_mode & 0o7777); close(metadata) }
+        defer {
+            _ = fchmod(metadata, original.st_mode & 0o7777)
+            close(metadata)
+        }
         guard fchmod(metadata, original.st_mode & 0o7777 | 0o200) == 0 else {
             throw ActivationFailure("Cannot make activation target writable")
         }
@@ -77,10 +82,13 @@ public enum Activation {
                 offset += count
             }
         }
-        let patch = Patch(strategy: String(cString: report.strategy), isa: String(cString: report.isa),
-                          offset: report.offset,
-                          original: withUnsafeBytes(of: report.original) { Data($0.prefix(Int(report.width))) },
-                          replacement: withUnsafeBytes(of: report.replacement) { Data($0.prefix(Int(report.width))) })
+        let patch = Patch(
+            strategy: String(cString: report.strategy),
+            isa: String(cString: report.isa),
+            offset: report.offset,
+            original: withUnsafeBytes(of: report.original) { Data($0.prefix(Int(report.width))) },
+            replacement: withUnsafeBytes(of: report.replacement) { Data($0.prefix(Int(report.width))) }
+        )
         return Result(inputSHA256: hash(before), outputSHA256: hash(after), patch: patch)
     }
 
@@ -89,9 +97,14 @@ public enum Activation {
     /// lockdownd names that domain and state; the binary stays stock.
     public static func dataArkRoute(lockdownd: Data) -> Result? {
         guard lockdownd.range(of: Data("com.apple.mobile.lockdown_cache\0".utf8)) != nil,
-              lockdownd.range(of: Data("FactoryActivated\0".utf8)) != nil else { return nil }
+            lockdownd.range(of: Data("FactoryActivated\0".utf8)) != nil
+        else { return nil }
         let h = hash(lockdownd)
-        return Result(inputSHA256: h, outputSHA256: h, dataArk: ["com.apple.mobile.lockdown_cache-ActivationState": "FactoryActivated"])
+        return Result(
+            inputSHA256: h,
+            outputSHA256: h,
+            dataArk: ["com.apple.mobile.lockdown_cache-ActivationState": "FactoryActivated"]
+        )
     }
 
     private static func hash(_ data: Data) -> String {
@@ -106,7 +119,8 @@ public enum Activation {
         guard let cs = MachOSignature.codeSignature(in: data) else { throw invalid() }
         let (start, size) = cs
         guard size >= 12, start <= b.count - size, be32(b, start) == 0xFADE_0CC0 else { throw invalid() }
-        let length = Int(be32(b, start + 4)), count = Int(be32(b, start + 8))
+        let length = Int(be32(b, start + 4))
+        let count = Int(be32(b, start + 8))
         guard length >= 12, length <= size, count <= (length - 12) / 8 else { throw invalid() }
         var entries: [(UInt32, Int)] = []
         var directories = 0
@@ -114,32 +128,42 @@ public enum Activation {
             let type = be32(b, start + 12 + i * 8)
             let offset = Int(be32(b, start + 16 + i * 8))
             guard offset >= 12 + count * 8, offset <= length - 8 else { throw invalid() }
-            let blob = start + offset, blobLength = Int(be32(b, blob + 4))
+            let blob = start + offset
+            let blobLength = Int(be32(b, blob + 4))
             guard blobLength >= 8, blobLength <= length - offset else { throw invalid() }
             if type == 0 || (0x1000...0x1005).contains(type) {
                 guard blobLength >= 44, be32(b, blob) == 0xFADE_0C02 else { throw invalid() }
-                let hashOffset = Int(be32(b, blob + 16)), special = Int(be32(b, blob + 24))
-                let slots = Int(be32(b, blob + 28)), limit = Int(be32(b, blob + 32))
-                let hashSize = Int(b[blob + 36]), hashType = b[blob + 37], exponent = Int(b[blob + 39])
+                let hashOffset = Int(be32(b, blob + 16))
+                let special = Int(be32(b, blob + 24))
+                let slots = Int(be32(b, blob + 28))
+                let limit = Int(be32(b, blob + 32))
+                let hashSize = Int(b[blob + 36])
+                let hashType = b[blob + 37]
+                let exponent = Int(b[blob + 39])
                 guard exponent > 0, exponent <= 20, limit > 0, limit <= start,
-                      (hashType == 1 && hashSize == 20) || (hashType == 2 && hashSize == 32),
-                      hashOffset >= 44 + special * hashSize,
-                      hashOffset <= blobLength, slots <= (blobLength - hashOffset) / hashSize else { throw invalid() }
+                    (hashType == 1 && hashSize == 20) || (hashType == 2 && hashSize == 32),
+                    hashOffset >= 44 + special * hashSize,
+                    hashOffset <= blobLength, slots <= (blobLength - hashOffset) / hashSize
+                else { throw invalid() }
                 let page = 1 << exponent
                 guard slots == (limit + page - 1) / page else { throw invalid() }
                 // Scatter layouts require a different page mapping, so fail before touching disk.
                 if be32(b, blob + 8) >= 0x20100 {
                     guard blobLength >= 48, be32(b, blob + 44) == 0 else { throw invalid() }
                 }
-                putBE32(&b, blob + 12, be32(b, blob + 12) | 2) // CS_ADHOC
+                putBE32(&b, blob + 12, be32(b, blob + 12) | 2)  // CS_ADHOC
                 for slot in 0..<slots {
                     let bytes = Data(b[(slot * page)..<min(limit, (slot + 1) * page)])
-                    let digest = hashType == 1 ? Array(Insecure.SHA1.hash(data: bytes)) : Array(SHA256.hash(data: bytes))
-                    b.replaceSubrange((blob + hashOffset + slot * hashSize)..<(blob + hashOffset + (slot + 1) * hashSize), with: digest)
+                    let digest =
+                        hashType == 1 ? Array(Insecure.SHA1.hash(data: bytes)) : Array(SHA256.hash(data: bytes))
+                    b.replaceSubrange(
+                        (blob + hashOffset + slot * hashSize)..<(blob + hashOffset + (slot + 1) * hashSize),
+                        with: digest
+                    )
                 }
                 directories += 1
             }
-            if type != 0x10000 { entries.append((type, offset)) } // Remove the now-invalid CMS signature.
+            if type != 0x10000 { entries.append((type, offset)) }  // Remove the now-invalid CMS signature.
         }
         guard directories > 0, entries.contains(where: { $0.0 == 0 }) else { throw invalid() }
         for i in 0..<count {
@@ -158,7 +182,7 @@ private func putBE32(_ b: inout [UInt8], _ offset: Int, _ value: UInt32) {
 /// Mach-O header checks for the guest helpers, through MachOKit: thin/fat files, their slices' cpu, load
 /// commands and LC_CODE_SIGNATURE.
 enum MachOSignature {
-    static let armCPU: Int32 = 12, armv7: Int32 = 9   // CPU_TYPE_ARM, CPU_SUBTYPE_ARM_V7
+    static let armCPU: Int32 = 12, armv7: Int32 = 9  // CPU_TYPE_ARM, CPU_SUBTYPE_ARM_V7
 
     static func codeSignature(_ cmds: some Sequence<LoadCommand>) -> LoadCommandInfo<linkedit_data_command>? {
         for lc in cmds { if case .codeSignature(let info) = lc { return info } }
@@ -168,7 +192,9 @@ enum MachOSignature {
     /// ipad1_rootfs.guest_tool_problem: nil for a thin armv7 Mach-O that 3.2's dyld takes (no LC_MAIN, no
     /// LC_VERSION_MIN_IPHONEOS) and that is signed; else why not.
     static func guestToolProblem(_ url: URL) -> String? {
-        guard case .machO(let m)? = try? MachOKit.loadFromFile(url: url), !m.is64Bit else { return "not a thin 32-bit Mach-O" }
+        guard case .machO(let m)? = try? MachOKit.loadFromFile(url: url), !m.is64Bit else {
+            return "not a thin 32-bit Mach-O"
+        }
         let h = m.header.layout
         guard h.cputype == armCPU, h.cpusubtype == armv7 else { return "cpu \(h.cputype)/\(h.cpusubtype), not armv7" }
         for lc in m.loadCommands {
@@ -182,11 +208,14 @@ enum MachOSignature {
 
     /// ipad1_rootfs.appsync_problem: nil for a fat Mach-O with an armv7 slice and a signature per slice.
     static func appSyncProblem(_ url: URL) -> String? {
-        guard case .fat(let f)? = try? MachOKit.loadFromFile(url: url), let slices = try? f.machOFiles() else { return "not a fat Mach-O (expected armv6+armv7)" }
+        guard case .fat(let f)? = try? MachOKit.loadFromFile(url: url), let slices = try? f.machOFiles() else {
+            return "not a fat Mach-O (expected armv6+armv7)"
+        }
         for (i, s) in slices.enumerated() where codeSignature(s.loadCommands) == nil {
             return "slice \(i) (cpu \(s.header.layout.cputype)/\(s.header.layout.cpusubtype)) is not ldid-signed"
         }
-        return slices.contains { $0.header.layout.cputype == armCPU && $0.header.layout.cpusubtype == armv7 } ? nil : "no armv7 slice"
+        return slices.contains { $0.header.layout.cputype == armCPU && $0.header.layout.cpusubtype == armv7 }
+            ? nil : "no armv7 slice"
     }
 
     /// 2.x/3.0 dyld needs classic relocations and an ARMv6 slice; fail before baking a modern helper.
@@ -195,9 +224,13 @@ enum MachOSignature {
         let images: [MachOFile]
         switch file {
         case .machO(let image): images = [image]
-        case .fat(let fat): guard let slices = try? fat.machOFiles() else { return "unreadable slices" }; images = slices
+        case .fat(let fat):
+            guard let slices = try? fat.machOFiles() else { return "unreadable slices" }
+            images = slices
         }
-        guard let image = images.first(where: { $0.header.layout.cputype == armCPU && $0.header.layout.cpusubtype == 6 }) else { return "no armv6 slice" }
+        guard
+            let image = images.first(where: { $0.header.layout.cputype == armCPU && $0.header.layout.cpusubtype == 6 })
+        else { return "no armv6 slice" }
         for command in image.loadCommands {
             switch command {
             case .dyldInfoOnly, .main, .versionMinIphoneos, .buildVersion:
@@ -212,11 +245,16 @@ enum MachOSignature {
     static func codeSignature(in data: Data) -> (offset: Int, size: Int)? {
         data.withUnsafeBytes { b -> (Int, Int)? in
             guard b.count >= 28, let base = b.baseAddress, b.loadUnaligned(as: UInt32.self) == 0xFEED_FACE,
-                  let cs = codeSignature(MachOImage(ptr: base.assumingMemoryBound(to: mach_header.self)).loadCommands) else { return nil }
+                let cs = codeSignature(MachOImage(ptr: base.assumingMemoryBound(to: mach_header.self)).loadCommands)
+            else { return nil }
             return (Int(cs.dataoff), Int(cs.datasize))
         }
     }
 }
 
-private func be32(_ b: [UInt8], _ o: Int) -> UInt32 { UInt32(b[o]) << 24 | UInt32(b[o + 1]) << 16 | UInt32(b[o + 2]) << 8 | UInt32(b[o + 3]) }
-private func le32(_ b: [UInt8], _ o: Int) -> UInt32 { UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24 }
+private func be32(_ b: [UInt8], _ o: Int) -> UInt32 {
+    UInt32(b[o]) << 24 | UInt32(b[o + 1]) << 16 | UInt32(b[o + 2]) << 8 | UInt32(b[o + 3])
+}
+private func le32(_ b: [UInt8], _ o: Int) -> UInt32 {
+    UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24
+}

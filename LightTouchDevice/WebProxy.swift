@@ -40,15 +40,31 @@ final class WebProxy: @unchecked Sendable {
     /// connection is closed without a byte. Any reply, even a 503, answers iOS's captive-network probe
     /// and Setup shows a "Log In" sheet; a dead proxy reads as no internet, as a real unit offline.
     var offline: Bool {
-        get { lock.lock(); defer { lock.unlock() }; return _offline }
-        set { lock.lock(); _offline = newValue; lock.unlock() }
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _offline
+        }
+        set {
+            lock.lock()
+            _offline = newValue
+            lock.unlock()
+        }
     }
     private var _offline = false
     /// The device's Attach to Local Network, as slirp's lan= has it: off, a destination on the Mac's local
     /// networks gets a 502 rather than a connection that would make macOS ask for Local Network access.
     var localNetwork: Bool {
-        get { lock.lock(); defer { lock.unlock() }; return _localNetwork }
-        set { lock.lock(); _localNetwork = newValue; lock.unlock() }
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _localNetwork
+        }
+        set {
+            lock.lock()
+            _localNetwork = newValue
+            lock.unlock()
+        }
     }
     private var _localNetwork = true
 
@@ -61,8 +77,11 @@ final class WebProxy: @unchecked Sendable {
         self.archiveOrigin = archiveOrigin
         self.anchors = anchors
         let configuration = URLSessionConfiguration.default
-        configuration.urlCache = URLCache(memoryCapacity: 8 << 20, diskCapacity: 128 << 20,
-                                          directory: URL(fileURLWithPath: config.path + ".cache"))
+        configuration.urlCache = URLCache(
+            memoryCapacity: 8 << 20,
+            diskCapacity: 128 << 20,
+            directory: URL(fileURLWithPath: config.path + ".cache")
+        )
         configuration.httpCookieStorage = nil
         configuration.httpShouldSetCookies = false
         configuration.urlCredentialStorage = nil
@@ -81,13 +100,17 @@ final class WebProxy: @unchecked Sendable {
     /// Serves `path` (a Unix socket, owner-only) on a thread of its own; one thread per connection.
     func listen(socket path: String) throws {
         var address = sockaddr_un()
-        guard path.utf8.count < MemoryLayout.size(ofValue: address.sun_path) else { throw Reply(503, "Socket path too long") }
+        guard path.utf8.count < MemoryLayout.size(ofValue: address.sun_path) else {
+            throw Reply(503, "Socket path too long")
+        }
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         unlink(path)
         address.sun_family = sa_family_t(AF_UNIX)
         withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: path.utf8) }
         let bound = withUnsafePointer(to: &address) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
         }
         guard fd >= 0, bound == 0, chmod(path, 0o600) == 0, Darwin.listen(fd, 64) == 0 else {
             close(fd)
@@ -107,9 +130,19 @@ final class WebProxy: @unchecked Sendable {
     // MARK: - One connection
 
     /// A reply that ends the connection: the status and a one-line explanation.
-    struct Reply: Error { let status: Int; let message: String; init(_ status: Int, _ message: String) { self.status = status; self.message = message } }
+    struct Reply: Error {
+        let status: Int
+        let message: String
+        init(_ status: Int, _ message: String) {
+            self.status = status
+            self.message = message
+        }
+    }
 
-    enum Mode: Equatable { case off, direct, archive(String) }
+    enum Mode: Equatable {
+        case off, direct
+        case archive(String)
+    }
 
     /// Fails closed: a missing or unreadable file is "disabled", anything unknown invalid.
     static func mode(_ config: URL) throws -> Mode {
@@ -119,7 +152,9 @@ final class WebProxy: @unchecked Sendable {
         case "direct": return .direct
         case "off": return .off
         case "archive":
-            guard words.count == 2, words[1].count == 8, words[1].allSatisfy(\.isASCIIDigit) else { throw Reply(503, "Invalid archive date") }
+            guard words.count == 2, words[1].count == 8, words[1].allSatisfy(\.isASCIIDigit) else {
+                throw Reply(503, "Invalid archive date")
+            }
             return .archive(words[1])
         default: throw Reply(503, "Invalid proxy configuration")
         }
@@ -138,9 +173,13 @@ final class WebProxy: @unchecked Sendable {
         do {
             try handle(guest, mode: Self.mode(config))
         } catch let reply as Reply {
-            _ = guest.write("HTTP/1.0 \(reply.status) \(reply.message)\r\nConnection: close\r\nContent-Type: text/plain\r\n\r\n\(reply.message)\n")
+            _ = guest.write(
+                "HTTP/1.0 \(reply.status) \(reply.message)\r\nConnection: close\r\nContent-Type: text/plain\r\n\r\n\(reply.message)\n"
+            )
         } catch {
-            _ = guest.write("HTTP/1.0 502 Destination unavailable\r\nConnection: close\r\nContent-Type: text/plain\r\n\r\nDestination unavailable\n")
+            _ = guest.write(
+                "HTTP/1.0 502 Destination unavailable\r\nConnection: close\r\nContent-Type: text/plain\r\n\r\nDestination unavailable\n"
+            )
         }
     }
 
@@ -148,19 +187,33 @@ final class WebProxy: @unchecked Sendable {
         var tunnel: String?
         while true {
             let (method, target, headers) = try readHead(guest)
-            if Self.trace { FileHandle.standardError.write(Data("web-proxy: \(method) \(tunnel.map { "https://" + $0 } ?? "")\(target)\n".utf8)) }
+            if Self.trace {
+                FileHandle.standardError.write(
+                    Data("web-proxy: \(method) \(tunnel.map { "https://" + $0 } ?? "")\(target)\n".utf8)
+                )
+            }
             if method == "CONNECT" {
                 guard tunnel == nil else { throw Reply(400, "Nested TLS tunnels are unsupported") }
                 guard target.utf8.count < 300 else { throw Reply(400, "Tunnel destination too long") }
-                guard let colon = target.lastIndex(of: ":"), colon != target.startIndex else { throw Reply(400, "Invalid tunnel destination") }
-                guard let port = Int(target[target.index(after: colon)...]), (1...65535).contains(port) else { throw Reply(400, "Invalid tunnel port") }
+                guard let colon = target.lastIndex(of: ":"), colon != target.startIndex else {
+                    throw Reply(400, "Invalid tunnel destination")
+                }
+                guard let port = Int(target[target.index(after: colon)...]), (1...65535).contains(port) else {
+                    throw Reply(400, "Invalid tunnel port")
+                }
                 var host = String(target[..<colon])
-                if host.count > 2, host.hasPrefix("["), host.hasSuffix("]") { host = String(host.dropFirst().dropLast()) }
-                if mode == .direct, WebProxyAdapters.retired(host: host) { throw Reply(410, "This online service has been retired") }
+                if host.count > 2, host.hasPrefix("["), host.hasSuffix("]") {
+                    host = String(host.dropFirst().dropLast())
+                }
+                if mode == .direct, WebProxyAdapters.retired(host: host) {
+                    throw Reply(410, "This online service has been retired")
+                }
                 if !localNetwork, Self.isLocalNetwork(host: host) { throw Reply(502, "Local network access is off") }
                 if mode != .off, FileManager.default.fileExists(atPath: config.path + ".ca.pem") {
                     guard let identity = try? leaf(host) else { throw Reply(503, "Local TLS certificate unavailable") }
-                    guard guest.write("HTTP/1.0 200 Connection established\r\n\r\n"), guest.startTLS(identity) else { return }
+                    guard guest.write("HTTP/1.0 200 Connection established\r\n\r\n"), guest.startTLS(identity) else {
+                        return
+                    }
                     tunnel = target
                     continue
                 }
@@ -174,34 +227,50 @@ final class WebProxy: @unchecked Sendable {
             // it is answered in every mode (location is not browsing, and the guest's preference is baked).
             let localLocation = tunnel == nil && target == "/clls/wloc"
             var url = target
-            if case .archive = mode, !localLocation, method != "GET", method != "HEAD" { throw Reply(405, "Archive browsing supports HTTP GET and HEAD") }
+            if case .archive = mode, !localLocation, method != "GET", method != "HEAD" {
+                throw Reply(405, "Archive browsing supports HTTP GET and HEAD")
+            }
             if let tunnel {
                 guard target.hasPrefix("/") else { throw Reply(400, "TLS request needs an origin-form path") }
                 url = "https://\(tunnel)\(target)"
             }
             guard method.allSatisfy({ $0.isASCII && $0.isUppercase }) else { throw Reply(400, "Invalid method") }
             if localLocation { url = "http://iphone-services.apple.com/clls/wloc" }
-            guard tunnel != nil || url.hasPrefix("http://") else { throw Reply(400, "An absolute HTTP URL is required") }
-            guard let components = URLComponents(string: url), let host = components.host, components.url != nil else { throw Reply(400, "Invalid URL") }
-            if mode == .direct, WebProxyAdapters.retired(host: host) { throw Reply(410, "This online service has been retired") }
-            if !localLocation, !localNetwork, Self.isLocalNetwork(host: host) { throw Reply(502, "Local network access is off") }
+            guard tunnel != nil || url.hasPrefix("http://") else {
+                throw Reply(400, "An absolute HTTP URL is required")
+            }
+            guard let components = URLComponents(string: url), let host = components.host, components.url != nil else {
+                throw Reply(400, "Invalid URL")
+            }
+            if mode == .direct, WebProxyAdapters.retired(host: host) {
+                throw Reply(410, "This online service has been retired")
+            }
+            if !localLocation, !localNetwork, Self.isLocalNetwork(host: host) {
+                throw Reply(502, "Local network access is off")
+            }
             if case .archive(let date) = mode, !localLocation {
-                guard components.user == nil, components.password == nil else { throw Reply(400, "Archive URLs cannot contain credentials") }
+                guard components.user == nil, components.password == nil else {
+                    throw Reply(400, "Archive URLs cannot contain credentials")
+                }
                 _ = guest.write(try archived(url, date: date, head: method == "HEAD"))
                 return
             }
-            var forwarded: [(String, String)] = [], length: Int?
+            var forwarded: [(String, String)] = []
+            var length: Int?
             for (name, value) in headers {
                 switch name.lowercased() {
                 case "transfer-encoding": throw Reply(501, "Chunked request bodies are unsupported")
                 case "expect": throw Reply(417, "Expect is unsupported")
                 case "content-length":
-                    guard length == nil, value.first?.isASCIIDigit == true, value.allSatisfy(\.isASCIIDigit) else { throw Reply(400, "Invalid content length") }
+                    guard length == nil, value.first?.isASCIIDigit == true, value.allSatisfy(\.isASCIIDigit) else {
+                        throw Reply(400, "Invalid content length")
+                    }
                     guard let n = Int(value), n <= Self.bodyMax else { throw Reply(413, "Invalid or oversized body") }
                     length = n
                 // Hop-by-hop, Host (the URL's), and Accept-Encoding: URLSession asks for and decodes gzip/deflate/br itself.
                 case "connection", "proxy-connection", "keep-alive", "te", "trailer", "upgrade", "proxy-authorization",
-                     "proxy-authenticate", "host", "accept-encoding": break
+                    "proxy-authenticate", "host", "accept-encoding":
+                    break
                 default: forwarded.append((name, value))
                 }
             }
@@ -212,15 +281,39 @@ final class WebProxy: @unchecked Sendable {
                 body += part
             }
             if localLocation || mode == .direct,
-               let (status, answer) = WebProxyAdapters.location(target: url, method: method, body: body,
-                                                                 position: WebProxyAdapters.position(URL(fileURLWithPath: config.path + ".location"))) {
+                let (status, answer) = WebProxyAdapters.location(
+                    target: url,
+                    method: method,
+                    body: body,
+                    position: WebProxyAdapters.position(URL(fileURLWithPath: config.path + ".location"))
+                )
+            {
                 guard status == 200 else { throw Reply(status, "Invalid location request") }
-                _ = guest.write(Self.head(200, "OK", ["Content-Type: application/x-protobuf", "Content-Length: \(answer.count)"]) + answer)
+                _ = guest.write(
+                    Self.head(200, "OK", ["Content-Type: application/x-protobuf", "Content-Length: \(answer.count)"])
+                        + answer
+                )
                 return
             }
-            if mode == .direct, let (status, answer) = WebProxyAdapters.weather(target: url, method: method, body: body, fetch: fetchJSON) {
-                guard status == 200 else { throw Reply(status, status == 422 ? "Please remove this old Weather city and add it again" : "Weather service unavailable") }
-                _ = guest.write(Self.head(200, "OK", ["Content-Type: text/xml; charset=utf-8", "Content-Length: \(answer.count)"]) + answer)
+            if mode == .direct,
+                let (status, answer) = WebProxyAdapters.weather(
+                    target: url,
+                    method: method,
+                    body: body,
+                    fetch: fetchJSON
+                )
+            {
+                guard status == 200 else {
+                    throw Reply(
+                        status,
+                        status == 422
+                            ? "Please remove this old Weather city and add it again" : "Weather service unavailable"
+                    )
+                }
+                _ = guest.write(
+                    Self.head(200, "OK", ["Content-Type: text/xml; charset=utf-8", "Content-Length: \(answer.count)"])
+                        + answer
+                )
                 return
             }
             var request = URLRequest(url: components.url!)
@@ -228,7 +321,11 @@ final class WebProxy: @unchecked Sendable {
             request.httpShouldHandleCookies = false
             for (name, value) in forwarded { request.addValue(value, forHTTPHeaderField: name) }
             if length != nil { request.httpBody = body }
-            let reload = mode == .off || forwarded.contains { ["pragma", "cache-control"].contains($0.0.lowercased()) && $0.1.lowercased().contains("no-cache") }
+            let reload =
+                mode == .off
+                || forwarded.contains {
+                    ["pragma", "cache-control"].contains($0.0.lowercased()) && $0.1.lowercased().contains("no-cache")
+                }
             if reload { request.cachePolicy = .reloadIgnoringLocalCacheData }
             try stream(request, store: mode != .off, to: guest)
             return
@@ -248,17 +345,24 @@ final class WebProxy: @unchecked Sendable {
         let lines = String(decoding: head.dropLast(4), as: UTF8.self).components(separatedBy: "\r\n")
         let parts = lines[0].split(separator: " ", omittingEmptySubsequences: false).map(String.init)
         guard parts.count == 3, !parts[0].isEmpty, parts[1].utf8.count < 16384, parts[0].utf8.count < 32,
-              parts[2] == "HTTP/1.0" || parts[2] == "HTTP/1.1" else { throw Reply(400, "Invalid request") }
+            parts[2] == "HTTP/1.0" || parts[2] == "HTTP/1.1"
+        else { throw Reply(400, "Invalid request") }
         var headers: [(String, String)] = []
         for line in lines.dropFirst() {
-            guard let colon = line.firstIndex(of: ":"), !line.hasPrefix(" "), !line.hasPrefix("\t") else { throw Reply(400, "Invalid header") }
-            headers.append((String(line[..<colon]), line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)))
+            guard let colon = line.firstIndex(of: ":"), !line.hasPrefix(" "), !line.hasPrefix("\t") else {
+                throw Reply(400, "Invalid header")
+            }
+            headers.append(
+                (String(line[..<colon]), line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces))
+            )
         }
         return (parts[0], parts[1], headers)
     }
 
     static func head(_ status: Int, _ reason: String, _ lines: [String]) -> Data {
-        Data(("HTTP/1.0 \(status) \(reason)\r\n" + lines.map { $0 + "\r\n" }.joined() + "Connection: close\r\n\r\n").utf8)
+        Data(
+            ("HTTP/1.0 \(status) \(reason)\r\n" + lines.map { $0 + "\r\n" }.joined() + "Connection: close\r\n\r\n").utf8
+        )
     }
 
     // MARK: - Upstream (URLSession)
@@ -277,7 +381,11 @@ final class WebProxy: @unchecked Sendable {
             switch upstream.next() {
             case .response(let response):
                 started = true
-                guard guest.write(Self.head(response.statusCode, Self.reason(response.statusCode), Self.headerLines(response))) else { return }
+                guard
+                    guest.write(
+                        Self.head(response.statusCode, Self.reason(response.statusCode), Self.headerLines(response))
+                    )
+                else { return }
             case .data(let data):
                 guard guest.write(data) else { return }
             case .done(let error):
@@ -290,22 +398,31 @@ final class WebProxy: @unchecked Sendable {
     static func headerLines(_ response: HTTPURLResponse, dropping extra: Set<String> = []) -> [String] {
         let encoding = (response.value(forHTTPHeaderField: "Content-Encoding") ?? "").lowercased()
         let decoded = ["gzip", "deflate", "br", "zstd"].contains(encoding)
-        var skip: Set<String> = ["connection", "proxy-connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgrade",
-                                 "proxy-authorization", "proxy-authenticate", "set-cookie"]
+        var skip: Set<String> = [
+            "connection", "proxy-connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgrade",
+            "proxy-authorization", "proxy-authenticate", "set-cookie",
+        ]
         if decoded { skip.formUnion(["content-encoding", "content-length"]) }
         skip.formUnion(extra)
         let lines = response.allHeaderFields.compactMap { key, value -> String? in
             guard let name = key as? String, !skip.contains(name.lowercased()) else { return nil }
             return "\(name): \(value)"
         }.sorted()
-        return lines + (extra.contains("set-cookie") ? [] : WebProxyAdapters.setCookieLines(response).map { "Set-Cookie: " + $0 })
+        return lines
+            + (extra.contains("set-cookie")
+                ? [] : WebProxyAdapters.setCookieLines(response).map { "Set-Cookie: " + $0 })
     }
 
     static func reason(_ status: Int) -> String {
-        [200: "OK", 201: "Created", 204: "No Content", 206: "Partial Content", 301: "Moved Permanently", 302: "Found",
-         303: "See Other", 304: "Not Modified", 307: "Temporary Redirect", 308: "Permanent Redirect", 400: "Bad Request",
-         401: "Unauthorized", 403: "Forbidden", 404: "Not Found", 405: "Method Not Allowed", 410: "Gone", 429: "Too Many Requests",
-         500: "Internal Server Error", 502: "Bad Gateway", 503: "Service Unavailable"][status] ?? "Status"
+        [
+            200: "OK", 201: "Created", 204: "No Content", 206: "Partial Content", 301: "Moved Permanently",
+            302: "Found",
+            303: "See Other", 304: "Not Modified", 307: "Temporary Redirect", 308: "Permanent Redirect",
+            400: "Bad Request",
+            401: "Unauthorized", 403: "Forbidden", 404: "Not Found", 405: "Method Not Allowed", 410: "Gone",
+            429: "Too Many Requests",
+            500: "Internal Server Error", 502: "Bad Gateway", 503: "Service Unavailable",
+        ][status] ?? "Status"
     }
 
     /// A whole response, at most `limit` bytes (nil past it or on an error).
@@ -316,7 +433,8 @@ final class WebProxy: @unchecked Sendable {
         task.delegate = upstream
         task.resume()
         defer { task.cancel() }
-        var response: HTTPURLResponse?, body = Data()
+        var response: HTTPURLResponse?
+        var body = Data()
         while true {
             switch upstream.next() {
             case .response(let r): response = r
@@ -330,7 +448,9 @@ final class WebProxy: @unchecked Sendable {
 
     private func fetchJSON(_ host: String, _ path: String, _ query: [String: String]) -> Any? {
         var url = URLComponents()
-        url.scheme = "https"; url.host = host; url.path = path
+        url.scheme = "https"
+        url.host = host
+        url.path = path
         url.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
         var request = URLRequest(url: url.url!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
         request.setValue("LightTouch/1.0 (Weather)", forHTTPHeaderField: "User-Agent")
@@ -345,7 +465,8 @@ final class WebProxy: @unchecked Sendable {
     private func archived(_ target: String, date: String, head: Bool) throws -> Data {
         let key = URLRequest(url: URL(string: "\(archiveOrigin)/web/\(date)id_/\(target)")!)
         if !head, let cached = session.configuration.urlCache?.cachedResponse(for: key),
-           let stored = cached.userInfo?["stored"] as? Date, Date().timeIntervalSince(stored) < 86400 {
+            let stored = cached.userInfo?["stored"] as? Date, Date().timeIntervalSince(stored) < 86400
+        {
             return cached.data
         }
         archiveGate.lock()
@@ -372,17 +493,38 @@ final class WebProxy: @unchecked Sendable {
             }
             let location = response.value(forHTTPHeaderField: "Location") ?? ""
             if (300..<400).contains(status), !location.isEmpty {
-                if location.hasPrefix(archiveOrigin + "/") { url = location; continue }
-                if location.hasPrefix("/"), !location.hasPrefix("//") { url = archiveOrigin + location; continue }
-                if location.hasPrefix("http://") || location.hasPrefix("https://") { url = "\(archiveOrigin)/web/\(date)id_/\(location)"; continue }
+                if location.hasPrefix(archiveOrigin + "/") {
+                    url = location
+                    continue
+                }
+                if location.hasPrefix("/"), !location.hasPrefix("//") {
+                    url = archiveOrigin + location
+                    continue
+                }
+                if location.hasPrefix("http://") || location.hasPrefix("https://") {
+                    url = "\(archiveOrigin)/web/\(date)id_/\(location)"
+                    continue
+                }
             }
-            let body = WebProxyAdapters.textual(response.value(forHTTPHeaderField: "Content-Type")) ? WebProxyAdapters.httpLinks(fetched) : fetched
-            var lines = Self.headerLines(response, dropping: ["content-length", "content-encoding", "etag", "content-md5", "set-cookie"])
+            let body =
+                WebProxyAdapters.textual(response.value(forHTTPHeaderField: "Content-Type"))
+                ? WebProxyAdapters.httpLinks(fetched) : fetched
+            var lines = Self.headerLines(
+                response,
+                dropping: ["content-length", "content-encoding", "etag", "content-md5", "set-cookie"]
+            )
             if !head { lines.append("Content-Length: \(body.count)") }
             let reply = Self.head(status, "Archive response", lines) + (head ? Data() : body)
             if !head, status == 200 {
                 session.configuration.urlCache?.storeCachedResponse(
-                    CachedURLResponse(response: response, data: reply, userInfo: ["stored": Date()], storagePolicy: .allowed), for: key)
+                    CachedURLResponse(
+                        response: response,
+                        data: reply,
+                        userInfo: ["stored": Date()],
+                        storagePolicy: .allowed
+                    ),
+                    for: key
+                )
             }
             return reply
         }
@@ -402,9 +544,16 @@ final class WebProxy: @unchecked Sendable {
     }
 
     static func archiveLimited(_ seconds: Int) -> Data {
-        head(429, "Too Many Requests", ["Content-Type: text/html; charset=utf-8", "Retry-After: \(seconds)", "Cache-Control: no-store"])
-            + Data(("<html><head><title>Archive temporarily busy</title></head><body><h2>Wayback Machine is temporarily limiting requests</h2>"
-                    + "<p>Light Touch has paused archive requests. Please wait \(seconds) seconds, then reload this page.</p></body></html>").utf8)
+        head(
+            429,
+            "Too Many Requests",
+            ["Content-Type: text/html; charset=utf-8", "Retry-After: \(seconds)", "Cache-Control: no-store"]
+        )
+            + Data(
+                ("<html><head><title>Archive temporarily busy</title></head><body><h2>Wayback Machine is temporarily limiting requests</h2>"
+                    + "<p>Light Touch has paused archive requests. Please wait \(seconds) seconds, then reload this page.</p></body></html>")
+                    .utf8
+            )
     }
 
     // MARK: - TLS toward the guest
@@ -426,7 +575,8 @@ final class WebProxy: @unchecked Sendable {
     static func isLocalNetwork(host: String) -> Bool {
         let name = host.lowercased()
         if name.hasSuffix(".local") || name.hasSuffix(".local.") { return true }
-        var hints = addrinfo(), list: UnsafeMutablePointer<addrinfo>?
+        var hints = addrinfo()
+        var list: UnsafeMutablePointer<addrinfo>?
         hints.ai_socktype = SOCK_STREAM
         guard getaddrinfo(host, nil, &hints, &list) == 0 else { return false }
         defer { freeaddrinfo(list) }
@@ -434,7 +584,9 @@ final class WebProxy: @unchecked Sendable {
             guard let a = entry?.pointee.ai_addr else { continue }
             if a.pointee.sa_family == AF_INET {
                 let ip = UInt32(bigEndian: UnsafeRawPointer(a).load(as: sockaddr_in.self).sin_addr.s_addr)
-                if ip >> 24 == 10 || ip >> 20 == 0xac1 || ip >> 16 == 0xc0a8 || ip >> 16 == 0xa9fe || ip >> 28 == 0xe || ip == .max {
+                if ip >> 24 == 10 || ip >> 20 == 0xac1 || ip >> 16 == 0xc0a8 || ip >> 16 == 0xa9fe || ip >> 28 == 0xe
+                    || ip == .max
+                {
                     return true
                 }
             } else if a.pointee.sa_family == AF_INET6 {
@@ -448,7 +600,8 @@ final class WebProxy: @unchecked Sendable {
     // MARK: - Raw tunnel (off, or no CA)
 
     static func connect(_ host: String, _ port: Int) -> Int32? {
-        var hints = addrinfo(), list: UnsafeMutablePointer<addrinfo>?
+        var hints = addrinfo()
+        var list: UnsafeMutablePointer<addrinfo>?
         hints.ai_socktype = SOCK_STREAM
         guard getaddrinfo(host, String(port), &hints, &list) == 0 else { return nil }
         defer { freeaddrinfo(list) }
@@ -457,7 +610,8 @@ final class WebProxy: @unchecked Sendable {
             entry = a.ai_next
             let fd = socket(a.ai_family, a.ai_socktype, a.ai_protocol)
             guard fd >= 0 else { continue }
-            var timeout = timeval(tv_sec: 10, tv_usec: 0), on: Int32 = 1
+            var timeout = timeval(tv_sec: 10, tv_usec: 0)
+            var on: Int32 = 1
             setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
             setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
             if Darwin.connect(fd, a.ai_addr, a.ai_addrlen) == 0 { return fd }
@@ -471,14 +625,24 @@ final class WebProxy: @unchecked Sendable {
         var input = true
         var buffer = [UInt8](repeating: 0, count: 16384)
         while true {
-            var fds = [pollfd(fd: input ? guest : -1, events: Int16(POLLIN), revents: 0), pollfd(fd: remote, events: Int16(POLLIN), revents: 0)]
+            var fds = [
+                pollfd(fd: input ? guest : -1, events: Int16(POLLIN), revents: 0),
+                pollfd(fd: remote, events: Int16(POLLIN), revents: 0),
+            ]
             guard poll(&fds, 2, 60_000) > 0 else { return }
             for (i, p) in fds.enumerated() where p.revents & Int16(POLLIN | POLLHUP | POLLERR) != 0 {
                 let n = read(p.fd, &buffer, buffer.count)
                 if n < 0, errno == EINTR || errno == EAGAIN { continue }
                 if n <= 0 {
-                    if i == 0 { input = false; shutdown(remote, SHUT_WR) } else { return }
-                } else if !Guest.writeAll(i == 0 ? remote : guest, buffer[..<n]) { return }
+                    if i == 0 {
+                        input = false
+                        shutdown(remote, SHUT_WR)
+                    } else {
+                        return
+                    }
+                } else if !Guest.writeAll(i == 0 ? remote : guest, buffer[..<n]) {
+                    return
+                }
             }
         }
     }
@@ -487,14 +651,21 @@ final class WebProxy: @unchecked Sendable {
 /// URLSession's side of one request: its events queued for the connection's thread, the task suspended
 /// while the guest is more than 8 MiB behind.
 final class Upstream: NSObject, URLSessionDataDelegate, @unchecked Sendable {
-    enum Event { case response(HTTPURLResponse), data(Data), done(Error?) }
+    enum Event {
+        case response(HTTPURLResponse)
+        case data(Data)
+        case done(Error?)
+    }
     weak var task: URLSessionDataTask?
     private let anchors: [SecCertificate], store: Bool
     private let condition = NSCondition()
     private var events: [Event] = [], buffered = 0, suspended = false
     private static let limit = 8 << 20
 
-    init(anchors: [SecCertificate], store: Bool) { self.anchors = anchors; self.store = store }
+    init(anchors: [SecCertificate], store: Bool) {
+        self.anchors = anchors
+        self.store = store
+    }
 
     func next() -> Event {
         condition.lock()
@@ -503,7 +674,10 @@ final class Upstream: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         let event = events.removeFirst()
         if case .data(let data) = event {
             buffered -= data.count
-            if suspended, buffered < Self.limit / 4 { suspended = false; task?.resume() }
+            if suspended, buffered < Self.limit / 4 {
+                suspended = false
+                task?.resume()
+            }
         }
         return event
     }
@@ -512,33 +686,65 @@ final class Upstream: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         events.append(event)
         if case .data(let data) = event {
             buffered += data.count
-            if !suspended, buffered > Self.limit { suspended = true; task?.suspend() }
+            if !suspended, buffered > Self.limit {
+                suspended = true
+                task?.suspend()
+            }
         }
         condition.signal()
         condition.unlock()
     }
 
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
-                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
-        guard let response = response as? HTTPURLResponse else { completionHandler(.cancel); return }
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        guard let response = response as? HTTPURLResponse else {
+            completionHandler(.cancel)
+            return
+        }
         push(.response(response))
         completionHandler(.allow)
     }
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) { push(.data(data)) }
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) { push(.done(error)) }
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        push(.done(error))
+    }
     /// The guest follows redirects itself.
-    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
-                    newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, willCacheResponse proposedResponse: CachedURLResponse,
-                    completionHandler: @escaping (CachedURLResponse?) -> Void) { completionHandler(store ? proposedResponse : nil) }
-    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
-                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) { completionHandler(nil) }
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        willCacheResponse proposedResponse: CachedURLResponse,
+        completionHandler: @escaping (CachedURLResponse?) -> Void
+    ) { completionHandler(store ? proposedResponse : nil) }
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
         guard !anchors.isEmpty, challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-              let trust = challenge.protectionSpace.serverTrust else { completionHandler(.performDefaultHandling, nil); return }
+            let trust = challenge.protectionSpace.serverTrust
+        else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
         SecTrustSetAnchorCertificates(trust, anchors as CFArray)
         SecTrustSetAnchorCertificatesOnly(trust, false)
         let trusted = SecTrustEvaluateWithError(trust, nil)
-        completionHandler(trusted ? .useCredential : .cancelAuthenticationChallenge, trusted ? URLCredential(trust: trust) : nil)
+        completionHandler(
+            trusted ? .useCredential : .cancelAuthenticationChallenge,
+            trusted ? URLCredential(trust: trust) : nil
+        )
     }
 }
 
@@ -551,23 +757,30 @@ final class Guest {
     func startTLS(_ identity: SecIdentity) -> Bool {
         guard let context = SSLCreateContext(nil, .serverSide, .streamType) else { return false }
         tls = context
-        SSLSetIOFuncs(context, { connection, data, length in
-            let fd = Int32(Int(bitPattern: connection) - 1)
-            var done = 0
-            while done < length.pointee {
-                let n = Darwin.read(fd, data + done, length.pointee - done)
-                if n < 0, errno == EINTR { continue }
-                if n <= 0 { length.pointee = done; return n == 0 ? errSSLClosedGraceful : errSSLClosedAbort }
-                done += n
+        SSLSetIOFuncs(
+            context,
+            { connection, data, length in
+                let fd = Int32(Int(bitPattern: connection) - 1)
+                var done = 0
+                while done < length.pointee {
+                    let n = Darwin.read(fd, data + done, length.pointee - done)
+                    if n < 0, errno == EINTR { continue }
+                    if n <= 0 {
+                        length.pointee = done
+                        return n == 0 ? errSSLClosedGraceful : errSSLClosedAbort
+                    }
+                    done += n
+                }
+                return noErr
+            },
+            { connection, data, length in
+                let fd = Int32(Int(bitPattern: connection) - 1)
+                let ok = Guest.writeAll(fd, UnsafeRawBufferPointer(start: data, count: length.pointee))
+                return ok ? noErr : errSSLClosedAbort
             }
-            return noErr
-        }, { connection, data, length in
-            let fd = Int32(Int(bitPattern: connection) - 1)
-            let ok = Guest.writeAll(fd, UnsafeRawBufferPointer(start: data, count: length.pointee))
-            return ok ? noErr : errSSLClosedAbort
-        })
+        )
         SSLSetConnection(context, UnsafeRawPointer(bitPattern: Int(fd) + 1))
-        SSLSetProtocolVersionMin(context, .tlsProtocol1)   // iOS 3's Safari and CFNetwork speak TLS 1.0
+        SSLSetProtocolVersionMin(context, .tlsProtocol1)  // iOS 3's Safari and CFNetwork speak TLS 1.0
         SSLSetCertificate(context, [identity] as CFArray)
         var status: OSStatus
         repeat { status = SSLHandshake(context) } while status == errSSLWouldBlock
@@ -596,7 +809,10 @@ final class Guest {
             var offset = 0
             while offset < bytes.count {
                 var processed = 0
-                guard SSLWrite(tls, bytes.baseAddress! + offset, bytes.count - offset, &processed) == noErr || processed > 0 else { return false }
+                guard
+                    SSLWrite(tls, bytes.baseAddress! + offset, bytes.count - offset, &processed) == noErr
+                        || processed > 0
+                else { return false }
                 offset += processed
             }
             return true
@@ -609,7 +825,8 @@ final class Guest {
     }
 
     static func writeAll<C: Collection>(_ fd: Int32, _ bytes: C) -> Bool where C.Element == UInt8 {
-        var array = Array(bytes), offset = 0
+        var array = Array(bytes)
+        var offset = 0
         while offset < array.count {
             let n = array.withUnsafeMutableBytes { Darwin.write(fd, $0.baseAddress! + offset, $0.count - offset) }
             if n < 0, errno == EINTR { continue }
@@ -620,4 +837,4 @@ final class Guest {
     }
 }
 
-private extension Character { var isASCIIDigit: Bool { ("0"..."9").contains(self) } }
+extension Character { fileprivate var isASCIIDigit: Bool { ("0"..."9").contains(self) } }

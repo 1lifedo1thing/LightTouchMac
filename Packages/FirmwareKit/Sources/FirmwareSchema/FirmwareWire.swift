@@ -14,8 +14,10 @@ nonisolated public enum FirmwareWire {
     /// Recipe steps boot admission migrates in place, per board: a stopped base at recipe `key` reaches `value` at
     /// its next start (FirmwareBootAdmission), so the GUI counts it as already there and offers no Prepare Again.
     /// The one list of such steps; a migration that isn't listed here leaves its devices flagged.
-    public static let admissionRecipeSteps: [String: [Int: Int]] = ["n72ap": [1: 2], "n45ap": [2: 3], "m68ap": [1: 2],
-                                                                          "n90ap": [1: 2], "n88ap": [1: 2]]
+    public static let admissionRecipeSteps: [String: [Int: Int]] = [
+        "n72ap": [1: 2], "n45ap": [2: 3], "m68ap": [1: 2],
+        "n90ap": [1: 2], "n88ap": [1: 2],
+    ]
 
     /// `version` after every admission step for `board` (FirmwareWire.admissionRecipeSteps).
     public static func admittedRecipe(_ version: Int, board: String?) -> Int {
@@ -78,10 +80,18 @@ nonisolated public enum FirmwareWire {
             /// What to download, in order: this source, then each mirror that records this sha1 and size as a source of
             /// its own (its kind, URL and archive fields; the same IPSW sha1 and bytes).
             public var alternatives: [Source] {
-                (url == nil ? [] : [self]) + (mirrors ?? []).filter { $0.sha1 == sha1 && $0.bytes == bytes }.map {
-                    Source(kind: $0.kind ?? "ipsw", url: $0.url, sha1: sha1, bytes: bytes, archiveSHA1: $0.archiveSHA1,
-                           archiveBytes: $0.archiveBytes, member: $0.member)
-                }
+                (url == nil ? [] : [self])
+                    + (mirrors ?? []).filter { $0.sha1 == sha1 && $0.bytes == bytes }.map {
+                        Source(
+                            kind: $0.kind ?? "ipsw",
+                            url: $0.url,
+                            sha1: sha1,
+                            bytes: bytes,
+                            archiveSHA1: $0.archiveSHA1,
+                            archiveBytes: $0.archiveBytes,
+                            member: $0.member
+                        )
+                    }
             }
             /// Where to download from, in order (`alternatives`' URLs).
             public var urls: [URL] { alternatives.compactMap(\.url) }
@@ -94,7 +104,11 @@ nonisolated public enum FirmwareWire {
             public var file: String
             public var iv: String?
             public var key: String
-            public init(file: String, iv: String?, key: String) { self.file = file; self.iv = iv; self.key = key }
+            public init(file: String, iv: String?, key: String) {
+                self.file = file
+                self.iv = iv
+                self.key = key
+            }
         }
 
         public struct Recipe: Codable, Sendable, Equatable {
@@ -142,7 +156,9 @@ nonisolated public enum FirmwareWire {
             public var preparedBytes: Int64
             public var peakBytes: Int64
             public var seconds: Int
-            enum CodingKeys: String, CodingKey { case seconds, preparedBytes = "prepared_bytes", peakBytes = "peak_bytes" }
+            enum CodingKeys: String, CodingKey {
+                case seconds, preparedBytes = "prepared_bytes", peakBytes = "peak_bytes"
+            }
         }
 
         public var id: String
@@ -165,7 +181,8 @@ nonisolated public enum FirmwareWire {
         public var estimates: Estimates
 
         enum CodingKeys: String, CodingKey {
-            case id, board, version, build, released, prerelease, status, media, source, keys, recipe, emulator, estimates
+            case id, board, version, build, released, prerelease, status, media, source, keys, recipe, emulator,
+                estimates
             case productType = "product_type", statusNote = "status_note", prereleaseNumber = "prerelease_number"
         }
 

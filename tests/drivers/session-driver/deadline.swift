@@ -1,15 +1,15 @@
 import DeviceRuntime
+import Foundation
 import HostRuntime
+
 // A base that never starts iOS (tests/sessions/check-boot-deadline.py): booted as the app boots it, with the
 // app's serial watch for iBoot's "Entering recovery mode" and the board's boot budget. Emits what the
 // app would act on first: the recovery marker (seconds after boot), lockdown answering (the app's
 // "iOS is up"), or the deadline. Then a halt, as EmulatorController.abortBoot does (SIGTERM, kill
 // after the halt budget).
 
-import Foundation
-
 struct DeadlineConfig: Decodable {
-    var board: String   // "ipod" | "ipad"
+    var board: String  // "ipod" | "ipad"
     var base: String
     /// Seconds to wait for uiReady or the marker (the app: Board.bootBudget).
     var budget: Double?
@@ -22,33 +22,60 @@ struct DeadlineConfig: Decodable {
     if !ipad {
         let gid = b.appendingPathComponent("gid-blobs.bin").path
         let iBoot: String
-        do { iBoot = try BootRecipe.iPodIBoot(base: b) }
-        catch { fail("boot lock: \(error)") }
-        d.ipod = .init(nand: b.appendingPathComponent("nand").path, nor: b.appendingPathComponent("nor.bin").path,
-                       iBoot: iBoot, gidBlobs: FileManager.default.fileExists(atPath: gid) ? gid : nil,
-                       machine: (try? DeviceLock.read(base: b))??.machineOptions(base: b) ?? [:])
+        do { iBoot = try BootRecipe.iPodIBoot(base: b) } catch { fail("boot lock: \(error)") }
+        d.ipod = .init(
+            nand: b.appendingPathComponent("nand").path,
+            nor: b.appendingPathComponent("nor.bin").path,
+            iBoot: iBoot,
+            gidBlobs: FileManager.default.fileExists(atPath: gid) ? gid : nil,
+            machine: (try? DeviceLock.read(base: b))??.machineOptions(base: b) ?? [:]
+        )
     }
     let matched = Matched()
     d.serialWatch = (["Entering recovery mode"], { phrase in matched.set(phrase) })
     let budget = c.budget ?? d.profile.bootBudget
     do { try d.boot(generation: 1) } catch { fail("boot: \(error)") }
     let start = Date()
-    var outcome = "deadline", lastProbe = Date.distantPast
+    var outcome = "deadline"
+    var lastProbe = Date.distantPast
     while Date().timeIntervalSince(start) < budget {
-        if d.process.isDead { outcome = "died"; break }
-        if let phrase = matched.get() { outcome = "recovery"; emit("recovery", ["phrase": phrase, "seconds": Date().timeIntervalSince(start)]); break }
+        if d.process.isDead {
+            outcome = "died"
+            break
+        }
+        if let phrase = matched.get() {
+            outcome = "recovery"
+            emit("recovery", ["phrase": phrase, "seconds": Date().timeIntervalSince(start)])
+            break
+        }
         if Date().timeIntervalSince(lastProbe) >= 2 {
             lastProbe = Date()
-            if let type = await d.productType() { outcome = "lockdown"; emit("usb", ["device": d.name, "productType": type]); break }
+            if let type = await d.productType() {
+                outcome = "lockdown"
+                emit("usb", ["device": d.name, "productType": type])
+                break
+            }
         }
         try? await Task.sleep(for: .milliseconds(250))
     }
-    emit("outcome", ["outcome": outcome, "seconds": Date().timeIntervalSince(start), "budget": budget, "deaths": d.deaths])
+    emit(
+        "outcome",
+        ["outcome": outcome, "seconds": Date().timeIntervalSince(start), "budget": budget, "deaths": d.deaths]
+    )
     let quit = Date()
     d.process.terminate()
     var exited = await d.process.waitForExit(timeout: 10)
-    if !exited { d.process.kill(); exited = await d.process.waitForExit(timeout: 5) }
-    emit("quit", ["device": d.name, "exited": exited, "seconds": Date().timeIntervalSince(quit), "reason": d.process.deathReason ?? ""])
+    if !exited {
+        d.process.kill()
+        exited = await d.process.waitForExit(timeout: 5)
+    }
+    emit(
+        "quit",
+        [
+            "device": d.name, "exited": exited, "seconds": Date().timeIntervalSince(quit),
+            "reason": d.process.deathReason ?? "",
+        ]
+    )
     d.mux.stop()
     d.serial?.finish()
     emit("done")

@@ -8,7 +8,8 @@ public nonisolated enum StorageRecordPolicy: Sendable {
 
     public static func managedDeviceDirectory(_ device: URL) throws -> Self {
         guard device.deletingLastPathComponent().lastPathComponent == "Devices",
-              let id = UUID(uuidString: device.lastPathComponent) else {
+            let id = UUID(uuidString: device.lastPathComponent)
+        else {
             throw StorageRecordPaths.Failure.invalidRecord
         }
         return .managed(state: device.deletingLastPathComponent().deletingLastPathComponent(), id: id)
@@ -30,8 +31,9 @@ public nonisolated struct StorageRecordPaths: Sendable {
 
     public init(bytes: Data, relativeRoot: URL) throws {
         guard let record = try? DeviceRecord.object(bytes),
-              let base = record["base"] as? [String: Any], let path = base["path"] as? String,
-              let storage = record["storage"] as? [String: Any], let overlay = storage["overlay"] as? String else {
+            let base = record["base"] as? [String: Any], let path = base["path"] as? String,
+            let storage = record["storage"] as? [String: Any], let overlay = storage["overlay"] as? String
+        else {
             throw Failure.invalidRecord
         }
         for field in ["snapshot", "writableNOR", "usbmuxConf"] where storage[field] != nil {
@@ -56,9 +58,11 @@ public nonisolated struct StorageRecordPaths: Sendable {
         return String(url.path.dropFirst(root.count))
     }
     public func validate(_ policy: StorageRecordPolicy, device: URL) throws {
-        if case let .managed(state, expected) = policy {
+        if case .managed(let state, let expected) = policy {
             let owned = state.appendingPathComponent("Devices/\(expected.uuidString)")
-            guard id == expected, StoragePathAuthority.canonicalPath(device) == StoragePathAuthority.canonicalPath(owned) else {
+            guard id == expected,
+                StoragePathAuthority.canonicalPath(device) == StoragePathAuthority.canonicalPath(owned)
+            else {
                 throw Failure.invalidRecord
             }
             let generations = device.appendingPathComponent("generations")
@@ -68,8 +72,13 @@ public nonisolated struct StorageRecordPaths: Sendable {
             guard containerPath != basePath, !containerPath.hasPrefix(basePath + "/") else {
                 throw StoragePathAuthority.Failure.invalidPath(generations)
             }
-            try StoragePathAuthority.checkBootPaths(base: base,
-                mutable: [device.appendingPathComponent("work"), overlay, snapshot, writableNOR, usbmuxConf].compactMap { $0 }, state: state, owner: expected)
+            try StoragePathAuthority.checkBootPaths(
+                base: base,
+                mutable: [device.appendingPathComponent("work"), overlay, snapshot, writableNOR, usbmuxConf].compactMap
+                { $0 },
+                state: state,
+                owner: expected
+            )
         }
     }
 }
@@ -84,9 +93,13 @@ public nonisolated struct StoppedRecordOwner: Sendable {
     public let bytes: Data?
     public let paths: StorageRecordPaths?
 
-    public init(device: URL, policy: StorageRecordPolicy = .standalone,
-                allowPendingEdit: Bool = false, allowRaw: Bool = false) throws {
-        if case let .managed(state, id) = policy {
+    public init(
+        device: URL,
+        policy: StorageRecordPolicy = .standalone,
+        allowPendingEdit: Bool = false,
+        allowRaw: Bool = false
+    ) throws {
+        if case .managed(let state, let id) = policy {
             // Reject an aliased foreign owner directory before creating its lease.
             let expected = state.appendingPathComponent("Devices/\(id.uuidString)")
             guard StoragePathAuthority.canonicalPath(device) == StoragePathAuthority.canonicalPath(expected) else {
@@ -98,13 +111,17 @@ public nonisolated struct StoppedRecordOwner: Sendable {
         lease = try StorageLease(self.device.appendingPathComponent("work/lease"), allowPendingEdit: allowPendingEdit)
         let record = DeviceRecord.url(self.device)
         if allowRaw && !FileManager.default.fileExists(atPath: record.path), case .standalone = policy {
-            bytes = nil; paths = nil
+            bytes = nil
+            paths = nil
         } else {
             let snapshot = try Data(contentsOf: record)
-            let paths = try StorageRecordPaths(bytes: snapshot,
-                relativeRoot: self.device.deletingLastPathComponent().deletingLastPathComponent())
+            let paths = try StorageRecordPaths(
+                bytes: snapshot,
+                relativeRoot: self.device.deletingLastPathComponent().deletingLastPathComponent()
+            )
             try paths.validate(policy, device: self.device)
-            bytes = snapshot; self.paths = paths
+            bytes = snapshot
+            self.paths = paths
         }
     }
 }

@@ -6,17 +6,17 @@ import Foundation
 // MARK: - Errors
 
 public nonisolated enum DeviceError: Error, LocalizedError, Codable, Sendable {
-    case unavailable                                   // library not loaded
-    case notAttached                                   // idevice_new failed
+    case unavailable  // library not loaded
+    case notAttached  // idevice_new failed
     case lockdown(Int32)
     case instproxy(InstproxyError, phase: String?)
     case afc(AFCError)
     case upload(AFCError, written: UInt64, total: UInt64)
     case diskFull(free: Int64, needed: Int64)
     case timedOut(operation: String)
-    case recovering                                    // earlier requests still stuck
-    case endpointBusy                                  // another device still owns blocked calls
-    case preflight(String)                             // ipod-helper findings
+    case recovering  // earlier requests still stuck
+    case endpointBusy  // another device still owns blocked calls
+    case preflight(String)  // ipod-helper findings
     case failed(String)
 
     /// Transient service hiccups worth retrying — a fresh boot or a just-freed
@@ -55,7 +55,8 @@ public nonisolated enum DeviceError: Error, LocalizedError, Codable, Sendable {
             return "The install didn’t finish (\(phase ?? "install")): \(e)."
         case .afc(let e): return "File-transfer error: \(e)."
         case .upload(let e, let written, let total):
-            return "Upload stopped after \(written / 1_048_576) of \(total / 1_048_576) MB: \(e). Pending installs are paused; resume them from the app list’s context menu after the device responds."
+            return
+                "Upload stopped after \(written / 1_048_576) of \(total / 1_048_576) MB: \(e). Pending installs are paused; resume them from the app list’s context menu after the device responds."
         case .diskFull(let free, let needed):
             return "Not enough space on the device: \(free / 1_048_576) MB free, "
                 + "about \(needed / 1_048_576) MB needed. Uninstall something first."
@@ -63,7 +64,8 @@ public nonisolated enum DeviceError: Error, LocalizedError, Codable, Sendable {
         case .recovering:
             return "The device stopped responding; still waiting for earlier requests to finish."
         case .endpointBusy:
-            return "Another device’s USB request is still running. Wait for it to finish before connecting to this device."
+            return
+                "Another device’s USB request is still running. Wait for it to finish before connecting to this device."
         case .preflight(let m): return m
         case .failed(let m): return m
         }
@@ -95,20 +97,22 @@ public nonisolated enum InstproxyError: Equatable, CustomStringConvertible, Coda
 
     public init(code: Int32) {
         switch code {
-        case 0:   self = .success
-        case -3:  self = .connFailed
-        case -4:  self = .opInProgress
-        case -5:  self = .opFailed
-        case -6:  self = .receiveTimeout
-        case -9:  self = .alreadyInstalled
+        case 0: self = .success
+        case -3: self = .connFailed
+        case -4: self = .opInProgress
+        case -5: self = .opFailed
+        case -6: self = .receiveTimeout
+        case -9: self = .alreadyInstalled
         case -34: self = .packageExtractionFailed
-        default:  self = .other(code)
+        default: self = .other(code)
         }
     }
     /// Connection-level refusals recover; a rejected package does not.
     public var isTransient: Bool {
-        switch self { case .connFailed, .opInProgress, .receiveTimeout: return true
-                      default: return false }
+        switch self {
+        case .connFailed, .opInProgress, .receiveTimeout: return true
+        default: return false
+        }
     }
     public var description: String {
         switch self {
@@ -132,10 +136,11 @@ public nonisolated enum InstproxyError: Equatable, CustomStringConvertible, Coda
 
 /// AFC error codes (afc.h). Named subset; the rest is `.other`.
 public nonisolated enum AFCError: Equatable, CustomStringConvertible, Codable, Sendable {
-    case success, opTimeout, noMem, internalError, other(Int32)
+    case success, opTimeout, noMem, internalError
+    case other(Int32)
     public init(code: Int32) {
         switch code {
-        case 0:  self = .success
+        case 0: self = .success
         case 12: self = .opTimeout
         case 23: self = .internalError
         case 31: self = .noMem
@@ -165,7 +170,7 @@ public nonisolated enum Timeouts {
     public nonisolated(unsafe) static var browse: Double = 20
     public nonisolated(unsafe) static var uninstall: Double = 120
     public nonisolated(unsafe) static var query: Double = 15
-    public nonisolated(unsafe) static var stage: Double = 300           // whole-.ipa AFC upload backstop
-    public nonisolated(unsafe) static var installIdle: Double = 300     // since the last status callback; installd goes quiet 2–3 min on big IPAs
+    public nonisolated(unsafe) static var stage: Double = 300  // whole-.ipa AFC upload backstop
+    public nonisolated(unsafe) static var installIdle: Double = 300  // since the last status callback; installd goes quiet 2–3 min on big IPAs
     public nonisolated(unsafe) static var installAbsolute: Double = 600
 }

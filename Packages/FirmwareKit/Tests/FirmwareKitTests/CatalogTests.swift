@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import FirmwareKit
 
 struct CatalogTests {
@@ -11,7 +12,10 @@ struct CatalogTests {
         }
         try Oracle.withTemp { dir in
             let url = dir.appendingPathComponent("catalog.json")
-            struct Catalog: Encodable { var format: Int; var entries: [FirmwareEntry] }
+            struct Catalog: Encodable {
+                var format: Int
+                var entries: [FirmwareEntry]
+            }
             for invalid in [Catalog(format: 1, entries: [entry, entry]), Catalog(format: 2, entries: [entry])] {
                 try JSONEncoder().encode(invalid).write(to: url)
                 #expect(throws: FirmwareError.self) {

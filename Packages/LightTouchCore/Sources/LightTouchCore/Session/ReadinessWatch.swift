@@ -1,11 +1,11 @@
 // From the boot until SpringBoard answers over lockdown: the startup status the window shows, how far the boot has
 // provably got (BootStage), and the one display wake a boot gets before input is enabled.
 
+import DeviceRuntime
 import Foundation
-import Observation
 import HostRuntime
 import HostServiceWire
-import DeviceRuntime
+import Observation
 
 /// What the readiness watch reads and does on the session.
 public protocol ReadinessHost: AnyObject {
@@ -56,7 +56,9 @@ public protocol ReadinessHost: AnyObject {
     public private(set) var readinessFailure: String?
 
     /// The readiness deadline's verdict now (ReadinessDeadline): frames painted, and how far the boot got.
-    public var deadlineVerdict: ReadinessDeadline { ReadinessDeadline.verdict(painted: host.isPainting, stage: bootStage) }
+    public var deadlineVerdict: ReadinessDeadline {
+        ReadinessDeadline.verdict(painted: host.isPainting, stage: bootStage)
+    }
 
     public func setStatus(_ status: String) { preparationStatus = status }
 
@@ -101,7 +103,9 @@ public protocol ReadinessHost: AnyObject {
                 while true {
                     try Task.checkCancellation()
                     guard generation == host.bootScope.generation else { return }
-                    guard !host.isDead, !host.storageFailed else { throw DeviceToolsError.failed("The \(host.profile.shortName) didn’t become ready in time.") }
+                    guard !host.isDead, !host.storageFailed else {
+                        throw DeviceToolsError.failed("The \(host.profile.shortName) didn’t become ready in time.")
+                    }
                     if let due = deadline, ContinuousClock.now >= due {
                         guard deadlineVerdict == .keepRunning else {
                             throw DeviceToolsError.failed("The \(host.profile.shortName) didn’t become ready in time.")
@@ -168,7 +172,10 @@ public protocol ReadinessHost: AnyObject {
             } catch {
                 if !Task.isCancelled, generation == host.bootScope.generation {
                     readinessFailure = error.localizedDescription
-                    notices.report("The \(host.profile.shortName) didn’t finish starting. Restart it to try again.", for: .preparation)
+                    notices.report(
+                        "The \(host.profile.shortName) didn’t finish starting. Restart it to try again.",
+                        for: .preparation
+                    )
                     logEvent("boot: readiness failed: \(error.localizedDescription)")
                 }
             }

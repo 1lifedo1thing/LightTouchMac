@@ -10,8 +10,8 @@
 import Foundation
 import IOSurface
 import ImageIO
-import UniformTypeIdentifiers
 import Security
+import UniformTypeIdentifiers
 
 var opts = [String: [String]]()
 do {
@@ -19,7 +19,8 @@ do {
     while let a = it.next() { opts[a, default: []].append(it.next() ?? "") }
 }
 let service = "gold.samhenri.LightTouchMac.devices.\(getpid())"
-let requirement = opts["--requirement"]?.first ?? "anchor apple generic and certificate leaf[subject.OU] = \"SM75355Y6R\""
+let requirement =
+    opts["--requirement"]?.first ?? "anchor apple generic and certificate leaf[subject.OU] = \"SM75355Y6R\""
 let pollUs = UInt32(opts["--poll-us"]?.first ?? "1000")!
 let dumpDir = opts["--dump"]?.first
 let maxSeconds = Double(opts["--seconds"]?.first ?? "600")!
@@ -51,62 +52,94 @@ final class Device {
     // helper -> app, over the socketpair; ignored until the Mach hello passed.
     func event(_ m: [String: Any]) {
         guard let op = m["op"] as? String else { return }
-        guard authenticated else { log("device \(index): \(op) before a valid hello, dropped"); return }
+        guard authenticated else {
+            log("device \(index): \(op) before a valid hello, dropped")
+            return
+        }
         switch op {
-        case "stats": childStats = m; log("device \(index) child stats \(m)")
+        case "stats":
+            childStats = m
+            log("device \(index) child stats \(m)")
         case "dump": dump(m["name"] as? String ?? "frame")
         default: log("device \(index) event \(m)")
         }
     }
     func surfacesChanged(_ surfaces: [IOSurface]) {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         if heldIndex >= 0, heldIndex < ring.count { ring[heldIndex].decrementUseCount() }
         heldIndex = -1
         status = Status(surfaces[0])
         ring = Array(surfaces.dropFirst())
-        log("device \(index): \(surfaces.count) surfaces, magic ok=\(status![.magic] == statusMagic), ring \(ring.first.map { "\($0.width)x\($0.height)" } ?? "-")")
+        log(
+            "device \(index): \(surfaces.count) surfaces, magic ok=\(status![.magic] == statusMagic), ring \(ring.first.map { "\($0.width)x\($0.height)" } ?? "-")"
+        )
     }
 
     /// One poll: if the serial moved, take the front surface (seqlock-style handshake).
     func poll() {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         guard let st = status, ring.count == 3 else { return }
         let s1 = ltm_load_seq(st.base + Slot.frameSerial.rawValue)
         guard s1 != lastSerial else { return }
-        let front = Int(st[.front]), published = st[.publishTicks]
+        let front = Int(st[.front])
+        let published = st[.publishTicks]
         ltm_store_seq(st.base + Slot.held.rawValue, UInt64(front + 1))
         let s2 = ltm_load_seq(st.base + Slot.frameSerial.rawValue)
-        if s2 != s1 { retries += 1; return }       // it moved under us: take the newer one next poll
+        if s2 != s1 {
+            retries += 1
+            return
+        }  // it moved under us: take the newer one next poll
         latencies.append(ticksToMs(mach_absolute_time() - published))
         if lastSerial != 0, s1 > lastSerial + 1 { missed += Int(s1 - lastSerial - 1) }
         lastSerial = s1
         observed += 1
         if heldIndex >= 0 { ring[heldIndex].decrementUseCount() }
-        ring[front].incrementUseCount()                // what layer.contents would do
+        ring[front].incrementUseCount()  // what layer.contents would do
         heldIndex = front
         if opts["--check-tear"] != nil {
             let tag = UInt32(truncatingIfNeeded: s1) & 0xFFFFFF | 0xFF00_0000
             let surf = ring[front]
             let p = surf.baseAddress.assumingMemoryBound(to: UInt32.self)
             let n = surf.bytesPerRow / 4 * surf.height
-            for k in 0..<64 where p[(n - 1) * k / 63] != tag { torn += 1; break }
+            for k in 0..<64 where p[(n - 1) * k / 63] != tag {
+                torn += 1
+                break
+            }
         }
     }
 
     func dump(_ name: String) {
         guard let dumpDir else { return }
-        lock.lock(); defer { lock.unlock() }
-        guard let st = status, ring.count == 3 else { log("device \(index): no surfaces to dump"); return }
+        lock.lock()
+        defer { lock.unlock() }
+        guard let st = status, ring.count == 3 else {
+            log("device \(index): no surfaces to dump")
+            return
+        }
         let surf = ring[heldIndex >= 0 ? heldIndex : Int(st[.front])]
         // BGRA, alpha ignored: the iPod's framebuffer leaves it 0.
         surf.lock(options: .readOnly, seed: nil)
         let data = Data(bytes: surf.baseAddress, count: surf.bytesPerRow * surf.height)
         surf.unlock(options: .readOnly, seed: nil)
-        guard let cg = CGImage(width: surf.width, height: surf.height, bitsPerComponent: 8, bitsPerPixel: 32,
-                               bytesPerRow: surf.bytesPerRow, space: CGColorSpaceCreateDeviceRGB(),
-                               bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
-                               provider: CGDataProvider(data: data as CFData)!, decode: nil, shouldInterpolate: false,
-                               intent: .defaultIntent) else { return }
+        guard
+            let cg = CGImage(
+                width: surf.width,
+                height: surf.height,
+                bitsPerComponent: 8,
+                bitsPerPixel: 32,
+                bytesPerRow: surf.bytesPerRow,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo(
+                    rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+                ),
+                provider: CGDataProvider(data: data as CFData)!,
+                decode: nil,
+                shouldInterpolate: false,
+                intent: .defaultIntent
+            )
+        else { return }
         let url = URL(fileURLWithPath: "\(dumpDir)/dev\(index)-\(name).png")
         let d = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)!
         CGImageDestinationAddImage(d, cg, nil)
@@ -117,9 +150,11 @@ final class Device {
     func summary() -> [String: Any] {
         let s = latencies.sorted()
         func pct(_ p: Double) -> Double { s.isEmpty ? 0 : s[min(s.count - 1, Int(Double(s.count) * p))] }
-        return ["device": index, "observed": observed, "missed": missed, "torn": torn, "retries": retries,
-                "latencyMsP50": pct(0.5), "latencyMsP95": pct(0.95), "latencyMsP99": pct(0.99), "latencyMsMax": s.last ?? 0,
-                "child": childStats]
+        return [
+            "device": index, "observed": observed, "missed": missed, "torn": torn, "retries": retries,
+            "latencyMsP50": pct(0.5), "latencyMsP95": pct(0.95), "latencyMsP99": pct(0.99), "latencyMsMax": s.last ?? 0,
+            "child": childStats,
+        ]
     }
 }
 
@@ -131,7 +166,10 @@ var devices: [Device] = []
 // its code satisfies the requirement, and it carries that device's one-time token.
 var rx: mach_port_t = 0
 let ckr = ltm_check_in(service, &rx)
-guard ckr == 0 else { log("bootstrap_check_in failed: \(ckr)"); exit(1) }
+guard ckr == 0 else {
+    log("bootstrap_check_in failed: \(ckr)")
+    exit(1)
+}
 log("checked in \(service)")
 
 func validate(_ h: ltm_hello) -> (Device?, String) {
@@ -142,8 +180,11 @@ func validate(_ h: ltm_hello) -> (Device?, String) {
     let tokenData = withUnsafeBytes(of: &audit) { Data($0) }
     var code: SecCode?
     var req: SecRequirement?
-    guard SecCodeCopyGuestWithAttributes(nil, [kSecGuestAttributeAudit: tokenData] as CFDictionary, [], &code) == errSecSuccess, let code,
-          SecRequirementCreateWithString(requirement as CFString, [], &req) == errSecSuccess, let req else {
+    guard
+        SecCodeCopyGuestWithAttributes(nil, [kSecGuestAttributeAudit: tokenData] as CFDictionary, [], &code)
+            == errSecSuccess, let code,
+        SecRequirementCreateWithString(requirement as CFString, [], &req) == errSecSuccess, let req
+    else {
         return (nil, "pid \(h.pid): no code object")
     }
     let v = SecCodeCheckValidity(code, [], req)
@@ -159,7 +200,9 @@ Thread.detachNewThread {
         var h = ltm_hello()
         guard ltm_recv_hello(rx, -1, &h) == 0 else { continue }
         let (dev, why) = validate(h)
-        let ports = withUnsafeBytes(of: h.ports) { Array($0.bindMemory(to: mach_port_t.self).prefix(Int(max(0, h.nports)))) }
+        let ports = withUnsafeBytes(of: h.ports) {
+            Array($0.bindMemory(to: mach_port_t.self).prefix(Int(max(0, h.nports))))
+        }
         guard let dev else {
             log("REJECT hello: \(why)")
             for p in ports where p != 0 { mach_port_deallocate(mach_task_self_, p) }
@@ -185,9 +228,16 @@ for (i, spec) in (opts["--device"] ?? []).enumerated() {
     cargs.append(nil)
     d.pid = ltm_spawn(d.exe, &cargs, sv[1])
     close(sv[1])
-    guard d.pid > 0 else { log("spawn failed \(d.pid)"); exit(1) }
-    d.link = Link(fd: sv[0], queue: .main, onMessage: { d.event($0) },
-                  onEOF: { log("NOTICED device \(i) link EOF") })
+    guard d.pid > 0 else {
+        log("spawn failed \(d.pid)")
+        exit(1)
+    }
+    d.link = Link(
+        fd: sv[0],
+        queue: .main,
+        onMessage: { d.event($0) },
+        onEOF: { log("NOTICED device \(i) link EOF") }
+    )
     let w = DispatchSource.makeProcessSource(identifier: d.pid, eventMask: .exit, queue: .main)
     w.setEventHandler {
         var st: Int32 = 0
@@ -213,8 +263,10 @@ Thread.detachNewThread {
 
 func finish() {
     let wall = Date().timeIntervalSince(started)
-    let result: [String: Any] = ["hostCpuSeconds": cpuSeconds() - cpu0, "wall": wall, "pollUs": pollUs,
-                                 "devices": devices.map { $0.summary() }]
+    let result: [String: Any] = [
+        "hostCpuSeconds": cpuSeconds() - cpu0, "wall": wall, "pollUs": pollUs,
+        "devices": devices.map { $0.summary() },
+    ]
     let json = try! JSONSerialization.data(withJSONObject: result, options: [.sortedKeys, .prettyPrinted])
     print("HOST_RESULT " + String(decoding: json, as: UTF8.self))
     fflush(stdout)

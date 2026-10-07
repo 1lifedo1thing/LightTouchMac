@@ -3,8 +3,8 @@
 // The device sits on top, the console below, and the bar between them is the
 // divider: drag it, double-click it, or use its toggle.
 
-import LightTouchCore
 import Cocoa
+import LightTouchCore
 
 /// The main pane: `top` above, the bar, then the console.
 @MainActor
@@ -35,11 +35,14 @@ final class ConsoleSplitView: NSView {
         topMinimum.priority = .init(999)
         NSLayoutConstraint.activate([
             top.topAnchor.constraint(equalTo: topAnchor),
-            top.leadingAnchor.constraint(equalTo: leadingAnchor), top.trailingAnchor.constraint(equalTo: trailingAnchor),
+            top.leadingAnchor.constraint(equalTo: leadingAnchor),
+            top.trailingAnchor.constraint(equalTo: trailingAnchor),
             bar.topAnchor.constraint(equalTo: top.bottomAnchor),
-            bar.leadingAnchor.constraint(equalTo: leadingAnchor), bar.trailingAnchor.constraint(equalTo: trailingAnchor),
+            bar.leadingAnchor.constraint(equalTo: leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: trailingAnchor),
             log.topAnchor.constraint(equalTo: bar.bottomAnchor),
-            log.leadingAnchor.constraint(equalTo: leadingAnchor), log.trailingAnchor.constraint(equalTo: trailingAnchor),
+            log.leadingAnchor.constraint(equalTo: leadingAnchor),
+            log.trailingAnchor.constraint(equalTo: trailingAnchor),
             log.bottomAnchor.constraint(equalTo: bottomAnchor),
             consoleHeight, topMinimum,
         ])
@@ -49,7 +52,10 @@ final class ConsoleSplitView: NSView {
             dragStart = (layout, layout.isCollapsed ? 0 : log.frame.height, y)
         }
         bar.onDrag = { [weak self] y in self?.drag(to: y) }
-        bar.onDragEnded = { [weak self] in self?.dragStart = nil; self?.commit() }
+        bar.onDragEnded = { [weak self] in
+            self?.dragStart = nil
+            self?.commit()
+        }
         bar.onClear = { [weak self] in self?.log.clear() }
         bar.onFilter = { [weak self] in self?.log.filter = $0 }
         bar.onSource = { [weak self] in self?.sourceChanged() }
@@ -73,7 +79,9 @@ final class ConsoleSplitView: NSView {
 
     /// The picker's name for a log; the files keep theirs on disk.
     static func title(for log: URL) -> String {
-        ["serial.log": "Device Console", "app.log": "Light Touch", "native.log": "Emulator", "usbmuxd.log": "USB"][log.lastPathComponent]
+        ["serial.log": "Device Console", "app.log": "Light Touch", "native.log": "Emulator", "usbmuxd.log": "USB"][
+            log.lastPathComponent
+        ]
             ?? log.lastPathComponent
     }
 
@@ -107,13 +115,19 @@ final class ConsoleSplitView: NSView {
     }
 
     private func apply(animated: Bool) {
-        let collapsed = layout.isCollapsed, target = collapsed ? 0 : layout.height
+        let collapsed = layout.isCollapsed
+        let target = collapsed ? 0 : layout.height
         bar.isExpanded = !collapsed
         if !collapsed { log.isHidden = false }
         // Out of the key-view loop once it's gone, as a collapsed split pane is.
         let hide = { [weak self] in if let self, collapsed, self.layout.isCollapsed { self.log.isHidden = true } }
         if animated {
-            NSAnimationContext.runAnimationGroup { $0.duration = 0.2; consoleHeight.animator().constant = target } completionHandler: { hide() }
+            NSAnimationContext.runAnimationGroup {
+                $0.duration = 0.2
+                consoleHeight.animator().constant = target
+            } completionHandler: {
+                hide()
+            }
         } else {
             consoleHeight.constant = target
             hide()
@@ -179,22 +193,26 @@ final class ConsoleBar: NSView {
         toggleButton.bezelStyle = .toolbar
         toggleButton.isBordered = false
         toggleButton.image = NSImage(systemSymbolName: "inset.filled.bottomthird.square", accessibilityDescription: nil)
-        toggleButton.target = self; toggleButton.action = #selector(toggle)
+        toggleButton.target = self
+        toggleButton.action = #selector(toggle)
         source.controlSize = .small
         source.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         source.setAccessibilityLabel("Log")
-        source.target = self; source.action = #selector(sourceChosen)
+        source.target = self
+        source.action = #selector(sourceChosen)
         filter.controlSize = .small
         filter.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         filter.placeholderString = "Filter"
         filter.setAccessibilityLabel("Filter Console")
         filter.sendsSearchStringImmediately = true
-        filter.target = self; filter.action = #selector(filterChanged)
+        filter.target = self
+        filter.action = #selector(filterChanged)
         clearButton.bezelStyle = .toolbar
         clearButton.isBordered = false
         clearButton.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Clear Console")
         clearButton.toolTip = "Clear Console"
-        clearButton.target = self; clearButton.action = #selector(clear)
+        clearButton.target = self
+        clearButton.action = #selector(clear)
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
         for view in [toggleButton, source, spacer, filter, clearButton] { stack.addArrangedSubview(view) }
         stack.spacing = 8
@@ -204,7 +222,8 @@ final class ConsoleBar: NSView {
         addSubview(stack)
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: Self.height),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor), stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.topAnchor.constraint(equalTo: topAnchor), stack.bottomAnchor.constraint(equalTo: bottomAnchor),
             filter.widthAnchor.constraint(equalToConstant: 180),
         ])
@@ -230,10 +249,14 @@ final class ConsoleBar: NSView {
         var x = bounds.minX
         for control in stack.arrangedSubviews where !control.isHidden && control !== spacer {
             let frame = control.convert(control.bounds, to: self)
-            if frame.minX > x { addCursorRect(NSRect(x: x, y: 0, width: frame.minX - x, height: bounds.height), cursor: .resizeUpDown) }
+            if frame.minX > x {
+                addCursorRect(NSRect(x: x, y: 0, width: frame.minX - x, height: bounds.height), cursor: .resizeUpDown)
+            }
             x = max(x, frame.maxX)
         }
-        if bounds.maxX > x { addCursorRect(NSRect(x: x, y: 0, width: bounds.maxX - x, height: bounds.height), cursor: .resizeUpDown) }
+        if bounds.maxX > x {
+            addCursorRect(NSRect(x: x, y: 0, width: bounds.maxX - x, height: bounds.height), cursor: .resizeUpDown)
+        }
     }
 
     override func layout() {
@@ -243,7 +266,10 @@ final class ConsoleBar: NSView {
 
     override func mouseDown(with event: NSEvent) {
         // IDEEditorArea splitView:doubleClickedOnDividerAtIndex: shows or hides the debug area.
-        if event.clickCount == 2 { onToggle?(); return }
+        if event.clickCount == 2 {
+            onToggle?()
+            return
+        }
         onDragBegan?(event.locationInWindow.y)
     }
 

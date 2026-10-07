@@ -1,6 +1,6 @@
-import HostRuntime
-import Foundation
 import Darwin
+import Foundation
+import HostRuntime
 
 /// Disk operations shared by the controller and the device-free regression check.
 public nonisolated enum DeviceStateStorage {
@@ -21,14 +21,18 @@ public nonisolated enum DeviceStateStorage {
     /// The helper/export/edit lock is the authority, including external CLI
     /// owners. A cached GUI "stopped" state cannot authorize deleting its files.
     private static func stoppedLease(_ owner: UUID?, state: URL) throws -> StorageLease? {
-        guard let owner else { return nil } // legacy profile-only stores
+        guard let owner else { return nil }  // legacy profile-only stores
         let work = state.appendingPathComponent("Devices/\(owner.uuidString)/work")
         try checkRemovable(work, state: state, owner: owner)
-        do { return try StorageLease(work.appendingPathComponent("lease")) }
-        catch let error as StorageLease.Failure {
-            if case let .openFailed(code) = error { throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO) }
-            throw CocoaError(.fileWriteNoPermission, userInfo: [NSLocalizedDescriptionKey:
-                "This device’s storage is in use. Shut down the device, or save or discard its file system changes, first."])
+        do { return try StorageLease(work.appendingPathComponent("lease")) } catch let error as StorageLease.Failure {
+            if case .openFailed(let code) = error { throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO) }
+            throw CocoaError(
+                .fileWriteNoPermission,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "This device’s storage is in use. Shut down the device, or save or discard its file system changes, first."
+                ]
+            )
         }
     }
 
@@ -37,18 +41,31 @@ public nonisolated enum DeviceStateStorage {
     public static func canonicalPath(_ url: URL) -> String { StoragePathAuthority.canonicalPath(url) }
 
     public static func checkBootPaths(base: URL, mutable: [URL], state: URL, owner: UUID) throws {
-        do { try StoragePathAuthority.checkBootPaths(base: base, mutable: mutable, state: state, owner: owner) }
-        catch StoragePathAuthority.Failure.invalidPath(let url) {
-            throw CocoaError(.fileWriteNoPermission, userInfo: [NSFilePathErrorKey: url.path,
-                NSLocalizedDescriptionKey: "Light Touch can’t start this device because \(url.path) isn’t its writable storage."])
+        do {
+            try StoragePathAuthority.checkBootPaths(base: base, mutable: mutable, state: state, owner: owner)
+        } catch StoragePathAuthority.Failure.invalidPath(let url) {
+            throw CocoaError(
+                .fileWriteNoPermission,
+                userInfo: [
+                    NSFilePathErrorKey: url.path,
+                    NSLocalizedDescriptionKey:
+                        "Light Touch can’t start this device because \(url.path) isn’t its writable storage.",
+                ]
+            )
         }
     }
 
     public static func checkRemovable(_ url: URL, state: URL, owner: UUID?) throws {
-        do { try StoragePathAuthority.checkRemovable(url, state: state, owner: owner) }
-        catch StoragePathAuthority.Failure.invalidPath {
-            throw CocoaError(.fileWriteNoPermission, userInfo: [NSLocalizedDescriptionKey:
-                "Light Touch didn’t remove \(url.path): it isn’t this device’s storage."])
+        do { try StoragePathAuthority.checkRemovable(url, state: state, owner: owner) } catch StoragePathAuthority
+            .Failure.invalidPath
+        {
+            throw CocoaError(
+                .fileWriteNoPermission,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Light Touch didn’t remove \(url.path): it isn’t this device’s storage."
+                ]
+            )
         }
     }
 
@@ -70,7 +87,10 @@ public nonisolated enum DeviceStateStorage {
     /// `url` and every directory below it (symlinks not followed).
     private static func directories(under url: URL) -> [URL] {
         var directories = [url]
-        if let walk = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]) {
+        if let walk = FileManager.default.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+        ) {
             for case let item as URL in walk {
                 let values = try? item.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
                 if values?.isDirectory == true, values?.isSymbolicLink != true { directories.append(item) }

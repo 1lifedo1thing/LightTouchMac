@@ -2,8 +2,8 @@
 // downloads in Caches/<bundle>/IPSW, imports
 // in State/IPSW, both named by sha1, so either one satisfies an entry.
 
-import FirmwareSchema
 import CryptoKit
+import FirmwareSchema
 import Foundation
 
 public nonisolated enum FirmwareError: LocalizedError, Equatable {
@@ -18,11 +18,11 @@ public nonisolated enum FirmwareError: LocalizedError, Equatable {
         let format = { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
         return switch self {
         case .corrupted: "The download is damaged. Try again."
-        case let .notEnoughSpace(required, available):
+        case .notEnoughSpace(let required, let available):
             "Not enough disk space: this needs \(format(required)), and \(format(available)) is available."
-        case let .wrongFile(model, version): "This isn’t the IPSW Light Touch knows for \(model) iOS \(version)."
+        case .wrongFile(let model, let version): "This isn’t the IPSW Light Touch knows for \(model) iOS \(version)."
         case .unsupported: "This IPSW isn’t supported."
-        case let .failed(message): message
+        case .failed(let message): message
         }
     }
 }
@@ -34,8 +34,10 @@ public nonisolated struct IPSWStore: Sendable {
     public let imports: URL
 
     public static var shared: IPSWStore {
-        IPSWStore(downloads: cachesDirectory.appendingPathComponent("IPSW", isDirectory: true),
-                  imports: Bundled.stateDirectory.appendingPathComponent("IPSW", isDirectory: true))
+        IPSWStore(
+            downloads: cachesDirectory.appendingPathComponent("IPSW", isDirectory: true),
+            imports: Bundled.stateDirectory.appendingPathComponent("IPSW", isDirectory: true)
+        )
     }
 
     /// ~/Library/Caches/<bundle>; also where the preparer keeps Decrypted/.
@@ -92,7 +94,10 @@ public nonisolated struct IPSWStore: Sendable {
     public func installArchive(_ file: URL, entry: FirmwareCatalog.Entry, preparer: URL?) throws -> URL {
         let fm = FileManager.default
         let entryFile = file.appendingPathExtension("entry.json")
-        defer { try? fm.removeItem(at: file); try? fm.removeItem(at: entryFile) }
+        defer {
+            try? fm.removeItem(at: file)
+            try? fm.removeItem(at: entryFile)
+        }
         guard let preparer, let sha1 = entry.source.sha1 else { throw FirmwareError.unsupported }
         try JSONEncoder().encode(entry).write(to: entryFile)
         let unwrap = Process()
@@ -102,7 +107,9 @@ public nonisolated struct IPSWStore: Sendable {
         unwrap.standardError = FileHandle.nullDevice
         try unwrap.run()
         unwrap.waitUntilExit()
-        guard unwrap.terminationStatus == 0, fm.fileExists(atPath: download(sha1).path) else { throw FirmwareError.corrupted }
+        guard unwrap.terminationStatus == 0, fm.fileExists(atPath: download(sha1).path) else {
+            throw FirmwareError.corrupted
+        }
         return download(sha1)
     }
 
@@ -131,18 +138,22 @@ public nonisolated struct IPSWStore: Sendable {
     public static func lowSpaceWarning(at url: URL) -> String? {
         guard let available = try? availableSpace(at: url), available < lowSpaceThreshold else { return nil }
         let format = { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
-        return "Your Mac is almost out of disk space: \(format(available)) is available, and Light Touch needs at least \(format(lowSpaceThreshold)) to save changes reliably."
+        return
+            "Your Mac is almost out of disk space: \(format(available)) is available, and Light Touch needs at least \(format(lowSpaceThreshold)) to save changes reliably."
     }
 
     public static func sameVolume(_ a: URL, _ b: URL) -> Bool {
         let key = URLResourceKey.volumeIdentifierKey
         guard let x = try? existing(a).resourceValues(forKeys: [key]).volumeIdentifier as? NSObject,
-              let y = try? existing(b).resourceValues(forKeys: [key]).volumeIdentifier as? NSObject else { return false }
+            let y = try? existing(b).resourceValues(forKeys: [key]).volumeIdentifier as? NSObject
+        else { return false }
         return x.isEqual(y)
     }
 
     public static func checkSpace(_ required: Int64, available: Int64) throws {
-        guard available >= required else { throw FirmwareError.notEnoughSpace(required: required, available: available) }
+        guard available >= required else {
+            throw FirmwareError.notEnoughSpace(required: required, available: available)
+        }
     }
 
     // MARK: - Import
@@ -150,19 +161,24 @@ public nonisolated struct IPSWStore: Sendable {
     /// ProductType and ProductBuildVersion from the IPSW's Restore.plist, or nil if it has none.
     public static func restoreInfo(_ ipsw: URL) -> (productType: String, build: String)? {
         guard let data = ZipMembers.data(ipsw, "Restore.plist"),
-              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
-              let type = plist["ProductType"] as? String, let build = plist["ProductBuildVersion"] as? String
+            let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+            let type = plist["ProductType"] as? String, let build = plist["ProductBuildVersion"] as? String
         else { return nil }
         return (type, build)
     }
 
     /// The entry pinning this sha1, else why not: the same ProductType and
     /// build as an entry means the wrong file, anything else is unsupported.
-    public static func match(sha1: String, restore: (productType: String, build: String)?,
-                      in catalog: FirmwareCatalog) throws -> FirmwareCatalog.Entry {
+    public static func match(
+        sha1: String,
+        restore: (productType: String, build: String)?,
+        in catalog: FirmwareCatalog
+    ) throws -> FirmwareCatalog.Entry {
         let ipsw = catalog.entries
         if let entry = ipsw.first(where: { $0.source.sha1 == sha1 }) { return entry }
-        if let restore, let entry = ipsw.first(where: { $0.productType == restore.productType && $0.build == restore.build }) {
+        if let restore,
+            let entry = ipsw.first(where: { $0.productType == restore.productType && $0.build == restore.build })
+        {
             throw FirmwareError.wrongFile(model: entry.marketingName, version: entry.version)
         }
         throw FirmwareError.unsupported
@@ -171,8 +187,11 @@ public nonisolated struct IPSWStore: Sendable {
     /// Hashes a user's IPSW, matches it to the catalog and clones it into
     /// State/IPSW (APFS clonefile on the same volume, a copy otherwise).
     /// Offline: nothing here touches the network.
-    public func importIPSW(_ url: URL, catalog: FirmwareCatalog,
-                    progress: ((Double) -> Void)? = nil) throws -> (entry: FirmwareCatalog.Entry, ipsw: URL) {
+    public func importIPSW(
+        _ url: URL,
+        catalog: FirmwareCatalog,
+        progress: ((Double) -> Void)? = nil
+    ) throws -> (entry: FirmwareCatalog.Entry, ipsw: URL) {
         let sha1 = try Self.sha1(of: url, progress: progress)
         let entry = try Self.match(sha1: sha1, restore: Self.restoreInfo(url), in: catalog)
         if let existing = existing(sha1) { return (entry, existing) }
@@ -180,7 +199,10 @@ public nonisolated struct IPSWStore: Sendable {
         StorageLocations.excludeFromBackup(imports)
         // Another volume means a full copy, not a clone.
         if !Self.sameVolume(url, imports) {
-            try Self.checkSpace((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0, at: imports)
+            try Self.checkSpace(
+                (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0,
+                at: imports
+            )
         }
         let destination = imported(sha1)
         let temporary = imports.appendingPathComponent(".\(sha1).importing")
@@ -207,7 +229,8 @@ public nonisolated struct IPSWStore: Sendable {
         for name in (try? fm.contentsOfDirectory(atPath: downloads.path)) ?? [] where name.hasSuffix(".partial") {
             try? fm.removeItem(at: downloads.appendingPathComponent(name))
         }
-        for name in (try? fm.contentsOfDirectory(atPath: imports.path)) ?? [] where name.hasPrefix(".") && name.hasSuffix(".importing") {
+        for name in (try? fm.contentsOfDirectory(atPath: imports.path)) ?? []
+        where name.hasPrefix(".") && name.hasSuffix(".importing") {
             try? fm.removeItem(at: imports.appendingPathComponent(name))
         }
     }

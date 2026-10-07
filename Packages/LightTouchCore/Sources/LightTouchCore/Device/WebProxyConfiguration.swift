@@ -1,6 +1,6 @@
-import HostServiceWire
-import HostRuntime
 import Foundation
+import HostRuntime
+import HostServiceWire
 
 public enum WebProxyStatus: Equatable {
     case waiting, applying, ready, failed
@@ -55,13 +55,17 @@ public struct WebProxyConfiguration: Codable, Equatable {
     /// An XML property list; earlier builds kept web-proxy.json, converted on the first load.
     public static func preferencesFile(in directory: URL) -> URL { directory.appendingPathComponent("web-proxy.plist") }
     public static func load(from directory: URL) -> Self {
-        (try? PropertyListFile.read(Self.self, from: preferencesFile(in: directory),
-                                    legacyJSON: directory.appendingPathComponent("web-proxy.json"))) ?? Self()
+        (try? PropertyListFile.read(
+            Self.self,
+            from: preferencesFile(in: directory),
+            legacyJSON: directory.appendingPathComponent("web-proxy.json")
+        )) ?? Self()
     }
     public func validate() throws {
         if mode == .archive {
             guard archiveDate.count == 8, let date = Self.dateFormatter.date(from: archiveDate),
-                  Self.dateFormatter.string(from: date) == archiveDate else {
+                Self.dateFormatter.string(from: date) == archiveDate
+            else {
                 throw DeviceToolsError.failed("Choose a valid archive date.")
             }
         }
@@ -80,12 +84,16 @@ public struct WebProxyConfiguration: Codable, Equatable {
     /// directory named for it (a Unix socket path stays under 104 bytes; the device directory may not).
     public static func endpoint(directory: URL) -> WebProxyEndpoint {
         let config = file(in: directory).path
-        let hash = config.utf8.reduce(UInt64(14695981039346656037)) { ($0 ^ UInt64($1)) &* 1099511628211 }
-        return WebProxyEndpoint(config: config, socket: NSTemporaryDirectory() + "ltm-proxy-" + String(hash, radix: 16) + ".sock")
+        let hash = config.utf8.reduce(UInt64(14_695_981_039_346_656_037)) { ($0 ^ UInt64($1)) &* 1_099_511_628_211 }
+        return WebProxyEndpoint(
+            config: config,
+            socket: NSTemporaryDirectory() + "ltm-proxy-" + String(hash, radix: 16) + ".sock"
+        )
     }
     /// The guest's 10.0.2.100:3128: slirp runs one `nc` per connection into the helper's proxy (WebProxy.swift).
     public static func guestForward(socket: String) -> String {
         func quote(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\"'\"'") + "'" }
-        return ",guestfwd=tcp:10.0.2.100:3128-cmd:" + ("/usr/bin/nc -U " + quote(socket)).replacingOccurrences(of: ",", with: ",,")
+        return ",guestfwd=tcp:10.0.2.100:3128-cmd:"
+            + ("/usr/bin/nc -U " + quote(socket)).replacingOccurrences(of: ",", with: ",,")
     }
 }

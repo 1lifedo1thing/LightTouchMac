@@ -51,11 +51,19 @@ import Foundation
 
     /// `configuration`: tests use an ephemeral session and file URLs. `sweep`: this process holds the library's
     /// lock (Bundled.requireStorage), so staging and torn downloads a previous launch left can go.
-    public init(catalog: FirmwareCatalog = .bundled, store: IPSWStore = .shared,
-         configuration: URLSessionConfiguration = .background(withIdentifier: FirmwareDownloads.identifier),
-         state: URL = Bundled.stateDirectory, logs: URL = Bundled.logsDirectory, caches: URL = IPSWStore.cachesDirectory,
-         preparer: URL? = FirmwareJobs.preparer, resources: URL? = Bundle.main.resourceURL, library: DeviceLibrary = .shared,
-         sweep: Bool = (try? Bundled.requireStorage()) != nil, presentError: @escaping (any Error) -> Void) {
+    public init(
+        catalog: FirmwareCatalog = .bundled,
+        store: IPSWStore = .shared,
+        configuration: URLSessionConfiguration = .background(withIdentifier: FirmwareDownloads.identifier),
+        state: URL = Bundled.stateDirectory,
+        logs: URL = Bundled.logsDirectory,
+        caches: URL = IPSWStore.cachesDirectory,
+        preparer: URL? = FirmwareJobs.preparer,
+        resources: URL? = Bundle.main.resourceURL,
+        library: DeviceLibrary = .shared,
+        sweep: Bool = (try? Bundled.requireStorage()) != nil,
+        presentError: @escaping (any Error) -> Void
+    ) {
         self.catalog = catalog
         self.store = store
         self.state = state
@@ -73,11 +81,19 @@ import Foundation
             store.sweep()
         }
         // Keyed by the IPSW's sha1 (a task's name); what is downloaded and weighed is the archive for a "rar" source.
-        let bytes = Dictionary(catalog.entries.compactMap { e in e.source.sha1.map { ($0, e.source.downloadBytes ?? 0) } },
-                               uniquingKeysWith: { a, _ in a })
-        let entries = Dictionary(catalog.entries.compactMap { e in e.source.sha1.map { ($0, e) } }, uniquingKeysWith: { a, _ in a })
+        let bytes = Dictionary(
+            catalog.entries.compactMap { e in e.source.sha1.map { ($0, e.source.downloadBytes ?? 0) } },
+            uniquingKeysWith: { a, _ in a }
+        )
+        let entries = Dictionary(
+            catalog.entries.compactMap { e in e.source.sha1.map { ($0, e) } },
+            uniquingKeysWith: { a, _ in a }
+        )
         self.bytes = bytes
-        let urls = Dictionary(catalog.entries.compactMap { e in e.source.sha1.map { ($0, e.source.urls) } }, uniquingKeysWith: { a, _ in a })
+        let urls = Dictionary(
+            catalog.entries.compactMap { e in e.source.sha1.map { ($0, e.source.urls) } },
+            uniquingKeysWith: { a, _ in a }
+        )
         firstHosts = urls.compactMapValues { $0.first?.host }
         // Made at launch so a download the last launch started reports here.
         // ponytail: a task resumed at launch from a mirror shows no mirror line until the next fallback.
@@ -88,8 +104,13 @@ import Foundation
             guard entry.source.isArchive else { return try store.install(file, sha1: sha1, bytes: entry.source.bytes) }
             return try store.installArchive(file, entry: entry, preparer: preparer)
         }
-        downloads = FirmwareDownloads(store: store, configuration: configuration, expectedBytes: { bytes[$0] },
-                                      sources: { urls[$0] ?? [] }, install: install) { [weak self] sha1, event in
+        downloads = FirmwareDownloads(
+            store: store,
+            configuration: configuration,
+            expectedBytes: { bytes[$0] },
+            sources: { urls[$0] ?? [] },
+            install: install
+        ) { [weak self] sha1, event in
             Task { @MainActor in self?.download(sha1, event) }
         }
         // ponytail: a resumed download reports under its own entry, so a sibling IPSW the last
@@ -116,9 +137,9 @@ import Foundation
     /// Contents/MacOS/firmwarekit; a Debug build may name another with LTM_FIRMWAREKIT.
     public nonisolated static var preparer: URL? {
         #if DEBUG
-        if let path = ProcessInfo.processInfo.environment["LTM_FIRMWAREKIT"] {
-            return FileManager.default.isExecutableFile(atPath: path) ? URL(fileURLWithPath: path) : nil
-        }
+            if let path = ProcessInfo.processInfo.environment["LTM_FIRMWAREKIT"] {
+                return FileManager.default.isExecutableFile(atPath: path) ? URL(fileURLWithPath: path) : nil
+            }
         #endif
         return Bundle.main.executableURL.map { $0.deletingLastPathComponent().appendingPathComponent("firmwarekit") }
             .flatMap { FileManager.default.isExecutableFile(atPath: $0.path) ? $0 : nil }
@@ -134,7 +155,9 @@ import Foundation
 
     /// Why Download and Prepare is off, for the placeholder.
     public var unavailableReason: String? {
-        canDownload ? nil : "This copy of Light Touch can’t prepare devices because a component is missing. Reinstall Light Touch."
+        canDownload
+            ? nil
+            : "This copy of Light Touch can’t prepare devices because a component is missing. Reinstall Light Touch."
     }
 
     // MARK: - Commands
@@ -153,11 +176,15 @@ import Foundation
     /// Downloads `sources`' IPSWs as one job for `entry`, which is prepared once they're all here.
     /// A download another job already started is shared, not started twice.
     private func fetch(_ entry: FirmwareCatalog.Entry, _ sources: [FirmwareCatalog.Entry]) {
-        let wanted = sources.compactMap { source in source.source.sha1.flatMap { sha1 in source.source.url.map { (sha1, $0) } } }
+        let wanted = sources.compactMap { source in
+            source.source.sha1.flatMap { sha1 in source.source.url.map { (sha1, $0) } }
+        }
         guard wanted.count == sources.count, !wanted.isEmpty else { return fail(entry, FirmwareError.unsupported) }
         do {
             // The IPSWs, then the preparation, beside every job already under way.
-            let size = sources.reduce(0) { $0 + ($1.source.bytes ?? 0) + ($1.source.isArchive ? $1.source.archiveBytes ?? 0 : 0) }
+            let size = sources.reduce(0) {
+                $0 + ($1.source.bytes ?? 0) + ($1.source.isArchive ? $1.source.archiveBytes ?? 0 : 0)
+            }
             try IPSWStore.checkSpace(size + entry.estimates.peakBytes + inFlightPeakBytes, at: store.downloads)
             starts[entry.id] = nil
             waiting[entry.id] = wanted.map(\.0)
@@ -186,20 +213,21 @@ import Foundation
     public func importIPSW(_ url: URL, for entry: FirmwareCatalog.Entry?) {
         if let entry, refuseExisting(entry) { return }
         if let entry { jobs[entry.id] = .preparing(.init(name: "Checking the IPSW")) }
-        let catalog = catalog, store = store
+        let catalog = catalog
+        let store = store
         Task.detached {
             let result = Result { try store.importIPSW(url, catalog: catalog) }
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 switch result {
-                case let .success((matched, ipsw)):
+                case .success((let matched, let ipsw)):
                     if let entry {
-                        guard jobs[entry.id] != nil else { return }   // cancelled while hashing
+                        guard jobs[entry.id] != nil else { return }  // cancelled while hashing
                         jobs[entry.id] = nil
                     }
                     jobs[matched.id] = nil
                     prepare(matched, ipsw: ipsw)
-                case let .failure(error):
+                case .failure(let error):
                     if let entry { fail(entry, error) } else { presentError(error) }
                 }
             }
@@ -234,8 +262,9 @@ import Foundation
     public func cancel(_ entry: FirmwareCatalog.Entry) {
         speedSamples[entry.id] = nil
         speeds[entry.id] = nil
-        if let job = preparations[entry.id] { job.cancel() }
-        else if let sha1s = waiting.removeValue(forKey: entry.id) {
+        if let job = preparations[entry.id] {
+            job.cancel()
+        } else if let sha1s = waiting.removeValue(forKey: entry.id) {
             // A download another job still waits for goes on.
             for sha1 in sha1s where inFlight[sha1] != nil && !waiting.values.contains(where: { $0.contains(sha1) }) {
                 inFlight[sha1] = nil
@@ -252,19 +281,27 @@ import Foundation
         let name = entry(sha1: sha1)?.id ?? sha1
         let ids = waiting.filter { $0.value.contains(sha1) }.map(\.key).sorted()
         switch event {
-        case let .progress(fraction):
+        case .progress(let fraction):
             guard inFlight[sha1] != nil else { return }
             inFlight[sha1] = fraction
             for id in ids {
-                guard let entry = catalog.entry(id: id), case .downloading? = jobs[id], let sha1s = waiting[id] else { continue }
+                guard let entry = catalog.entry(id: id), case .downloading? = jobs[id], let sha1s = waiting[id] else {
+                    continue
+                }
                 let overall = downloadFraction(id)
                 // The bar spans the download and the preparation: the time left is both.
                 let left = remaining(entry, overall).map { $0 + Double(entry.estimates.seconds) }
-                jobs[id] = .downloading(fraction: overall, remaining: left, files: sha1s.count,
-                                        mirror: sha1s.lazy.compactMap { self.mirrors[$0] ?? self.firstHosts[$0] }.first.flatMap(FirmwareJob.thirdParty),
-                                        speed: speed(id, bytes: overall * Double(sha1s.reduce(0) { $0 + (self.bytes[$1] ?? 0) })))
+                jobs[id] = .downloading(
+                    fraction: overall,
+                    remaining: left,
+                    files: sha1s.count,
+                    mirror: sha1s.lazy.compactMap { self.mirrors[$0] ?? self.firstHosts[$0] }.first.flatMap(
+                        FirmwareJob.thirdParty
+                    ),
+                    speed: speed(id, bytes: overall * Double(sha1s.reduce(0) { $0 + (self.bytes[$1] ?? 0) }))
+                )
             }
-        case let .mirror(url): mirrors[sha1] = url.host
+        case .mirror(let url): mirrors[sha1] = url.host
         case .resumed: break
         case .finished:
             inFlight[sha1] = nil
@@ -272,14 +309,19 @@ import Foundation
             logEvent("firmware: downloaded \(name)")
             // A job with nothing left to fetch prepares; one still fetching the other IPSW waits.
             for id in ids {
-                guard let entry = catalog.entry(id: id), let sha1s = waiting[id], sha1s.allSatisfy({ inFlight[$0] == nil }) else { continue }
+                guard let entry = catalog.entry(id: id), let sha1s = waiting[id],
+                    sha1s.allSatisfy({ inFlight[$0] == nil })
+                else { continue }
                 waiting[id] = nil
-                guard let own = entry.source.sha1, let ipsw = store.existing(own) else { fail(entry, FirmwareError.failed("The download of iOS \(entry.version) is missing.")); continue }
+                guard let own = entry.source.sha1, let ipsw = store.existing(own) else {
+                    fail(entry, FirmwareError.failed("The download of iOS \(entry.version) is missing."))
+                    continue
+                }
                 prepare(entry, ipsw: ipsw, afterDownload: true)
             }
             // Nobody waits (the other IPSW of a job that failed): it stays downloaded.
             if ids.isEmpty { NotificationCenter.default.post(name: Self.didChangeNotification, object: self) }
-        case let .failed(error):
+        case .failed(let error):
             inFlight[sha1] = nil
             mirrors[sha1] = nil
             for id in ids {
@@ -295,7 +337,10 @@ import Foundation
     /// Bytes per second over the last few seconds of a job's download; nil until measured.
     private func speed(_ id: String, bytes: Double) -> Double? {
         let now = Date()
-        guard let sample = speedSamples[id] else { speedSamples[id] = (now, bytes); return nil }
+        guard let sample = speedSamples[id] else {
+            speedSamples[id] = (now, bytes)
+            return nil
+        }
         let elapsed = now.timeIntervalSince(sample.date)
         if elapsed >= 3 {
             let rate = max(0, bytes - sample.bytes) / elapsed
@@ -309,7 +354,8 @@ import Foundation
     /// The entry's packed base in this bundle (a development build has none).
     public static func bundledBlob(_ entry: FirmwareCatalog.Entry, resources: URL? = Bundle.main.resourceURL) -> URL? {
         guard let resource = entry.bundled, let blob = resources?.appendingPathComponent(resource),
-              FileManager.default.fileExists(atPath: blob.path) else { return nil }
+            FileManager.default.fileExists(atPath: blob.path)
+        else { return nil }
         return blob
     }
 
@@ -318,35 +364,50 @@ import Foundation
     /// nothing new; its Prepare is the user's (the row offers it once added with +, and after a Delete).
     public func prepareBundledIfFresh(sidebarSaved: Bool) -> FirmwareCatalog.Entry? {
         guard !sidebarSaved, DeviceInstance.all(state: state).isEmpty,
-              let entry = catalog.bundledEntry, let blob = Self.bundledBlob(entry, resources: resources) else { return nil }
+            let entry = catalog.bundledEntry, let blob = Self.bundledBlob(entry, resources: resources)
+        else { return nil }
         prepare(entry, ipsw: blob, bundled: true)
         return entry
     }
 
     /// `bundled`: `ipsw` is the entry's packed base, unpacked rather than prepared. `afterDownload`: the job's
     /// download filled the first half of its bar.
-    private func prepare(_ entry: FirmwareCatalog.Entry, ipsw: URL, bundled: Bool = false, afterDownload: Bool = false) {
+    private func prepare(_ entry: FirmwareCatalog.Entry, ipsw: URL, bundled: Bool = false, afterDownload: Bool = false)
+    {
         speedSamples[entry.id] = nil
         speeds[entry.id] = nil
         guard preparations[entry.id] == nil else { return }
-        if refuseExisting(entry) { jobs[entry.id] = nil; return }
+        if refuseExisting(entry) {
+            jobs[entry.id] = nil
+            return
+        }
         guard let preparer else { return fail(entry, FirmwareError.failed(unavailableReason ?? "")) }
         let others = jobs.filter { $0.key != entry.id }.compactMap { id, job -> Int64? in
             if case .preparing = job { return catalog.entry(id: id)?.estimates.peakBytes } else { return nil }
         }.reduce(0, +)
-        do { try IPSWStore.checkSpace(entry.estimates.peakBytes + others, at: state) }
-        catch { return fail(entry, error) }
+        do { try IPSWStore.checkSpace(entry.estimates.peakBytes + others, at: state) } catch {
+            return fail(entry, error)
+        }
         var sibling: (entry: FirmwareCatalog.Entry, ipsw: URL)?
         if !bundled, let from = entry.recipe?.keybagRamdiskFrom {
-            guard let sib = catalog.entry(id: from), let sha1 = sib.source.sha1 else { return fail(entry, FirmwareError.failed("catalog names no \(from)")) }
+            guard let sib = catalog.entry(id: from), let sha1 = sib.source.sha1 else {
+                return fail(entry, FirmwareError.failed("catalog names no \(from)"))
+            }
             // An imported IPSW whose sibling isn't here yet: that download first, as this entry's job.
             guard let sibIPSW = store.existing(sha1) else { return fetch(entry, [sib]) }
             sibling = (sib, sibIPSW)
         }
         let request = PreparationJob.Request(
-            entry: entry, ipsw: ipsw, sibling: sibling, state: state, preparer: preparer, helper: Self.helper,
+            entry: entry,
+            ipsw: ipsw,
+            sibling: sibling,
+            state: state,
+            preparer: preparer,
+            helper: Self.helper,
             cache: caches.appendingPathComponent("Decrypted", isDirectory: true),
-            log: logs.appendingPathComponent("Preparing/\(entry.id).log"), blob: bundled ? ipsw : nil)
+            log: logs.appendingPathComponent("Preparing/\(entry.id).log"),
+            blob: bundled ? ipsw : nil
+        )
         let job = PreparationJob(request) { event in
             Task { @MainActor [weak self] in self?.preparation(entry, event) }
         }
@@ -359,31 +420,43 @@ import Foundation
 
     /// Seconds left from this phase's start (the first report of a resumed download) to `fraction` now.
     private func remaining(_ entry: FirmwareCatalog.Entry, _ fraction: Double) -> TimeInterval? {
-        guard let start = starts[entry.id] else { starts[entry.id] = (Date(), fraction); return nil }
+        guard let start = starts[entry.id] else {
+            starts[entry.id] = (Date(), fraction)
+            return nil
+        }
         return estimatedRemaining(elapsed: Date().timeIntervalSince(start.date), from: start.fraction, to: fraction)
     }
 
     private func preparation(_ entry: FirmwareCatalog.Entry, _ event: PreparationJob.Event) {
         func update(_ change: (inout Preparation) -> Void) {
-            guard preparations[entry.id] != nil, case var .preparing(p)? = jobs[entry.id] else { return }
+            guard preparations[entry.id] != nil, case .preparing(var p)? = jobs[entry.id] else { return }
             change(&p)
             p.remaining = p.overall.flatMap { remaining(entry, $0) }
             jobs[entry.id] = .preparing(p)
         }
         switch event {
-        case let .begin(seconds): update { $0.seconds = seconds }
-        case let .step(index, count, name):
-            update { $0.step = index; $0.steps = count; $0.name = name; $0.fraction = 0; $0.detail = nil }
-        case let .progress(fraction, detail):
-            update { $0.fraction = fraction; $0.detail = detail ?? $0.detail }
-        case let .warning(message): logEvent("firmware: \(entry.id): \(message)")
-        case let .published(instance):
+        case .begin(let seconds): update { $0.seconds = seconds }
+        case .step(let index, let count, let name):
+            update {
+                $0.step = index
+                $0.steps = count
+                $0.name = name
+                $0.fraction = 0
+                $0.detail = nil
+            }
+        case .progress(let fraction, let detail):
+            update {
+                $0.fraction = fraction
+                $0.detail = detail ?? $0.detail
+            }
+        case .warning(let message): logEvent("firmware: \(entry.id): \(message)")
+        case .published(let instance):
             preparations[entry.id] = nil
             jobs[entry.id] = nil
             logEvent("firmware: \(entry.id) is device \(instance.id.uuidString)")
             library.reload()
             NotificationCenter.default.post(name: Self.didPublishNotification, object: entry.id)
-        case let .failed(message):
+        case .failed(let message):
             preparations[entry.id] = nil
             fail(entry, FirmwareError.failed(message))
         case .cancelled:

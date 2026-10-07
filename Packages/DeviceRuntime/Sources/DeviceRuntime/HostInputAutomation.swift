@@ -13,13 +13,19 @@ import Foundation
         var events: [VirtualInputEvent] = [
             .button(0, down: true, at: 0), .button(0, down: false, at: 150),
             .button(1, down: true, at: 2650), .button(1, down: false, at: release),
-            .touch(phase: 0, x: 65.0 / 320, y: Double(knobY) / 480, at: touchStart)]
+            .touch(phase: 0, x: 65.0 / 320, y: Double(knobY) / 480, at: touchStart),
+        ]
         for step in 1...24 {
             // Preserve the observed integer panel-coordinate interpolation.
             let x = 65 + (295 - 65) * step / 24
-            events.append(.touch(phase: step == 24 ? 2 : 1,
-                                 x: Double(x) / 320, y: Double(knobY) / 480,
-                                 at: touchStart + Int64(step * 80)))
+            events.append(
+                .touch(
+                    phase: step == 24 ? 2 : 1,
+                    x: Double(x) / 320,
+                    y: Double(knobY) / 480,
+                    at: touchStart + Int64(step * 80)
+                )
+            )
         }
         return events
     }
@@ -27,26 +33,44 @@ import Foundation
     /// Polling is a host observation, never a gesture clock. Pausing the guest
     /// therefore pauses every button/touch deadline. Cancellation/timeout asks
     /// QEMU to release only this sequence's signals; it never forces shutdown.
-    public static func shutdown(_ process: DeviceSessionProcess, firstGeneration: Bool,
-                                knobY: Int = 68, timeout: TimeInterval = 50) async throws {
+    public static func shutdown(
+        _ process: DeviceSessionProcess,
+        firstGeneration: Bool,
+        knobY: Int = 68,
+        timeout: TimeInterval = 50
+    ) async throws {
         let events = try powerOffGesture(firstGeneration: firstGeneration, knobY: knobY)
         let id = UInt64.random(in: 1...UInt64.max)
-        try await performShutdown(id: id, events: events, timeout: timeout, unplugAfterDark: !firstGeneration,
+        try await performShutdown(
+            id: id,
+            events: events,
+            timeout: timeout,
+            unplugAfterDark: !firstGeneration,
             request: { try await process.link.request($0, timeout: 5) },
-            power: { (process.status?.shutdownConfirmed == true,
-                      process.status?.displaySleeping == true, process.isDead) })
+            power: {
+                (
+                    process.status?.shutdownConfirmed == true,
+                    process.status?.displaySleeping == true, process.isDead
+                )
+            }
+        )
     }
 
     /// Injected observations permit tests of refusal, cancellation and cable
     /// ordering without substituting a guest or claiming native power-off.
-    public static func performShutdown(id: UInt64, events: [VirtualInputEvent],
-        timeout: TimeInterval, unplugAfterDark: Bool = true,
+    public static func performShutdown(
+        id: UInt64,
+        events: [VirtualInputEvent],
+        timeout: TimeInterval,
+        unplugAfterDark: Bool = true,
         request: (LinkRequest) async throws -> LinkReply,
-        power: () -> (confirmed: Bool, sleeping: Bool, dead: Bool)) async throws {
+        power: () -> (confirmed: Bool, sleeping: Bool, dead: Bool)
+    ) async throws {
         guard id != 0, VirtualInputEvent.valid(events), timeout.isFinite, timeout > 0, timeout <= 3600 else {
             throw Failure.invalidGesture
         }
-        let clock = ContinuousClock(), deadline = ContinuousClock.now + .seconds(timeout)
+        let clock = ContinuousClock()
+        let deadline = ContinuousClock.now + .seconds(timeout)
         guard case .ok(true) = try await request(.inputSequence(id: id, events: events)) else {
             throw Failure.refused
         }
@@ -57,7 +81,7 @@ import Foundation
                 let state = power()
                 if state.confirmed { return }
                 if state.dead { throw Failure.helperExited }
-                guard case let .inputSequenceStatus(status) = try await request(.inputSequenceStatus(id: id)) else {
+                guard case .inputSequenceStatus(let status) = try await request(.inputSequenceStatus(id: id)) else {
                     throw Failure.refused
                 }
                 if status == 3 || status == 4 { throw Failure.interrupted }

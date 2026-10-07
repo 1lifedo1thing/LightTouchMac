@@ -21,28 +21,41 @@ public enum N45NOR {
     public static let order = ["dtre", "batC", "logo", "nsrv", "batl", "batL", "recm"]
     /// generate_nor.c's nvram boot-args (the kernel's serial console, root on the NAND's first partition).
     public static let bootArgs = "debug=0x8 kextlog=0xfff cpus=1 rd=disk0s1 serial=1 io=0xffff8fff"
-    static let hashPadding = [UInt8](Data(hex: "ad2ee38d2d9be43599044433653df07498d8563b4ff96a5545ce82f29a5ac2bc47616d654f766572a6a09913")!)
+    static let hashPadding = [UInt8](
+        Data(hex: "ad2ee38d2d9be43599044433653df07498d8563b4ff96a5545ce82f29a5ac2bc47616d654f766572a6a09913")!
+    )
 
     /// `images`: IMG2 bodies by type (every `order` type must be there).
-    public static func build(identity id: UnitIdentity, images: [String: Data], bootArgs: String = bootArgs) throws -> Data {
+    public static func build(identity id: UnitIdentity, images: [String: Data], bootArgs: String = bootArgs) throws
+        -> Data
+    {
         var nor = [UInt8](repeating: 0, count: size)
         try N72NOR.writeSysCfg(&nor, id)
         nor.replaceSubrange(directory..<directory + 4, with: Array("2GMI".utf8))
-        put32(&nor, directory + 4, UInt32(block)); put32(&nor, directory + 8, UInt32(firstBlock)); put32(&nor, directory + 16, 512 * 1024)
+        put32(&nor, directory + 4, UInt32(block))
+        put32(&nor, directory + 8, UInt32(firstBlock))
+        put32(&nor, directory + 16, 512 * 1024)
         put32(&nor, directory + 0x30, crc(nor[directory..<directory + 0x30]))
         var off = firstBlock * block
         for t in order {
             guard let body = images[t] else { throw FirmwareError(.unsupported, "all_flash has no IMG2 of type \(t)") }
             let img = try sign([UInt8](body))
-            guard off + img.count <= nvram else { throw FirmwareError(.unsupported, "NOR image area overflows the nvram partition (\(t))") }
+            guard off + img.count <= nvram else {
+                throw FirmwareError(.unsupported, "NOR image area overflows the nvram partition (\(t))")
+            }
             nor.replaceSubrange(off..<off + img.count, with: img)
             off += (img.count / block + 5) * block
         }
         // iBoot-204 fills arm-io/sdio's local-mac-address from nvram wifiaddr (its SysCfg fallback is a stub
         // returning 0, so without it the DT keeps zeros and lockdownd hashes 00:00:00:00:00:00 into the UDID).
-        nor.replaceSubrange(nvram..<nvram + N72NOR.nvramBank, with: try N72NOR.nvramBank([("boot-args", bootArgs)]
-            + (id["wifi-mac"].map { [("wifiaddr", $0.uppercased())] } ?? [])
-            + (id["bt-mac"].map { [("btaddr", $0.uppercased())] } ?? [])))
+        nor.replaceSubrange(
+            nvram..<nvram + N72NOR.nvramBank,
+            with: try N72NOR.nvramBank(
+                [("boot-args", bootArgs)]
+                    + (id["wifi-mac"].map { [("wifiaddr", $0.uppercased())] } ?? [])
+                    + (id["bt-mac"].map { [("btaddr", $0.uppercased())] } ?? [])
+            )
+        )
         return Data(nor)
     }
 
@@ -51,16 +64,21 @@ public enum N45NOR {
         var b = b
         guard b.count >= IMG2.headerSize else { throw FirmwareError(.unsupported, "IMG2 shorter than its header") }
         let padded = Int(le32(b, 0x10))
-        guard IMG2.headerSize + padded <= b.count else { throw FirmwareError(.unsupported, "IMG2 data runs past the image") }
+        guard IMG2.headerSize + padded <= b.count else {
+            throw FirmwareError(.unsupported, "IMG2 data runs past the image")
+        }
         put32(&b, 0x18, UInt32(b.count / block + 5))
         let flags = le32(b, 0x1C) | 1 << 24 | 1 << 1
         put32(&b, 0x1C, flags)
-        let dataHash = Array(Insecure.SHA1.hash(data: b[IMG2.headerSize..<IMG2.headerSize + padded])) + hashPadding.prefix(44)
+        let dataHash =
+            Array(Insecure.SHA1.hash(data: b[IMG2.headerSize..<IMG2.headerSize + padded])) + hashPadding.prefix(44)
         b.replaceSubrange(0x20..<0x60, with: S5L8900UID.img2VerifyEncrypt(dataHash))
         put32(&b, 0x64, crc(b[0..<0x64]))
         if flags & 1 << 30 != 0 {
             let next = Int(le32(b, 0x60))
-            guard 0x6C + next <= IMG2.headerSize else { throw FirmwareError(.unsupported, "IMG2 extension runs past the header") }
+            guard 0x6C + next <= IMG2.headerSize else {
+                throw FirmwareError(.unsupported, "IMG2 extension runs past the header")
+            }
             put32(&b, 0x68, crc(b[0x6C..<0x6C + next]))
         }
         let headerHash = Array(Insecure.SHA1.hash(data: b[0..<0x3E0])) + hashPadding.prefix(12)
@@ -68,7 +86,9 @@ public enum N45NOR {
         return b
     }
 
-    static func crc(_ b: ArraySlice<UInt8>) -> UInt32 { UInt32(b.withUnsafeBufferPointer { zlib.crc32(0, $0.baseAddress, uInt($0.count)) }) }
+    static func crc(_ b: ArraySlice<UInt8>) -> UInt32 {
+        UInt32(b.withUnsafeBufferPointer { zlib.crc32(0, $0.baseAddress, uInt($0.count)) })
+    }
 }
 
 /// The emulated S5L8900 UID engine's convention (see N45NOR), for the IMG2 verify key only.
@@ -85,7 +105,9 @@ enum S5L8900UID {
     /// aes_img2verify_encrypt: a 256-bit custom key of 16 zero bytes then the verify key, zero IV.
     static let verify = AESCore(key: [UInt8](repeating: 0, count: 16) + verifyKey)
 
-    static func img2VerifyEncrypt(_ d: [UInt8]) -> [UInt8] { verify.cbcEncrypt(d, iv: [UInt8](repeating: 0, count: 16)) }
+    static func img2VerifyEncrypt(_ d: [UInt8]) -> [UInt8] {
+        verify.cbcEncrypt(d, iv: [UInt8](repeating: 0, count: 16))
+    }
 }
 
 /// AES encryption rounds over the *decryption* key schedule (OpenSSL's AES_set_decrypt_key: the encryption
@@ -95,7 +117,12 @@ struct AESCore {
         var s = [UInt8](repeating: 0, count: 256)
         for x in 0..<256 {
             var inv: UInt8 = 0
-            if x != 0 { for y in 1..<256 where mul(UInt8(x), UInt8(y)) == 1 { inv = UInt8(y); break } }
+            if x != 0 {
+                for y in 1..<256 where mul(UInt8(x), UInt8(y)) == 1 {
+                    inv = UInt8(y)
+                    break
+                }
+            }
             var r = inv
             for i in 1...4 { r ^= inv << i | inv >> (8 - i) }
             s[x] = r ^ 0x63
@@ -104,7 +131,9 @@ struct AESCore {
     }()
 
     static func mul(_ a: UInt8, _ b: UInt8) -> UInt8 {
-        var a = a, b = b, p: UInt8 = 0
+        var a = a
+        var b = b
+        var p: UInt8 = 0
         while b != 0 {
             if b & 1 != 0 { p ^= a }
             a = a << 1 ^ (a & 0x80 != 0 ? 0x1B : 0)
@@ -117,7 +146,8 @@ struct AESCore {
     let keys: [[UInt8]]
 
     init(key: [UInt8]) {
-        let nk = key.count / 4, rounds = nk + 6
+        let nk = key.count / 4
+        let rounds = nk + 6
         var w = stride(from: 0, to: key.count, by: 4).map { Array(key[$0..<$0 + 4]) }
         var rcon: UInt8 = 1
         for i in nk..<4 * (rounds + 1) {
@@ -146,11 +176,13 @@ struct AESCore {
         var s = zip(input, keys[0]).map { $0 ^ $1 }
         for r in 1...rounds {
             s = s.map { Self.sbox[Int($0)] }
-            s = (0..<16).map { s[($0 + 4 * ($0 % 4)) % 16] }   // ShiftRows over column-major state
+            s = (0..<16).map { s[($0 + 4 * ($0 % 4)) % 16] }  // ShiftRows over column-major state
             if r != rounds {
                 s = stride(from: 0, to: 16, by: 4).flatMap { c -> [UInt8] in
                     let a = Array(s[c..<c + 4])
-                    return (0..<4).map { i in Self.mul(a[i], 2) ^ Self.mul(a[(i + 1) % 4], 3) ^ a[(i + 2) % 4] ^ a[(i + 3) % 4] }
+                    return (0..<4).map { i in
+                        Self.mul(a[i], 2) ^ Self.mul(a[(i + 1) % 4], 3) ^ a[(i + 2) % 4] ^ a[(i + 3) % 4]
+                    }
                 }
             }
             s = zip(s, keys[r]).map { $0 ^ $1 }
@@ -159,7 +191,8 @@ struct AESCore {
     }
 
     func cbcEncrypt(_ d: [UInt8], iv: [UInt8]) -> [UInt8] {
-        var prev = iv, out: [UInt8] = []
+        var prev = iv
+        var out: [UInt8] = []
         for o in stride(from: 0, to: d.count, by: 16) {
             prev = encryptBlock(zip(d[o..<o + 16], prev).map { $0 ^ $1 })
             out += prev
@@ -168,8 +201,10 @@ struct AESCore {
     }
 }
 
-fileprivate func put32(_ b: inout [UInt8], _ o: Int, _ v: UInt32) {
+private func put32(_ b: inout [UInt8], _ o: Int, _ v: UInt32) {
     for k in 0..<4 { b[o + k] = UInt8(truncatingIfNeeded: v >> (8 * k)) }
 }
 
-fileprivate func le32(_ b: [UInt8], _ o: Int) -> UInt32 { UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24 }
+private func le32(_ b: [UInt8], _ o: Int) -> UInt32 {
+    UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24
+}

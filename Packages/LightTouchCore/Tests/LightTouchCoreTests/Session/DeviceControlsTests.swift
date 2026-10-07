@@ -1,8 +1,9 @@
-import Foundation
-import Testing
-import HostServiceWire
-import HostRuntime
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import HostServiceWire
+import Testing
+
 @testable import LightTouchCore
 
 /// The keyboard and battery settings as they reach the machine, and the control requests they ride on.
@@ -10,16 +11,25 @@ struct DeviceControlsTests {
     final class Machine {
         var requests: [LinkRequest] = []
         var answer = true
-        lazy var control: MachineControl = { [unowned self] request, done in requests.append(request); done(answer) }
+        lazy var control: MachineControl = { [unowned self] request, done in
+            requests.append(request)
+            done(answer)
+        }
     }
 
     @Test func keyboardToggleGatesPressesButNotReleasesAndPersists() throws {
         try withTemporaryDirectory { directory in
             let machine = Machine()
-            var sent: [LinkCommand] = [], canPress = true
+            var sent: [LinkCommand] = []
+            var canPress = true
             let settings = DeviceSettingsFile(directory: directory)
-            let keyboard = KeyboardInput(settings: settings, canToggleHardwareKeyboard: true, control: machine.control,
-                                         send: { sent.append($0) }, canPress: { canPress })
+            let keyboard = KeyboardInput(
+                settings: settings,
+                canToggleHardwareKeyboard: true,
+                control: machine.control,
+                send: { sent.append($0) },
+                canPress: { canPress }
+            )
             #expect(keyboard.enabled)
             keyboard.sendKey(macKeyCode: 0, down: true)
             #expect(sent == [.key(macKeyCode: 0, down: true)])
@@ -27,10 +37,13 @@ struct DeviceControlsTests {
             #expect(!keyboard.enabled && DeviceSettings.load(directory).keyboardInputEnabled == false)
             keyboard.sendKey(macKeyCode: 0, down: true)
             keyboard.sendKey(macKeyCode: 0, down: false)
-            #expect(sent == [.key(macKeyCode: 0, down: true), .key(macKeyCode: 0, down: false)], "a release still goes after disabling")
+            #expect(
+                sent == [.key(macKeyCode: 0, down: true), .key(macKeyCode: 0, down: false)],
+                "a release still goes after disabling"
+            )
             keyboard.toggleEnabled()
             #expect(keyboard.enabled)
-            canPress = false   // asleep, stopped or not taking input
+            canPress = false  // asleep, stopped or not taking input
             keyboard.sendKey(macKeyCode: 0, down: true)
             #expect(sent.count == 2, "a sleeping or stopped device gets no presses")
         }
@@ -39,23 +52,37 @@ struct DeviceControlsTests {
     @Test func connectHardwareKeyboardNowAndAtBoot() throws {
         try withTemporaryDirectory { directory in
             let machine = Machine()
-            let keyboard = KeyboardInput(settings: DeviceSettingsFile(directory: directory), canToggleHardwareKeyboard: true,
-                                         control: machine.control, send: { _ in }, canPress: { true })
+            let keyboard = KeyboardInput(
+                settings: DeviceSettingsFile(directory: directory),
+                canToggleHardwareKeyboard: true,
+                control: machine.control,
+                send: { _ in },
+                canPress: { true }
+            )
             keyboard.applyHardware()
             #expect(machine.requests.isEmpty, "a boot with the keyboard on asks nothing")
             #expect(observes({ _ = keyboard.hardwareConnected }) { keyboard.toggleHardware() })
             #expect(!keyboard.hardwareConnected && machine.requests == [.hardwareKeyboard(false)])
             #expect(DeviceSettings.load(directory).hardwareKeyboard == false)
             keyboard.applyHardware()
-            #expect(machine.requests == [.hardwareKeyboard(false), .hardwareKeyboard(false)], "a boot unplugs it when it's off")
+            #expect(
+                machine.requests == [.hardwareKeyboard(false), .hardwareKeyboard(false)],
+                "a boot unplugs it when it's off"
+            )
             keyboard.toggleHardware()
             #expect(keyboard.hardwareConnected && machine.requests.last == .hardwareKeyboard(true))
 
             let other = Machine()
-            var off = DeviceSettings(); off.hardwareKeyboard = false
+            var off = DeviceSettings()
+            off.hardwareKeyboard = false
             try off.save(directory)
-            let without = KeyboardInput(settings: DeviceSettingsFile(directory: directory), canToggleHardwareKeyboard: false,
-                                        control: other.control, send: { _ in }, canPress: { true })
+            let without = KeyboardInput(
+                settings: DeviceSettingsFile(directory: directory),
+                canToggleHardwareKeyboard: false,
+                control: other.control,
+                send: { _ in },
+                canPress: { true }
+            )
             without.applyHardware()
             #expect(other.requests.isEmpty, "a board without the toggle is never asked")
         }
@@ -68,27 +95,41 @@ struct DeviceControlsTests {
         iPad.replugDelay = .milliseconds(10)
         iPad.apply()
         #expect(pad.requests == [.battery(level: 100, charging: 0), .usbCharger(true)])
-        pad.requests = []; iPad.setLevel(50)
+        pad.requests = []
+        iPad.setLevel(50)
         #expect(pad.requests == [.battery(level: 50, charging: 0)])
-        pad.requests = []; iPad.apply()
-        #expect(pad.requests == [.battery(level: 50, charging: 0), .usbCharger(true)], "a restart keeps the chosen level")
-        pad.requests = []; iPad.setCharging(false)
-        #expect(!iPad.charging && pad.requests == [.usbCharger(false), .usbConnection(false)], "the port, then unplugged")
+        pad.requests = []
+        iPad.apply()
+        #expect(
+            pad.requests == [.battery(level: 50, charging: 0), .usbCharger(true)],
+            "a restart keeps the chosen level"
+        )
+        pad.requests = []
+        iPad.setCharging(false)
+        #expect(
+            !iPad.charging && pad.requests == [.usbCharger(false), .usbConnection(false)],
+            "the port, then unplugged"
+        )
         await scope[.usbReconnect]?.value
         #expect(pad.requests == [.usbCharger(false), .usbConnection(false), .usbConnection(true)], "and plugged back")
-        pad.requests = []; iPad.apply()
+        pad.requests = []
+        iPad.apply()
         #expect(pad.requests == [.battery(level: 50, charging: 2), .usbCharger(false)], "a restart keeps Charging off")
         // A refused port change doesn't replug.
-        pad.requests = []; pad.answer = false; iPad.setCharging(true)
+        pad.requests = []
+        pad.answer = false
+        iPad.setCharging(true)
         #expect(pad.requests == [.usbCharger(true)])
 
         let pod = Machine()
         let iPod = BatteryControls(canChooseUSBCharger: false, scope: scope, control: pod.control)
         iPod.apply()
         #expect(pod.requests == [.battery(level: 100, charging: 0)])
-        pod.requests = []; iPod.setCharging(false)
+        pod.requests = []
+        iPod.setCharging(false)
         #expect(pod.requests == [.battery(level: 100, charging: 2)], "iPod: the charger mode, no replug")
-        pod.requests = []; iPod.apply()
+        pod.requests = []
+        iPod.apply()
         #expect(pod.requests == [.battery(level: 100, charging: 2)])
     }
 

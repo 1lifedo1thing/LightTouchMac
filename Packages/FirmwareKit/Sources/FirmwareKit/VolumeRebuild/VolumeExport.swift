@@ -26,8 +26,8 @@ public enum VolumeExport {
         }
         func admit() throws -> (StoppedRecordOwner?, ResolvedSource) {
             switch self {
-            case let .raw(base, overlay): return (nil, ResolvedSource(base: base, overlay: overlay))
-            case let .device(device, policy):
+            case .raw(let base, let overlay): return (nil, ResolvedSource(base: base, overlay: overlay))
+            case .device(let device, let policy):
                 let owner = try OwnedStorageRecord.acquire(device: device, policy: policy, allowRaw: true)
                 return (owner, ResolvedSource(owner: owner))
             }
@@ -37,11 +37,16 @@ public enum VolumeExport {
     struct ResolvedSource {
         let base: URL
         let overlay: URL?
-        init(base: URL, overlay: URL?) { self.base = base; self.overlay = overlay }
+        init(base: URL, overlay: URL?) {
+            self.base = base
+            self.overlay = overlay
+        }
         init(owner: StoppedRecordOwner) {
             let fm = FileManager.default
-            var base = owner.paths?.base ?? (fm.fileExists(atPath: owner.device.appendingPathComponent("nand").path)
-                ? owner.device.appendingPathComponent("nand") : owner.device.appendingPathComponent("base"))
+            var base =
+                owner.paths?.base
+                ?? (fm.fileExists(atPath: owner.device.appendingPathComponent("nand").path)
+                    ? owner.device.appendingPathComponent("nand") : owner.device.appendingPathComponent("base"))
             let overlay = owner.paths?.overlay ?? owner.device.appendingPathComponent("overlay")
             if fm.fileExists(atPath: base.appendingPathComponent("nand").path) { base.appendPathComponent("nand") }
             self.base = base
@@ -64,7 +69,12 @@ public enum VolumeExport {
     public static func manifest(_ out: URL) -> URL { out.appendingPathComponent("export.json") }
 
     /// Steps 1-4: images in a fresh `out` directory, ready to attach or keep.
-    nonisolated(nonsending) public static func export(_ src: Source, volumes: Set<String>? = nil, out: URL, log: (String) -> Void = { _ in }) async throws -> [Exported] {
+    nonisolated(nonsending) public static func export(
+        _ src: Source,
+        volumes: Set<String>? = nil,
+        out: URL,
+        log: (String) -> Void = { _ in }
+    ) async throws -> [Exported] {
         let (owner, resolved) = try src.admit()
         defer { owner?.lease.close() }
         let fm = FileManager.default
@@ -87,7 +97,10 @@ public enum VolumeExport {
             if let o = resolved.overlay {
                 let clone = out.appendingPathComponent("overlay")
                 guard clonefile(o.path, clone.path, 0) == 0 else {
-                    throw FirmwareError(.internal, "clonefile \(o.path) -> \(clone.path): \(String(cString: strerror(errno))) (out must be on the overlay's APFS volume)")
+                    throw FirmwareError(
+                        .internal,
+                        "clonefile \(o.path) -> \(clone.path): \(String(cString: strerror(errno))) (out must be on the overlay's APFS volume)"
+                    )
                 }
                 overlay = clone
                 log(String(format: "cloned overlay in %.1f s", Date().timeIntervalSince(t)))
@@ -96,7 +109,13 @@ public enum VolumeExport {
             t = Date()
             let vols = try VolumeRebuild.rebuild(base: resolved.base, overlay: overlay, into: out, only: volumes)
             let rebuildTime = Date().timeIntervalSince(t)
-            log(String(format: "rebuilt %@ in %.1f s", vols.map { "\($0.name) (\($0.pagesWritten) pages)" }.joined(separator: ", "), rebuildTime))
+            log(
+                String(
+                    format: "rebuilt %@ in %.1f s",
+                    vols.map { "\($0.name) (\($0.pagesWritten) pages)" }.joined(separator: ", "),
+                    rebuildTime
+                )
+            )
             var result: [Exported] = []
             for v in vols {
                 t = Date()
@@ -107,11 +126,16 @@ public enum VolumeExport {
                 let findings = clean ? try await !fsckClean(v.image) : false
                 if !clean || findings {
                     let dev = try await VolumeMount.attach(v.image)
-                    let status: Int32, output: String
-                    do { (status, output) = try await VolumeMount.exec("/sbin/fsck_hfs", ["-fy", dev]) }
-                    catch { await VolumeMount.cleanupDetach(dev); throw error }
+                    let status: Int32
+                    let output: String
+                    do { (status, output) = try await VolumeMount.exec("/sbin/fsck_hfs", ["-fy", dev]) } catch {
+                        await VolumeMount.cleanupDetach(dev)
+                        throw error
+                    }
                     try await VolumeMount.detach(dev)
-                    log("\(v.name): \(clean ? "fsck findings on a clean volume" : "not cleanly unmounted"); fsck_hfs -fy exit \(status): \(output.suffix(300))")
+                    log(
+                        "\(v.name): \(clean ? "fsck findings on a clean volume" : "not cleanly unmounted"); fsck_hfs -fy exit \(status): \(output.suffix(300))"
+                    )
                     repaired = true
                     guard status == 0 else {
                         throw FirmwareError(.internal, "\(v.name): filesystem repair failed: \(output.suffix(600))")
@@ -122,35 +146,55 @@ public enum VolumeExport {
                     _ = fm.createFile(atPath: root.appendingPathComponent(".metadata_never_index").path, contents: nil)
                 }
                 try? fm.removeItem(at: mnt)
-                result.append(Exported(volume: v.name, image: v.image.path, clean: clean, repaired: repaired, device: nil, mountPoint: nil,
-                                       seconds: rebuildTime / Double(vols.count) + Date().timeIntervalSince(t)))
+                result.append(
+                    Exported(
+                        volume: v.name,
+                        image: v.image.path,
+                        clean: clean,
+                        repaired: repaired,
+                        device: nil,
+                        mountPoint: nil,
+                        seconds: rebuildTime / Double(vols.count) + Date().timeIntervalSince(t)
+                    )
+                )
             }
             try write(result, out)
             return result
         } catch {
             let original = error
-            do { try await Task.detached { try await removeDetachedOutput(out) }.value }
-            catch { log("export staging retained at \(out.path): \(error)") }
+            do { try await Task.detached { try await removeDetachedOutput(out) }.value } catch {
+                log("export staging retained at \(out.path): \(error)")
+            }
             throw original
         }
     }
 
     /// Export, then attach every image read-only where Finder shows it. With `root`, the device's one tree there
     /// instead, out of Finder's sidebar (nobrowse): system at `root`, data on its private/var, as the device mounts them.
-    nonisolated(nonsending) public static func mount(_ src: Source, volumes: Set<String>? = nil, out: URL, root: URL? = nil,
-                                                     log: (String) -> Void = { _ in }) async throws -> [Exported] {
+    nonisolated(nonsending) public static func mount(
+        _ src: Source,
+        volumes: Set<String>? = nil,
+        out: URL,
+        root: URL? = nil,
+        log: (String) -> Void = { _ in }
+    ) async throws -> [Exported] {
         var vols = try await export(src, volumes: volumes, out: out, log: log)
-        if root != nil { vols.sort { $0.volume == "system" && $1.volume != "system" } }   // data mounts on system's tree
+        if root != nil { vols.sort { $0.volume == "system" && $1.volume != "system" } }  // data mounts on system's tree
         do {
             for i in vols.indices {
                 let t = Date()
                 let image = URL(fileURLWithPath: vols[i].image)
-                let a = if let root {
-                    try await VolumeMount.attachHidden(image, at: vols[i].volume == "data" && vols.contains { $0.volume == "system" }
-                                                       ? root.appendingPathComponent("private/var") : root, readOnly: true)
-                } else {
-                    try await DiskImage.attach(image, readOnly: true, mount: true)
-                }
+                let a =
+                    if let root {
+                        try await VolumeMount.attachHidden(
+                            image,
+                            at: vols[i].volume == "data" && vols.contains { $0.volume == "system" }
+                                ? root.appendingPathComponent("private/var") : root,
+                            readOnly: true
+                        )
+                    } else {
+                        try await DiskImage.attach(image, readOnly: true, mount: true)
+                    }
                 vols[i].device = a.device
                 vols[i].mountPoint = a.mountPoint
                 vols[i].seconds += Date().timeIntervalSince(t)
@@ -159,8 +203,9 @@ public enum VolumeExport {
         } catch {
             // `vols` includes an attachment even if publishing export.json failed.
             for v in vols.reversed() { if let device = v.device { await VolumeMount.cleanupDetach(device) } }
-            do { try await Task.detached { try await unmount(out: out) }.value }
-            catch { log("export staging retained at \(out.path): \(error)") }
+            do { try await Task.detached { try await unmount(out: out) }.value } catch {
+                log("export staging retained at \(out.path): \(error)")
+            }
             throw error
         }
         return vols
@@ -171,12 +216,19 @@ public enum VolumeExport {
         let vols = try readManifest(out)
         let paths = Set(vols.map { URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path })
         // Query the current device node: a manifest's old /dev/diskN may have been reused.
-        let attached = Dictionary(try await DiskImage.checkedAttachedImages().map {
-            (URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path, $0.device) }, uniquingKeysWith: { a, _ in a })
+        let attached = Dictionary(
+            try await DiskImage.checkedAttachedImages().map {
+                (URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path, $0.device)
+            },
+            uniquingKeysWith: { a, _ in a }
+        )
         for v in vols.reversed() {
-            if let device = attached[URL(fileURLWithPath: v.image).resolvingSymlinksInPath().path] { try await VolumeMount.detach(device) }
+            if let device = attached[URL(fileURLWithPath: v.image).resolvingSymlinksInPath().path] {
+                try await VolumeMount.detach(device)
+            }
         }
-        for attached in try await DiskImage.checkedAttachedImages() where paths.contains(URL(fileURLWithPath: attached.image).resolvingSymlinksInPath().path) {
+        for attached in try await DiskImage.checkedAttachedImages()
+        where paths.contains(URL(fileURLWithPath: attached.image).resolvingSymlinksInPath().path) {
             throw FirmwareError(.internal, "\(attached.image) is still attached; close its files before unmounting")
         }
         try await removeDetachedOutput(out)
@@ -185,7 +237,9 @@ public enum VolumeExport {
     static func readManifest(_ out: URL) throws -> [Exported] {
         let vols = try JSONDecoder().decode([Exported].self, from: Data(contentsOf: manifest(out)))
         let root = out.resolvingSymlinksInPath().path + "/"
-        guard !vols.isEmpty, vols.allSatisfy({ URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path.hasPrefix(root) }) else {
+        guard !vols.isEmpty,
+            vols.allSatisfy({ URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path.hasPrefix(root) })
+        else {
             throw FirmwareError(.internal, "invalid export manifest; image paths must belong to the export directory")
         }
         return vols
@@ -195,9 +249,11 @@ public enum VolumeExport {
     /// eject or image discovery, retain the artifact rather than unlink a live disk.
     nonisolated(nonsending) static func removeDetachedOutput(_ out: URL) async throws {
         let root = out.resolvingSymlinksInPath().path + "/"
-        guard try await DiskImage.checkedAttachedImages().allSatisfy({
-            !URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path.hasPrefix(root)
-        }) else {
+        guard
+            try await DiskImage.checkedAttachedImages().allSatisfy({
+                !URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path.hasPrefix(root)
+            })
+        else {
             throw FirmwareError(.internal, "export still has attached disk images")
         }
         try FileManager.default.removeItem(at: out)
@@ -213,8 +269,10 @@ public enum VolumeExport {
     nonisolated(nonsending) static func fsckClean(_ image: URL) async throws -> Bool {
         let dev = try await VolumeMount.attach(image)
         let status: Int32
-        do { status = try await VolumeMount.exec("/sbin/fsck_hfs", ["-fn", dev]).0 }
-        catch { await VolumeMount.cleanupDetach(dev); throw error }
+        do { status = try await VolumeMount.exec("/sbin/fsck_hfs", ["-fn", dev]).0 } catch {
+            await VolumeMount.cleanupDetach(dev)
+            throw error
+        }
         try await VolumeMount.detach(dev)
         return status == 0
     }
@@ -225,7 +283,9 @@ public enum VolumeExport {
         defer { try? f.close() }
         try f.seek(toOffset: 1024)
         let vh = [UInt8](try f.read(upToCount: 8) ?? Data())
-        guard vh.count == 8, vh[0] == 0x48 else { throw FirmwareError(.unsupported, "\(image.lastPathComponent): no HFS+ volume header") }
+        guard vh.count == 8, vh[0] == 0x48 else {
+            throw FirmwareError(.unsupported, "\(image.lastPathComponent): no HFS+ volume header")
+        }
         let attrs = VolumeRebuild.be32(vh, 4)
         return attrs & (1 << 8) != 0 && attrs & (1 << 11) == 0
     }

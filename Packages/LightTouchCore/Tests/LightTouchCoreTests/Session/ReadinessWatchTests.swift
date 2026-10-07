@@ -1,8 +1,9 @@
-import Foundation
-import Testing
-import HostServiceWire
 import DeviceRuntime
+import Foundation
 import HostRuntime
+import HostServiceWire
+import Testing
+
 @testable import LightTouchCore
 
 /// The boot's readiness watch: one display wake for a backlight that's off, nothing for an awake one or a stale,
@@ -35,7 +36,10 @@ struct ReadinessWatchTests {
             c.springBoardReady = false
             c.readiness.start()
             await eventually("SpringBoard asked") { c.springBoardChecks > 0 }
-            #expect(c.preparingDevice && c.readiness.preparationStatus == "Waiting for the Home screen…" && c.deviceReachable == nil)
+            #expect(
+                c.preparingDevice && c.readiness.preparationStatus == "Waiting for the Home screen…"
+                    && c.deviceReachable == nil
+            )
             c.springBoardReady = true
             await c.readiness.current?.value
             #expect(!c.preparingDevice && c.deviceReachable == true)
@@ -123,7 +127,10 @@ struct ReadinessWatchTests {
             c.retireBoot()
             await watch?.value
             #expect(!c.preparingDevice && !c.readiness.isWatching, "no startup banner, nothing left counting")
-            #expect(c.readiness.readinessFailure == nil && c.notices.message == nil, "an ended boot is not a failed one")
+            #expect(
+                c.readiness.readinessFailure == nil && c.notices.message == nil,
+                "an ended boot is not a failed one"
+            )
         }
     }
 
@@ -133,15 +140,25 @@ struct ReadinessWatchTests {
             noUSB.readiness.budget = .milliseconds(100)
             noUSB.usbAnswers = false
             noUSB.readiness.start()
-            #expect(observes({ _ = noUSB.readiness.bootStage }) { noUSB.readiness.noteBoot(.serial("launchd[1] has started up")) },
-                    "the boot toast's stage follows")
+            #expect(
+                observes({ _ = noUSB.readiness.bootStage }) {
+                    noUSB.readiness.noteBoot(.serial("launchd[1] has started up"))
+                },
+                "the boot toast's stage follows"
+            )
             #expect(noUSB.bootStage == .system)
             await eventually("the deadline passed") { noUSB.notices.message != nil }
-            #expect(!noUSB.preparingDevice && noUSB.readiness.readinessFailure == nil, "kept running, not a startup failure")
+            #expect(
+                !noUSB.preparingDevice && noUSB.readiness.readinessFailure == nil,
+                "kept running, not a startup failure"
+            )
             #expect(noUSB.notices.message == ReadinessDeadline.notice(shortName: "iPod"))
             noUSB.usbAnswers = true
             await noUSB.readiness.current?.value
-            #expect(noUSB.deviceReachable == true && noUSB.notices.message == nil && noUSB.bootStage == .usb, "USB came: ready, notice gone")
+            #expect(
+                noUSB.deviceReachable == true && noUSB.notices.message == nil && noUSB.bootStage == .usb,
+                "USB came: ready, notice gone"
+            )
 
             // No picture from iOS by the deadline: the startup fails.
             let dark = session(directory)

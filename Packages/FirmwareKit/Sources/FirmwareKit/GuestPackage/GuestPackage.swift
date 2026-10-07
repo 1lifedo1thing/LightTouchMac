@@ -22,38 +22,48 @@ public enum GuestPackage {
         public var itpackPath: String, itpackSHA256: String
         public var hooks: [String], jobs: [String]
         public var object: [String: Any] {
-            ["family": family, "seed": seed, "version": version, "gles": gles,
-             "itpack": ["path": itpackPath, "sha256": itpackSHA256], "hooks": hooks, "jobs": jobs]
+            [
+                "family": family, "seed": seed, "version": version, "gles": gles,
+                "itpack": ["path": itpackPath, "sha256": itpackSHA256], "hooks": hooks, "jobs": jobs,
+            ]
         }
     }
 
     /// Preserve the original file or its absence before any installer changes it.
     /// Existing provenance is immutable; callers root-own the returned relative path.
-    static func preserveHook(volume: URL, target: String,
-                             write: ((String, Data, mode_t) throws -> Void)? = nil) throws -> String {
+    static func preserveHook(
+        volume: URL,
+        target: String,
+        write: ((String, Data, mode_t) throws -> Void)? = nil
+    ) throws -> String {
         let fm = FileManager.default
         let at = { volume.appendingPathComponent($0) }
-        let baked = target + ".baked", absent = target + ".baked-absent"
+        let baked = target + ".baked"
+        let absent = target + ".baked-absent"
         func attributes(_ path: String) throws -> [FileAttributeKey: Any]? {
-            do { return try fm.attributesOfItem(atPath: at(path).path) }
-            catch let error as CocoaError where error.code == .fileReadNoSuchFile { return nil }
+            do { return try fm.attributesOfItem(atPath: at(path).path) } catch let error as CocoaError
+                where error.code == .fileReadNoSuchFile
+            { return nil }
         }
-        let haveBaked = try attributes(baked), haveAbsent = try attributes(absent)
+        let haveBaked = try attributes(baked)
+        let haveAbsent = try attributes(absent)
         guard haveBaked == nil || haveAbsent == nil else {
             throw FirmwareError(.internal, "conflicting hook provenance for \(target)")
         }
         if let marker = haveAbsent {
             guard marker[.type] as? FileAttributeType == .typeRegular,
-                  (marker[.size] as? NSNumber)?.intValue == 0 else {
+                (marker[.size] as? NSNumber)?.intValue == 0
+            else {
                 throw FirmwareError(.internal, "invalid absent hook marker for \(target)")
             }
             return absent
         }
         if haveBaked != nil { return baked }
-        let put = write ?? { rel, data, mode in
-            try SystemEdits.mkdirs(at(rel).deletingLastPathComponent())
-            try SystemEdits.put(data, at(rel), mode: mode)
-        }
+        let put =
+            write ?? { rel, data, mode in
+                try SystemEdits.mkdirs(at(rel).deletingLastPathComponent())
+                try SystemEdits.put(data, at(rel), mode: mode)
+            }
         if try attributes(target) != nil {
             try put(baked, Data(contentsOf: at(target)), try SystemEdits.permissions(at(target)))
             return baked
@@ -72,7 +82,13 @@ public enum GuestPackage {
     /// hooks, which their own installers check.
     /// A hook whose target is not on the volume is dropped; unless the preparer left that target out on purpose
     /// (`omitted`) or it is a GL engine's, the drop is a recorded misfit (a warning), never silent.
-    public static func seed(volume m: URL, itpack: URL, gles: Bool, omitted: Set<String> = [], fit: FitCheck.Log = FitCheck.Log()) throws -> (written: [String], record: Record) {
+    public static func seed(
+        volume m: URL,
+        itpack: URL,
+        gles: Bool,
+        omitted: Set<String> = [],
+        fit: FitCheck.Log = FitCheck.Log()
+    ) throws -> (written: [String], record: Record) {
         let fm = FileManager.default
         let list = try GuestPack.read(itpack)
         let entries = Dictionary(list.map { ($0.name, $0.data) }, uniquingKeysWith: { a, _ in a })
@@ -82,7 +98,10 @@ public enum GuestPackage {
         }
         let families = try GuestPack.packages(list, build: build, stubs: true)
         guard families.count == 1 else {
-            throw FirmwareError(.unsupported, "\(itpack.lastPathComponent): \(families.count) packages for build \(build)")
+            throw FirmwareError(
+                .unsupported,
+                "\(itpack.lastPathComponent): \(families.count) packages for build \(build)"
+            )
         }
         let family = families[0].family
         var man = families[0].manifest
@@ -93,13 +112,22 @@ public enum GuestPackage {
             (try? fm.attributesOfItem(atPath: at(String(h.target.dropFirst()) + ".baked-absent").path)) != nil
         }
         if needsAbsence && entries["loader/hook-provenance"] != Data("file-or-absence 1\n".utf8) {
-            throw FirmwareError(.unsupported, "guest loader cannot restore absent hook originals; rebuild the guest exports")
+            throw FirmwareError(
+                .unsupported,
+                "guest loader cannot restore absent hook originals; rebuild the guest exports"
+            )
         }
         let dropped = Set(man.hooks.map(\.file)).subtracting(hooks.map(\.file))
         for h in man.hooks where dropped.contains(h.file) {
             guard !glTargets.contains(h.target), !omitted.contains(h.target) else { continue }
-            try fit.check(FitCheck.Fit("\(family)/\(h.file) (hook)", fits: false,
-                                       "its target \(h.target) is not on this firmware: the hook is dropped"), required: false)
+            try fit.check(
+                FitCheck.Fit(
+                    "\(family)/\(h.file) (hook)",
+                    fits: false,
+                    "its target \(h.target) is not on this firmware: the hook is dropped"
+                ),
+                required: false
+            )
         }
         man.dropHooks(dropped)
         let files = man.files
@@ -110,14 +138,26 @@ public enum GuestPackage {
         // a legacy-linked family's loader where the arch's own is modern (armv7.itpack's k48-ios30; mkpkg.LEGACY_LOADER)
         let legacyLoader = man.requires.link == "legacy" && entries["loader/it_boot-legacy"] != nil
         let loaderName = legacyLoader ? "loader/it_boot-legacy" : "loader/it_boot"
-        guard let loaderBytes = entries[loaderName] else { throw FirmwareError(.internal, "\(itpack.lastPathComponent): no \(loaderName)") }
+        guard let loaderBytes = entries[loaderName] else {
+            throw FirmwareError(.internal, "\(itpack.lastPathComponent): no \(loaderName)")
+        }
         try fit.check(FitCheck.loads("it_boot (guest-package loader)", loaderBytes, on: fw), required: true)
         let hookTargets = Dictionary(hooks.map { ($0.file, $0.target) }, uniquingKeysWith: { a, _ in a })
         for f in files {
-            let name = f.name, target = hookTargets[name]
+            let name = f.name
+            let target = hookTargets[name]
             guard let bytes = entries[family + "/" + name], FitCheck.isMachO(bytes),
-                  !(target.map { glTargets.contains($0) || $0 == "/" + SystemEdits.appsyncPath } ?? false) else { continue }
-            try fit.check(FitCheck.loads("\(family)/\(name)", bytes, on: fw, host: target.flatMap { FitCheck.host(of: $0, on: fw) }), required: true)
+                !(target.map { glTargets.contains($0) || $0 == "/" + SystemEdits.appsyncPath } ?? false)
+            else { continue }
+            try fit.check(
+                FitCheck.loads(
+                    "\(family)/\(name)",
+                    bytes,
+                    on: fw,
+                    host: target.flatMap { FitCheck.host(of: $0, on: fw) }
+                ),
+                required: true
+            )
         }
 
         func payload(_ n: String) throws -> Data {
@@ -125,7 +165,8 @@ public enum GuestPackage {
             return d
         }
         func put(_ rel: String, _ data: Data, _ mode: mode_t) throws {
-            var missing: [String] = [], parent = (rel as NSString).deletingLastPathComponent
+            var missing: [String] = []
+            var parent = (rel as NSString).deletingLastPathComponent
             var isDir: ObjCBool = false
             while !parent.isEmpty, !(fm.fileExists(atPath: at(parent).path, isDirectory: &isDir) && isDir.boolValue) {
                 missing.insert(parent, at: 0)
@@ -134,14 +175,15 @@ public enum GuestPackage {
             for d in missing where mkdir(at(d).path, 0o777) != 0 {
                 throw FirmwareError(.internal, "mkdir \(d): \(String(cString: strerror(errno)))")
             }
-            try SystemEdits.put(data, at(rel), mode: mode)   // in place: an existing file keeps its catalog record
+            try SystemEdits.put(data, at(rel), mode: mode)  // in place: an existing file keeps its catalog record
             written += missing + [rel]
         }
         let mode = { (s: String) in mode_t(strtoul(s, nil, 8)) }
 
         try put(loader.0, loaderBytes, 0o755)
         try put(loader.1, payload("loader/com.qemu.it-boot.plist"), 0o644)
-        let serial = Int(man.serial), pkg = "\(root)/pkgs/\(serial)"
+        let serial = Int(man.serial)
+        let pkg = "\(root)/pkgs/\(serial)"
         for f in files { try put(pkg + "/" + f.name, payload(family + "/" + f.name), mode(f.mode)) }
         try put(pkg + "/offer", Data(GuestPack.offerText(man, build: build).utf8), 0o644)
         try fm.createSymbolicLink(atPath: at(root + "/current").path, withDestinationPath: "pkgs/\(serial)")
@@ -150,7 +192,8 @@ public enum GuestPackage {
         written.append(root + "/current")
         let modes = Dictionary(files.map { ($0.name, mode($0.mode)) }, uniquingKeysWith: { a, _ in a })
         for h in hooks {
-            let file = h.file, target = String(h.target.dropFirst())
+            let file = h.file
+            let target = String(h.target.dropFirst())
             // <target>.baked keeps what the volume had (the stock file, or what the preparer put there), so a
             // package without the hook puts it back
             let backup = try preserveHook(volume: m, target: target, write: put)
@@ -167,7 +210,18 @@ public enum GuestPackage {
             if (try? fm.attributesOfItem(atPath: at(rel).path)) != nil { try fm.removeItem(at: at(rel)) }
         }
         let sha = SHA256.hash(data: try Data(contentsOf: itpack)).map { String(format: "%02x", $0) }.joined()
-        return (written, Record(family: family, seed: serial, version: man.version, gles: gles, itpackPath: itpack.path,
-                                itpackSHA256: sha, hooks: hooks.map(\.target), jobs: jobs))
+        return (
+            written,
+            Record(
+                family: family,
+                seed: serial,
+                version: man.version,
+                gles: gles,
+                itpackPath: itpack.path,
+                itpackSHA256: sha,
+                hooks: hooks.map(\.target),
+                jobs: jobs
+            )
+        )
     }
 }

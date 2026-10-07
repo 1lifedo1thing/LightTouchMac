@@ -1,4 +1,5 @@
 import Foundation
+
 enum DeviceToolsError: Error { case failed(String) }
 /// Prepare one song with the production MediaSong and keep what AFC would stage: the
 /// metadata plist and whatever sits beside the audio. Prints the staging ID.
@@ -6,7 +7,8 @@ enum DeviceToolsError: Error { case failed(String) }
     static func main() async throws {
         let song = try await MediaSong.prepare(URL(fileURLWithPath: CommandLine.arguments[1]))
         defer { try? FileManager.default.removeItem(at: song.directory) }
-        let unchanged = try Data(contentsOf: song.audio) == Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]))
+        let unchanged =
+            try Data(contentsOf: song.audio) == Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]))
         if CommandLine.arguments[1].hasSuffix(".aac") {
             precondition(song.audio.pathExtension == "m4a", "AAC was not converted")
         } else {

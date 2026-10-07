@@ -19,17 +19,28 @@ public enum StoppedVolumeEdit {
     }
     private static var fm: FileManager { .default }
 
-    nonisolated(nonsending) public static func begin(device: URL, policy: StorageRecordPolicy = .standalone, log: (String) -> Void = { _ in }) async throws -> Session {
+    nonisolated(nonsending) public static func begin(
+        device: URL,
+        policy: StorageRecordPolicy = .standalone,
+        log: (String) -> Void = { _ in }
+    ) async throws -> Session {
         let (transaction, source, paths, bytes) = try admit(device: device, policy: policy)
         let record = try object(bytes)
         return try await StorageGeneration.withOwner(transaction) { transaction in
-            let exported = try await VolumeExport.export(.init(base: source.base, overlay: source.overlay),
-                                                   out: transaction.volumes, log: log)
-            guard exported.count == 1 else { throw FirmwareError(.unsupported, "a stopped edit requires one logical volume") }
+            let exported = try await VolumeExport.export(
+                .init(base: source.base, overlay: source.overlay),
+                out: transaction.volumes,
+                log: log
+            )
+            guard exported.count == 1 else {
+                throw FirmwareError(.unsupported, "a stopped edit requires one logical volume")
+            }
             let image = URL(fileURLWithPath: exported[0].image)
             try clone(image, to: transaction.root.appendingPathComponent("original.img"))
-            try StorageGeneration.write(JSONEncoder().encode(HFSPlusVolume(image).listing(hashes: false)),
-                                        to: transaction.root.appendingPathComponent("metadata.json"))
+            try StorageGeneration.write(
+                JSONEncoder().encode(HFSPlusVolume(image).listing(hashes: false)),
+                to: transaction.root.appendingPathComponent("metadata.json")
+            )
             // Clone immutable boot material, never edit the original prepared base.
             let nand = source.base.resolvingSymlinksInPath()
             let originalBase = nand.deletingLastPathComponent()
@@ -38,11 +49,17 @@ public enum StoppedVolumeEdit {
             let oldNAND = transaction.base.appendingPathComponent("nand")
             if try VolumeRebuild.board(of: oldNAND) == .legacy {
                 // edited in place: the overlay as the guest left it, written over at commit
-                if let overlay = source.overlay { try clone(overlay, to: transaction.overlay) }
-                else { try fm.createDirectory(at: transaction.overlay, withIntermediateDirectories: false) }
+                if let overlay = source.overlay {
+                    try clone(overlay, to: transaction.overlay)
+                } else {
+                    try fm.createDirectory(at: transaction.overlay, withIntermediateDirectories: false)
+                }
                 // The overlay belongs to the generation's key now (PreparedDeviceBoot.pinOverlay): the clone's stamp
                 // names the old one, and a fresh overlay that takes the edit's pages would have none.
-                try Data(transaction.id.uuidString.utf8).write(to: transaction.overlay.appendingPathComponent(".base-identity"), options: .atomic)
+                try Data(transaction.id.uuidString.utf8).write(
+                    to: transaction.overlay.appendingPathComponent(".base-identity"),
+                    options: .atomic
+                )
             } else {
                 try fm.removeItem(at: oldNAND)
                 try fm.createDirectory(at: transaction.overlay, withIntermediateDirectories: false)
@@ -52,40 +69,59 @@ public enum StoppedVolumeEdit {
                 let nor = StorageRecordPaths.resolve(path, relativeRoot: paths.relativeRoot)
                 let original = fm.fileExists(atPath: nor.path) ? nor : originalBase.appendingPathComponent("nor.bin")
                 try clone(original, to: transaction.root.appendingPathComponent("nor.bin"))
-                try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: transaction.root.appendingPathComponent("nor.bin").path)
+                try fm.setAttributes(
+                    [.posixPermissions: 0o600],
+                    ofItemAtPath: transaction.root.appendingPathComponent("nor.bin").path
+                )
             }
-            try StorageGeneration.write(JSONEncoder().encode(Session(id: transaction.id, device: device, image: image, mountPoint: nil)),
-                                        to: transaction.root.appendingPathComponent("session.json"))
+            try StorageGeneration.write(
+                JSONEncoder().encode(Session(id: transaction.id, device: device, image: image, mountPoint: nil)),
+                to: transaction.root.appendingPathComponent("session.json")
+            )
             return Session(id: transaction.id, device: device, image: image, mountPoint: nil)
         }
     }
 
     private static func admit(device: URL, policy: StorageRecordPolicy) throws
-        -> (StorageGeneration, VolumeExport.ResolvedSource, StorageRecordPaths, Data) {
+        -> (StorageGeneration, VolumeExport.ResolvedSource, StorageRecordPaths, Data)
+    {
         let owner = try OwnedStorageRecord.acquire(device: device, policy: policy)
         guard let bytes = owner.bytes, let record = try? DeviceRecord.object(bytes),
-              let paths = owner.paths else { throw FirmwareError(.unsupported, "invalid device metadata") }
+            let paths = owner.paths
+        else { throw FirmwareError(.unsupported, "invalid device metadata") }
         defer { withExtendedLifetime(owner) {} }
         let source = VolumeExport.ResolvedSource(owner: owner)
-        if HostRuntime.Board(rawValue: record["board"] as? String ?? "")?.soc == .s5l8900, try VolumeRebuild.board(of: source.base) == .legacy {
-            _ = try N45FTL(base: source.base, overlay: source.overlay)      // refuses an unclean FTL before any work
+        if HostRuntime.Board(rawValue: record["board"] as? String ?? "")?.soc == .s5l8900,
+            try VolumeRebuild.board(of: source.base) == .legacy
+        {
+            _ = try N45FTL(base: source.base, overlay: source.overlay)  // refuses an unclean FTL before any work
             return (try StorageGeneration.begin(owner: owner), source, paths, bytes)
         }
         guard record["board"] as? String == "n72ap" else {
-            throw FirmwareError(.unsupported, "stopped writable volumes support the N72 generated store and 1.x devices only")
+            throw FirmwareError(
+                .unsupported,
+                "stopped writable volumes support the N72 generated store and 1.x devices only"
+            )
         }
         guard try VolumeRebuild.board(of: source.base) == .ipod else {
             throw FirmwareError(.unsupported, "this device does not have a supported writable store")
         }
         let sourceLock = try DeviceLock.read(base: source.base.deletingLastPathComponent())
         guard let epoch = sourceLock?.nandEpoch,
-              [nil, "n72-generated-v1"].contains(sourceLock?.derived?["storage_layout"]?.string) else {
-            throw FirmwareError(.unsupported, "writable export requires the N72 generated layout; physical FTL storage must use guest services")
+            [nil, "n72-generated-v1"].contains(sourceLock?.derived?["storage_layout"]?.string)
+        else {
+            throw FirmwareError(
+                .unsupported,
+                "writable export requires the N72 generated layout; physical FTL storage must use guest services"
+            )
         }
         // Certify the fixed mapping in legacy locks before applying its writer.
         // Arbitrary page directories are not an interchangeable storage format.
         for (page, bytes) in N72NAND.metadataPages(blocks: 0, epoch: epoch) where page.page < 128 {
-            guard try Data(contentsOf: source.base.appendingPathComponent("cs\(page.cs)/\(page.page).page")) == Data(bytes) else {
+            guard
+                try Data(contentsOf: source.base.appendingPathComponent("cs\(page.cs)/\(page.page).page"))
+                    == Data(bytes)
+            else {
                 throw FirmwareError(.unsupported, "N72 mapping metadata differs; use guest services for this store")
             }
         }
@@ -93,7 +129,9 @@ public enum StoppedVolumeEdit {
 
     }
     private static func object(_ bytes: Data) throws -> [String: Any] {
-        guard let record = try? DeviceRecord.object(bytes) else { throw FirmwareError(.unsupported, "invalid device metadata") }
+        guard let record = try? DeviceRecord.object(bytes) else {
+            throw FirmwareError(.unsupported, "invalid device metadata")
+        }
         return record
     }
 
@@ -101,23 +139,44 @@ public enum StoppedVolumeEdit {
     /// guest boot for the entire Finder mount. Closing Finder is not commit.
     /// `mountPoint`: the folder the volume is mounted on, out of Finder's sidebar (nobrowse); the edit's own
     /// "File System" folder when nil.
-    nonisolated(nonsending) public static func mount(device: URL, id: UUID, policy: StorageRecordPolicy = .standalone,
-                                                     mountPoint: URL? = nil) async throws -> Session {
-        return try await StorageGeneration.withOwner(try StorageGeneration.resume(device: device, id: id, policy: policy)) { edit in
+    nonisolated(nonsending) public static func mount(
+        device: URL,
+        id: UUID,
+        policy: StorageRecordPolicy = .standalone,
+        mountPoint: URL? = nil
+    ) async throws -> Session {
+        return try await StorageGeneration.withOwner(
+            try StorageGeneration.resume(device: device, id: id, policy: policy)
+        ) { edit in
             let session = try readSession(edit)
             try await eject(edit)
-            let attached = try await VolumeMount.attachHidden(session.image, at: mountPoint ?? edit.root.appendingPathComponent("File System"))
+            let attached = try await VolumeMount.attachHidden(
+                session.image,
+                at: mountPoint ?? edit.root.appendingPathComponent("File System")
+            )
             let mounted = Session(id: id, device: device, image: session.image, mountPoint: attached.mountPoint)
-            try StorageGeneration.write(JSONEncoder().encode(mounted), to: edit.root.appendingPathComponent("session.json"))
+            try StorageGeneration.write(
+                JSONEncoder().encode(mounted),
+                to: edit.root.appendingPathComponent("session.json")
+            )
             return mounted
         }
     }
 
-    nonisolated(nonsending) public static func commit(device: URL, id: UUID, policy: StorageRecordPolicy = .standalone, log: (String) -> Void = { _ in }) async throws {
-        try await StorageGeneration.withOwner(try StorageGeneration.resume(device: device, id: id, policy: policy)) { edit in
+    nonisolated(nonsending) public static func commit(
+        device: URL,
+        id: UUID,
+        policy: StorageRecordPolicy = .standalone,
+        log: (String) -> Void = { _ in }
+    ) async throws {
+        try await StorageGeneration.withOwner(try StorageGeneration.resume(device: device, id: id, policy: policy)) {
+            edit in
             let session = try readSession(edit)
             try await eject(edit)
-            let before = try JSONDecoder().decode([HFSPlusVolume.Entry].self, from: Data(contentsOf: edit.root.appendingPathComponent("metadata.json")))
+            let before = try JSONDecoder().decode(
+                [HFSPlusVolume.Entry].self,
+                from: Data(contentsOf: edit.root.appendingPathComponent("metadata.json"))
+            )
             try await preserveMetadata(edit: edit, image: session.image, before: before)
             if fm.fileExists(atPath: edit.base.appendingPathComponent("nand/bank0").path) {
                 try await commitLegacy(edit: edit, image: session.image, log: log)
@@ -133,7 +192,12 @@ public enum StoppedVolumeEdit {
             let nand = edit.base.appendingPathComponent("nand")
             if fm.fileExists(atPath: nand.path) { try fm.removeItem(at: nand) }
             log("building edited N72 generation")
-            _ = try N72NAND.write(volume: session.image, blocks: hfs.totalBlocks * hfs.blockSize / N72NAND.page, epoch: epoch, out: nand)
+            _ = try N72NAND.write(
+                volume: session.image,
+                blocks: hfs.totalBlocks * hfs.blockSize / N72NAND.page,
+                epoch: epoch,
+                out: nand
+            )
             let roundtrip = edit.root.appendingPathComponent("roundtrip")
             if fm.fileExists(atPath: roundtrip.path) { try fm.removeItem(at: roundtrip) }
             let reconstructed = try VolumeRebuild.rebuild(base: nand, overlay: nil, into: roundtrip)
@@ -150,20 +214,25 @@ public enum StoppedVolumeEdit {
             derived["storage_generation"] = id.uuidString
             lock["derived"] = derived
             var outputs = lock["outputs"] as? [String: Any] ?? [:]
-            outputs["nand"] = ["path": "nand", "pages": files.filter { $0.hasSuffix(".page") }.count,
-                               "listing_sha256": listing.sha256, "built_listing_sha256": listing.sha256]
+            outputs["nand"] = [
+                "path": "nand", "pages": files.filter { $0.hasSuffix(".page") }.count,
+                "listing_sha256": listing.sha256, "built_listing_sha256": listing.sha256,
+            ]
             // Immutable boot outputs were cloned, so update legacy absolute output
             // paths only when their named file actually exists in the new base.
             for (name, value) in outputs where name != "nand" {
                 guard var output = value as? [String: Any], let path = output["path"] as? String else { continue }
                 let filename = URL(fileURLWithPath: path).lastPathComponent
                 if fm.fileExists(atPath: edit.base.appendingPathComponent(filename).path) {
-                    output["path"] = filename; outputs[name] = output
+                    output["path"] = filename
+                    outputs[name] = output
                 }
             }
             lock["outputs"] = outputs
-            var maintenance: [String: Any] = ["kind": "stopped-volume-edit", "volume_sha256": expected,
-                "generation": id.uuidString, "original_lock_sha256": StorageGeneration.hash(originalLockData)]
+            var maintenance: [String: Any] = [
+                "kind": "stopped-volume-edit", "volume_sha256": expected,
+                "generation": id.uuidString, "original_lock_sha256": StorageGeneration.hash(originalLockData),
+            ]
             let workingNOR = edit.root.appendingPathComponent("nor.bin")
             if fm.fileExists(atPath: workingNOR.path) {
                 maintenance["working_nor_sha256"] = try Preparer.digest(workingNOR, SHA256())
@@ -171,7 +240,9 @@ public enum StoppedVolumeEdit {
             lock["maintenance"] = maintenance
             let lockData = try DeviceLock(json: lock).data()
             try StorageGeneration.write(lockData, to: lockURL)
-            let provenance: [String: Any] = ["lock": try edit.recordPath(lockURL), "sha256": StorageGeneration.hash(lockData)]
+            let provenance: [String: Any] = [
+                "lock": try edit.recordPath(lockURL), "sha256": StorageGeneration.hash(lockData),
+            ]
             try Preparer.readOnly(edit.base)
             try await edit.publish(record: edit.candidateRecord(provenance: provenance))
             log("published storage generation \(id.uuidString)")
@@ -181,14 +252,17 @@ public enum StoppedVolumeEdit {
     /// 1.x: the edited volume's changed pages over the physical pages the FTL maps them to (in the generation's
     /// overlay clone), the journal left for the device to initialize (a host-written header says 512-byte blocks,
     /// which 1.x adopts and then fails its 2048-byte I/O with), then publish.
-    nonisolated(nonsending) private static func commitLegacy(edit: StorageGeneration, image: URL, log: (String) -> Void) async throws {
+    nonisolated(nonsending) private static func commitLegacy(edit: StorageGeneration, image: URL, log: (String) -> Void)
+        async throws
+    {
         try HFSPlusVolume(image, writable: true).leaveJournalToDevice()
         let nand = edit.base.appendingPathComponent("nand")
         let ftl = try N45FTL(base: nand, overlay: edit.overlay)
         let f = try FileHandle(forReadingFrom: image)
         defer { try? f.close() }
         let ps = N45NAND.page
-        var changed = 0, lpn = N45NAND.firstLBA
+        var changed = 0
+        var lpn = N45NAND.firstLBA
         while let chunk = try f.read(upToCount: ps), !chunk.isEmpty {
             let data = [UInt8](chunk) + [UInt8](repeating: 0, count: ps - chunk.count)
             let old = ftl.read(lpn: lpn)
@@ -196,52 +270,78 @@ public enum StoppedVolumeEdit {
                 let p = ftl.location(lpn: lpn)
                 let dir = edit.overlay.appendingPathComponent("bank\(p.bank)")
                 try fm.createDirectory(at: dir, withIntermediateDirectories: true)
-                try Data(data + (old?.spare ?? N45NAND.dataSpare(lpn))).write(to: dir.appendingPathComponent("\(p.page).page"))
+                try Data(data + (old?.spare ?? N45NAND.dataSpare(lpn))).write(
+                    to: dir.appendingPathComponent("\(p.page).page")
+                )
                 changed += 1
             }
             lpn += 1
         }
         log("wrote \(changed) changed pages through the 1.x FTL")
         let lockURL = edit.base.appendingPathComponent("device.lock.json")
-        let provenance: [String: Any] = ["lock": try edit.recordPath(lockURL), "sha256": StorageGeneration.hash(try Data(contentsOf: lockURL)),
-                                         "kind": "stopped-volume-edit", "legacy_ftl_pages": changed]
+        let provenance: [String: Any] = [
+            "lock": try edit.recordPath(lockURL), "sha256": StorageGeneration.hash(try Data(contentsOf: lockURL)),
+            "kind": "stopped-volume-edit", "legacy_ftl_pages": changed,
+        ]
         try Preparer.readOnly(edit.base)
         try await edit.publish(record: edit.candidateRecord(provenance: provenance))
         log("published storage generation \(edit.id.uuidString)")
     }
 
-    nonisolated(nonsending) public static func discard(device: URL, id: UUID, policy: StorageRecordPolicy = .standalone) async throws {
-        try await StorageGeneration.withOwner(try StorageGeneration.resume(device: device, id: id, policy: policy)) { edit in
+    nonisolated(nonsending) public static func discard(device: URL, id: UUID, policy: StorageRecordPolicy = .standalone)
+        async throws
+    {
+        try await StorageGeneration.withOwner(try StorageGeneration.resume(device: device, id: id, policy: policy)) {
+            edit in
             try await eject(edit)
             try await edit.discard()
         }
     }
-    nonisolated(nonsending) public static func recover(device: URL, id: UUID, policy: StorageRecordPolicy = .standalone) async throws {
-        try await StorageGeneration.withOwner(try StorageGeneration.resume(device: device, id: id, policy: policy)) { edit in
+    nonisolated(nonsending) public static func recover(device: URL, id: UUID, policy: StorageRecordPolicy = .standalone)
+        async throws
+    {
+        try await StorageGeneration.withOwner(try StorageGeneration.resume(device: device, id: id, policy: policy)) {
+            edit in
             try await edit.recoverPublication()
         }
     }
 
     private static func readSession(_ edit: StorageGeneration) throws -> Session {
-        let session = try JSONDecoder().decode(Session.self, from: Data(contentsOf: edit.root.appendingPathComponent("session.json")))
-        guard session.id == edit.id, session.image.resolvingSymlinksInPath().path.hasPrefix(edit.volumes.path + "/") else {
+        let session = try JSONDecoder().decode(
+            Session.self,
+            from: Data(contentsOf: edit.root.appendingPathComponent("session.json"))
+        )
+        guard session.id == edit.id, session.image.resolvingSymlinksInPath().path.hasPrefix(edit.volumes.path + "/")
+        else {
             throw FirmwareError(.internal, "invalid stopped-edit session")
         }
         return session
     }
     nonisolated(nonsending) private static func eject(_ edit: StorageGeneration) async throws {
         let prefix = edit.root.resolvingSymlinksInPath().path + "/"
-        for attached in try await DiskImage.checkedAttachedImages() where URL(fileURLWithPath: attached.image).resolvingSymlinksInPath().path.hasPrefix(prefix) {
-            try await DiskImage.detach(attached.device) // Never force an editor's open files.
+        for attached in try await DiskImage.checkedAttachedImages()
+        where URL(fileURLWithPath: attached.image).resolvingSymlinksInPath().path.hasPrefix(prefix) {
+            try await DiskImage.detach(attached.device)  // Never force an editor's open files.
         }
-        guard try await DiskImage.checkedAttachedImages().allSatisfy({ !URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path.hasPrefix(prefix) }) else {
+        guard
+            try await DiskImage.checkedAttachedImages().allSatisfy({
+                !URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path.hasPrefix(prefix)
+            })
+        else {
             throw FirmwareError(.internal, "edit volume is still busy; close its files and retry")
         }
     }
-    nonisolated(nonsending) private static func preserveMetadata(edit: StorageGeneration, image: URL, before: [HFSPlusVolume.Entry]) async throws {
+    nonisolated(nonsending) private static func preserveMetadata(
+        edit: StorageGeneration,
+        image: URL,
+        before: [HFSPlusVolume.Entry]
+    ) async throws {
         let original = edit.root.appendingPathComponent("original.img")
         let originalHFS = try HFSPlusVolume(original)
-        let oldLinks = Dictionary(grouping: try originalHFS.paths().filter { $0.record.isHardLink }, by: { $0.record.special })
+        let oldLinks = Dictionary(
+            grouping: try originalHFS.paths().filter { $0.record.isHardLink },
+            by: { $0.record.special }
+        )
         // Only entries that had attributes have any to restore. Listing every file's would also need read
         // access to each, which a mode-000 file (iOS 4's /.file) refuses on the mounted baseline.
         let originalRecords = Dictionary(uniqueKeysWithValues: try originalHFS.paths().map { ($0.path, $0.record) })
@@ -251,7 +351,10 @@ public enum StoppedVolumeEdit {
         for group in oldLinks.values {
             let remaining = group.compactMap { afterRecords[$0.path] }
             guard remaining.allSatisfy(\.isHardLink), Set(remaining.map(\.special)).count <= 1 else {
-                throw FirmwareError(.unsupported, "an edit replaced a hard link; original retained, restore its link group before committing")
+                throw FirmwareError(
+                    .unsupported,
+                    "an edit replaced a hard link; original retained, restore its link group before committing"
+                )
             }
         }
         // The kernel manages compression attributes and their storage forks.
@@ -259,30 +362,50 @@ public enum StoppedVolumeEdit {
         // bytes to newly edited uncompressed content.
         // This is a private baseline copy. Mount through the native driver so
         // it can recover its journal; never mount the source device's flash.
-        try await VolumeMount.withMounted(original, at: edit.root.appendingPathComponent("baseline-mount")) { baseline in
+        try await VolumeMount.withMounted(original, at: edit.root.appendingPathComponent("baseline-mount")) {
+            baseline in
             try await VolumeMount.withMounted(image, at: edit.root.appendingPathComponent("metadata-mount")) { root in
-                for entry in before where !entry.path.isEmpty && ![".journal", ".journal_info_block"].contains(entry.path) && afterRecords[entry.path] != nil
-                        && (entry.resourceSize > 0 || originalRecords[entry.path].map { $0.isHardLink || attributed.contains($0.cnid) } ?? true) {
+                for entry in before
+                where !entry.path.isEmpty && ![".journal", ".journal_info_block"].contains(entry.path)
+                    && afterRecords[entry.path] != nil
+                    && (entry.resourceSize > 0
+                        || originalRecords[entry.path].map { $0.isHardLink || attributed.contains($0.cnid) } ?? true)
+                {
                     let src = baseline.appendingPathComponent(entry.path)
                     let dst = root.appendingPathComponent(entry.path)
-                    do { try restoreMissingAttributes(from: src, to: dst, compressed: entry.flags & UInt32(UF_COMPRESSED) != 0) }
-                    catch { throw FirmwareError(.internal, "restore metadata for \(entry.path): \(error)") }
+                    do {
+                        try restoreMissingAttributes(
+                            from: src,
+                            to: dst,
+                            compressed: entry.flags & UInt32(UF_COMPRESSED) != 0
+                        )
+                    } catch { throw FirmwareError(.internal, "restore metadata for \(entry.path): \(error)") }
                 }
             }
         }
         let volume = try HFSPlusVolume(image, writable: true)
         let existing = Dictionary(uniqueKeysWithValues: before.map { ($0.path, $0) })
         let after = try volume.listing(hashes: false)
-        struct Owner: Hashable { let uid: UInt32, gid: UInt32; let mode: UInt16; let flags: UInt32 }
+        struct Owner: Hashable {
+            let uid: UInt32, gid: UInt32
+            let mode: UInt16
+            let flags: UInt32
+        }
         var groups: [Owner: [String]] = [:]
         for entry in after where !entry.path.isEmpty {
             let owner: Owner
             if let old = existing[entry.path] {
-                owner = Owner(uid: old.uid, gid: old.gid, mode: old.mode,
-                    flags: old.flags & ~UInt32(UF_COMPRESSED) | entry.flags & UInt32(UF_COMPRESSED))
+                owner = Owner(
+                    uid: old.uid,
+                    gid: old.gid,
+                    mode: old.mode,
+                    flags: old.flags & ~UInt32(UF_COMPRESSED) | entry.flags & UInt32(UF_COMPRESSED)
+                )
             } else {
                 var parent = (entry.path as NSString).deletingLastPathComponent
-                while existing[parent] == nil && !parent.isEmpty { parent = (parent as NSString).deletingLastPathComponent }
+                while existing[parent] == nil && !parent.isEmpty {
+                    parent = (parent as NSString).deletingLastPathComponent
+                }
                 let ancestor = existing[parent]
                 owner = Owner(uid: ancestor?.uid ?? 0, gid: ancestor?.gid ?? 0, mode: entry.mode, flags: entry.flags)
             }
@@ -293,8 +416,10 @@ public enum StoppedVolumeEdit {
         }
         let checked = try await VolumeMount.attach(image)
         let checkedResult: (ok: Bool, output: String)
-        do { checkedResult = try await VolumeMount.check(checked) }
-        catch { await VolumeMount.cleanupDetach(checked); throw error }
+        do { checkedResult = try await VolumeMount.check(checked) } catch {
+            await VolumeMount.cleanupDetach(checked)
+            throw error
+        }
         try await VolumeMount.detach(checked)
         guard checkedResult.ok else { throw FirmwareError(.internal, "edited metadata failed filesystem validation") }
     }
@@ -313,7 +438,8 @@ public enum StoppedVolumeEdit {
             guard count >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             var value = [UInt8](repeating: 0, count: count)
             guard getxattr(source.path, name, &value, count, 0, XATTR_NOFOLLOW) == count,
-                  setxattr(destination.path, name, value, count, 0, XATTR_NOFOLLOW) == 0 else {
+                setxattr(destination.path, name, value, count, 0, XATTR_NOFOLLOW) == 0
+            else {
                 throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
             }
         }
@@ -333,10 +459,17 @@ public enum StoppedVolumeEdit {
         guard chflags(directory.path, 0) == 0, chmod(directory.path, 0o700) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
-        for child in try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]) {
+        for child in try fm.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+        ) {
             let values = try child.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-            guard values.isSymbolicLink != true else { throw FirmwareError(.internal, "prepared base contains a symlink") }
-            if values.isDirectory == true { try makeWritable(child) } else {
+            guard values.isSymbolicLink != true else {
+                throw FirmwareError(.internal, "prepared base contains a symlink")
+            }
+            if values.isDirectory == true {
+                try makeWritable(child)
+            } else {
                 guard chflags(child.path, 0) == 0, chmod(child.path, 0o600) == 0 else { throw POSIXError(.EIO) }
             }
         }

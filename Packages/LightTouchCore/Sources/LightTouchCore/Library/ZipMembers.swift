@@ -14,7 +14,8 @@ public nonisolated enum ZipMembers {
     /// The member's bytes, or nil when it is missing, empty, over `limit` bytes or unreadable.
     public static func data(_ zip: URL, _ path: String, limit: Int = 1 << 22) -> Data? {
         guard let archive = try? Archive(url: zip, accessMode: .read), let entry = archive[path],
-              entry.type == .file, entry.uncompressedSize > 0, entry.uncompressedSize <= UInt64(limit) else { return nil }
+            entry.type == .file, entry.uncompressedSize > 0, entry.uncompressedSize <= UInt64(limit)
+        else { return nil }
         var data = Data()
         guard (try? archive.extract(entry, skipCRC32: false) { data.append($0) }) != nil else { return nil }
         return data

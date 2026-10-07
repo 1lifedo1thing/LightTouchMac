@@ -1,10 +1,10 @@
 // The guest's front app, every few seconds while the device answers: the window's subtitle, the web proxy's
 // changes reaching the guest, and the end of Setup on a boot whose networking waits for it.
 
-import Foundation
-import Observation
-import HostRuntime
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import Observation
 
 /// What the foreground watch reads of the session and asks of the guest.
 public protocol ForegroundHost: AnyObject {
@@ -58,7 +58,10 @@ public protocol ForegroundHost: AnyObject {
                 guard let self else { return }
                 if host.canReachDevice, !host.isSleeping, !host.isInstalling, !host.hasPendingInstallWork {
                     do {
-                        appliedProxyRevision = try await host.applyWebProxy(since: appliedProxyRevision, generation: generation)
+                        appliedProxyRevision = try await host.applyWebProxy(
+                            since: appliedProxyRevision,
+                            generation: generation
+                        )
                     } catch { return }
                     do {
                         let fg = host.guestAgentAlive ? try await host.foregroundApp() : nil
@@ -85,7 +88,7 @@ public protocol ForegroundHost: AnyObject {
                     } catch {
                         if Task.isCancelled { return }
                         appName = nil
-                        _ = setupGate?.observe(bundleID: nil, name: nil)   // a failed poll breaks the streak
+                        _ = setupGate?.observe(bundleID: nil, name: nil)  // a failed poll breaks the streak
                     }
                 }
                 do { try await Task.sleep(for: interval) } catch { return }

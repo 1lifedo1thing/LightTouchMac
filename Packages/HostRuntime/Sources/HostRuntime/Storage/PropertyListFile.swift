@@ -5,8 +5,12 @@ import Foundation
 public nonisolated enum PropertyListFile {
     /// `plist` decoded, or nil when there is none. Where only `legacyJSON` exists, it is decoded as JSON, written
     /// to `plist` (atomic) and removed; with both, the JSON is a leftover and goes.
-    public static func read<T: Codable>(_ type: T.Type, from plist: URL, legacyJSON json: URL,
-                                        format: PropertyListSerialization.PropertyListFormat = .xml) throws -> T? {
+    public static func read<T: Codable>(
+        _ type: T.Type,
+        from plist: URL,
+        legacyJSON json: URL,
+        format: PropertyListSerialization.PropertyListFormat = .xml
+    ) throws -> T? {
         let fm = FileManager.default
         if fm.fileExists(atPath: plist.path) {
             try? fm.removeItem(at: json)
@@ -19,13 +23,19 @@ public nonisolated enum PropertyListFile {
         return value
     }
 
-    public static func data<T: Encodable>(_ value: T, format: PropertyListSerialization.PropertyListFormat = .xml) throws -> Data {
+    public static func data<T: Encodable>(_ value: T, format: PropertyListSerialization.PropertyListFormat = .xml)
+        throws -> Data
+    {
         let encoder = PropertyListEncoder()
         encoder.outputFormat = format
         return try encoder.encode(value)
     }
 
-    public static func write<T: Encodable>(_ value: T, to url: URL, format: PropertyListSerialization.PropertyListFormat = .xml) throws {
+    public static func write<T: Encodable>(
+        _ value: T,
+        to url: URL,
+        format: PropertyListSerialization.PropertyListFormat = .xml
+    ) throws {
         try data(value, format: format).write(to: url, options: .atomic)
     }
 }

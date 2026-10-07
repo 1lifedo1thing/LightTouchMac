@@ -33,7 +33,7 @@ public enum DiskImage {
     }()
 
     public struct Attached: Sendable, Equatable {
-        public let device: String       // "/dev/diskN"
+        public let device: String  // "/dev/diskN"
         public let mountPoint: String?  // where the volume was mounted, if the attach mounted it
     }
 
@@ -56,7 +56,8 @@ public enum DiskImage {
     static func detachCommand(_ dev: String, force: Bool, backend: Backend) -> [String] {
         switch backend {
         case .hdiutil: return ["/usr/bin/hdiutil", "detach", dev] + (force ? ["-force"] : [])
-        case .diskutil: return ["/usr/sbin/diskutil", force ? "unmountDisk" : "eject"] + (force ? ["force", dev] : [dev])
+        case .diskutil:
+            return ["/usr/sbin/diskutil", force ? "unmountDisk" : "eject"] + (force ? ["force", dev] : [dev])
         }
     }
 
@@ -77,7 +78,8 @@ public enum DiskImage {
     static func convertCommand(_ src: URL, raw out: URL, backend: Backend) -> [String] {
         switch backend {
         case .hdiutil: return ["/usr/bin/hdiutil", "convert", src.path, "-format", "UDTO", "-quiet", "-o", out.path]
-        case .diskutil: return ["/usr/sbin/diskutil", "image", "create", "from", "--format", "RAW", src.path, out.path + ".raw"]
+        case .diskutil:
+            return ["/usr/sbin/diskutil", "image", "create", "from", "--format", "RAW", src.path, out.path + ".raw"]
         }
     }
 
@@ -86,13 +88,20 @@ public enum DiskImage {
     /// The caller must serialize attachment of this image (managed storage owns
     /// its lease). Compensation cannot distinguish a simultaneous raw attach of
     /// the same image from a newly attached device owned by this operation.
-    public static func attach(_ image: URL, readOnly: Bool = false, mount: Bool = false, backend: Backend = backend) async throws -> Attached {
+    public static func attach(_ image: URL, readOnly: Bool = false, mount: Bool = false, backend: Backend = backend)
+        async throws -> Attached
+    {
         try await attach(image, readOnly: readOnly, mount: mount, backend: backend, execute: run)
     }
     /// Internal executor boundary lets fixtures pause after an actual OS attach
     /// but before its result is delivered; production always uses the same runner.
-    static func attach(_ image: URL, readOnly: Bool = false, mount: Bool = false, backend: Backend = backend,
-                       execute: @Sendable ([String]) async throws -> String) async throws -> Attached {
+    static func attach(
+        _ image: URL,
+        readOnly: Bool = false,
+        mount: Bool = false,
+        backend: Backend = backend,
+        execute: @Sendable ([String]) async throws -> String
+    ) async throws -> Attached {
         let prior = Set(try await checkedAttachedImages().map(\.device))
         do {
             let out = try await execute(attachCommand(image, readOnly: readOnly, mount: mount, backend: backend))
@@ -108,8 +117,9 @@ public enum DiskImage {
                 try await Task.detached {
                     let path = image.resolvingSymlinksInPath().path
                     for item in try await checkedAttachedImages()
-                        where !prior.contains(item.device)
-                        && URL(fileURLWithPath: item.image).resolvingSymlinksInPath().path == path {
+                    where !prior.contains(item.device)
+                        && URL(fileURLWithPath: item.image).resolvingSymlinksInPath().path == path
+                    {
                         try await detach(item.device, force: true, backend: backend)
                     }
                 }.value
@@ -123,8 +133,12 @@ public enum DiskImage {
     /// The whole-disk entry (shortest dev-entry) of an attach plist, and the mount point of whichever entity has one.
     static func parseAttach(_ text: String) -> Attached? {
         guard let start = text.range(of: "<?xml"), let end = text.range(of: "</plist>", options: .backwards),
-              let plist = try? PropertyListSerialization.propertyList(from: Data(text[start.lowerBound..<end.upperBound].utf8), format: nil) as? [String: Any],
-              let entities = plist["system-entities"] as? [[String: Any]] else { return nil }
+            let plist = try? PropertyListSerialization.propertyList(
+                from: Data(text[start.lowerBound..<end.upperBound].utf8),
+                format: nil
+            ) as? [String: Any],
+            let entities = plist["system-entities"] as? [[String: Any]]
+        else { return nil }
         let devs = entities.compactMap { $0["dev-entry"] as? String }.map { $0.hasPrefix("/dev/") ? $0 : "/dev/" + $0 }
         guard let dev = devs.min(by: { $0.count < $1.count }) else { return nil }
         return Attached(device: dev, mountPoint: entities.compactMap { $0["mount-point"] as? String }.first)
@@ -150,7 +164,8 @@ public enum DiskImage {
     public static func resize(_ image: URL, toBytes bytes: Int, backend: Backend = backend) async throws {
         var slack = 0
         if backend == .diskutil, let v = try? HFSPlusVolume(image),
-           let size = (try? FileManager.default.attributesOfItem(atPath: image.path)[.size] as? Int) {
+            let size = (try? FileManager.default.attributesOfItem(atPath: image.path)[.size] as? Int)
+        {
             slack = max(0, size - v.totalBlocks * v.blockSize) % v.blockSize
         }
         try await run(resizeCommand(image, bytes: bytes, slack: slack, backend: backend))
@@ -160,8 +175,9 @@ public enum DiskImage {
     public static func convertToRaw(_ src: URL, to out: URL, backend: Backend = backend) async throws {
         let fm = FileManager.default
         try? fm.removeItem(at: out)
-        do { try await run(convertCommand(src, raw: out, backend: backend)) }
-        catch let e as FirmwareError { throw FirmwareError(.unsupported, "convert \(src.lastPathComponent): \(e.message.suffix(600))") }
+        do { try await run(convertCommand(src, raw: out, backend: backend)) } catch let e as FirmwareError {
+            throw FirmwareError(.unsupported, "convert \(src.lastPathComponent): \(e.message.suffix(600))")
+        }
         try fm.moveItem(at: URL(fileURLWithPath: out.path + (backend == .hdiutil ? ".cdr" : ".raw")), to: out)
     }
 
@@ -175,7 +191,7 @@ public enum DiskImage {
     public static func detachAll(under root: URL) async throws {
         let prefix = root.resolvingSymlinksInPath().path + "/"
         for (path, dev) in try await checkedAttachedImages()
-            where URL(fileURLWithPath: path).resolvingSymlinksInPath().path.hasPrefix(prefix) {
+        where URL(fileURLWithPath: path).resolvingSymlinksInPath().path.hasPrefix(prefix) {
             try await detach(dev, force: true)
         }
     }
@@ -187,13 +203,18 @@ public enum DiskImage {
     }
     static func parseAttachments(status: Int32, output out: String) throws -> [(image: String, device: String)] {
         guard status == 0, let start = out.range(of: "<?xml"),
-              let info = try? PropertyListSerialization.propertyList(from: Data(out[start.lowerBound...].utf8), format: nil) as? [String: Any],
-              let images = info["images"] as? [[String: Any]] else {
+            let info = try? PropertyListSerialization.propertyList(
+                from: Data(out[start.lowerBound...].utf8),
+                format: nil
+            ) as? [String: Any],
+            let images = info["images"] as? [[String: Any]]
+        else {
             throw FirmwareError(.internal, "could not inspect mounted disk images: \(out.suffix(600))")
         }
         return images.compactMap { image in
             guard let path = image["image-path"] as? String,
-                  let dev = (image["system-entities"] as? [[String: Any]])?.compactMap({ $0["dev-entry"] as? String }).min(by: { $0.count < $1.count })
+                let dev = (image["system-entities"] as? [[String: Any]])?.compactMap({ $0["dev-entry"] as? String })
+                    .min(by: { $0.count < $1.count })
             else { return nil }
             return (path, dev)
         }
@@ -206,7 +227,10 @@ public enum DiskImage {
     static func run(_ argv: [String]) async throws -> String {
         let (status, out) = try await exec(argv)
         guard status == 0 else {
-            throw FirmwareError(.internal, "\((argv[0] as NSString).lastPathComponent) \(argv.dropFirst().prefix(2).joined(separator: " ")) failed (\(status)): \(out)")
+            throw FirmwareError(
+                .internal,
+                "\((argv[0] as NSString).lastPathComponent) \(argv.dropFirst().prefix(2).joined(separator: " ")) failed (\(status)): \(out)"
+            )
         }
         return out
     }
@@ -214,13 +238,19 @@ public enum DiskImage {
     /// (status, stdout then stderr), stdin closed. Suspends while the actual
     /// library owns and reaps the child; cancellation/spawn failure stay errors.
     static func exec(_ argv: [String]) async throws -> (Int32, String) {
-        let result = try await Subprocess.run(.path(FilePath(argv[0])), arguments: Arguments(Array(argv.dropFirst())),
-            input: .none, output: .string(limit: 1 << 24), error: .string(limit: 1 << 24))
+        let result = try await Subprocess.run(
+            .path(FilePath(argv[0])),
+            arguments: Arguments(Array(argv.dropFirst())),
+            input: .none,
+            output: .string(limit: 1 << 24),
+            error: .string(limit: 1 << 24)
+        )
         try Task.checkCancellation()
-        let status: Int32 = switch result.terminationStatus {
-        case .exited(let code): code
-        case .signaled(let signal): -signal
-        }
+        let status: Int32 =
+            switch result.terminationStatus {
+            case .exited(let code): code
+            case .signaled(let signal): -signal
+            }
         return (status, result.standardOutput + result.standardError)
     }
 }

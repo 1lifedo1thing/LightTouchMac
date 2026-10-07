@@ -1,4 +1,5 @@
 import Testing
+
 @testable import LightTouchCore
 
 /// The Device menu's device items and the capture commands' availability, from a device snapshot; the rotation
@@ -6,18 +7,23 @@ import Testing
 struct DeviceMenuStateTests {
     func running() -> DeviceMenuState {
         var state = DeviceMenuState()
-        state.isRunning = true; state.acceptsInput = true
+        state.isRunning = true
+        state.acceptsInput = true
         return state
     }
 
     @Test func pauseNamesWhatItDoesAndWaitsForInstalls() {
         var state = running()
         #expect(state.validate(.pause) == .init(isEnabled: true, title: "Pause"))
-        state.isRunning = false; state.isPaused = true; state.acceptsInput = false
+        state.isRunning = false
+        state.isPaused = true
+        state.acceptsInput = false
         #expect(state.validate(.pause) == .init(isEnabled: true, title: "Resume"))
-        state = running(); state.hasPendingInstalls = true
+        state = running()
+        state.hasPendingInstalls = true
         #expect(!state.validate(.pause).isEnabled, "a queued install keeps the device running")
-        state = running(); state.isInstalling = true
+        state = running()
+        state.isInstalling = true
         #expect(!state.validate(.pause).isEnabled)
         state = DeviceMenuState()
         #expect(!state.validate(.pause).isEnabled, "nothing to pause when stopped")
@@ -28,7 +34,8 @@ struct DeviceMenuStateTests {
         #expect(state.validate(.rotate).isEnabled)
         state.editingText = true
         #expect(!state.validate(.rotate).isEnabled)
-        state.editingText = false; state.acceptsInput = false
+        state.editingText = false
+        state.acceptsInput = false
         #expect(!state.validate(.rotate).isEnabled)
     }
 
@@ -36,17 +43,22 @@ struct DeviceMenuStateTests {
         var state = running()
         #expect(state.validate(.input).isEnabled && state.validate(.charging).isEnabled)
         state.acceptsInput = false
-        #expect(!state.validate(.input).isEnabled && !state.validate(.batteryLevel(100)).isEnabled && !state.validate(.charging).isEnabled)
+        #expect(
+            !state.validate(.input).isEnabled && !state.validate(.batteryLevel(100)).isEnabled
+                && !state.validate(.charging).isEnabled
+        )
     }
 
     @Test func batteryAndCompassCheckTheirCurrentValue() {
         var state = running()
-        state.batteryLevel = 50; state.batteryCharging = true
+        state.batteryLevel = 50
+        state.batteryCharging = true
         #expect(state.validate(.batteryLevel(50)) == .init(isEnabled: true, isOn: true))
         #expect(state.validate(.batteryLevel(100)).isOn == false)
         #expect(state.validate(.charging).isOn == true)
         #expect(!state.validate(.compassHeading(0)).isEnabled, "no compass, dimmed (never left out)")
-        state.hasCompass = true; state.compassHeading = 90
+        state.hasCompass = true
+        state.compassHeading = 90
         #expect(state.validate(.compassHeading(90)) == .init(isEnabled: true, isOn: true))
         #expect(state.validate(.compassHeading(0)).isOn == false)
         state.compassHeading = nil
@@ -58,7 +70,8 @@ struct DeviceMenuStateTests {
         #expect(!state.validate(.carrier).isEnabled)
         state.hasCellular = true
         #expect(state.validate(.carrier).isEnabled)
-        state.isRunning = false; state.isPaused = true
+        state.isRunning = false
+        state.isPaused = true
         #expect(state.validate(.carrier).isEnabled)
         state.isPaused = false
         #expect(!state.validate(.carrier).isEnabled)
@@ -69,7 +82,8 @@ struct DeviceMenuStateTests {
         #expect(state.validate(.lock) == .init(isEnabled: true, title: "Lock"))
         state.isSleeping = true
         #expect(state.validate(.lock).title == "Wake")
-        state = DeviceMenuState(); state.isPoweredOff = true
+        state = DeviceMenuState()
+        state.isPoweredOff = true
         #expect(state.validate(.lock) == .init(isEnabled: true, title: "Start"))
         state.shuttingDown = true
         #expect(!state.validate(.lock).isEnabled)
@@ -79,17 +93,25 @@ struct DeviceMenuStateTests {
         var c = CaptureAvailability()
         c.isRunning = true
         #expect(c.canTakeScreenshot && c.canStartRecording && c.canToggleRecording)
-        c.isRunning = false; c.isPaused = true
-        #expect(c.canTakeScreenshot && !c.canStartRecording && !c.canToggleRecording, "a paused screen can be shot, not recorded")
+        c.isRunning = false
+        c.isPaused = true
+        #expect(
+            c.canTakeScreenshot && !c.canStartRecording && !c.canToggleRecording,
+            "a paused screen can be shot, not recorded"
+        )
         c.isSleeping = true
         #expect(!c.canTakeScreenshot && !c.canToggleRecording)
         c.recordingCanStop = true
         #expect(c.canToggleRecording, "stopping must remain available when the guest stops")
         c.recordingSaving = true
         #expect(!c.canToggleRecording)
-        c.recordingSaving = false; c.recordingCanStop = false; c.recordingNeedsRecovery = true
+        c.recordingSaving = false
+        c.recordingCanStop = false
+        c.recordingNeedsRecovery = true
         #expect(c.canToggleRecording, "recovery must remain available offline")
-        c = CaptureAvailability(); c.isRunning = true; c.screenshotBusy = true
+        c = CaptureAvailability()
+        c.isRunning = true
+        c.screenshotBusy = true
         #expect(!c.canTakeScreenshot && !c.canStartRecording && !c.canToggleRecording)
         #expect(!CaptureAvailability().canTakeScreenshot, "no device")
     }

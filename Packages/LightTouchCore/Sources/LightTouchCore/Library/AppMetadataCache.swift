@@ -19,12 +19,12 @@ public final class AppMetadataCache {
     /// The cache everything uses; a test swaps in one kept in a temporary directory.
     public static var shared: AppMetadataCache { testing ?? standard }
     static var testing: AppMetadataCache?
-    
+
     private struct Entry: Codable {
         public let name: String
         public let hasIcon: Bool
     }
-    
+
     private let dir: URL
     private var entries: [String: Entry] = [:]
     /// Decoded icons (the app's NSImages, AppMetadataCache+Icons), so the sidebar's `viewFor:` doesn't hit the
@@ -33,40 +33,51 @@ public final class AppMetadataCache {
     public let iconMemo = NSCache<NSString, AnyObject>()
 
     private convenience init() {
-        self.init(directory: StorageLocations.appMetadataDirectory(
-            state: Bundled.stateDirectory,
-            caches: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0],
-            isolated: ProcessInfo.processInfo.environment["LTM_STATE_DIR"] != nil))
+        self.init(
+            directory: StorageLocations.appMetadataDirectory(
+                state: Bundled.stateDirectory,
+                caches: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0],
+                isolated: ProcessInfo.processInfo.environment["LTM_STATE_DIR"] != nil
+            )
+        )
     }
 
     /// The cache kept in `directory` (index.plist and one <bundle id>.png per icon).
     init(directory: URL) {
         dir = directory
-        entries = (try? PropertyListFile.read([String: Entry].self, from: indexURL,
-                                              legacyJSON: dir.appendingPathComponent("index.json"), format: .binary)) ?? [:]
+        entries =
+            (try? PropertyListFile.read(
+                [String: Entry].self,
+                from: indexURL,
+                legacyJSON: dir.appendingPathComponent("index.json"),
+                format: .binary
+            )) ?? [:]
         #if DEBUG
-        Self.selfCheck()
+            Self.selfCheck()
         #endif
     }
 
     #if DEBUG
-    /// The member-picking rules are the whole reason names and icons went
-    /// missing, so they assert against the shapes that broke them.
-    public static func selfCheck() {
-        let members = [
-            "Payload/Super Monkey Ball [SEGA].app/Info.plist",
-            "Payload/Super Monkey Ball [SEGA].app/Icon.png",
-            "Payload/Super Monkey Ball [SEGA].app/Icon@2x.png",
-            "Payload/Super Monkey Ball [SEGA].app/Settings.bundle/Nested.app/Info.plist",
-            "Payload/Super Monkey Ball [SEGA].app/Frameworks/Foo.framework/Icon.png",
-        ]
-        let root = IPAMembers.appRoot(members)
-        assert(root == "Payload/Super Monkey Ball [SEGA].app/", "nested .app won: \(root ?? "nil")")
-        assert(IPAMembers.iconMember(members, root: root!, info: [:]) == "\(root!)Icon@2x.png")
-        assert(IPAMembers.iconMember(members, root: root!, info: ["CFBundleIconFile": "Icon.png"]) == "\(root!)Icon@2x.png")
-    }
+        /// The member-picking rules are the whole reason names and icons went
+        /// missing, so they assert against the shapes that broke them.
+        public static func selfCheck() {
+            let members = [
+                "Payload/Super Monkey Ball [SEGA].app/Info.plist",
+                "Payload/Super Monkey Ball [SEGA].app/Icon.png",
+                "Payload/Super Monkey Ball [SEGA].app/Icon@2x.png",
+                "Payload/Super Monkey Ball [SEGA].app/Settings.bundle/Nested.app/Info.plist",
+                "Payload/Super Monkey Ball [SEGA].app/Frameworks/Foo.framework/Icon.png",
+            ]
+            let root = IPAMembers.appRoot(members)
+            assert(root == "Payload/Super Monkey Ball [SEGA].app/", "nested .app won: \(root ?? "nil")")
+            assert(IPAMembers.iconMember(members, root: root!, info: [:]) == "\(root!)Icon@2x.png")
+            assert(
+                IPAMembers.iconMember(members, root: root!, info: ["CFBundleIconFile": "Icon.png"])
+                    == "\(root!)Icon@2x.png"
+            )
+        }
     #endif
-    
+
     /// A binary property list; earlier builds kept index.json, converted on the first read.
     private var indexURL: URL { dir.appendingPathComponent("index.plist") }
     public func iconURL(_ bundleID: String) -> URL { dir.appendingPathComponent("\(bundleID).png") }
@@ -81,7 +92,7 @@ public final class AppMetadataCache {
     private static func isSafeBundleID(_ id: String) -> Bool {
         !id.isEmpty && !id.hasPrefix(".") && !id.contains("/") && !id.contains(":") && !id.contains("\0")
     }
-    
+
     /// nil if we never learned this bundle ID.
     ///
     /// Entries used to also carry the version and be discarded when it didn't
@@ -102,7 +113,7 @@ public final class AppMetadataCache {
         try? FileManager.default.removeItem(at: iconURL(bundleID))
         save()
     }
-    
+
     // There is deliberately no prune-against-the-live-list. It existed, and it
     // was what threw the name and icon away moments after learning them: the
     // sidebar polls every 3 s, an install takes far longer than that, and the
@@ -120,11 +131,13 @@ public final class AppMetadataCache {
     public func preview(of ipa: URL) async -> (name: String, bundleID: String)? {
         let members = await Self.members(ipa)
         guard let root = IPAMembers.appRoot(members),
-              let plist = try? await Self.unzip(ipa, member: root + "Info.plist"),
-              let info = try? PropertyListSerialization.propertyList(from: plist, format: nil) as? [String: Any],
-              let bundleID = info["CFBundleIdentifier"] as? String,
-              Self.isSafeBundleID(bundleID) else { return nil }
-        let name = (info["CFBundleDisplayName"] as? String)
+            let plist = try? await Self.unzip(ipa, member: root + "Info.plist"),
+            let info = try? PropertyListSerialization.propertyList(from: plist, format: nil) as? [String: Any],
+            let bundleID = info["CFBundleIdentifier"] as? String,
+            Self.isSafeBundleID(bundleID)
+        else { return nil }
+        let name =
+            (info["CFBundleDisplayName"] as? String)
             ?? (info["CFBundleName"] as? String)
             ?? ipa.deletingPathExtension().lastPathComponent
         return (name, bundleID)
@@ -134,16 +147,19 @@ public final class AppMetadataCache {
     public func learn(from ipa: URL) async -> String? {
         let members = await Self.members(ipa)
         guard let root = IPAMembers.appRoot(members),
-              let plist = try? await Self.unzip(ipa, member: root + "Info.plist"),
-              let info = try? PropertyListSerialization.propertyList(from: plist, format: nil) as? [String: Any],
-              let bundleID = info["CFBundleIdentifier"] as? String,
-              Self.isSafeBundleID(bundleID) else { return nil }
-        let name = (info["CFBundleDisplayName"] as? String)
-        ?? (info["CFBundleName"] as? String)
-        ?? ipa.deletingPathExtension().lastPathComponent
+            let plist = try? await Self.unzip(ipa, member: root + "Info.plist"),
+            let info = try? PropertyListSerialization.propertyList(from: plist, format: nil) as? [String: Any],
+            let bundleID = info["CFBundleIdentifier"] as? String,
+            Self.isSafeBundleID(bundleID)
+        else { return nil }
+        let name =
+            (info["CFBundleDisplayName"] as? String)
+            ?? (info["CFBundleName"] as? String)
+            ?? ipa.deletingPathExtension().lastPathComponent
         var hasIcon = false
         if let member = IPAMembers.iconMember(members, root: root, info: info),
-           let data = try? await Self.unzip(ipa, member: member) {
+            let data = try? await Self.unzip(ipa, member: member)
+        {
             hasIcon = (try? StorageLocations.writeCacheData(data, to: iconURL(bundleID))) != nil
             // A reinstall may ship a new icon; drop any decoded copy of the old.
             iconMemo.removeObject(forKey: bundleID as NSString)
@@ -152,7 +168,7 @@ public final class AppMetadataCache {
         save()
         return name
     }
-    
+
     /// The app's CFBundleIdentifier, for keying the install placeholder. Same
     /// Info.plist read the rest of the pre-flight already does — keying on the
     /// .ipa's filename instead meant the same app dropped from two differently
@@ -160,8 +176,8 @@ public final class AppMetadataCache {
     public static func bundleID(of ipa: URL) async -> String? {
         let members = await Self.members(ipa)
         guard let root = IPAMembers.appRoot(members),
-              let data = try? await Self.unzip(ipa, member: root + "Info.plist"),
-              let info = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+            let data = try? await Self.unzip(ipa, member: root + "Info.plist"),
+            let info = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
         else { return nil }
         guard let id = info["CFBundleIdentifier"] as? String, isSafeBundleID(id) else { return nil }
         return id
@@ -173,9 +189,10 @@ public final class AppMetadataCache {
     public static func executableMember(of ipa: URL) async -> String? {
         let members = await Self.members(ipa)
         guard let root = IPAMembers.appRoot(members),
-              let data = try? await Self.unzip(ipa, member: root + "Info.plist"),
-              let info = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
-              let exe = info["CFBundleExecutable"] as? String else { return nil }
+            let data = try? await Self.unzip(ipa, member: root + "Info.plist"),
+            let info = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+            let exe = info["CFBundleExecutable"] as? String
+        else { return nil }
         return root + exe
     }
 
@@ -184,7 +201,8 @@ public final class AppMetadataCache {
     public static func info(of ipa: URL) async -> [String: Any]? {
         let members = await Self.members(ipa)
         guard let root = IPAMembers.appRoot(members),
-              let data = try? await Self.unzip(ipa, member: root + "Info.plist") else { return nil }
+            let data = try? await Self.unzip(ipa, member: root + "Info.plist")
+        else { return nil }
         return try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
     }
 
@@ -199,7 +217,7 @@ public final class AppMetadataCache {
         guard let data = try? PropertyListFile.data(entries, format: .binary) else { return }
         try? StorageLocations.writeCacheData(data, to: indexURL)
     }
-    
+
     // MARK: - .ipa reading (Payload/<something>.app is the app bundle)
     //
     // Every member is looked up in the archive's own listing and then read by its exact name (ZipMembers), so a
@@ -212,7 +230,9 @@ public final class AppMetadataCache {
     }
 
     @concurrent nonisolated private static func unzip(_ ipa: URL, member: String) async throws -> Data {
-        guard let data = ZipMembers.data(ipa, member) else { throw DeviceToolsError.failed("no such member: \(member)") }
+        guard let data = ZipMembers.data(ipa, member) else {
+            throw DeviceToolsError.failed("no such member: \(member)")
+        }
         return data
     }
 }

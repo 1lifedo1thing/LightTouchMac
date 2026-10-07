@@ -3,8 +3,8 @@
 // Only stable builds show until Show experimental is on (remembered).
 // A sheet, not a window: it belongs to the one main window and is done before the user goes on (HIG, Sheets).
 
-import LightTouchCore
 import HostRuntime
+import LightTouchCore
 import SwiftUI
 
 struct AddDeviceView: View {
@@ -23,16 +23,26 @@ struct AddDeviceView: View {
     @State private var selection: Set<String>
     @AppStorage("addDeviceShowsExperimental") private var showsExperimental = false
 
-    init(catalog: FirmwareCatalog, added: Set<String>, downloaded: Set<String>, selection: Set<String> = [],
-         onAdd: @escaping ([String]) -> Void, onCancel: @escaping () -> Void) {
+    init(
+        catalog: FirmwareCatalog,
+        added: Set<String>,
+        downloaded: Set<String>,
+        selection: Set<String> = [],
+        onAdd: @escaping ([String]) -> Void,
+        onCancel: @escaping () -> Void
+    ) {
         var boards: [String] = []
         for entry in catalog.entries where !boards.contains(entry.board) { boards.append(entry.board) }
         groups = boards.map { board in
             let entries = catalog.entries.filter { $0.board == board }
             let profile = entries[0].profile
-            return Group(id: board, name: profile?.marketingName ?? entries[0].productType,
-                         icon: profile?.icon ?? Board.icon(modelCode: entries[0].productType, fallbackSymbol: "questionmark.square.dashed"),
-                         entries: entries)
+            return Group(
+                id: board,
+                name: profile?.marketingName ?? entries[0].productType,
+                icon: profile?.icon
+                    ?? Board.icon(modelCode: entries[0].productType, fallbackSymbol: "questionmark.square.dashed"),
+                entries: entries
+            )
         }
         self.added = added
         self.downloaded = downloaded
@@ -48,10 +58,12 @@ struct AddDeviceView: View {
 
     /// `groups` with only their stable builds unless `experimental`; a device left with none goes.
     static func shown(_ groups: [Group], experimental: Bool) -> [Group] {
-        experimental ? groups : groups.compactMap { group in
-            let entries = group.entries.filter(isStable)
-            return entries.isEmpty ? nil : Group(id: group.id, name: group.name, icon: group.icon, entries: entries)
-        }
+        experimental
+            ? groups
+            : groups.compactMap { group in
+                let entries = group.entries.filter(isStable)
+                return entries.isEmpty ? nil : Group(id: group.id, name: group.name, icon: group.icon, entries: entries)
+            }
     }
     private var shownGroups: [Group] { Self.shown(groups, experimental: showsExperimental) }
 
@@ -66,8 +78,12 @@ struct AddDeviceView: View {
                 ForEach(shownGroups) { group in
                     Section {
                         ForEach(group.entries) { entry in
-                            AddDeviceRow(entry: entry, added: added.contains(entry.id), downloaded: downloaded.contains(entry.id))
-                                .selectionDisabled(added.contains(entry.id))
+                            AddDeviceRow(
+                                entry: entry,
+                                added: added.contains(entry.id),
+                                downloaded: downloaded.contains(entry.id)
+                            )
+                            .selectionDisabled(added.contains(entry.id))
                         }
                     } header: {
                         Label {
@@ -78,10 +94,14 @@ struct AddDeviceView: View {
                     }
                 }
             }
-            .contextMenu(forSelectionType: String.self, menu: { _ in }, primaryAction: { ids in
-                let ids = ids.filter { !added.contains($0) }
-                if !ids.isEmpty { onAdd(shownGroups.flatMap(\.entries).map(\.id).filter(ids.contains)) }
-            })
+            .contextMenu(
+                forSelectionType: String.self,
+                menu: { _ in },
+                primaryAction: { ids in
+                    let ids = ids.filter { !added.contains($0) }
+                    if !ids.isEmpty { onAdd(shownGroups.flatMap(\.entries).map(\.id).filter(ids.contains)) }
+                }
+            )
             Divider()
             HStack {
                 Toggle("Show experimental", isOn: $showsExperimental)
@@ -141,9 +161,14 @@ struct AddDeviceRow: View {
                 .opacity(downloaded ? 0 : 1)
                 .frame(width: 16)
         }
-        .help("\(entry.marketingName) · iOS \(entry.version) (\(entry.build))\n" + (downloaded ? "Downloaded" : "Not downloaded"))
+        .help(
+            "\(entry.marketingName) · iOS \(entry.version) (\(entry.build))\n"
+                + (downloaded ? "Downloaded" : "Not downloaded")
+        )
         .accessibilityElement(children: .combine)
-        .accessibilityValue([status, downloaded ? "Downloaded" : "Not downloaded", added ? "In the sidebar" : nil]
-            .compactMap { $0 }.joined(separator: ", "))
+        .accessibilityValue(
+            [status, downloaded ? "Downloaded" : "Not downloaded", added ? "In the sidebar" : nil]
+                .compactMap { $0 }.joined(separator: ", ")
+        )
     }
 }

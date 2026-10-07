@@ -8,8 +8,12 @@ import HostServiceWire
 extension IMobileDevice {
     /// AFC through lockdown's StartService, each step's error kept (IMobileDevice.startService).
     nonisolated static func startAFC(device: OpaquePointer) throws -> OpaquePointer {
-        try startService("com.apple.afc", device: device, newClient: { afc_client_new($0, $1, $2) },
-                         freeClient: { afc_client_free($0) }) { DeviceError.afc(.init(code: $0)) }
+        try startService(
+            "com.apple.afc",
+            device: device,
+            newClient: { afc_client_new($0, $1, $2) },
+            freeClient: { afc_client_free($0) }
+        ) { DeviceError.afc(.init(code: $0)) }
     }
 }
 
@@ -39,8 +43,13 @@ extension DeviceServices {
 
     /// Callers supply a validated relative destination. The same chunked AFC
     /// upload, cancellation and incomplete-file cleanup serve apps and songs.
-    func stageFile(_ ipa: URL, remote: String, reuseIdentical: Bool = false, allowEmpty: Bool = false,
-                           progress: @escaping @Sendable (Double) -> Void) async throws -> String {
+    func stageFile(
+        _ ipa: URL,
+        remote: String,
+        reuseIdentical: Bool = false,
+        allowEmpty: Bool = false,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> String {
         return try await run(Timeouts.stage, "upload") { device in
             // File I/O stays on the detached worker, including opening the file.
             let input = try FileHandle(forReadingFrom: ipa)
@@ -63,15 +72,21 @@ extension DeviceServices {
                             var count: UInt32 = 0
                             let rc = afc_file_read(client, existing, &buffer, UInt32(chunk.count - offset), &count)
                             guard rc.ok, count > 0, count <= chunk.count - offset,
-                                  Data(bytes: buffer, count: Int(count)) == chunk.subdata(in: offset..<(offset + Int(count))) else {
-                                throw DeviceError.preflight("An existing media file differs from this import. It was kept unchanged.")
+                                Data(bytes: buffer, count: Int(count))
+                                    == chunk.subdata(in: offset..<(offset + Int(count)))
+                            else {
+                                throw DeviceError.preflight(
+                                    "An existing media file differs from this import. It was kept unchanged."
+                                )
                             }
                             offset += Int(count)
                         }
                     }
                     var count: UInt32 = 0
                     guard afc_file_read(client, existing, &buffer, 1, &count).ok, count == 0 else {
-                        throw DeviceError.preflight("An existing media file differs from this import. It was kept unchanged.")
+                        throw DeviceError.preflight(
+                            "An existing media file differs from this import. It was kept unchanged."
+                        )
                     }
                     progress(1)
                     return remote
@@ -80,7 +95,8 @@ extension DeviceServices {
             }
             // Publish complete media only. Interrupted uploads never truncate a
             // library file or leave a partial file at its content-derived path.
-            let destination = reuseIdentical ? remote + ".upload-" + Self.stagingSession + "-" + UUID().uuidString : remote
+            let destination =
+                reuseIdentical ? remote + ".upload-" + Self.stagingSession + "-" + UUID().uuidString : remote
             var parent = ""
             for component in remote.split(separator: "/").dropLast() {
                 parent = parent.isEmpty ? String(component) : parent + "/" + component
@@ -99,7 +115,8 @@ extension DeviceServices {
             while written < total {
                 try Task.checkCancellation()
                 guard let chunk = try input.read(upToCount: Int(min(1 << 16, total - written))),
-                      !chunk.isEmpty else { throw DeviceError.preflight("The file changed during upload.") }
+                    !chunk.isEmpty
+                else { throw DeviceError.preflight("The file changed during upload.") }
                 try chunk.withUnsafeBytes { raw in
                     let base = raw.bindMemory(to: CChar.self).baseAddress!
                     var offset = 0
@@ -139,8 +156,12 @@ extension DeviceServices {
                 var list: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
                 guard afc_read_directory(client, path, &list).ok, let list else { return [] }
                 defer { _ = afc_dictionary_free(list) }
-                var names: [String] = [], i = 0
-                while let entry = list[i] { names.append(String(cString: entry)); i += 1 }
+                var names: [String] = []
+                var i = 0
+                while let entry = list[i] {
+                    names.append(String(cString: entry))
+                    i += 1
+                }
                 return names
             }
             for name in entries("PublicStaging") {
@@ -169,7 +190,6 @@ extension DeviceServices {
         }
     }
 }
-
 
 extension DeviceServices {
     func files(in path: String) async throws -> [DeviceFile] {
@@ -205,10 +225,15 @@ extension DeviceServices {
                     metadata[String(cString: key)] = String(cString: value)
                     j += 2
                 }
-                entries.append(DeviceFile(name: name, path: child,
-                    isDirectory: metadata["st_ifmt"] == "S_IFDIR",
-                    isRegular: metadata["st_ifmt"] == "S_IFREG",
-                    size: UInt64(metadata["st_size"] ?? "") ?? 0))
+                entries.append(
+                    DeviceFile(
+                        name: name,
+                        path: child,
+                        isDirectory: metadata["st_ifmt"] == "S_IFDIR",
+                        isRegular: metadata["st_ifmt"] == "S_IFREG",
+                        size: UInt64(metadata["st_size"] ?? "") ?? 0
+                    )
+                )
             }
             return entries.sorted {
                 if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
@@ -218,8 +243,11 @@ extension DeviceServices {
     }
 
     /// Save to a private adjacent file, then publish only a completed transfer.
-    func download(_ file: DeviceFile, to destination: URL,
-                  progress: @escaping @Sendable (Double) -> Void) async throws {
+    func download(
+        _ file: DeviceFile,
+        to destination: URL,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws {
         try Self.validateFilePath(file.path)
         guard file.isRegular, !file.path.isEmpty else {
             throw DeviceError.preflight("Select a regular file to export.")
@@ -231,11 +259,16 @@ extension DeviceServices {
             let opened = afc_file_open(client, file.path, AFC_FOPEN_RDONLY, &handle)
             guard opened.ok else { throw DeviceError.afc(.init(code: opened.code)) }
             defer { _ = afc_file_close(client, handle) }
-            let temporary = destination.deletingLastPathComponent().appendingPathComponent(".LightTouch-" + UUID().uuidString)
+            let temporary = destination.deletingLastPathComponent().appendingPathComponent(
+                ".LightTouch-" + UUID().uuidString
+            )
             let fd = temporary.path.withCString { Darwin.open($0, O_WRONLY | O_CREAT | O_EXCL, 0o600) }
             guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             let output = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-            defer { try? output.close(); try? FileManager.default.removeItem(at: temporary) }
+            defer {
+                try? output.close()
+                try? FileManager.default.removeItem(at: temporary)
+            }
             var buffer = [CChar](repeating: 0, count: 65536)
             var received: UInt64 = 0
             while true {

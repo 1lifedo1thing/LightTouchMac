@@ -1,4 +1,7 @@
+import CryptoKit
+import Foundation
 import HostRuntime
+
 // One IPSW → device preparation: runs `firmwarekit create` into
 // State/Preparing/<id>/, reads its JSON Lines, and publishes the result as
 // Devices/<id>/base plus device.plist.
@@ -10,12 +13,19 @@ import HostRuntime
 // and appears in Devices/ with one rename, so a failure never leaves a half
 // device and never touches a published one.
 
-import CryptoKit
-import Foundation
-
 public nonisolated final class PreparationJob: @unchecked Sendable {
     public struct Request: Sendable {
-        public init(entry: FirmwareCatalog.Entry, ipsw: URL, sibling: (entry: FirmwareCatalog.Entry, ipsw: URL)? = nil, state: URL, preparer: URL, helper: URL, cache: URL, log: URL, blob: URL? = nil) {
+        public init(
+            entry: FirmwareCatalog.Entry,
+            ipsw: URL,
+            sibling: (entry: FirmwareCatalog.Entry, ipsw: URL)? = nil,
+            state: URL,
+            preparer: URL,
+            helper: URL,
+            cache: URL,
+            log: URL,
+            blob: URL? = nil
+        ) {
             self.entry = entry
             self.ipsw = ipsw
             self.sibling = sibling
@@ -67,20 +77,28 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
 
         public init?(_ text: some StringProtocol) {
             guard let data = text.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let event = object["event"] as? String else { return nil }
+                let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let event = object["event"] as? String
+            else { return nil }
             let int = { (key: String) in (object[key] as? NSNumber)?.intValue }
             switch event {
-            case "begin": guard let steps = int("steps") else { return nil }
+            case "begin":
+                guard let steps = int("steps") else { return nil }
                 self = .begin(steps: steps, seconds: (object["seconds"] as? [NSNumber])?.map(\.doubleValue) ?? [])
-            case "step": guard let index = int("index") else { return nil }
+            case "step":
+                guard let index = int("index") else { return nil }
                 self = .step(index: index, name: object["name"] as? String ?? "")
-            case "progress": guard let fraction = (object["fraction"] as? NSNumber)?.doubleValue else { return nil }
+            case "progress":
+                guard let fraction = (object["fraction"] as? NSNumber)?.doubleValue else { return nil }
                 self = .progress(fraction, detail: object["detail"] as? String)
             case "warning": self = .warning(object["message"] as? String ?? "")
             case "done": self = .done(lock: object["lock"] as? String ?? "device.lock.json")
-            case "error": self = .error(code: object["code"] as? String ?? "internal", message: object["message"] as? String ?? "",
-                                        piece: object["piece"] as? String)
+            case "error":
+                self = .error(
+                    code: object["code"] as? String ?? "internal",
+                    message: object["message"] as? String ?? "",
+                    piece: object["piece"] as? String
+                )
             default: return nil
             }
         }
@@ -104,9 +122,11 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
     /// A fit check's piece (FirmwareKit's FitCheck names) in the user's words.
     public static func unsupportedReason(_ piece: String) -> String {
         if piece.hasPrefix("OpenGLES") { return "its graphics library isn’t supported" }
-        if piece.hasPrefix("kernelcache") || piece.hasPrefix("boot-arg") || piece.hasPrefix("DeviceTree") { return "the way it starts up isn’t supported" }
+        if piece.hasPrefix("kernelcache") || piece.hasPrefix("boot-arg") || piece.hasPrefix("DeviceTree") {
+            return "the way it starts up isn’t supported"
+        }
         if piece.localizedCaseInsensitiveContains("appsync") { return "installing apps on it isn’t supported" }
-        return "the guest tools don’t run on it"   // it_boot, the guest package's pieces, the helpers
+        return "the guest tools don’t run on it"  // it_boot, the guest package's pieces, the helpers
     }
 
     public let id = UUID()
@@ -120,7 +140,9 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
 
     public var staging: URL { Self.preparing(request.state).appendingPathComponent(id.uuidString, isDirectory: true) }
     private var entryFile: URL { Self.preparing(request.state).appendingPathComponent("\(id.uuidString).entry.json") }
-    private var siblingFile: URL { Self.preparing(request.state).appendingPathComponent("\(id.uuidString).sibling.json") }
+    private var siblingFile: URL {
+        Self.preparing(request.state).appendingPathComponent("\(id.uuidString).sibling.json")
+    }
     public static func preparing(_ state: URL) -> URL { state.appendingPathComponent("Preparing", isDirectory: true) }
 
     /// Events arrive on a background queue, `.published`, `.failed` or `.cancelled` last.
@@ -137,10 +159,14 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
             try StorageLocations.privateDirectory(request.log.deletingLastPathComponent())
             FileManager.default.createFile(atPath: request.log.path, contents: nil)
             process.executableURL = request.preparer
-            process.arguments = ["create", "--entry", entryFile.path, "--ipsw", request.ipsw.path, "--out", staging.path,
-                                 "--seed", id.uuidString, "--helper", request.helper.path, "--cache", request.cache.path]
+            process.arguments = [
+                "create", "--entry", entryFile.path, "--ipsw", request.ipsw.path, "--out", staging.path,
+                "--seed", id.uuidString, "--helper", request.helper.path, "--cache", request.cache.path,
+            ]
             if let blob = request.blob {
-                process.arguments = ["unpack-base", "--blob", blob.path, "--out", staging.path, "--seed", id.uuidString]
+                process.arguments = [
+                    "unpack-base", "--blob", blob.path, "--out", staging.path, "--seed", id.uuidString,
+                ]
             } else if let sibling = request.sibling {
                 try JSONEncoder().encode(sibling.entry).write(to: siblingFile)
                 process.arguments! += ["--sibling-entry", siblingFile.path, "--sibling-ipsw", sibling.ipsw.path]
@@ -183,13 +209,16 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
         let status = process.terminationStatus
         if lock.withLock({ cancelled }) { return finish(.cancelled) }
         switch lock.withLock({ outcome }) {
-        case let .done(lockName)? where status == 0:
-            do { finish(.published(try publish(lock: lockName))) }
-            catch { finish(.failed("Couldn’t save the prepared device: \(error.localizedDescription)")) }
-        case let .error(code, detail, piece)?:
+        case .done(let lockName)? where status == 0:
+            do { finish(.published(try publish(lock: lockName))) } catch {
+                finish(.failed("Couldn’t save the prepared device: \(error.localizedDescription)"))
+            }
+        case .error(let code, let detail, let piece)?:
             // A cached or imported IPSW that fails its SHA is never used again.
             if code == "sha_mismatch" { try? FileManager.default.removeItem(at: request.ipsw) }
-            finish(.failed(Self.message(code: code, detail: detail, piece: piece, beta: request.entry.prerelease != nil)))
+            finish(
+                .failed(Self.message(code: code, detail: detail, piece: piece, beta: request.entry.prerelease != nil))
+            )
         default:
             logEvent("firmware: firmwarekit exited \(status) without a result")
             finish(.failed("Preparation stopped unexpectedly."))
@@ -198,13 +227,13 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
 
     private func receive(_ line: Line?) {
         switch line {
-        case let .begin(count, seconds)?:
+        case .begin(let count, let seconds)?:
             lock.withLock { steps = count }
             onEvent(.begin(seconds: seconds))
-        case let .step(index, name)?: onEvent(.step(index, of: lock.withLock { steps }, name: name))
-        case let .warning(message)?: onEvent(.warning(message))
+        case .step(let index, let name)?: onEvent(.step(index, of: lock.withLock { steps }, name: name))
+        case .warning(let message)?: onEvent(.warning(message))
         case .done?, .error?: lock.withLock { if outcome == nil { outcome = line } }
-        case let .progress(fraction, detail)?: onEvent(.progress(fraction, detail: detail))
+        case .progress(let fraction, let detail)?: onEvent(.progress(fraction, detail: detail))
         case nil: break
         }
     }
@@ -232,7 +261,9 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
             detach.standardOutput = FileHandle.nullDevice
             if (try? detach.run()) != nil {
                 detach.waitUntilExit()
-                if detach.terminationStatus != 0 { logEvent("firmware: detach-images exited \(detach.terminationStatus)") }
+                if detach.terminationStatus != 0 {
+                    logEvent("firmware: detach-images exited \(detach.terminationStatus)")
+                }
             }
         }
         for name in names { try? DeviceStateStorage.removeTree(preparing.appendingPathComponent(name)) }
@@ -248,31 +279,50 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
     /// directory renamed to base) and renames it to Devices/<id> in one
     /// step. Any failure before that rename leaves Devices/ untouched. Also
     /// a development base's record (`staging` absolute, kept in place: `keep`).
-    public static func publish(staging: URL, entry: FirmwareCatalog.Entry, id: UUID, state: URL,
-                        lock lockName: String = "device.lock.json", keep: Bool = false) throws -> DeviceInstance {
+    public static func publish(
+        staging: URL,
+        entry: FirmwareCatalog.Entry,
+        id: UUID,
+        state: URL,
+        lock lockName: String = "device.lock.json",
+        keep: Bool = false
+    ) throws -> DeviceInstance {
         let fm = FileManager.default
         let profile = entry.profile ?? .k48
         let lockURL = staging.appendingPathComponent(lockName)
         let lock = try DeviceLock.read(lockURL)
         let boot = try profile.requiredFiles(strategy: lock?.bootStrategy)
         for name in [boot.boot, "nand", "identity.json", lockName] + boot.files
-            where !fm.fileExists(atPath: staging.appendingPathComponent(name).path) {
+        where !fm.fileExists(atPath: staging.appendingPathComponent(name).path) {
             throw FirmwareError.failed("The prepared device is incomplete (\(name) is missing).")
         }
         let lockData = try Data(contentsOf: lockURL)
-        let identity = identity(identityJSON: try? Data(contentsOf: staging.appendingPathComponent("identity.json")),
-                                lock: lock, seed: id.uuidString)
+        let identity = identity(
+            identityJSON: try? Data(contentsOf: staging.appendingPathComponent("identity.json")),
+            lock: lock,
+            seed: id.uuidString
+        )
         let directory = DeviceInstance.directory(id, state: state)
         let relative = "Devices/\(id.uuidString)"
         let base = keep ? staging.path : "\(relative)/base"
         let instance = DeviceInstance(
-            id: id, name: entry.marketingName, board: entry.board, firmware: entry.id,
-            created: DeviceInstance.now, base: .init(kind: .prepared, path: base),
-            storage: .init(key: String(sha256(lockData).prefix(16)), overlay: "\(relative)/overlay",
-                           writableNOR: fm.fileExists(atPath: staging.appendingPathComponent("nor.bin").path)
-                               ? "\(relative)/nor.bin" : nil,
-                           snapshot: "\(relative)/snapshot", usbmuxConf: "\(relative)/usbmuxd-conf"),
-            identity: identity, provenance: .init(lock: "\(base)/\(lockName)", sha256: sha256(lockData)))
+            id: id,
+            name: entry.marketingName,
+            board: entry.board,
+            firmware: entry.id,
+            created: DeviceInstance.now,
+            base: .init(kind: .prepared, path: base),
+            storage: .init(
+                key: String(sha256(lockData).prefix(16)),
+                overlay: "\(relative)/overlay",
+                writableNOR: fm.fileExists(atPath: staging.appendingPathComponent("nor.bin").path)
+                    ? "\(relative)/nor.bin" : nil,
+                snapshot: "\(relative)/snapshot",
+                usbmuxConf: "\(relative)/usbmuxd-conf"
+            ),
+            identity: identity,
+            provenance: .init(lock: "\(base)/\(lockName)", sha256: sha256(lockData))
+        )
         let publishing = preparing(state).appendingPathComponent("\(id.uuidString).publish", isDirectory: true)
         do {
             try StorageLocations.privateDirectory(publishing)
@@ -294,9 +344,12 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
         let file = identityJSON.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
         func dieID(_ value: Any?) -> String? { (value as? [String])?.joined(separator: ":") ?? value as? String }
         let locked = lock?.identity
-        return .init(seed: locked?["seed"]?.string ?? seed,
-                     udid: file["udid"] as? String ?? locked?["udid"]?.string,
-                     dieID: dieID(file["die-id"] ?? file["die_id"]) ?? locked?["die_id"].flatMap { $0.strings?.joined(separator: ":") ?? $0.string })
+        return .init(
+            seed: locked?["seed"]?.string ?? seed,
+            udid: file["udid"] as? String ?? locked?["udid"]?.string,
+            dieID: dieID(file["die-id"] ?? file["die_id"])
+                ?? locked?["die_id"].flatMap { $0.strings?.joined(separator: ":") ?? $0.string }
+        )
     }
 
     public static func sha256(_ data: Data) -> String {

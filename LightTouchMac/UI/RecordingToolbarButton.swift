@@ -36,21 +36,30 @@ final class RecordingToolbarButton: NSButton {
         let label: String
         let symbol: String
         switch phase {
-        case .idle: label = "Start Recording"; symbol = "record.circle"
-        case .recording: label = "Stop Recording"; symbol = "stop.circle.fill"
-        case .saving: label = "Saving Recording…"; symbol = "record.circle"
-        case .recovery: label = "Save Recording As…"; symbol = "exclamationmark.circle"
+        case .idle:
+            label = "Start Recording"
+            symbol = "record.circle"
+        case .recording:
+            label = "Stop Recording"
+            symbol = "stop.circle.fill"
+        case .saving:
+            label = "Saving Recording…"
+            symbol = "record.circle"
+        case .recovery:
+            label = "Save Recording As…"
+            symbol = "exclamationmark.circle"
         }
         title = phase == .recording ? elapsed : ""
-        image = phase == .saving ? NSImage(size: NSSize(width: 18, height: 18))
+        image =
+            phase == .saving
+            ? NSImage(size: NSSize(width: 18, height: 18))
             : NSImage(systemSymbolName: symbol, accessibilityDescription: label)
         contentTintColor = nil
         setAccessibilityLabel(label)
         setAccessibilityValue(phase == .recording ? elapsed : nil)
         toolTip = phase == .saving ? label : "\(label) (⌘R)"
         isEnabled = enabled
-        if phase == .saving { progress.startAnimation(nil) }
-        else { progress.stopAnimation(nil) }
+        if phase == .saving { progress.startAnimation(nil) } else { progress.stopAnimation(nil) }
         invalidateIntrinsicContentSize()
         sizeToFit()
     }

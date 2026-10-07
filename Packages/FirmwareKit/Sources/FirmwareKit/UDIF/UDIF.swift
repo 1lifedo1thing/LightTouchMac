@@ -15,7 +15,7 @@ public enum UDIF {
             try h.seek(toOffset: 1024)
             if let sig = try h.read(upToCount: 2), sig == Data("H+".utf8) || sig == Data("HX".utf8) {
                 try? fm.removeItem(at: out)
-                try fm.copyItem(at: src, to: out)   // clonefile on APFS
+                try fm.copyItem(at: src, to: out)  // clonefile on APFS
                 return
             }
         }
@@ -49,7 +49,9 @@ public enum APM {
         let r = [UInt8](raw)
         let be16 = { (o: Int) in Int(r[o]) << 8 | Int(r[o + 1]) }
         let be32 = { (o: Int) in Int(r[o]) << 24 | Int(r[o + 1]) << 16 | Int(r[o + 2]) << 8 | Int(r[o + 3]) }
-        guard r.count >= 4, r[0] == 0x45, r[1] == 0x52 else { throw FirmwareError(.unsupported, "not an Apple partition map") }
+        guard r.count >= 4, r[0] == 0x45, r[1] == 0x52 else {
+            throw FirmwareError(.unsupported, "not an Apple partition map")
+        }
         let bs = be16(2)
         guard bs > 0, r.count >= bs + 8 else { throw FirmwareError(.unsupported, "truncated Apple partition map") }
         let n = be32(bs + 4)

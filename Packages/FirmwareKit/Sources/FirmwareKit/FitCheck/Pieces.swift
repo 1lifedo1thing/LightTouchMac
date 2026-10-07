@@ -22,18 +22,34 @@ extension FitCheck {
     /// it_msmquiet fits when the mounter (`program`, the stock job's) raises the notice it recognizes: its binary
     /// names one of the notice's keys and imports one of the calls it interposes, and the dylib loads in it.
     public static func msmQuiet(_ fw: Firmware, program: String, dylib: Data) -> Fit {
-        let name = (program as NSString).lastPathComponent, piece = "it_msmquiet (\(name)'s USB \"not supported\" notice)"
+        let name = (program as NSString).lastPathComponent
+        let piece = "it_msmquiet (\(name)'s USB \"not supported\" notice)"
         guard let bin = fw.data(program), let m = MachO32.slice(bin, arch: fw.arch)?.image else {
             return Fit(piece, fits: false, "no \(program) on this firmware")
         }
-        let keys = msmKeys.filter { bin.range(of: cString($0)) != nil }, calls = msmCalls.filter(imports(m).contains)
+        let keys = msmKeys.filter { bin.range(of: cString($0)) != nil }
+        let calls = msmCalls.filter(imports(m).contains)
         guard !keys.isEmpty else {
-            return Fit(piece, fits: false, "\(name) names neither \(msmKeys.joined(separator: " nor ")): whatever raises this firmware's notice, it_msmquiet cannot recognize it")
+            return Fit(
+                piece,
+                fits: false,
+                "\(name) names neither \(msmKeys.joined(separator: " nor ")): whatever raises this firmware's notice, it_msmquiet cannot recognize it"
+            )
         }
-        guard !calls.isEmpty else { return Fit(piece, fits: false, "\(name) imports neither \(msmCalls.joined(separator: " nor ")), the calls it_msmquiet interposes") }
+        guard !calls.isEmpty else {
+            return Fit(
+                piece,
+                fits: false,
+                "\(name) imports neither \(msmCalls.joined(separator: " nor ")), the calls it_msmquiet interposes"
+            )
+        }
         let l = loads(piece, dylib, on: fw, host: program)
         guard l.fits else { return l }
-        return Fit(piece, fits: true, "\(name) raises \(keys.joined(separator: ", ")) through \(calls.map { String($0.dropFirst()) }.joined(separator: ", ")); \(l.proof)")
+        return Fit(
+            piece,
+            fits: true,
+            "\(name) raises \(keys.joined(separator: ", ")) through \(calls.map { String($0.dropFirst()) }.joined(separator: ", ")); \(l.proof)"
+        )
     }
 
     // MARK: USB Ethernet
@@ -43,13 +59,28 @@ extension FitCheck {
     /// it_ethlink sets.
     public static func usbEthernet(_ fw: Firmware, path: String) -> Fit {
         let piece = "USB Ethernet (it_ethlink, en1 pinned by IOPathMatch)"
-        guard let k = fw.kernelcache else { return Fit(piece, fits: false, "no decrypted kernelcache to check the classes against") }
-        let classes = path.split(separator: ":", maxSplits: 1).last.map(String.init)?.split(separator: "/")
+        guard let k = fw.kernelcache else {
+            return Fit(piece, fits: false, "no decrypted kernelcache to check the classes against")
+        }
+        let classes =
+            path.split(separator: ":", maxSplits: 1).last.map(String.init)?.split(separator: "/")
             .map { String($0.prefix { $0 != "@" }) }.filter { $0.first?.isUppercase == true } ?? []
         let missing = classes.filter { k.range(of: cString($0)) == nil }
         guard !classes.isEmpty else { return Fit(piece, fits: false, "no classes in \(path)") }
-        guard missing.isEmpty else { return Fit(piece, fits: false, "the kernel has no \(missing.joined(separator: ", ")), which the en1 IOPathMatch names") }
-        guard k.range(of: cString("LinkStatus")) != nil else { return Fit(piece, fits: false, "the kernel names no LinkStatus property (it_ethlink raises the link through it)") }
+        guard missing.isEmpty else {
+            return Fit(
+                piece,
+                fits: false,
+                "the kernel has no \(missing.joined(separator: ", ")), which the en1 IOPathMatch names"
+            )
+        }
+        guard k.range(of: cString("LinkStatus")) != nil else {
+            return Fit(
+                piece,
+                fits: false,
+                "the kernel names no LinkStatus property (it_ethlink raises the link through it)"
+            )
+        }
         return Fit(piece, fits: true, "the kernel has \(classes.joined(separator: ", ")) and names LinkStatus")
     }
 
@@ -57,16 +88,20 @@ extension FitCheck {
 
     /// it_prefs' settings (contrib/it-prefs SETTINGS): the key and the binary that reads it. The iPod build
     /// (IT_PREFS_TIP_ONLY), and the bake that stands in for it on 2.x/3.0, set only the first.
-    public static let itPrefs = [("SBDidShowReorderText", "System/Library/CoreServices/SpringBoard.app/SpringBoard"),
-                                 ("AppleLocationServer", "usr/libexec/locationd"), ("AppleLocationServerRequiresCert", "usr/libexec/locationd")]
+    public static let itPrefs = [
+        ("SBDidShowReorderText", "System/Library/CoreServices/SpringBoard.app/SpringBoard"),
+        ("AppleLocationServer", "usr/libexec/locationd"), ("AppleLocationServerRequiresCert", "usr/libexec/locationd"),
+    ]
 
     /// One Fit per setting: the reader names the key, by it_prefs' own rule (the key and its NUL anywhere in the
     /// file), so the prepare knows what it_prefs will set at boot instead of finding out on the guest console.
     public static func prefs(_ fw: Firmware, _ settings: [(String, String)]) -> [Fit] {
         settings.map { key, reader in
-            let piece = "it_prefs \(key)", name = (reader as NSString).lastPathComponent
+            let piece = "it_prefs \(key)"
+            let name = (reader as NSString).lastPathComponent
             guard fw.resolve(reader) != nil else { return Fit(piece, fits: false, "no \(reader) on this firmware") }
-            return fw.file(reader, contains: Data((key + "\0").utf8)) ? Fit(piece, fits: true, "\(name) names \(key)")
+            return fw.file(reader, contains: Data((key + "\0").utf8))
+                ? Fit(piece, fits: true, "\(name) names \(key)")
                 : Fit(piece, fits: false, "\(name) does not name \(key): the setting reaches nothing")
         }
     }
@@ -77,10 +112,12 @@ extension FitCheck {
 
     /// memmem over mapped bytes (the shared cache is hundreds of MB).
     static func contains(_ d: Data, _ needle: Data) -> Bool {
-        d.withUnsafeBytes { b in needle.withUnsafeBytes { n in
-            guard let base = b.baseAddress, let nb = n.baseAddress, b.count >= n.count else { return false }
-            return memmem(base, b.count, nb, n.count) != nil
-        } }
+        d.withUnsafeBytes { b in
+            needle.withUnsafeBytes { n in
+                guard let base = b.baseAddress, let nb = n.baseAddress, b.count >= n.count else { return false }
+                return memmem(base, b.count, nb, n.count) != nil
+            }
+        }
     }
 
     /// Every framework binary on the volume (<dir>/<Name>.framework/<Name>), the shared cache and SpringBoard: the images
@@ -89,7 +126,10 @@ extension FitCheck {
         var out: [(String, Data)] = []
         if let c = fw.cache { out.append(("the shared cache", c.data)) }
         for dir in frameworkDirs {
-            for f in ((try? FileManager.default.contentsOfDirectory(atPath: fw.root.appendingPathComponent(dir).path)) ?? []).sorted() where f.hasSuffix(".framework") {
+            for f
+                in ((try? FileManager.default.contentsOfDirectory(atPath: fw.root.appendingPathComponent(dir).path))
+                ?? []).sorted() where f.hasSuffix(".framework")
+            {
                 let rel = dir + "/" + f + "/" + f.dropLast(".framework".count)
                 if let d = fw.data(rel) { out.append(((rel as NSString).lastPathComponent, d)) }
             }
@@ -117,12 +157,19 @@ extension FitCheck {
     static func named(_ label: String, _ fw: Firmware, _ switches: [[String]], also: [(String, Data)] = []) -> Fit {
         let piece = "\(label) (\(switches.map { $0.joined(separator: "/") }.joined(separator: ", ")))"
         let images = readers(fw) + also
-        var read: [String] = [], unread: [String] = []
+        var read: [String] = []
+        var unread: [String] = []
         for names in switches {
             let hits = names.compactMap { n in images.first { contains($0.1, cString(n)) }.map { "\(n) by \($0.0)" } }
             if let first = hits.first { read.append(first) } else { unread.append(names.joined(separator: "/")) }
         }
-        guard unread.isEmpty else { return Fit(piece, fits: false, "nothing in this firmware reads \(unread.joined(separator: ", ")): the firmware's default decides") }
+        guard unread.isEmpty else {
+            return Fit(
+                piece,
+                fits: false,
+                "nothing in this firmware reads \(unread.joined(separator: ", ")): the firmware's default decides"
+            )
+        }
         return Fit(piece, fits: true, "read: " + read.joined(separator: "; "))
     }
 
@@ -141,7 +188,8 @@ extension FitCheck {
             let piece = "boot-arg \(name)"
             guard let kernel else { return Fit(piece, fits: false, "no decrypted kernelcache to check it against") }
             if contains(kernel, cString(name)) { return Fit(piece, fits: true, "read by the kernel") }
-            return amfiArgs.contains(name) ? Fit(piece, fits: false, "the kernel does not read it as a boot-arg")
+            return amfiArgs.contains(name)
+                ? Fit(piece, fits: false, "the kernel does not read it as a boot-arg")
                 : Fit(piece, fits: true, "not read by this kernel: no effect here")
         }
     }
@@ -151,13 +199,19 @@ extension FitCheck {
     public static func deviceTreeProperty(_ kernel: Data?, _ node: String, _ name: String) -> Fit {
         let piece = "DeviceTree \(node)/\(name)"
         guard let kernel else { return Fit(piece, fits: false, "no decrypted kernelcache to check it against") }
-        return contains(kernel, cString(name)) ? Fit(piece, fits: true, "read by the kernel") : Fit(piece, fits: true, "not read by this kernel: no effect here")
+        return contains(kernel, cString(name))
+            ? Fit(piece, fits: true, "read by the kernel")
+            : Fit(piece, fits: true, "not read by this kernel: no effect here")
     }
 
     /// bootArgs, recorded in `log`: amfi_allow_any_signature is required; an unread cs_enforcement_disable is a warning.
     static func checkBootArgs(_ log: Log, kernel: Data?, args: String) throws {
         for f in bootArgs(kernel, args) {
-            try log.check(f, required: requiredArgs.contains(String(f.piece.dropFirst("boot-arg ".count))), outcome: "kept: inert here")
+            try log.check(
+                f,
+                required: requiredArgs.contains(String(f.piece.dropFirst("boot-arg ".count))),
+                outcome: "kept: inert here"
+            )
         }
     }
 }
@@ -168,24 +222,43 @@ extension FitCheck {
     /// What libappsync hooks in its host (contrib/appsync appsync.c): it interposes libmis's signature checks (one of
     /// the two is the host's), and the two Security calls installd's verify_signer_identity makes on the signer
     /// certificate; it fills the info dict under the two libmis keys the host reads. Each group: alternatives.
-    static let appSyncCalls = [["_MISValidateSignatureAndCopyInfo", "_MISValidateSignature"], ["_SecCertificateCreateWithData"],
-                               ["_SecCertificateCopySubjectSummary"], ["_kMISValidationInfoSignerCertificate"], ["_kMISValidationInfoValidatedByProfile"]]
+    static let appSyncCalls = [
+        ["_MISValidateSignatureAndCopyInfo", "_MISValidateSignature"], ["_SecCertificateCreateWithData"],
+        ["_SecCertificateCopySubjectSummary"], ["_kMISValidationInfoSignerCertificate"],
+        ["_kMISValidationInfoValidatedByProfile"],
+    ]
 
     /// libappsync fits the installation service `host` when the host's process (it, and every image it links)
     /// imports what the dylib hooks (appSyncCalls), the dylib's getprogname gate names the host's program (the
     /// Security interposes act only there), and the dylib loads in it.
     public static func appSync(_ fw: Firmware, host: String, dylib: Data) -> Fit {
-        let name = (host as NSString).lastPathComponent, piece = "\(SystemEdits.Helpers.appsync) (in \(name))"
+        let name = (host as NSString).lastPathComponent
+        let piece = "\(SystemEdits.Helpers.appsync) (in \(name))"
         guard fw.resolve(host) != nil else { return Fit(piece, fits: false, "no \(host) on this firmware") }
         var why: [String] = []
-        if !contains(dylib, cString(name)) { why.append("its getprogname gate does not name \(name): the Security interposes would pass through there") }
-        let images = fw.loaded(host)
-        var hooked: [String] = [], unhooked: [String] = []
-        for group in appSyncCalls {
-            let hit = group.lazy.compactMap { s in images.first { fw.imports($0)?.contains(s) == true }.map { "\(s.dropFirst()) by \(($0 as NSString).lastPathComponent)" } }.first
-            if let hit { hooked.append(hit) } else { unhooked.append(group.map { String($0.dropFirst()) }.joined(separator: " or ")) }
+        if !contains(dylib, cString(name)) {
+            why.append("its getprogname gate does not name \(name): the Security interposes would pass through there")
         }
-        if !unhooked.isEmpty { why.append("nothing in \(name)'s process imports \(unhooked.joined(separator: ", ")), which the dylib hooks") }
+        let images = fw.loaded(host)
+        var hooked: [String] = []
+        var unhooked: [String] = []
+        for group in appSyncCalls {
+            let hit = group.lazy.compactMap { s in
+                images.first { fw.imports($0)?.contains(s) == true }.map {
+                    "\(s.dropFirst()) by \(($0 as NSString).lastPathComponent)"
+                }
+            }.first
+            if let hit {
+                hooked.append(hit)
+            } else {
+                unhooked.append(group.map { String($0.dropFirst()) }.joined(separator: " or "))
+            }
+        }
+        if !unhooked.isEmpty {
+            why.append(
+                "nothing in \(name)'s process imports \(unhooked.joined(separator: ", ")), which the dylib hooks"
+            )
+        }
         let l = loads(piece, dylib, on: fw, host: host)
         if !l.fits { why.append(l.proof) }
         guard why.isEmpty else { return Fit(piece, fits: false, why.joined(separator: "; ")) }
@@ -198,14 +271,26 @@ extension FitCheck {
     public static func appSyncLauncher(_ fw: Firmware, program: String, launcher: Data) -> Fit {
         let piece = SystemEdits.Helpers.appsyncLauncher + " (Lockbot's installation_proxy service)"
         guard let bin = fw.data(program), MachO32.slice(bin, arch: fw.arch) != nil else {
-            return Fit(piece, fits: false, "the service it execs, \(program), is not a Mach-O this CPU runs on this firmware")
+            return Fit(
+                piece,
+                fits: false,
+                "the service it execs, \(program), is not a Mach-O this CPU runs on this firmware"
+            )
         }
         guard contains(launcher, cString("/" + SystemEdits.appsyncPath)) else {
-            return Fit(piece, fits: false, "it does not insert /\(SystemEdits.appsyncPath), where the bake puts the dylib")
+            return Fit(
+                piece,
+                fits: false,
+                "it does not insert /\(SystemEdits.appsyncPath), where the bake puts the dylib"
+            )
         }
         let l = loads(piece, launcher, on: fw)
         guard l.fits else { return l }
-        return Fit(piece, fits: true, "execs \((program as NSString).lastPathComponent) with /\(SystemEdits.appsyncPath) inserted; " + l.proof)
+        return Fit(
+            piece,
+            fits: true,
+            "execs \((program as NSString).lastPathComponent) with /\(SystemEdits.appsyncPath) inserted; " + l.proof
+        )
     }
 
     /// Historical cache-patch inspection, retained for the oracle/research tests.
@@ -221,27 +306,47 @@ extension FitCheck {
 
     /// AppSync's process-local pieces: libappsync in installd's job's program, else
     /// (2.x) in Lockbot's installation_proxy service with appsync-launch.
-    static func checkAppSync(_ log: Log, _ fw: Firmware, helpers: URL, name: String = SystemEdits.Helpers.appsync) throws {
+    static func checkAppSync(_ log: Log, _ fw: Firmware, helpers: URL, name: String = SystemEdits.Helpers.appsync)
+        throws
+    {
         func piece(_ n: String) throws -> Data {
             let u = helpers.appendingPathComponent(n)
-            guard FileManager.default.fileExists(atPath: u.path) else { throw FirmwareError(.internal, "guest helper \(n) missing from \(helpers.path)") }
+            guard FileManager.default.fileExists(atPath: u.path) else {
+                throw FirmwareError(.internal, "guest helper \(n) missing from \(helpers.path)")
+            }
             return try Data(contentsOf: u)
         }
         let dylib = try piece(name)
-        let program: (NSDictionary?) -> String? = { d in (d?["ProgramArguments"] as? [String])?.first ?? d?["Program"] as? String }
-        if let job = ["com.apple.mobile.installd.plist", "com.apple.installd.plist"].map({ SystemEdits.daemons + "/" + $0 }).first(where: { fw.resolve($0) != nil }) {
+        let program: (NSDictionary?) -> String? = { d in
+            (d?["ProgramArguments"] as? [String])?.first ?? d?["Program"] as? String
+        }
+        if let job = ["com.apple.mobile.installd.plist", "com.apple.installd.plist"].map({
+            SystemEdits.daemons + "/" + $0
+        }).first(where: { fw.resolve($0) != nil }) {
             guard let host = program(NSDictionary(contentsOf: fw.resolve(job)!)) else {
-                try log.check(Fit(SystemEdits.Helpers.appsync, fits: false, "\(job) names no program"), required: true); return
+                try log.check(Fit(SystemEdits.Helpers.appsync, fits: false, "\(job) names no program"), required: true)
+                return
             }
             try log.check(appSync(fw, host: host, dylib: dylib), required: true)
             return
         }
         let services = fw.resolve("System/Library/Lockdown/Services.plist").flatMap { NSDictionary(contentsOf: $0) }
         guard let host = program(services?["com.apple.mobile.installation_proxy"] as? NSDictionary) else {
-            try log.check(Fit(SystemEdits.Helpers.appsync, fits: false, "no installd job and no Lockbot installation_proxy service"), required: true); return
+            try log.check(
+                Fit(
+                    SystemEdits.Helpers.appsync,
+                    fits: false,
+                    "no installd job and no Lockbot installation_proxy service"
+                ),
+                required: true
+            )
+            return
         }
         try log.check(appSync(fw, host: host, dylib: dylib), required: true)
-        try log.check(appSyncLauncher(fw, program: host, launcher: piece(SystemEdits.Helpers.appsyncLauncher)), required: true)
+        try log.check(
+            appSyncLauncher(fw, program: host, launcher: piece(SystemEdits.Helpers.appsyncLauncher)),
+            required: true
+        )
     }
 }
 
@@ -252,19 +357,26 @@ extension FitCheck {
     static let quartzCore = "System/Library/Frameworks/QuartzCore.framework/QuartzCore"
     static let coreImage = "System/Library/Frameworks/CoreImage.framework/CoreImage"
     static let ioSurface = "System/Library/PrivateFrameworks/IOSurface.framework/IOSurface"
-    static let coreSurfaces = ["System/Library/Frameworks/CoreSurface.framework/CoreSurface",
-                               "System/Library/PrivateFrameworks/CoreSurface.framework/CoreSurface"]
-    static let ioMobileFramebuffer = "System/Library/PrivateFrameworks/IOMobileFramebuffer.framework/IOMobileFramebuffer"
+    static let coreSurfaces = [
+        "System/Library/Frameworks/CoreSurface.framework/CoreSurface",
+        "System/Library/PrivateFrameworks/CoreSurface.framework/CoreSurface",
+    ]
+    static let ioMobileFramebuffer =
+        "System/Library/PrivateFrameworks/IOMobileFramebuffer.framework/IOMobileFramebuffer"
     static let sgxEngine = "System/Library/Frameworks/OpenGLES.framework/GLEngine.bundle"
     /// The surface calls the front end (mbxshim.c iosurface_init) takes by name: IOSurface's, or CoreSurface's
     /// CoreSurfaceBuffer* equivalents (2.x; GetPixelFormatType there).
-    static let surfaceCalls = ["GetBaseAddress", "GetBytesPerRow", "GetWidth", "GetHeight", "GetPixelFormat", "Lock", "Unlock"]
+    static let surfaceCalls = [
+        "GetBaseAddress", "GetBytesPerRow", "GetWidth", "GetHeight", "GetPixelFormat", "Lock", "Unlock",
+    ]
 
     /// Does the image installed as `install` name the C string `s` (a selector it sends or implements, an @encode)?
     /// Cached images: their own __cstring / __objc_methname / __objc_methtype sections; files: anywhere in the file.
     static func names(_ fw: Firmware, _ install: String, _ s: String) -> Bool {
         if let cache = fw.cache, let img = cache.image("/" + install) {
-            return ["__objc_methname", "__cstring", "__objc_methtype"].contains { cache.cStrings(in: img, section: $0).contains(s) }
+            return ["__objc_methname", "__cstring", "__objc_methtype"].contains {
+                cache.cStrings(in: img, section: $0).contains(s)
+            }
         }
         return fw.data(install).map { contains($0, cString(s)) } ?? false
     }
@@ -274,7 +386,9 @@ extension FitCheck {
     static func string(_ fw: Firmware, _ install: String, prefix: String) -> String? {
         if let cache = fw.cache, let img = cache.image("/" + install) {
             for sec in ["__cstring", "__objc_methtype"] {
-                if let hit = cache.cStrings(in: img, section: sec).first(where: { $0.contains(prefix) }), let r = hit.range(of: prefix) {
+                if let hit = cache.cStrings(in: img, section: sec).first(where: { $0.contains(prefix) }),
+                    let r = hit.range(of: prefix)
+                {
                     return String(hit[r.lowerBound...])
                 }
             }
@@ -307,10 +421,16 @@ extension FitCheck {
         let piece = "OpenGLES front end (contrib/gles-public)"
         let l = loads(piece, binary, on: fw)
         guard l.fits else { return l }
-        guard let stock = fw.exports("/" + openGLES) else { return Fit(piece, fits: false, "this firmware has no OpenGLES.framework") }
+        guard let stock = fw.exports("/" + openGLES) else {
+            return Fit(piece, fits: false, "this firmware has no OpenGLES.framework")
+        }
         let lost = stock.subtracting(exported(binary, arch: fw.arch)).sorted()
         guard lost.isEmpty else {
-            return Fit(piece, fits: false, "the stock OpenGLES exports \(lost.prefix(6).joined(separator: ", "))\(lost.count > 6 ? " (+\(lost.count - 6))" : "") that the front end does not")
+            return Fit(
+                piece,
+                fits: false,
+                "the stock OpenGLES exports \(lost.prefix(6).joined(separator: ", "))\(lost.count > 6 ? " (+\(lost.count - 6))" : "") that the front end does not"
+            )
         }
         var proof = ["exports all \(stock.count) of the stock OpenGLES's names"]
         for sel in ["nativeWindow", "drawableProperties"] where !names(fw, quartzCore, sel) {
@@ -318,7 +438,9 @@ extension FitCheck {
         }
         let tag = "{_EAGLNativeWindowObject="
         let window = [quartzCore, openGLES].lazy.compactMap { string(fw, $0, prefix: tag) }.first
-        guard let window else { return Fit(piece, fits: false, "no _EAGLNativeWindowObject @encode in QuartzCore or OpenGLES") }
+        guard let window else {
+            return Fit(piece, fits: false, "no _EAGLNativeWindowObject @encode in QuartzCore or OpenGLES")
+        }
         let body = window.dropFirst(tag.count).prefix { $0 != "}" }
         let callbacks = body.components(separatedBy: "^?").count - 1
         guard body.hasPrefix("\"version\"i") || body.hasPrefix("i"), callbacks >= 5 else {
@@ -329,33 +451,62 @@ extension FitCheck {
         if let s = fw.exports("/" + ioSurface), surfaceCalls.allSatisfy({ s.contains("_IOSurface" + $0) }) {
             calls = ["IOSurface"]
         } else if let lib = coreSurfaces.first(where: { fw.exports("/" + $0) != nil }), let s = fw.exports("/" + lib),
-                  surfaceCalls.allSatisfy({ s.contains("_CoreSurfaceBuffer" + ($0 == "GetPixelFormat" ? "GetPixelFormatType" : $0)) }) {
+            surfaceCalls.allSatisfy({
+                s.contains("_CoreSurfaceBuffer" + ($0 == "GetPixelFormat" ? "GetPixelFormatType" : $0))
+            })
+        {
             calls = ["CoreSurface"]
         } else {
-            return Fit(piece, fits: false, "neither IOSurface nor CoreSurface exports the surface calls (\(surfaceCalls.joined(separator: ", ")))")
+            return Fit(
+                piece,
+                fits: false,
+                "neither IOSurface nor CoreSurface exports the surface calls (\(surfaceCalls.joined(separator: ", ")))"
+            )
         }
         proof.append("surfaces through \(calls[0])")
         let fb = fw.exports("/" + ioMobileFramebuffer) ?? []
-        for (sel, want) in [("swapNotification:forTransaction:onLayer:", ["_IOMobileFramebufferSwapSignal"]),
-                            ("sendNotification:forTransaction:onLayer:", ["_IOMobileFramebufferSwapSignal", "_IOMobileFramebufferGetMainDisplay", "_IOMobileFramebufferGetID"])]
-            where names(fw, quartzCore, sel) {
+        for (sel, want) in [
+            ("swapNotification:forTransaction:onLayer:", ["_IOMobileFramebufferSwapSignal"]),
+            (
+                "sendNotification:forTransaction:onLayer:",
+                ["_IOMobileFramebufferSwapSignal", "_IOMobileFramebufferGetMainDisplay", "_IOMobileFramebufferGetID"]
+            ),
+        ]
+        where names(fw, quartzCore, sel) {
             let missing = want.filter { !fb.contains($0) }
-            guard missing.isEmpty else { return Fit(piece, fits: false, "QuartzCore sends \(sel) and IOMobileFramebuffer lacks \(missing.joined(separator: ", "))") }
+            guard missing.isEmpty else {
+                return Fit(
+                    piece,
+                    fits: false,
+                    "QuartzCore sends \(sel) and IOMobileFramebuffer lacks \(missing.joined(separator: ", "))"
+                )
+            }
             proof.append(String(sel.prefix { $0 != ":" }) + " signals through IOMobileFramebufferSwapSignal")
         }
         if names(fw, quartzCore, "GetMacroContextPrivate") || names(fw, coreImage, "GetMacroContextPrivate") {
             guard fw.cache != nil, let enc = string(fw, openGLES, prefix: "{__GLIFunctionDispatchRec="),
-                  let fields = GLIDispatch.fields(in: Data((enc + "}").utf8)), !fields.isEmpty else {
-                return Fit(piece, fits: false, "QuartzCore or CoreImage asks for a macro context and the shared cache's OpenGLES carries no __GLIFunctionDispatchRec @encode")
+                let fields = GLIDispatch.fields(in: Data((enc + "}").utf8)), !fields.isEmpty
+            else {
+                return Fit(
+                    piece,
+                    fits: false,
+                    "QuartzCore or CoreImage asks for a macro context and the shared cache's OpenGLES carries no __GLIFunctionDispatchRec @encode"
+                )
             }
             let known = Set(table.matches(of: /(?m)^GLES_FN\(\w+,\s*(\w+),/).map { String($0.1) })
             let unknown = fields.filter { !known.contains($0) }
             guard unknown.isEmpty else {
-                return Fit(piece, fits: false, "the macro context's dispatch fields \(unknown.prefix(6).joined(separator: ", "))\(unknown.count > 6 ? " (+\(unknown.count - 6))" : "") are no rows of gles-names.h")
+                return Fit(
+                    piece,
+                    fits: false,
+                    "the macro context's dispatch fields \(unknown.prefix(6).joined(separator: ", "))\(unknown.count > 6 ? " (+\(unknown.count - 6))" : "") are no rows of gles-names.h"
+                )
             }
             proof.append("macro context: \(fields.count) dispatch fields, all named")
         }
-        proof.append(fw.resolve(sgxEngine) != nil ? "ES 1.1 + 2.0 (GLEngine.bundle)" : "ES 1.1 only (no GLEngine.bundle)")
+        proof.append(
+            fw.resolve(sgxEngine) != nil ? "ES 1.1 + 2.0 (GLEngine.bundle)" : "ES 1.1 only (no GLEngine.bundle)"
+        )
         return Fit(piece, fits: true, (proof + [l.proof]).joined(separator: "; "))
     }
 }

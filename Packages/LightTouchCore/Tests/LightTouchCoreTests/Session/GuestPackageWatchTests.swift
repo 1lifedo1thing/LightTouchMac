@@ -1,7 +1,8 @@
-import Foundation
-import Testing
-import HostRuntime
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import Testing
+
 @testable import LightTouchCore
 
 /// The guest package per boot: no offer without the machine's support or an itpack; health as the board shows
@@ -9,9 +10,15 @@ import DeviceRuntime
 /// "Guest tools" status and the device record, for its own boot only.
 struct GuestPackageWatchTests {
     final class Host: GuestPackageHost {
-        var instance = DeviceInstance(id: UUID(), name: "iPod", board: "n72ap", firmware: "n72ap-7E18", created: Date(),
-                                      base: .init(kind: .prepared, path: "base"),
-                                      storage: .init(key: "k", overlay: "o", snapshot: "s", usbmuxConf: "u"))
+        var instance = DeviceInstance(
+            id: UUID(),
+            name: "iPod",
+            board: "n72ap",
+            firmware: "n72ap-7E18",
+            created: Date(),
+            base: .init(kind: .prepared, path: "base"),
+            storage: .init(key: "k", overlay: "o", snapshot: "s", usbmuxConf: "u")
+        )
         let bootScope = BootSessionScope()
         var status: SharedStatus? = helperStatus()
         var guestArch = "armv6"
@@ -32,7 +39,10 @@ struct GuestPackageWatchTests {
         try withTemporaryDirectory { state in
             let host = Host()
             var asked: [String] = []
-            let watch = GuestPackageWatch(host: host, stateDirectory: state) { asked.append($0); return nil }
+            let watch = GuestPackageWatch(host: host, stateDirectory: state) {
+                asked.append($0)
+                return nil
+            }
             let stale = host.instance.paths.work.appendingPathComponent("guest-offer", isDirectory: true)
             try FileManager.default.createDirectory(at: stale, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: host.instance.paths.directory) }
@@ -84,7 +94,7 @@ struct GuestPackageWatchTests {
             await eventually("the status line updated") { published && watch.status != .unknown }
             _ = tracking
 
-            host.bootScope.renew()   // Restart in place: this watch belongs to the old boot
+            host.bootScope.renew()  // Restart in place: this watch belongs to the old boot
             host.status = report(8)
             try await Task.sleep(for: .milliseconds(50))
             #expect(watch.guestRecord?.active == 7, "an old boot's watch writes nothing")

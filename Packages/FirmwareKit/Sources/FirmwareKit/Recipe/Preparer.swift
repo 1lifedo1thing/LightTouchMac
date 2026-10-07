@@ -17,19 +17,30 @@ import Foundation
 /// One line of the preparer's stdout.
 public enum PrepareEvent: Equatable, Sendable {
     /// `seconds`: each step's expected duration, for weighting the overall bar (omitted when empty).
-    case begin(steps: Int, seconds: [Double] = []), step(index: Int, name: String), progress(Double, detail: String? = nil), warning(String)
-    case done(lock: String), error(code: String, message: String, piece: String? = nil)
+    case begin(steps: Int, seconds: [Double] = [])
+    case step(index: Int, name: String)
+    case progress(Double, detail: String? = nil)
+    case warning(String)
+    case done(lock: String)
+    case error(code: String, message: String, piece: String? = nil)
 
     public var json: String {
-        let o: [String: Any] = switch self {
-        case .begin(let n, let seconds): ["event": "begin", "steps": n].merging(seconds.isEmpty ? [:] : ["seconds": seconds]) { a, _ in a }
-        case .step(let i, let name): ["event": "step", "index": i, "name": name]
-        case .progress(let f, let detail): ["event": "progress", "fraction": f].merging(detail.map { ["detail": $0] } ?? [:]) { a, _ in a }
-        case .warning(let m): ["event": "warning", "message": m]
-        case .done(let lock): ["event": "done", "lock": lock]
-        case .error(let code, let m, let piece): ["event": "error", "code": code, "message": m].merging(piece.map { ["piece": $0] } ?? [:]) { a, _ in a }
-        }
-        return String(decoding: try! JSONSerialization.data(withJSONObject: o, options: [.sortedKeys, .withoutEscapingSlashes]), as: UTF8.self)
+        let o: [String: Any] =
+            switch self {
+            case .begin(let n, let seconds):
+                ["event": "begin", "steps": n].merging(seconds.isEmpty ? [:] : ["seconds": seconds]) { a, _ in a }
+            case .step(let i, let name): ["event": "step", "index": i, "name": name]
+            case .progress(let f, let detail):
+                ["event": "progress", "fraction": f].merging(detail.map { ["detail": $0] } ?? [:]) { a, _ in a }
+            case .warning(let m): ["event": "warning", "message": m]
+            case .done(let lock): ["event": "done", "lock": lock]
+            case .error(let code, let m, let piece):
+                ["event": "error", "code": code, "message": m].merging(piece.map { ["piece": $0] } ?? [:]) { a, _ in a }
+            }
+        return String(
+            decoding: try! JSONSerialization.data(withJSONObject: o, options: [.sortedKeys, .withoutEscapingSlashes]),
+            as: UTF8.self
+        )
     }
 }
 
@@ -44,10 +55,24 @@ public enum Preparer {
         /// Stop after the volumes step and write fit.json (the fit checks, the seed record, the warnings) instead of a
         /// device: the offline survey of what each firmware gets (`create --stop-after volumes`); no boot, no store.
         public var stopAfterVolumes = false
-        public init(entry: FirmwareEntry, ipsw: URL, out: URL, seed: String? = nil, helper: URL?,
-                    guestTools: URL, cache: URL? = nil, sibling: (entry: FirmwareEntry, ipsw: URL)? = nil) {
-            self.entry = entry; self.ipsw = ipsw; self.out = out; self.seed = seed
-            self.helper = helper; self.guestTools = guestTools; self.cache = cache; self.sibling = sibling
+        public init(
+            entry: FirmwareEntry,
+            ipsw: URL,
+            out: URL,
+            seed: String? = nil,
+            helper: URL?,
+            guestTools: URL,
+            cache: URL? = nil,
+            sibling: (entry: FirmwareEntry, ipsw: URL)? = nil
+        ) {
+            self.entry = entry
+            self.ipsw = ipsw
+            self.out = out
+            self.seed = seed
+            self.helper = helper
+            self.guestTools = guestTools
+            self.cache = cache
+            self.sibling = sibling
         }
     }
 
@@ -58,17 +83,24 @@ public enum Preparer {
     static func ftlOpened(_ serial: String) -> Bool {
         serial.replacingOccurrences(of: "\n", with: "").range(of: ftlOpen, options: .regularExpression) != nil
     }
-    static let keybagDone = "it_keybag: effaceable formatted, system keybag created", keybagHelper = "usr/local/bin/restored_external"
+    static let keybagDone = "it_keybag: effaceable formatted, system keybag created",
+        keybagHelper = "usr/local/bin/restored_external"
 
     /// The board's recipe, by the entry's board and recipe name.
     @concurrent public static func create(_ o: Options, emit: @escaping @Sendable (PrepareEvent) -> Void) async throws {
         let e = o.entry
-        let board: Board = switch (e.board, e.recipe?.name) {
-        case ("k48ap", "k48"), ("n81ap", "n81"), ("n90ap", "n90"), ("n88ap", "n88"), ("n18ap", "n18"): try K48Board(o)
-        case ("n72ap", "n72"): try N72Board(o)
-        case ("n45ap", "n45"), ("m68ap", "m68"): try N45Board(o)
-        default: throw FirmwareError(.unsupported, "\(e.id): no preparer for board \(e.board) recipe \(e.recipe?.name ?? "none")")
-        }
+        let board: Board =
+            switch (e.board, e.recipe?.name) {
+            case ("k48ap", "k48"), ("n81ap", "n81"), ("n90ap", "n90"), ("n88ap", "n88"), ("n18ap", "n18"):
+                try K48Board(o)
+            case ("n72ap", "n72"): try N72Board(o)
+            case ("n45ap", "n45"), ("m68ap", "m68"): try N45Board(o)
+            default:
+                throw FirmwareError(
+                    .unsupported,
+                    "\(e.id): no preparer for board \(e.board) recipe \(e.recipe?.name ?? "none")"
+                )
+            }
         try await Recipe.create(o, board: board, emit: emit)
     }
 
@@ -76,36 +108,64 @@ public enum Preparer {
     public static func errorEvent(_ error: Error) -> PrepareEvent {
         switch error {
         case let f as FirmwareError:
-            return .error(code: f.message.contains(String(cString: strerror(ENOSPC))) ? FirmwareError.Code.diskFull.rawValue : f.code.rawValue,
-                          message: f.message, piece: f.piece)
+            return .error(
+                code: f.message.contains(String(cString: strerror(ENOSPC)))
+                    ? FirmwareError.Code.diskFull.rawValue : f.code.rawValue,
+                message: f.message,
+                piece: f.piece
+            )
         case let a as ActivationFailure: return .error(code: a.code, message: a.message)
         default:
             let ns = error as NSError
-            let full = (ns.domain == NSPOSIXErrorDomain && ns.code == Int(ENOSPC)) || (ns.domain == NSCocoaErrorDomain && ns.code == NSFileWriteOutOfSpaceError)
-                || ((ns.userInfo[NSUnderlyingErrorKey] as? NSError).map { $0.domain == NSPOSIXErrorDomain && $0.code == Int(ENOSPC) } ?? false)
-            return .error(code: full ? FirmwareError.Code.diskFull.rawValue : FirmwareError.Code.internal.rawValue, message: ns.localizedDescription)
+            let full =
+                (ns.domain == NSPOSIXErrorDomain && ns.code == Int(ENOSPC))
+                || (ns.domain == NSCocoaErrorDomain && ns.code == NSFileWriteOutOfSpaceError)
+                || ((ns.userInfo[NSUnderlyingErrorKey] as? NSError).map {
+                    $0.domain == NSPOSIXErrorDomain && $0.code == Int(ENOSPC)
+                } ?? false)
+            return .error(
+                code: full ? FirmwareError.Code.diskFull.rawValue : FirmwareError.Code.internal.rawValue,
+                message: ns.localizedDescription
+            )
         }
     }
 
     // MARK: one-shots
 
-    struct OneShot: Decodable { var exited: Bool; var exitCode: Int32; var marker: Bool; var seconds: Double }
+    struct OneShot: Decodable {
+        var exited: Bool
+        var exitCode: Int32
+        var marker: Bool
+        var seconds: Double
+    }
 
     static func esc(_ p: URL) -> String { p.path.replacingOccurrences(of: ",", with: ",,") }
 
     /// One `LightTouchDevice --oneshot` boot of `argv` (which routes -serial to `serial`). `during` runs on its own
     /// thread once the helper is started (the iPod keybag's gdbstub handoff); if it throws, the helper is stopped
     /// and the error rethrown.
-    static func oneshot(_ helper: URL, argv: [String], machine: String, serial: URL, stop: String?, stopPattern: String? = nil,
-                        timeout: Double, work: URL, log: (String) -> Void,
-                        during: (@Sendable () throws -> Void)? = nil) throws -> (OneShot, String) {
-        var config: [String: Any] = ["boot": ["argv": argv, "environment": [String: String](), "machine": machine],
-                                     "serialLog": serial.path, "timeout": timeout]
+    static func oneshot(
+        _ helper: URL,
+        argv: [String],
+        machine: String,
+        serial: URL,
+        stop: String?,
+        stopPattern: String? = nil,
+        timeout: Double,
+        work: URL,
+        log: (String) -> Void,
+        during: (@Sendable () throws -> Void)? = nil
+    ) throws -> (OneShot, String) {
+        var config: [String: Any] = [
+            "boot": ["argv": argv, "environment": [String: String](), "machine": machine],
+            "serialLog": serial.path, "timeout": timeout,
+        ]
         if let stop { config["stopMarker"] = stop }
         if let stopPattern { config["stopPattern"] = stopPattern }
         let cfg = work.appendingPathComponent("oneshot.json")
         try JSONSerialization.data(withJSONObject: config).write(to: cfg)
-        let p = Process(), out = Pipe()
+        let p = Process()
+        let out = Pipe()
         p.executableURL = helper
         p.arguments = ["--oneshot", cfg.path]
         p.standardInput = FileHandle.nullDevice
@@ -113,23 +173,40 @@ public enum Preparer {
         p.standardError = FileHandle.standardError
         try p.run()
         final class Failure: @unchecked Sendable { var error: Error? }
-        let failure = Failure(), finished = DispatchSemaphore(value: 0)
+        let failure = Failure()
+        let finished = DispatchSemaphore(value: 0)
         if let during {
             Thread.detachNewThread {
-                do { try during() } catch { failure.error = error; p.terminate() }
+                do { try during() } catch {
+                    failure.error = error
+                    p.terminate()
+                }
                 finished.signal()
             }
-        } else { finished.signal() }
+        } else {
+            finished.signal()
+        }
         let lines = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         p.waitUntilExit()
         finished.wait()
         if let error = failure.error { throw error }
         let text = (try? String(contentsOf: serial, encoding: .isoLatin1)) ?? ""
         guard let line = lines.split(separator: "\n").last(where: { $0.contains("\"oneshot\"") }),
-              let r = try? JSONDecoder().decode(OneShot.self, from: Data(line.utf8)) else {
-            throw FirmwareError(.oneshotFailed, "\(helper.lastPathComponent) --oneshot exited \(p.terminationStatus) without a result")
+            let r = try? JSONDecoder().decode(OneShot.self, from: Data(line.utf8))
+        else {
+            throw FirmwareError(
+                .oneshotFailed,
+                "\(helper.lastPathComponent) --oneshot exited \(p.terminationStatus) without a result"
+            )
         }
-        log(String(format: "one-shot: %@ after %.0f s (exit %d)", r.marker ? "marker" : r.exited ? "halted" : "timed out", r.seconds, r.exitCode))
+        log(
+            String(
+                format: "one-shot: %@ after %.0f s (exit %d)",
+                r.marker ? "marker" : r.exited ? "halted" : "timed out",
+                r.seconds,
+                r.exitCode
+            )
+        )
         return (r, text)
     }
 
@@ -137,12 +214,16 @@ public enum Preparer {
     static func siblingRamdisk(_ sib: FirmwareEntry, ipsw url: URL, work: URL) throws -> URL {
         let ipsw = IPSWArchive(url)
         let comp = try BuildComponents.load(ipsw, board: sib.board)
-        guard let path = comp["UpdateRamDisk"] ?? comp["RestoreRamDisk"] else { throw FirmwareError(.unsupported, "\(sib.id): no ramdisk") }
+        guard let path = comp["UpdateRamDisk"] ?? comp["RestoreRamDisk"] else {
+            throw FirmwareError(.unsupported, "\(sib.id): no ramdisk")
+        }
         let k = try sib.key(forPath: path)
         guard let ivHex = k.iv, let iv = Data(hex: ivHex), let key = Data(hex: k.key) else {
             throw FirmwareError(.keyMissing, "\(sib.id): no IV/key for \(k.file)")
         }
-        let out = work.appendingPathComponent("sibling-" + String(path.split(separator: "/").last!.dropLast(4)) + "-ramdisk.dmg")
+        let out = work.appendingPathComponent(
+            "sibling-" + String(path.split(separator: "/").last!.dropLast(4)) + "-ramdisk.dmg"
+        )
         try IMG3.decrypt(try ipsw.read(path), iv: iv, key: key).write(to: out)
         return out
     }
@@ -200,7 +281,9 @@ public enum Preparer {
     private static func childProcesses(of root: pid_t) -> [ChildProcess] {
         descendants(of: root).compactMap { pid in
             var info = proc_bsdinfo()
-            guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size)) > 0 else { return nil }
+            guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size)) > 0 else {
+                return nil
+            }
             return ChildProcess(pid: pid, seconds: info.pbi_start_tvsec, microseconds: info.pbi_start_tvusec)
         }
     }
@@ -229,7 +312,10 @@ public enum Preparer {
         var h = h
         let f = try FileHandle(forReadingFrom: url)
         defer { try? f.close() }
-        while let chunk = try f.read(upToCount: 1 << 22), !chunk.isEmpty { h.update(data: chunk); count?(chunk.count) }
+        while let chunk = try f.read(upToCount: 1 << 22), !chunk.isEmpty {
+            h.update(data: chunk)
+            count?(chunk.count)
+        }
         return h.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
@@ -238,18 +324,31 @@ public enum Preparer {
     /// fit.json's bytes (DeviceLock writes device.lock.json's). A value JSONSerialization cannot write (a Swift box, an Optional) is an error
     /// event, not an NSException abort with no event.
     static func lockData(_ lock: [String: Any]) throws -> Data {
-        guard JSONSerialization.isValidJSONObject(lock) else { throw FirmwareError(.internal, "the lock holds a value that is not JSON") }
-        return try JSONSerialization.data(withJSONObject: lock, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        guard JSONSerialization.isValidJSONObject(lock) else {
+            throw FirmwareError(.internal, "the lock holds a value that is not JSON")
+        }
+        return try JSONSerialization.data(
+            withJSONObject: lock,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        )
     }
 
     /// sha256 of each of `files` (relative to `nand`, in listing order) and the listing's sha256 over
     /// "path sha256\n" lines: what identifies a store. 16.5 GB of sparse files: one core each.
-    static func nandListing(_ nand: URL, files: [String], count: ((Int) -> Void)? = nil) throws -> (files: [String: String], sha256: String) {
-        final class Hashes: @unchecked Sendable { let lock = NSLock(); var sha: [String: String] = [:]; var error: Error? }
+    static func nandListing(_ nand: URL, files: [String], count: ((Int) -> Void)? = nil) throws -> (
+        files: [String: String], sha256: String
+    ) {
+        final class Hashes: @unchecked Sendable {
+            let lock = NSLock()
+            var sha: [String: String] = [:]
+            var error: Error?
+        }
         let hashes = Hashes()
         DispatchQueue.concurrentPerform(iterations: files.count) { i in
-            do { let h = try digest(nand.appendingPathComponent(files[i]), SHA256(), count: count); hashes.lock.withLock { hashes.sha[files[i]] = h } }
-            catch { hashes.lock.withLock { hashes.error = error } }
+            do {
+                let h = try digest(nand.appendingPathComponent(files[i]), SHA256(), count: count)
+                hashes.lock.withLock { hashes.sha[files[i]] = h }
+            } catch { hashes.lock.withLock { hashes.error = error } }
         }
         if let error = hashes.error { throw error }
         var listing = SHA256()

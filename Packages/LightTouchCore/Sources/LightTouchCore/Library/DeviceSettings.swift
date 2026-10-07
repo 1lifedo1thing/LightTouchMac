@@ -30,7 +30,8 @@ public nonisolated struct DeviceSettings: Codable, Equatable {
 
     /// `device`: its directory. Empty settings when there are none yet.
     public static func load(_ device: URL) -> DeviceSettings {
-        (try? Data(contentsOf: url(device))).flatMap { try? PropertyListDecoder().decode(Self.self, from: $0) } ?? Self()
+        (try? Data(contentsOf: url(device))).flatMap { try? PropertyListDecoder().decode(Self.self, from: $0) }
+            ?? Self()
     }
 
     public func save(_ device: URL) throws { try PropertyListFile.write(self, to: Self.url(device)) }
@@ -39,11 +40,15 @@ public nonisolated struct DeviceSettings: Codable, Equatable {
     /// app-wide keyboardInputEnabled and autoRotateWithGuest from before that. Each device in `devices` gets
     /// its values written to its settings.plist, then every such key goes, a deleted device's too.
     public static func migrateDefaults(_ defaults: UserDefaults, state: URL, devices: [UUID]) {
-        let names: Set = ["deviceNotice", "motionPose", "keyboardInputEnabled", "autoRotateWithGuest", "debugPort", "carrier"]
-        var kept: [UUID: [String: Any]] = [:], keys: [UUID: [String]] = [:]
+        let names: Set = [
+            "deviceNotice", "motionPose", "keyboardInputEnabled", "autoRotateWithGuest", "debugPort", "carrier",
+        ]
+        var kept: [UUID: [String: Any]] = [:]
+        var keys: [UUID: [String]] = [:]
         for (key, value) in defaults.dictionaryRepresentation() {
             guard let dot = key.lastIndex(of: "."), names.contains(String(key[..<dot])),
-                  let id = UUID(uuidString: String(key[key.index(after: dot)...])) else { continue }
+                let id = UUID(uuidString: String(key[key.index(after: dot)...]))
+            else { continue }
             kept[id, default: [:]][String(key[..<dot])] = value
             keys[id, default: []].append(key)
         }
@@ -51,7 +56,8 @@ public nonisolated struct DeviceSettings: Codable, Equatable {
         let autoRotate = defaults.object(forKey: "autoRotateWithGuest") as? Bool
         var failed = false
         for id in devices {
-            let directory = DeviceInstance.directory(id, state: state), values = kept[id] ?? [:]
+            let directory = DeviceInstance.directory(id, state: state)
+            let values = kept[id] ?? [:]
             let old = load(directory)
             var new = old
             if let notice = values["deviceNotice"] as? [String: String], let message = notice["message"] {
@@ -61,7 +67,9 @@ public nonisolated struct DeviceSettings: Codable, Equatable {
             new.keyboardInputEnabled = values["keyboardInputEnabled"] as? Bool ?? new.keyboardInputEnabled ?? keyboard
             new.autoRotateWithGuest = values["autoRotateWithGuest"] as? Bool ?? new.autoRotateWithGuest ?? autoRotate
             if let debugPort = values["debugPort"] as? Bool { new.debugPort = debugPort }
-            if let data = values["carrier"] as? Data, let carrier = try? JSONDecoder().decode(CarrierSettings.self, from: data) {
+            if let data = values["carrier"] as? Data,
+                let carrier = try? JSONDecoder().decode(CarrierSettings.self, from: data)
+            {
                 new.carrier = carrier
             }
             if new != old {
@@ -73,6 +81,8 @@ public nonisolated struct DeviceSettings: Codable, Equatable {
             }
         }
         for key in keys.values.joined() { defaults.removeObject(forKey: key) }
-        if !failed { for key in ["keyboardInputEnabled", "autoRotateWithGuest"] { defaults.removeObject(forKey: key) } }
+        if !failed {
+            for key in ["keyboardInputEnabled", "autoRotateWithGuest"] { defaults.removeObject(forKey: key) }
+        }
     }
 }

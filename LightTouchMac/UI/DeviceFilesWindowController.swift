@@ -1,5 +1,5 @@
-import HostRuntime
 import Cocoa
+import HostRuntime
 
 /// The browser and transfer task survive closing this independently owned window.
 final class DeviceFilesWindowController: NSWindowController {
@@ -8,6 +8,7 @@ final class DeviceFilesWindowController: NSWindowController {
         browser = DeviceFilesViewController(profile: profile)
         let window = NSWindow(contentViewController: browser)
         window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
+        // FIXME: Use morphology
         window.title = "\(profile.shortName) Files"
         window.setContentSize(NSSize(width: 660, height: 440))
         window.contentMinSize = NSSize(width: 360, height: 280)

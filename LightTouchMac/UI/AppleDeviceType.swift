@@ -48,6 +48,6 @@ public struct AppleDeviceType: Hashable, Sendable, CustomStringConvertible {
     }
 }
 
-private extension UTTagClass {
-    static let appleDeviceModelCode = UTTagClass(rawValue: "com.apple.device-model-code")
+extension UTTagClass {
+    fileprivate static let appleDeviceModelCode = UTTagClass(rawValue: "com.apple.device-model-code")
 }

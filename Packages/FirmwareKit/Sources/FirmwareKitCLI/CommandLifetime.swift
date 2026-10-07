@@ -1,5 +1,5 @@
-import Foundation
 import FirmwareKit
+import Foundation
 import HostRuntime
 
 @MainActor final class CommandLifetime {
@@ -10,9 +10,13 @@ import HostRuntime
     private let output: PipeOutput
     private let cleanup: (@Sendable () async throws -> Void)?
 
-    init(output: PipeOutput, cleanup: (@Sendable () async throws -> Void)? = nil,
-         operation: @escaping @Sendable () async -> Int32) {
-        self.output = output; self.cleanup = cleanup
+    init(
+        output: PipeOutput,
+        cleanup: (@Sendable () async throws -> Void)? = nil,
+        operation: @escaping @Sendable () async -> Int32
+    ) {
+        self.output = output
+        self.cleanup = cleanup
         self.operation = Task { await operation() }
         signals = [SIGTERM, SIGINT].map { sig in
             signal(sig, SIG_IGN)
@@ -20,12 +24,14 @@ import HostRuntime
             source.setEventHandler { [weak self] in
                 Task { @MainActor in self?.cancel(sig == SIGTERM ? "SIGTERM" : "SIGINT") }
             }
-            source.resume(); return source
+            source.resume()
+            return source
         }
         let parent = getppid()
         let source = DispatchSource.makeProcessSource(identifier: parent, eventMask: .exit, queue: .main)
         source.setEventHandler { [weak self] in Task { @MainActor in self?.cancel("parent exited") } }
-        source.resume(); parentWatch = source
+        source.resume()
+        parentWatch = source
         if parent == 1 || getppid() != parent { cancel("no parent") }
     }
     private func cancel(_ reason: String) {
@@ -43,8 +49,7 @@ import HostRuntime
         let diagnosticsSucceeded = await FirmwareDiagnostics.finish()
         if let cancellation {
             await cancellation.value
-            do { try await cleanup?() }
-            catch {
+            do { try await cleanup?() } catch {
                 // Output was stopped so cancellation cannot wait on a lost
                 // consumer. Failure is observable as exit 1; staging is retained.
                 return 1

@@ -1,10 +1,10 @@
 // Carrier (radio boards): the fake network's settings are the device's (DeviceSettings.carrier). Every boot starts
 // the modem with them (BootRecipe, -global ios-baseband.*), and a change while it runs is written to the modem too.
 
-import Foundation
-import Observation
-import HostRuntime
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import Observation
 
 @Observable public final class CarrierModem: CarrierBackend {
     public let hasCellular: Bool
@@ -12,7 +12,12 @@ import DeviceRuntime
     @ObservationIgnored private let scope: BootSessionScope
     @ObservationIgnored private let link: () -> HelperLink?
 
-    public init(hasCellular: Bool, settings: DeviceSettingsFile, scope: BootSessionScope, link: @escaping () -> HelperLink?) {
+    public init(
+        hasCellular: Bool,
+        settings: DeviceSettingsFile,
+        scope: BootSessionScope,
+        link: @escaping () -> HelperLink?
+    ) {
         self.hasCellular = hasCellular
         self.settings = settings
         self.scope = scope
@@ -20,7 +25,9 @@ import DeviceRuntime
     }
 
     /// The saved settings when valid, else the defaults.
-    public var carrierSettings: CarrierSettings { settings.value.carrier.flatMap { $0.isValid ? $0 : nil } ?? CarrierSettings() }
+    public var carrierSettings: CarrierSettings {
+        settings.value.carrier.flatMap { $0.isValid ? $0 : nil } ?? CarrierSettings()
+    }
 
     /// Saves valid settings and writes what changed to the running modem; false (nothing saved) for invalid ones.
     @discardableResult
@@ -46,7 +53,8 @@ import DeviceRuntime
         link.request(.modemStatus, timeout: 10) { [weak self] reply in
             MainActor.assumeIsolated {
                 guard let self, !self.scope.retired, session == self.scope.id,
-                      case .success(.modemStatus(let json?)) = reply else { return done(nil) }
+                    case .success(.modemStatus(let json?)) = reply
+                else { return done(nil) }
                 done(ModemStatus(json: json))
             }
         }

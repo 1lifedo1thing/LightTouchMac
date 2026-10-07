@@ -37,9 +37,14 @@ public actor StorageGeneration {
     static func begin(owner: StoppedRecordOwner) throws -> StorageGeneration {
         try StorageGeneration(owner: owner, resume: nil)
     }
-    public static func resume(device: URL, id: UUID, policy: StorageRecordPolicy = .standalone) throws -> StorageGeneration {
+    public static func resume(device: URL, id: UUID, policy: StorageRecordPolicy = .standalone) throws
+        -> StorageGeneration
+    {
         let owner = try OwnedStorageRecord.acquire(device: device, policy: policy, resume: true)
-        let intent = try JSONDecoder().decode(Intent.self, from: Data(contentsOf: owner.device.appendingPathComponent("work/edit.json")))
+        let intent = try JSONDecoder().decode(
+            Intent.self,
+            from: Data(contentsOf: owner.device.appendingPathComponent("work/edit.json"))
+        )
         guard intent.id == id else { throw FirmwareError(.internal, "edit session does not match this device") }
         return try StorageGeneration(owner: owner, resume: intent)
     }
@@ -47,13 +52,17 @@ public actor StorageGeneration {
         let device = owner.device
         guard !owner.lease.isClosed else { throw FirmwareError(.internal, "storage transaction is closed") }
         guard let snapshot = owner.bytes,
-              let object = try? DeviceRecord.object(snapshot),
-              object["id"] is String, object["base"] is [String: Any], object["storage"] is [String: Any] else {
+            let object = try? DeviceRecord.object(snapshot),
+            object["id"] is String, object["base"] is [String: Any], object["storage"] is [String: Any]
+        else {
             throw FirmwareError(.unsupported, "storage transactions require a valid device record")
         }
         let intent: Intent
-        if let resume { intent = resume }
-        else { intent = Intent(id: UUID(), originalRecord: Self.hash(snapshot), phase: .editing) }
+        if let resume {
+            intent = resume
+        } else {
+            intent = Intent(id: UUID(), originalRecord: Self.hash(snapshot), phase: .editing)
+        }
         let root = device.appendingPathComponent("generations/\(intent.id.uuidString)")
         guard root.resolvingSymlinksInPath().path.hasPrefix(device.path + "/generations/") else {
             throw FirmwareError(.internal, "invalid storage generation path")
@@ -64,11 +73,19 @@ public actor StorageGeneration {
             }
         }
         // Keep failed admission out of a partially initialized class owner.
-        lease = owner.lease; paths = owner.paths; self.device = device; original = snapshot
-        self.intent = intent; id = intent.id; self.root = root
+        lease = owner.lease
+        paths = owner.paths
+        self.device = device
+        original = snapshot
+        self.intent = intent
+        id = intent.id
+        self.root = root
         if resume == nil {
-            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true,
-                                                  attributes: [.posixPermissions: 0o700])
+            try FileManager.default.createDirectory(
+                at: root,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
             try Self.write(snapshot, to: root.appendingPathComponent("original-\(DeviceRecord.name)"))
             try Self.write(JSONEncoder().encode(intent), to: device.appendingPathComponent("work/edit.json"))
             try Self.sync(root.deletingLastPathComponent())
@@ -79,20 +96,25 @@ public actor StorageGeneration {
     /// Explicit actor ownership boundary: await before returning to another
     /// owner. Pending intent and the lease inode remain for exact recovery.
     public func close() throws {
-        guard !operationActive else { throw FirmwareError(.internal, "storage transaction operation is already in progress") }
+        guard !operationActive else {
+            throw FirmwareError(.internal, "storage transaction operation is already in progress")
+        }
         lease?.close()
         lease = nil
     }
 
-    nonisolated(nonsending) static func withOwner<T>(_ transaction: StorageGeneration,
-        body: (StorageGeneration) async throws -> T) async throws -> T {
+    nonisolated(nonsending) static func withOwner<T>(
+        _ transaction: StorageGeneration,
+        body: (StorageGeneration) async throws -> T
+    ) async throws -> T {
         do {
             let value = try await body(transaction)
             try await transaction.close()
             return value
         } catch {
-            do { try await transaction.close() }
-            catch { FirmwareDiagnostics.write(Data("storage transaction release failed: \(error)\n".utf8)) }
+            do { try await transaction.close() } catch {
+                FirmwareDiagnostics.write(Data("storage transaction release failed: \(error)\n".utf8))
+            }
             throw error
         }
     }
@@ -101,21 +123,26 @@ public actor StorageGeneration {
     /// its shared stopped authority before the published record is reread.
     private func returnAuthority(to owner: StoppedRecordOwner) throws {
         guard !operationActive, let lease, lease === owner.lease, !lease.isClosed,
-              device == owner.device else {
+            device == owner.device
+        else {
             throw FirmwareError(.internal, "storage admission does not own this transaction")
         }
         self.lease = nil
     }
 
-    nonisolated(nonsending) static func withOwner<T>(_ transaction: StorageGeneration,
-        retaining owner: StoppedRecordOwner, body: (StorageGeneration) async throws -> T) async throws -> T {
+    nonisolated(nonsending) static func withOwner<T>(
+        _ transaction: StorageGeneration,
+        retaining owner: StoppedRecordOwner,
+        body: (StorageGeneration) async throws -> T
+    ) async throws -> T {
         do {
             let value = try await body(transaction)
             try await transaction.returnAuthority(to: owner)
             return value
         } catch {
-            do { try await transaction.returnAuthority(to: owner) }
-            catch { FirmwareDiagnostics.write(Data("storage transaction authority return failed: \(error)\n".utf8)) }
+            do { try await transaction.returnAuthority(to: owner) } catch {
+                FirmwareDiagnostics.write(Data("storage transaction authority return failed: \(error)\n".utf8))
+            }
             throw error
         }
     }
@@ -128,7 +155,9 @@ public actor StorageGeneration {
     /// one generation. A snapshot of the old flash cannot be selected afterward.
     public func candidateRecord(provenance: sending [String: Any]? = nil) throws -> Data {
         try requireOwner()
-        guard !operationActive else { throw FirmwareError(.internal, "storage transaction operation is already in progress") }
+        guard !operationActive else {
+            throw FirmwareError(.internal, "storage transaction operation is already in progress")
+        }
         let data = try Data(contentsOf: root.appendingPathComponent("original-\(DeviceRecord.name)"))
         var record = try Self.object(data)
         var base = record["base"] as! [String: Any]
@@ -137,8 +166,11 @@ public actor StorageGeneration {
         storage["overlay"] = try recordPath(overlay)
         storage["key"] = id.uuidString
         storage["snapshot"] = try recordPath(root.appendingPathComponent("snapshot"))
-        if storage["writableNOR"] != nil { storage["writableNOR"] = try recordPath(root.appendingPathComponent("nor.bin")) }
-        record["base"] = base; record["storage"] = storage
+        if storage["writableNOR"] != nil {
+            storage["writableNOR"] = try recordPath(root.appendingPathComponent("nor.bin"))
+        }
+        record["base"] = base
+        record["storage"] = storage
         if let provenance { record["provenance"] = provenance }
         return try DeviceRecord.data(record)
     }
@@ -152,7 +184,8 @@ public actor StorageGeneration {
     private func resolves(_ path: String?, to url: URL) -> Bool {
         guard let path, let paths else { return false }
         let candidate = StorageRecordPaths.resolve(path, relativeRoot: paths.relativeRoot)
-        return candidate.standardizedFileURL.resolvingSymlinksInPath() == url.standardizedFileURL.resolvingSymlinksInPath()
+        return candidate.standardizedFileURL.resolvingSymlinksInPath()
+            == url.standardizedFileURL.resolvingSymlinksInPath()
     }
 
     public func publish(record: Data) async throws { try await publish(record: record, checkpoint: { _ in }) }
@@ -164,7 +197,9 @@ public actor StorageGeneration {
     }
     private func beginOperation() throws {
         try requireOwner()
-        guard !operationActive else { throw FirmwareError(.internal, "storage transaction operation is already in progress") }
+        guard !operationActive else {
+            throw FirmwareError(.internal, "storage transaction operation is already in progress")
+        }
         operationActive = true
     }
     private func publishCore(record: Data, checkpoint: @Sendable (Checkpoint) async throws -> Void) async throws {
@@ -194,7 +229,8 @@ public actor StorageGeneration {
             intent.storageManifest = Self.hash(certificate)
         }
         try Self.write(record, to: candidateURL)
-        intent.phase = .ready; intent.candidateRecord = Self.hash(record)
+        intent.phase = .ready
+        intent.candidateRecord = Self.hash(record)
         try saveIntent()
         try await checkpoint(.ready)
         try requireOwner()
@@ -221,7 +257,8 @@ public actor StorageGeneration {
         if current == expected {
             try validate(Data(contentsOf: recordURL))
             try verifyStorage()
-            try await finishPublished(); return
+            try await finishPublished()
+            return
         }
         guard current == intent.originalRecord else {
             throw FirmwareError(.internal, "device record is neither transaction generation; manual recovery required")
@@ -255,13 +292,17 @@ public actor StorageGeneration {
     private func validate(_ data: Data) throws {
         let record = try Self.object(data)
         let previous = try Self.object(Data(contentsOf: root.appendingPathComponent("original-\(DeviceRecord.name)")))
-        guard ["id", "board", "firmware", "identity", "created"].allSatisfy({ key in
-                  NSDictionary(dictionary: ["value": record[key] ?? NSNull()]).isEqual(to: ["value": previous[key] ?? NSNull()])
-              }),
-              let storage = record["storage"] as? [String: Any], storage["key"] as? String == id.uuidString,
-              resolves((record["base"] as? [String: Any])?["path"] as? String, to: base),
-              resolves(storage["overlay"] as? String, to: overlay),
-              resolves(storage["snapshot"] as? String, to: root.appendingPathComponent("snapshot")) else {
+        guard
+            ["id", "board", "firmware", "identity", "created"].allSatisfy({ key in
+                NSDictionary(dictionary: ["value": record[key] ?? NSNull()]).isEqual(to: [
+                    "value": previous[key] ?? NSNull()
+                ])
+            }),
+            let storage = record["storage"] as? [String: Any], storage["key"] as? String == id.uuidString,
+            resolves((record["base"] as? [String: Any])?["path"] as? String, to: base),
+            resolves(storage["overlay"] as? String, to: overlay),
+            resolves(storage["snapshot"] as? String, to: root.appendingPathComponent("snapshot"))
+        else {
             throw FirmwareError(.internal, "candidate must preserve device identity and select its complete generation")
         }
         let previousNOR = (previous["storage"] as? [String: Any])?["writableNOR"] is String
@@ -276,11 +317,13 @@ public actor StorageGeneration {
         }
         if let nor = storage["writableNOR"] as? String {
             guard resolves(nor, to: root.appendingPathComponent("nor.bin")),
-                  FileManager.default.fileExists(atPath: root.appendingPathComponent("nor.bin").path) else {
+                FileManager.default.fileExists(atPath: root.appendingPathComponent("nor.bin").path)
+            else {
                 throw FirmwareError(.internal, "candidate NOR must belong to its generation")
             }
         }
-        guard FileManager.default.fileExists(atPath: base.path), FileManager.default.fileExists(atPath: overlay.path) else {
+        guard FileManager.default.fileExists(atPath: base.path), FileManager.default.fileExists(atPath: overlay.path)
+        else {
             throw FirmwareError(.internal, "candidate storage is incomplete")
         }
     }
@@ -289,30 +332,41 @@ public actor StorageGeneration {
     private func storageCertificate() throws -> Data {
         var hashes: [String: String] = [:]
         func walk(_ directory: URL) throws {
-            for child in try FileManager.default.contentsOfDirectory(at: directory,
-                includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]) {
+            for child in try FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+            ) {
                 let values = try child.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-                guard values.isSymbolicLink != true else { throw FirmwareError(.internal, "candidate contains a symlink") }
-                if values.isDirectory == true { try walk(child) }
-                else { hashes[String(child.path.dropFirst(root.path.count + 1))] = try Preparer.digest(child, SHA256()) }
+                guard values.isSymbolicLink != true else {
+                    throw FirmwareError(.internal, "candidate contains a symlink")
+                }
+                if values.isDirectory == true {
+                    try walk(child)
+                } else {
+                    hashes[String(child.path.dropFirst(root.path.count + 1))] = try Preparer.digest(child, SHA256())
+                }
             }
         }
-        try walk(base); try walk(overlay)
+        try walk(base)
+        try walk(overlay)
         let nor = root.appendingPathComponent("nor.bin")
         if FileManager.default.fileExists(atPath: nor.path) { hashes["nor.bin"] = try Preparer.digest(nor, SHA256()) }
         return try JSONSerialization.data(withJSONObject: hashes, options: [.sortedKeys])
     }
     private func verifyStorage() throws {
         guard let expected = intent.storageManifest,
-              Self.hash(try Data(contentsOf: root.appendingPathComponent("storage-manifest.json"))) == expected,
-              Self.hash(try storageCertificate()) == expected else {
+            Self.hash(try Data(contentsOf: root.appendingPathComponent("storage-manifest.json"))) == expected,
+            Self.hash(try storageCertificate()) == expected
+        else {
             throw FirmwareError(.internal, "candidate storage changed or is damaged; original generation retained")
         }
     }
     private func ensureDetached() async throws {
-        guard try await DiskImage.checkedAttachedImages().allSatisfy({
-            !URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path.hasPrefix(root.path + "/")
-        }) else { throw FirmwareError(.internal, "eject edit volumes before committing or discarding") }
+        guard
+            try await DiskImage.checkedAttachedImages().allSatisfy({
+                !URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path.hasPrefix(root.path + "/")
+            })
+        else { throw FirmwareError(.internal, "eject edit volumes before committing or discarding") }
     }
     private func finishPublished() async throws {
         try await ensureDetached()
@@ -321,14 +375,18 @@ public actor StorageGeneration {
         guard let expected = intent.candidateRecord, Self.hash(try Data(contentsOf: recordURL)) == expected else {
             throw FirmwareError(.internal, "published device record changed while checking attachment state")
         }
-        try Self.sync(recordURL); try Self.sync(device)
-        intent.phase = .published; try saveIntent()
+        try Self.sync(recordURL)
+        try Self.sync(device)
+        intent.phase = .published
+        try saveIntent()
         try FileManager.default.removeItem(at: intentURL)
         try Self.sync(intentURL.deletingLastPathComponent())
     }
     private func saveIntent() throws { try Self.write(JSONEncoder().encode(intent), to: intentURL) }
     private static func object(_ data: Data) throws -> [String: Any] {
-        guard let object = try? DeviceRecord.object(data) else { throw FirmwareError(.internal, "invalid device record") }
+        guard let object = try? DeviceRecord.object(data) else {
+            throw FirmwareError(.internal, "invalid device record")
+        }
         return object
     }
     static func hash(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
@@ -343,16 +401,24 @@ public actor StorageGeneration {
         let values = try directory.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
         guard values.isDirectory == true, values.isSymbolicLink != true else { return }
         try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
-        for child in try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]) {
+        for child in try fm.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+        ) {
             try writableDirectories(child)
         }
     }
     private static func syncTree(_ directory: URL) throws {
         let fm = FileManager.default
-        let entries = try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        let entries = try fm.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+        )
         for item in entries {
             let values = try item.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-            guard values.isSymbolicLink != true else { throw FirmwareError(.internal, "storage candidate contains a symlink") }
+            guard values.isSymbolicLink != true else {
+                throw FirmwareError(.internal, "storage candidate contains a symlink")
+            }
             if values.isDirectory == true { try syncTree(item) } else { try sync(item) }
         }
         try sync(directory)
@@ -361,7 +427,10 @@ public actor StorageGeneration {
         let temporary = destination.deletingLastPathComponent().appendingPathComponent(".\(UUID().uuidString).tmp")
         let fd = open(temporary.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0o600)
         guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-        defer { Darwin.close(fd); unlink(temporary.path) }
+        defer {
+            Darwin.close(fd)
+            unlink(temporary.path)
+        }
         try data.withUnsafeBytes { bytes in
             var offset = 0
             while offset < bytes.count {

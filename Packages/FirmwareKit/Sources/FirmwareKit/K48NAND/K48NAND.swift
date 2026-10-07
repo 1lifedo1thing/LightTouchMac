@@ -15,15 +15,16 @@ public enum K48NAND {
     /// refuses a whitened store ("Metadata whitening not supported"). Their plain stores carry flags 4: what their own FIL
     /// writes when it formats (3.1.3 N88), the only value 3.1.3 accepts (flags > 4 is "Incompatible Signature"); 4.x
     /// and 5.x take it too (as qemu-ios ipad1_nand.py --no-whitening).
-    static let nsigBase: UInt32 = 0x43313130, sigFlags: UInt32 = 0x00010005, plainSigFlags: UInt32 = 0x4
+    static let nsigBase: UInt32 = 0x4331_3130, sigFlags: UInt32 = 0x0001_0005, plainSigFlags: UInt32 = 0x4
     static func nsig(epoch: UInt8) -> UInt32 { nsigBase + UInt32(epoch) }
     static let tIndex: UInt8 = 0x4, tClosed: UInt8 = 0x8, tUser: UInt8 = 0x10, tVFL: UInt8 = 0x80
-    static let unmapped: UInt32 = 0xFFFFFFFF
+    static let unmapped: UInt32 = 0xFFFF_FFFF
 
     static let lcgTable: [UInt32] = {
-        var t: [UInt32] = [], v: UInt32 = 0x50F4546A
+        var t: [UInt32] = []
+        var v: UInt32 = 0x50F4_546A
         for _ in 0..<256 {
-            for _ in 0..<763 { v = 0x19660D &* v &+ 0x3C6EF35F }
+            for _ in 0..<763 { v = 0x19660D &* v &+ 0x3C6E_F35F }
             t.append(v)
         }
         return t
@@ -36,15 +37,21 @@ public enum K48NAND {
             let w = le32(m, 4 * i) ^ lcgTable[(i + ppage) % 256]
             for k in 0..<4 { out[4 * i + k] = UInt8(truncatingIfNeeded: w >> (8 * k)) }
         }
-        out[10] = 0; out[11] = 0
+        out[10] = 0
+        out[11] = 0
         return out
     }
 
     static func le32(_ b: [UInt8], _ o: Int) -> UInt32 {
         UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24
     }
-    static func put16(_ b: inout [UInt8], _ o: Int, _ v: Int) { b[o] = UInt8(v & 0xFF); b[o + 1] = UInt8((v >> 8) & 0xFF) }
-    static func put32(_ b: inout [UInt8], _ o: Int, _ v: UInt32) { for k in 0..<4 { b[o + k] = UInt8(truncatingIfNeeded: v >> (8 * k)) } }
+    static func put16(_ b: inout [UInt8], _ o: Int, _ v: Int) {
+        b[o] = UInt8(v & 0xFF)
+        b[o + 1] = UInt8((v >> 8) & 0xFF)
+    }
+    static func put32(_ b: inout [UInt8], _ o: Int, _ v: UInt32) {
+        for k in 0..<4 { b[o + k] = UInt8(truncatingIfNeeded: v >> (8 * k)) }
+    }
 
     // MARK: geometry
 
@@ -60,11 +67,26 @@ public enum K48NAND {
         let vflBlocks = [1, 2, 3, 4], ctrlBlocks = [0, 1, 2]
         let remap: [Int: (bank: Int, slot: Int)], replacedCount: [Int]
 
-        init(name: String, chipID: UInt32, buses: Int, cePerBus: Int, blocksPerCE: Int, pagesPerBlock: Int,
-             pageSize: Int, spareBytes: Int, vendorType: UInt32 = 0x100014) {
-            self.name = name; self.chipID = chipID; self.buses = buses; self.cePerBus = cePerBus
-            self.blocksPerCE = blocksPerCE; self.pagesPerBlock = pagesPerBlock; self.pageSize = pageSize
-            self.spareBytes = spareBytes; self.vendorType = vendorType
+        init(
+            name: String,
+            chipID: UInt32,
+            buses: Int,
+            cePerBus: Int,
+            blocksPerCE: Int,
+            pagesPerBlock: Int,
+            pageSize: Int,
+            spareBytes: Int,
+            vendorType: UInt32 = 0x100014
+        ) {
+            self.name = name
+            self.chipID = chipID
+            self.buses = buses
+            self.cePerBus = cePerBus
+            self.blocksPerCE = blocksPerCE
+            self.pagesPerBlock = pagesPerBlock
+            self.pageSize = pageSize
+            self.spareBytes = spareBytes
+            self.vendorType = vendorType
             numCS = buses * cePerBus
             pagesPerCE = blocksPerCE * pagesPerBlock
             // VSVFL: two banks per CE for vendor type 0x100014, one for 0x10001 (3.0's own table for this part on 2x4 CEs)
@@ -79,14 +101,16 @@ public enum K48NAND {
             toc = (4 * ppsublk + pageSize - 1) / pageSize
             tocEntries = pageSize / 4
             dataPages = ppsublk - toc
-            let n = (numBlocks - 8) * dataPages, d = dataPages * tocEntries
+            let n = (numBlocks - 8) * dataPages
+            let d = dataPages * tocEntries
             numIBlocks = 3 * ((n + d - 1) / d)
             totalPages = n - numIBlocks * ppsublk
             exportedPages = (totalPages - 1) / 100 * 99
             let top = blocksPerCE - 1
             cand = (0..<numCS).map { cs in (0..<(cs == 0 ? 5 : 2)).map { top - $0 } }
             bbtLen = (blocksPerCE + 7) / 8
-            var remap: [Int: (Int, Int)] = [:], slots = [Int](repeating: 0, count: vflBanks)
+            var remap: [Int: (Int, Int)] = [:]
+            var slots = [Int](repeating: 0, count: vflBanks)
             for pbn in 0...vflBlocks[3] {
                 let bank = pbn % vflBanks
                 remap[pbn] = (bank, slots[bank])
@@ -97,16 +121,41 @@ public enum K48NAND {
         }
 
         /// iBoot-817.29's 0xB614D5AD row: 2 buses x 4 CE x 4096 blocks x 128 pages x 4 KiB; the captured 16 GB unit.
-        public static let k48_16g = Geometry(name: "k48-16g", chipID: 0xB614D5AD, buses: 2, cePerBus: 4, blocksPerCE: 0x1000,
-                                             pagesPerBlock: 128, pageSize: 4096, spareBytes: 0x80)
+        public static let k48_16g = Geometry(
+            name: "k48-16g",
+            chipID: 0xB614_D5AD,
+            buses: 2,
+            cePerBus: 4,
+            blocksPerCE: 0x1000,
+            pagesPerBlock: 128,
+            pageSize: 4096,
+            spareBytes: 0x80
+        )
         /// The same part as 3.0's AppleS5L8920XIOPFMI table lists it on 2x4 CEs: vendor type 0x10001, one VFL bank per CE,
         /// 1024-page superblocks whose block TOC fits one page. 3.0's yaFTL assumes one TOC page (YAFTL_Init 0xc05c74ec on
         /// N88 7A341; fixed in 3.1), so k48_16g's 2048-page superblocks restore a garbage map there. ipad1_nand k48-16g-v1.
-        public static let k48_16g_v1 = Geometry(name: "k48-16g-v1", chipID: 0xB614D5AD, buses: 2, cePerBus: 4, blocksPerCE: 0x1000,
-                                                pagesPerBlock: 128, pageSize: 4096, spareBytes: 0x80, vendorType: 0x10001)
+        public static let k48_16g_v1 = Geometry(
+            name: "k48-16g-v1",
+            chipID: 0xB614_D5AD,
+            buses: 2,
+            cePerBus: 4,
+            blocksPerCE: 0x1000,
+            pagesPerBlock: 128,
+            pageSize: 4096,
+            spareBytes: 0x80,
+            vendorType: 0x10001
+        )
         /// ipad1_nand.py's tiny synthetic geometry (--selfcheck): same math, 16-page blocks.
-        public static let selfcheck = Geometry(name: "selfcheck", chipID: 0xB614D5AD, buses: 2, cePerBus: 2, blocksPerCE: 0x1000,
-                                               pagesPerBlock: 16, pageSize: 4096, spareBytes: 0x80)
+        public static let selfcheck = Geometry(
+            name: "selfcheck",
+            chipID: 0xB614_D5AD,
+            buses: 2,
+            cePerBus: 2,
+            blocksPerCE: 0x1000,
+            pagesPerBlock: 16,
+            pageSize: 4096,
+            spareBytes: 0x80
+        )
         static let known = [k48_16g, k48_16g_v1, selfcheck]
 
         func poolPBlock(_ bank: Int, _ slot: Int) -> Int { vflBanks * (usable + slot) + bank }
@@ -119,8 +168,10 @@ public enum K48NAND {
         /// YaFTL vpn -> (cs, physical page).
         func vpnToPhys(_ vpn: Int) -> (cs: Int, ppage: Int) {
             let (vblock, j) = vpn.quotientAndRemainder(dividingBy: ppsublk)
-            let bank = j % banksTotal, page = j / banksTotal
-            let cs = bank % numCS, bit = bank / numCS
+            let bank = j % banksTotal
+            let page = j / banksTotal
+            let cs = bank % numCS
+            let bit = bank / numCS
             return (cs, phys(cs, vflBanks * vblock + bit, page))
         }
 
@@ -129,7 +180,7 @@ public enum K48NAND {
             "{\n \"page_bytes\": \(pageSize),\n \"spare_bytes\": \(spareBytes),\n \"pages_per_block\": \(pagesPerBlock),\n"
                 + " \"blocks_per_ce\": \(blocksPerCE),\n \"ce_per_bus\": \(cePerBus),\n \"buses\": \(buses),\n"
                 + " \"chip_id\": \"0x\(String(format: "%08X", chipID))\""
-                + (vendorType == 0x100014 ? "" : ",\n \"vendor_type\": \(vendorType)") + "\n}"   // only off the default, as ipad1_nand
+                + (vendorType == 0x100014 ? "" : ",\n \"vendor_type\": \(vendorType)") + "\n}"  // only off the default, as ipad1_nand
         }
     }
 
@@ -174,8 +225,12 @@ public enum K48NAND {
                 for i in 0..<geo.spareBytes { r[geo.pageSize + i] = i < 12 ? m[i] : 0 }
             }
             let (b, c) = geo.busCE(cs)
-            let n = rec.withUnsafeBytes { pwrite(fds[b * geo.cePerBus + c], $0.baseAddress, stride, off_t(ppage * stride)) }
-            guard n == stride else { throw FirmwareError(.internal, "NAND store write: \(String(cString: strerror(errno)))") }
+            let n = rec.withUnsafeBytes {
+                pwrite(fds[b * geo.cePerBus + c], $0.baseAddress, stride, off_t(ppage * stride))
+            }
+            guard n == stride else {
+                throw FirmwareError(.internal, "NAND store write: \(String(cString: strerror(errno)))")
+            }
             records += 1
         }
 
@@ -194,13 +249,19 @@ public enum K48NAND {
 
     static func spare(_ lpn: UInt32, _ usn: UInt32, _ typ: UInt8) -> [UInt8] {
         var s = [UInt8](repeating: 0, count: 12)
-        put32(&s, 0, lpn); put32(&s, 4, usn)
-        s[8] = 0; s[9] = typ; s[10] = 0xFF; s[11] = 0xFF
+        put32(&s, 0, lpn)
+        put32(&s, 4, usn)
+        s[8] = 0
+        s[9] = typ
+        s[10] = 0xFF
+        s[11] = 0xFF
         return s
     }
 
-    static func specialPage(_ geo: Geometry, _ magic: String, _ hdrVer: UInt32, _ cands: [Int], _ payload: [UInt8]) -> (data: [UInt8], meta: [UInt8]) {
-        let c = (cands.map { UInt32($0) } + [UInt32](repeating: 0xFFFFFFFF, count: 8)).prefix(8)
+    static func specialPage(_ geo: Geometry, _ magic: String, _ hdrVer: UInt32, _ cands: [Int], _ payload: [UInt8]) -> (
+        data: [UInt8], meta: [UInt8]
+    ) {
+        let c = (cands.map { UInt32($0) } + [UInt32](repeating: 0xFFFF_FFFF, count: 8)).prefix(8)
         var page = [UInt8](repeating: 0, count: geo.pageSize)
         for (i, ch) in magic.utf8.enumerated() { page[i] = ch }
         put32(&page, 16, hdrVer)
@@ -219,7 +280,11 @@ public enum K48NAND {
 
     static func vflContext(_ geo: Geometry, _ cs: Int) -> [UInt8] {
         var c = [UInt8](repeating: 0, count: 0x800)
-        put32(&c, 0, UInt32(cs + 1)); put32(&c, 4, 0xFFFFFFFF); put32(&c, 8, 2); put16(&c, 12, 0); put16(&c, 14, 8)
+        put32(&c, 0, UInt32(cs + 1))
+        put32(&c, 4, 0xFFFF_FFFF)
+        put32(&c, 8, 2)
+        put16(&c, 12, 0)
+        put16(&c, 14, 8)
         put16(&c, 0x10, 1 + geo.cand[cs].count)
         for (bank, n) in geo.replacedCount.enumerated() { put16(&c, 0x16 + 2 * bank, n) }
         var pool = [Int](repeating: 0xFFF0, count: geo.vflBanks * geo.pool)
@@ -229,7 +294,8 @@ public enum K48NAND {
         for (pbn, r) in geo.remap { pool[r.bank * geo.pool + r.slot] = pbn }
         for (i, v) in pool.enumerated() { put16(&c, 0x26 + 2 * i, v) }
         for (i, v) in geo.vflBlocks.enumerated() { put16(&c, 0x68e + 2 * i, v) }
-        put16(&c, 0x696, geo.usable); put16(&c, 0x698, geo.usable)
+        put16(&c, 0x696, geo.usable)
+        put16(&c, 0x698, geo.usable)
         for (i, v) in geo.ctrlBlocks.enumerated() { put16(&c, 0x69a + 2 * i, v) }
         put32(&c, 0x6da, geo.vendorType)
         put32(&c, 0x7f4, 2)
@@ -237,13 +303,26 @@ public enum K48NAND {
     }
 
     static func vflChecksum(_ c0: [UInt8]) -> [UInt8] {
-        var c = c0, sum: UInt32 = 0, x: UInt32 = 0
-        for i in 0..<(0x7f8 / 4) { let w = le32(c, 4 * i); sum &+= w; x ^= w }
-        put32(&c, 0x7f8, sum &+ 0xAABBCCDD); put32(&c, 0x7fc, x ^ 0xAABBCCDD)
+        var c = c0
+        var sum: UInt32 = 0
+        var x: UInt32 = 0
+        for i in 0..<(0x7f8 / 4) {
+            let w = le32(c, 4 * i)
+            sum &+= w
+            x ^= w
+        }
+        put32(&c, 0x7f8, sum &+ 0xAABB_CCDD)
+        put32(&c, 0x7fc, x ^ 0xAABB_CCDD)
         return c
     }
 
-    static func writeMetadata(_ st: Store, _ geo: Geometry, kernelVersion: [UInt8], epoch: UInt8, sigFlags flags: UInt32? = nil) throws {
+    static func writeMetadata(
+        _ st: Store,
+        _ geo: Geometry,
+        kernelVersion: [UInt8],
+        epoch: UInt8,
+        sigFlags flags: UInt32? = nil
+    ) throws {
         for cs in 0..<geo.numCS {
             let pg = specialPage(geo, "DEVICEINFOBBT", 4, geo.cand[cs], bbtBitmap(geo, cs))
             for blk in geo.cand[cs].prefix(2) {
@@ -255,7 +334,8 @@ public enum K48NAND {
             for p in 0..<8 { try st.write(cs, geo.ppage(geo.vflBlocks[0], p), ctx, m) }
         }
         var payload = [UInt8](repeating: 0, count: 8 + 0x100)
-        put32(&payload, 0, nsig(epoch: epoch)); put32(&payload, 4, flags ?? (st.plain ? plainSigFlags : sigFlags))
+        put32(&payload, 0, nsig(epoch: epoch))
+        put32(&payload, 4, flags ?? (st.plain ? plainSigFlags : sigFlags))
         payload.replaceSubrange(8..<8 + kernelVersion.count, with: kernelVersion)
         let sig = specialPage(geo, "NANDDRIVERSIGN", 0, [Int](repeating: 0, count: 8), payload)
         for p in 0..<geo.pagesPerBlock { try st.write(0, geo.ppage(geo.cand[0][4], p), sig.data, sig.meta, raw: true) }
@@ -267,11 +347,16 @@ public enum K48NAND {
         var vblock = 3, j = 0, usn: UInt32 = 1
         var btoc: [UInt32] = []
         var toc: [Int: [UInt32]] = [:]
-        init(_ st: Store, _ geo: Geometry) { self.st = st; self.geo = geo }
+        init(_ st: Store, _ geo: Geometry) {
+            self.st = st
+            self.geo = geo
+        }
 
         func put(_ lpn: UInt32, _ data: UnsafeRawBufferPointer, _ typ: UInt8) throws -> Int {
             if j == 0 {
-                guard vblock < geo.numBlocks else { throw FirmwareError(.unsupported, "image does not fit: needs more than \(geo.numBlocks) vblocks") }
+                guard vblock < geo.numBlocks else {
+                    throw FirmwareError(.unsupported, "image does not fit: needs more than \(geo.numBlocks) vblocks")
+                }
                 btoc = []
             }
             let vpn = vblock * geo.ppsublk + j
@@ -288,14 +373,24 @@ public enum K48NAND {
             for (i, l) in btoc.enumerated() { put32(&table, 4 * i, l) }
             for i in 0..<geo.toc {
                 let (cs, pp) = geo.vpnToPhys(vblock * geo.ppsublk + j + i)
-                try st.write(cs, pp, Array(table[i * geo.pageSize..<(i + 1) * geo.pageSize]),
-                             spare(unmapped, usn, tClosed | (typ == tIndex ? tIndex : 0)))
+                try st.write(
+                    cs,
+                    pp,
+                    Array(table[i * geo.pageSize..<(i + 1) * geo.pageSize]),
+                    spare(unmapped, usn, tClosed | (typ == tIndex ? tIndex : 0))
+                )
             }
-            vblock += 1; usn += 1; j = 0
+            vblock += 1
+            usn += 1
+            j = 0
         }
 
         func nextBlock() {
-            if j != 0 { vblock += 1; usn += 1; j = 0 }
+            if j != 0 {
+                vblock += 1
+                usn += 1
+                j = 0
+            }
         }
 
         func user(_ lpn: Int, _ data: UnsafeRawBufferPointer) throws {
@@ -319,20 +414,29 @@ public enum K48NAND {
     /// system at 63, p3 an 8-sector 0xAF stub one sector past its end, p2 0xAE data to 45 sectors before the
     /// exported end (make_mbr; the gaps are measured on one 16 GB unit).
     public static func makeMBR(geometry geo: Geometry = .k48_16g, systemMiB: Int = 1280) -> Data {
-        let ps = geo.pageSize, n = systemMiB * (1 << 20) / ps
+        let ps = geo.pageSize
+        let n = systemMiB * (1 << 20) / ps
         var head = [UInt8](repeating: 0, count: 63 * ps)
         let p3 = 63 + n + 1
-        for (i, (typ, lba, cnt)) in [(0xAF, 63, n), (0xAE, p3 + 45, geo.exportedPages - (p3 + 45) - 45), (0xAF, p3, 8)].enumerated() {
+        for (i, (typ, lba, cnt)) in [(0xAF, 63, n), (0xAE, p3 + 45, geo.exportedPages - (p3 + 45) - 45), (0xAF, p3, 8)]
+            .enumerated()
+        {
             let o = 0x1be + 16 * i
             let chs: [UInt8] = lba == 63 ? [0x01, 0x01, 0x00] : [0xFE, 0xFF, 0xFF]
             head.replaceSubrange(o..<o + 8, with: [0] + chs + [UInt8(typ), 0xFE, 0xFF, 0xFF])
-            put32(&head, o + 8, UInt32(lba)); put32(&head, o + 12, UInt32(cnt))
+            put32(&head, o + 8, UInt32(lba))
+            put32(&head, o + 12, UInt32(cnt))
         }
-        head[510] = 0x55; head[511] = 0xAA
+        head[510] = 0x55
+        head[511] = 0xAA
         return Data(head)
     }
 
-    public struct Partition: Equatable, Sendable { public let type: UInt8; public let lba: Int; public let count: Int }
+    public struct Partition: Equatable, Sendable {
+        public let type: UInt8
+        public let lba: Int
+        public let count: Int
+    }
 
     public static func partitions(mbr: [UInt8]) -> [Partition] {
         (0..<4).map { i in
@@ -366,13 +470,17 @@ public enum K48NAND {
             let i = r.lowerBound
             from = i + 1
             // ldr rN, [pc, #imm] (0x48 | N); blx rN (0x47, 0x80 | N << 3), N a low register
-            guard i >= 4, d[i - 3] & 0xF8 == 0x48, d[i - 2] == 0x80 | (d[i - 3] & 7) << 3, d[i - 1] == 0x47 else { continue }
+            guard i >= 4, d[i - 3] & 0xF8 == 0x48, d[i - 2] == 0x80 | (d[i - 3] & 7) << 3, d[i - 1] == 0x47 else {
+                continue
+            }
             let pool = ((i - 4) & ~3) + 4 + Int(d[i - 4]) * 4
             guard pool + 4 <= d.count else { continue }
             let target = MachO.u32(d, pool) & ~1
-            guard let seg = m.segments.first(where: { $0.vmaddr <= target && target < $0.vmaddr + $0.vmsize }) else { continue }
+            guard let seg = m.segments.first(where: { $0.vmaddr <= target && target < $0.vmaddr + $0.vmsize }) else {
+                continue
+            }
             let o = Int(seg.fileoff + (target - seg.vmaddr))
-            guard o + 2 <= d.count, d[o + 1] == 0x20 else { continue }   // movs r0, #N
+            guard o + 2 <= d.count, d[o + 1] == 0x20 else { continue }  // movs r0, #N
             return d[o]
         }
         return 1
@@ -380,7 +488,9 @@ public enum K48NAND {
 
     /// Restore.plist's DeviceMap SCEP for `board` (the NAND epoch a restore would write), nil when it names none.
     static func restoreEpoch(_ ipsw: IPSWArchive, board: String) throws -> UInt8? {
-        let rp = try PropertyListSerialization.propertyList(from: try ipsw.read("Restore.plist"), format: nil) as? [String: Any]
+        let rp =
+            try PropertyListSerialization.propertyList(from: try ipsw.read("Restore.plist"), format: nil)
+            as? [String: Any]
         let maps = rp?["DeviceMap"] as? [[String: Any]] ?? []
         let map = maps.first { ($0["BoardConfig"] as? String)?.lowercased() == board.lowercased() } ?? maps.first
         return (map?["SCEP"] as? NSNumber).map { UInt8(truncatingIfNeeded: $0.intValue) }
@@ -397,7 +507,8 @@ public enum K48NAND {
             var st = stat()
             fstat(fd, &st)
             size = Int(st.st_size)
-            self.page = page; self.patch = patch
+            self.page = page
+            self.patch = patch
             pages = (size + page - 1) / page
             buf = [UInt8](repeating: 0, count: page)
         }
@@ -405,12 +516,13 @@ public enum K48NAND {
 
         /// Page numbers inside the file's data extents (SEEK_DATA/SEEK_HOLE), in order, as FilePages.written().
         func written() -> [Int] {
-            var out: [Int] = [], off: off_t = 0
+            var out: [Int] = []
+            var off: off_t = 0
             while true {
                 let start = lseek(fd, off, SEEK_DATA)
                 if start < 0 { break }
                 let end = lseek(fd, start, SEEK_HOLE)
-                out += Int(start) / page ..< (Int(end) + page - 1) / page
+                out += Int(start) / page..<(Int(end) + page - 1) / page
                 off = end
             }
             return out
@@ -429,13 +541,16 @@ public enum K48NAND {
 
     /// In-place, same-length /dev/disk0s2s1 -> /dev/disk0s2 rewrite of every etc/fstab copy on the volume.
     static func fstabPatch(_ system: URL, page: Int) throws -> [Int: [(Int, [UInt8])]] {
-        let old = Data("/dev/disk0s2s1 /private/var".utf8), new = Array("/dev/disk0s2   /private/var".utf8)
+        let old = Data("/dev/disk0s2s1 /private/var".utf8)
+        let new = Array("/dev/disk0s2   /private/var".utf8)
         let d = try Data(contentsOf: system, options: .alwaysMapped)
         var patch: [Int: [(Int, [UInt8])]] = [:]
         d.withUnsafeBytes { b in
             guard let base = b.baseAddress else { return }
             var off = 0
-            while off < b.count, let hit = old.withUnsafeBytes({ memmem(base + off, b.count - off, $0.baseAddress, old.count) }) {
+            while off < b.count,
+                let hit = old.withUnsafeBytes({ memmem(base + off, b.count - off, $0.baseAddress, old.count) })
+            {
                 let at = base.distance(to: UnsafeRawPointer(hit))
                 let (pg, o) = at.quotientAndRemainder(dividingBy: page)
                 precondition(o + new.count <= page)
@@ -447,7 +562,9 @@ public enum K48NAND {
     }
 
     /// A bare case-sensitive journaled HFS+ volume (like iOS's data partition) in a sparse raw file.
-    nonisolated(nonsending) public static func makeHFSImage(at url: URL, size: Int64) async throws { try await VolumeMount.makeHFS(url, size: size) }
+    nonisolated(nonsending) public static func makeHFSImage(at url: URL, size: Int64) async throws {
+        try await VolumeMount.makeHFS(url, size: size)
+    }
 
     // MARK: build
 
@@ -464,24 +581,52 @@ public enum K48NAND {
 
     /// ipad1_nand.py build: the store for `system` (+ `s3` + the data volume) at the MBR's partitions, into `out`.
     @discardableResult
-    nonisolated(nonsending) public static func build(geometry geo: Geometry = .k48_16g, mbr: URL, kernelVersion: [UInt8], epoch: UInt8 = 1, system: URL, s3: URL? = nil,
-                             data: DataVolume, out: URL, force: Bool = false, whitening: Bool = true, sigFlags: UInt32? = nil,
-                             log: (String) -> Void = { _ in }) async throws -> BuildResult {
+    nonisolated(nonsending) public static func build(
+        geometry geo: Geometry = .k48_16g,
+        mbr: URL,
+        kernelVersion: [UInt8],
+        epoch: UInt8 = 1,
+        system: URL,
+        s3: URL? = nil,
+        data: DataVolume,
+        out: URL,
+        force: Bool = false,
+        whitening: Bool = true,
+        sigFlags: UInt32? = nil,
+        log: (String) -> Void = { _ in }
+    ) async throws -> BuildResult {
         let fm = FileManager.default
         if fm.fileExists(atPath: out.appendingPathComponent("geometry.json").path) && !force {
             throw FirmwareError(.internal, "\(out.path) exists; pass force to overwrite")
         }
         if force, let names = try? fm.contentsOfDirectory(atPath: out.path) {
-            for n in names where n == "geometry.json" || n.hasSuffix(".pages") { try fm.removeItem(at: out.appendingPathComponent(n)) }
+            for n in names where n == "geometry.json" || n.hasSuffix(".pages") {
+                try fm.removeItem(at: out.appendingPathComponent(n))
+            }
         }
         let ps = geo.pageSize
-        guard ps == 4096 else { throw FirmwareError(.unsupported, "\(geo.name) has \(ps)-byte pages; the device MBR/partitions are 4 KiB-sectored") }
+        guard ps == 4096 else {
+            throw FirmwareError(
+                .unsupported,
+                "\(geo.name) has \(ps)-byte pages; the device MBR/partitions are 4 KiB-sectored"
+            )
+        }
         var head = [UInt8](try Data(contentsOf: mbr))
-        guard head.count >= 512, head[510] == 0x55, head[511] == 0xAA else { throw FirmwareError(.unsupported, "\(mbr.path): no MBR signature") }
+        guard head.count >= 512, head[510] == 0x55, head[511] == 0xAA else {
+            throw FirmwareError(.unsupported, "\(mbr.path): no MBR signature")
+        }
         let parts = partitions(mbr: head)
-        let p1 = parts[0], p3 = parts[2]
+        let p1 = parts[0]
+        let p3 = parts[2]
         var p2 = parts[1]
-        let sys = try FilePages(system, page: ps, patch: { if case .none = data { return [:] }; return try fstabPatch(system, page: ps) }())
+        let sys = try FilePages(
+            system,
+            page: ps,
+            patch: {
+                if case .none = data { return [:] }
+                return try fstabPatch(system, page: ps)
+            }()
+        )
         if sys.pages != p1.count { log("warning: system image is \(sys.pages) pages, partition 1 is \(p1.count)") }
 
         var work: URL?
@@ -505,7 +650,10 @@ public enum K48NAND {
             p2 = Partition(type: 0xAF, lba: p2.lba, count: d.pages)
         }
         guard p2.lba + p2.count <= geo.exportedPages else {
-            throw FirmwareError(.unsupported, "partition 2 ends at \(p2.lba + p2.count) > exported \(geo.exportedPages) sectors")
+            throw FirmwareError(
+                .unsupported,
+                "partition 2 ends at \(p2.lba + p2.count) > exported \(geo.exportedPages) sectors"
+            )
         }
 
         let st = try Store(create: out, geo: geo, plain: !whitening)
@@ -527,7 +675,9 @@ public enum K48NAND {
         }
         try ftl.indexPages()
         st.close()
-        log("wrote \(out.path): \(st.records) pages, \(ftl.vblock) user/index vblocks used of \(geo.numBlocks), \(ftl.toc.count) TOC pages")
+        log(
+            "wrote \(out.path): \(st.records) pages, \(ftl.vblock) user/index vblocks used of \(geo.numBlocks), \(ftl.toc.count) TOC pages"
+        )
         return BuildResult(records: st.records, vblocksUsed: ftl.vblock, tocPages: ftl.toc.count)
     }
 }

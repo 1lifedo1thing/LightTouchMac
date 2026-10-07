@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import Testing
+
 @testable import FirmwareKit
 
 struct ActivationTests {
@@ -18,10 +19,15 @@ struct ActivationTests {
     }
 
     // Independently check every code-page hash and retained special blobs in real fixtures.
-    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run")) func activationCorpus() throws {
+    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"))
+    func activationCorpus() throws {
         let corpus = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Developer/qemu-ios-files/activation-native/corpus-stock")
-        guard FileManager.default.fileExists(atPath: corpus.path) else { try FixtureRequirements.missing(#"ActivationTests.swift: FileManager.default.fileExists(atPath: corpus.path)"#) }
+        guard FileManager.default.fileExists(atPath: corpus.path) else {
+            try FixtureRequirements.missing(
+                #"ActivationTests.swift: FileManager.default.fileExists(atPath: corpus.path)"#
+            )
+        }
         let names = try FileManager.default.contentsOfDirectory(atPath: corpus.path)
         for name in names where name.hasSuffix(".lockdownd") {
             try Oracle.withTemp { dir in
@@ -42,10 +48,16 @@ struct ActivationTests {
                     #expect(patch.original == Data([0x3f, 0xf4, 0x71, 0xaf]))
                     #expect(patch.replacement == Data([0, 0xbf, 0, 0xbf]))
                 }
-                if name.contains("9A5220p") {   // a pointer load (LDR immediate) between the log arguments
-                    #expect(patch.offset == 35502 && patch.original == Data([0x81, 0xd0]) && patch.replacement == Data([0, 0xbf]))
+                if name.contains("9A5220p") {  // a pointer load (LDR immediate) between the log arguments
+                    #expect(
+                        patch.offset == 35502 && patch.original == Data([0x81, 0xd0])
+                            && patch.replacement == Data([0, 0xbf])
+                    )
                 }
-                #expect((try FileManager.default.attributesOfItem(atPath: target.path)[.posixPermissions] as? NSNumber)?.intValue == 0o751)
+                #expect(
+                    (try FileManager.default.attributesOfItem(atPath: target.path)[.posixPermissions] as? NSNumber)?
+                        .intValue == 0o751
+                )
                 if name.contains("4B1") {
                     #expect(MachOSignature.codeSignature(in: Data(after)) == nil)
                     #expect(throws: ActivationFailure.self) { try Activation.run(on: target) }
@@ -61,14 +73,26 @@ struct ActivationTests {
                     let length = u32(after, blob + 4)
                     if type == 0 || (0x1000...0x1005).contains(type) {
                         #expect(u32(after, blob + 12) & 2 == 2)
-                        let hashOffset = u32(after, blob + 16), special = u32(after, blob + 24)
-                        let slots = u32(after, blob + 28), limit = u32(after, blob + 32)
-                        let size = Int(after[blob + 36]), page = 1 << Int(after[blob + 39])
-                        #expect(after[(blob + hashOffset - special * size)..<(blob + hashOffset)] == before[(blob + hashOffset - special * size)..<(blob + hashOffset)])
+                        let hashOffset = u32(after, blob + 16)
+                        let special = u32(after, blob + 24)
+                        let slots = u32(after, blob + 28)
+                        let limit = u32(after, blob + 32)
+                        let size = Int(after[blob + 36])
+                        let page = 1 << Int(after[blob + 39])
+                        #expect(
+                            after[(blob + hashOffset - special * size)..<(blob + hashOffset)]
+                                == before[(blob + hashOffset - special * size)..<(blob + hashOffset)]
+                        )
                         for slot in 0..<slots {
                             let bytes = Data(after[(slot * page)..<min(limit, (slot + 1) * page)])
-                            let digest = after[blob + 37] == 1 ? Array(Insecure.SHA1.hash(data: bytes)) : Array(SHA256.hash(data: bytes))
-                            #expect(Array(after[(blob + hashOffset + slot * size)..<(blob + hashOffset + (slot + 1) * size)]) == digest)
+                            let digest =
+                                after[blob + 37] == 1
+                                ? Array(Insecure.SHA1.hash(data: bytes)) : Array(SHA256.hash(data: bytes))
+                            #expect(
+                                Array(
+                                    after[(blob + hashOffset + slot * size)..<(blob + hashOffset + (slot + 1) * size)]
+                                ) == digest
+                            )
                         }
                     } else {
                         #expect(after[blob..<(blob + length)] == before[blob..<(blob + length)])
@@ -82,15 +106,18 @@ struct ActivationTests {
 
     /// 1.0 (1A543a): no strategy before this one matched; the no-record initializer is conditional code
     /// (cmp; moveq brick,#1; ldreq state,=Unactivated; ...; beq store). Only it changes.
-    @Test(.enabled(if: FileManager.default.fileExists(atPath: Self.lockdownd10.path), "needs the 1A543a lockdownd")) func iPhone10() throws {
+    @Test(.enabled(if: FileManager.default.fileExists(atPath: Self.lockdownd10.path), "needs the 1A543a lockdownd"))
+    func iPhone10() throws {
         try Oracle.withTemp { dir in
             let target = dir.appendingPathComponent("lockdownd")
             try FileManager.default.copyItem(at: Self.lockdownd10, to: target)
             let before = try Data(contentsOf: target)
             let patch = try #require(try Activation.run(on: target).patch)
-            #expect(patch.strategy == "conditional-no-record-initializer" && patch.isa == "arm" && patch.offset == 0x90a4)
+            #expect(
+                patch.strategy == "conditional-no-record-initializer" && patch.isa == "arm" && patch.offset == 0x90a4
+            )
             #expect(patch.original == Data([0x01, 0xa0, 0xa0, 0x03, 0x3c, 0x53, 0x9f, 0x05]))
-            #expect(patch.replacement == Data([0x00, 0xa0, 0xa0, 0x03, 0x44, 0x53, 0x9f, 0x05]))   // moveq r10,#0; ldreq r5,=Activated
+            #expect(patch.replacement == Data([0x00, 0xa0, 0xa0, 0x03, 0x44, 0x53, 0x9f, 0x05]))  // moveq r10,#0; ldreq r5,=Activated
             let after = try Data(contentsOf: target)
             #expect(after.count == before.count && zip(before, after).filter { $0 != $1 }.count == 2)
             #expect(throws: ActivationFailure.self) { try Activation.run(on: target) }
@@ -111,21 +138,37 @@ struct ActivationTests {
         func put(_ offset: Int, _ value: UInt32, big: Bool = true) {
             for i in 0..<4 { bytes[offset + i] = UInt8(truncatingIfNeeded: value >> (big ? 24 - i * 8 : i * 8)) }
         }
-        put(0, 0xfeedface, big: false)
-        put(16, 1, big: false); put(20, 16, big: false)
-        put(28, 0x1d, big: false); put(32, 16, big: false)
-        put(36, 256, big: false); put(40, 256, big: false)
-        put(256, 0xfade0cc0); put(260, 140); put(264, 3)
-        put(268, 0); put(272, 36)
-        put(276, 5); put(280, 108)
-        put(284, 0x10000); put(288, 124)
+        put(0, 0xfeed_face, big: false)
+        put(16, 1, big: false)
+        put(20, 16, big: false)
+        put(28, 0x1d, big: false)
+        put(32, 16, big: false)
+        put(36, 256, big: false)
+        put(40, 256, big: false)
+        put(256, 0xfade_0cc0)
+        put(260, 140)
+        put(264, 3)
+        put(268, 0)
+        put(272, 36)
+        put(276, 5)
+        put(280, 108)
+        put(284, 0x10000)
+        put(288, 124)
         let cd = 292
-        put(cd, 0xfade0c02); put(cd + 4, 72); put(cd + 8, 0x20001)
-        put(cd + 16, 52); put(cd + 20, 44)
-        put(cd + 28, 1); put(cd + 32, 256)
-        bytes[cd + 36] = 20; bytes[cd + 37] = 1; bytes[cd + 39] = 12
-        put(364, 0xfade7171); put(368, 16)
-        put(380, 0xfade0b01); put(384, 16)
+        put(cd, 0xfade_0c02)
+        put(cd + 4, 72)
+        put(cd + 8, 0x20001)
+        put(cd + 16, 52)
+        put(cd + 20, 44)
+        put(cd + 28, 1)
+        put(cd + 32, 256)
+        bytes[cd + 36] = 20
+        bytes[cd + 37] = 1
+        bytes[cd + 39] = 12
+        put(364, 0xfade_7171)
+        put(368, 16)
+        put(380, 0xfade_0b01)
+        put(384, 16)
         let output = [UInt8](try Activation.signed(Data(bytes)))
         #expect(u32(output, 264) == 2)
         #expect(u32(output, cd + 12) == 2)

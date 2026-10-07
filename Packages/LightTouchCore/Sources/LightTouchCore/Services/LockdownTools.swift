@@ -4,8 +4,8 @@
 // operation for the time zone, lockdown-mcinstall for the proxy's profile
 // (LightTouchServices/Lockdown).
 
-import HostServiceWire
 import Foundation
+import HostServiceWire
 import Subprocess
 import System
 
@@ -31,9 +31,21 @@ extension DeviceServices {
     /// later in unrelated Swift runtime code, reproducibly, while the identical
     /// call from a child process is clean (LightTouchServices/Lockdown). The
     /// operation reads first, sets only on mismatch, and prints the zone in effect.
-    public func setTimeZone(_ identifier: String, keepClock: Bool = false, guest: GuestServices?, region: ClockRegion? = nil) async throws {
+    public func setTimeZone(
+        _ identifier: String,
+        keepClock: Bool = false,
+        guest: GuestServices?,
+        region: ClockRegion? = nil
+    ) async throws {
         guard let tool = Self.servicesHelper else { throw DeviceToolsError.toolMissing("LightTouchServices") }
-        let zone = try await Self.setTimeZone(identifier, keepClock: keepClock, tool: tool, socket: clientSocket, guest: guest, region: region)
+        let zone = try await Self.setTimeZone(
+            identifier,
+            keepClock: keepClock,
+            tool: tool,
+            socket: clientSocket,
+            guest: guest,
+            region: region
+        )
         logEvent("timezone: guest zone now \(zone)")
     }
 
@@ -42,12 +54,19 @@ extension DeviceServices {
     /// guest agent, when there is one and it holds such a record), and a write that lands while locationd restarts
     /// (the guest package's it_prefs restarts it once Wi-Fi is up) is dropped, so the same write 5 s later takes.
     /// keepClock: leave the guest's clock alone (a dated device, lock machine rtc-epoch: the Mac's clock would expire it).
-    public static func setTimeZone(_ identifier: String, keepClock: Bool = false, tool: String, socket: String,
-                            guest: GuestServices? = nil, region: ClockRegion? = nil) async throws -> String {
+    public static func setTimeZone(
+        _ identifier: String,
+        keepClock: Bool = false,
+        tool: String,
+        socket: String,
+        guest: GuestServices? = nil,
+        region: ClockRegion? = nil
+    ) async throws -> String {
         try Task.checkCancellation()
         var kept: String
-        do { return try await lockdownTZ(identifier, keepClock: keepClock, tool: tool, socket: socket, region: region) }
-        catch DeviceToolsError.zoneKept(let zone) { kept = zone }
+        do {
+            return try await lockdownTZ(identifier, keepClock: keepClock, tool: tool, socket: socket, region: region)
+        } catch DeviceToolsError.zoneKept(let zone) { kept = zone }
         try Task.checkCancellation()
         let agent = await guest?.agent.waitAlive(seconds: 60) == true ? guest : nil
         for _ in 0..<3 {
@@ -57,16 +76,31 @@ extension DeviceServices {
             } else {
                 try await Task.sleep(for: .seconds(5))
             }
-            do { return try await lockdownTZ(identifier, keepClock: keepClock, tool: tool, socket: socket, region: region) }
-            catch DeviceToolsError.zoneKept(let zone) { kept = zone }
+            do {
+                return try await lockdownTZ(
+                    identifier,
+                    keepClock: keepClock,
+                    tool: tool,
+                    socket: socket,
+                    region: region
+                )
+            } catch DeviceToolsError.zoneKept(let zone) { kept = zone }
         }
         throw DeviceToolsError.zoneKept(kept)
     }
 
-    private static func lockdownTZ(_ identifier: String, keepClock: Bool, tool: String, socket: String,
-                                   region: ClockRegion?) async throws -> String {
-        let result = try await lockdownChild(tool, ["lockdown-tz", identifier] + (keepClock ? ["keep"] : []) + (region?.arguments ?? []),
-                                             socket: socket)
+    private static func lockdownTZ(
+        _ identifier: String,
+        keepClock: Bool,
+        tool: String,
+        socket: String,
+        region: ClockRegion?
+    ) async throws -> String {
+        let result = try await lockdownChild(
+            tool,
+            ["lockdown-tz", identifier] + (keepClock ? ["keep"] : []) + (region?.arguments ?? []),
+            socket: socket
+        )
         let zone = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
         if result.status == 4 { throw DeviceToolsError.zoneKept(zone) }
         guard result.status == 0 else {
@@ -81,7 +115,9 @@ extension DeviceServices {
     /// Install on the device.
     public func offerProfile(_ certificate: String) async throws -> Bool {
         guard let tool = Self.servicesHelper else { throw DeviceToolsError.toolMissing("LightTouchServices") }
-        if try await Self.lockdownChild(tool, ["lockdown-mcinstall", "--installed"], socket: clientSocket).status == 0 { return false }
+        if try await Self.lockdownChild(tool, ["lockdown-mcinstall", "--installed"], socket: clientSocket).status == 0 {
+            return false
+        }
         let offered = try await Self.lockdownChild(tool, ["lockdown-mcinstall", certificate], socket: clientSocket)
         guard offered.status == 0 else {
             logEvent("proxy: offering the certificate profile failed: \(offered.error)")
@@ -94,20 +130,27 @@ extension DeviceServices {
     /// One of the lockdown child tools, pointed at this device's usbmuxd: its
     /// status and the first KB of each stream.
     static func lockdownChild(_ tool: String, _ arguments: [String], socket: String) async throws
-        -> (status: Int32, output: String, error: String) {
+        -> (status: Int32, output: String, error: String)
+    {
         try Task.checkCancellation()
         // The existing subprocess library owns spawn, output draining and reaping.
         // Cancellation (including the deadline) tears down the child before this
         // returns, so a replaced boot cannot leave a timezone writer running.
         let result = try await withThrowingTaskGroup(of: (Int32, String, String).self) { group in
             group.addTask {
-                let child = try await Subprocess.run(.path(FilePath(tool)), arguments: Arguments(arguments),
+                let child = try await Subprocess.run(
+                    .path(FilePath(tool)),
+                    arguments: Arguments(arguments),
                     environment: .inherit.updating(["USBMUXD_SOCKET_ADDRESS": socket]),
-                    input: .none, output: .string(limit: 1024), error: .string(limit: 1024))
-                let status: Int32 = switch child.terminationStatus {
+                    input: .none,
+                    output: .string(limit: 1024),
+                    error: .string(limit: 1024)
+                )
+                let status: Int32 =
+                    switch child.terminationStatus {
                     case .exited(let code): code
                     case .signaled(let signal): -signal
-                }
+                    }
                 return (status, child.standardOutput, child.standardError)
             }
             group.addTask {

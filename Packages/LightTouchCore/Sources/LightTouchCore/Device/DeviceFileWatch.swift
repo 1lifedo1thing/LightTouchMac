@@ -26,7 +26,9 @@ public nonisolated final class DeviceFileWatch: @unchecked Sendable {
     // (they all exist once iOS is up, which is when this starts).
     public init(directories: [URL], files: [URL] = [], base: URL?, onChange: @escaping @Sendable (String) -> Void) {
         let fm = FileManager.default
-        var watched: [(URL, DispatchSource.FileSystemEvent)] = (directories + files).map { ($0, [.delete, .rename, .revoke]) }
+        var watched: [(URL, DispatchSource.FileSystemEvent)] = (directories + files).map {
+            ($0, [.delete, .rename, .revoke])
+        }
         for directory in directories {
             for name in (try? fm.contentsOfDirectory(atPath: directory.path)) ?? [] where !name.hasPrefix(".") {
                 watched.append((directory.appendingPathComponent(name), [.delete, .rename, .revoke]))

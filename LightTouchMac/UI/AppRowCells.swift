@@ -1,8 +1,8 @@
 // The Apps inspector's row views (AppsInspectorViewController's table): a Legacy Store result with its button,
 // and the row for work in flight. What each row says is LightTouchCore's (AppsInspectorRows); these only draw it.
 
-import LightTouchCore
 import Cocoa
+import LightTouchCore
 
 @MainActor enum AppRowCells {
     /// The row's icon well: the image when we have one, else a quiet
@@ -17,8 +17,15 @@ import Cocoa
     /// A Legacy Store result: icon, name, "developer · 66 MB" (or why it can't run here), and its button
     /// (Install or Open), whose tag is the row it was built for. Built fresh each time: a page of results is small,
     /// and every state change reloads the row, so tags never go stale.
-    static func catalogCell(_ app: CatalogApp, icon: NSImage?, button buttonTitle: String, enabled: Bool, row: Int,
-                            target: AnyObject?, action: Selector?) -> NSTableCellView {
+    static func catalogCell(
+        _ app: CatalogApp,
+        icon: NSImage?,
+        button buttonTitle: String,
+        enabled: Bool,
+        row: Int,
+        target: AnyObject?,
+        action: Selector?
+    ) -> NSTableCellView {
         let cell = NSTableCellView()
         let image = NSImageView()
         image.imageScaling = .scaleProportionallyUpOrDown
@@ -82,8 +89,14 @@ import Cocoa
     /// circular progress indicator, determinate when a download knows its
     /// size. One style for installs, downloads, removals and catalog rows.
     /// Built fresh each time (such rows are few) so the indicator animates.
-    static func progressCell(icon: NSImage?, title: String, subtitle subtitleText: String,
-                             fraction: Double? = nil, job: InstallJob? = nil, resume: @escaping () -> Void) -> NSTableCellView {
+    static func progressCell(
+        icon: NSImage?,
+        title: String,
+        subtitle subtitleText: String,
+        fraction: Double? = nil,
+        job: InstallJob? = nil,
+        resume: @escaping () -> Void
+    ) -> NSTableCellView {
         let cell = NSTableCellView()
         let image = NSImageView()
         image.imageScaling = .scaleProportionallyUpOrDown
@@ -117,11 +130,17 @@ import Cocoa
         } else {
             progress.startAnimation(nil)
         }
-        let action = InlineActionButton(title: job?.failed == true ? "Retry" : job?.status == "Paused" ? "Resume" : "Cancel") { [weak job] in
+        let action = InlineActionButton(
+            title: job?.failed == true ? "Retry" : job?.status == "Paused" ? "Resume" : "Cancel"
+        ) { [weak job] in
             guard let job else { return }
-            if job.failed { job.retry?() }
-            else if AppInstaller.isPaused(job.deviceID) { resume() }
-            else { job.cancel() }
+            if job.failed {
+                job.retry?()
+            } else if AppInstaller.isPaused(job.deviceID) {
+                resume()
+            } else {
+                job.cancel()
+            }
         }
         action.isHidden = job == nil
         action.isEnabled = job?.failed == true || job?.isCancellable == true

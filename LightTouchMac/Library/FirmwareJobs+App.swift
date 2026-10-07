@@ -1,5 +1,5 @@
-import LightTouchCore
 import Cocoa
+import LightTouchCore
 
 extension FirmwareJobs {
     /// The app's jobs over its library; errors with no row to show them on go to an alert.

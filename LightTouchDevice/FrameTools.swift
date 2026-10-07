@@ -3,8 +3,8 @@
 
 import CoreGraphics
 import Foundation
-import ImageIO
 import IOSurface
+import ImageIO
 import UniformTypeIdentifiers
 
 enum FrameTools {
@@ -14,10 +14,14 @@ enum FrameTools {
         // In use: the helper will not write into it while it is read.
         surface.incrementUseCount()
         surface.lock(options: .readOnly, seed: nil)
-        defer { surface.unlock(options: .readOnly, seed: nil); surface.decrementUseCount() }
+        defer {
+            surface.unlock(options: .readOnly, seed: nil)
+            surface.decrementUseCount()
+        }
         let base = surface.baseAddress
         let rowBytes = surface.width * 4
-        var bright = 0, total = 0
+        var bright = 0
+        var total = 0
         for y in stride(from: 0, to: surface.height, by: 7) {
             for x in stride(from: 0, to: rowBytes, by: 13) where x % 4 != 3 {
                 if base.load(fromByteOffset: y * surface.bytesPerRow + x, as: UInt8.self) > 60 { bright += 1 }
@@ -36,12 +40,23 @@ enum FrameTools {
         surface.unlock(options: .readOnly, seed: nil)
         surface.decrementUseCount()
         guard let provider = CGDataProvider(data: data as CFData),
-              let image = CGImage(width: surface.width, height: surface.height, bitsPerComponent: 8, bitsPerPixel: 32,
-                                  bytesPerRow: surface.bytesPerRow, space: CGColorSpaceCreateDeviceRGB(),
-                                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue
-                                                           | CGBitmapInfo.byteOrder32Little.rawValue),
-                                  provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent),
-              let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)
+            let image = CGImage(
+                width: surface.width,
+                height: surface.height,
+                bitsPerComponent: 8,
+                bitsPerPixel: 32,
+                bytesPerRow: surface.bytesPerRow,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo(
+                    rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue
+                        | CGBitmapInfo.byteOrder32Little.rawValue
+                ),
+                provider: provider,
+                decode: nil,
+                shouldInterpolate: false,
+                intent: .defaultIntent
+            ),
+            let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)
         else { return false }
         CGImageDestinationAddImage(destination, image, nil)
         return CGImageDestinationFinalize(destination)

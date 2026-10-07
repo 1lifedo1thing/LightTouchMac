@@ -5,7 +5,9 @@ extension URL {
     public nonisolated var unused: URL {
         let fm = FileManager.default
         guard fm.fileExists(atPath: path) else { return self }
-        let base = deletingPathExtension().lastPathComponent, ext = pathExtension, folder = deletingLastPathComponent()
+        let base = deletingPathExtension().lastPathComponent
+        let ext = pathExtension
+        let folder = deletingLastPathComponent()
         var n = 2
         while true {
             let candidate = folder.appendingPathComponent(ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)")

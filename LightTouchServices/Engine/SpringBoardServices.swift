@@ -47,7 +47,8 @@ extension DeviceServices {
             guard let from = ids.firstIndex(of: bundleID) else {
                 throw DeviceToolsError.failed(
                     "This app isn’t on the Home screen yet. "
-                    + "Restart the \(deviceName), then try moving it again.")
+                        + "Restart the \(deviceName), then try moving it again."
+                )
             }
             ids.remove(at: from)
             let to = other.flatMap { ids.firstIndex(of: $0) } ?? ids.count
@@ -140,7 +141,9 @@ nonisolated extension HomeScreenLayout {
     }
 
     static func write(_ state: [Any], to client: OpaquePointer) throws {
-        guard let node = IMobileDevice.encode(state) else { throw DeviceToolsError.failed("Couldn’t save the Home screen layout.") }
+        guard let node = IMobileDevice.encode(state) else {
+            throw DeviceToolsError.failed("Couldn’t save the Home screen layout.")
+        }
         defer { plist_free(node) }
         guard sbservices_set_icon_state(client, node).ok else {
             throw DeviceToolsError.failed("The Home screen didn’t accept the new layout.")
