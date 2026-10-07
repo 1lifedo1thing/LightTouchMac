@@ -830,44 +830,16 @@ final class EmulatorController {
     func resetRotation() { rotation.reset() }
 
     // MARK: Carrier (radio boards)
-    //
-    // The fake network's settings are the device's (DeviceSettings.carrier): every boot starts the modem
-    // with them (BootRecipe, -global ios-baseband.*), and a change while it runs is written to the modem too.
 
-    var hasCellular: Bool { profile.hasCellular }
-
-    @ObservationIgnored private(set) lazy var carrierSettings: CarrierSettings = settings.carrier.flatMap { $0.isValid ? $0 : nil } ?? CarrierSettings()
-
-    /// Saves valid settings and writes what changed to the running modem; false (nothing saved) for invalid ones.
+    /// The fake network's settings and the running modem (CarrierModem).
+    @ObservationIgnored private(set) lazy var carrier = CarrierModem(hasCellular: profile.hasCellular, settings: settingsFile,
+                                                                     scope: bootScope) { [weak self] in self?.link }
+    var hasCellular: Bool { carrier.hasCellular }
+    var carrierSettings: CarrierSettings { carrier.carrierSettings }
     @discardableResult
-    func setCarrierSettings(_ settings: CarrierSettings) -> Bool {
-        guard hasCellular, settings.isValid else { return false }
-        let old = Dictionary(carrierSettings.properties.map { ($0.name, $0.value) }, uniquingKeysWith: { a, _ in a })
-        carrierSettings = settings
-        changeSettings { $0.carrier = settings }
-        for p in settings.properties where old[p.name] != p.value { modem(p.name, p.value) }
-        return true
-    }
-
-    /// One modem property or action (incoming-call, remote-answer, remote-hangup, incoming-sms); `done` gets whether
-    /// the helper queued it. The modem's own refusal shows in the next status's `error`.
-    func modem(_ property: String, _ value: String, done: @escaping (Bool) -> Void = { _ in }) {
-        guard hasCellular else { return done(false) }
-        control(.modemSet(property: property, value: value), done)
-    }
-
-    /// The modem's state as of the previous poll (the helper refreshes it per call); nil when it isn't running.
-    func modemStatus(_ done: @escaping (ModemStatus?) -> Void) {
-        guard hasCellular, let link, !bootScope.retired else { return done(nil) }
-        let session = bootScope.id
-        link.request(.modemStatus) { [weak self] reply in
-            MainActor.assumeIsolated {
-                guard let self, !self.bootScope.retired, session == self.bootScope.id,
-                      case .success(.modemStatus(let json?)) = reply else { return done(nil) }
-                done(ModemStatus(json: json))
-            }
-        }
-    }
+    func setCarrierSettings(_ settings: CarrierSettings) -> Bool { carrier.setCarrierSettings(settings) }
+    func modem(_ property: String, _ value: String, done: @escaping (Bool) -> Void = { _ in }) { carrier.modem(property, value, done: done) }
+    func modemStatus(_ done: @escaping (ModemStatus?) -> Void) { carrier.modemStatus(done) }
 
     /// Attach to Local Network, per device (DeviceSettings.localNetwork), off by default: while off the
     /// emulator refuses the guest's LAN traffic (BootRecipe.wifiNetdev), so macOS never asks on its own.
