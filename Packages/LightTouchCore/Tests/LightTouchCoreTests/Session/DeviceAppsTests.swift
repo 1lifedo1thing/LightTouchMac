@@ -81,7 +81,7 @@ struct DeviceAppsTests {
         let host = Host()
         let apps = DeviceApps(host: host)
         #expect(apps.hasSpringBoardServices)
-        for version in ["2.2.1", "3.0"] {
+        for version in ["1.0", "1.1.4", "2.2.1", "3.0"] {
             host.iosVersion = version
             #expect(!apps.hasSpringBoardServices)
             try await apps.waitForSpringBoard()   // returns at once: lockdown answering is as ready as it gets

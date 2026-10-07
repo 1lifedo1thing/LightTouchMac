@@ -130,9 +130,11 @@ struct SingleConfig: Decodable {
         // The app's readiness answer (ReadinessWatch through DeviceApps.waitForSpringBoard): SpringBoard's layout
         // service, or the agent naming SpringBoard or Setup frontmost. Until wave 2.5 the app gave up after one 45 s
         // wait and refused input on a live screen (Sam 10-07, iOS 7's Setup); `seconds` past 45 is that case.
+        // Before 3.1 there is no springboardservices: the app takes lockdown's answer as the Home screen's
+        // (DeviceApps.hasSpringBoardServices), and so does this probe.
         do {
             let t0 = Date(), probe = GuestAgent(link: d.process.link, cache: GuestAgentCache())
-            var by = ""
+            var by = (lock?.productVersion ?? "3.1").compare("3.1", options: .numeric) == .orderedAscending ? "lockdown (no springboardservices)" : ""
             while by.isEmpty, Date().timeIntervalSince(t0) < 600 {
                 if (try? await d.services.homeScreenOrder()) != nil { by = "layout"; break }
                 if let front = try? await probe.frontmost(), front.bundleID == "com.apple.springboard" || front.bundleID == "com.apple.purplebuddy" {

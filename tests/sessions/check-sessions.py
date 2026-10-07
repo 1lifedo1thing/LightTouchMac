@@ -177,7 +177,11 @@ def backlight_top(board, base):
         return 0xf5     # AppleD1759PMUBacklight at Brightness 1.0 (3.1.3: it_prefs' live GSEventSetBacklightLevel)
     if board in ("ipad", "ipod4g", "iphone4"):
         # 6.x+ kernels step through the device tree's backlight-table (u16 codes, 0x7b3 at the n90's top);
-        # earlier ones run the SWI level up to its full 11 bits.
+        # earlier ones run the SWI level up to its full 11 bits. An iBoot base (firmwarekit's iPad, which stops at 5.1.1)
+        # has no kboot.bin to read the tree from; its version says which.
+        major = str(json.loads((base / "device.lock.json").read_text()).get("product_version", "0")).split(".")[0]
+        if not (base / "kboot.bin").exists() and major.isdigit() and int(major) < 6:
+            return 0x7ff
         kboot = (base / "kboot.bin").read_bytes()
         at = kboot.find(b"backlight-table".ljust(32, b"\0"))
         if at < 0:
