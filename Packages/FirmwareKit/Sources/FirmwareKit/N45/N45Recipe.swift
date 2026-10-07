@@ -72,6 +72,17 @@ final class N45Board: Board {
         return made
     }
 
+    /// 1.x's SpringBoard puts the system to deep sleep (pmu go hib) when the lock screen idles, seconds after boot,
+    /// and the machine has no resume path (qemu-ios docs/ipod1g, debt 9). SBDisableIdleSleep keeps it to a display
+    /// sleep, which Home or Hold wakes. Set in `prefs` (volume-relative) when SpringBoard names it; true if set.
+    static func bakeNoIdleSleep(_ m: URL, prefs: String) throws -> Bool {
+        let key = "SBDisableIdleSleep"
+        guard let sb = try? Data(contentsOf: m.appendingPathComponent(N72Board.springBoard), options: .alwaysMapped),
+              sb.range(of: Data((key + "\0").utf8)) != nil else { return false }
+        try SystemEdits.seedPlist(m.appendingPathComponent(prefs)) { $0[key] = true }
+        return true
+    }
+
     static let rootLibrary = "private/var/root/Library"
     static let openGLESExports = "opengles-1x.exports"
     /// 1.x's SCPreferences live in the user's home, root's: SystemConfiguration (1.0 and 1.1) opens
@@ -230,8 +241,9 @@ final class N45Board: Board {
             owners += try Self.seedSystemConfiguration(m).map { (UInt32(0), $0) }
             derived["wifi"] = "en0 AirPort service (PAC /\(SystemEdits.pacPath)); known network qemu-ios, Wi-Fi on (/\(Self.wifiPrefs))"
             // 1.x runs no guest helpers (it_prefs): its SpringBoard preferences, in root's Library (1.x's user)
-            derived["prefs"] = try N72Board.bakePrefs(m, dir: Self.rootLibrary + "/Preferences")
             let sbPrefs = Self.rootLibrary + "/Preferences/com.apple.springboard.plist"
+            let prefs = try N72Board.bakePrefs(m, dir: Self.rootLibrary + "/Preferences")
+            derived["prefs"] = try Self.bakeNoIdleSleep(m, prefs: sbPrefs) ? prefs + "; SBDisableIdleSleep (no deep sleep)" : prefs
             if fm.fileExists(atPath: at(sbPrefs).path) { owners.append((0, sbPrefs)) }
             let (report, record, owned) = try Self.bake(m, helpers: c.o.guestTools, gles: recipe.options["gles_shim"] ?? true, fit: c.fit, log: c.log)
             for (k, v) in report { derived[k] = v }

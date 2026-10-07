@@ -293,6 +293,22 @@ import Testing
             #expect(Oracle.exists(m.appendingPathComponent("private/var/logs/BTServer")))
         }
     }
+    /// 1.x's lock screen deep-sleeps seconds after boot and the machine cannot resume: SBDisableIdleSleep in the user's
+    /// SpringBoard preferences where SpringBoard names it, beside what is there; nothing where it does not.
+    @Test func noIdleSleepBaked() throws {
+        try Oracle.withTemp { m in
+            let sb = m.appendingPathComponent(N72Board.springBoard), rel = N45Board.rootLibrary + "/Preferences/com.apple.springboard.plist"
+            let plist = m.appendingPathComponent(rel)
+            try SystemEdits.mkdirs(sb.deletingLastPathComponent())
+            try Data("\0SBDisableIdleSleepX\0".utf8).write(to: sb)
+            #expect(try !N45Board.bakeNoIdleSleep(m, prefs: rel) && !Oracle.exists(plist))
+            try Data("\0SBAutoLockTime\0SBDisableIdleSleep\0".utf8).write(to: sb)
+            try SystemEdits.seedPlist(plist) { $0["SBAutoLockTime"] = -1 }
+            #expect(try N45Board.bakeNoIdleSleep(m, prefs: rel))
+            let d = try #require(PropertyListSerialization.propertyList(from: Data(contentsOf: plist), format: nil) as? [String: Any])
+            #expect(d["SBDisableIdleSleep"] as? Bool == true && d["SBAutoLockTime"] as? Int == -1)
+        }
+    }
     /// 3A101a's LaunchDaemons: the bake keeps mDNSResponder, 1.x's only host-name resolver (without it Safari sent no
     /// DNS query and found no server), and still drops the jobs that wait on absent hardware.
     @Test func resolverKept() {
