@@ -29,13 +29,16 @@ struct StepPlan: Sendable {
             .init(file: "keybag-", marker: "FTL_Open", at: 2, text: "Opening the flash"),
             .init(file: "keybag-", marker: "it_keybag:", at: 4, text: "Creating the keybag"),
         ]),
-        "Sealing the NAND": .init(seconds: 72, text: "Booting to seal the flash", milestones: [
-            .init(file: "seal.log", marker: "CXT is not valid", at: 1, text: "Booting to seal the flash: indexing the new flash"),
-            .init(file: "seal.log", marker: "FTL_Open", at: 6, text: "Booting to seal the flash: opening the flash"),
-            .init(file: "seal.log", marker: "launchd[1] has started", at: 19, text: "Booting to seal the flash: starting iOS"),
-            .init(file: "seal.log", marker: "it_prefs:", at: 41, text: "Booting to seal the flash: first-boot setup"),
-            .init(file: "seal.log", marker: "it_seal:", at: 65, text: "Shutting down to seal the flash"),
-            .init(file: "check.log", marker: "iBoot version", at: 68, text: "Checking the sealed flash"),
+        // The seal one-shot (Recipe.sealStep): boot the new flash until it_seal halts, then a check boot. Each line is
+        // one every release prints; a release that skips one moves on by time (fraction(elapsed:seen:)).
+        sealStep: .init(seconds: 72, text: "Starting iOS", milestones: [
+            .init(file: "seal.log", marker: "CXT is not valid", at: 1, text: "Indexing the flash"),
+            .init(file: "seal.log", marker: "FTL_Open", at: 6, text: "Opening the flash"),
+            .init(file: "seal.log", marker: "launchd[1] has started", at: 19, text: "Starting iOS"),
+            .init(file: "seal.log", marker: "SpringBoard[", at: 30, text: "Starting the Home screen"),
+            .init(file: "seal.log", marker: "it_prefs:", at: 41, text: "Starting the Home screen"),
+            .init(file: "seal.log", marker: "it_seal:", at: 65, text: "Shutting down"),
+            .init(file: "check.log", marker: "iBoot version", at: 68, text: "Checking the flash"),
         ]),
         "Writing the lock": .init(seconds: 3, text: "Hashing the prepared flash"),
         // n72 (N72Recipe; ~35 s for 7E18)
@@ -48,14 +51,36 @@ struct StepPlan: Sendable {
         ]),
     ]
 
-    static func plan(_ name: String) -> StepPlan { plans[name] ?? .init(seconds: 10, text: name) }
+    /// The step that boots the prepared flash once so its first boot is done (it_seal halts it).
+    static let sealStep = "Finishing setup"
 
-    /// 0..<1 at `elapsed` s: the last milestone seen (`seen[i]`, when it was first seen) plus time toward the next.
+    /// iOS 7's seal boot: launchd starts our daemons ~3 minutes in (K48Recipe.oneshotTimeout), so SpringBoard and
+    /// the halt come late. n90ap-11D257 on an M4 Max under load, 2026-10-07: launchd 8 s, Wi-Fi 60 s, SpringBoard
+    /// 204 s, lockdown 239 s, it_seal 328 s, the check boot done at 336 s.
+    static let seal7 = StepPlan(seconds: 336, text: "Starting iOS", milestones: [
+        .init(file: "seal.log", marker: "FTL_Open", at: 4, text: "Opening the flash"),
+        .init(file: "seal.log", marker: "launchd[1] has started", at: 8, text: "Starting iOS"),
+        .init(file: "seal.log", marker: "AirPort: Link Up", at: 60, text: "Starting iOS"),
+        .init(file: "seal.log", marker: "SpringBoard[", at: 204, text: "Starting the Home screen"),
+        .init(file: "seal.log", marker: "lockdown says", at: 239, text: "Starting the Home screen"),
+        .init(file: "seal.log", marker: "it_seal:", at: 328, text: "Shutting down"),
+        .init(file: "check.log", marker: "iBoot version", at: 331, text: "Checking the flash"),
+    ])
+
+    /// `major`: the firmware's iOS major version (the seal boot of 7.x takes several times as long).
+    static func plan(_ name: String, major: Int = 0) -> StepPlan {
+        if name == sealStep, major >= 7 { return seal7 }
+        return plans[name] ?? .init(seconds: 10, text: name)
+    }
+
+    /// 0..<1 at `elapsed` s: the last milestone seen (`seen[i]`, when it was first seen) plus the time since. Time
+    /// alone runs on past milestones a release never prints (7.x has no it_prefs line) but never reaches the last one:
+    /// only the boot's own halt and check finish the step.
     func fraction(elapsed: Double, seen: [Double?]) -> Double {
         let reached = seen.lastIndex { $0 != nil }
         let from = reached.map { milestones[$0].at } ?? 0, since = reached.map { seen[$0]! } ?? 0
-        let to = reached.map { $0 + 1 < milestones.count ? milestones[$0 + 1].at : seconds } ?? (milestones.first?.at ?? seconds)
-        let t = from + min(max(elapsed - since, 0), 0.95 * max(to - from, 0))   // time alone never reaches the next milestone
+        let to = reached.map { $0 + 1 < milestones.count ? milestones.last!.at : seconds } ?? (milestones.last?.at ?? seconds)
+        let t = from + min(max(elapsed - since, 0), 0.95 * max(to - from, 0))
         return min(0.99, t / seconds)
     }
 }
@@ -67,8 +92,9 @@ final class StepProgress: @unchecked Sendable {
     private var plan: StepPlan?, text = "", started = Date(), last = 0.0, seen: [Double?] = [], measured: (@Sendable () -> Double)?
 
     /// `work` holds the one-shots' serial logs.
-    init(work: URL?, emit: @escaping @Sendable (PrepareEvent) -> Void) {
+    init(work: URL?, major: Int = 0, emit: @escaping @Sendable (PrepareEvent) -> Void) {
         self.emit = emit
+        self.major = major
         self.work = work
         Thread.detachNewThread { [self] in
             while done.wait(timeout: .now() + 1) == .timedOut { lock.withLock { tick() } }
@@ -82,12 +108,15 @@ final class StepProgress: @unchecked Sendable {
         set { lock.withLock { measured = newValue } }
     }
 
+    /// The firmware's iOS major version: picks the seal boot's plan (StepPlan.plan).
+    let major: Int
+
     /// Ends the current step with 1.0, then emits the step event and the new step's first progress.
     func next(index: Int, name: String) {
         lock.withLock {
             end()
             emit(.step(index: index, name: name))
-            plan = StepPlan.plan(name)
+            plan = StepPlan.plan(name, major: major)
             text = plan!.text; started = Date(); last = 0; seen = Array(repeating: nil, count: plan!.milestones.count); measured = nil
             tick()
         }

@@ -96,9 +96,10 @@ public enum Recipe {
             try StorageCapacity.require(e.estimates.peakBytes - (e.source.bytes ?? 0), at: o.out)
         }
         let steps = ["Verifying the IPSW", "Decrypting the firmware", board.bootStep, board.volumesStep, "Writing the NAND"]
-            + (board.dataProtection ? [board.keybagStep] : []) + (board.needsSeal ? ["Sealing the NAND"] : []) + ["Writing the lock"]
-        emit(.begin(steps: steps.count, seconds: steps.map { StepPlan.plan($0).seconds }))
-        let progress = StepProgress(work: c.work, emit: emit)
+            + (board.dataProtection ? [board.keybagStep] : []) + (board.needsSeal ? [StepPlan.sealStep] : []) + ["Writing the lock"]
+        let major = Int(e.version.split(separator: ".").first ?? "") ?? 0
+        emit(.begin(steps: steps.count, seconds: steps.map { StepPlan.plan($0, major: major).seconds }))
+        let progress = StepProgress(work: c.work, major: major, emit: emit)
         c.progress = progress
         defer { progress.stop() }
         var index = 0

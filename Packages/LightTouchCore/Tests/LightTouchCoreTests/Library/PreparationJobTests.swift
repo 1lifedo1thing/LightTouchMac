@@ -19,7 +19,7 @@ import Testing
         #expect(L(#"{"event":"begin","steps":2,"seconds":[1.5,70]}"#) == .begin(steps: 2, seconds: [1.5, 70]))
         #expect(L(#"{"event":"step","index":3,"name":"Building the system volume"}"#) == .step(index: 3, name: "Building the system volume"))
         #expect(L(#"{"event":"progress","fraction":0.42}"#) == .progress(0.42))
-        #expect(L(#"{"event":"progress","fraction":0.5,"detail":"Booting to seal the flash — 42 s"}"#) == .progress(0.5, detail: "Booting to seal the flash — 42 s"))
+        #expect(L(#"{"event":"progress","fraction":0.5,"detail":"Starting iOS — 42 s"}"#) == .progress(0.5, detail: "Starting iOS — 42 s"))
         #expect(L(#"{"event":"warning","message":"slow disk"}"#) == .warning("slow disk"))
         #expect(L(#"{"event":"done","lock":"device.lock.json"}"#) == .done(lock: "device.lock.json"))
         #expect(L(#"{"event":"error","code":"activation_failed","message":"exit 2"}"#) == .error(code: "activation_failed", message: "exit 2"))
@@ -120,7 +120,7 @@ import Testing
             for event in run.events {
                 if case let .step(index, _, _) = event { inSeal = index == 3 }
                 if inSeal, case let .progress(fraction, detail) = event {
-                    #expect(detail?.hasPrefix("Booting to seal the flash — ") == true)
+                    #expect(detail?.hasPrefix("Starting iOS — ") == true)
                     sealing.append(fraction)
                 }
             }

@@ -130,17 +130,17 @@ struct DeviceRowTests {
         r = row(iPad32, job: .preparing(.init(step: 2, steps: 5, name: "Decrypting")))
         #expect(r.stateDescription == "Preparing, 20%" && allowed(r, canDownload: true) == ["cancel"])
         // Overall progress: equal steps without the preparer's seconds, weighted by them with.
-        var p = Preparation(step: 6, steps: 7, name: "Sealing the NAND", fraction: 0.5)
+        var p = Preparation(step: 6, steps: 7, name: "Finishing setup", fraction: 0.5)
         #expect(abs(row(iPad32, job: .preparing(p)).progress! - 5.5 / 7) < 1e-9)
         p.seconds = [2, 5, 1, 12, 4, 71, 3]
         #expect(abs(p.overall! - (24 + 35.5) / 98) < 1e-9)
-        p.detail = "Booting to seal the flash — 42 s"
+        p.detail = "Starting iOS — 42 s"
         p.remaining = 45
         r = row(iPad32, job: .preparing(p))
         #expect(r.progressSummary == "60%")
         // The placeholder's headline is the time left, no percent; the preparer's step and its words are the bar's tooltip.
-        #expect(r.progressHeadline == "Sealing the NAND…" && r.progressLine == "60% · About 50 seconds remaining")
-        #expect(r.progressDetail == ["Step 6 of 7: Sealing the NAND", "Booting to seal the flash — 42 s"])
+        #expect(r.progressHeadline == "Finishing setup…" && r.progressLine == "60% · About 50 seconds remaining")
+        #expect(r.progressDetail == ["Step 6 of 7: Finishing setup", "Starting iOS — 42 s"])
         var done = p
         done.step = 7; done.fraction = 1
         #expect(done.overall == 1)
