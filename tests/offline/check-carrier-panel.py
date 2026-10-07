@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""The Carrier panel (CarrierPanel.swift) against a fake modem, rendered offscreen (--out DIR for carrier-*.png).
+"""The Carrier panel (CarrierPanel.swift, SwiftUI) against a fake modem, rendered offscreen (--out DIR for carrier-*.png).
+The model's own rules are CarrierPanelModelTests'.
 
 Checks: after Apply, the panel says Applying… with a spinner until the modem reports the new carrier and PLMN, and
 not before or after; the SMS message field is multiline (three lines tall, growing with more).
@@ -91,7 +92,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-carrier-') as tmp:
     (tmp / 'main.swift').write_text(check)
     subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(root), '-parse-as-library', '-default-isolation', 'MainActor',
                     '-module-cache-path', str(tmp / 'modules'), '-D', 'CHECK',
-                    str(root / 'LightTouchMac/UI/CarrierPanel.swift'), str(tmp / 'main.swift'), '-o', str(tmp / 'check')], check=True)
+                    str(root / 'LightTouchMac/UI/CarrierPanel.swift'), str(root / 'LightTouchMac/UI/CarrierPanelModel.swift'), str(tmp / 'main.swift'), '-o', str(tmp / 'check')], check=True)
     if args.out:
         Path(args.out).mkdir(parents=True, exist_ok=True)
     subprocess.run([str(tmp / 'check'), *([str(Path(args.out).resolve())] if args.out else [])], check=True, timeout=60)
