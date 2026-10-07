@@ -70,6 +70,7 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         outline.target = self
         outline.doubleAction = #selector(renameClicked(_:))
         outline.onDelete = { [weak self] in self?.removeTargets() }
+        outline.onRename = { [weak self] row in self?.beginRename(row: row) }
 
         let scroll = NSScrollView()
         scroll.documentView = outline
@@ -523,9 +524,14 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
 /// Delete and Forward Delete remove the selected row (Remove Device, or Delete Device… for a prepared one).
 private final class SidebarOutlineView: NSOutlineView {
     var onDelete: (() -> Void)?
+    /// Return on one selected row renames it, as in the Finder's sidebar.
+    var onRename: ((Int) -> Void)?
     override func keyDown(with event: NSEvent) {
         if [.delete, .deleteForward].contains(event.specialKey), event.modifierFlags.isDisjoint(with: [.command, .option, .control]) {
             onDelete?()
+        } else if [.carriageReturn, .enter].contains(event.specialKey),
+                  event.modifierFlags.isDisjoint(with: [.command, .option, .control, .shift]), selectedRowIndexes.count == 1 {
+            onRename?(selectedRow)
         } else {
             super.keyDown(with: event)
         }

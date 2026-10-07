@@ -228,6 +228,19 @@ final class Delegate: DeviceLibraryDelegate {
         } else { fail("Rename didn't start an edit on the iPod row") }
         seen = rows(vc)
         if seen.last != ["Test iPod", "iPod touch (2nd generation), iOS 4.2.1"] { fail("renamed iPod: \(seen)") }
+        // Return on the selected row starts the same rename (as in the Finder's sidebar).
+        do {
+            let outline = all(vc.view).compactMap { $0 as? NSOutlineView }.first!
+            vc.select(catalog.entry(id: "k48ap-7B500")!)
+            w.makeFirstResponder(outline)
+            outline.keyDown(with: NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: w.windowNumber,
+                                                   context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)!)
+            if let editor = w.firstResponder as? NSTextView {
+                editor.string = "Lab iPad"
+                w.makeFirstResponder(nil)
+            } else { fail("Return didn't start a rename: \(String(describing: w.firstResponder))") }
+            if rows(vc).first != ["Lab iPad", "iPad, iOS 3.2.2"] { fail("Return rename: \(rows(vc))") }
+        }
         // Renaming a row whose preparation is moving: its progress updates don't end the edit or lose the typing.
         vc.select(catalog.entry(id: "n45ap-4B1")!)
         vc.perform(NSSelectorFromString("renameFromMenu:"), with: nil)
