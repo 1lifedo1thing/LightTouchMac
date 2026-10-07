@@ -69,7 +69,8 @@ import Testing
                 try FileManager.default.copyItem(at: base, to: img)
                 let a = try await DiskImage.attach(img, backend: b)
                 #expect(a.device.hasPrefix("/dev/disk") && a.mountPoint == nil, "\(b)")
-                #expect(try await DiskImage.attachedImages().contains { $0.image == img.path && $0.device == a.device }, "\(b): listed while attached")
+                // A loaded host lists a just-attached image in `hdiutil info` a moment later (seen under parallel builds).
+                #expect(try await Self.eventually { try await DiskImage.attachedImages().contains { $0.image == img.path && $0.device == a.device } }, "\(b): listed while attached")
                 try await DiskImage.detach(a.device, backend: b)
                 #expect(!(try await DiskImage.attachedImages()).contains { $0.image == img.path }, "\(b): gone after detach")
                 try await VolumeMount.grow(img, toBytes: 64 << 20, backend: b)   // resize, then the pad + alternate header move
@@ -85,6 +86,15 @@ import Testing
                 #expect(h == d, "hdiutil and diskutil image resize differ: first byte \(zip(h, d).enumerated().first { $0.element.0 != $0.element.1 }?.offset ?? -1)")
             }
         }
+    }
+
+    /// True once `condition` holds, polling for up to five seconds.
+    static func eventually(_ condition: () async throws -> Bool) async throws -> Bool {
+        for _ in 0..<50 {
+            if try await condition() { return true }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        return try await condition()
     }
 
     /// detachAll(under:) takes the images whose files are under the root (a killed preparer's) and no others.
