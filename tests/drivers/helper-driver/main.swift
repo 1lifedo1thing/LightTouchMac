@@ -10,6 +10,9 @@ import HostRuntime
 //
 // scenario: {"dylib": "...", "machine": "ipad1", "boot": BootConfig, "steps": ["boot", "lit 0.2 300", ...]}
 // "watch DIR" starts the app's DeviceFileWatch on DIR (and its children): "meddled" events follow any change.
+// "sample LABEL S" measures the helper for S seconds: pump rate (heartbeats/s), frames/s, CPU, wakeups and energy
+// (proc_pid_rusage), and whether it holds an idle-sleep assertion (pmset). "visible on|off" is the window's
+// occlusion (LinkCommand.screenVisible): how long until the next pump tick and, if one was pending, frame.
 
 import Foundation
 import IOSurface
@@ -213,6 +216,32 @@ Thread.detachNewThread {
             emit("shutdown", ["confirmed": link.status?.shutdownConfirmed == true, "seconds": Date().timeIntervalSince(start)])
         case "keyboard":    // keyboard on|off: Connect Hardware Keyboard (qemu_ios_ui_hardware_keyboard)
             emit("reply", ["reply": "\(request(.hardwareKeyboard(p[1] == "on")))", "keyboard": p[1]])
+        case "sample":      // sample LABEL SECONDS
+            let pid = link.pid, h0 = link.status?.heartbeat ?? 0, f0 = link.status?.frameSerial ?? 0
+            let u0 = usage(pid), start = Date()
+            usleep(UInt32(v[0] * 1e6))
+            let u1 = usage(pid), s = Date().timeIntervalSince(start)
+            let h1 = link.status?.heartbeat ?? 0, f1 = link.status?.frameSerial ?? 0
+            emit("sample", ["label": p[1], "seconds": s, "hz": Double(h1 &- h0) / s, "fps": Double(f1 &- f0) / s,
+                            "cpuPercent": (u1.cpu - u0.cpu) / s * 100, "wakeupsPerSecond": Double(u1.wakeups &- u0.wakeups) / s,
+                            "milliwatts": Double(u1.energy &- u0.energy) / s / 1e6, "preventsIdleSleep": preventsIdleSleep(pid),
+                            "displaySleeping": link.status?.displaySleeping ?? false])
+        case "visible":     // visible on|off
+            let h0 = link.status?.heartbeat ?? 0, f0 = link.status?.frameSerial ?? 0
+            let start = Date()
+            link.send(.screenVisible(p[1] == "on"))
+            var tick: Double?, frame: Double?
+            while Date().timeIntervalSince(start) < 1, tick == nil || frame == nil {
+                let ms = Date().timeIntervalSince(start) * 1000
+                if tick == nil, (link.status?.heartbeat ?? 0) != h0 { tick = ms }
+                if frame == nil, (link.status?.frameSerial ?? 0) != f0 { frame = ms }
+                usleep(500)
+            }
+            emit("visible", ["on": p[1] == "on", "tickMs": tick ?? -1, "frameMs": frame ?? -1])
+        case "waitSleep":   // waitSleep SECONDS: until the guest's display is asleep
+            let start = Date()
+            while link.status?.displaySleeping != true, Date().timeIntervalSince(start) < v[0] { usleep(200_000) }
+            emit("waitSleep", ["sleeping": link.status?.displaySleeping == true, "seconds": Date().timeIntervalSince(start)])
         case "quit":
             link.send(.machine(.quit))
         case "expectExit":
@@ -235,6 +264,31 @@ Thread.detachNewThread {
     }
     emit("done")
     exit(0)
+}
+
+/// The helper's CPU seconds, wakeups and energy (nJ) so far.
+func usage(_ pid: Int32) -> (cpu: Double, wakeups: UInt64, energy: UInt64) {
+    var info = rusage_info_v6()
+    let rc = withUnsafeMutablePointer(to: &info) {
+        $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V6, $0) }
+    }
+    guard rc == 0 else { return (0, 0, 0) }
+    var base = mach_timebase_info_data_t()
+    mach_timebase_info(&base)
+    let cpu = Double(info.ri_user_time + info.ri_system_time) * Double(base.numer) / Double(base.denom) / 1e9
+    return (cpu, info.ri_pkg_idle_wkups + info.ri_interrupt_wkups, info.ri_energy_nj)
+}
+
+/// pmset lists the helper as preventing idle system sleep.
+func preventsIdleSleep(_ pid: Int32) -> Bool {
+    let p = Process(), out = Pipe()
+    p.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
+    p.arguments = ["-g", "assertions"]
+    p.standardOutput = out
+    guard (try? p.run()) != nil else { return false }
+    let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    p.waitUntilExit()
+    return text.split(separator: "\n").contains { $0.contains("pid \(pid)(") && $0.contains("PreventUserIdleSystemSleep") }
 }
 
 func dump(_ name: String) {

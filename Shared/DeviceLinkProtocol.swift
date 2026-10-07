@@ -13,7 +13,7 @@ import Foundation
 nonisolated public enum DeviceLinkWire {
     /// Bumped on any incompatible change to the messages below, the status block
     /// layout or the Mach hello. The helper refuses a hello with another version.
-    public static let protocolVersion = 1
+    public static let protocolVersion = 2
     /// The helper's hello refusal when another helper holds the device's lease; the app shows it as is.
     public static let leaseRefusal = "This device is in use by another copy of Light Touch."
     /// Upper bound on one framed message, either direction. An agent request is
@@ -65,6 +65,10 @@ nonisolated public enum LinkCommand: Codable, Sendable, Equatable {
     case netRestrict(Bool)
     /// qemu_ios_ui_net_lan on wifi0: allow (true) or refuse the guest's traffic to the Mac's local networks.
     case netLocalNetwork(Bool)
+    /// Whether the app shows this device's screen (its window on screen: not occluded, minimized or hidden).
+    /// Hidden, or with the guest's display asleep, the helper publishes frames at a few Hz and lets the Mac
+    /// idle-sleep; shown again, the next frame goes at once. Until the first one, shown.
+    case screenVisible(Bool)
 }
 
 nonisolated public enum LinkRequest: Codable, Sendable, Equatable {
