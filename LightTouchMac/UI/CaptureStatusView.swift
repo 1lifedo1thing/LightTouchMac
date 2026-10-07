@@ -184,9 +184,9 @@ private struct CaptureBanner: View {
                     .foregroundStyle(.orange).frame(width: 28)
             }
             VStack(alignment: .leading, spacing: 0) {
-                Text(state.title).fontWeight(.medium).lineLimit(1)
+                Text(state.title).fontWeight(.medium).monospacedDigit().lineLimit(1)
                 if !state.detail.isEmpty {
-                    Text(state.detail).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                    Text(state.detail).font(.subheadline).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
                 }
                 if let title = state.link {
                     Button(title, action: link).buttonStyle(.link).font(.subheadline).lineLimit(1)
@@ -208,7 +208,6 @@ private struct CaptureBanner: View {
             }
         }
         .font(.subheadline)
-        .monospacedDigit()   // counters and times tick without the text jittering
         .foregroundStyle(.primary)
         .padding(.leading, 8)
         .padding(.trailing, max(8, (48 - accessoryHeight) / 2))
