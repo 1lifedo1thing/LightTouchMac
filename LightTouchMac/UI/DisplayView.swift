@@ -252,7 +252,6 @@ final class DisplayView: NSView {
         }
         addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
 
-        contentLayer.magnificationFilter = .nearest
         // The shell is opaque, so the LCD draws on top of it. Black backing
         // shows a powered-on device screen during boot, before the first frame.
         contentLayer.contentsGravity = .resize
@@ -279,7 +278,10 @@ final class DisplayView: NSView {
 
         registerForDraggedTypes([.fileURL, .ltmCatalogApp])
         setAccessibilityLabel("\(profile.displayName) screen")
-        setAccessibilityRole(.image)
+        setAccessibilityRole(.group)
+        setAccessibilityCustomActions(Self.screenActions.map { title, action in
+            NSAccessibilityCustomAction(name: title) { [weak self] in NSApp.sendAction(action, to: nil, from: self) }
+        })
         setAccessibilityHelp("Turn off Send Keyboard Input (Device > Input) to move a pointer with the arrow keys. Hold Space to touch; Shift-arrow drags.")
     }
 
@@ -396,6 +398,29 @@ final class DisplayView: NSView {
 
     override var isFlipped: Bool { true }          // y-down, matching the guest
     override var acceptsFirstResponder: Bool { true }
+    /// A click into a window in the background touches the device at once, as on a real screen.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    /// The device's buttons and the capture actions, for the contextual menu and VoiceOver's actions;
+    /// each goes up the responder chain to the window's own command (enabled or not as in the menu bar).
+    static let screenActions: [(String, Selector)] = [
+        ("Home Screen", #selector(MainWindowController.deviceHome(_:))),
+        ("Lock", #selector(MainWindowController.deviceLock(_:))),
+        ("Rotate Left", #selector(MainWindowController.deviceRotateLeft(_:))),
+        ("Rotate Right", #selector(MainWindowController.deviceRotateRight(_:))),
+        ("Shake", #selector(MainWindowController.deviceShake(_:))),
+        ("Copy Screenshot", #selector(MainWindowController.copyScreen(_:))),
+        ("Save Screenshot", #selector(MainWindowController.saveScreenshot(_:))),
+    ]
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = NSMenu()
+        for (index, (title, action)) in Self.screenActions.enumerated() {
+            if index == 5 { menu.addItem(.separator()) }
+            menu.addItem(withTitle: title, action: action, keyEquivalent: "")
+        }
+        return menu
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -505,6 +530,7 @@ final class DisplayView: NSView {
             scale = shellScale(guestPixelsPerDisplayPixel: multiple)
         }
         appliedScale = scale
+        contentLayer.magnificationFilter = Self.contentsFilter(pixelMultiple)
         // Centre on the SAFE area, not the raw bounds: with .fullSizeContentView
         // the pane runs behind the toolbar, so centring on bounds would push the
         // device up under it. The gradient still fills the whole pane, which is
@@ -607,6 +633,12 @@ final class DisplayView: NSView {
     }
 
     private var appliedScale: CGFloat = 1
+
+    /// Whole display pixels per guest pixel stay crisp (nearest); between the steps (Fit, Physical Size)
+    /// nearest would draw guest pixels one or two display pixels wide, so those are filtered (linear).
+    static func contentsFilter(_ pixelMultiple: CGFloat) -> CALayerContentsFilter {
+        abs(pixelMultiple - pixelMultiple.rounded()) < 0.01 ? .nearest : .linear
+    }
 
     private func shellScale(guestPixelsPerDisplayPixel multiple: Int) -> CGFloat {
         CGFloat(multiple) / (window?.backingScaleFactor ?? 2)
@@ -1901,6 +1933,7 @@ private final class HomeButton: NSButton {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
         NSColor.black.withAlphaComponent(isHighlighted ? 0.5 : 0).setFill()
