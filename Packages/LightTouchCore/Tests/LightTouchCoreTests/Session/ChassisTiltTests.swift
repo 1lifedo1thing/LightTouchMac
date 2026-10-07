@@ -36,6 +36,20 @@ struct ChassisTiltTests {
         #expect(close(tilt.restAngle(rotation: 270), -.pi / 2), "at rest, the guest's orientation again")
     }
 
+    /// The rates themselves: 25 points of drag is 0.1 rad, 10 swipe points or one wheel line is 0.015 rad.
+    @Test func gainsAreTheTunedRates() {
+        var tilt = ChassisTilt()
+        tilt.beginDrag(at: CGPoint(x: 10, y: 20), rotation: 0)
+        tilt.drag(to: CGPoint(x: 35, y: 70))
+        #expect(close(tilt.tiltAngle, 0.1) && close(tilt.pitchAngle, -0.2))
+        for (delta, precise) in [(10.0, true), (1.0, false)] {
+            tilt.reset()
+            tilt.beginScroll(rotation: 0)
+            tilt.scroll(by: ChassisTilt.scrollMovement(dx: delta, dy: -2 * delta, precise: precise))
+            #expect(close(tilt.tiltAngle, 0.015) && close(tilt.pitchAngle, -0.03), "precise \(precise)")
+        }
+    }
+
     @Test func scrollsAccumulateInPointsOrLinesAndClamp() {
         for precise in [true, false] {
             for sign in [-1.0, 1.0] {
