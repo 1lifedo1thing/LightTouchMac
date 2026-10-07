@@ -276,6 +276,23 @@ import Testing
         #expect(c["iBoot"] == Self.prefix + "iBoot.n45ap.RELEASE.img2" && c["AppleLogo"] == Self.prefix + "applelogo.img2")
         #expect(c["KernelCache"] == "kernelcache.release.s5l8900xrb" && c["OS"] == "022-3601-4.dmg")
     }
+    /// 1.0's BTServer logs to /var/logs/BTServer, which the image lacks: 1.x's launchd never started it until the
+    /// directory was made. Made for a kept job's log paths (under private/var), not for paths already there or not absolute.
+    @Test func logDirsMade() throws {
+        try Oracle.withTemp { m in
+            let jobs = m.appendingPathComponent(SystemEdits.daemons)
+            try SystemEdits.mkdirs(jobs)
+            try SystemEdits.mkdirs(m.appendingPathComponent("private/var/log"))
+            func job(_ name: String, _ d: [String: Any]) throws {
+                try PropertyListSerialization.data(fromPropertyList: d, format: .xml, options: 0).write(to: jobs.appendingPathComponent(name))
+            }
+            try job("com.apple.BTServer.plist", ["StandardOutPath": "/var/logs/BTServer/stdout", "StandardErrorPath": "/var/logs/BTServer/stderr"])
+            try job("present.plist", ["StandardErrorPath": "/var/log/present.log"])
+            try job("relative.plist", ["StandardErrorPath": "logs/x"])
+            #expect(try N45Board.makeLogDirs(m, jobs: ["com.apple.BTServer.plist", "present.plist", "relative.plist"]) == ["private/var/logs/BTServer"])
+            #expect(Oracle.exists(m.appendingPathComponent("private/var/logs/BTServer")))
+        }
+    }
     /// 3A101a's LaunchDaemons: the bake keeps mDNSResponder, 1.x's only host-name resolver (without it Safari sent no
     /// DNS query and found no server), and still drops the jobs that wait on absent hardware.
     @Test func resolverKept() {

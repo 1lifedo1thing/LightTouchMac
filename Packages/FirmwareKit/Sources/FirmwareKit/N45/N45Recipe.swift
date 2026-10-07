@@ -52,6 +52,26 @@ final class N45Board: Board {
     static func removedDaemons(_ jobs: [String], iPhone: Bool = false) -> [String] {
         jobs.filter { !keptDaemons.contains($0) && !keptWhenShipped.contains($0) && !(iPhone && iPhoneDaemons.contains($0)) }.sorted()
     }
+    /// The directories of the kept jobs' StandardOutPath/StandardErrorPath that the image lacks, made (volume-relative,
+    /// to own as root). 1.x's launchd does not start a job whose log file it cannot open: 1.0's BTServer
+    /// (/var/logs/BTServer/stderr) never ran, and SpringBoard stalled on Bluetooth as if it were removed.
+    static func makeLogDirs(_ m: URL, jobs: [String]) throws -> [String] {
+        var made: [String] = []
+        for job in jobs.sorted() {
+            let url = m.appendingPathComponent(SystemEdits.daemons + "/" + job)
+            guard let d = (try? Data(contentsOf: url)).flatMap({ try? PropertyListSerialization.propertyList(from: $0, format: nil) as? [String: Any] }) else { continue }
+            for key in ["StandardOutPath", "StandardErrorPath"] {
+                guard let path = d[key] as? String, path.hasPrefix("/") else { continue }
+                var dir = ((path as NSString).deletingLastPathComponent as NSString).substring(from: 1)
+                if dir.hasPrefix("var/") { dir = "private/" + dir }
+                guard !dir.isEmpty, !made.contains(dir), !FileManager.default.fileExists(atPath: m.appendingPathComponent(dir).path) else { continue }
+                try SystemEdits.mkdirs(m.appendingPathComponent(dir))
+                made.append(dir)
+            }
+        }
+        return made
+    }
+
     static let rootLibrary = "private/var/root/Library"
     static let openGLESExports = "opengles-1x.exports"
     /// 1.x's SCPreferences live in the user's home, root's: SystemConfiguration (1.0 and 1.1) opens
@@ -192,6 +212,7 @@ final class N45Board: Board {
             c.fit.notInstalled("AppSync", recipe.options["appsync"] == true ? "the 1.x recipe has no AppSync" : "appsync off")
             let removed = Self.removedDaemons(jobs, iPhone: iPhone)
             for n in removed { try fm.removeItem(at: at(SystemEdits.daemons + "/" + n)) }
+            owners += try Self.makeLogDirs(m, jobs: jobs.filter { !removed.contains($0) }).map { (0, $0) }
             for d in ["", "/AddressBook", "/Lockdown", "/Preferences"] {
                 try SystemEdits.mkdirs(at(Self.rootLibrary + d))
                 owners.append((0, Self.rootLibrary + d))
