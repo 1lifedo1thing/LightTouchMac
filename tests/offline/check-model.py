@@ -383,7 +383,7 @@ enum PreparedMedia { nonisolated static let extensions: Set<String> = [] }
  func pressVolumeUp() { volume += 1 };func pressVolumeDown() { volume -= 1 }
  var attitude = (angle: CGFloat.zero, pitch: CGFloat.zero)
  func shake() { shakeGeneration &+= 1 };func setTilt(angle:CGFloat,pitch:CGFloat) { attitude = (angle, pitch) }
- func pressHome() {homeCount += 1};func sendKey(macKeyCode:UInt16,down:Bool) {}
+ func pressHome() {homeCount += 1};func sendKey(macKeyCode:UInt16,down:Bool) {};func typeText(_ text:String,shiftHeld:Bool) {}
 }
 @main struct Check {
  @MainActor static func main() async throws {
@@ -513,8 +513,8 @@ with tempfile.TemporaryDirectory(prefix="ltm-model-") as tmp:
     profile=["Device/DeviceProfile", "Device/DeviceProfile+Display"]
     for name,source,extra in [
         ("model",model_source,profile),
-        ("layer",layer_source,["UI/DisplayView", "UI/MouseTouchPair", *profile, "UI/DisplayMeasurements", "UI/AttitudeIndicatorButton", "UI/InlineLiveTextView", "UI/DroppedFiles", "UI/DropHighlight"]),
-        *([("display",display_source,["UI/DisplayView", "UI/MouseTouchPair", *profile, "UI/DisplayMeasurements", "UI/AttitudeIndicatorButton", "UI/InlineLiveTextView", "UI/DroppedFiles", "UI/DropHighlight"])] if windowed else [])
+        ("layer",layer_source,["UI/DisplayView", "UI/GuestKeyboard", "UI/MouseTouchPair", *profile, "UI/DisplayMeasurements", "UI/AttitudeIndicatorButton", "UI/InlineLiveTextView", "UI/DroppedFiles", "UI/DropHighlight"]),
+        *([("display",display_source,["UI/DisplayView", "UI/GuestKeyboard", "UI/MouseTouchPair", *profile, "UI/DisplayMeasurements", "UI/AttitudeIndicatorButton", "UI/InlineLiveTextView", "UI/DroppedFiles", "UI/DropHighlight"])] if windowed else [])
     ]:
         swift=work/(name+".swift");swift.write_text(source)
         exe=app/"MacOS"/name

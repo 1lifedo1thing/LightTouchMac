@@ -63,11 +63,11 @@ final class HelpWindowController: NSWindowController, NSTableViewDataSource, NST
         split.addSplitViewItem(sidebarItem)
         split.addSplitViewItem(NSSplitViewItem(viewController: detail))
         window.contentViewController = split
-        if !window.setFrameUsingName("Help") {
+        // Named once the split is in, so a saved frame isn't resized by the content controller.
+        if !WindowRestorationPolicy.configure(window, frameAutosaveName: "Help") {
             window.setContentSize(NSSize(width: 780, height: 560))
             window.center()
         }
-        window.setFrameAutosaveName("Help")
         show(deviceName: "iPod")
     }
 

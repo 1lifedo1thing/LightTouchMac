@@ -34,12 +34,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc func quit(_ sender: Any?) { Self.requestTermination() }
 
-    /// Finder, the Dock and `open` hand over IPSWs and .ipa files here (Configuration/LightTouchMac-Info.plist).
-    /// A launch by opening one arrives before the window exists: held until finishLaunching.
-    private var pendingOpen: [URL] = []
-    func application(_ application: NSApplication, open urls: [URL]) {
-        if let windowController { windowController.open(urls) } else { pendingOpen += urls }
-    }
 
     @objc func showDeviceWindow(_ sender: Any?) { windowController?.focusDeviceScreen(sender) }
     @objc func showFilesWindow(_ sender: Any?) { windowController?.toggleFiles(sender) }
@@ -331,6 +325,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    /// Finder, the Dock and `open` hand over IPSWs and .ipa files here (Configuration/LightTouchMac-Info.plist).
+    /// A launch by opening one arrives before the window exists: held until finishLaunching.
+    private var pendingOpen: [URL] = []
+    func application(_ application: NSApplication, open urls: [URL]) {
+        if let windowController { windowController.open(urls) } else { pendingOpen += urls }
     }
 
     /// Reopen the retained device window even when Files or Help is still visible.

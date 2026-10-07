@@ -402,15 +402,15 @@ final class DisplayView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     /// The device's buttons and the capture actions, for the contextual menu and VoiceOver's actions;
-    /// each goes up the responder chain to the window's own command (enabled or not as in the menu bar).
+    /// each goes up the responder chain to the window's own command (MainWindowController's, by name).
     static let screenActions: [(String, Selector)] = [
-        ("Home Screen", #selector(MainWindowController.deviceHome(_:))),
-        ("Lock", #selector(MainWindowController.deviceLock(_:))),
-        ("Rotate Left", #selector(MainWindowController.deviceRotateLeft(_:))),
-        ("Rotate Right", #selector(MainWindowController.deviceRotateRight(_:))),
-        ("Shake", #selector(MainWindowController.deviceShake(_:))),
-        ("Copy Screenshot", #selector(MainWindowController.copyScreen(_:))),
-        ("Save Screenshot", #selector(MainWindowController.saveScreenshot(_:))),
+        ("Home Screen", NSSelectorFromString("deviceHome:")),
+        ("Lock", NSSelectorFromString("deviceLock:")),
+        ("Rotate Left", NSSelectorFromString("deviceRotateLeft:")),
+        ("Rotate Right", NSSelectorFromString("deviceRotateRight:")),
+        ("Shake", NSSelectorFromString("deviceShake:")),
+        ("Copy Screenshot", NSSelectorFromString("copyScreen:")),
+        ("Save Screenshot", NSSelectorFromString("saveScreenshot:")),
     ]
 
     override func menu(for event: NSEvent) -> NSMenu? {

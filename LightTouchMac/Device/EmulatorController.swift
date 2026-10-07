@@ -1479,30 +1479,6 @@ final class EmulatorController {
         link?.send(.key(macKeyCode: Int(macKeyCode), down: down))
     }
 
-    /// Composed text (DisplayView's NSTextInputClient): it_agent's `type` into the focused field (it_typein),
-    /// in order; where the agent can't (no it_typein, no field), the US keys that type it, one by one.
-    private var typing: Task<Void, Never>?
-    func typeText(_ text: String, shiftHeld: Bool) {
-        guard !text.isEmpty, keyboardInputEnabled, acceptsInput, !isSleeping else { return }
-        let previous = typing
-        typing = Task { [weak self] in
-            await previous?.value
-            guard let self else { return }
-            let agent = guestAgent
-            if (try? await agent.capabilities().has("type")) == true,
-               (try? await agent.perform("type", body: Data(text.utf8))) != nil { return }
-            for character in text {
-                guard let (code, shift) = GuestKeyboard.key(for: character) else { continue }
-                let pressShift = shift && !shiftHeld
-                if pressShift { link?.send(.key(macKeyCode: 56, down: true)) }
-                link?.send(.key(macKeyCode: Int(code), down: true))
-                link?.send(.key(macKeyCode: Int(code), down: false))
-                if pressShift { link?.send(.key(macKeyCode: 56, down: false)) }
-                try? await Task.sleep(for: .milliseconds(15))
-            }
-        }
-    }
-    
     // MARK: - Machine control
 
     func pause()  { link?.send(.machine(.pause));  if state == .running { state = .paused } }
@@ -1698,6 +1674,30 @@ final class EmulatorController {
     }
 
     func pasteToGuest(_ text: String) { link?.send(.paste(text)) }
+
+    /// Composed text (DisplayView's NSTextInputClient): it_agent's `type` into the focused field (it_typein),
+    /// in order; where the agent can't (no it_typein, no field), the US keys that type it, one by one.
+    private var typing: Task<Void, Never>?
+    func typeText(_ text: String, shiftHeld: Bool) {
+        guard !text.isEmpty, keyboardInputEnabled, acceptsInput, !isSleeping else { return }
+        let previous = typing
+        typing = Task { [weak self] in
+            await previous?.value
+            guard let self else { return }
+            let agent = guestAgent
+            if (try? await agent.capabilities().has("type")) == true,
+               (try? await agent.perform("type", body: Data(text.utf8))) != nil { return }
+            for character in text {
+                guard let (code, shift) = GuestKeyboard.key(for: character) else { continue }
+                let pressShift = shift && !shiftHeld
+                if pressShift { link?.send(.key(macKeyCode: 56, down: true)) }
+                link?.send(.key(macKeyCode: Int(code), down: true))
+                link?.send(.key(macKeyCode: Int(code), down: false))
+                if pressShift { link?.send(.key(macKeyCode: 56, down: false)) }
+                try? await Task.sleep(for: .milliseconds(15))
+            }
+        }
+    }
 
     /// Guest audio for a recording (ScreenMovieWriter). Its clock is the
     /// dylib's: monotonic seconds since the capture started.
