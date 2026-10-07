@@ -15,7 +15,7 @@ public enum Shell {
     public static func run(_ arguments: [String], input: String? = nil, environment: [String: String]? = nil,
                            timeout: TimeInterval = 600) throws -> CommandResult {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: try resolve(arguments[0]))
+        process.executableURL = URL(fileURLWithPath: try resolve(arguments[0], path: environment?["PATH"]))
         process.arguments = Array(arguments.dropFirst())
         if let environment { process.environment = environment }
         let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("release-checks-\(UUID().uuidString)")
@@ -45,10 +45,12 @@ public enum Shell {
                              error: (try? String(contentsOf: err, encoding: .utf8)) ?? "")
     }
 
-    static func resolve(_ name: String) throws -> String {
+    /// `name` on the command's PATH (the environment it runs in), then this process's, then the system's.
+    static func resolve(_ name: String, path given: String? = nil) throws -> String {
         if name.hasPrefix("/") { return name }
-        let path = ["/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/libexec", "/opt/homebrew/bin", "/usr/local/bin"]
+        let path = (given ?? "").split(separator: ":").map(String.init)
             + (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init)
+            + ["/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/libexec", "/opt/homebrew/bin", "/usr/local/bin"]
         guard let found = path.map({ "\($0)/\(name)" }).first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
             throw ShellError.notFound(name)
         }
