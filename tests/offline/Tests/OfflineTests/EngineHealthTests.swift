@@ -1,0 +1,98 @@
+import Foundation
+import CIMobileDevice
+import HostServiceWire
+import Testing
+
+@testable import Engine
+
+/// The attachment check's one call: idevice_new over the gate-selected endpoint, attached unless told otherwise.
+nonisolated enum Attachment {
+    static let lock = NSLock()
+    nonisolated(unsafe) static var attached = true
+    static func set(attached value: Bool) { lock.withLock { attached = value } }
+    static func install() {
+        IMDFake.ideviceNew = { device, _ in
+            precondition(String(cString: getenv("USBMUXD_SOCKET_ADDRESS")) == "fixture", "gate did not select the endpoint before the attachment call")
+            guard lock.withLock({ attached }) else { return IDEVICE_E_NO_DEVICE }
+            device?.pointee = OpaquePointer(bitPattern: 1)
+            return IDEVICE_E_SUCCESS
+        }
+    }
+}
+/// Resumes one waiter once, whichever side comes first.
+nonisolated final class Signal: @unchecked Sendable {
+    private let lock = NSLock()
+    private var fired = false, waiter: CheckedContinuation<Void, Never>?
+    func fire() {
+        let w: CheckedContinuation<Void, Never>? = lock.withLock {
+            fired = true
+            defer { waiter = nil }
+            return waiter
+        }
+        w?.resume()
+    }
+    func wait() async {
+        await withCheckedContinuation { c in
+            if lock.withLock({
+                if fired { return true }
+                waiter = c
+                return false
+            }) {
+                c.resume()
+            }
+        }
+    }
+}
+
+extension SharedState {
+    /// The services engine's connection probe (DeviceServices+Engine's checkAttachment) over the fake idevice_new: a
+    /// typed not-attached failure, a probe queued behind a long write times out as "USB connection" and leaves the gate
+    /// without abandoning a C call, and cancellation is prompt. The inspector's read suppression is AppsInspectorRowsTests'.
+    @Suite struct EngineHealthTests {
+        @Test func attachmentProbe() async throws {
+            let probe = Timeouts.serviceProbe
+            let newDevice = IMDFake.ideviceNew
+            defer {
+                Timeouts.serviceProbe = probe
+                IMDFake.ideviceNew = newDevice
+            }
+            Timeouts.serviceProbe = 0.015
+            Attachment.install()
+            let device = DeviceServices(clientSocket: "fixture")
+            try await device.checkAttachment()
+            Attachment.set(attached: false)
+            do {
+                try await device.checkAttachment()
+                Issue.record("no error")
+            } catch DeviceError.notAttached {} catch { throw error }
+            Attachment.set(attached: true)
+
+            // A probe waiting behind a long write must time out, leave the gate queue,
+            // and retain a USB-specific cause instead of resetting app services.
+            let held = Signal()
+            let entered = Signal()
+            let owner = Task {
+                try await DeviceGate.shared.serialized {
+                    entered.fire()
+                    await held.wait()
+                }
+            }
+            await entered.wait()
+            do {
+                try await device.checkAttachment()
+                Issue.record("no error")
+            } catch DeviceError.timedOut(let operation) { #expect(operation == "USB connection") } catch { throw error }
+            #expect(AbandonedWork.count == 0, "waiting is not a blocked C request")
+            held.fire()
+            try await owner.value
+            try await device.checkAttachment()
+
+            let cancelled = Task { try await device.checkAttachment() }
+            cancelled.cancel()
+            do {
+                try await cancelled.value
+                Issue.record("no error")
+            } catch is CancellationError {} catch { throw error }
+        }
+    }
+}
