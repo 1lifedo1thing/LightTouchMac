@@ -69,6 +69,8 @@ public protocol ReadinessHost: AnyObject {
         get { host.bootScope[.readiness] }
         set { host.bootScope[.readiness] = newValue }
     }
+    /// Bumped by each start(): a watch clears `preparingDevice` as it ends unless a later start() owns it.
+    @ObservationIgnored private var run = 0
     public var isWatching: Bool { task != nil }
     public func cancel() { task?.cancel() }
     /// Waits for this boot's watch (a restart lets it finish first).
@@ -79,6 +81,8 @@ public protocol ReadinessHost: AnyObject {
     public func start() {
         guard !host.shuttingDown else { return }
         task?.cancel()
+        run += 1
+        let run = run
         preparingDevice = true
         preparationStatus = "Starting iOS…"
         bootStage = .poweringOn
@@ -89,7 +93,9 @@ public protocol ReadinessHost: AnyObject {
         task = Task { [weak self] in
             guard let self else { return }
             let host = host
-            defer { if generation == host.bootScope.generation { self.preparingDevice = false } }
+            // Every way a boot ends (Shut Down, Force Stop, the guest powering off, a crash) retires its scope, which
+            // ends this watch: the startup banner goes with it, not only when this boot's generation is still current.
+            defer { if run == self.run { self.preparingDevice = false } }
             do {
                 var deadline: ContinuousClock.Instant? = ContinuousClock.now + budget
                 while true {

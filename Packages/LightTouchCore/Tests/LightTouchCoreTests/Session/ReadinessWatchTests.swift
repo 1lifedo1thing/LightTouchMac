@@ -78,11 +78,17 @@ struct ReadinessWatchTests {
     @Test func staleCancelledAndStoppingBootsAreLeftAlone() async throws {
         try await withScratchDirectory { directory in
             let stale = session(directory, sleeping: true)
-            stale.onDeviceReady = { stale.bootScope.retire() }
+            stale.onDeviceReady = {
+                stale.onDeviceReady = nil
+                stale.bootScope.renew()
+                stale.usbAnswers = false
+                stale.readiness.start()
+            }
             stale.readiness.start()
             let staleTask = stale.readiness.current
             await staleTask?.value
             #expect(stale.preparingDevice && stale.homes == 0, "a later boot owns the flag")
+            stale.readiness.cancel()
 
             let cancelled = session(directory, sleeping: true)
             cancelled.onDeviceReady = { cancelled.readiness.cancel() }
@@ -100,6 +106,24 @@ struct ReadinessWatchTests {
             stopping.ladder.halt { _ in }
             stopping.readiness.start()
             #expect(stopping.readiness.current == nil && !stopping.preparingDevice, "a stopping device starts no watch")
+        }
+    }
+
+    /// Sam 10-07: Shut Down while the boot was at "Connecting over USB" left "Starting iOS… Connecting over USB" counting
+    /// for 16 minutes over the powered-off screen. Every ending retires the boot; the startup must end with it.
+    @Test func aBootThatEndsBeforeUSBEndsItsStartup() async throws {
+        try await withScratchDirectory { directory in
+            let c = session(directory)
+            c.usbAnswers = false
+            c.readiness.start()
+            c.readiness.noteBoot(.guestTools)
+            #expect(c.preparingDevice && c.bootStage.text == "Connecting over USB")
+            let watch = c.readiness.current
+            c.state = .poweredOff
+            c.retireBoot()
+            await watch?.value
+            #expect(!c.preparingDevice && !c.readiness.isWatching, "no startup banner, nothing left counting")
+            #expect(c.readiness.readinessFailure == nil && c.notices.message == nil, "an ended boot is not a failed one")
         }
     }
 
