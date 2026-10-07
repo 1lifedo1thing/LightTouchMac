@@ -9,32 +9,36 @@
 // bundle IDs are installed; this only supplies the name/icon for them, so an
 // app installed inside the guest simply falls back to the reported name.
 
-import LightTouchCore
-import HostServiceWire
-import Cocoa
+import Foundation
 import HostRuntime
+import HostServiceWire
 
 @MainActor
-final class AppMetadataCache {
-    static let shared = AppMetadataCache()
+public final class AppMetadataCache {
+    public static let shared = AppMetadataCache()
     
     private struct Entry: Codable {
-        let name: String
-        let hasIcon: Bool
+        public let name: String
+        public let hasIcon: Bool
     }
     
     private let dir: URL
     private var entries: [String: Entry] = [:]
-    /// Decoded icons, so the sidebar's `viewFor:` doesn't hit the disk on every
-    /// visible row on every reload. NSCache evicts under memory pressure on its
-    /// own; a few dozen 57px PNGs never will.
-    private let iconMemo = NSCache<NSString, NSImage>()
-    
-    private init() {
-        dir = StorageLocations.appMetadataDirectory(
+    /// Decoded icons (the app's NSImages, AppMetadataCache+Icons), so the sidebar's `viewFor:` doesn't hit the
+    /// disk on every visible row on every reload. NSCache evicts under memory pressure on its own; a few dozen
+    /// 57px PNGs never will. Emptied of an app's icon here whenever its file changes.
+    public let iconMemo = NSCache<NSString, AnyObject>()
+
+    private convenience init() {
+        self.init(directory: StorageLocations.appMetadataDirectory(
             state: Bundled.stateDirectory,
             caches: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0],
-            isolated: ProcessInfo.processInfo.environment["LTM_STATE_DIR"] != nil)
+            isolated: ProcessInfo.processInfo.environment["LTM_STATE_DIR"] != nil))
+    }
+
+    /// The cache kept in `directory` (index.plist and one <bundle id>.png per icon).
+    init(directory: URL) {
+        dir = directory
         entries = (try? PropertyListFile.read([String: Entry].self, from: indexURL,
                                               legacyJSON: dir.appendingPathComponent("index.json"), format: .binary)) ?? [:]
         #if DEBUG
@@ -45,7 +49,7 @@ final class AppMetadataCache {
     #if DEBUG
     /// The member-picking rules are the whole reason names and icons went
     /// missing, so they assert against the shapes that broke them.
-    static func selfCheck() {
+    public static func selfCheck() {
         let members = [
             "Payload/Super Monkey Ball [SEGA].app/Info.plist",
             "Payload/Super Monkey Ball [SEGA].app/Icon.png",
@@ -62,7 +66,7 @@ final class AppMetadataCache {
     
     /// A binary property list; earlier builds kept index.json, converted on the first read.
     private var indexURL: URL { dir.appendingPathComponent("index.plist") }
-    private func iconURL(_ bundleID: String) -> URL { dir.appendingPathComponent("\(bundleID).png") }
+    public func iconURL(_ bundleID: String) -> URL { dir.appendingPathComponent("\(bundleID).png") }
 
     /// A bundle id read out of an untrusted archive is about to become a path
     /// component. `appendingPathComponent` happily accepts "/" and "..", and
@@ -83,18 +87,13 @@ final class AppMetadataCache {
     /// (most of them) every entry was rejected on read AND deleted by prune,
     /// which is what made the sidebar fall back to bundle IDs at random. A name
     /// and icon barely change between versions; a stale one is not worth that.
-    func name(for bundleID: String) -> String? { entries[bundleID]?.name }
+    public func name(for bundleID: String) -> String? { entries[bundleID]?.name }
 
-    func icon(for bundleID: String) -> NSImage? {
-        guard entries[bundleID]?.hasIcon == true else { return nil }
-        if let memo = iconMemo.object(forKey: bundleID as NSString) { return memo }
-        guard let image = NSImage(contentsOf: iconURL(bundleID)) else { return nil }
-        iconMemo.setObject(image, forKey: bundleID as NSString)
-        return image
-    }
+    /// Whether an icon was cached for this bundle ID (its file is iconURL).
+    public func hasIcon(_ bundleID: String) -> Bool { entries[bundleID]?.hasIcon == true }
 
     /// Drop the cached name/icon for one bundle ID (uninstalled via our button).
-    func forget(_ bundleID: String) {
+    public func forget(_ bundleID: String) {
         guard entries.removeValue(forKey: bundleID) != nil else { return }
         iconMemo.removeObject(forKey: bundleID as NSString)
         try? FileManager.default.removeItem(at: iconURL(bundleID))
@@ -115,7 +114,7 @@ final class AppMetadataCache {
     /// the sidebar just falls back to whatever the device list reports.
     /// The archive's display name without touching the cache — for a row that
     /// is only a proposal until the install succeeds. See learn(from:).
-    func preview(of ipa: URL) async -> (name: String, bundleID: String)? {
+    public func preview(of ipa: URL) async -> (name: String, bundleID: String)? {
         let members = await Self.members(ipa)
         guard let root = IPAMembers.appRoot(members),
               let plist = try? await Self.unzip(ipa, member: root + "Info.plist"),
@@ -129,7 +128,7 @@ final class AppMetadataCache {
     }
 
     @discardableResult
-    func learn(from ipa: URL) async -> String? {
+    public func learn(from ipa: URL) async -> String? {
         let members = await Self.members(ipa)
         guard let root = IPAMembers.appRoot(members),
               let plist = try? await Self.unzip(ipa, member: root + "Info.plist"),
@@ -155,7 +154,7 @@ final class AppMetadataCache {
     /// Info.plist read the rest of the pre-flight already does — keying on the
     /// .ipa's filename instead meant the same app dropped from two differently
     /// named files raised two placeholder icons.
-    static func bundleID(of ipa: URL) async -> String? {
+    public static func bundleID(of ipa: URL) async -> String? {
         let members = await Self.members(ipa)
         guard let root = IPAMembers.appRoot(members),
               let data = try? await Self.unzip(ipa, member: root + "Info.plist"),
@@ -168,7 +167,7 @@ final class AppMetadataCache {
     /// The archive path of the app's main binary, e.g.
     /// "Payload/CubeRunner.app/CubeRunner" — what the exec-bit repair needs to
     /// know before staging. Same Info.plist read as learn().
-    static func executableMember(of ipa: URL) async -> String? {
+    public static func executableMember(of ipa: URL) async -> String? {
         let members = await Self.members(ipa)
         guard let root = IPAMembers.appRoot(members),
               let data = try? await Self.unzip(ipa, member: root + "Info.plist"),
@@ -179,7 +178,7 @@ final class AppMetadataCache {
 
     /// The app's Info.plist, the same read learn() does; nil for an archive
     /// with no single root app.
-    static func info(of ipa: URL) async -> [String: Any]? {
+    public static func info(of ipa: URL) async -> [String: Any]? {
         let members = await Self.members(ipa)
         guard let root = IPAMembers.appRoot(members),
               let data = try? await Self.unzip(ipa, member: root + "Info.plist") else { return nil }
@@ -189,7 +188,7 @@ final class AppMetadataCache {
     /// The lowest OS the app declares it will run on (Info.plist
     /// MinimumOSVersion). This — not the SDK it was built against — is what
     /// iPhone OS actually enforces at launch.
-    func minimumOS(from ipa: URL) async -> String? {
+    public static func minimumOS(from ipa: URL) async -> String? {
         await Self.info(of: ipa)?["MinimumOSVersion"] as? String
     }
 

@@ -5,29 +5,50 @@
 // services' (InstallationProxy, AFC) and the agent's (dlicon); the order and
 // the policy between them live here.
 
-import LightTouchCore
 import HostServiceClient
 import HostServiceWire
 import Foundation
 import Subprocess
 import System
 
-struct AppInstallPipeline: Sendable {
-    let services: DeviceServices
-    let agent: GuestAgent
+/// The device services an install uses (DeviceServices'), so the pipeline's policy can be exercised alone.
+public protocol AppInstallServices: Sendable {
+    func freeSpaceBytes() async throws -> Int64
+    func stage(_ ipa: URL, progress: @escaping @Sendable (Double) -> Void) async throws -> String
+    func removeStaged(_ path: String) async
+    func install(_ ipa: URL, staged: String, bundleID: String, progress: @escaping @Sendable (Int, String) -> Void) async throws
+}
+extension DeviceServices: AppInstallServices {}
+
+/// The guest agent's home-screen placeholder (GuestAgent's dlicon).
+public protocol InstallPlaceholderAgent: Sendable {
+    var isAlive: Bool { get }
+    @discardableResult func placeholder(_ action: String, id: String, bundleID: String?) async throws -> Bool
+}
+extension GuestAgent: InstallPlaceholderAgent {}
+
+public struct AppInstallPipeline: Sendable {
+    public init(services: any AppInstallServices, agent: any InstallPlaceholderAgent, deviceOS: String = "3.1.3", afcReadyTimeout: Duration = .seconds(300)) {
+        self.services = services
+        self.agent = agent
+        self.deviceOS = deviceOS
+        self.afcReadyTimeout = afcReadyTimeout
+    }
+    public let services: any AppInstallServices
+    public let agent: any InstallPlaceholderAgent
     /// The device's iOS version (its catalog entry), which MinimumOSVersion is checked against.
-    var deviceOS = "3.1.3"
+    public var deviceOS = "3.1.3"
     /// iOS 7 only: how long the first AFC request may keep timing out before the install gives up. 7.x
     /// starts afcd in launchd's throttled band, and early in a boot it can sit unscheduled behind ~100
     /// runnable daemon threads for minutes (qemu-ios docs/n90 debt 6); a request sent then goes unanswered.
-    var afcReadyTimeout: Duration = .seconds(300)
+    public var afcReadyTimeout: Duration = .seconds(300)
 
     /// Install a decrypted .ipa: AFC stage + instproxy, in-process, no shell.
     /// Every supported image carries its GL engine shim. `progress` gets
     /// short, human phase strings for the sidebar row. The return string is
     /// non-empty only to carry the "SDK too new" marker the caller warns on.
     @discardableResult
-    func install(_ ipa: URL, placeholderRaised: Bool = false,
+    public func install(_ ipa: URL, placeholderRaised: Bool = false,
                  progress: @escaping @Sendable (String) -> Void = { _ in }) async throws -> String {
         // MinimumOSVersion, NOT DTSDKName. The SDK an app was BUILT with says
         // nothing about whether it runs: Temple Run 1.0 is DTSDKName
@@ -36,7 +57,7 @@ struct AppInstallPipeline: Sendable {
         // on the build SDK cried wolf on most of the library, which trains
         // people to click through the one warning that is real. iPhone OS
         // enforces MinimumOSVersion, so that is what we check.
-        let minOS = await AppMetadataCache.shared.minimumOS(from: ipa)
+        let minOS = await AppMetadataCache.minimumOS(from: ipa)
         let sdkMarker = Self.sdkTooNew(minOS, deviceOS: deviceOS) ? "\nnewer than the device's SDK" : ""
 
         // Cheapest possible pre-flight, and the app had none: without a
@@ -172,7 +193,7 @@ struct AppInstallPipeline: Sendable {
     /// Whether a declared MinimumOSVersion ("4.0", "6.1") is newer than the
     /// device's OS — the version iPhone OS itself refuses to launch past.
     /// Tolerates a leading "iphoneos" so an accidental DTSDKName still parses.
-    static func sdkTooNew(_ sdkName: String?, deviceOS: String = "3.1.3") -> Bool {
+    public static func sdkTooNew(_ sdkName: String?, deviceOS: String = "3.1.3") -> Bool {
         guard let sdkName else { return false }
         let digits = sdkName.drop { !$0.isNumber }
         let parts = digits.split(separator: ".").compactMap { Int($0) }
@@ -200,7 +221,7 @@ struct AppInstallPipeline: Sendable {
     /// at download start is the SAME icon the install phase adopts and
     /// cancels — never two. (Two ids was tried: the download's icon and the
     /// install's coexisted on the home screen through the whole install.)
-    static func placeholderID(for key: String) -> String {
+    public static func placeholderID(for key: String) -> String {
         "qemu-install-" + key
             .filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == "_" }
     }
@@ -209,7 +230,7 @@ struct AppInstallPipeline: Sendable {
     /// catalog's download phase). Cancel of an id that is already gone is a
     /// no-op on SpringBoard, so belt-and-suspenders cancels are safe.
     @discardableResult
-    func installPlaceholder(_ action: String, bundleID: String,
+    public func installPlaceholder(_ action: String, bundleID: String,
                             after previous: Task<Void, Never>? = nil) -> Task<Void, Never>? {
         guard agent.isAlive else { return nil }
         return placeholderIcon(action, Self.placeholderID(for: bundleID), bundleID: bundleID, after: previous)

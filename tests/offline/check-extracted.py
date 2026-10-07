@@ -15,10 +15,6 @@ import Dispatch
 enum Archive {\n''' + freshness + '''}\n''' + once + '''
 @main struct Check {
  static func main() async throws {
-  precondition(IPAMembers.appRoot(["Payload/One.app/Info.plist", "Payload/One.app/Nested.app/Info.plist"]) == "Payload/One.app/")
-  precondition(IPAMembers.appRoot(["Payload/One.app/Info.plist", "Payload/Two.app/Info.plist"]) == nil)
-  precondition(IPAMembers.appRoot(["Elsewhere.app/Info.plist"]) == nil)
-  precondition(IPAMembers.appRoot(["Payload/One.app/Info.plist", "Payload/One.app/Info.plist"]) == nil)
   let now = Date()
   precondition(Archive.freshnessText(since: nil, now: now) == "not yet refreshed")
   for offset in [0.0, -0.5, -59, 1] {
@@ -38,7 +34,7 @@ enum Archive {\n''' + freshness + '''}\n''' + once + '''
   precondition(counter.value == 0)
   let result = try await withCheckedThrowingContinuation { once.attach($0) }
   precondition(result == 1)
-  print("PASS: unique root IPA identity and timeout accounting serialized before losing worker returns")
+  print("PASS: timeout accounting serialized before losing worker returns")
  }
 }
 func blockingWait(_ semaphore: DispatchSemaphore) { semaphore.wait() }
@@ -52,6 +48,5 @@ final class Counter: @unchecked Sendable {
 with tempfile.TemporaryDirectory() as work:
     swift=Path(work)/'check.swift';swift.write_text(source)
     executable=Path(work)/'check'
-    subprocess.run(['swiftc', *__import__('host_service').wire_flags(__import__('pathlib').Path(__file__).resolve().parents[2]),'-parse-as-library','-module-cache-path','/tmp/ltm-module-cache',str(root/'LightTouchMac/Library/IPAMembers.swift'),
-                    str(swift),'-o',str(executable)],check=True)
+    subprocess.run(['swiftc', *__import__('host_service').wire_flags(__import__('pathlib').Path(__file__).resolve().parents[2]),'-parse-as-library','-module-cache-path','/tmp/ltm-module-cache',str(swift),'-o',str(executable)],check=True)
     subprocess.run([str(executable)],check=True)

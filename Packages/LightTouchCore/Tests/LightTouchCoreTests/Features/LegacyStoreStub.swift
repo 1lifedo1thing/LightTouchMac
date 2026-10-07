@@ -7,10 +7,10 @@ import Testing
 @Suite(.serialized) enum SharedState {}
 
 /// The repository, for the recorded fixtures under tests/fixtures.
-let repositoryRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+nonisolated let repositoryRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
     .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 
-func fixture(_ path: String) -> URL { repositoryRoot.appendingPathComponent("tests/fixtures/" + path) }
+nonisolated func fixture(_ path: String) -> URL { repositoryRoot.appendingPathComponent("tests/fixtures/" + path) }
 
 /// An in-process Legacy Store: while installed, every URLSession.shared request is answered by `respond`, so nothing
 /// leaves the machine. A reply may stream its body in chunks with a pause between them.
@@ -85,7 +85,7 @@ nonisolated final class LegacyStoreStub: URLProtocol, @unchecked Sendable {
     override func stopLoading() { stopped.withLock { isStopped = true } }
 }
 
-extension URLComponents {
+nonisolated extension URLComponents {
     /// The query as a dictionary (each name once).
     var items: [String: String] {
         Dictionary((queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { a, _ in a })

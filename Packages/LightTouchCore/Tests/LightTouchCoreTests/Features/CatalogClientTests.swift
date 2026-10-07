@@ -43,7 +43,7 @@ extension SharedState {
 
     @Test func decodeDownloadRejectAndCancel() async throws {
         try await withTemporaryState { state in
-            try await LegacyStoreStub.serving(state: state, Self.fixtureServer) {
+            try await LegacyStoreStub.serving(state: state, { Self.fixtureServer($0) }) {
                 let found = try await CatalogClient.search("fixture")
                 #expect(found.count == 1)
                 #expect(try await CatalogClient.versions(for: found[0]).count == 2)
@@ -73,10 +73,10 @@ extension SharedState {
 
     // MARK: API 2.1 compatibility, against recorded responses of both shapes
 
-    static let compatFiles = ["iPod2,1": "new-ipod2-3.1.3-enigmo", "iPad1,1": "new-ipad1-3.2-enigmo", "iPod1,1": "new-ipod1-1.1.5-enigmo"]
+    nonisolated static let compatFiles = ["iPod2,1": "new-ipod2-3.1.3-enigmo", "iPad1,1": "new-ipad1-3.2-enigmo", "iPod1,1": "new-ipod1-1.1.5-enigmo"]
 
     /// The live (2.0) server ignores device/os; the 2.1 one judges and 404s incompatible copies.
-    static func compatServer(new: Bool) -> @Sendable (URLComponents) -> LegacyStoreStub.Reply {
+    nonisolated static func compatServer(new: Bool) -> @Sendable (URLComponents) -> LegacyStoreStub.Reply {
         { request in
             func load(_ name: String) -> [String: Any] {
                 try! JSONSerialization.jsonObject(with: Data(contentsOf: fixture("store-compat/" + name))) as! [String: Any]

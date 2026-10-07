@@ -16,7 +16,7 @@
 
 import Foundation
 
-public struct CatalogApp: Codable, Sendable {
+public nonisolated struct CatalogApp: Codable, Sendable {
     public init(bundleID: String? = nil, name: String, developer: String? = nil, version: String? = nil, minOS: String? = nil, size: Int64? = nil, ipaID: Int, iconURL: URL? = nil, downloadURL: URL, appURL: URL? = nil, md5: String? = nil, compat: Compat? = nil) {
         self.bundleID = bundleID
         self.name = name

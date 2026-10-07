@@ -6,7 +6,7 @@ import Testing
 extension SharedState {
 @Suite struct CatalogDetailsModelTests {
     /// The recorded version lists, copy records and the emulator endpoint's answer for 207203.
-    static let server: @Sendable (URLComponents) -> LegacyStoreStub.Reply = { request in
+    nonisolated static let server: @Sendable (URLComponents) -> LegacyStoreStub.Reply = { request in
         var name: String? = ["/api/v1/apps/com.playfirst.hoteldash/versions": "versions-hoteldash.json",
                              "/api/v1/apps/com.secondarm.taptapdash/versions": "versions-taptapdash.json"][request.path]
         if request.path.hasPrefix("/api/v1/copies/") { name = "copy-" + request.path.split(separator: "/").last! + ".json" }
@@ -18,7 +18,7 @@ extension SharedState {
     @Test func compatibleCopyOnTheIPod() async throws {
         let hotel = try CatalogFilterTests.apps("ipod2-3.1.3-dash.json").first { $0.name == "Hotel Dash" }!
         try await withTemporaryState { state in
-            try await LegacyStoreStub.serving(state: state, Self.server) {
+            await LegacyStoreStub.serving(state: state, Self.server) {
                 var installed: Int?, closed = false
                 let model = CatalogDetailsModel(app: hotel, device: "iPod2,1", deviceOS: "3.1.3", arch: "armv6", installedVersion: "1.10.3",
                                                 canInstall: { true }, install: { installed = $0.ipaID })
@@ -42,7 +42,7 @@ extension SharedState {
     @Test func arm64OnlyAppOnTheIPad() async throws {
         let dash = try CatalogFilterTests.apps("search-86286-ipad1-4.2.1.json")[0]
         try await withTemporaryState { state in
-            try await LegacyStoreStub.serving(state: state, Self.server) {
+            await LegacyStoreStub.serving(state: state, Self.server) {
                 var installs = 0
                 let model = CatalogDetailsModel(app: dash, device: "iPad1,1", deviceOS: "4.2.1", arch: "armv7", installedVersion: nil,
                                                 canInstall: { true }, install: { _ in installs += 1 })
