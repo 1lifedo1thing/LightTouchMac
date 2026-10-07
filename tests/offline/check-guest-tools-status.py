@@ -67,7 +67,7 @@ with tempfile.TemporaryDirectory(prefix="ltm-guest-status-") as tmp:
                "LightTouchMac/Device/BootSessionScope.swift", "LightTouchMac/Library/DeviceInstance.swift",
                "LightTouchMac/Device/Board+App.swift", "LightTouchMac/Library/StorageLocations.swift",
                "LightTouchMac/Library/FirmwareCatalog.swift"]
-    subprocess.run(["xcrun", "swiftc", *__import__('host_runtime').schema_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), *device_runtime.swift_flags(ROOT), "-swift-version", "5", "-default-isolation", "MainActor",
+    subprocess.run(["xcrun", "swiftc", *__import__('host_service').wire_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), *__import__('host_runtime').schema_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), *device_runtime.swift_flags(ROOT), "-swift-version", "5", "-default-isolation", "MainActor",
                     "-parse-as-library", "-module-cache-path", str(t / "modules"), *[str(ROOT / s) for s in sources],
                     str(t / "probe.swift"), "-o", str(t / "probe")], check=True)
     subprocess.run([str(t / "probe"), str(t / "pack.itpack"), str(t)], check=True, timeout=30)

@@ -43,7 +43,7 @@ TAGS = ['-metadata', 'title=Tagged Tïtle', '-metadata', 'artist=Track Artist', 
 with tempfile.TemporaryDirectory(prefix='ltm-media-metadata-') as work:
     work = Path(work)
     executable = work/'prepare'
-    subprocess.run(['xcrun', 'swiftc', '-swift-version', '5', '-default-isolation', 'MainActor',
+    subprocess.run(['xcrun', 'swiftc', *__import__('host_service').wire_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), '-swift-version', '5', '-default-isolation', 'MainActor',
         '-module-cache-path', str(work/'modules'),
         *[str(root/'LightTouchMac/Features'/f) for f in ('MediaIdentity.swift', 'MediaSong.swift', 'MediaPhoto.swift')],
         str(root/'tests/fixtures/media-metadata.swift'), '-o', str(executable)], check=True)

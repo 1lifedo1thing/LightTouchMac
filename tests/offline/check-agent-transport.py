@@ -215,8 +215,7 @@ func expectFailure(_ what: String, _ body: () async throws -> Void) async {
 with tempfile.TemporaryDirectory() as temp:
     p = Path(temp)
     (p / 'check.swift').write_text(fixture + main)
-    subprocess.run(['swiftc', *device_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-module-cache-path', str(p / 'cache'), '-swift-version', '5', '-default-isolation', 'MainActor', '-parse-as-library',
+    subprocess.run(['swiftc', *__import__('host_service').wire_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), *device_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-module-cache-path', str(p / 'cache'), '-swift-version', '5', '-default-isolation', 'MainActor', '-parse-as-library',
                     str(root / 'LightTouchMac/Device/Board+App.swift'),
-                    str(root / 'LightTouchMac/Guest/GuestServices.swift'), str(root / 'LightTouchMac/Guest/GuestAgent.swift'),
-                    str(root / 'LightTouchMac/Transport/DeviceExecution.swift'), str(p / 'check.swift'), '-o', str(p / 'check')], check=True)
+                    str(root / 'LightTouchMac/Guest/GuestServices.swift'), str(root / 'LightTouchMac/Guest/GuestAgent.swift'), str(p / 'check.swift'), '-o', str(p / 'check')], check=True)
     subprocess.run([str(p / 'check')], check=True, timeout=60)

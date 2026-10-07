@@ -4,7 +4,7 @@ A slice is `source[source.index('marker'):source.index('other marker')]` over a 
 wrapped in a fixture that stands in for the rest of the file. It breaks whenever the markers move. E4
 (the 09-28 consolidation sweep) converted every check whose section could be a file of its own, and E6 (the service layering
 and the big-view-controller extractions) converted the checks its extractions cover: they now compile
-`Services/InstallationProxy.swift`, `Services/AFC.swift`, `Services/DeviceServices.swift`, `Features/AppInstaller.swift`,
+`LightTouchServices/Engine/InstallationProxy.swift`, `Engine/AFC.swift`, `Engine/DeviceServices+Engine.swift`, `Features/AppInstaller.swift`,
 `Features/CaptureController.swift`, `Features/MediaImport.swift`, `UI/DroppedFiles.swift`, `Device/DeviceProcess.swift`,
 `Library/StorageLocations.swift` and `Library/IPAMembers.swift` whole, against the shared stand-ins in `tests/fixtures/app-installer*.swift` and
 `tests/fixtures/capture-controller.swift`. A few whole-file compiles swap a pause point or an AppKit sheet in by

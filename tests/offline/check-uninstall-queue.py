@@ -151,9 +151,9 @@ extension AppInstaller {
 with tempfile.TemporaryDirectory(prefix='ltm-uninstall-') as directory:
     work = Path(directory)
     (work / 'check.swift').write_text(code)
-    subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-swift-version', '6', '-default-isolation', 'MainActor',
+    subprocess.run(['xcrun', 'swiftc', *__import__('host_service').client_sources(__import__('pathlib').Path(__file__).resolve().parents[2]), *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-swift-version', '6', '-default-isolation', 'MainActor',
                     '-module-cache-path', str(work / 'modules'), *[str(app / f) for f in [
-                        'Features/AppInstaller.swift', 'Features/MediaSupport.swift', 'Features/InstallationQueue.swift', 'App/UserActivity.swift', 'Transport/DeviceExecution.swift',
+                        'Features/AppInstaller.swift', 'Features/MediaSupport.swift', 'Features/InstallationQueue.swift', 'App/UserActivity.swift',
                         'Device/Board+App.swift']],
                     str(root / 'tests/fixtures/app-installer.swift'), str(root / 'tests/fixtures/app-installer-library.swift'),
                     str(work / 'check.swift'), '-o', str(work / 'check')], check=True)

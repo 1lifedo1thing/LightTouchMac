@@ -15,6 +15,7 @@
 // came in, so pages and the dock survive a reorder untouched.
 
 import Foundation
+import HostServiceWire
 
 extension DeviceServices {
     /// Bundle IDs in home-screen order: dock first, then each page, reading
@@ -22,15 +23,7 @@ extension DeviceServices {
     /// caller can tell "SpringBoard says there is nothing" from "we couldn't
     /// ask" — an empty list would silently reorder the sidebar to nothing.
     func homeScreenOrder() async throws -> [String] {
-        if !local {
-            guard case .strings(let ids) = try await remote(.homeOrder, seconds: Timeouts.query) else { throw DeviceError.unavailable }
-            return ids
-        }
-        #if LIGHTTOUCH_SERVICES
         return try await withIconState { state, _ in HomeScreenLayout.flatten(state) }
-        #else
-        throw Self.unrouted
-        #endif
     }
 
     /// Move `bundleID` into the slot `other` currently occupies, or to the end
@@ -44,11 +37,6 @@ extension DeviceServices {
     /// up one slot, exactly as dragging on the device does.
     @discardableResult
     func moveOnHomeScreen(_ bundleID: String, before other: String?, deviceName: String) async throws -> [String] {
-        if !local {
-            guard case .strings(let ids) = try await remote(.move(bundle: bundleID, before: other, deviceName: deviceName), seconds: Timeouts.query) else { throw DeviceError.unavailable }
-            return ids
-        }
-        #if LIGHTTOUCH_SERVICES
         return try await withIconState { state, client in
             var ids = HomeScreenLayout.flatten(state)
             // Not "return ids". Returning the unchanged order looked like a
@@ -67,20 +55,12 @@ extension DeviceServices {
             try HomeScreenLayout.write(HomeScreenLayout.rebuild(state, order: ids), to: client)
             return ids
         }
-        #else
-        throw Self.unrouted
-        #endif
     }
 
     /// SpringBoard's UIInterfaceOrientation (1 portrait, 2 upside down,
     /// 3 landscape right, 4 landscape left). 3.2's springboardservicesrelay
     /// answers it; 3.1.3's doesn't (see EmulatorController's auto-rotation).
     func interfaceOrientation() async throws -> Int {
-        if !local {
-            guard case .integer(let orientation) = try await remote(.orientation, seconds: Timeouts.query) else { throw DeviceError.unavailable }
-            return Int(orientation)
-        }
-        #if LIGHTTOUCH_SERVICES
         return try await withSpringBoard { client in
             var orientation = SBSERVICES_INTERFACE_ORIENTATION_UNKNOWN
             guard sbservices_get_interface_orientation(client, &orientation).ok else {
@@ -88,14 +68,10 @@ extension DeviceServices {
             }
             return Int(orientation.rawValue)
         }
-        #else
-        throw Self.unrouted
-        #endif
     }
 
     // MARK: - libimobiledevice
 
-    #if LIGHTTOUCH_SERVICES
     /// Connect, run `body` against the current icon state, disconnect. Every
     /// handle is released on the way out, including on a throw — a leaked
     /// lockdown client is a service slot the device does not get back, and
@@ -150,93 +126,24 @@ extension DeviceServices {
             return try body(client)
         }
     }
-    #endif
 }
 
-/// The icon state's shape: flattened to bundle IDs and refilled from them.
-nonisolated enum HomeScreenLayout {
-    /// Every displayIdentifier in the state, in layout order. Folders on later
-    /// iOS keep their children in `iconLists`; flattening them keeps this
-    /// honest on a device that has any, even though 3.1.3 cannot make one.
-    static func flatten(_ state: [Any]) -> [String] {
-        var ids: [String] = []
-        func walk(_ node: Any) {
-            if let list = node as? [Any] { list.forEach(walk) }
-            else if let icon = node as? [String: Any] {
-                if let id = icon["displayIdentifier"] as? String { ids.append(id) }
-                if let lists = icon["iconLists"] { walk(lists) }
-            }
-        }
-        walk(state)
-        return ids
-    }
-
-    /// The same page/dock structure, refilled from `order`. Slot counts are
-    /// preserved, so nothing is pushed onto a page that cannot hold it — the
-    /// device decides how many icons fit, and we are in no position to argue.
-    static func rebuild(_ state: [Any], order: [String]) -> [Any] {
-        var remaining = order[...]
-        func refill(_ node: Any) -> Any {
-            if let list = node as? [Any] { return list.map(refill) }
-            if var icon = node as? [String: Any] {
-                if icon["displayIdentifier"] != nil, let next = remaining.first {
-                    remaining = remaining.dropFirst()
-                    icon["displayIdentifier"] = next
-                }
-                if let lists = icon["iconLists"] { icon["iconLists"] = refill(lists) }
-                return icon
-            }
-            return node
-        }
-        return state.map(refill)
-    }
-
-    #if DEBUG
-    /// Flatten and rebuild have to be exact inverses, and a rebuild has to keep
-    /// every page and the dock at the size it already was. Getting this wrong
-    /// scrambles somebody's home screen, which is not a thing to find out on a
-    /// live device.
-    static func selfCheck() {
-        let dock = [["displayIdentifier": "com.apple.mobilemusic"]]
-        let page1 = [["displayIdentifier": "com.apple.MobileAddressBook"],
-                     ["displayIdentifier": "com.shazam.Shazam"],
-                     ["displayIdentifier": "com.condenet.Epicurious"]]
-        let state: [Any] = [dock, page1]
-        assert(flatten(state) == ["com.apple.mobilemusic", "com.apple.MobileAddressBook",
-                                  "com.shazam.Shazam", "com.condenet.Epicurious"])
-        assert(flatten(rebuild(state, order: flatten(state))) == flatten(state),
-               "rebuild is not the inverse of flatten")
-
-        // Epicurious dragged to where Shazam sits.
-        var ids = flatten(state)
-        ids.removeAll { $0 == "com.condenet.Epicurious" }
-        ids.insert("com.condenet.Epicurious", at: ids.firstIndex(of: "com.shazam.Shazam")!)
-        let moved = rebuild(state, order: ids)
-        assert(flatten(moved) == ["com.apple.mobilemusic", "com.apple.MobileAddressBook",
-                                  "com.condenet.Epicurious", "com.shazam.Shazam"])
-        // Page sizes untouched: the dock still holds exactly one icon.
-        assert((moved[0] as? [Any])?.count == 1 && (moved[1] as? [Any])?.count == 3,
-               "rebuild changed how many icons a page holds")
-    }
-    #endif
-
+extension HomeScreenLayout {
     /// plist_t -> Foundation, via the XML both sides already speak. Converting
     /// through a string beats walking the plist_t node by node, and an icon
     /// layout is a few KB.
-    #if LIGHTTOUCH_SERVICES
-    fileprivate static func decode(_ node: plist_t) throws -> Any {
+    static func decode(_ node: plist_t) throws -> Any {
         guard let state = IMobileDevice.decode(node) else {
             throw DeviceToolsError.failed("The Home screen reported a layout Light Touch can’t read.")
         }
         return state
     }
 
-    fileprivate static func write(_ state: [Any], to client: OpaquePointer) throws {
+    static func write(_ state: [Any], to client: OpaquePointer) throws {
         guard let node = IMobileDevice.encode(state) else { throw DeviceToolsError.failed("Couldn’t save the Home screen layout.") }
         defer { plist_free(node) }
         guard sbservices_set_icon_state(client, node).ok else {
             throw DeviceToolsError.failed("The Home screen didn’t accept the new layout.")
         }
     }
-    #endif
 }

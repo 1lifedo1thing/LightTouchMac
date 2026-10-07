@@ -1,3 +1,5 @@
+import HostServiceWire
+import HostServiceClient
 import HostRuntime
 import DeviceRuntime
 // Created by Sam on 2026-08-05.

@@ -6,6 +6,7 @@ debt 6). Compiles Features/AppInstallPipeline.swift whole against fake services 
 from a given try on; only the exec-bit repair (a subprocess) is cut out."""
 from pathlib import Path
 import subprocess
+import sys as _sys, pathlib as _pl; _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[2] / "scripts"))
 import tempfile
 
 root = Path(__file__).resolve().parents[2]
@@ -106,6 +107,6 @@ with tempfile.TemporaryDirectory() as d:
     (d / "Payload/X.app/Info.plist").write_text("<plist/>")
     subprocess.run(["/usr/bin/zip", "-qr", str(ipa), "Payload"], cwd=d, check=True)
     exe = d / "check"
-    subprocess.run(["xcrun", "swiftc", "-parse-as-library", "-swift-version", "6", "-o", str(exe),
+    subprocess.run(["xcrun", "swiftc", *__import__('host_service').client_sources(__import__('pathlib').Path(__file__).resolve().parents[2]), "-parse-as-library", "-swift-version", "6", "-o", str(exe),
                     str(d / "AppInstallPipeline.swift"), str(d / "Fakes.swift")], check=True)
     subprocess.run([str(exe), str(ipa)], check=True)

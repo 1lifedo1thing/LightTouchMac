@@ -125,7 +125,7 @@ func descendants(_ view: NSView) -> [NSView] {
 with tempfile.TemporaryDirectory(prefix='ltm-proxy-panel-') as directory:
  work = Path(directory)
  (work/'check.swift').write_text(fixture)
- subprocess.run(['swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), DEVICE_PROFILE, '-default-isolation', 'MainActor', '-module-cache-path', str(work/'modules'),
+ subprocess.run(['swiftc', *__import__('host_service').wire_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), DEVICE_PROFILE, '-default-isolation', 'MainActor', '-module-cache-path', str(work/'modules'),
    str(root/'LightTouchMac/Device/WebProxyConfiguration.swift'), str(root/'LightTouchMac/UI/ProxySettingsView.swift'), str(root/'LightTouchMac/UI/InlineActionButton.swift'),
    str(work/'check.swift'), '-o', str(work/'check')], check=True)
  for zone in ['America/New_York', 'America/Los_Angeles', 'Asia/Tokyo']:

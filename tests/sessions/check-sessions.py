@@ -88,10 +88,10 @@ def helper_requirement(args):
     return getattr(args, "helper_requirement", None) or (None if getattr(args, "helper", None) else TEAM_REQ)
 
 
-APP_SOURCES = ["Services/DeviceServices", "Transport/DeviceExecution", "Services/AFC", "Services/InstallationProxy", "Services/LockdownTools", "Services/ClockRegion", "Transport/IMobileDevice", "Device/Board+App",
+APP_SOURCES = ["Services/LockdownTools", "Services/ClockRegion", "Device/Board+App",
                "Transport/NativeLogging", "Library/StorageLocations", "Library/DeviceStateStorage", "Guest/GuestServices", "Guest/GuestAgent", "Guest/GuestPackage",
                "Library/DeviceInstance", "Library/FirmwareCatalog", "Features/MediaPhoto", "Features/MediaIdentity", "Device/DeviceConnectionIssue",
-               "Device/WebProxyConfiguration", "Services/SpringBoardServices", "Services/LockdownState", "Services/HostServiceTypes", "Services/HostServiceProtocol", "Services/HostServiceResources", "Services/HostServiceWorkers", "Services/MediaStaging", "Services/HomeScreenOrdering", "Library/FirmwareTool",
+               "Device/WebProxyConfiguration", "Services/MediaStaging", "Services/HomeScreenOrdering", "Library/FirmwareTool",
                "Features/MediaSong", "Features/MediaVideo", "Features/PreparedMedia", "Features/MediaImport", "Features/MediaSupport"]
 
 
@@ -170,7 +170,7 @@ def guest_checks(find, check, events):
 
 def build(args, out):
     subprocess.run(["xcrun", "swiftc", *host_runtime.schema_flags(ROOT), *device_runtime.swift_flags(ROOT), "-swift-version", "5", "-default-isolation", "MainActor", "-module-cache-path", out / "modules",
-                    *swift_subprocess.swift_flags(ROOT),
+                    *swift_subprocess.swift_flags(ROOT), *host_service.client_sources(ROOT),
                     ROOT / "LightTouchDevice/FrameTools.swift", *[ROOT / f"LightTouchMac/{n}.swift" for n in APP_SOURCES],
                     ROOT / "tests/drivers/session-driver/main.swift", ROOT / "tests/drivers/session-driver/guest.swift",
                     ROOT / "tests/drivers/session-driver/single.swift", ROOT / "tests/drivers/session-driver/activation.swift",

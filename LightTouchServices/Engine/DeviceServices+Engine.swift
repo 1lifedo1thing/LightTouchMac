@@ -1,29 +1,18 @@
-// Stock host services execute in an immutable-endpoint, killable host worker.
-// Only the worker calls the local C engine; no shipping GUI fallback exists.
+// The services helper's engine for one endpoint: the run kernel every operation goes through (the gate, a
+// deadline, a fresh idevice handle), the attachment probe and lockdown reads.
 
 import Foundation
+import HostServiceWire
 
-nonisolated struct DeviceServices: Sendable {
-    static let session = UUID()
-    let clientSocket: String
-    let endpoint: HostServiceEndpoint
-    let local: Bool
-    init(clientSocket: String, udid: String? = nil, session: UUID = Self.session, local: Bool = false) {
-        self.clientSocket = clientSocket
-        self.endpoint = HostServiceEndpoint(socket: clientSocket, udid: udid, session: session)
-        self.local = local
-    }
-
+extension DeviceServices {
     // MARK: - Execution: gate + deadline + fresh handles
 
-    #if LIGHTTOUCH_SERVICES
     /// Run blocking libimobiledevice work under the process-wide gate and a
     /// deadline, with a freshly-opened idevice handle freed on the way out.
     /// `body` gets an attached device; it opens whatever service clients it needs and frees them itself.
     func run<T: Sendable>(_ seconds: Double, _ label: String, _ body: @escaping @Sendable (OpaquePointer) throws -> T)
         async throws -> T
     {
-        guard local else { throw DeviceToolsError.failed("Unrouted host service operation.") }
         let socket = clientSocket
         return try await DeviceGate.shared.serialized(socket: socket) {
             let started = ContinuousClock.now
@@ -43,11 +32,6 @@ nonisolated struct DeviceServices: Sendable {
             }
         }
     }
-    #endif
-
-    /// The engine halves below run in the services helper only (LIGHTTOUCH_SERVICES); anywhere else a local call has
-    /// nothing to run.
-    static var unrouted: Error { DeviceToolsError.failed("Unrouted host service operation.") }
 
     // MARK: - Attachment
 
@@ -57,8 +41,6 @@ nonisolated struct DeviceServices: Sendable {
     /// path — so a wedged socket hung the quit itself. `withDeadline` abandons
     /// the blocked thread; the gate keeps it from racing other device work.
     func checkAttachment() async throws {
-        if !local { _ = try await remote(.attachment, seconds: Timeouts.serviceProbe * 2); return }
-        #if LIGHTTOUCH_SERVICES
         let socket = clientSocket
         // Bounded INCLUDING the wait for the gate. withDeadline bounds the probe
         // itself, but not the queue in front of it, and this is called from the
@@ -81,8 +63,22 @@ nonisolated struct DeviceServices: Sendable {
         try Task.checkCancellation()
         guard let result else { throw DeviceError.timedOut(operation: "USB connection") }
         try result.get()
-        #else
-        throw Self.unrouted
-        #endif
     }
+
+    /// Stock lockdown reads share the same endpoint, timeout and error contract.
+    func lockdownValue(_ key: String) async throws -> String? {
+        return try await run(Timeouts.query, "lockdown " + key) { device in
+            var client: OpaquePointer?
+            let rc = lockdownd_client_new_with_handshake(device, &client, "LightTouchMac")
+            guard rc.ok, let client else { throw DeviceError.lockdown(rc.code) }
+            defer { _ = lockdownd_client_free(client) }
+
+            var value: plist_t?
+            let vr = lockdownd_get_value(client, nil, key, &value)
+            guard vr.ok, let value else { throw DeviceError.lockdown(vr.code) }
+            defer { plist_free(value) }
+            return IMobileDevice.decode(value) as? String
+        }
+    }
+
 }

@@ -103,13 +103,13 @@ with tempfile.TemporaryDirectory(prefix="ltm-instproxy-connect-") as directory:
     subprocess.run(["xcrun", "clang", "-dynamiclib", "-Wall", "-Werror", "-install_name", "@rpath/libimobiledevice-1.0.dylib",
                     str(temp / "fixture.c"), "-o", str(temp / "libimobiledevice-1.0.dylib")], check=True)
     binary = temp / "check"
-    # The services helper's build: its bridging header (the real C API), LIGHTTOUCH_SERVICES, Swift 5 and default
+    # The services helper's build: its bridging header (the real C API), HostServiceWire, Swift 5 and default
     # MainActor isolation; linked to the fixture in place of libimobiledevice.
     headers = [x for f in host_service.imobiledevice_flags() if f.startswith("-I") for x in ("-Xcc", f)]
-    subprocess.run(["xcrun", "swiftc", "-parse-as-library", "-swift-version", "5", "-D", "LIGHTTOUCH_SERVICES",
+    subprocess.run(["xcrun", "swiftc", *host_service.wire_flags(root), "-parse-as-library", "-swift-version", "5",
                     "-default-isolation", "MainActor", "-module-cache-path", str(temp / "modules"), *headers,
                     "-import-objc-header", str(root / "LightTouchServices/Lockdown/Lockdown.h"),
-                    str(root / "LightTouchMac/Transport/IMobileDevice.swift"), str(temp / "check.swift"),
+                    str(root / "LightTouchServices/Engine/IMobileDevice.swift"), str(temp / "check.swift"),
                     "-L", str(temp), "-limobiledevice-1.0", "-Xlinker", "-rpath", "-Xlinker", str(temp),
                     "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True, timeout=10)

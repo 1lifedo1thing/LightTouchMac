@@ -1,10 +1,10 @@
-// AFC: free space, the chunked upload behind installs and media (/PublicStaging,
+// AFC in the services helper: free space, the chunked upload behind installs and media (/PublicStaging,
 // /LightTouch), the startup sweep of orphaned uploads, and the Files browser's
 // listing and export — all through DeviceServices' run kernel.
 
 import Foundation
+import HostServiceWire
 
-#if LIGHTTOUCH_SERVICES
 extension IMobileDevice {
     /// AFC through lockdown's StartService, each step's error kept (IMobileDevice.startService).
     nonisolated static func startAFC(device: OpaquePointer) throws -> OpaquePointer {
@@ -12,7 +12,6 @@ extension IMobileDevice {
                          freeClient: { afc_client_free($0) }) { DeviceError.afc(.init(code: $0)) }
     }
 }
-#endif
 
 extension DeviceServices {
     // MARK: - Free space
@@ -20,11 +19,6 @@ extension DeviceServices {
     /// Bytes free on the media partition, via AFC. The pre-flight that names a
     /// full device before installd fails opaquely with PackageExtractionFailed.
     func freeSpaceBytes() async throws -> Int64 {
-        if !local {
-            guard case .integer(let bytes) = try await remote(.freeSpace, seconds: Timeouts.query) else { throw DeviceError.unavailable }
-            return bytes
-        }
-        #if LIGHTTOUCH_SERVICES
         return try await run(Timeouts.query, "free space") { device in
             let client = try IMobileDevice.startAFC(device: device)
             defer { _ = afc_client_free(client) }
@@ -34,47 +28,19 @@ extension DeviceServices {
             defer { free(value) }
             return Int64(String(cString: value)) ?? 0
         }
-        #else
-        throw Self.unrouted
-        #endif
-    }
-
-    nonisolated static func validateFilePath(_ path: String) throws {
-        guard !path.hasPrefix("/"), !path.contains("\0"),
-              path.isEmpty || path.split(separator: "/", omittingEmptySubsequences: false)
-                .allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
-            throw DeviceError.preflight("Invalid device file path.")
-        }
     }
 
     // MARK: - Stage (AFC upload into /PublicStaging)
 
-    /// Upload the .ipa into the AFC jail and return its device-relative path,
-    /// which is what instproxy_install wants. Chunked so progress is live.
+    /// Upload the .ipa into PublicStaging and return its device-relative path, which is what instproxy_install wants.
     func stage(_ ipa: URL, progress: @escaping @Sendable (Double) -> Void) async throws -> String {
         try await stageFile(ipa, remote: "PublicStaging/\(Self.stagingName(ipa))", progress: progress)
-    }
-
-    func uploadFile(_ source: URL, into directory: String,
-                    progress: @escaping @Sendable (Double) -> Void) async throws {
-        try Self.validateFilePath(directory)
-        let path = directory.isEmpty ? source.lastPathComponent : directory + "/" + source.lastPathComponent
-        try Self.validateFilePath(path)
-        guard !path.isEmpty else { throw DeviceError.preflight("Select a file to import.") }
-        _ = try await stageFile(source, remote: path, reuseIdentical: true, allowEmpty: true, progress: progress)
     }
 
     /// Callers supply a validated relative destination. The same chunked AFC
     /// upload, cancellation and incomplete-file cleanup serve apps and songs.
     func stageFile(_ ipa: URL, remote: String, reuseIdentical: Bool = false, allowEmpty: Bool = false,
                            progress: @escaping @Sendable (Double) -> Void) async throws -> String {
-        if !local {
-            guard case .string(let path) = try await self.remote(.upload(source: ipa.path, remote: remote, reuse: reuseIdentical, allowEmpty: allowEmpty), seconds: Timeouts.stage, progress: {
-                if case .fraction(let value) = $0 { progress(value) }
-            }), let path else { throw DeviceError.unavailable }
-            return path
-        }
-        #if LIGHTTOUCH_SERVICES
         return try await run(Timeouts.stage, "upload") { device in
             // File I/O stays on the detached worker, including opening the file.
             let input = try FileHandle(forReadingFrom: ipa)
@@ -162,50 +128,9 @@ extension DeviceServices {
             progress(1)
             return remote
         }
-        #else
-        throw Self.unrouted
-        #endif
-    }
-
-    /// A stable device-side filename from the .ipa: staging paths must survive
-    /// odd characters (`Super Monkey Ball [SEGA]`), so reduce to a safe set.
-    /// Unique per upload. Collapsing punctuation to "_" made "Temple Run",
-    /// "Temple-Run" and "Temple.Run" all stage to one path, so re-dropping a
-    /// newer build landed on a file the device still held open from the last
-    /// attempt — AFC refused it (the bare "File-transfer error: code 1") — and
-    /// one install's fire-and-forget cleanup could delete the next install's
-    /// upload out from under it. A unique suffix removes both.
-    nonisolated static let stagingSession = HostServiceResources.stagingSession
-
-    nonisolated static func stagingName(_ ipa: URL) -> String {
-        let base = ipa.deletingPathExtension().lastPathComponent
-        let safe = String(base.map { $0.isLetter || $0.isNumber ? $0 : "_" }.prefix(48))
-        return "\(safe)-\(stagingSession)-\(UUID().uuidString.prefix(8)).ipa"
-    }
-
-    /// Startup cleanup can run after a new upload begins. Session-tagged names
-    /// protect every upload from this process, including ones not yet queued.
-    /// Internal, with the names above, for tests/offline/check-upload.py.
-    nonisolated static func isOrphanedStagingName(_ name: String) -> Bool {
-        !name.isEmpty && name != "." && name != ".." && !name.contains("/")
-            && !name.contains("-\(stagingSession)-")
-    }
-
-    nonisolated static func isOrphanedMediaUpload(_ name: String) -> Bool {
-        let parts = name.components(separatedBy: ".upload-")
-        guard parts.count == 2,
-              ["audio.mp3", "audio.m4a", "audio.aac", "audio.wav", "image.jpg"].contains(parts[0]),
-              !parts[1].hasPrefix(stagingSession + "-") else { return false }
-        let suffix = parts[1]
-        if UUID(uuidString: suffix) != nil { return true } // Earlier atomic uploads.
-        return suffix.count == 73 && suffix[suffix.index(suffix.startIndex, offsetBy: 36)] == "-"
-            && UUID(uuidString: String(suffix.prefix(36))) != nil
-            && UUID(uuidString: String(suffix.suffix(36))) != nil
     }
 
     func sweepStaging() async {
-        if !local { _ = try? await remote(.sweep, seconds: Timeouts.query); return }
-        #if LIGHTTOUCH_SERVICES
         _ = try? await run(Timeouts.query, "staging sweep") { device in
             guard let client = try? IMobileDevice.startAFC(device: device) else { return }
             defer { _ = afc_client_free(client) }
@@ -233,31 +158,22 @@ extension DeviceServices {
                 }
             }
         }
-        #endif
     }
 
     /// Best-effort cleanup of a staged upload.
     func removeStaged(_ path: String) async {
-        if !local { _ = try? await remote(.remove(path), seconds: Timeouts.query); return }
-        #if LIGHTTOUCH_SERVICES
         _ = try? await run(Timeouts.query, "cleanup") { device in
             guard let client = try? IMobileDevice.startAFC(device: device) else { return }
             defer { _ = afc_client_free(client) }
             _ = afc_remove_path(client, path)
         }
-        #endif
     }
 }
 
 
 extension DeviceServices {
     func files(in path: String) async throws -> [DeviceFile] {
-        if !local {
-            guard case .files(let files) = try await remote(.files(path), seconds: Timeouts.browse) else { throw DeviceError.unavailable }
-            return files
-        }
         try Self.validateFilePath(path)
-        #if LIGHTTOUCH_SERVICES
         return try await run(Timeouts.browse, "browse files") { device in
             let client = try IMobileDevice.startAFC(device: device)
             defer { _ = afc_client_free(client) }
@@ -299,35 +215,15 @@ extension DeviceServices {
                 return $0.name.localizedStandardCompare($1.name) == .orderedAscending
             }
         }
-        #else
-        throw Self.unrouted
-        #endif
     }
 
     /// Save to a private adjacent file, then publish only a completed transfer.
     func download(_ file: DeviceFile, to destination: URL,
                   progress: @escaping @Sendable (Double) -> Void) async throws {
-        if !local {
-            // The GUI owns publication. A killed transfer leaves only this
-            // private candidate, never a late replacement of the user's file.
-            let staging = destination.deletingLastPathComponent().appendingPathComponent(".LightTouch-host-" + UUID().uuidString, isDirectory: true)
-            try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-            defer { try? FileManager.default.removeItem(at: staging) }
-            let candidate = staging.appendingPathComponent("file")
-            _ = try await remote(.download(file, destination: candidate.path), seconds: Timeouts.stage) {
-                if case .fraction(let value) = $0 { progress(value) }
-            }
-            try Task.checkCancellation()
-            guard Darwin.rename(candidate.path, destination.path) == 0 else {
-                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-            }
-            return
-        }
         try Self.validateFilePath(file.path)
         guard file.isRegular, !file.path.isEmpty else {
             throw DeviceError.preflight("Select a regular file to export.")
         }
-        #if LIGHTTOUCH_SERVICES
         return try await run(Timeouts.stage, "export file") { device in
             let client = try IMobileDevice.startAFC(device: device)
             defer { _ = afc_client_free(client) }
@@ -369,8 +265,5 @@ extension DeviceServices {
             guard result == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             progress(1)
         }
-        #else
-        throw Self.unrouted
-        #endif
     }
 }

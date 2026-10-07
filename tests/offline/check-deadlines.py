@@ -2,8 +2,9 @@
 """Run production deadline/serial-gate cancellation without a device or timed assumptions about the main actor."""
 from pathlib import Path
 import subprocess, tempfile
+import sys as _sys, pathlib as _pl; _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[2] / "scripts"))
 root=Path(__file__).resolve().parents[2]
-execution=(root/'LightTouchMac/Transport/DeviceExecution.swift').read_text()
+execution=(root/'LightTouchServices/Engine/DeviceExecution.swift').read_text()
 source=r'''import Foundation
 import Dispatch
 nonisolated func logEvent(_ s:String){}
@@ -93,5 +94,5 @@ nonisolated final class Blocked: @unchecked Sendable {
 '''
 with tempfile.TemporaryDirectory(prefix='ltm-deadlines-') as d:
  p=Path(d)/'check.swift';p.write_text(source)
- subprocess.run(['swiftc','-parse-as-library','-swift-version','6','-module-cache-path',d+'/modules',str(p),'-o',d+'/check'],check=True)
+ subprocess.run(['swiftc', *__import__('host_service').wire_flags(__import__('pathlib').Path(__file__).resolve().parents[2]),'-parse-as-library','-swift-version','6','-module-cache-path',d+'/modules',str(p),'-o',d+'/check'],check=True)
  subprocess.run([d+'/check'],check=True,timeout=10)

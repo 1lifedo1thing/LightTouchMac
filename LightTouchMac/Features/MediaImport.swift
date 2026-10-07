@@ -2,6 +2,7 @@
 // over AFC into /LightTouch/<id>/, then committed into the library by the
 // guest's itmedia (Music, Videos) or itphoto (Saved Photos) through the agent.
 
+import HostServiceWire
 import Foundation
 
 struct MediaImport: Sendable {

@@ -13,7 +13,7 @@ if not fixtures.is_dir():
     print(f'SKIP: no harness fixtures at {fixtures}; build them with contrib/it-harness/build.sh in the pinned checkout (or set QEMU_IOS_DIR)'); raise SystemExit(0)
 with tempfile.TemporaryDirectory(prefix='ltm-media-check-') as work:
     executable = Path(work)/'check'
-    subprocess.run(['xcrun','swiftc','-swift-version','5','-default-isolation','MainActor',
+    subprocess.run(['xcrun','swiftc', *__import__('host_service').wire_flags(__import__('pathlib').Path(__file__).resolve().parents[2]),'-swift-version','5','-default-isolation','MainActor',
         '-module-cache-path',str(Path(work)/'modules'),
         str(root/'LightTouchMac/Features/MediaIdentity.swift'),str(root/'LightTouchMac/Features/MediaSong.swift'),str(root/'LightTouchMac/Features/MediaPhoto.swift'),str(root/'tests/fixtures/media-preflight.swift'),
         '-o',str(executable)],check=True)

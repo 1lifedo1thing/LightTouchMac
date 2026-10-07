@@ -141,7 +141,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-fs-edits-') as tmp:
     tmp = Path(tmp)
     (tmp / 'stubs.swift').write_text(stubs)
     (tmp / 'main.swift').write_text(check)
-    subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(root), '-parse-as-library',
+    subprocess.run(['xcrun', 'swiftc', *__import__('host_service').wire_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), *host_runtime.swift_flags(root), '-parse-as-library',
                     str(root / 'LightTouchMac/Library/DeviceFilesystemEdits.swift'), str(tmp / 'stubs.swift'), str(tmp / 'main.swift'),
                     '-o', str(tmp / 'check')], check=True)
     (tmp / 'devices').mkdir()

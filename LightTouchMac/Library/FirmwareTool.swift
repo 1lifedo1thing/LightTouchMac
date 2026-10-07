@@ -1,3 +1,4 @@
+import HostServiceWire
 import FirmwareSchema
 import Foundation
 import Subprocess

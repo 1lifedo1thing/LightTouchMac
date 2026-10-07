@@ -1,3 +1,5 @@
+import HostServiceClient
+import HostServiceWire
 import Foundation
 
 extension DeviceServices {

@@ -123,9 +123,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSApp.disableRelaunchOnLogin()
 
         MainMenuBuilder.install(profile: .n72)
-        #if DEBUG
-        HomeScreenLayout.selfCheck()
-        #endif
     }
     
     func applicationDidFinishLaunching(_ notification: Notification) {

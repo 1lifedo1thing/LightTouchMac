@@ -1,3 +1,4 @@
+import HostServiceWire
 import DeviceRuntime
 // The guest agent's wire (qemu-ios contrib/it-agent/README.md): one request per
 // op through the device's helper (LinkRequest.agent), the ping's capabilities

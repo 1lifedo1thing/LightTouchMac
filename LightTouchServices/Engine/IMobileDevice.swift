@@ -1,11 +1,10 @@
 // libimobiledevice, which the services helper links (its bridging header, LightTouchServices/Lockdown/Lockdown.h,
 // brings in the C API). The engine halves of Services/ call it directly; this file keeps what they share: opening the
 // device, starting a service with each step's error kept, and plist <-> Foundation through the XML both sides speak.
-// Only the services helper compiles any of it (LIGHTTOUCH_SERVICES); the app reaches the engine through the helper.
 
 import Foundation
+import HostServiceWire
 
-#if LIGHTTOUCH_SERVICES
 /// libimobiledevice's per-service error enums, as the Int32 codes DeviceError keeps. Zero is success in all of them.
 nonisolated protocol IMobileDeviceResult: RawRepresentable, Equatable where RawValue: BinaryInteger {}
 nonisolated extension IMobileDeviceResult {
@@ -101,4 +100,3 @@ nonisolated enum IMobileDevice {
         _ = idevice_free(device)
     }
 }
-#endif

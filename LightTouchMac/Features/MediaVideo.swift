@@ -1,3 +1,4 @@
+import HostServiceWire
 import HostRuntime
 import Foundation
 import AVFoundation

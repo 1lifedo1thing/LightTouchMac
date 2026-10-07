@@ -5,6 +5,7 @@
 // (same selectors, same validation). Menu actions route here through the
 // responder chain (the window controller is the window's next responder).
 
+import HostServiceWire
 import FirmwareSchema
 import HostRuntime
 import Cocoa

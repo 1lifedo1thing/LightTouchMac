@@ -3,6 +3,7 @@
 from pathlib import Path
 from PIL import Image, ImageDraw
 import subprocess
+import sys as _sys, pathlib as _pl; _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[2] / "scripts"))
 import tempfile
 root = Path(__file__).resolve().parents[2]
 with tempfile.TemporaryDirectory(prefix='ltm-photo-check-') as work:
@@ -46,7 +47,7 @@ enum DeviceToolsError: Error { case failed(String) }
 }
 """
     (work/'check.swift').write_text(swift)
-    subprocess.run(['xcrun','swiftc','-swift-version','5','-default-isolation','MainActor',
+    subprocess.run(['xcrun','swiftc', *__import__('host_service').wire_flags(__import__('pathlib').Path(__file__).resolve().parents[2]),'-swift-version','5','-default-isolation','MainActor',
         '-module-cache-path',str(work/'modules'),str(root/'LightTouchMac/Features/MediaPhoto.swift'),str(root/'LightTouchMac/Features/MediaIdentity.swift'),
         str(work/'check.swift'),'-o',str(work/'check')],check=True)
     subprocess.run([str(work/'check'),str(work)],check=True)

@@ -384,7 +384,7 @@ extension String {
     for attempt in 1...6 {
         do {
             let staged = try await d.services.stage(URL(fileURLWithPath: config.ipa)) { _ in }
-            try await d.services.install(stagedPath: staged) { _, _ in }
+            try await d.services.install(URL(fileURLWithPath: config.ipa), staged: staged, bundleID: config.bundleID) { _, _ in }
             let apps = try await d.services.installedApps()
             emit("installed", ["device": d.name, "attempt": attempt, "seconds": Date().timeIntervalSince(start),
                                "apps": apps.map(\.id), "has": apps.contains { $0.id == config.bundleID }])

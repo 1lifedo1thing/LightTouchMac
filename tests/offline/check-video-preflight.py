@@ -93,7 +93,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-video-check-') as directory:
     shutil.copyfile(fixtures / 'aac.m4a', work / 'audio.mov')
     (work / 'folder.mp4').mkdir()
     shutil.copyfile(movie, work / 'unknown.avi')
-    subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(root), DEVICE_PROFILE, '-swift-version', '6', '-default-isolation', 'MainActor',
+    subprocess.run(['xcrun', 'swiftc', *__import__('host_service').wire_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), *host_runtime.swift_flags(root), DEVICE_PROFILE, '-swift-version', '6', '-default-isolation', 'MainActor',
                     '-module-cache-path', str(work / 'modules'), str(root / 'LightTouchMac/Features/MediaIdentity.swift'),
                     str(root / 'LightTouchMac/Features/MediaVideo.swift'), str(work / 'check.swift'), '-o', str(work / 'check')], check=True)
     subprocess.run([str(work / 'check'), str(movie), str(work)], check=True, timeout=90)

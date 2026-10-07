@@ -180,8 +180,8 @@ with tempfile.TemporaryDirectory(prefix='ltm-ipa-library-') as directory:
         (work / 'check.swift').write_text(code)
         sources = ['Library/IPALibrary', 'Features/CatalogClient', 'Features/CatalogCopy', 'Library/Bundled', 'Transport/AppEventLog', 'Library/StorageLocations', 'Transport/NativeLogging',
                    'Library/DeviceInstance', 'Device/Board+App', 'Library/FirmwareCatalog', 'Features/InstallationQueue', 'App/UserActivity',
-                   'Features/AppInstaller', 'Features/MediaSupport', 'Transport/DeviceExecution']
-        subprocess.run(['xcrun', 'swiftc', *__import__('host_runtime').schema_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), *host_runtime.swift_flags(root), '-swift-version', '5', '-default-isolation', 'MainActor', '-parse-as-library',
+                   'Features/AppInstaller', 'Features/MediaSupport']
+        subprocess.run(['xcrun', 'swiftc', *__import__('host_service').client_sources(__import__('pathlib').Path(__file__).resolve().parents[2]), *__import__('host_runtime').schema_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), *host_runtime.swift_flags(root), '-swift-version', '5', '-default-isolation', 'MainActor', '-parse-as-library',
                         '-module-cache-path', str(work / 'modules'), *[str(root / f'LightTouchMac/{s}.swift') for s in sources],
                         str(root / 'tests/fixtures/app-installer.swift'), str(work / 'check.swift'), '-o', str(work / 'check')], check=True)
         subprocess.run([str(work / 'check'), str(server.server_port)], check=True, timeout=60, env=env)

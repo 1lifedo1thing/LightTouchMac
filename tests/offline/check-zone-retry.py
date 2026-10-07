@@ -65,7 +65,7 @@ with tempfile.TemporaryDirectory(prefix="ltm-zone-retry-") as d:
     (work / "lockdown-tz").write_text(tool)
     (work / "lockdown-tz").chmod(0o755)
     (work / "check.swift").write_text(stubs)
-    subprocess.run(["xcrun", "swiftc", *host_runtime.swift_flags(ROOT), *swift_subprocess.swift_flags(ROOT), "-swift-version", "5",
+    subprocess.run(["xcrun", "swiftc", *__import__('host_service').wire_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), *host_runtime.swift_flags(ROOT), *swift_subprocess.swift_flags(ROOT), "-swift-version", "5",
                     "-parse-as-library", "-module-cache-path", str(work / "modules"),
                     str(ROOT / "LightTouchMac/Services/LockdownTools.swift"), str(ROOT / "LightTouchMac/Services/ClockRegion.swift"),
                     str(work / "check.swift"), "-o", str(work / "check")], check=True)

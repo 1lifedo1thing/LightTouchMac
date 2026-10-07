@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Real connection probes preserve errors and abandon queued reads safely: Services/DeviceServices.swift
-(checkAttachment), Transport/IMobileDevice.swift and Transport/DeviceExecution.swift compiled whole against a fake
+"""Real connection probes preserve errors and abandon queued reads safely: the helper's Engine/DeviceServices+Engine.swift
+(checkAttachment), Engine/IMobileDevice.swift and Engine/DeviceExecution.swift compiled whole against a fake
 libimobiledevice (idevice_new), plus the inspector's read-suppression predicate (one declaration, looked up by name)."""
 from pathlib import Path
 import subprocess, tempfile
@@ -8,7 +8,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import swift_subprocess
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from host_service_fixtures import engine
+from host_service_fixtures import engine, leaves
 
 root = Path(__file__).resolve().parents[2]
 app = root / 'LightTouchMac'
@@ -56,7 +56,7 @@ nonisolated final class Signal: @unchecked Sendable {
  @MainActor static func main() async throws {
   Timeouts.serviceProbe = 0.015
   Attachment.install()
-  let device = DeviceServices(clientSocket: "fixture", local: true)
+  let device = DeviceServices(clientSocket: "fixture")
   try await device.checkAttachment()
   Attachment.set(attached: false)
   do { try await device.checkAttachment(); preconditionFailure() }
@@ -101,7 +101,7 @@ nonisolated final class Signal: @unchecked Sendable {
 '''
 with tempfile.TemporaryDirectory(prefix='ltm-health-') as d:
     p = Path(d)/'check.swift'; p.write_text(source)
-    subprocess.run(['swiftc', *engine(root), *swift_subprocess.swift_flags(root), *[str(app/'Services'/name) for name in ['HostServiceTypes.swift','HostServiceProtocol.swift','HostServiceResources.swift','HostServiceWorkers.swift']], '-swift-version', '6', '-parse-as-library', '-module-cache-path', d+'/modules',
-                    str(app / 'Services/DeviceServices.swift'), str(app / 'Transport/DeviceExecution.swift'), str(p),
+    subprocess.run(['swiftc', *engine(root), *swift_subprocess.swift_flags(root), *leaves(root), '-swift-version', '6', '-parse-as-library', '-module-cache-path', d+'/modules',
+                    str(root / 'LightTouchServices/Engine/DeviceServices+Engine.swift'), str(root / 'LightTouchServices/Engine/DeviceExecution.swift'), str(p),
                     '-o', d+'/check'], check=True)
     subprocess.run([d+'/check'], check=True, timeout=10)

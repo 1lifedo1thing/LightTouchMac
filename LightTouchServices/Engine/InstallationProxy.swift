@@ -2,6 +2,7 @@
 // owned idle watchdog) and uninstall, on DeviceServices' run kernel.
 
 import Foundation
+import HostServiceWire
 
 
 extension DeviceServices {
@@ -10,11 +11,6 @@ extension DeviceServices {
     /// Installed third-party apps, via instproxy_browse with an
     /// ApplicationType=User filter. Replaces parsing `ideviceinstaller list`.
     func installedApps() async throws -> [InstalledApp] {
-        if !local {
-            guard case .apps(let apps) = try await remote(.apps, seconds: Timeouts.browse) else { throw DeviceError.unavailable }
-            return apps
-        }
-        #if LIGHTTOUCH_SERVICES
         return try await run(Timeouts.browse, "list apps") { device in
             let client = try IMobileDevice.startInstallationProxy(device: device)
             defer { _ = instproxy_client_free(client) }
@@ -44,16 +40,11 @@ extension DeviceServices {
             }
             return apps.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         }
-        #else
-        throw Self.unrouted
-        #endif
     }
 
     // MARK: - Uninstall
 
     func uninstall(_ bundleID: String) async throws {
-        if !local { _ = try await remote(.uninstall(bundleID), seconds: Timeouts.uninstall); return }
-        #if LIGHTTOUCH_SERVICES
         return try await run(Timeouts.uninstall, "uninstall \(bundleID)") { device in
             let client = try IMobileDevice.startInstallationProxy(device: device)
             defer { _ = instproxy_client_free(client) }
@@ -64,9 +55,6 @@ extension DeviceServices {
                 throw DeviceError.instproxy(.init(code: ur.code), phase: "uninstall")
             }
         }
-        #else
-        throw Self.unrouted
-        #endif
     }
 
     // MARK: - Install (instproxy_install + owned idle watchdog)
@@ -93,11 +81,6 @@ extension DeviceServices {
 
     /// The bundle ids installd holds an archive for (instproxy_lookup_archives).
     func archivedApps() async throws -> [String] {
-        if !local {
-            guard case .strings(let ids) = try await remote(.archives, seconds: Timeouts.browse) else { return [] }
-            return ids
-        }
-        #if LIGHTTOUCH_SERVICES
         return try await run(Timeouts.browse, "list archives") { device in
             let client = try IMobileDevice.startInstallationProxy(device: device)
             defer { _ = instproxy_client_free(client) }
@@ -109,9 +92,6 @@ extension DeviceServices {
             defer { plist_free(result) }
             return ((IMobileDevice.decode(result) as? [String: Any]) ?? [:]).keys.sorted()
         }
-        #else
-        throw Self.unrouted
-        #endif
     }
 
     /// Install a staged .ipa. The owned idle watchdog is the fix for the
@@ -127,15 +107,6 @@ extension DeviceServices {
     /// `restoring`: after the Install, Restore that app's archive.
     func install(stagedPath: String, replacing: String? = nil, restoring: String? = nil,
                  progress: @escaping @Sendable (Int, String) -> Void) async throws {
-        if !local {
-            // Up to three guest commands (replacing), each under its own watchdog.
-            _ = try await remote(.install(stagedPath, replacing: replacing, restoring: restoring),
-                                 seconds: 3 * Timeouts.installAbsolute + Timeouts.serviceProbe * 2) {
-                if case .install(let percent, let phase) = $0 { progress(percent, phase) }
-            }
-            return
-        }
-        #if LIGHTTOUCH_SERVICES
         let socket = self.clientSocket
         try await DeviceGate.shared.serialized(socket: socket) {
             let cancellation = InstallCancellation()
@@ -151,12 +122,8 @@ extension DeviceServices {
                 cancellation.cancel()
             }
         }
-        #else
-        throw Self.unrouted
-        #endif
     }
 
-    #if LIGHTTOUCH_SERVICES
     /// One installation_proxy command with a status callback.
     nonisolated private enum Command: Sendable {
         case install(String), archiveData(String), restore(String)
@@ -325,25 +292,16 @@ extension DeviceServices {
             throw DeviceError.timedOut(operation: "install")
         }
     }
-    #endif
 
     // MARK: - Service readiness
 
     /// Does installation_proxy answer right now? A fresh boot brings lockdownd
     /// up ~40s before its services, so "lockdown replies" ≠ "installd is ready".
     func installProxyReady() async -> Bool {
-        if !local {
-            guard case .boolean(let ready) = try? await remote(.installReady, seconds: Timeouts.serviceProbe) else { return false }
-            return ready
-        }
-        #if LIGHTTOUCH_SERVICES
         return (try? await run(Timeouts.serviceProbe, "installd probe") { device in
             let client = try IMobileDevice.startInstallationProxy(device: device)
             _ = instproxy_client_free(client)
             return true
         }) ?? false
-        #else
-        return false
-        #endif
     }
 }

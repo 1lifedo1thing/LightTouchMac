@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import HostServiceWire
 
 /// stdout is exclusively the typed service protocol; logs go to stderr.
 nonisolated func logEvent(_ message: String) {
@@ -39,7 +40,7 @@ nonisolated final class EventWriter: @unchecked Sendable {
         defer { parentWatch.cancel() }
         if getppid() != parent { exit(0) }   // it went before the source was watching
         let socket = args[1], udid = args[3].isEmpty ? nil : args[3]
-        let service = DeviceServices(clientSocket: socket, udid: udid, session: session, local: true)
+        let service = DeviceServices(clientSocket: socket, udid: udid, session: session)
         let writer = EventWriter()
         while let line = readLine() {
             guard let request = try? JSONDecoder().decode(HostServiceRequest.self, from: Data(line.utf8)),
@@ -64,8 +65,8 @@ nonisolated final class EventWriter: @unchecked Sendable {
         case .homeOrder: return .strings(try await service.homeScreenOrder())
         case .orientation: return .integer(Int64(try await service.interfaceOrientation()))
         case .uninstall(let id): try await service.uninstall(id); return .none
-        case .install(let path, let replacing, let restoring):
-            try await service.install(stagedPath: path, replacing: replacing, restoring: restoring) { emit(.progress(.install($0, $1))) }; return .none
+        case .install(let ipa, let staged, let bundleID):
+            try await service.install(URL(fileURLWithPath: ipa), staged: staged, bundleID: bundleID) { emit(.progress(.install($0, $1))) }; return .none
         case .upload(let source, let remote, let reuse, let allowEmpty):
             return .string(try await service.stageFile(URL(fileURLWithPath: source), remote: remote,
                 reuseIdentical: reuse, allowEmpty: allowEmpty) { emit(.progress(.fraction($0))) })
@@ -77,7 +78,7 @@ nonisolated final class EventWriter: @unchecked Sendable {
         case .move(let bundle, let before, let name):
             return .strings(try await service.moveOnHomeScreen(bundle, before: before, deviceName: name))
         case .observe:
-            return .boolean(await NotificationProxy.localObserveOnce(socket: service.clientSocket,
+            return .boolean(await NotificationEngine.observeOnce(socket: service.clientSocket,
                 attachAllowed: { true }, onChange: { emit(.progress(.notification)) }))
         }
     }

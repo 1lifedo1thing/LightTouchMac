@@ -2,10 +2,10 @@ import Foundation
 
 /// Resources of the host service executable, independent of GUI and firmware
 /// preparation. It links libimobiledevice from its bundle's Frameworks (Debug: the vendor directory or Homebrew).
-nonisolated enum HostServiceResources {
-    static let stagingSession = ProcessInfo.processInfo.environment["LTM_SERVICE_STAGING_SESSION"] ?? UUID().uuidString
-    static var udid: String? { ProcessInfo.processInfo.environment["LTM_SERVICE_UDID"].flatMap { $0.isEmpty ? nil : $0 } }
-    static var executable: String? {
+public nonisolated enum HostServiceResources {
+    public static let stagingSession = ProcessInfo.processInfo.environment["LTM_SERVICE_STAGING_SESSION"] ?? UUID().uuidString
+    public static var udid: String? { ProcessInfo.processInfo.environment["LTM_SERVICE_UDID"].flatMap { $0.isEmpty ? nil : $0 } }
+    public static var executable: String? {
         if let override = ProcessInfo.processInfo.environment["LTM_HOST_SERVICE_WORKER"] {
             return FileManager.default.isExecutableFile(atPath: override) ? override : nil
         }

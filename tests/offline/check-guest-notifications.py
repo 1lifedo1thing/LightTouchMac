@@ -6,8 +6,9 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[2]
-execution = (root / "LightTouchMac/Transport/DeviceExecution.swift").read_text()
-watcher = (root / "LightTouchMac/Services/NotificationProxy.swift").read_text()
+execution = (root / "LightTouchServices/Engine/DeviceExecution.swift").read_text()
+watcher = (root / "Packages/DeviceServices/Sources/HostServiceClient/NotificationProxy.swift").read_text().replace("public ", "")
+watcher += (root / "LightTouchServices/Engine/NotificationEngine.swift").read_text()
 # Only accelerate periodic retries. The actual stream/cancellation,
 # client ownership, gate and deadline code is compiled unchanged.
 watcher = watcher.replace(".seconds(1)", ".milliseconds(5)")
@@ -15,7 +16,6 @@ watcher = watcher.replace(".seconds(ok ? 2 : 10)", ".milliseconds(ok ? 5 : 10)")
 fixture = r'''
 import Foundation
 import Dispatch
-nonisolated enum DeviceServices { static let session = UUID() }
 actor HostServiceWorkers {
  static let shared = HostServiceWorkers()
  func observe(endpoint: HostServiceEndpoint, onChange: @escaping @Sendable () -> Void) async -> Bool {
@@ -107,7 +107,7 @@ nonisolated func fakeNotificationProxy() {
         let library = Library.shared
         let activity = Activity()
         let watcher = NotificationProxy(clientSocket: "127.0.0.1:1", observe: { endpoint, allowed, change in
-            await NotificationProxy.localObserveOnce(socket: endpoint.socket, attachAllowed: allowed, onChange: change)
+            await NotificationEngine.observeOnce(socket: endpoint.socket, attachAllowed: allowed, onChange: change)
         })
         func start() {
             watcher.start(attachAllowed: { await activity.canAttach() }) {

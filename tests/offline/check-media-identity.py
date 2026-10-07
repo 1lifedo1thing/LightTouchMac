@@ -2,6 +2,7 @@
 """Content IDs and bounded normalization of generated M4A timestamps."""
 from pathlib import Path
 import subprocess,tempfile
+import sys as _sys, pathlib as _pl; _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[2] / "scripts"))
 root=Path(__file__).resolve().parents[2]
 with tempfile.TemporaryDirectory(prefix='ltm-identity-') as tmp:
     tmp=Path(tmp)
@@ -36,5 +37,5 @@ enum DeviceToolsError:Error { case failed(String) }
  }
 }
 ''')
-    subprocess.run(['xcrun','swiftc','-swift-version','5',str(root/'LightTouchMac/Features/MediaIdentity.swift'),str(tmp/'check.swift'),'-o',str(tmp/'check')],check=True)
+    subprocess.run(['xcrun','swiftc', *__import__('host_service').wire_flags(__import__('pathlib').Path(__file__).resolve().parents[2]),'-swift-version','5',str(root/'LightTouchMac/Features/MediaIdentity.swift'),str(tmp/'check.swift'),'-o',str(tmp/'check')],check=True)
     subprocess.run([str(tmp/'check'),str(tmp/'media.m4a')],check=True)

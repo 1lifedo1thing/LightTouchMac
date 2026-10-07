@@ -2,10 +2,11 @@
 """Compile the actual small boundary/locking helpers, without loading QEMU."""
 from pathlib import Path
 import subprocess, tempfile
+import sys as _sys, pathlib as _pl; _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[2] / "scripts"))
 root = Path(__file__).resolve().parents[2]
 def block(source, start, end):
     return source[source.index(start):source.index(end, source.index(start))]
-once = (root/'LightTouchMac/Transport/DeviceExecution.swift').read_text()   # ResumeOnce is file-private, so the whole file goes in
+once = (root/'LightTouchServices/Engine/DeviceExecution.swift').read_text()   # ResumeOnce is file-private, so the whole file goes in
 inspector = (root/'LightTouchMac/UI/AppsInspectorViewController.swift').read_text()
 freshness = block(inspector, '    static func freshnessText(', '    private func showStaleBanner')
 source = '''import Foundation
@@ -51,6 +52,6 @@ final class Counter: @unchecked Sendable {
 with tempfile.TemporaryDirectory() as work:
     swift=Path(work)/'check.swift';swift.write_text(source)
     executable=Path(work)/'check'
-    subprocess.run(['swiftc','-parse-as-library','-module-cache-path','/tmp/ltm-module-cache',str(root/'LightTouchMac/Library/IPAMembers.swift'),
+    subprocess.run(['swiftc', *__import__('host_service').wire_flags(__import__('pathlib').Path(__file__).resolve().parents[2]),'-parse-as-library','-module-cache-path','/tmp/ltm-module-cache',str(root/'LightTouchMac/Library/IPAMembers.swift'),
                     str(swift),'-o',str(executable)],check=True)
     subprocess.run([str(executable)],check=True)

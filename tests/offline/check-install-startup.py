@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Bound installation setup without abandoning a started guest mutation; a new version of an installed app on 2.x
 (ApplicationAlreadyInstalled) is sent again and replaces it through a documents-only archive and restore; a failed
-replacement keeps the archive, and the next 2.x install of that app restores it. Compiles Services/InstallationProxy.swift
-and Transport/DeviceExecution.swift whole against a fake libimobiledevice, with two pause points patched in
+replacement keeps the archive, and the next 2.x install of that app restores it. Compiles the helper's engine
+(LightTouchServices/Engine: InstallationProxy, DeviceExecution) whole against a fake libimobiledevice, with two pause points patched in
 (after openBeforeDeadline stores the connection for the deadline's loser, and after it is handed to the install) so the races
 run deterministically; no production deadline, cancellation or cleanup is replaced."""
 from pathlib import Path
@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[2]
-app = root / "LightTouchMac"
+app = root / "LightTouchServices/Engine"
 
 
 def patched(text, old, new):
@@ -19,11 +19,11 @@ def patched(text, old, new):
     return text.replace(old, new)
 
 
-install = patched((app / "Services/InstallationProxy.swift").read_text(),
+install = patched((app / "InstallationProxy.swift").read_text(),
                   "let connection = try await installConnection()",
                   "let connection = try await installConnection()\n        await Fixture.shared.afterConnection()")
 # openBeforeDeadline is the install connection's only user in this build.
-execution = patched((app / "Transport/DeviceExecution.swift").read_text(),
+execution = patched((app / "DeviceExecution.swift").read_text(),
                     "if let opened = try open() { late.store(opened) }",
                     "if let opened = try open() { late.store(opened); Fixture.shared.afterStore() }")
 fixture = r'''

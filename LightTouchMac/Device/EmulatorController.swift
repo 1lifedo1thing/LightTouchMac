@@ -1,3 +1,5 @@
+import HostServiceClient
+import HostServiceWire
 import FirmwareSchema
 import DeviceRuntime
 import HostRuntime
@@ -176,7 +178,7 @@ final class EmulatorController {
         // An unactivated guest stays that way for the boot; a transient failure doesn't replace the message.
         if connectionIssue?.persistent == true, !issue.persistent { return }
         if connectionIssue != issue {
-            logEvent("device connection: \(issue.detail); USB=\(usbConnected), agent=\(liveAgentStatus), blocked requests=\(AbandonedWork.count)")
+            logEvent("device connection: \(issue.detail); USB=\(usbConnected), agent=\(liveAgentStatus)")
         }
         connectionIssue = issue
         if issue.blocksCommands {

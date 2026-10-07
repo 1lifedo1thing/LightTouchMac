@@ -1,3 +1,4 @@
+import HostServiceWire
 import Foundation
 import CryptoKit
 

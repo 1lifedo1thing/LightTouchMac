@@ -1,11 +1,12 @@
 import Foundation
+import HostServiceWire
 import Subprocess
 import System
 
 /// One command owner per endpoint. Blocking library calls never enter the GUI.
 /// A deadline kills and reaps its process before a replacement accepts work.
-actor HostServiceWorkers {
-    static let shared = HostServiceWorkers()
+public actor HostServiceWorkers {
+    public static let shared = HostServiceWorkers()
     private var workers: [HostServiceEndpoint: HostServiceWorker] = [:]
     private var retired: Set<HostServiceEndpoint> = []
     private var subscriptions: [HostServiceEndpoint: [UUID: Task<Bool, Never>]] = [:]
@@ -23,7 +24,7 @@ actor HostServiceWorkers {
         if let worker = workers.removeValue(forKey: endpoint) { await worker.stop() }
         for observer in observers.values { _ = await observer.value }
     }
-    func observe(endpoint: HostServiceEndpoint, onChange: @escaping @Sendable () -> Void) async -> Bool {
+    public func observe(endpoint: HostServiceEndpoint, onChange: @escaping @Sendable () -> Void) async -> Bool {
         guard !retired.contains(endpoint), let executable = HostServiceResources.executable else { return false }
         let id = UUID(), request = HostServiceRequest(id: UUID(), session: endpoint.session, operation: .observe)
         let task = Task {
@@ -205,10 +206,10 @@ actor HostServiceWorker {
 }
 
 extension DeviceServices {
-    func remote(_ operation: HostServiceOperation, seconds: Double,
+    public func remote(_ operation: HostServiceOperation, seconds: Double,
                 progress: @escaping @Sendable (HostServiceProgress) -> Void = { _ in }) async throws -> HostServiceValue {
         let worker = try await HostServiceWorkers.shared.worker(for: endpoint)
         return try await worker.request(operation, seconds: seconds, progress: progress)
     }
-    func stopWorker() async { await HostServiceWorkers.shared.stop(endpoint: endpoint) }
+    public func stopWorker() async { await HostServiceWorkers.shared.stop(endpoint: endpoint) }
 }

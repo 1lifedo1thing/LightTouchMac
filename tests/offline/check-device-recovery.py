@@ -11,7 +11,7 @@ s=(root/'LightTouchMac/Device/EmulatorController.swift').read_text()
 a=s.index('    private var connectionFailures =');b=s.index('    private var didSweepStaging',a)
 recovery=s[a:b].replace('.seconds(2)','.milliseconds(1)').replace('    private var lastConnectionRecovery','    var lastConnectionRecovery')
 report=s[s.index('    private(set) var connectionIssue:'):a]
-errors=(root/'LightTouchMac/Transport/DeviceExecution.swift').read_text()
+errors=(root/'LightTouchServices/Engine/DeviceExecution.swift').read_text()
 issue=(root/'LightTouchMac/Device/DeviceConnectionIssue.swift').read_text()
 source=r'''import Foundation
 @MainActor var agentReady=1
@@ -83,5 +83,5 @@ struct Instance { let id=UUID() }
 '''
 with tempfile.TemporaryDirectory(prefix='ltm-recovery-') as d:
  p=Path(d)/'check.swift';p.write_text(errors+issue+source)
- subprocess.run(['swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), DEVICE_PROFILE,str(root/'LightTouchMac/Device/BootSessionScope.swift'),'-parse-as-library','-module-cache-path',d+'/modules',str(p),'-o',d+'/check'],check=True)
+ subprocess.run(['swiftc', *__import__('host_service').wire_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), DEVICE_PROFILE,str(root/'LightTouchMac/Device/BootSessionScope.swift'),'-parse-as-library','-module-cache-path',d+'/modules',str(p),'-o',d+'/check'],check=True)
  subprocess.run([d+'/check'],check=True,timeout=8)

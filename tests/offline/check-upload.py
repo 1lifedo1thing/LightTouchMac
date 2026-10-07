@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Exercise the production AFC streaming loop with short writes and failures, and the staging names a late
-startup sweep may remove. Compiles Services/AFC.swift and Transport/DeviceExecution.swift whole, against a fake
+startup sweep may remove. Compiles the helper's Engine/AFC.swift and Engine/DeviceExecution.swift whole, against a fake
 libimobiledevice and a DeviceServices whose run kernel calls straight through."""
 from pathlib import Path
 from host_service_fixtures import engine, leaves, local_engine_stub
 import subprocess, tempfile
 root = Path(__file__).resolve().parents[2]
 app = root / 'LightTouchMac'
+engine_dir = root / 'LightTouchServices/Engine'
 source = r'''import Foundation
 nonisolated func logEvent(_ message: String) {}
 struct MediaVideo: Sendable { let id: String; let video: URL }
@@ -57,7 +58,8 @@ func fakeAFC() {
  IMDFake.afcFileClose = { _,_ in state.lock.withLock { state.closeCalls += 1;if state.cancelOnClose { withUnsafeCurrentTask { $0?.cancel() } };return state.closeFailure ? AFC_E_OP_NOT_SUPPORTED : AFC_E_SUCCESS } }
  IMDFake.afcRemovePath = { _,_ in state.lock.withLock { state.removed=true;return AFC_E_SUCCESS } }
 }
-struct DeviceServices {
+extension DeviceServices {
+ init() { self.init(clientSocket: "127.0.0.1:1") }
  func run<T: Sendable>(_ seconds: Double, _ label: String, _ body: @escaping @Sendable (OpaquePointer) throws -> T) async throws -> T {
   try await Task.detached { try body(OpaquePointer(bitPattern: 1)!) }.value
  }
@@ -142,7 +144,9 @@ func stagingNames() {
 '''
 with tempfile.TemporaryDirectory() as work:
     swift=Path(work)/'check.swift'; swift.write_text(source)
+    # MediaStaging is the app's (it imports HostServiceClient); here it runs on the engine's stageFile.
+    staging=Path(work)/'MediaStaging.swift'; staging.write_text((app/'Services/MediaStaging.swift').read_text().replace('import HostServiceClient\n',''))
     exe=Path(work)/'check'
-    subprocess.run(['swiftc', *engine(root), *leaves(root), *local_engine_stub(Path(work)),'-parse-as-library','-module-cache-path',str(Path(work)/'modules'),str(app/'Services/AFC.swift'), str(app/'Services/MediaStaging.swift'),
-                    str(app/'Transport/DeviceExecution.swift'),str(swift),'-o',str(exe)],check=True)
+    subprocess.run(['swiftc', *engine(root), *leaves(root), *local_engine_stub(Path(work)),'-parse-as-library','-module-cache-path',str(Path(work)/'modules'),str(engine_dir/'AFC.swift'), str(staging),
+                    str(engine_dir/'DeviceExecution.swift'),str(swift),'-o',str(exe)],check=True)
     subprocess.run([str(exe),str(Path(work)/'fixture.ipa')],check=True)

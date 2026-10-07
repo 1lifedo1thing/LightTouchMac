@@ -1,18 +1,39 @@
-"""Compile the same narrow service boundary used by the Xcode helper target."""
+"""Link the DeviceServices package's products and build the services helper (LightTouchServices) the way its Xcode
+target does: HostServiceWire plus the helper's own engine (LightTouchServices/Engine) over libimobiledevice."""
 import os
 from pathlib import Path
 import shlex
 import subprocess
+from swift_package import product_flags
+import swift_subprocess
 
-SERVICE_SOURCES = ['DeviceServices', 'HostServiceTypes', 'HostServiceProtocol',
-                   'HostServiceResources', 'HostServiceWorkers', 'AFC',
-                   'InstallationProxy', 'SpringBoardServices', 'LockdownState']
 LOCKDOWN = ['lockdown-tz', 'lockdown-mcinstall']   # LightTouchServices/Lockdown: C operations, linked to libimobiledevice
 
+
+def wire_flags(root, *, target=None):
+    """HostServiceWire: the request/event protocol, errors, Timeouts, DeviceServices' paths, HomeScreenLayout."""
+    return [*product_flags(Path(root), package='Packages/DeviceServices', product='HostServiceWire',
+                           cache='host-service-wire', target=target),
+            '-Xfrontend', '-import-module', '-Xfrontend', 'HostServiceWire']
+
+
 def client_sources(root):
-    root = Path(root)
-    return [root / f'LightTouchMac/Services/{name}.swift' for name in SERVICE_SOURCES] + [
-        root / f'LightTouchMac/Transport/{name}.swift' for name in ['DeviceExecution', 'IMobileDevice']]
+    """The app's side (HostServiceClient: DeviceServices' remote calls, HostServiceWorkers, NotificationProxy), as
+    link flags; the name stays for the callers that splice it among their sources."""
+    # The C shims' module maps from the one checkout every probe's Subprocess flags use (a second copy of the same
+    # module map is a redefinition when a probe passes both).
+    _, checkouts = swift_subprocess.products(Path(root))
+    maps = [checkouts / 'swift-system/Sources/CSystem/include/module.modulemap',
+            checkouts / 'swift-subprocess/Sources/_SubprocessCShims/include/module.modulemap']
+    return [*product_flags(Path(root), package='Packages/DeviceServices', product='HostServiceClient',
+                           cache='host-service-client'),
+            *[arg for path in maps for arg in ('-Xcc', '-fmodule-map-file=' + str(path))],
+            '-Xfrontend', '-import-module', '-Xfrontend', 'HostServiceClient', *wire_flags(root)]
+
+
+def engine_sources(root):
+    """The helper's engine (everything but ServiceMain)."""
+    return sorted(str(p) for p in (Path(root) / 'LightTouchServices/Engine').glob('*.swift'))
 
 def imobiledevice_flags():
     """libimobiledevice and libplist from Homebrew, as a Debug build of the target falls back to."""
@@ -36,8 +57,7 @@ def build_worker(root, destination, flags, *, log=None, frameworks=None):
                         lockdown / f'{name}.c', '-o', obj], check=True, stdout=log, stderr=subprocess.STDOUT if log else None)
         objects.append(obj)
     command = ['xcrun', 'swiftc', '-swift-version', '5', '-module-cache-path', destination.parent / 'modules',
-               '-D', 'LIGHTTOUCH_SERVICES', *[x for f in native if f.startswith('-I') for x in ('-Xcc', f)],
-               *flags, *client_sources(root), root / 'LightTouchMac/Services/NotificationProxy.swift',
-               root / 'LightTouchServices/ServiceMain.swift', '-import-objc-header', lockdown / 'Lockdown.h',
+               *[x for f in native if f.startswith('-I') for x in ('-Xcc', f)],
+               *flags, *wire_flags(root), *engine_sources(root), root / 'LightTouchServices/ServiceMain.swift', '-import-objc-header', lockdown / 'Lockdown.h',
                *objects, *[f for f in native if not f.startswith('-I')], '-o', destination]
     subprocess.run(command, check=True, stdout=log, stderr=subprocess.STDOUT if log else None)

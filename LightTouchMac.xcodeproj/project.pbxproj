@@ -25,21 +25,11 @@
 		A1D0C0DE3A000000000000002 /* firmwarekit in Embed Device Helper */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3A000000000000001; };
 		A1D0C0DE3A000000000000020 /* FirmwareKit in Frameworks */ = {isa = PBXBuildFile; productRef = A1D0C0DE3A000000000000011; };
 		A1D0C0DE3A000000000000022 /* FirmwareSchema in Frameworks */ = {isa = PBXBuildFile; productRef = A1D0C0DE3A000000000000012; };
+		A1D0C0DE3B000000000000012 /* HostServiceWire in Frameworks */ = {isa = PBXBuildFile; productRef = A1D0C0DE3B000000000000002; };
+		A1D0C0DE3B000000000000013 /* HostServiceClient in Frameworks */ = {isa = PBXBuildFile; productRef = A1D0C0DE3B000000000000003; };
+		A1D0C0DE3B000000000000014 /* HostServiceWire in Frameworks */ = {isa = PBXBuildFile; productRef = A1D0C0DE3B000000000000004; };
 		A1D0C0DE3A000000000000021 /* HostRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = A1D0C0DE35000000000000002; };
-		A1D0C0DE32000000000000063 /* HostServiceResources in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000062; };
-		A1D0C0DE32000000000000061 /* HostServiceTypes in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000060; };
-		A1D0C0DE32000000000000040 /* Services/DeviceServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000020; };
-		A1D0C0DE32000000000000041 /* Services/InstallationProxy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000021; };
-		A1D0C0DE32000000000000042 /* Services/AFC.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000022; };
-		A1D0C0DE32000000000000043 /* Services/SpringBoardServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000023; };
-		A1D0C0DE32000000000000044 /* Services/LockdownState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000024; };
-		A1D0C0DE32000000000000045 /* Services/HostServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000025; };
-		A1D0C0DE32000000000000046 /* Services/HostServiceWorkers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000026; };
-		A1D0C0DE32000000000000047 /* Services/NotificationProxy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000027; };
-		A1D0C0DE32000000000000048 /* Transport/DeviceExecution.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000028; };
-		A1D0C0DE32000000000000049 /* Transport/IMobileDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000029; };
 		A1D0C0DE32000000000000002 /* LightTouchServices in Embed Device Helper */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000001; };
-		A1D0C0DE3200000000000000C /* Subprocess in Frameworks */ = {isa = PBXBuildFile; productRef = EA17D84C3023A55900BDF83E; };
 		A1D0C0DE3100000000000002 /* LightTouchDevice in Embed Device Helper */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3100000000000001 /* LightTouchDevice */; };
 		EA17D84D3023A55900BDF83E /* Subprocess in Frameworks */ = {isa = PBXBuildFile; productRef = EA17D84C3023A55900BDF83E /* Subprocess */; };
 		A1D0C0DE35000000000000003 = {isa = PBXBuildFile; productRef = A1D0C0DE35000000000000002; };
@@ -118,18 +108,6 @@
 		A1D0C0DE39000000000000030 /* Models */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Models; sourceTree = "<group>"; };
 		A1D0C0DE3A000000000000001 /* firmwarekit */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = firmwarekit; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1D0C0DE3A000000000000030 /* LightTouchDevice.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LightTouchDevice.entitlements; sourceTree = "<group>"; };
-		A1D0C0DE32000000000000062 /* HostServiceResources */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/HostServiceResources.swift; sourceTree = SOURCE_ROOT; };
-		A1D0C0DE32000000000000060 /* HostServiceTypes */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/HostServiceTypes.swift; sourceTree = SOURCE_ROOT; };
-		A1D0C0DE32000000000000020 /* Services/DeviceServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/DeviceServices.swift; sourceTree = SOURCE_ROOT; };
-		A1D0C0DE32000000000000021 /* Services/InstallationProxy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/InstallationProxy.swift; sourceTree = SOURCE_ROOT; };
-		A1D0C0DE32000000000000022 /* Services/AFC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/AFC.swift; sourceTree = SOURCE_ROOT; };
-		A1D0C0DE32000000000000023 /* Services/SpringBoardServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/SpringBoardServices.swift; sourceTree = SOURCE_ROOT; };
-		A1D0C0DE32000000000000024 /* Services/LockdownState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/LockdownState.swift; sourceTree = SOURCE_ROOT; };
-		A1D0C0DE32000000000000025 /* Services/HostServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/HostServiceProtocol.swift; sourceTree = SOURCE_ROOT; };
-		A1D0C0DE32000000000000026 /* Services/HostServiceWorkers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/HostServiceWorkers.swift; sourceTree = SOURCE_ROOT; };
-		A1D0C0DE32000000000000027 /* Services/NotificationProxy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/NotificationProxy.swift; sourceTree = SOURCE_ROOT; };
-		A1D0C0DE32000000000000028 /* Transport/DeviceExecution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Transport/DeviceExecution.swift; sourceTree = SOURCE_ROOT; };
-		A1D0C0DE32000000000000029 /* Transport/IMobileDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Transport/IMobileDevice.swift; sourceTree = SOURCE_ROOT; };
 		A1D0C0DE32000000000000001 /* LightTouchServices */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = LightTouchServices; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1D0C0DE3100000000000001 /* LightTouchDevice */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = LightTouchDevice; sourceTree = BUILT_PRODUCTS_DIR; };
 		EA17D83230239D9B00BDF83E /* Light Touch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Light Touch.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -153,7 +131,7 @@
 
 /* Begin PBXFrameworksBuildPhase section */
 		A1D0C0DE3A000000000000007 = {isa = PBXFrameworksBuildPhase; files = (A1D0C0DE3A000000000000020, A1D0C0DE3A000000000000021); };
-		A1D0C0DE32000000000000007 = {isa = PBXFrameworksBuildPhase; files = (A1D0C0DE3200000000000000C); };
+		A1D0C0DE32000000000000007 = {isa = PBXFrameworksBuildPhase; files = (A1D0C0DE3B000000000000014); };
 		A1D0C0DE3100000000000008 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
@@ -167,6 +145,8 @@
 				A1D0C0DE35000000000000003,
 				A1D0C0DE36000000000000003,
 				A1D0C0DE3A000000000000022 /* FirmwareSchema in Frameworks */,
+				A1D0C0DE3B000000000000012 /* HostServiceWire in Frameworks */,
+				A1D0C0DE3B000000000000013 /* HostServiceClient in Frameworks */,
 				EA17D84D3023A55900BDF83E /* Subprocess in Frameworks */,
 				A1D0C0DE37000000000000003 /* ZIPFoundation in Frameworks */,
 			);
@@ -230,7 +210,7 @@
 			buildRules = (); dependencies = ();
 			fileSystemSynchronizedGroups = (A1D0C0DE3200000000000000B);
 			name = LightTouchServices; productName = LightTouchServices;
-			packageProductDependencies = (EA17D84C3023A55900BDF83E);
+			packageProductDependencies = (A1D0C0DE3B000000000000004);
 			productReference = A1D0C0DE32000000000000001; productType = "com.apple.product-type.tool";
 		};
 
@@ -280,6 +260,8 @@
 				A1D0C0DE35000000000000002,
 				A1D0C0DE36000000000000002,
 				A1D0C0DE3A000000000000012 /* FirmwareSchema */,
+				A1D0C0DE3B000000000000002 /* HostServiceWire */,
+				A1D0C0DE3B000000000000003 /* HostServiceClient */,
 				EA17D84C3023A55900BDF83E /* Subprocess */,
 				A1D0C0DE37000000000000002 /* ZIPFoundation */,
 			);
@@ -317,6 +299,7 @@
 			packageReferences = (
 				A1D0C0DE35000000000000001,
 				A1D0C0DE36000000000000001,
+				A1D0C0DE3B000000000000001,
 				A1D0C0DE3A000000000000010,
 				EA17D84B3023A55900BDF83E /* XCRemoteSwiftPackageReference "swift-subprocess" */,
 				A1D0C0DE37000000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
@@ -358,7 +341,7 @@
 
 /* Begin PBXSourcesBuildPhase section */
 		A1D0C0DE3A000000000000008 = {isa = PBXSourcesBuildPhase; files = (); };
-		A1D0C0DE32000000000000006 = {isa = PBXSourcesBuildPhase; files = (A1D0C0DE32000000000000040, A1D0C0DE32000000000000041, A1D0C0DE32000000000000042, A1D0C0DE32000000000000043, A1D0C0DE32000000000000044, A1D0C0DE32000000000000045, A1D0C0DE32000000000000046, A1D0C0DE32000000000000047, A1D0C0DE32000000000000048, A1D0C0DE32000000000000049, A1D0C0DE32000000000000061, A1D0C0DE32000000000000063); };
+		A1D0C0DE32000000000000006 = {isa = PBXSourcesBuildPhase; files = (); };
 		A1D0C0DE3100000000000007 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
@@ -395,7 +378,7 @@
  SWIFT_APPROACHABLE_CONCURRENCY = YES; CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = SM75355Y6R;
  ENABLE_HARDENED_RUNTIME = YES; PRODUCT_NAME = "$(TARGET_NAME)"; ENABLE_DEBUG_DYLIB = NO;
  GENERATE_INFOPLIST_FILE = YES; OTHER_LDFLAGS = "-limobiledevice-1.0 -lplist-2.0"; PRODUCT_BUNDLE_IDENTIFIER = gold.samhenri.LightTouchMac.LightTouchServices; SKIP_INSTALL = YES; CODE_SIGN_ENTITLEMENTS = Configuration/Tool.entitlements;
- SWIFT_OBJC_BRIDGING_HEADER = LightTouchServices/Lockdown/Lockdown.h; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) LIGHTTOUCH_SERVICES";
+ SWIFT_OBJC_BRIDGING_HEADER = LightTouchServices/Lockdown/Lockdown.h;
  HEADER_SEARCH_PATHS = ("$(VENDOR_DIR)/include", /opt/homebrew/include, /usr/local/include);
  LIBRARY_SEARCH_PATHS = ("$(VENDOR_DIR)/Frameworks", /opt/homebrew/lib, /usr/local/lib); }; };
 		A1D0C0DE3200000000000000A = {isa = XCBuildConfiguration; name = Release; buildSettings = {
@@ -403,7 +386,7 @@
  SWIFT_APPROACHABLE_CONCURRENCY = YES; CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "Developer ID Application"; DEVELOPMENT_TEAM = SM75355Y6R;
  ENABLE_HARDENED_RUNTIME = YES; PRODUCT_NAME = "$(TARGET_NAME)"; ENABLE_DEBUG_DYLIB = NO;
  GENERATE_INFOPLIST_FILE = YES; OTHER_LDFLAGS = "-limobiledevice-1.0 -lplist-2.0"; PRODUCT_BUNDLE_IDENTIFIER = gold.samhenri.LightTouchMac.LightTouchServices; SKIP_INSTALL = YES; CODE_SIGN_ENTITLEMENTS = Configuration/Tool.entitlements;
- SWIFT_OBJC_BRIDGING_HEADER = LightTouchServices/Lockdown/Lockdown.h; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) LIGHTTOUCH_SERVICES";
+ SWIFT_OBJC_BRIDGING_HEADER = LightTouchServices/Lockdown/Lockdown.h;
  HEADER_SEARCH_PATHS = ("$(VENDOR_DIR)/include", /opt/homebrew/include, /usr/local/include);
  LIBRARY_SEARCH_PATHS = ("$(VENDOR_DIR)/Frameworks", /opt/homebrew/lib, /usr/local/lib); }; };
 		A1D0C0DE3100000000000010 /* Debug configuration for PBXNativeTarget "LightTouchDevice" */ = {
@@ -704,6 +687,7 @@
 		A1D0C0DE3A000000000000010 = {isa = XCLocalSwiftPackageReference; relativePath = Packages/FirmwareKit; };
 		A1D0C0DE35000000000000001 = {isa = XCLocalSwiftPackageReference; relativePath = Packages/HostRuntime; };
 		A1D0C0DE36000000000000001 = {isa = XCLocalSwiftPackageReference; relativePath = Packages/DeviceRuntime; };
+		A1D0C0DE3B000000000000001 = {isa = XCLocalSwiftPackageReference; relativePath = Packages/DeviceServices; };
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -715,6 +699,9 @@
 			package = EA17D84B3023A55900BDF83E /* XCRemoteSwiftPackageReference "swift-subprocess" */;
 			productName = Subprocess;
 		};
+		A1D0C0DE3B000000000000002 = {isa = XCSwiftPackageProductDependency; package = A1D0C0DE3B000000000000001; productName = HostServiceWire; };
+		A1D0C0DE3B000000000000003 = {isa = XCSwiftPackageProductDependency; package = A1D0C0DE3B000000000000001; productName = HostServiceClient; };
+		A1D0C0DE3B000000000000004 = {isa = XCSwiftPackageProductDependency; package = A1D0C0DE3B000000000000001; productName = HostServiceWire; };
 		A1D0C0DE36000000000000002 = {isa = XCSwiftPackageProductDependency; package = A1D0C0DE36000000000000001; productName = DeviceRuntime; };
 		A1D0C0DE37000000000000002 /* ZIPFoundation */ = {
 			isa = XCSwiftPackageProductDependency;
