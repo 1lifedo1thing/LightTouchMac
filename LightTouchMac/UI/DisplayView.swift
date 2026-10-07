@@ -1664,56 +1664,33 @@ final class DisplayView: NSView {
     // MARK: - Keyboard pointer (typing disabled)
 
     private let keyboardPointerLayer = CAShapeLayer()
-    private var keyboardPoint = CGPoint(x: 0.5, y: 0.5)
-    private var keyboardTouchKeys = Set<UInt16>()
-    private var hasKeyboardPointer = false
+    private var keyboardPointer = KeyboardPointer()
 
-    private func endKeyboardTouch() {
-        guard !keyboardTouchKeys.isEmpty else { return }
-        keyboardTouchKeys.removeAll()
-        sendVisualTouch(0, TouchPhase.end, keyboardPoint.x, keyboardPoint.y, keyboard: true)
+    private func send(_ touch: KeyboardPointer.Touch?) {
+        guard let touch else { return }
+        let phase = switch touch.phase { case .begin: TouchPhase.begin; case .update: TouchPhase.update; case .end: TouchPhase.end }
+        sendVisualTouch(0, phase, touch.point.x, touch.point.y, keyboard: true)
     }
 
-    /// Tab leaves the screen while the arrow keys drive the pointer, and Control-Tab (with Shift,
-    /// backwards) always does, so a keyboard user is never trapped here (HIG p.266). Typing sends Tab to the device.
+    private func endKeyboardTouch() { send(keyboardPointer.end()) }
+
+    /// Tab out of the screen (KeyboardPointer.focusMove).
     private func moveFocusOut(_ event: NSEvent) -> Bool {
-        guard event.keyCode == 48, event.modifierFlags.intersection([.command, .option]).isEmpty,
-              event.modifierFlags.contains(.control) || emulator?.keyboardInputEnabled == false else { return false }
-        if event.modifierFlags.contains(.shift) { window?.selectPreviousKeyView(self) } else { window?.selectNextKeyView(self) }
+        switch KeyboardPointer.focusMove(keyCode: event.keyCode, modifiers: KeyModifiers(event.modifierFlags),
+                                         typingOff: emulator?.keyboardInputEnabled == false) {
+        case .next?: window?.selectNextKeyView(self)
+        case .previous?: window?.selectPreviousKeyView(self)
+        case nil: return false
+        }
         return true
     }
 
     private func keyboardPointerKey(_ event: NSEvent, down: Bool) -> Bool {
-        let code = event.keyCode
-        guard [49, 123, 124, 125, 126].contains(code) else { return false }
-        if !down, keyboardTouchKeys.contains(code) {
-            if keyboardTouchKeys.count == 1 { endKeyboardTouch() }
-            else { keyboardTouchKeys.remove(code) }
-            return true
-        }
-        guard emulator?.keyboardInputEnabled == false,
-              event.modifierFlags.intersection([.command, .control, .option]).isEmpty else { return false }
-        guard down, touchInteractionEnabled, !touchDown, !pinchingGuest, scrollPoint == nil else { return true }
-        hasKeyboardPointer = true
-        let touching = code == 49 || event.modifierFlags.contains(.shift)
-        if touching, !keyboardTouchKeys.contains(code) {
-            let began = keyboardTouchKeys.isEmpty
-            keyboardTouchKeys.insert(code)
-            if began { sendVisualTouch(0, TouchPhase.begin, keyboardPoint.x, keyboardPoint.y, keyboard: true) }
-        }
-        if code != 49 {
-            let delta: CGFloat = 0.02
-            switch code {
-            case 123: keyboardPoint.x = max(0, keyboardPoint.x - delta)
-            case 124: keyboardPoint.x = min(1, keyboardPoint.x + delta)
-            case 125: keyboardPoint.y = min(1, keyboardPoint.y + delta)
-            default: keyboardPoint.y = max(0, keyboardPoint.y - delta)
-            }
-            if !keyboardTouchKeys.isEmpty {
-                sendVisualTouch(0, TouchPhase.update, keyboardPoint.x, keyboardPoint.y, keyboard: true)
-            }
-        }
-        return true
+        let (handled, touches) = keyboardPointer.key(event.keyCode, down: down, modifiers: KeyModifiers(event.modifierFlags),
+                                                     typingOff: emulator?.keyboardInputEnabled == false,
+                                                     canTouch: touchInteractionEnabled && !touchDown && !pinchingGuest && scrollPoint == nil)
+        touches.forEach(send)
+        return handled
     }
 
     private func updateKeyboardPointer() {
@@ -1721,8 +1698,8 @@ final class DisplayView: NSView {
         if !active { endKeyboardTouch() }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        keyboardPointerLayer.isHidden = !active || !hasKeyboardPointer
-        if active { keyboardPointerLayer.position = projectedPanelPoint(keyboardPoint) }
+        keyboardPointerLayer.isHidden = !active || !keyboardPointer.isShown
+        if active { keyboardPointerLayer.position = projectedPanelPoint(keyboardPointer.point) }
         CATransaction.commit()
     }
 
@@ -1779,7 +1756,7 @@ final class DisplayView: NSView {
 
     override func keyUp(with event: NSEvent) {
         if event.keyCode == 49 && consumedWakeSpace { consumedWakeSpace = false; return }
-        if !keyboardTouchKeys.isEmpty, keyboardPointerKey(event, down: false) { return }
+        if !keyboardPointer.touchKeys.isEmpty, keyboardPointerKey(event, down: false) { return }
         if isShowingLiveText { return }
         if !event.modifierFlags.intersection([.command, .control]).isEmpty {
             super.keyUp(with: event)
@@ -1805,9 +1782,7 @@ final class DisplayView: NSView {
             emulator?.sendKey(macKeyCode: event.keyCode, down: down)
         }
         updatePairRings(event.modifierFlags)
-        if !event.modifierFlags.contains(.shift), !keyboardTouchKeys.isDisjoint(with: [123, 124, 125, 126]) {
-            endKeyboardTouch()
-        }
+        send(keyboardPointer.modifiersChanged(KeyModifiers(event.modifierFlags)))
         super.flagsChanged(with: event)
     }
 
@@ -1948,4 +1923,14 @@ extension DisplayView: NSTextInputClient {
         return window?.convertToScreen(convert(anchor, to: nil)) ?? .zero
     }
     func characterIndex(for point: NSPoint) -> Int { NSNotFound }
+}
+
+extension KeyModifiers {
+    init(_ flags: NSEvent.ModifierFlags) {
+        self = []
+        if flags.contains(.shift) { insert(.shift) }
+        if flags.contains(.control) { insert(.control) }
+        if flags.contains(.option) { insert(.option) }
+        if flags.contains(.command) { insert(.command) }
+    }
 }

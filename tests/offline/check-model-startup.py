@@ -149,7 +149,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-model-startup-') as tmp:
     windowed = os.environ.get('LTM_DISPLAY_CHECKS') == '1'
     for name, source, actual_model in [('stub', stub_source, False), *([('renderer', real_source, True)] if windowed else [])]:
         swift=work/f'{name}.swift';swift.write_text(source);exe=app/'MacOS'/name
-        sources=['UI/DisplayView','UI/MouseTouchPair','Device/Board+App','UI/DisplayMeasurements', 'UI/ZoomMode', 'Capture/PanelCapture','UI/AttitudeIndicatorButton','UI/InlineLiveTextView','UI/DroppedFiles','UI/DropHighlight','UI/GuestKeyboard']
+        sources=['UI/DisplayView','UI/MouseTouchPair','Device/Board+App','UI/DisplayMeasurements', 'UI/ZoomMode', 'Capture/PanelCapture', 'Input/KeyboardPointer','UI/AttitudeIndicatorButton','UI/InlineLiveTextView','UI/DroppedFiles','UI/DropHighlight','UI/GuestKeyboard']
         if actual_model: sources.append('UI/DeviceModelView')
         subprocess.run(['swiftc', *device_runtime.swift_flags(Path(__file__).resolve().parents[2]),'-module-cache-path',str(work/'modules'),'-default-isolation','MainActor',
                         *[str(root/'LightTouchMac'/f'{item}.swift') for item in sources],
