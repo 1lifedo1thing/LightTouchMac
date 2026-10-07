@@ -1,6 +1,6 @@
 import DeviceRuntime
 // libqemu-arm.dylib, dlopen'ed. The helper never links it: which build runs is
-// chosen at launch (LTM_QEMU_DYLIB for development, else the bundle's
+// chosen at launch (LTM_QEMU_DYLIB in a Debug build, else the bundle's
 // Frameworks, else the build rpath) and reported in the hello.
 
 import Foundation
@@ -23,7 +23,9 @@ final class Qemu: @unchecked Sendable {
     /// Candidates in order; the first that loads wins.
     static func candidates() -> [String] {
         var list: [String] = []
+        #if DEBUG
         if let override = ProcessInfo.processInfo.environment["LTM_QEMU_DYLIB"], !override.isEmpty { list.append(override) }
+        #endif
         let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
         let bundled = Bundle.main.executableURL?.deletingLastPathComponent() ?? exe.deletingLastPathComponent()
         list.append(bundled.appendingPathComponent("../Frameworks/libqemu-arm.dylib").standardized.path)

@@ -32,14 +32,16 @@ final class USBMux {
     var onUnexpectedExit: (() -> Void)?
 
     /// The fork ships in the bundle; a dev build falls back to the checkout
-    /// (see qemu-ios' usbmuxd-qemu). LTM_USBMUXD names another build for a dev
+    /// (see qemu-ios' usbmuxd-qemu). LTM_USBMUXD names another build for a Debug
     /// run, e.g. the ipad1 branch's for iPad USB Ethernet.
     private static let root = "\(NSHomeDirectory())/Developer/usbmuxd-qemu"
     private static var binary: String {
-        ProcessInfo.processInfo.environment["LTM_USBMUXD"]
-            ?? Bundled.tool("usbmuxd") ?? "\(root)/usbmuxd/src/usbmuxd"
+        #if DEBUG
+        if let override = ProcessInfo.processInfo.environment["LTM_USBMUXD"] { return override }
+        #endif
+        return Bundled.tool("usbmuxd") ?? "\(root)/usbmuxd/src/usbmuxd"
     }
-    /// The daemon's config dir: bundled first (package.sh stages it), else the
+    /// The daemon's config dir: bundled first (scripts/vendor stages it), else the
     /// dev checkout. Was hardcoded to the checkout with no bundle fallback, so
     /// a packaged app always passed `-C` a path that does not exist.
     /// usbmuxd's `-C` directory is WRITABLE STATE, not a resource: the daemon
