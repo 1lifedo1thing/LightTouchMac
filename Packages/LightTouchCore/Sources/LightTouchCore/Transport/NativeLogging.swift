@@ -7,8 +7,8 @@ import OSLog
 /// close); it is reopened after a rotation, or when the path no longer names
 /// the open file (deleted or replaced under it). This bounds disk usage without
 /// truncating a live subprocess's file.
-nonisolated final class RotatingLog: @unchecked Sendable {
-    let url: URL
+public nonisolated final class RotatingLog: @unchecked Sendable {
+    public let url: URL
     private let limit: Int
     private let lock = NSLock()
     private var failed = false
@@ -17,14 +17,14 @@ nonisolated final class RotatingLog: @unchecked Sendable {
     private var device: dev_t = 0, inode: ino_t = 0
     private static let logger = Logger(subsystem: StorageLocations.bundleIdentifier, category: "log-storage")
 
-    init(url: URL, limit: Int = StorageLocations.logLimit) {
+    public init(url: URL, limit: Int = StorageLocations.logLimit) {
         self.url = url
         self.limit = limit
     }
 
     deinit { if fd >= 0 { close(fd) } }
 
-    func append(_ data: Data) {
+    public func append(_ data: Data) {
         lock.lock()
         defer { lock.unlock() }
         guard !failed, !data.isEmpty else { return }
@@ -88,7 +88,7 @@ nonisolated final class RotatingLog: @unchecked Sendable {
         return lstat(url.path, &st) == 0 && st.st_dev == device && st.st_ino == inode
     }
 
-    static func rotate(_ url: URL) throws {
+    public static func rotate(_ url: URL) throws {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         let previous = url.appendingPathExtension("1")
         // POSIX rename replaces the previous generation atomically.
@@ -99,7 +99,7 @@ nonisolated final class RotatingLog: @unchecked Sendable {
 /// Dispatch sources are the bridge to descriptors owned by native code. Each
 /// callback drains at most one bounded chunk; no unbounded async Data queue or
 /// per-line allocation can accumulate behind a noisy native writer.
-nonisolated final class LogPipeReader: @unchecked Sendable {
+public nonisolated final class LogPipeReader: @unchecked Sendable {
     private let source: any DispatchSourceRead
     private let queue: DispatchQueue
     private let descriptor: Int32
@@ -111,15 +111,15 @@ nonisolated final class LogPipeReader: @unchecked Sendable {
     private var watch: LogWatch?
 
     /// Bytes in, `onMatch(phrase)` once per phrase, across chunk boundaries.
-    nonisolated final class LogWatch {
+    public nonisolated final class LogWatch {
         private var pending: [Data]
         private var tail = Data()
         private let onMatch: @Sendable (String) -> Void
-        init(phrases: [String], onMatch: @escaping @Sendable (String) -> Void) {
+        public init(phrases: [String], onMatch: @escaping @Sendable (String) -> Void) {
             pending = phrases.map { Data($0.utf8) }
             self.onMatch = onMatch
         }
-        func scan(_ chunk: Data) {
+        public func scan(_ chunk: Data) {
             guard !pending.isEmpty else { return }
             let window = tail + chunk
             for phrase in pending where window.range(of: phrase) != nil {
@@ -131,7 +131,7 @@ nonisolated final class LogPipeReader: @unchecked Sendable {
         }
     }
 
-    init(descriptor: Int32, log: RotatingLog, watch: LogWatch? = nil, cleanup: (@Sendable () -> Void)? = nil) throws {
+    public init(descriptor: Int32, log: RotatingLog, watch: LogWatch? = nil, cleanup: (@Sendable () -> Void)? = nil) throws {
         let flags = fcntl(descriptor, F_GETFL)
         guard flags >= 0, fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) == 0 else {
             throw StorageLocations.posixError()
@@ -166,7 +166,7 @@ nonisolated final class LogPipeReader: @unchecked Sendable {
         }
     }
 
-    func flush() {
+    public func flush() {
         queue.sync {
             guard !stopped else { return }
             var bytes = [UInt8](repeating: 0, count: 32_768)
@@ -181,7 +181,7 @@ nonisolated final class LogPipeReader: @unchecked Sendable {
         }
     }
 
-    func finish() {
+    public func finish() {
         flush()
         queue.sync {
             guard !stopped else { return }
@@ -196,11 +196,11 @@ nonisolated final class LogPipeReader: @unchecked Sendable {
 
 /// The owning subprocess task holds this until its child has stopped. stdout
 /// and stderr share one pipe, preserving their kernel write ordering.
-nonisolated final class ProcessLogCapture: Sendable {
-    let writeDescriptor: Int32
+public nonisolated final class ProcessLogCapture: Sendable {
+    public let writeDescriptor: Int32
     private let reader: LogPipeReader
 
-    init(url: URL) throws {
+    public init(url: URL) throws {
         var descriptors: [Int32] = [-1, -1]
         guard pipe(&descriptors) == 0 else { throw StorageLocations.posixError() }
         _ = fcntl(descriptors[0], F_SETFD, FD_CLOEXEC)
@@ -214,20 +214,20 @@ nonisolated final class ProcessLogCapture: Sendable {
         }
     }
 
-    func flush() { reader.flush() }
+    public func flush() { reader.flush() }
     deinit { Darwin.close(writeDescriptor); reader.finish() }
 }
 
 /// QEMU's supported pipe backend opens <path>.in/.out. These are private,
 /// session-owned FIFOs in the system temporary directory, never durable state.
-nonisolated final class SerialLogCapture: Sendable {
-    let argument: String
+public nonisolated final class SerialLogCapture: Sendable {
+    public let argument: String
     private let directory: URL
     private let reader: LogPipeReader
 
     /// `watch`: phrases reported the first time the guest prints them (iBoot's
     /// "Entering recovery mode"), from the reader's queue.
-    init(url: URL, temporaryRoot: URL = FileManager.default.temporaryDirectory,
+    public init(url: URL, temporaryRoot: URL = FileManager.default.temporaryDirectory,
          watch: [String] = [], onMatch: @escaping @Sendable (String) -> Void = { _ in }) throws {
         let directory = temporaryRoot.appendingPathComponent("LightTouch-serial-\(UUID().uuidString)", isDirectory: true)
         self.directory = directory
@@ -255,18 +255,18 @@ nonisolated final class SerialLogCapture: Sendable {
     /// Normal app quit can leave QEMU running until process exit. Unlinking
     /// FIFO names is safe while its open descriptors remain usable; closing the
     /// reader here instead could deliver SIGPIPE to the still-running VM.
-    func removeEndpoints() { try? FileManager.default.removeItem(at: directory) }
+    public func removeEndpoints() { try? FileManager.default.removeItem(at: directory) }
 
     /// Use only after QEMU has returned and can no longer write serial data.
-    func finish() { reader.finish() }
+    public func finish() { reader.finish() }
 }
 
-@MainActor enum NativeLogging {
+@MainActor public enum NativeLogging {
     private static var capture: ProcessLogCapture?
 
     /// QEMU is linked into the app, so its C diagnostics share process stdout/stderr.
     /// Unified app events use Logger separately and are not mirrored here.
-    static func start() throws {
+    public static func start() throws {
         guard capture == nil else { return }
         let pipe = try ProcessLogCapture(url: Bundled.logsDirectory.appendingPathComponent("native.log"))
         fflush(stdout)
@@ -283,5 +283,5 @@ nonisolated final class SerialLogCapture: Sendable {
         capture = pipe
     }
 
-    static func flush() { fflush(stdout); fflush(stderr); capture?.flush() }
+    public static func flush() { fflush(stdout); fflush(stderr); capture?.flush() }
 }

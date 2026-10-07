@@ -5,6 +5,7 @@
 // asks this for what they enable; the device (its screen and canvas capture)
 // comes from the selected session.
 
+import LightTouchCore
 import HostRuntime
 import Cocoa
 import UniformTypeIdentifiers

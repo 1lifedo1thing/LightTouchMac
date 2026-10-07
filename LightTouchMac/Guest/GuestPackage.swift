@@ -1,3 +1,4 @@
+import LightTouchCore
 import HostServiceWire
 import DeviceRuntime
 // Guest packages: the app's side.

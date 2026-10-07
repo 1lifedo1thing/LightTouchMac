@@ -21,11 +21,11 @@ import Foundation
 
 /// Nonisolated: the project defaults to MainActor, and these are read from the
 /// detached tasks that do the blocking device work as well as from the UI.
-nonisolated enum Bundled {
+public nonisolated enum Bundled {
 
     /// Resources/Guest/guest.aar unpacked (FirmwareKit GuestArchive): guest-tools/, developer-tools/ and tools/;
     /// nil in a build without it.
-    static let guestRoot: URL? = Bundle.main.resourceURL.flatMap { (resources: URL) -> URL? in
+    public static let guestRoot: URL? = Bundle.main.resourceURL.flatMap { (resources: URL) -> URL? in
         do { return try GuestArchive.unpacked(resources: resources) } catch {
             NSLog("guest tools: couldn’t unpack %@/Guest/guest.aar: %@", resources.path, "\(error)")
             return nil
@@ -33,17 +33,17 @@ nonisolated enum Bundled {
     }
 
     /// Guest upload payloads shipped with the app (the iPod media helpers).
-    static var toolsDirectory: String? { guestRoot?.appendingPathComponent("tools", isDirectory: true).path }
+    public static var toolsDirectory: String? { guestRoot?.appendingPathComponent("tools", isDirectory: true).path }
 
     /// Native helper executables share the standard executable directory.
-    static let hostToolsDirectory = Bundle.main.executableURL?.deletingLastPathComponent().path
+    public static let hostToolsDirectory = Bundle.main.executableURL?.deletingLastPathComponent().path
 
     /// Dylibs shipped with the app (scripts/vendor sets their @rpath install names).
-    static let frameworksDirectory = Bundle.main.privateFrameworksPath
+    public static let frameworksDirectory = Bundle.main.privateFrameworksPath
 
     /// The device assets (the iPod SecureROMs): LTM_FILES,
     /// then the bundle's Resources/Device, then the dev checkout's qemu-ios-files.
-    static let filesRoot: String = {
+    public static let filesRoot: String = {
         if let env = ProcessInfo.processInfo.environment["LTM_FILES"] { return env }
         if let bundled = Bundle.main.resourceURL?.appendingPathComponent("Device").path,
            FileManager.default.fileExists(atPath: bundled) {
@@ -67,7 +67,7 @@ nonisolated enum Bundled {
 
     /// One app per library: State/.app-lock, held (flock) for the process's
     /// life. Launch sweeps and device starts run only after this succeeds.
-    static let appLockMessage = "Light Touch is already running with this library"
+    public static let appLockMessage = "Light Touch is already running with this library"
     private static let appLock: Result<Int32, any Error> = Result {
         let state = try layout.get().state
         let fd = open(state.appendingPathComponent(".app-lock").path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
@@ -79,11 +79,11 @@ nonisolated enum Bundled {
         return fd
     }
 
-    static func requireStorage() throws { _ = try appLock.get() }
+    public static func requireStorage() throws { _ = try appLock.get() }
 
     /// The fallback is only a path for error reporting, never an alternate
     /// writable root. App startup requires the successful layout above.
-    static var stateDirectory: URL {
+    public static var stateDirectory: URL {
         if case .success(let value) = layout { return value.state }
         return ProcessInfo.processInfo.environment["LTM_STATE_DIR"].map {
             URL(fileURLWithPath: $0, isDirectory: true)
@@ -91,12 +91,12 @@ nonisolated enum Bundled {
             applicationSupport: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0])
     }
 
-    static var preparedLogsDirectory: URL? {
+    public static var preparedLogsDirectory: URL? {
         if case .success(let value) = layout { return value.logs }
         return nil
     }
 
-    static var logsDirectory: URL {
+    public static var logsDirectory: URL {
         if let ready = preparedLogsDirectory { return ready }
         return ProcessInfo.processInfo.environment["LTM_STATE_DIR"].map {
             URL(fileURLWithPath: $0, isDirectory: true).appendingPathComponent("Logs", isDirectory: true)
@@ -106,7 +106,7 @@ nonisolated enum Bundled {
 
     /// Legacy Store download scratch (and, in Debug, the development lockdown
     /// helpers). Each device's own daemon files are under Devices/<uuid>/work.
-    static var workDirectory: URL {
+    public static var workDirectory: URL {
         let url = stateDirectory.appendingPathComponent("work", isDirectory: true)
         if case .success = layout { try? StorageLocations.privateDirectory(url) }
         return url
@@ -114,7 +114,7 @@ nonisolated enum Bundled {
 
     /// A non-executable resource shipped alongside the app (a config dir, a
     /// data file), or nil when this build has none.
-    static func resource(_ relativePath: String) -> String? {
+    public static func resource(_ relativePath: String) -> String? {
         guard let base = Bundle.main.resourceURL?.appendingPathComponent(relativePath).path,
               FileManager.default.fileExists(atPath: base) else { return nil }
         return base
@@ -122,19 +122,19 @@ nonisolated enum Bundled {
 
     /// A shipped executable or script, or nil when this build has none — in
     /// which case the caller falls back to a checkout path.
-    static func tool(_ name: String) -> String? {
+    public static func tool(_ name: String) -> String? {
         [hostToolsDirectory, toolsDirectory].compactMap { $0 }
             .map { "\($0)/\(name)" }
             .first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
     /// The first of `candidates` that exists, bundle copy first.
-    static func resolve(_ name: String, fallbacks candidates: [String]) -> String? {
+    public static func resolve(_ name: String, fallbacks candidates: [String]) -> String? {
         tool(name) ?? candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
     /// Directories to search for command-line tools, ours before anyone's.
-    static var binarySearchPaths: [String] {
+    public static var binarySearchPaths: [String] {
         [hostToolsDirectory, toolsDirectory, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"].compactMap { $0 }
     }
 }

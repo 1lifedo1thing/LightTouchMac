@@ -1,6 +1,7 @@
 // The detail area for a device that isn't running in this window: its art,
 // dimmed, what it is, where it stands, and the one thing to do next.
 
+import LightTouchCore
 import HostRuntime
 import Cocoa
 

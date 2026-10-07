@@ -4,6 +4,7 @@
 // and the device menus ask it for busy state; the steps on the device are
 // AppInstallPipeline's and MediaImport's, through EmulatorController.
 
+import LightTouchCore
 import HostServiceClient
 import HostServiceWire
 import Cocoa

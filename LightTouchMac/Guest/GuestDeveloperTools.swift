@@ -1,3 +1,4 @@
+import LightTouchCore
 import HostServiceWire
 import FirmwareSchema
 import Foundation

@@ -41,8 +41,8 @@ def offline():
     report = s[a:s.index("    private var connectionFailures =", a)]
     a = s.index("    // MARK: - Activation (prepared offline, completed and verified per boot")
     activation = s[a:s.index("    func launchApp(_ bundleID: String)", a)]
-    instance = (ROOT / "LightTouchMac/Library/DeviceInstance.swift").read_text()
-    a = instance.index("    static func lockLacksActivation(_ url: URL) -> Bool {")
+    instance = (ROOT / "Packages/LightTouchCore/Sources/LightTouchCore/Library/DeviceInstance.swift").read_text()
+    a = instance.index("    public static func lockLacksActivation(_ url: URL) -> Bool {")
     lock = instance[a:instance.index("\n    }", a) + 6]
     source = r'''import Foundation
 nonisolated func logEvent(_ message: String) {}

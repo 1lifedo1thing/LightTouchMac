@@ -2,6 +2,7 @@
 // changes these at any moment, and a storage transaction (erase, a stopped edit, boot admission) refuses to
 // publish over a device.plist that changed under it. Deleting the device's directory deletes them.
 
+import LightTouchCore
 import Foundation
 import HostRuntime
 

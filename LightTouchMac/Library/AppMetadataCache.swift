@@ -9,6 +9,7 @@
 // bundle IDs are installed; this only supplies the name/icon for them, so an
 // app installed inside the guest simply falls back to the reported name.
 
+import LightTouchCore
 import HostServiceWire
 import Cocoa
 import HostRuntime

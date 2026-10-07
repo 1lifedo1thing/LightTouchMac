@@ -9,6 +9,7 @@
 // nothing references it and Settings ▸ Storage removes it. The collection
 // is the point of this program.
 
+import LightTouchCore
 import Foundation
 import CryptoKit
 import Darwin

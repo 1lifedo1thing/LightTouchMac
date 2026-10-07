@@ -25,6 +25,7 @@
 		A1D0C0DE3A000000000000002 /* firmwarekit in Embed Device Helper */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3A000000000000001; };
 		A1D0C0DE3A000000000000020 /* FirmwareKit in Frameworks */ = {isa = PBXBuildFile; productRef = A1D0C0DE3A000000000000011; };
 		A1D0C0DE3A000000000000022 /* FirmwareSchema in Frameworks */ = {isa = PBXBuildFile; productRef = A1D0C0DE3A000000000000012; };
+		A1D0C0DE3C000000000000012 /* LightTouchCore in Frameworks */ = {isa = PBXBuildFile; productRef = A1D0C0DE3C000000000000002; };
 		A1D0C0DE3B000000000000012 /* HostServiceWire in Frameworks */ = {isa = PBXBuildFile; productRef = A1D0C0DE3B000000000000002; };
 		A1D0C0DE3B000000000000013 /* HostServiceClient in Frameworks */ = {isa = PBXBuildFile; productRef = A1D0C0DE3B000000000000003; };
 		A1D0C0DE3B000000000000014 /* HostServiceWire in Frameworks */ = {isa = PBXBuildFile; productRef = A1D0C0DE3B000000000000004; };
@@ -147,6 +148,7 @@
 				A1D0C0DE3A000000000000022 /* FirmwareSchema in Frameworks */,
 				A1D0C0DE3B000000000000012 /* HostServiceWire in Frameworks */,
 				A1D0C0DE3B000000000000013 /* HostServiceClient in Frameworks */,
+				A1D0C0DE3C000000000000012 /* LightTouchCore in Frameworks */,
 				EA17D84D3023A55900BDF83E /* Subprocess in Frameworks */,
 				A1D0C0DE37000000000000003 /* ZIPFoundation in Frameworks */,
 			);
@@ -262,6 +264,7 @@
 				A1D0C0DE3A000000000000012 /* FirmwareSchema */,
 				A1D0C0DE3B000000000000002 /* HostServiceWire */,
 				A1D0C0DE3B000000000000003 /* HostServiceClient */,
+				A1D0C0DE3C000000000000002 /* LightTouchCore */,
 				EA17D84C3023A55900BDF83E /* Subprocess */,
 				A1D0C0DE37000000000000002 /* ZIPFoundation */,
 			);
@@ -300,6 +303,7 @@
 				A1D0C0DE35000000000000001,
 				A1D0C0DE36000000000000001,
 				A1D0C0DE3B000000000000001,
+				A1D0C0DE3C000000000000001,
 				A1D0C0DE3A000000000000010,
 				EA17D84B3023A55900BDF83E /* XCRemoteSwiftPackageReference "swift-subprocess" */,
 				A1D0C0DE37000000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
@@ -688,6 +692,7 @@
 		A1D0C0DE35000000000000001 = {isa = XCLocalSwiftPackageReference; relativePath = Packages/HostRuntime; };
 		A1D0C0DE36000000000000001 = {isa = XCLocalSwiftPackageReference; relativePath = Packages/DeviceRuntime; };
 		A1D0C0DE3B000000000000001 = {isa = XCLocalSwiftPackageReference; relativePath = Packages/DeviceServices; };
+		A1D0C0DE3C000000000000001 = {isa = XCLocalSwiftPackageReference; relativePath = Packages/LightTouchCore; };
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -699,6 +704,7 @@
 			package = EA17D84B3023A55900BDF83E /* XCRemoteSwiftPackageReference "swift-subprocess" */;
 			productName = Subprocess;
 		};
+		A1D0C0DE3C000000000000002 = {isa = XCSwiftPackageProductDependency; package = A1D0C0DE3C000000000000001; productName = LightTouchCore; };
 		A1D0C0DE3B000000000000002 = {isa = XCSwiftPackageProductDependency; package = A1D0C0DE3B000000000000001; productName = HostServiceWire; };
 		A1D0C0DE3B000000000000003 = {isa = XCSwiftPackageProductDependency; package = A1D0C0DE3B000000000000001; productName = HostServiceClient; };
 		A1D0C0DE3B000000000000004 = {isa = XCSwiftPackageProductDependency; package = A1D0C0DE3B000000000000001; productName = HostServiceWire; };

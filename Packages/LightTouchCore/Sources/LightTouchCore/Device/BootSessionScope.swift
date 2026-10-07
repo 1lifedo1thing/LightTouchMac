@@ -3,18 +3,19 @@ import Foundation
 /// Owns work which must never outlive one boot. The halt transaction itself
 /// belongs to the controller, so retiring a boot cannot cancel its cleanup.
 @MainActor
-final class BootSessionScope {
-    enum Work: CaseIterable {
+public final class BootSessionScope {
+    public init() {}
+    public enum Work: CaseIterable {
         case foreground, readiness, recovery, watchdog, timeZone, orientation
         case guestPackage, activation, staging, powerOn, reset, usbReconnect
     }
-    private(set) var id = UUID()
-    private(set) var generation = 0
-    private(set) var retired = false
+    public private(set) var id = UUID()
+    public private(set) var generation = 0
+    public private(set) var retired = false
     private var tasks: [Work: Task<Void, Never>] = [:]
     private var observers: [String: NSObjectProtocol] = [:]
 
-    subscript(work: Work) -> Task<Void, Never>? {
+    public subscript(work: Work) -> Task<Void, Never>? {
         get { tasks[work] }
         set {
             tasks[work]?.cancel()
@@ -22,12 +23,12 @@ final class BootSessionScope {
             tasks[work] = newValue
         }
     }
-    var timeZoneObserver: NSObjectProtocol? {
+    public var timeZoneObserver: NSObjectProtocol? {
         get { observers["timeZone"] }
         set { setObserver("timeZone", newValue) }
     }
     /// The Mac's region and 24-hour setting (NSLocale.currentLocaleDidChangeNotification).
-    var localeObserver: NSObjectProtocol? {
+    public var localeObserver: NSObjectProtocol? {
         get { observers["locale"] }
         set { setObserver("locale", newValue) }
     }
@@ -40,7 +41,7 @@ final class BootSessionScope {
         }
         observers[key] = newValue
     }
-    func retire() {
+    public func retire() {
         guard !retired else { return }
         retired = true
         generation += 1 // invalidate suspended completions before another boot
@@ -49,7 +50,7 @@ final class BootSessionScope {
         timeZoneObserver = nil
         localeObserver = nil
     }
-    func renew() {
+    public func renew() {
         retire()
         id = UUID()
         retired = false

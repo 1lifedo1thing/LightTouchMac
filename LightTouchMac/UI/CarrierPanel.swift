@@ -2,6 +2,7 @@
 // Network settings are the device's (EmulatorController.carrierSettings, applied at every boot); calls and SMS go
 // straight to the modem (qemu-ios ios-baseband's actions), and its state is polled once a second while visible.
 
+import LightTouchCore
 import Cocoa
 import HostRuntime
 import SwiftUI

@@ -83,6 +83,28 @@ if os.path.basename(sys.argv[0]) == 'xcrun':
     if args[:1] != ['swiftc']:
         os.execv('/usr/bin/xcrun', ['/usr/bin/xcrun', *args])
     args = args[1:]
+# Sources that moved from LightTouchMac/ into the LightTouchCore package: a check still naming the old path
+# compiles the file where it lives now (transitional, while the checks move to Swift Testing).
+core = {str(ROOT / 'Packages/LightTouchCore/Sources/LightTouchCore')!r}
+app = {str(ROOT / 'LightTouchMac')!r}
+for i, arg in enumerate(args):
+    if arg.endswith('.swift') and not os.path.exists(arg) and os.path.abspath(arg).startswith(app + '/'):
+        moved = core + os.path.abspath(arg)[len(app):]
+        if os.path.exists(moved):
+            args[i] = moved
+if '-emit-module' not in args and any(arg.endswith('.swift') for arg in args):
+    # ...and their `import LightTouchCore` (the app files beside them) finds an empty module of that name.
+    empty = os.path.join({str(cache)!r}, 'empty-core')
+    if not os.path.exists(os.path.join(empty, 'LightTouchCore.swiftmodule')):
+        import subprocess, tempfile
+        os.makedirs(empty, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=empty) as tmp:
+            open(os.path.join(tmp, 'e.swift'), 'w').close()
+            subprocess.run(['/usr/bin/xcrun', 'swiftc', '-emit-module', '-module-name', 'LightTouchCore', '-parse-as-library',
+                            '-module-cache-path', {str(cache)!r}, os.path.join(tmp, 'e.swift'), '-emit-module-path',
+                            os.path.join(tmp, 'LightTouchCore.swiftmodule')], check=True)
+            os.replace(os.path.join(tmp, 'LightTouchCore.swiftmodule'), os.path.join(empty, 'LightTouchCore.swiftmodule'))
+    args += ['-I', empty]
 if '-module-cache-path' in args:
     args[args.index('-module-cache-path') + 1] = {str(cache)!r}
 else:

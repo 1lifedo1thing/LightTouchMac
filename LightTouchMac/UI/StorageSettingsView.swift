@@ -1,3 +1,4 @@
+import LightTouchCore
 import FirmwareSchema
 import Cocoa
 

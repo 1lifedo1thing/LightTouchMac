@@ -31,7 +31,7 @@ SOURCES = ['FirmwareJobs.swift', 'IPSWStore.swift', 'FirmwareDownloads.swift', '
 
 
 def source(name):
-    hits = [p for p in APP.rglob(name) if p.is_file()]
+    hits = [p for d in (APP, APP.parent / "Packages/LightTouchCore/Sources/LightTouchCore") for p in d.rglob(name) if p.is_file()]
     if len(hits) != 1:
         raise SystemExit(f"{name}: expected one file under {APP}, found {hits}")
     return hits[0]

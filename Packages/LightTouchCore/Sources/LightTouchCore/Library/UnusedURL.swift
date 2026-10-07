@@ -2,7 +2,7 @@ import Foundation
 
 extension URL {
     /// This file URL, or "name 2.ext", "name 3.ext"… when something is already there (as the Finder names copies).
-    nonisolated var unused: URL {
+    public nonisolated var unused: URL {
         let fm = FileManager.default
         guard fm.fileExists(atPath: path) else { return self }
         let base = deletingPathExtension().lastPathComponent, ext = pathExtension, folder = deletingLastPathComponent()

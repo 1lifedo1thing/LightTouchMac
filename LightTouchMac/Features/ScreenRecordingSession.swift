@@ -1,3 +1,4 @@
+import LightTouchCore
 import Cocoa
 import AVFoundation
 

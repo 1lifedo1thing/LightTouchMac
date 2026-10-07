@@ -1,3 +1,4 @@
+import LightTouchCore
 import HostRuntime
 import AppKit
 import RealityKit

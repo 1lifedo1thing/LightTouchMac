@@ -7,6 +7,7 @@
 // The built-in device (the catalog's `bundled`): its packed base unpacked by
 // `firmwarekit unpack-base` with an identity of its own, published the same way.
 
+import LightTouchCore
 import FirmwareSchema
 import Cocoa
 

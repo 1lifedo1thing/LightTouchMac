@@ -1,3 +1,4 @@
+import LightTouchCore
 import Cocoa
 
 /// Downloads and preparations on the Dock icon: one bar under the icon while any runs (FirmwareJob.dockProgress),

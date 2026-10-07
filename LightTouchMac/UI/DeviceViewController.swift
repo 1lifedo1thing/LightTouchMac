@@ -4,6 +4,7 @@
 // main content; it centres its content and becomes first responder so
 // keyboard passthrough works whenever the device area has focus.
 
+import LightTouchCore
 import HostRuntime
 import Cocoa
 

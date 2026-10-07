@@ -4,10 +4,10 @@
 
 import Foundation
 
-nonisolated enum IPAMembers {
+public nonisolated enum IPAMembers {
     /// Exactly one root Payload app. Nested bundles and ambiguous archives
     /// cannot supply the identity used by the installer and library.
-    static func appRoot(_ members: [String]) -> String? {
+    public static func appRoot(_ members: [String]) -> String? {
         let roots = members.filter {
             let parts = $0.split(separator: "/", omittingEmptySubsequences: false)
             return parts.count == 3 && parts[0] == "Payload"
@@ -20,7 +20,7 @@ nonisolated enum IPAMembers {
     /// The icon PNG to cache: whatever the Info.plist declares, else Icon.png.
     /// Only PNGs sitting directly in the .app count, so a framework's artwork
     /// can't win, and @2x is preferred — same picture, twice the resolution.
-    static func iconMember(_ members: [String], root: String, info: [String: Any]) -> String? {
+    public static func iconMember(_ members: [String], root: String, info: [String: Any]) -> String? {
         var names: [String] = []
         if let icons = info["CFBundleIcons"] as? [String: Any],
            let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],

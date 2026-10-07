@@ -3,6 +3,7 @@
 // Only stable builds show until Show experimental is on (remembered).
 // A sheet, not a window: it belongs to the one main window and is done before the user goes on (HIG, Sheets).
 
+import LightTouchCore
 import HostRuntime
 import SwiftUI
 

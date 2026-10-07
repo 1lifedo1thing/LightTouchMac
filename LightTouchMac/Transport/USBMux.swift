@@ -12,6 +12,7 @@
 // is the only way a leaked usbmuxd — one holding the client socket and breaking
 // the next launch — is reliably avoided.
 
+import LightTouchCore
 import Foundation
 import Subprocess
 import System

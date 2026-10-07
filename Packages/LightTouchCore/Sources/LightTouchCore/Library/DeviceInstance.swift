@@ -7,53 +7,87 @@
 import Foundation
 import HostRuntime
 
-nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Sendable {
-    struct Base: Codable, Equatable, Sendable {
-        enum Kind: String, Codable, Sendable {
+public nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Sendable {
+    public init(format: Int = 1, id: UUID, name: String, board: String, firmware: String, created: Date, base: Base, storage: Storage, identity: Identity? = nil, provenance: Provenance? = nil, guest: Guest? = nil, panel: String? = nil) {
+        self.format = format
+        self.id = id
+        self.name = name
+        self.board = board
+        self.firmware = firmware
+        self.created = created
+        self.base = base
+        self.storage = storage
+        self.identity = identity
+        self.provenance = provenance
+        self.guest = guest
+        self.panel = panel
+    }
+    public struct Base: Codable, Equatable, Sendable {
+        public init(kind: Kind, path: String) {
+            self.kind = kind
+            self.path = path
+        }
+        public enum Kind: String, Codable, Sendable {
             /// Read-only `firmwarekit create` output: Devices/<uuid>/base, or a development directory.
             case prepared
         }
-        var kind: Kind
-        var path: String
+        public var kind: Kind
+        public var path: String
     }
 
-    struct Storage: Codable, Equatable, Sendable {
+    public struct Storage: Codable, Equatable, Sendable {
+        public init(key: String, overlay: String, writableNOR: String? = nil, snapshot: String, usbmuxConf: String) {
+            self.key = key
+            self.overlay = overlay
+            self.writableNOR = writableNOR
+            self.snapshot = snapshot
+            self.usbmuxConf = usbmuxConf
+        }
         /// The key the overlay, snapshot and image identity were made under.
-        var key: String
-        var overlay: String
-        var writableNOR: String?
+        public var key: String
+        public var overlay: String
+        public var writableNOR: String?
         /// Also .meta, .tmp and .bad beside it.
-        var snapshot: String
-        var usbmuxConf: String
+        public var snapshot: String
+        public var usbmuxConf: String
     }
 
-    struct Identity: Codable, Equatable, Sendable {
-        var seed: String?
-        var udid: String?
-        var dieID: String?
-        enum CodingKeys: String, CodingKey { case seed, udid, dieID = "die_id" }
+    public struct Identity: Codable, Equatable, Sendable {
+        public init(seed: String? = nil, udid: String? = nil, dieID: String? = nil) {
+            self.seed = seed
+            self.udid = udid
+            self.dieID = dieID
+        }
+        public var seed: String?
+        public var udid: String?
+        public var dieID: String?
+        public enum CodingKeys: String, CodingKey { case seed, udid, dieID = "die_id" }
     }
 
-    struct Provenance: Codable, Equatable, Sendable {
-        var lock: String?
-        var sha256: String?
+    public struct Provenance: Codable, Equatable, Sendable {
+        public init(lock: String? = nil, sha256: String? = nil) {
+            self.lock = lock
+            self.sha256 = sha256
+        }
+        public var lock: String?
+        public var sha256: String?
     }
 
     /// The record's `guest`: the guest package serials this device has run.
-    struct Guest: Codable, Equatable, Sendable {
+    public struct Guest: Codable, Equatable, Sendable {
         /// Baked at prepare time (device.lock.json), when known.
-        var seed: Int64?
+        public var seed: Int64?
         /// The last serial it_boot reported current.
-        var active: Int64?
+        public var active: Int64?
         /// The last serial a healthy session ran; offered as `verdict good`.
-        var lastGood: Int64?
+        public var lastGood: Int64?
         /// Serials judged bad; offered as `verdict bad`, never installed again.
-        var bad: [Int64] = []
+        public var bad: [Int64] = []
         /// Offer the built-in package (serial 0) while the bundled serial is this.
-        var builtIn: Int64?
+        public var builtIn: Int64?
 
-        init() {}
-        init(from decoder: Decoder) throws {
+        public init() {}
+        public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             seed = try c.decodeIfPresent(Int64.self, forKey: .seed)
             active = try c.decodeIfPresent(Int64.self, forKey: .active)
@@ -63,69 +97,69 @@ nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Sendable {
         }
     }
 
-    var format = 1
-    let id: UUID
-    var name: String
-    var board: String
+    public var format = 1
+    public let id: UUID
+    public var name: String
+    public var board: String
     /// A FirmwareCatalog entry id.
-    var firmware: String
-    var created: Date
-    var base: Base
-    var storage: Storage
-    var identity: Identity?
-    var provenance: Provenance?
+    public var firmware: String
+    public var created: Date
+    public var base: Base
+    public var storage: Storage
+    public var identity: Identity?
+    public var provenance: Provenance?
     /// Guest-package serials and verdicts (GuestPackage).
-    var guest: Guest?
+    public var guest: Guest?
     /// The record's `panel`: an opt-in display of another size, "WxH" as the
     /// panel scans (iPad landscape), passed to the machine as panel=WxH
     /// (issue #21). Absent: the shipped panel.
-    var panel: String?
+    public var panel: String?
 
-    var profile: Board? { Board(rawValue: board) }
+    public var profile: Board? { Board(rawValue: board) }
 
-    static let recordName = DeviceRecord.name
+    public static let recordName = DeviceRecord.name
 
     /// `created` is stored as a plist date, whole seconds; a record made with a
     /// finer date would not equal itself read back.
-    static var now: Date { Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down)) }
+    public static var now: Date { Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down)) }
 
     // MARK: - Paths
 
     /// Resolves a record path against the state directory.
-    static func url(_ path: String, state: URL) -> URL {
+    public static func url(_ path: String, state: URL) -> URL {
         path.hasPrefix("/") ? URL(fileURLWithPath: path) : state.appendingPathComponent(path)
     }
 
-    static func directory(_ id: UUID, state: URL) -> URL {
+    public static func directory(_ id: UUID, state: URL) -> URL {
         state.appendingPathComponent("Devices/\(id.uuidString)", isDirectory: true)
     }
 
     /// Runtime paths, per instance, so two running devices never share a pid
     /// file, lease or log.
-    struct Paths: Sendable {
-        let directory: URL
-        let base: URL
-        let overlay: URL
-        let writableNOR: URL?
-        let snapshot: URL
-        let usbmuxConf: URL
+    public struct Paths: Sendable {
+        public let directory: URL
+        public let base: URL
+        public let overlay: URL
+        public let writableNOR: URL?
+        public let snapshot: URL
+        public let usbmuxConf: URL
         /// usbmuxd.pid, the lease and the guest-package offer.
-        let work: URL
+        public let work: URL
         /// serial.log, usbmuxd.log.
-        let logs: URL
+        public let logs: URL
 
-        var snapshotMeta: URL { snapshot.appendingPathExtension("meta") }
-        var snapshotTmp: URL { snapshot.appendingPathExtension("tmp") }
-        var snapshotBad: URL { snapshot.appendingPathExtension("bad") }
-        var usbmuxPID: URL { work.appendingPathComponent("usbmuxd.pid") }
+        public var snapshotMeta: URL { snapshot.appendingPathExtension("meta") }
+        public var snapshotTmp: URL { snapshot.appendingPathExtension("tmp") }
+        public var snapshotBad: URL { snapshot.appendingPathExtension("bad") }
+        public var usbmuxPID: URL { work.appendingPathComponent("usbmuxd.pid") }
         /// The helper's flock while it runs this device (LightTouchDevice --lease).
-        var lease: URL { work.appendingPathComponent("lease") }
+        public var lease: URL { work.appendingPathComponent("lease") }
         /// Retained .ipa copies of the apps installed on this device (IPALibrary).
-        var ipas: URL { directory.appendingPathComponent("IPAs", isDirectory: true) }
+        public var ipas: URL { directory.appendingPathComponent("IPAs", isDirectory: true) }
     }
 
     /// `logs` is the app's log root (Bundled.logsDirectory).
-    func paths(state: URL, logs: URL) -> Paths {
+    public func paths(state: URL, logs: URL) -> Paths {
         let directory = Self.directory(id, state: state)
         return Paths(directory: directory,
                      base: Self.url(base.path, state: state),
@@ -141,37 +175,37 @@ nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Sendable {
     /// `inputs.activation`; a base made without that step has null or nothing
     /// there (a device.py base: `activation_hook: null`). False for an
     /// unreadable lock: nothing to claim.
-    static func lockLacksActivation(_ url: URL) -> Bool {
+    public static func lockLacksActivation(_ url: URL) -> Bool {
         guard let lock = (try? DeviceLock.read(url)) ?? nil, lock.inputs?.object != nil else { return false }
         return !lock.activated
     }
 
     // MARK: - Record I/O
 
-    static let encoder: PropertyListEncoder = {
+    public static let encoder: PropertyListEncoder = {
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .xml
         return encoder
     }()
 
-    static let decoder = PropertyListDecoder()
+    public static let decoder = PropertyListDecoder()
 
     /// Atomic: a crash leaves the old record or the new one, never half.
-    func write(state: URL) throws {
+    public func write(state: URL) throws {
         let directory = Self.directory(id, state: state)
         try StorageLocations.privateDirectory(directory)
         try Self.encoder.encode(self).write(to: directory.appendingPathComponent(Self.recordName), options: .atomic)
     }
 
     /// `url` is the record or, converting a device.json first, its device directory.
-    static func read(_ url: URL) throws -> DeviceInstance {
+    public static func read(_ url: URL) throws -> DeviceInstance {
         let record = url.lastPathComponent == recordName ? url : DeviceRecord.url(url)
         return try decoder.decode(DeviceInstance.self, from: Data(contentsOf: record))
     }
 
     /// Every readable record under State/Devices, oldest first. A directory
     /// without a readable record is skipped, not deleted.
-    static func all(state: URL) -> [DeviceInstance] {
+    public static func all(state: URL) -> [DeviceInstance] {
         let devices = state.appendingPathComponent("Devices", isDirectory: true)
         let names = (try? FileManager.default.contentsOfDirectory(atPath: devices.path)) ?? []
         return names.compactMap { name in

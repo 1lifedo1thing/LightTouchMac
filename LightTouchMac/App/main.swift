@@ -1,5 +1,6 @@
 // Created by Sam on 2026-08-05.
 
+import LightTouchCore
 import Cocoa
 
 // Top-level, so it is retained for the process lifetime (NSApplication.delegate

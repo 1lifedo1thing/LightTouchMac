@@ -14,6 +14,7 @@
 // User-Agent and the standard URLSession connection limits. Ready files install
 // serially, independently of the order downloads finish.
 
+import LightTouchCore
 import Cocoa
 
 extension NSPasteboard.PasteboardType {

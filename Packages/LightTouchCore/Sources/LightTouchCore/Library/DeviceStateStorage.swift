@@ -3,11 +3,11 @@ import Foundation
 import Darwin
 
 /// Disk operations shared by the controller and the device-free regression check.
-nonisolated enum DeviceStateStorage {
+public nonisolated enum DeviceStateStorage {
     /// Only call after the native VM has exited and released its files.
     /// `snapshots`: saved-state files older builds wrote (and their .meta), swept with the overlay.
     /// `owner` is the device being erased; every path must pass checkRemovable.
-    static func erase(overlay: URL, snapshots: [URL], state: URL, owner: UUID?) throws {
+    public static func erase(overlay: URL, snapshots: [URL], state: URL, owner: UUID?) throws {
         let lease = try stoppedLease(owner, state: state)
         defer { withExtendedLifetime(lease) {} }
         let fm = FileManager.default
@@ -34,9 +34,9 @@ nonisolated enum DeviceStateStorage {
 
     // MARK: - Removal
 
-    static func canonicalPath(_ url: URL) -> String { StoragePathAuthority.canonicalPath(url) }
+    public static func canonicalPath(_ url: URL) -> String { StoragePathAuthority.canonicalPath(url) }
 
-    static func checkBootPaths(base: URL, mutable: [URL], state: URL, owner: UUID) throws {
+    public static func checkBootPaths(base: URL, mutable: [URL], state: URL, owner: UUID) throws {
         do { try StoragePathAuthority.checkBootPaths(base: base, mutable: mutable, state: state, owner: owner) }
         catch StoragePathAuthority.Failure.invalidPath(let url) {
             throw CocoaError(.fileWriteNoPermission, userInfo: [NSFilePathErrorKey: url.path,
@@ -44,7 +44,7 @@ nonisolated enum DeviceStateStorage {
         }
     }
 
-    static func checkRemovable(_ url: URL, state: URL, owner: UUID?) throws {
+    public static func checkRemovable(_ url: URL, state: URL, owner: UUID?) throws {
         do { try StoragePathAuthority.checkRemovable(url, state: state, owner: owner) }
         catch StoragePathAuthority.Failure.invalidPath {
             throw CocoaError(.fileWriteNoPermission, userInfo: [NSLocalizedDescriptionKey:
@@ -56,7 +56,7 @@ nonisolated enum DeviceStateStorage {
     /// chmod a-w) or lockBase made it immutable: on a refusal every directory
     /// in it is unlocked and made writable, then the removal is tried once
     /// more and its error thrown.
-    static func removeTree(_ url: URL) throws {
+    public static func removeTree(_ url: URL) throws {
         let fm = FileManager.default
         guard (try? fm.attributesOfItem(atPath: url.path)) != nil else { return }
         if (try? fm.removeItem(at: url)) != nil { return }
@@ -86,7 +86,7 @@ nonisolated enum DeviceStateStorage {
     /// The base itself is locked last, so its flag means the whole tree is
     /// done: a locked base returns at once instead of walking a root
     /// filesystem's worth of directories (seconds, at every launch).
-    static func lockBase(_ base: URL) {
+    public static func lockBase(_ base: URL) {
         var info = stat()
         if lstat(base.path, &info) == 0, info.st_flags & UInt32(UF_IMMUTABLE) != 0 { return }
         for directory in directories(under: base).reversed() { chflags(directory.path, UInt32(UF_IMMUTABLE)) }
@@ -95,7 +95,7 @@ nonisolated enum DeviceStateStorage {
     /// Delete Device: Devices/<uuid> is renamed to Devices/.deleting-<uuid>
     /// first, so a crash mid-removal never leaves a half device that loads
     /// (DeviceInstance.all skips the name); the launch sweep finishes it.
-    static func removeDevice(_ id: UUID, state: URL) throws {
+    public static func removeDevice(_ id: UUID, state: URL) throws {
         let lease = try stoppedLease(id, state: state)
         defer { withExtendedLifetime(lease) {} }
         let devices = state.appendingPathComponent("Devices", isDirectory: true)
@@ -112,7 +112,7 @@ nonisolated enum DeviceStateStorage {
     }
 
     /// Launch (under the app lock): finish deletes a crash interrupted.
-    static func sweepDeleting(state: URL) {
+    public static func sweepDeleting(state: URL) {
         let devices = state.appendingPathComponent("Devices", isDirectory: true)
         for name in (try? FileManager.default.contentsOfDirectory(atPath: devices.path)) ?? []
         where name.hasPrefix(".deleting-") {
@@ -122,7 +122,7 @@ nonisolated enum DeviceStateStorage {
 
     /// Publish a complete private NOR copy beside the NAND pages. Keeping it
     /// inside the overlay also includes it in erase and snapshot freshness.
-    static func writableNOR(base: URL, overlay: URL) throws -> URL {
+    public static func writableNOR(base: URL, overlay: URL) throws -> URL {
         try PreparedDeviceBoot.writableNOR(base: base, overlay: overlay)
     }
 
@@ -132,7 +132,7 @@ nonisolated enum DeviceStateStorage {
     /// carries the base's identity; false means it belongs to another base,
     /// or predates pinning, and must not be booted. An empty or missing
     /// overlay is adopted by the base.
-    static func pinOverlay(_ overlay: URL, toBase identity: String) throws -> Bool {
+    public static func pinOverlay(_ overlay: URL, toBase identity: String) throws -> Bool {
         try PreparedDeviceBoot.pinOverlay(overlay, toBase: identity)
     }
 }

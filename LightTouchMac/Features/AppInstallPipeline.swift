@@ -5,6 +5,7 @@
 // services' (InstallationProxy, AFC) and the agent's (dlicon); the order and
 // the policy between them live here.
 
+import LightTouchCore
 import HostServiceClient
 import HostServiceWire
 import Foundation

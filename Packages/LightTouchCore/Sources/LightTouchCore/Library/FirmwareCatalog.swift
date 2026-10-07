@@ -6,33 +6,33 @@ import FirmwareSchema
 import HostRuntime
 import Foundation
 
-nonisolated struct FirmwareCatalog: Codable, Sendable {
-    var format: Int
-    var entries: [Entry]
+public nonisolated struct FirmwareCatalog: Codable, Sendable {
+    public var format: Int
+    public var entries: [Entry]
     /// The entry a first launch selects (firstRunEntry).
-    var firstRun: String?
+    public var firstRun: String?
     /// Entries the app ships prepared: entry id -> its packed base under the app's Resources (firmwarekit pack-base).
-    var bundled: [String: String]?
-    enum CodingKeys: String, CodingKey { case format, entries, bundled, firstRun = "first_run" }
+    public var bundled: [String: String]?
+    public enum CodingKeys: String, CodingKey { case format, entries, bundled, firstRun = "first_run" }
 
-    struct Entry: Codable, Sendable, Identifiable, Equatable {
+    public struct Entry: Codable, Sendable, Identifiable, Equatable {
         /// `untested`: enumerated from Apple's list with public keys, never run through the pipeline.
-        enum Status: String, Codable, Sendable { case available, experimental, comingSoon = "coming_soon", userIPSW = "user_ipsw", untested }
+        public enum Status: String, Codable, Sendable { case available, experimental, comingSoon = "coming_soon", userIPSW = "user_ipsw", untested }
 
-        typealias Source = FirmwareWire.Entry.Source
-        typealias Key = FirmwareWire.Entry.Key
-        typealias Recipe = FirmwareWire.Entry.Recipe
-        typealias Emulator = FirmwareWire.Entry.Emulator
-        typealias Estimates = FirmwareWire.Entry.Estimates
-        enum Prerelease: String, Codable, Sendable { case beta, gm }
+        public typealias Source = FirmwareWire.Entry.Source
+        public typealias Key = FirmwareWire.Entry.Key
+        public typealias Recipe = FirmwareWire.Entry.Recipe
+        public typealias Emulator = FirmwareWire.Entry.Emulator
+        public typealias Estimates = FirmwareWire.Entry.Estimates
+        public enum Prerelease: String, Codable, Sendable { case beta, gm }
 
         private var wire: FirmwareWire.Entry
         /// The packed base this app ships for the entry (the catalog's `bundled`), unpacked by FirmwareJobs.prepareBundled.
         /// Not part of the entry the preparer gets.
-        var bundled: String?
+        public var bundled: String?
         /// The same entry whether or not this copy ships it prepared.
-        static func == (a: Entry, b: Entry) -> Bool { a.wire == b.wire }
-        init(from decoder: Decoder) throws {
+        public static func == (a: Entry, b: Entry) -> Bool { a.wire == b.wire }
+        public init(from decoder: Decoder) throws {
             wire = try FirmwareWire.Entry(from: decoder)
             guard Status(rawValue: wire.status) != nil, ["ipsw", "rar"].contains(wire.source.kind),
                   wire.prerelease == nil || Prerelease(rawValue: wire.prerelease!) != nil else {
@@ -40,85 +40,85 @@ nonisolated struct FirmwareCatalog: Codable, Sendable {
                     debugDescription: "Unknown firmware presentation status, prerelease or source kind"))
             }
         }
-        func encode(to encoder: Encoder) throws { try wire.encode(to: encoder) }
+        public func encode(to encoder: Encoder) throws { try wire.encode(to: encoder) }
 
-        var status: Status {
+        public var status: Status {
             get { Status(rawValue: wire.status)! }
             set { wire.status = newValue.rawValue }
         }
-        var prerelease: Prerelease? {
+        public var prerelease: Prerelease? {
             get { wire.prerelease.flatMap(Prerelease.init(rawValue:)) }
             set { wire.prerelease = newValue?.rawValue }
         }
-        var id: String {
+        public var id: String {
             get { wire.id }
             set { wire.id = newValue }
         }
-        var board: String {
+        public var board: String {
             get { wire.board }
             set { wire.board = newValue }
         }
-        var productType: String {
+        public var productType: String {
             get { wire.productType }
             set { wire.productType = newValue }
         }
-        var version: String {
+        public var version: String {
             get { wire.version }
             set { wire.version = newValue }
         }
-        var build: String {
+        public var build: String {
             get { wire.build }
             set { wire.build = newValue }
         }
         /// The libraries Import Media may add to on this build (MediaSupport).
-        var media: [String] { wire.media ?? [] }
-        var released: String? {
+        public var media: [String] { wire.media ?? [] }
+        public var released: String? {
             get { wire.released }
             set { wire.released = newValue }
         }
-        var statusNote: String? {
+        public var statusNote: String? {
             get { wire.statusNote }
             set { wire.statusNote = newValue }
         }
-        var prereleaseNumber: Int? {
+        public var prereleaseNumber: Int? {
             get { wire.prereleaseNumber }
             set { wire.prereleaseNumber = newValue }
         }
-        var source: Source {
+        public var source: Source {
             get { wire.source }
             set { wire.source = newValue }
         }
-        var keys: [String: Key] {
+        public var keys: [String: Key] {
             get { wire.keys }
             set { wire.keys = newValue }
         }
-        var recipe: Recipe? {
+        public var recipe: Recipe? {
             get { wire.recipe }
             set { wire.recipe = newValue }
         }
-        var emulator: Emulator {
+        public var emulator: Emulator {
             get { wire.emulator }
             set { wire.emulator = newValue }
         }
-        var estimates: Estimates {
+        public var estimates: Estimates {
             get { wire.estimates }
             set { wire.estimates = newValue }
         }
 
-        var profile: Board? { Board(rawValue: board) }
+        public var profile: Board? { Board(rawValue: board) }
         /// What the user reads: "iPhone 4", never the model identifier ("iPhone3,1") unless the board is unknown.
-        var marketingName: String { profile?.marketingName ?? productType }
+        public var marketingName: String { profile?.marketingName ?? productType }
 
         /// iPhone OS 1.x has no installation service (it came with 2.0): no apps to manage.
-        var managesApps: Bool { (Int(version.prefix { $0 != "." }) ?? 2) >= 2 }
+        public var managesApps: Bool { (Int(version.prefix { $0 != "." }) ?? 2) >= 2 }
 
         /// The sidebar's badge, always numbered: "beta 1", "beta 3", "GM 1", "GM 2"; nil for a release.
-        var prereleaseBadge: String? {
+        public var prereleaseBadge: String? {
             prerelease.map { "\($0 == .beta ? "beta" : "GM") \(prereleaseNumber ?? 1)" }
         }
     }
 
-    static func load(from url: URL) throws -> FirmwareCatalog {
+    public static func load(from url: URL) throws -> FirmwareCatalog {
         var catalog = try JSONDecoder().decode(FirmwareCatalog.self, from: Data(contentsOf: url))
         for i in catalog.entries.indices { catalog.entries[i].bundled = catalog.bundled?[catalog.entries[i].id] }
         guard catalog.format == 1, Set(catalog.entries.map(\.id)).count == catalog.entries.count else {
@@ -132,7 +132,7 @@ nonisolated struct FirmwareCatalog: Codable, Sendable {
     /// `released` date (betas by number, then GMs by number, where undated), build as the last
     /// tiebreak: 4.3.x stays together and 5.0 beta 1 lists after 4.3.5, just before 5.0.
     /// Every listing (sidebar, settings) shows this order.
-    func sortedByVersion() -> FirmwareCatalog {
+    public func sortedByVersion() -> FirmwareCatalog {
         var boards: [String] = []
         for entry in entries where !boards.contains(entry.board) { boards.append(entry.board) }
         func board(_ e: Entry) -> Int { boards.firstIndex(of: e.board)! }
@@ -150,7 +150,7 @@ nonisolated struct FirmwareCatalog: Codable, Sendable {
     }
 
     /// The catalog this build ships. A build without it is broken, not empty.
-    static let bundled: FirmwareCatalog = {
+    public static let bundled: FirmwareCatalog = {
         guard let url = Bundle.main.url(forResource: "firmware-catalog", withExtension: "json") else {
             fatalError("firmware-catalog.json is missing from the app bundle")
         }
@@ -165,12 +165,12 @@ nonisolated struct FirmwareCatalog: Codable, Sendable {
         } catch { fatalError("firmware-catalog.json: \(error)") }
     }()
 
-    func entry(id: String) -> Entry? { entries.first { $0.id == id } }
+    public func entry(id: String) -> Entry? { entries.first { $0.id == id } }
 
     /// What a first launch selects: an `available` build whose IPSW Apple's servers still serve (`first_run`).
-    var firstRunEntry: Entry? { firstRun.flatMap(entry(id:)) }
+    public var firstRunEntry: Entry? { firstRun.flatMap(entry(id:)) }
 
     /// The entry this app ships prepared (the iPod 3.1.3), if its base is here.
-    var bundledEntry: Entry? { entries.first { $0.bundled != nil } }
+    public var bundledEntry: Entry? { entries.first { $0.bundled != nil } }
 }
 

@@ -1,6 +1,7 @@
 // The devices in State/Devices, for the sidebar and the sessions it starts.
 // Records are the files; this is a cache over them that says when it changes.
 
+import LightTouchCore
 import Foundation
 import Observation
 

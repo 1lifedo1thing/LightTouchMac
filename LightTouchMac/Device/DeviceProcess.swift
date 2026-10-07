@@ -1,3 +1,4 @@
+import LightTouchCore
 import DeviceRuntime
 import HostRuntime
 import Foundation
