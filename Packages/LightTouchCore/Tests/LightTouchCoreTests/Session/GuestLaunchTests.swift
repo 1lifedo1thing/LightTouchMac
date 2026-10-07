@@ -8,8 +8,6 @@ import HostServiceWire
 /// Opening an app wakes a sleeping display and nothing else, keeps the guest's lock and typed errors; the boot's
 /// guest offer survives a failing developer addition but not a failing required package.
 struct GuestLaunchTests {
-    init() { IsolatedState.use() }
-
     @Test func openWakesASleepingDisplayAndKeepsTypedErrors() async throws {
         try await withScratchDirectory { directory in
             let device = FakeSession(directory: directory)

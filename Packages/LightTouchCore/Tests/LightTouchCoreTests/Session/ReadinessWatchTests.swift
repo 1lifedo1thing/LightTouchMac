@@ -8,8 +8,6 @@ import HostRuntime
 /// The boot's readiness watch: one display wake for a backlight that's off, nothing for an awake one or a stale,
 /// cancelled or stopping boot; at the deadline iOS on screen keeps running without USB, no picture fails.
 struct ReadinessWatchTests {
-    init() { IsolatedState.use() }
-
     func session(_ directory: URL, sleeping: Bool = false) -> FakeSession {
         let s = FakeSession(directory: directory)
         s.state = .running

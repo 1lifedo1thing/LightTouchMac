@@ -9,8 +9,6 @@ import DeviceRuntime
 /// boot's storage admission (preparation) with its lease, cancellation and exactly-once completion.
 /// (The race through the owner against a fake link stays tests/offline/check-reap-reason.py: it swaps DeviceLink.)
 struct DeviceProcessTests {
-    init() { IsolatedState.use() }
-
     @Test func exitsAreClassifiedByWhatWasAsked() {
         let cases: [(DeviceLinkError?, Int32?, Bool, DeviceTermination, DeviceProcessDeath)] = [
             (nil, 0, true, .exited(0), .stopped),

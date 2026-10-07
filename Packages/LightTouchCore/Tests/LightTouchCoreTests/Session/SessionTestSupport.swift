@@ -10,17 +10,6 @@ let repositoryRoot = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 
-/// The session's code logs (logEvent → app.log): point the app's state at a scratch directory before anything
-/// does, so no test writes into the real library's logs. Each suite of these tests touches it in its init.
-enum IsolatedState {
-    static let directory: URL = {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ltm-tests-state", isDirectory: true)
-        setenv("LTM_STATE_DIR", directory.path, 1)
-        return directory
-    }()
-    static func use() { _ = directory }
-}
-
 /// A fresh directory under the temporary directory for an async body, removed afterwards.
 func withScratchDirectory<T>(_ body: (URL) async throws -> T) async throws -> T {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ltm-tests-" + UUID().uuidString, isDirectory: true)

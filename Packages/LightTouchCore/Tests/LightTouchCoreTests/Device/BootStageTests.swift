@@ -7,8 +7,6 @@ import Testing
 /// whose USB never answers, and the Home-screen wait's agent answer, are here too; so is the serial watch on its
 /// own (each phrase once, across write boundaries, every byte logged).
 struct BootStageTests {
-    init() { IsolatedState.use() }
-
     final class Seen: @unchecked Sendable {
         private let lock = NSLock(); private var all: [String] = []
         func add(_ s: String) { lock.withLock { all.append(s) } }

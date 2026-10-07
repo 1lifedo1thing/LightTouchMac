@@ -8,8 +8,6 @@ import HostRuntime
 /// Erase completes after the helper exits, then restarts the device (never quits the app); a stopped device just
 /// erases; a helper that won't exit leaves the data and says so.
 struct DeviceEraseTests {
-    init() { IsolatedState.use() }
-
     func session(_ directory: URL) throws -> FakeSession {
         let s = FakeSession(directory: directory)
         s.state = .running

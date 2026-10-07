@@ -9,8 +9,6 @@ import DeviceRuntime
 /// poll; the Mac's sleep pauses a running device and its wake resumes it and resyncs the clock; installs hold off
 /// idle sleep.
 struct HostPowerTests {
-    init() { IsolatedState.use() }
-
     @Test func visibilityReachesTheHelperOncePerChangeAndPacesThePoll() async throws {
         try await withScratchDirectory { directory in
             let c = FakeSession(directory: directory)

@@ -8,8 +8,6 @@ import HostServiceWire
 /// Failed service reads: which become a standing issue, which restart the management service (once, with a
 /// cooldown, never during a transfer, an install, boot preparation or a shutdown), and the per-boot activation verdict.
 struct ConnectionRecoveryTests {
-    init() { IsolatedState.use() }
-
     static let unactivated = "This iPod isn’t activated. Choose Erase All Content and Settings, then prepare it again."
 
     func session(_ directory: URL) -> FakeSession {

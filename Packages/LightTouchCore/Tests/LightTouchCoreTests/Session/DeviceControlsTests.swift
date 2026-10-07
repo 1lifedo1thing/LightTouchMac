@@ -7,8 +7,6 @@ import DeviceRuntime
 
 /// The keyboard and battery settings as they reach the machine, and the control requests they ride on.
 struct DeviceControlsTests {
-    init() { IsolatedState.use() }
-
     final class Machine {
         var requests: [LinkRequest] = []
         var answer = true

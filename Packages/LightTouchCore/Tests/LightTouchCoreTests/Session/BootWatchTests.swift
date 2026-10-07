@@ -8,8 +8,6 @@ import HostRuntime
 /// A boot that never lights ends as a named error with the helper halted, never "Booting…" forever; recovery mode
 /// does the same at once; a base missing a boot file is named before anything boots.
 struct BootWatchTests {
-    init() { IsolatedState.use() }
-
     func session(_ directory: URL, _ profile: Board = .n72) -> FakeSession {
         let s = FakeSession(directory: directory, profile: profile)
         s.bootWatch.budget = 0.3

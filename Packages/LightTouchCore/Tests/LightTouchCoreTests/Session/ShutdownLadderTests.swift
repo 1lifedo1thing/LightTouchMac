@@ -8,8 +8,6 @@ import DeviceRuntime
 /// Stop is a hard halt, never a guest shutdown; Shut Down asks the guest and waits for it to power off, gives up
 /// after its budget, and Force Stop can take over while it waits.
 struct ShutdownLadderTests {
-    init() { IsolatedState.use() }
-
     func session(_ directory: URL, state: VMState = .booting) -> FakeSession {
         let s = FakeSession(directory: directory)
         s.state = state

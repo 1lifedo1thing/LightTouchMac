@@ -9,8 +9,6 @@ import DeviceRuntime
 /// nothing; a device without guest tools halts and restarts. Power On renews the boot in place and resumes the
 /// machine once the shutdown latch clears.
 struct BootCycleTests {
-    init() { IsolatedState.use() }
-
     static let freshBoot = ["publish", "reconnectUSB", "forgetConnectionWork", "forgetReachability", "timeZone", "resetRotation",
                             "foreground", "orientation", "guestPackage", "bootWatch"]
 
