@@ -9,6 +9,7 @@
 // A stalled heartbeat means the helper is wedged; stalled frames, the guest.
 
 import Accelerate
+import CoreGraphics
 import Foundation
 import IOSurface
 import LTMLinkC
@@ -145,9 +146,15 @@ nonisolated public struct StatusBlock: @unchecked Sendable {
     }
 }
 
+/// Tagged sRGB, as screenshots and movies are: untagged, Core Animation shows the guest's pixels in the
+/// display's own space, so a P3 screen drew pure red (255, 0, 0) as P3 red, more saturated than the device.
 nonisolated public func makeSurface(width: Int, height: Int, bytesPerElement: Int = 4) -> IOSurface {
-    IOSurface(properties: [.width: width, .height: height, .bytesPerElement: bytesPerElement,
-                           .pixelFormat: 0x42475241 /* 'BGRA' */])!
+    let surface = IOSurface(properties: [.width: width, .height: height, .bytesPerElement: bytesPerElement,
+                                         .pixelFormat: 0x42475241 /* 'BGRA' */])!
+    if let srgb = CGColorSpace(name: CGColorSpace.sRGB)?.copyICCData() {
+        IOSurfaceSetValue(unsafeBitCast(surface, to: IOSurfaceRef.self), kIOSurfaceColorSpace, srgb)
+    }
+    return surface
 }
 
 /// The helper's side of the ring: three surfaces, and a publish that never
