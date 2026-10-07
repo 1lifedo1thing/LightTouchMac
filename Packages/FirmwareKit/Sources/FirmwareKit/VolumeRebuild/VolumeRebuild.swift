@@ -76,8 +76,8 @@ public enum VolumeRebuild {
             if ovlNames[cs].contains("blk\(pg / 128).erased") { return nil }
             return baseNames[cs].contains(n) ? base.appendingPathComponent("cs\(cs)/\(n)") : nil
         }
-        var buf = [UInt8](repeating: 0, count: page)
-        func read(_ n: Int) throws -> Bool {
+        /// Block `n` into `buf`; false for a blank or absent page.
+        func read(_ n: Int, into buf: inout [UInt8]) throws -> Bool {
             let (cs, pg) = predict(n)
             guard let u = source(cs, pg) else { return false }
             let fd = open(u.path, O_RDONLY)
@@ -91,19 +91,37 @@ public enum VolumeRebuild {
 
         // The volume's own size, not a legacy overlong GPT partition's: macOS looks for the
         // alternate volume header 1 KiB before the end of the device.
-        guard try read(0), buf[1024] == 0x48, buf[1025] == 0x2B || buf[1025] == 0x58 else {
+        var header = [UInt8](repeating: 0, count: page)
+        guard try read(0, into: &header), header[1024] == 0x48, header[1025] == 0x2B || header[1025] == 0x58 else {
             throw FirmwareError(.unsupported, "\(base.path): no HFS+ volume header at block 0")
         }
-        let blocks = Int(be32(buf, 1024 + 44)) * Int(be32(buf, 1024 + 40)) / page
+        let blocks = Int(be32(header, 1024 + 44)) * Int(be32(header, 1024 + 40)) / page
 
         let out = dir.appendingPathComponent("system.img")
         let fd = try create(out, bytes: blocks * page)
         defer { close(fd) }
-        var written = 0
-        for n in 0..<blocks where try read(n) {
-            try pwriteAll(fd, buf, n * page, out)
-            written += 1
+        // One small file per page: the open/read/close per block is the cost, so blocks are read in parallel
+        // (each worker its own buffer; pwrite at distinct offsets).
+        let workers = max(1, min(8, ProcessInfo.processInfo.activeProcessorCount))
+        final class Tally: @unchecked Sendable {
+            let lock = NSLock()
+            var written = 0
+            var failure: Error?
         }
+        let tally = Tally()
+        DispatchQueue.concurrentPerform(iterations: workers) { w in
+            var buf = [UInt8](repeating: 0, count: page)
+            var count = 0
+            do {
+                for n in stride(from: w, to: blocks, by: workers) where try read(n, into: &buf) {
+                    try pwriteAll(fd, buf, n * page, out)
+                    count += 1
+                }
+            } catch { tally.lock.withLock { tally.failure = tally.failure ?? error } }
+            tally.lock.withLock { tally.written += count }
+        }
+        if let failure = tally.failure { throw failure }
+        let written = tally.written
         return [Volume(name: "system", image: out, bytes: blocks * page, pagesWritten: written)]
     }
 
