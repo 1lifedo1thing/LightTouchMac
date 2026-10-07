@@ -505,6 +505,23 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         }
     }
 
+    /// Files opened from Finder, the Dock or `open` (AppDelegate.application(_:open:)), sorted as a drop is:
+    /// an IPSW to the library (the catalog names its entry), an .ipa to the device on screen.
+    func open(_ urls: [URL]) {
+        showWindow(nil)
+        DroppedFiles.files(urls, .ipsw).forEach { handOffIPSW($0, for: nil) }
+        let ipas = DroppedFiles.files(urls, .ipa)
+        guard !ipas.isEmpty else { return }
+        guard let deviceVC else {
+            let alert = NSAlert()
+            alert.messageText = "No device is running"
+            alert.informativeText = "Start a device, then open the app again."
+            if let window { alert.beginSheetModal(for: window) { _ in } } else { alert.runModal() }
+            return
+        }
+        ipas.forEach(deviceVC.installDropped)
+    }
+
     private func handOffIPSW(_ url: URL, for entry: FirmwareCatalog.Entry?) {
         FirmwareJobs.shared.importIPSW(url, for: entry)
     }

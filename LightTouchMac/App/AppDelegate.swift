@@ -33,6 +33,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc func quit(_ sender: Any?) { Self.requestTermination() }
 
+    /// Finder, the Dock and `open` hand over IPSWs and .ipa files here (Configuration/LightTouchMac-Info.plist).
+    /// A launch by opening one arrives before the window exists: held until finishLaunching.
+    private var pendingOpen: [URL] = []
+    func application(_ application: NSApplication, open urls: [URL]) {
+        if let windowController { windowController.open(urls) } else { pendingOpen += urls }
+    }
+
     @objc func showDeviceWindow(_ sender: Any?) { windowController?.focusDeviceScreen(sender) }
     @objc func showFilesWindow(_ sender: Any?) { windowController?.toggleFiles(sender) }
 
@@ -188,6 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         self.host = host
         self.windowController = controller
         controller.selectLaunchDevice()
+        if !pendingOpen.isEmpty { controller.open(pendingOpen); pendingOpen = [] }
     }
 
     /// Development runs: LTM_DEV_BASE names a `firmwarekit create` output directory to run as a
