@@ -1132,13 +1132,13 @@ final class DisplayView: NSView {
     /// Live scroll-drag: the finger's current position, carried between events.
     private var scrollPoint: CGPoint?
     /// Tilt driven by a two-finger scroll off the panel.
-    private var scrollPitch = 0.0
-    private var pitchAngle: CGFloat = 0
-    private var rotatingChassis = false
+    /// Tilt's gesture state and math (ChassisTilt): drag, scroll and twist off the panel.
+    private var tilt = ChassisTilt()
+    private var pitchAngle: CGFloat { tilt.pitchAngle }
+    private var rotatingChassis: Bool { tilt.rotatingChassis }
     private var wheelTiltResetTask: Task<Void, Never>?
-    private var motionRestAngle: CGFloat?
-    private var scrollTilt = 0.0
-    private var scrollTilting = false
+    private var motionRestAngle: CGFloat? { tilt.motionRestAngle }
+    private var scrollTilting: Bool { tilt.scrollTilting }
 
     /// How far outside the screen, in points, a press still lands on its edge: edge swipes (Notification Center,
     /// back swipes) start at the glass's border, where a pointer easily misses by a few points.
@@ -1350,10 +1350,7 @@ final class DisplayView: NSView {
     private func beginScrollTilt() {
         guard touchInteractionEnabled else { return }
         wheelTiltResetTask?.cancel()
-        motionRestAngle = Self.layerAngle(emulator?.rotationDegrees ?? 0)
-        scrollTilt = tiltAngle
-        scrollPitch = pitchAngle
-        scrollTilting = true
+        tilt.beginScroll(rotation: emulator?.rotationDegrees ?? 0)
         shellLayer.removeAnimation(forKey: "tiltSnap")
     }
 
@@ -1363,12 +1360,7 @@ final class DisplayView: NSView {
         case .began, .changed, []:
             // AppKit already applied Natural Scrolling. Use the same content
             // movement convention as the LCD, without inverting it again.
-            let delta = Self.scrollMovement(event)
-            scrollTilt = min(max(scrollTilt + delta.dx * Self.scrollTiltGain,
-                                 -.pi / 3), .pi / 3)
-            scrollPitch = min(max(scrollPitch + delta.dy * Self.scrollTiltGain, -.pi / 3), .pi / 3)
-            tiltAngle = scrollTilt
-            pitchAngle = scrollPitch
+            tilt.scroll(by: Self.scrollMovement(event))
             setShellAngle(restAngle + tiltAngle)
             sendAttitude()
             // Wheel mice have no ended event. End a burst after a short idle
@@ -1381,7 +1373,6 @@ final class DisplayView: NSView {
                 }
             }
         case .ended, .cancelled:
-            scrollTilt = 0
             endTilt()          // springs the shell back and restores gravity
         default:
             break
@@ -1391,24 +1382,21 @@ final class DisplayView: NSView {
     /// Precise deltas are points; conventional wheels report lines. Preserve
     /// both signs because NSEvent has already honored the system preference.
     private static func scrollMovement(_ event: NSEvent) -> CGVector {
-        let pointsPerUnit: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 10
-        return CGVector(dx: event.scrollingDeltaX * pointsPerUnit,
-                        dy: event.scrollingDeltaY * pointsPerUnit)
+        ChassisTilt.scrollMovement(dx: event.scrollingDeltaX, dy: event.scrollingDeltaY, precise: event.hasPreciseScrollingDeltas)
     }
 
     override func rotate(with event: NSEvent) {
         guard touchInteractionEnabled && !tilting && scrollPoint == nil && !pinchingGuest else { return }
         if event.phase == .began && (!cursorOverPanel(event) || event.modifierFlags.contains(.option)) {
             endTilt()
-            motionRestAngle = Self.layerAngle(emulator?.rotationDegrees ?? 0)
-            rotatingChassis = true
+            tilt.beginTwist(rotation: emulator?.rotationDegrees ?? 0)
         }
         guard rotatingChassis else { return }
         if event.phase == .ended || event.phase == .cancelled { endTilt(); return }
         // NSEvent rotation is incremental counterclockwise degrees; this
         // flipped view's roll is clockwise radians. Scrolling preferences do
         // not affect a physical two-finger twist.
-        tiltAngle = min(max(tiltAngle - CGFloat(event.rotation) * .pi / 180, -.pi / 3), .pi / 3)
+        tilt.twist(byDegrees: event.rotation)
         setShellAngle(restAngle + tiltAngle)
         sendAttitude()
     }
@@ -1421,10 +1409,8 @@ final class DisplayView: NSView {
         // Just off the screen's edge is the screen's (an edge swipe starts there), not the chassis's.
         if normalized(event) == nil, nearScreenEdge(event) == nil, isChassisEvent(event) {
             endTilt()
-            motionRestAngle = Self.layerAngle(emulator?.rotationDegrees ?? 0)
+            tilt.beginDrag(at: convert(event.locationInWindow, from: nil), rotation: emulator?.rotationDegrees ?? 0)
             shellLayer.removeAnimation(forKey: "tiltSnap")
-            tilting = true
-            grabPoint = convert(event.locationInWindow, from: nil)
             return
         }
         if let (nx, ny) = normalized(event) ?? nearScreenEdge(event) { touchPair.down(at: CGPoint(x: nx, y: ny), event.modifierFlags) }
@@ -1438,9 +1424,7 @@ final class DisplayView: NSView {
             // around gravity. Use fixed deltas from the grab point so a
             // diagonal has the same response anywhere on the frame. This
             // view is flipped: dragging up matches an upward gesture.
-            let point = convert(event.locationInWindow, from: nil)
-            tiltAngle = min(max((point.x - grabPoint.x) * 0.004, -.pi / 4), .pi / 4)
-            pitchAngle = min(max((grabPoint.y - point.y) * 0.004, -.pi / 4), .pi / 4)
+            tilt.drag(to: convert(event.locationInWindow, from: nil))
             setShellAngle(restAngle + tiltAngle)
             sendAttitude()
             return
@@ -1492,23 +1476,18 @@ final class DisplayView: NSView {
     /// off the panel. Much gentler than a drag: a swipe has no anchor to hold
     /// on to, so the same rate that feels direct under a finger feels wild here.
     /// A full trackpad sweep is a few degrees, which is the range tilt games use.
-    private static let scrollTiltGain: CGFloat = 0.0015
-
-    private var tilting = false
-    private var grabPoint = CGPoint.zero
-    private var tiltAngle: CGFloat = 0   // current drag delta from rest
+    private var tilting: Bool { tilt.tilting }
+    private var tiltAngle: CGFloat { tilt.tiltAngle }   // current drag delta from rest
 
     /// The shell layer's rest rotation for a guest orientation, signed so 270°
     /// comes in as a single quarter turn (-π/2), not three of them — the
     /// implicit animation interpolates the transform, and the sign is what
     /// makes the swing take the short way round.
-    private static func layerAngle(_ degrees: Int) -> CGFloat {
-        degrees == 270 ? -.pi / 2 : CGFloat(degrees) * .pi / 180
-    }
+    private static func layerAngle(_ degrees: Int) -> CGFloat { ChassisTilt.layerAngle(degrees) }
 
     /// The shell's resting rotation for the guest's current orientation —
     /// the same angle layout() starts from.
-    private var restAngle: CGFloat { motionRestAngle ?? Self.layerAngle(emulator?.rotationDegrees ?? 0) }
+    private var restAngle: CGFloat { tilt.restAngle(rotation: emulator?.rotationDegrees ?? 0) }
 
     /// The model's side buttons are hardware, like Home: they work asleep too.
     private func pressModelControl(_ event: NSEvent) -> Bool {
@@ -1561,19 +1540,9 @@ final class DisplayView: NSView {
     private func sendAttitude() {
         attitudeIndicator.update(pitch: pitchAngle, roll: tiltAngle)
         attitudeIndicator.isHidden = !touchInteractionEnabled || (abs(pitchAngle) < 0.001 && abs(tiltAngle) < 0.001)
-        if emulator?.motionPose == .flat {
-            // Flat gravity points into the display. Rotate its screen-relative
-            // X/Y components into the sensor axes, including in landscape.
-            let x = sin(tiltAngle) * cos(pitchAngle)
-            let y = sin(pitchAngle)
-            let z = -cos(tiltAngle) * cos(pitchAngle)
-            let sensorX = cos(restAngle) * x - sin(restAngle) * y
-            let sensorY = sin(restAngle) * x + cos(restAngle) * y
-            emulator?.setTilt(angle: atan2(sensorX, -z),
-                              pitch: atan2(sensorY, hypot(sensorX, z)))
-        } else {
-            emulator?.setTilt(angle: restAngle + tiltAngle, pitch: pitchAngle)
-        }
+        // Flat, gravity points into the display: its screen-relative X/Y go into the sensor axes (ChassisTilt).
+        let attitude = tilt.attitude(rotation: emulator?.rotationDegrees ?? 0, flat: emulator?.motionPose == .flat)
+        emulator?.setTilt(angle: attitude.angle, pitch: attitude.pitch)
     }
 
     /// The trick is the 3D model's: 2D, Off, or a model still loading has nothing to flip.
@@ -1597,15 +1566,8 @@ final class DisplayView: NSView {
 
     private func endTilt() {
         wheelTiltResetTask?.cancel()
-        rotatingChassis = false
-        tilting = false
-        scrollTilting = false
-        scrollTilt = 0
-        scrollPitch = 0
-        pitchAngle = 0
-        motionRestAngle = nil
         let from = shellLayer.presentation()?.transform ?? shellLayer.transform
-        tiltAngle = 0
+        tilt.reset()
         setShellAngle(restAngle, animated: true)
         let spring = CASpringAnimation(keyPath: "transform")
         spring.fromValue = NSValue(caTransform3D: from)
