@@ -149,6 +149,7 @@ final class DeviceHost: @unchecked Sendable {
         status[.storageFailed] = qemu.storageFailed() ? 1 : 0
         status[.shutdownConfirmed] = qemu.shutdownConfirmed() ? 1 : 0
         status[.displaySleeping] = qemu.displaySleeping() ? 1 : 0
+        status[.backlightLevel] = UInt64(bitPattern: Int64(qemu.backlightLevel?() ?? -1))
         status[.agentStatus] = UInt64(max(0, qemu.agentStatus()))
         status[.glesContexts] = UInt64(max(0, qemu.glesContexts()))
         status[.iconGeneration] = 0 // Retired content-sniffing field; retain shared-status ABI.

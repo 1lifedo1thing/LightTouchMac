@@ -302,7 +302,7 @@ struct SingleConfig: Decodable {
         var front = "", screen = ""
         if asks, let f = try? await guestAgent.frontmost() { (front, screen) = f }
         emit("home", ["device": d.name, "generation": generation, "brightness": d.brightness() ?? -1,
-                      "agent": asks, "frontmost": front, "screen": screen, "path": hp ?? ""])
+                      "backlight": d.process.status?.backlightLevel ?? -1, "agent": asks, "frontmost": front, "screen": screen, "path": hp ?? ""])
         if let path = s.readFile {
             let data = asks ? try? await guestAgent.get(path) : nil
             emit("fileRead", ["device": d.name, "generation": generation, "path": path, "agent": asks,
