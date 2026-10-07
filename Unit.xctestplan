@@ -43,6 +43,13 @@
         "identifier": "ReleaseChecksTests",
         "name": "ReleaseChecksTests"
       }
+    },
+    {
+      "target": {
+        "containerPath": "container:tests\/sessions",
+        "identifier": "SessionKitTests",
+        "name": "SessionKitTests"
+      }
     }
   ],
   "version": 1

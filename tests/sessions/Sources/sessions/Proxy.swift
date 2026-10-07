@@ -36,17 +36,17 @@ func proxyTrust(_ args: Arguments) -> Never {
     let route = e.one("route")
     r.check(route.bool("ok"), "\(b): the guest routed through the proxy" + (route.bool("ok") ? "" : ": \(route.string("error") ?? "")"))
     let http = e.one("httpget", ["label": "http"])
-    r.check(http.bool("ok"), "\(b): plain HTTP through the proxy (Wi-Fi up, the proxy answers): \((http.string("output") ?? "").prefix(60))")
+    r.check(http.bool("ok"), "\(b): plain HTTP through the proxy (Wi-Fi up, the proxy answers): \(clip(http.string("output") ?? "", 60))")
     // Refused before the trust: through the PAC the guest takes its DIRECT fallback and the .invalid host has no origin
     // (-1003), or -1202 "untrusted server certificate" / -1200 where a guest fails the tunnel without falling back.
     let untrusted = e.one("httpget", ["label": "untrusted"]), before = untrusted.string("output") ?? ""
     r.check(!untrusted.isEmpty && !untrusted.bool("ok") && before.hasPrefix("ERROR") && ["-1200", "-1202", "-1003"].contains { before.contains($0) },
-            "\(b): HTTPS through the proxy refused before the trust: \(before.prefix(90))")
+            "\(b): HTTPS through the proxy refused before the trust: \(clip(before, 90))")
     let trust = e.one("trust", ["generation": 1])
     r.check(trust.bool("ok"), "\(b): certificate trusted through the agent in \(format(trust.double("seconds"))) s"
             + (trust.bool("ok") ? "" : ": \(trust.string("error") ?? "")"))
     r.check(e.one("httpget", ["label": "trusted"]).bool("ok"),
-            "\(b): HTTPS through the proxy answers after the trust: \((e.one("httpget", ["label": "trusted"]).string("output") ?? "").prefix(40))")
+            "\(b): HTTPS through the proxy answers after the trust: \(clip(e.one("httpget", ["label": "trusted"]).string("output") ?? "", 40))")
     let afterTrust = e.one("front", ["label": "after-trust"])
     r.check(afterTrust.string("bundleID") == "com.apple.springboard", "\(b): no screen took over after the trust (front: \(afterTrust.string("bundleID") ?? ""))")
     r.check(e.one("safari").string("launched") == "Safari", "\(b): Safari launched")
@@ -218,10 +218,10 @@ func localNetworkCheck(_ args: Arguments) -> Never {
     func got(_ label: String) -> String { e.find("get", ["label": label]).first?.string("output") ?? "" }
     let r = Report()
     let off = got("lan-off"), on = got("lan-on")
-    r.check(got("internet").hasPrefix("HTTP 200"), "internet through the proxy: \(got("internet").prefix(60))")
-    r.check(off.hasPrefix("ERROR"), "the LAN refused while off: \(off.prefix(60))")
-    r.check(on.hasPrefix("HTTP 200") && probe.hits == ["/lan-probe"], "the LAN reached once turned on: \(on.prefix(60)), the listener saw \(probe.hits)")
-    r.check(got("dns").hasPrefix("HTTP "), "the guest's own DNS while off (\(args["dns"] ?? "http://example/") DIRECT): \(got("dns").prefix(60))")
+    r.check(got("internet").hasPrefix("HTTP 200"), "internet through the proxy: \(clip(got("internet"), 60))")
+    r.check(off.hasPrefix("ERROR"), "the LAN refused while off: \(clip(off, 60))")
+    r.check(on.hasPrefix("HTTP 200") && probe.hits == ["/lan-probe"], "the LAN reached once turned on: \(clip(on, 60)), the listener saw \(probe.hits)")
+    r.check(got("dns").hasPrefix("HTTP "), "the guest's own DNS while off (\(args["dns"] ?? "http://example/") DIRECT): \(clip(got("dns"), 60))")
     let lines = ((try? String(contentsOf: sockets, encoding: .utf8)) ?? "").split(separator: "\n").map { $0.split(separator: " ").map(String.init) }
         .filter { $0.count >= 5 }
     let flip = e.one("lan-on").double("at")
@@ -234,3 +234,6 @@ func localNetworkCheck(_ args: Arguments) -> Never {
     r.check(e.any("done") && status == 0, "driver finished (exit \(status.map(String.init) ?? "timeout"))")
     finish(r, work: work)
 }
+
+/// The first line of `text`, at most `count` characters.
+func clip(_ text: String, _ count: Int) -> String { String((text.split(separator: "\n").first ?? "").prefix(count)) }
