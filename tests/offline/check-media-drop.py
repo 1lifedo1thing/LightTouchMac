@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Native file-drop acceptance and immediate visibility of non-Store transfers. The file kinds are
-UI/DroppedFiles.swift, compiled whole; the drag handling is the device screen's (DisplayView)."""
+"""Native file-drop acceptance on the device screen. The file kinds are UI/DroppedFiles.swift, compiled whole; the
+drag handling is the device screen's (DisplayView). Revealing a dropped file's transfer in the Apps inspector is
+AppsInspectorRowsTests' (AppsInspector.revealsTransfer)."""
 from pathlib import Path
 import subprocess, tempfile
 
 root = Path(__file__).resolve().parents[2]
 display = (root / 'LightTouchMac/UI/DisplayView.swift').read_text()
-inspector = (root / 'LightTouchMac/UI/AppsInspectorViewController.swift').read_text()
 drop = display[display.index('    override func draggingEntered('):display.index('\n}\n\n/// The shell\'s home button:')]
-a = inspector.index('    @objc private func installStarted(')
-started = inspector[a:inspector.index('\n    }', a) + 6].replace('private func', 'func')
 code = r'''import Cocoa
 nonisolated let device = UUID()
 struct DeviceInstance { let id = device }
@@ -46,29 +44,6 @@ extension NSPasteboard.PasteboardType { static let ltmCatalogApp = Self("test.ca
   draggingPasteboard.clearContents()
   precondition(draggingPasteboard.writeObjects(names.map { URL(fileURLWithPath: "/tmp/" + $0) as NSURL }))
  }
-}
-@MainActor final class InstallJob { var catalogIpaID: Int?; let deviceID = device }
-@MainActor final class TransferTable: NSTableView {
- var lastVisibleRow: Int?
- override func scrollRowToVisible(_ row: Int) {
-  precondition(row >= 0 && row < numberOfRows, "accepted transfer must exist before scrolling")
-  lastVisibleRow = row
-  super.scrollRowToVisible(row)
- }
-}
-@MainActor final class Inspector: NSViewController, NSTableViewDataSource {
- enum PaneMode { case store, installed }
- var mode = PaneMode.store
- let emulator = EmulatorController()
- var pending: [InstallJob] = []
- let tableView = TransferTable()
- override func loadView() { view = NSView(); view.addSubview(tableView); tableView.dataSource = self }
- func setMode(_ mode: PaneMode) { guard self.mode != mode else { return }; self.mode = mode; reloadTablePreservingSelection() }
- func numberOfRows(in tableView: NSTableView) -> Int { mode == .installed ? pending.count : 0 }
- func reloadTablePreservingSelection() { tableView.reloadData() }
- func updateButtons() {}
- func showInstalledPlaceholder(_ text: String?) {}
-''' + started + r'''
 }
 @main struct Check {
  @MainActor static func main() throws {
@@ -122,25 +97,7 @@ extension NSPasteboard.PasteboardType { static let ltmCatalogApp = Self("test.ca
   precondition(view.draggingEntered(drag) == .copy && drag.numberOfValidItemsForDrop == 1)
   precondition(view.performDragOperation(drag) && catalog == [42])
 
-  let split = NSSplitViewController(), inspector = Inspector()
-  split.addSplitViewItem(NSSplitViewItem(viewController: NSViewController()))
-  let itemView = NSSplitViewItem(inspectorWithViewController: inspector)
-  split.addSplitViewItem(itemView)
-  let window = NSWindow(contentViewController: split)
-  window.setContentSize(NSSize(width: 640, height: 480))
-  _ = inspector.view
-  itemView.isCollapsed = true
-  let store = InstallJob(); store.catalogIpaID = 42
-  inspector.installStarted(Notification(name: .init("start"), object: store))
-  precondition(inspector.mode == .store && itemView.isCollapsed, "ordinary Store installs must not change the current view")
-  let imported = InstallJob()
-  inspector.installStarted(Notification(name: .init("start"), object: imported))
-  precondition(inspector.mode == .installed && !itemView.isCollapsed)
-  precondition(inspector.pending.last === imported && inspector.tableView.numberOfRows == 2)
-  let queued = InstallJob()
-  inspector.installStarted(Notification(name: .init("start"), object: queued))
-  precondition(inspector.tableView.numberOfRows == 3 && inspector.tableView.lastVisibleRow == 2)
-  print("PASS: accepted drags ring the screen until they leave or end, mixed Finder drops queue supported files, recheck readiness, reject missing handlers/internal IPA drags, route IPSWs to the library, preserve Store drags, and reveal external transfer progress")
+  print("PASS: accepted drags ring the screen until they leave or end, mixed Finder drops queue supported files, recheck readiness, reject missing handlers/internal IPA drags, route IPSWs to the library, and preserve Store drags")
  }
 }
 '''

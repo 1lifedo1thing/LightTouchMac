@@ -52,45 +52,45 @@ public final class InstallJob {
     public let deviceID: UUID
     /// Starts as the .ipa's filename and is replaced by the app's real display
     /// name as soon as the archive has been read.
-    public fileprivate(set) var name: String
-    public fileprivate(set) var status = "Installing…"
+    public internal(set) var name: String
+    public internal(set) var status = "Installing…"
     /// Set when the install has stopped, however it stopped. Two .ipas can be
     /// in flight at once and each one's finish notification reaches the list —
     /// without this, the first to land clears the other's row too.
-    public fileprivate(set) var isFinished = false
+    public internal(set) var isFinished = false
     /// Learned from the .ipa while the install runs. The list keeps this row up
     /// until an app with this id actually shows up, so a finished install never
     /// leaves a gap where neither the placeholder nor the real row is present.
-    public fileprivate(set) var bundleID: String?
-    public fileprivate(set) var finishedAt: Date?
+    public internal(set) var bundleID: String?
+    public internal(set) var finishedAt: Date?
     /// Set when the install ENDED BADLY. A finished job renders as an ordinary
     /// app row, which for a failed one was a lie: the sidebar showed the app,
     /// with its real icon and name, for ~30 s (forever, if the failure was the
     /// device going away) while nothing had been installed at all.
-    public fileprivate(set) var failed = false
-    fileprivate var task: Task<Void, Never>?
-    public fileprivate(set) var retry: (() -> Void)?
-    public fileprivate(set) var dismissed = false
+    public internal(set) var failed = false
+    var task: Task<Void, Never>?
+    public internal(set) var retry: (() -> Void)?
+    public internal(set) var dismissed = false
     public func dismiss() {
         dismissed = true
         NotificationCenter.default.post(name: .ltmAppsChanged, object: deviceID)
     }
 
-    fileprivate init(name: String, device: UUID) { self.name = name; deviceID = device }
+    init(name: String, device: UUID) { self.name = name; deviceID = device }
 
     /// False once the install has passed the last point cancellation can reach.
     /// instproxy_install runs on a detached thread that ignores cancellation, so
     /// after it starts the install WILL finish — the row used to say
     /// "Cancelling…" for the rest of it and then the app appeared anyway.
-    public fileprivate(set) var isCancellable = true
+    public internal(set) var isCancellable = true
 
     /// While a Legacy Store copy is still coming down: 0…1 (negative when the
     /// total size is unknown), nil once staged or for a local-file install.
-    public fileprivate(set) var downloadProgress: Double?
+    public internal(set) var downloadProgress: Double?
     /// The catalog copy this job installs, so search results recognize it.
-    public fileprivate(set) var catalogIpaID: Int?
+    public internal(set) var catalogIpaID: Int?
     /// The catalog icon, so the pending row can show it before the .ipa lands.
-    public fileprivate(set) var catalogIconURL: URL?
+    public internal(set) var catalogIconURL: URL?
 
     public var isCancelled: Bool { task?.isCancelled ?? false }
     public func cancel() { task?.cancel() }
