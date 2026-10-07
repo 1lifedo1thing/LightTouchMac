@@ -12,7 +12,8 @@ import HostRuntime
 // "watch DIR" starts the app's DeviceFileWatch on DIR (and its children): "meddled" events follow any change.
 // "sample LABEL S" measures the helper for S seconds: pump rate (heartbeats/s), frames/s, CPU, wakeups and energy
 // (proc_pid_rusage), and whether it holds an idle-sleep assertion (pmset). "visible on|off" is the window's
-// occlusion (LinkCommand.screenVisible): how long until the next pump tick and, if one was pending, frame.
+// occlusion (LinkCommand.screenVisible): how long until the pump has ticked 3 times (back at speed) and, if one was
+// pending, the next frame.
 
 import Foundation
 import IOSurface
@@ -233,7 +234,7 @@ Thread.detachNewThread {
             var tick: Double?, frame: Double?
             while Date().timeIntervalSince(start) < 1, tick == nil || frame == nil {
                 let ms = Date().timeIntervalSince(start) * 1000
-                if tick == nil, (link.status?.heartbeat ?? 0) != h0 { tick = ms }
+                if tick == nil, (link.status?.heartbeat ?? 0) &- h0 >= 3 { tick = ms }
                 if frame == nil, (link.status?.frameSerial ?? 0) != f0 { frame = ms }
                 usleep(500)
             }

@@ -33,8 +33,8 @@ status block, frame ring, framed link). Cases:
   keyboard   --iphone-device (n90ap): lit, Connect Hardware Keyboard off then on: both accepted (ok(true)), quit
   power      before boot, the pump runs at 60 Hz, 30 with the host constrained (LTM_HOST_CONSTRAINED=1 for thermal
              pressure or Low Power Mode). iPod, lit: shown, 60 Hz and an idle-sleep assertion (pmset); hidden
-             (LinkCommand.screenVisible false), at most 5 Hz and none; shown again, the next tick within 100 ms
-             (5 times); the guest's display asleep (power button), at most 5 Hz and none; woken, 60 Hz. Prints
+             (LinkCommand.screenVisible false), at most 5 Hz and none; shown again, 3 ticks within 100 ms
+             (5 times, 40-240 ms before the next slow tick); the guest's display asleep (power button), at most 5 Hz and none; woken, 60 Hz. Prints
              CPU, wakeups and energy (proc_pid_rusage) per state.
 
     tests/sessions/check-helper-boot.py --ipad-device DIR [--helper PATH] [--dylib PATH] [--work DIR] [--only a,b]
@@ -493,7 +493,9 @@ def main():
             # Samples start 3 s after any input (input keeps the pump live for 2 s).
             steps = ["boot", "lit 0.03 300", "wait 2", "button 0", "wait 2", IPOD_UNLOCK, "wait 3",
                      "sample shown 5", "visible off", "sample hidden 5"]
-            steps += ["visible on", "wait 0.5", "visible off", "wait 0.7"] * 5
+            # Shown again at 40-240 ms before the next 4 Hz tick (hidden starts its ticks when the command lands).
+            for gap in (0.51, 0.56, 0.61, 0.66, 0.71):
+                steps += ["visible on", "wait 0.5", "visible off", f"wait {gap}"]
             steps += ["visible on", "button 1", "waitSleep 20", "wait 3", "sample asleep 5", "button 1", "wait 1",
                       "sample woken 2", "quit", "expectExit 60"]
             d = Driver(args, bin_dir, helper, work, "power", {"machine": "iPod-Touch", "boot": ipod_boot(files, work / "power/overlay"),
@@ -513,8 +515,8 @@ def main():
             check(ok("woken", 50, 65, True), "woken by the power button: 60 Hz again", "power", results)
             shown = [e for e in d.find("visible") if e["on"]][:5]
             ticks = [e["tickMs"] for e in shown]
-            print(f"   shown again: next tick {ticks} ms, frame {[e['frameMs'] for e in shown]} ms (-1: none pending)")
-            check(len(ticks) == 5 and all(0 <= t < 100 for t in ticks), "shown again: the pump ticks within 100 ms", "power", results)
+            print(f"   shown again: 3 ticks after {ticks} ms, frame {[e['frameMs'] for e in shown]} ms (-1: none pending)")
+            check(len(ticks) == 5 and all(0 <= t < 100 for t in ticks), "shown again: back at 60 Hz within 100 ms", "power", results)
 
     finally:
         for pid in started:

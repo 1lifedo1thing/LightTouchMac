@@ -63,7 +63,7 @@ final class DeviceHost: @unchecked Sendable {
     /// Frames at 60 Hz (30 under serious thermal pressure or Low Power Mode) while the app shows the screen
     /// and the guest's display is on (or was just touched); otherwise 4 Hz, enough for the status block and a
     /// hidden device's first frames. Status at 20 Hz live, every tick otherwise; the heartbeat on every tick
-    /// (also before boot). Going live reschedules at once: the next frame goes out on the next run of the queue.
+    /// (also before boot). A new rate starts with a tick at once, so a screen shown again gets its frame then.
     func startPump() {
         let timer = DispatchSource.makeTimerSource(queue: pumpQueue)
         timer.setEventHandler { [weak self] in self?.tick() }
@@ -101,11 +101,9 @@ final class DeviceHost: @unchecked Sendable {
         let interval = next ? (constrained ? 1.0 / 30 : 1.0 / 60) : 0.25
         holdActivity(live: next)
         guard force || interval != pumpInterval else { return }
-        let rising = next && !live
         live = next
         pumpInterval = interval
-        pump?.schedule(deadline: rising ? .now() : .now() + interval, repeating: interval,
-                       leeway: next ? .milliseconds(2) : .milliseconds(50))
+        pump?.schedule(deadline: .now(), repeating: interval, leeway: next ? .milliseconds(2) : .milliseconds(50))
     }
 
     /// pumpQueue. A booted VM keeps App Nap off for good (its timers are the guest's clock); only while
