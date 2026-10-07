@@ -37,8 +37,12 @@ let package = Package(name: "OfflineChecks", platforms: [.macOS("14.4")],
         // The 3D model (RealityKit), for headless renders.
         .target(name: "Model", dependencies: [.product(name: "LightTouchCore", package: "LightTouchCore"), .product(name: "HostRuntime", package: "HostRuntime")],
                 swiftSettings: settings),
+        // The helper's (LightTouchDevice's) own code that stands alone: the libqemu binding.
+        .target(name: "Helper", dependencies: [.product(name: "DeviceRuntime", package: "DeviceRuntime"), .product(name: "HostRuntime", package: "HostRuntime")],
+                swiftSettings: settings),
         // A private home and app state for the test process (LightTouchCore's own, Tests/TestIsolation).
         .target(name: "TestIsolation"),
-        .testTarget(name: "OfflineTests", dependencies: ["AppViews", "Display", "Menus", "Model", "Sidebar", "TestIsolation"], swiftSettings: settings),
+        .testTarget(name: "OfflineTests", dependencies: ["AppViews", "Display", "Helper", "Menus", "Model", "Sidebar", "TestIsolation",
+                                                         .product(name: "DeviceRuntime", package: "DeviceRuntime")], swiftSettings: settings),
     ],
     swiftLanguageModes: [.v5])
