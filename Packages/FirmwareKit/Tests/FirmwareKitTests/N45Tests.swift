@@ -309,6 +309,19 @@ import Testing
             #expect(d["SBDisableIdleSleep"] as? Bool == true && d["SBAutoLockTime"] as? Int == -1)
         }
     }
+    /// 1.1.3 moved SpringBoard to the mobile user (its launchd job's UserName): the baked preferences go to its home,
+    /// mobile-owned; 1.0's job names no user and SpringBoard reads root's (1.1.4 sat at 0x5 brightness with root's).
+    @Test func springBoardUserFollowsItsJob() throws {
+        try Oracle.withTemp { m in
+            #expect(N45Board.springBoardUser(m) == (N45Board.rootLibrary, 0))
+            let job = m.appendingPathComponent(SystemEdits.daemons + "/com.apple.SpringBoard.plist")
+            try SystemEdits.mkdirs(job.deletingLastPathComponent())
+            try PropertyListSerialization.data(fromPropertyList: ["Label": "com.apple.SpringBoard"], format: .xml, options: 0).write(to: job)
+            #expect(N45Board.springBoardUser(m) == (N45Board.rootLibrary, 0))
+            try PropertyListSerialization.data(fromPropertyList: ["Label": "com.apple.SpringBoard", "UserName": "mobile"], format: .xml, options: 0).write(to: job)
+            #expect(N45Board.springBoardUser(m) == ("private/var/mobile/Library", 501))
+        }
+    }
     /// 3A101a's LaunchDaemons: the bake keeps mDNSResponder, 1.x's only host-name resolver (without it Safari sent no
     /// DNS query and found no server), and still drops the jobs that wait on absent hardware.
     @Test func resolverKept() {

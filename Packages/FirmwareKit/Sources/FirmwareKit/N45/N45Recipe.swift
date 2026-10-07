@@ -84,6 +84,12 @@ final class N45Board: Board {
     }
 
     static let rootLibrary = "private/var/root/Library"
+    /// Whose Library SpringBoard reads its preferences from: mobile (501) when its launchd job says so (1.1.3 on), else root.
+    static func springBoardUser(_ m: URL) -> (library: String, uid: UInt32) {
+        let job = m.appendingPathComponent(SystemEdits.daemons + "/com.apple.SpringBoard.plist")
+        let plist = (try? Data(contentsOf: job)).flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? [String: Any] }
+        return plist?["UserName"] as? String == "mobile" ? ("private/var/mobile/Library", 501) : (rootLibrary, 0)
+    }
     static let openGLESExports = "opengles-1x.exports"
     /// 1.x's SCPreferences live in the user's home, root's: SystemConfiguration (1.0 and 1.1) opens
     /// ~/Library/Preferences/SystemConfiguration (2.x moved them to /var/preferences, where 1.x never looks).
@@ -240,11 +246,13 @@ final class N45Board: Board {
             try c.fit.check(FitCheck.webProxy(FitCheck.Firmware(root: m, arch: "armv6")), required: false, outcome: "kept: the PAC is unused")
             owners += try Self.seedSystemConfiguration(m).map { (UInt32(0), $0) }
             derived["wifi"] = "en0 AirPort service (PAC /\(SystemEdits.pacPath)); known network qemu-ios, Wi-Fi on (/\(Self.wifiPrefs))"
-            // 1.x runs no guest helpers (it_prefs): its SpringBoard preferences, in root's Library (1.x's user)
-            let sbPrefs = Self.rootLibrary + "/Preferences/com.apple.springboard.plist"
-            let prefs = try N72Board.bakePrefs(m, dir: Self.rootLibrary + "/Preferences")
+            // 1.x runs no guest helpers (it_prefs): its SpringBoard preferences, in the home of the user SpringBoard
+            // runs as (root's on 1.0 and 1.1.2; mobile's from 1.1.3, its launchd job's UserName)
+            let user = Self.springBoardUser(m)
+            let sbPrefs = user.library + "/Preferences/com.apple.springboard.plist"
+            let prefs = try N72Board.bakePrefs(m, dir: user.library + "/Preferences")
             derived["prefs"] = try Self.bakeNoIdleSleep(m, prefs: sbPrefs) ? prefs + "; SBDisableIdleSleep (no deep sleep)" : prefs
-            if fm.fileExists(atPath: at(sbPrefs).path) { owners.append((0, sbPrefs)) }
+            if fm.fileExists(atPath: at(sbPrefs).path) { owners.append((user.uid, sbPrefs)) }
             let (report, record, owned) = try Self.bake(m, helpers: c.o.guestTools, gles: recipe.options["gles_shim"] ?? true, fit: c.fit, log: c.log)
             for (k, v) in report { derived[k] = v }
             c.guestPackage = record
@@ -259,7 +267,9 @@ final class N45Board: Board {
         derived["launch_daemons_removed"] = removed
         let hfs = try HFSPlusVolume(volume, writable: true)
         try hfs.leaveJournalToDevice()
-        c.log("0:0 patched \(try hfs.setOwner(owners.map(\.1), uid: 0, gid: 0)) catalog record(s)")
+        for (uid, paths) in Dictionary(grouping: owners, by: \.0) {
+            c.log("\(uid):\(uid) patched \(try hfs.setOwner(paths.map(\.1), uid: uid, gid: uid)) catalog record(s)")
+        }
         c.log("\(try hfs.normalize(after: newest, to: newest)) catalog records dated as of the IPSW's newest file")
     }
 
