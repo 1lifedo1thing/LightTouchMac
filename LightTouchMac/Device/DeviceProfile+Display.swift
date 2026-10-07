@@ -41,42 +41,44 @@ nonisolated extension DeviceProfile {
 
     // MARK: - Free-form screen (machine panel=WxH, issue #21)
 
-    /// Boards whose guest lays out for a panel of another size and whose panel= limits snappedPanel knows. The
-    /// 1G's machine takes panel= too, but iPhone OS 1.1's SpringBoard keeps its icons and dock at 320x480 (the
-    /// iPhone 2G runs the same OS); the other boards' machines have no panel=.
-    var supportsFreeForm: Bool { self == .iPodTouch2G || self == .iPad1 }
+    /// Boards whose guest lays out for a panel of another size and whose panel= limits snappedPanel knows (qemu-ios
+    /// w05's table). The 1G's and the iPhone's machines take panel= too, but iPhone OS 1's SpringBoard keeps its icons
+    /// and dock at 320x480.
+    var supportsFreeForm: Bool { self != .iPodTouch1G && self != .iPhone2G }
     var freeFormUnavailableReason: String? {
-        switch self {
-        case .iPodTouch2G, .iPad1: nil
-        case .iPodTouch1G, .iPhone2G: "iPhone OS 1 keeps its Home screen at 320 × 480, whatever size the screen is."
-        default: "Free-Form Screen works on the iPod touch (2nd generation) and the iPad."
-        }
+        supportsFreeForm ? nil : "iPhone OS 1 keeps its Home screen at 320 × 480, whatever size the screen is."
     }
 
-    /// iBoot's iPad display region, 0x4f700000 up to DRAM's end: 9 MB at 4 bytes a pixel.
-    static let iPadPanelPixels: CGFloat = 0x900000 / 4
+    /// The A4 boards' display pipe (ipad1.c's machine: iPad, iPod touch 4G, iPhone 4); the others have the
+    /// S5L8720-style CLCD (iPod touch 2G and 3G, iPhone 3GS).
+    var hasA4Panel: Bool { self == .iPad1 || self == .iPodTouch4G || self == .iPhone4 }
+
+    /// iBoot's display region, 0x4f700000 up to the iPad's DRAM end: 9 MB at 4 bytes a pixel. Every A4 board
+    /// scans out from that base, so the iPad's bound holds for the iPhone 4 and iPod touch 4G too.
+    static let a4PanelPixels: CGFloat = 0x900000 / 4
 
     /// The nearest size the board's panel= accepts to an upright screen size, in guest pixels. qemu-ios's
-    /// limits, in the panel's scan orientation: the iPod's even width 64…1024 by 64…511 rows (the S5L8720
-    /// window keeps 9 bits of height); the iPad's landscape width a multiple of 16, both sides 64…2047, and no
-    /// more pixels than iBoot's display region holds (shrunk keeping the aspect). Upright it is never wider than
-    /// tall: the guest's portrait is the panel's longer side (guestTurn), so a wider one would come back turned.
+    /// limits, in the panel's scan orientation: the CLCD boards' even width 64…1024 by 64…511 rows (the window
+    /// keeps 9 bits of height); the A4 boards' width a multiple of 16, both sides 64…2047, and no more pixels than
+    /// iBoot's display region holds (shrunk keeping the aspect). Upright it is never wider than tall: the guest's
+    /// portrait is the panel's longer side (guestTurn), so a wider one would come back turned.
     func snappedPanel(upright size: CGSize) -> CGSize {
         let turned = panelRotation != 0
         let s = turned ? CGSize(width: size.height, height: size.width) : size
-        let pad = self == .iPad1
+        let a4 = hasA4Panel
         func fit(_ v: CGFloat, _ hi: CGFloat) -> CGFloat { min(max(v.isFinite ? v.rounded() : 64, 64), hi) }
-        var w = fit(s.width, pad ? 2047 : 1024), h = fit(s.height, pad ? 2047 : 511)
-        if pad, w * h > Self.iPadPanelPixels {
-            let k = (Self.iPadPanelPixels / (w * h)).squareRoot()
+        var w = fit(s.width, a4 ? 2047 : 1024), h = fit(s.height, a4 ? 2047 : 511)
+        if a4, w * h > Self.a4PanelPixels {
+            let k = (Self.a4PanelPixels / (w * h)).squareRoot()
             w = max(64, w * k); h = max(64, h * k)
         }
-        let step: CGFloat = pad ? 16 : 2
+        let step: CGFloat = a4 ? 16 : 2
         w = max(64, (w / step).rounded(.down) * step)
         h = h.rounded(.down)
-        if pad { h = min(h, (Self.iPadPanelPixels / w).rounded(.down)) }
-        // Portrait no wider than tall: the iPad's upright width is its scan height, the iPod's its even width.
-        if pad { h = min(h, w) } else { w = min(w, max(64, (h / 2).rounded(.down) * 2)) }
+        if a4 { h = min(h, (Self.a4PanelPixels / w).rounded(.down)) }
+        // Portrait no wider than tall: a landscape-mounted panel's upright width is its scan height, a portrait
+        // one's its scan width (in the board's steps).
+        if turned { h = min(h, w) } else { w = min(w, max(64, (h / step).rounded(.down) * step)) }
         return turned ? CGSize(width: h, height: w) : CGSize(width: w, height: h)
     }
 

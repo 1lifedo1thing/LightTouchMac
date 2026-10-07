@@ -2,9 +2,9 @@
 """View ▸ Free-Form Screen (issue #21): the production DisplayView resized by dragging, and a non-native panel's
 display and touch mapping. Windows are built but never ordered in; nothing appears on screen.
 
-- Sizes: DeviceProfile.snappedPanel clamps and snaps an upright size to what the board's panel= accepts (iPod even
-  width 64…1024 by 64…511 rows; iPad landscape width a multiple of 16, 64…2047, within iBoot's 9 MB display
-  region); panelOption/uprightPanel turn it into device.plist's "WxH" as the panel scans (the iPad's landscape).
+- Sizes: DeviceProfile.snappedPanel clamps and snaps an upright size to what the board's panel= accepts (iPod
+  touch 2G/3G and 3GS even width 64…1024 by 64…511 rows; iPad, iPhone 4 and iPod touch 4G scan width a multiple of
+  16, 64…2047, within iBoot's 9 MB display region); every board but iPhone OS 1's; panelOption/uprightPanel turn it into device.plist's "WxH" as the panel scans (the iPad's landscape).
 - Display: an iPod at 320x504 shows its LCD alone at one point per guest pixel, centred; 2x zoom doubles it; a
   click at a point of the LCD is a touch at that fraction. An iPad at 1280x768 (portrait 768x1280) likewise.
 - Drag: a press just outside the LCD's edge grabs it; dragging stretches the LCD (the frame squishes live) and the
@@ -51,12 +51,26 @@ source = prefix + stub + r'''
   check(pad.snappedPanel(upright: size(768, 1290)) == size(768, 1280), "iPad: landscape width (portrait height) in 16s")
   check(pad.snappedPanel(upright: size(768, 1024)) == size(768, 1024), "iPad native")
   let big = pad.snappedPanel(upright: size(2000, 2000))
-  check(big.width * big.height <= DeviceProfile.iPadPanelPixels && Int(big.height) % 16 == 0 && big.width >= 1500,
+  check(big.width * big.height <= DeviceProfile.a4PanelPixels && Int(big.height) % 16 == 0 && big.width >= 1500,
         "iPad display region: \(big)")
   check(pad.panelOption(upright: size(768, 1280)) == "1280x768" && pad.uprightPanel("1280x768") == size(768, 1280), "iPad panel=")
   check(pod.panelOption(upright: size(320, 504)) == "320x504" && pod.uprightPanel("320x504") == size(320, 504), "iPod panel=")
   let boards: [DeviceProfile] = [.iPodTouch2G, .iPad1, .iPodTouch1G, .iPodTouch4G, .iPhone4, .iPhone3GS, .iPodTouch3G, .iPhone2G]
-  check(boards.filter(\.supportsFreeForm) == [pod, pad] && boards.allSatisfy { ($0.freeFormUnavailableReason == nil) == $0.supportsFreeForm }, "boards")
+  // qemu-ios w05's panel= table: every board but iPhone OS 1's (its SpringBoard keeps 320x480).
+  check(boards.filter(\.supportsFreeForm) == [pod, pad, .iPodTouch4G, .iPhone4, .iPhone3GS, .iPodTouch3G]
+        && boards.allSatisfy { ($0.freeFormUnavailableReason == nil) == $0.supportsFreeForm }, "boards")
+  // The A4 phones scan portrait: width (scan width) in 16s, 64…2047, never wider than tall, within the display region.
+  let four = DeviceProfile.iPhone4
+  check(four.snappedPanel(upright: size(640, 960)) == size(640, 960), "iPhone 4 native")
+  check(four.snappedPanel(upright: size(650, 1137)) == size(640, 1137), "iPhone 4: width in 16s")
+  check(four.snappedPanel(upright: size(1000, 700)) == size(688, 700), "iPhone 4: never wider than tall upright")
+  check(DeviceProfile.iPodTouch4G.snappedPanel(upright: size(3000, 3000)).width <= 2047
+        && four.snappedPanel(upright: size(1500, 2047)).width * four.snappedPanel(upright: size(1500, 2047)).height <= DeviceProfile.a4PanelPixels,
+        "A4 limits")
+  check(four.panelOption(upright: size(640, 1136)) == "640x1136" && four.uprightPanel("640x1136") == size(640, 1136), "iPhone 4 panel=")
+  // The 3G and 3GS: the 2G's CLCD limits.
+  check(DeviceProfile.iPhone3GS.snappedPanel(upright: size(321, 600)) == size(320, 511)
+        && DeviceProfile.iPodTouch3G.snappedPanel(upright: size(1100, 600)) == size(510, 511), "3G/3GS: the 2G's limits")
 
   DisplayView.panelCommitDelay = .milliseconds(50)
   var requests: [(CGSize?, Bool)] = []
