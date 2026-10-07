@@ -31,8 +31,8 @@ stopping 20-45 s into the shutdown.
 
 --single boots one prepared base (firmwarekit create output) as the app does: lit, lockdown over its own
 usbmuxd, AFC upload + download round trips of 16384, 16385, 65536 and 1048583 bytes (no restore), an IPA
-install, and a clean shutdown; screenshots lock/home/installed in --work/<board>/. scripts/verify-archive
-runs it with the bundle's helper, dylib, usbmuxd, Frameworks and Resources/Device.
+install, and a clean shutdown; screenshots lock/home/installed in --work/<board>/. The Release test plan
+(Packages/ReleaseChecks ReleaseBootTests) runs it with the bundle's helper, dylib, usbmuxd, Frameworks and Resources/Device.
 
 --guest runs the no-shell guest-services scenario (tests/drivers/session-driver/guest.swift) on two
 iPods at once: the shipping image (nand-current) and a fresh firmwarekit 7E18 (--ipod-device),

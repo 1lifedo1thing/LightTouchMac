@@ -16,4 +16,7 @@
    <FileRef
       location = "group:Packages/DeviceServices">
    </FileRef>
+   <FileRef
+      location = "group:Packages/ReleaseChecks">
+   </FileRef>
 </Workspace>

@@ -76,26 +76,30 @@ A release is an Xcode archive; nothing edits the bundle after Xcode.
 2. **Xcode ▸ Product ▸ Archive** (scheme `LightTouchMac`, Release, arm64 + x86_64, Developer ID). The archive's
    Copy Files phases bring in the vendor directory (Code Sign On Copy signs its binaries with the app's identity
    and the hardened runtime); only `LightTouchDevice` carries entitlements (`Configuration/LightTouchDevice.entitlements`).
-   The scheme's Archive post-action, `scripts/verify-archive`, then checks the archived app: the vendor directory
-   matches the pins; every Mach-O signed, hardened, universal, with the declared entitlements and an in-bundle load
-   closure; `tests/release/test-package.py` and `test-bundle-hygiene.py`; no code loose under `Resources`; the
-   identity scan; and, in-bundle, the bundled `firmwarekit` prepares (or unpacks) each `VERIFY_ENTRIES` device and
-   `tests/sessions/check-sessions.py --single` boots it through the bundled helper, dylib, services helper and
-   usbmuxd. The verdict is in the archive's Organizer comment and `verify.log`; a failed archive's name ends
-   "(VERIFY FAILED)". Xcode does not fail an archive for its post-action, so read the comment before distributing.
-3. **Organizer ▸ Distribute App ▸ Direct Distribution** notarizes and exports the app.
-4. **`scripts/check-export "path/to/Light Touch.app"`** zips the exported app (ditto) and checks the unzipped copy:
-   `codesign --deep --strict`, the stapled ticket, Gatekeeper ("Notarized Developer ID"), slices, entitlements and
-   the identity scan. It writes `Light Touch.zip` and `SHA256SUMS` beside the app.
+   Archiving takes only Xcode's own time.
+3. **Test the archive**: `TEST_RUNNER_LTM_RELEASE_ARCHIVE=path/to/X.xcarchive xcodebuild test -workspace
+   LightTouchMac.xcworkspace -scheme LightTouchMac -testPlan Release` (`TEST_RUNNER_LTM_RELEASE_APP` takes an app
+   instead). `Packages/ReleaseChecks` checks the archived app: it is built from the current pins; every Mach-O
+   signed, hardened, universal, with the declared entitlements and an in-bundle load closure at the app's minimum
+   macOS; the bundled helper, services worker and bridge run from the bundle and the helper loads the bundled
+   emulator; bundle hygiene (licenses, sources, Help, no local paths, the built-in iPod's placeholder identity,
+   stripped, no duplicates, nothing loose under `Resources`, the guest archive included); the identity scan; and the
+   bundled `firmwarekit` unpacks the built-in iPod, which `tests/sessions/check-sessions.py --single` boots through
+   the bundled helper, dylib, services worker and usbmuxd. `TEST_RUNNER_LTM_RELEASE_FULL=1` also prepares and boots
+   every release entry (minutes each).
+4. **Organizer ▸ Distribute App ▸ Direct Distribution** notarizes and exports the app.
+5. **`scripts/check-export "path/to/Light Touch.app"`** zips the exported app (ditto), runs the Release plan on the
+   unzipped copy as an export (adding the stapled ticket and Gatekeeper's "Notarized Developer ID"), and writes
+   `Light Touch.zip` and `SHA256SUMS` beside the app.
 
 ## Gates
 
 One runner, three tiers, and a wrapper that runs the host-only ones:
 
 ```sh
-tests/run.py offline            # no emulator, about a minute: every tests/offline/check-*.py (swiftc on the app's
-                                # sources plus temp fixtures) and the catalog checks, -j 4 through one shared
-                                # module cache
+tests/run.py offline            # no emulator: the Unit test plan (xcodebuild test on LightTouchMac.xcworkspace: the
+                                # packages' Swift Testing suites) and the remaining tests/offline/check-*.py (swiftc
+                                # on the app's views plus temp fixtures), -j 4 through one shared module cache
 tests/run.py release            # packaging and build checks (tests/release/); --network adds the dependency fetch
 tests/run.py sessions           # helper + emulator, one boot at a time, -audio driver=none: check-helper-boot,
                                 # check-sessions (--ipad-device, then --guest), check-guest-package,
@@ -113,12 +117,12 @@ through `scripts/sources.py` (the pin in `build-support/sources.json`).
 
 | Directory | What is there |
 |---|---|
-| `tests/offline/` | One check per topic. Each is standalone; its docstring names what it compiles and its flags. Most compile whole production files with a small fixture; the ones that still cut a section out of a hub file by marker are listed with the reason in [tests/SLICED.md](tests/SLICED.md) |
-| `tests/sessions/` | `check-sessions.py` boots two devices at once through the app's own session code (`tests/drivers/session-driver`); `--single DIR --board ipod|ipad` boots one prepared base the way the app does and is what `scripts/verify-archive` runs; `--guest` runs the guest-services scenario. `check-helper-boot.py` drives the helper directly (`tests/drivers/helper-driver`). `matrix.py`, `install-durability.py` and `volume-rebuild-oracle.py` are tools run by hand (`tests/matrix.py` still works) |
-| `tests/release/` | Build and packaging checks: dependency sources, guest build, the native merge, Mach-O closures (`test-package.py`, which also checks an app given as its argument), bundle hygiene. `scripts/check-macho.py` and `scripts/test-glib-compat.py` stay in `scripts/` because the native recipe hash includes them |
+| `Packages/*/Tests`, `Unit.xctestplan` | Swift Testing: LightTouchCoreTests (the app's logic), HostRuntimeTests, FirmwareKitTests, HostServiceWireTests, ReleaseChecksTests' fixtures. `xcodebuild test -workspace LightTouchMac.xcworkspace -scheme LightTouchMac` runs the Unit plan (an Xcode project can't reach a local package's tests; the workspace can). LightTouchCore's tests run one at a time in a private home (Tests/TestIsolation) |
+| `tests/offline/` | What still needs a fake C library, a helper process or a real AppKit view: the services engine against a fake libimobiledevice, the C lockdown writes, the helper's web proxy, and offscreen renders of the app's views. Each docstring names what it compiles; the one that still cuts a section out of a production file is in [tests/SLICED.md](tests/SLICED.md) |
+| `tests/sessions/` | `check-sessions.py` boots two devices at once through the app's own session code (`tests/drivers/session-driver`); `--single DIR --board ipod|ipad` boots one prepared base the way the app does and is what `ReleaseBootTests` runs on a built app; `--guest` runs the guest-services scenario. `check-helper-boot.py` drives the helper directly (`tests/drivers/helper-driver`). `matrix.py`, `install-durability.py` and `volume-rebuild-oracle.py` are tools run by hand (`tests/matrix.py` still works) |
+| `tests/release/` | Build and packaging checks: dependency sources, guest build, the native merge, `scripts/check-macho.py` on fixture binaries (`test-package.py`). `scripts/check-macho.py` and `scripts/test-glib-compat.py` stay in `scripts/` because the native recipe hash includes them; a built app's checks are `Release.xctestplan` (Releases, step 3) |
 | `tests/drivers/`, `tests/fixtures/` | The Swift drivers the session checks compile; the fake preparer, the catalog server and the Swift fixtures the checks share |
 | `swift test --package-path Packages/FirmwareKit` | FirmwareKit's synthetic unit tests and fixed legacy reference hashes. Optional corpus tests report real skips unless `FK_TEST_CORPUS=1` or `FK_REQUIRE_FIXTURES=1` selects them; selected missing inputs fail. Format/bake oracle checks resolve qemu-ios through `FIRMWAREKIT_QEMU_IOS` |
-| `scripts/verify-archive` | The Archive post-action (Releases, step 2); `--static APP` runs its signature, slice and scan checks alone |
 
 Every headless boot passes `-audio driver=none`. The checks are headless; none of them launch the app.
 
@@ -131,8 +135,8 @@ the USB charger and the `panel=` limits; the helper reports them in its hello an
 case and its `Facts` in `Packages/HostRuntime/Sources/HostRuntime/Board.swift`: the names, the model ID, the SoC
 family (which decides how its prepared base boots and its guest architecture) and the art. Adding a board touches
 those two places; its firmware is catalog entries, and preparing it is a FirmwareKit recipe if no existing one fits.
-`tests/fixtures/machines.json` is the listing the tests use without an emulator; `tests/release/test-package.py`
-holds each of its machines to the bundled library's.
+`tests/fixtures/machines.json` is the listing the tests use without an emulator; the Release plan
+(`ReleaseAppStaticTests`) holds each of its machines to the bundled library's.
 
 `device.lock.json` is `DeviceLock` (HostRuntime): FirmwareKit writes it, everything else reads it through that type.
 
@@ -162,9 +166,11 @@ holds each of its machines to the bundled library's.
 | `LightTouchMac/App/` | `main`, `AppDelegate`, `MainMenu`, `WindowRestorationPolicy`, `NetworkAccessPreference` |
 | `LightTouchDevice/` | The per-device helper: one QEMU instance, frames over IOSurface, control over the `DeviceRuntime` link, and the device's web proxy (`WebProxy` on URLSession, `WebProxyAdapters`) behind the 10.0.2.100:3128 guestfwd |
 | `Packages/DeviceRuntime/` | The app–helper link (`DeviceLink`, `DeviceLinkProtocol`, `DeviceRendezvous`, the `CLink` module); `WebProxyCA`, the per-device proxy CA both sides use |
+| `Packages/LightTouchCore/` | The app's logic that needs no window, mirroring `LightTouchMac/`'s layers (Library, Device, Session, Features, Guest, Apps, Catalog, Input, Capture, UI models); the app target keeps the AppKit and SwiftUI |
+| `Packages/ReleaseChecks/` | The checks of a built app (`Release.xctestplan`): signatures, entitlements, slices and load closure, bundle hygiene, the bundled tools, boots through the bundle |
 | `Packages/DeviceServices/` | One device's stock lockdown services: `HostServiceWire` (the request/event protocol, errors, timeouts, device paths, the Home screen layout) and `HostServiceClient` (the app's `DeviceServices` calls, `HostServiceWorkers`, `NotificationProxy`) |
 | `Packages/FirmwareKit/` | `FirmwareKit` (IPSW → device), `FirmwareSchema` (the wire types, `StorageCapacity`, `DeveloperTools`, `GuestArchive`: what the app links), the `firmwarekit` CLI (`Sources/FirmwareKitCLI`), `CActivation` |
-| `scripts/` | `vendor` (with `build-package-native.sh`, `build-static-deps.sh`, `merge-native.py`, `build-iboot32patcher.sh`, `build-guest-tools.sh`), `verify-archive`, `check-export`, `gate.sh`, `sources.py`, `check-macho.py`, `test-glib-compat.py` |
+| `scripts/` | `vendor` (with `build-package-native.sh`, `build-static-deps.sh`, `merge-native.py`, `build-iboot32patcher.sh`, `build-guest-tools.sh`), `check-export`, `gate.sh`, `sources.py`, `check-macho.py`, `test-glib-compat.py` |
 | `tests/` | `run.py` and the tiers `offline/`, `sessions/`, `release/`; `drivers/` (helper-driver, session-driver), `fixtures/` (fake-firmwarekit.py, catalog-server.py, the Swift fixtures); `SLICED.md` |
 | `build-support/` | `dependencies.json` (pinned archives) and build patches |
 | `Configuration/` | `Shared.xcconfig` (with the gitignored `Vendor.xcconfig` and `Local.xcconfig`), `LightTouchDevice.entitlements` |

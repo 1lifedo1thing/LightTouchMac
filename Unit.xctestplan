@@ -36,6 +36,13 @@
         "identifier": "HostServiceWireTests",
         "name": "HostServiceWireTests"
       }
+    },
+    {
+      "target": {
+        "containerPath": "container:Packages\/ReleaseChecks",
+        "identifier": "ReleaseChecksTests",
+        "name": "ReleaseChecksTests"
+      }
     }
   ],
   "version": 1

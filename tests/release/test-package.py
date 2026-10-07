@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
-"""Exercise deployment-target and relocation checks against real Mach-O files.
-
-    tests/release/test-package.py [PACKAGED.app]
-
-With an app (an archived or exported Light Touch.app), also check its device helper: present in
-Contents/MacOS, hardened runtime with the QEMU entitlements (and no entitlements on the app or
-any other tool), its load closure and
-the dlopened Frameworks/libqemu-arm.dylib resolved inside the bundle, and a
-`--machines` that actually loads the bundled emulator library and knows every catalog board.
-"""
+"""scripts/check-macho.py (the native builds' closure check: build-package-native.sh, build-iboot32patcher.sh,
+scripts/vendor) against real Mach-O files. A built app's checks are Packages/ReleaseChecks (Release.xctestplan)."""
 import plistlib
 import json
 import os
@@ -104,77 +96,3 @@ with tempfile.TemporaryDirectory() as directory:
     assert thin.returncode != 0 and 'missing x86_64 slice' in thin.stderr, thin
 print('PASS: compatible closure, newer transitive library, external path, bundle relocation, missing dependency, weak imports, universal slices')
 
-
-def check_helper(app):
-    app = pathlib.Path(app)
-    helper = app / 'Contents/MacOS/LightTouchDevice'
-    assert helper.is_file() and helper.stat().st_mode & 0o111, f'missing executable {helper}'
-    details = subprocess.run(['codesign', '-dvv', '--entitlements', ':-', helper], capture_output=True, text=True)
-    assert details.returncode == 0, details.stderr
-    for key in ('com.apple.security.cs.allow-jit', 'com.apple.security.cs.allow-unsigned-executable-memory',
-                'com.apple.security.cs.disable-library-validation'):
-        assert key in details.stdout, f'helper lacks entitlement {key}'
-    flags = re.search(r'flags=0x([0-9a-fA-F]+)', details.stderr)
-    assert flags and int(flags[1], 16) & 0x10000, 'helper lacks hardened runtime'
-    assert 'Identifier=gold.samhenri.LightTouchMac.LightTouchDevice' in details.stderr, details.stderr
-    # Only the helper hosts QEMU: the app and every other tool carry no entitlements at all.
-    for path in [app, *(p for p in (app / 'Contents/MacOS').iterdir() if p != helper)]:
-        granted = subprocess.run(['codesign', '-d', '--entitlements', ':-', path], capture_output=True, text=True)
-        assert 'com.apple.security' not in granted.stdout, f'{path.name} has entitlements: {granted.stdout}'
-    subprocess.run(['codesign', '--verify', '--strict', helper], check=True)
-    info = subprocess.run(['/usr/libexec/PlistBuddy', '-c', 'Print :LSMinimumSystemVersion', app / 'Contents/Info.plist'],
-                          capture_output=True, text=True, check=True).stdout.strip()
-    # IPSWs and .ipa files open here from Finder and the Dock (application(_:open:)), never taken over: Alternate.
-    plist = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
-    claimed = {t: d.get('LSHandlerRank') for d in plist.get('CFBundleDocumentTypes', []) for t in d.get('LSItemContentTypes', [])}
-    assert claimed == {'com.apple.itunes.ipsw': 'Alternate', 'com.apple.itunes.ipa': 'Alternate'}, claimed
-    assert plist.get('NSSupportsAutomaticGraphicsSwitching') is True, 'a dual-GPU Intel Mac would switch to its discrete GPU'
-    worker = app / 'Contents/MacOS/LightTouchServices'
-    assert worker.is_file() and os.access(worker, os.X_OK), f'missing service worker {worker}'
-    subprocess.run(['codesign', '--verify', '--strict', worker], check=True)
-    worker_deps = subprocess.run(['otool', '-L', worker], capture_output=True, text=True, check=True).stdout
-    assert 'libqemu' not in worker_deps, 'service worker must not load the emulator: ' + worker_deps
-    # No request is sent: this proves the packaged process can launch/reap
-    # without probing a real device or loading QEMU.
-    socket = '127.0.0.1:1'
-    empty = subprocess.run([worker, '--socket', socket, '--udid', '', '--session', str(uuid.uuid4())],
-        input='', capture_output=True, text=True, timeout=10,
-        env={**os.environ, 'USBMUXD_SOCKET_ADDRESS': socket})
-    assert empty.returncode == 0 and not empty.stdout, empty
-    inetcat = app / 'Contents/MacOS/inetcat'
-    assert inetcat.is_file() and os.access(inetcat, os.X_OK), f'missing stock USB bridge {inetcat}'
-    assert run(inetcat, '--version').returncode == 0
-    dylib = app / 'Contents/Frameworks/libqemu-arm.dylib'
-    closure = subprocess.run([sys.executable, CHECK, '--minos', info, '--bundle', app, helper, worker, inetcat, dylib],
-                             capture_output=True, text=True)
-    assert closure.returncode == 0, closure.stderr
-    probe = subprocess.run([helper, '--machines'], capture_output=True, text=True, timeout=60,
-                           env={k: v for k, v in os.environ.items() if k != 'LTM_QEMU_DYLIB'})
-    assert probe.returncode == 0, probe.stderr
-    listing = json.loads(probe.stdout)
-    loaded = listing['dylibPath']
-    assert {m['board'] for m in listing['machines']} >= {e['board'] for e in json.loads(
-        (app / 'Contents/Resources/firmware-catalog.json').read_text())['entries']}, 'the emulator lacks a catalog board'
-    recorded = json.loads((pathlib.Path(__file__).resolve().parents[2] / 'tests/fixtures/machines.json').read_text())
-    stale = [m['board'] for m in recorded if m not in listing['machines']]
-    assert not stale, f'tests/fixtures/machines.json differs from the emulator for {stale}: record `LightTouchDevice --machines` again'
-    assert pathlib.Path(loaded).resolve() == dylib.resolve(), f'helper loaded {loaded}, not the bundled {dylib}'
-    # iPhone OS 1.x lockdownd is SSLv3 only: the bundled OpenSSL must be built enable-ssl3 enable-ssl3-method
-    # (build-static-deps.sh); without it libimobiledevice-sslv3-ios1.patch asks for a protocol the library lacks.
-    imd = app / 'Contents/Frameworks/libimobiledevice-1.0.dylib'
-    assert '_SSLv3_client_method' in run('nm', '-gU', imd).stdout, f'{imd.name} links an OpenSSL without SSLv3'
-    device = app / 'Contents/Resources/Device'
-    catalog = json.loads((app / 'Contents/Resources/firmware-catalog.json').read_text())
-    # the 2G's and 1G's SecureROMs, and the built-in iPod (one opaque blob, never raw pages)
-    assert catalog['bundled'] == {'n72ap-7E18': 'Device/n72ap-7E18.itbase'}, catalog.get('bundled')
-    assets = ('bootrom_240_4', 'bootrom_s5l8900', 'n72ap-7E18.itbase')
-    assert all((device / name).is_file() for name in assets), f'missing device assets under {device}'
-    assert (device / 'n72ap-7E18.itbase').read_bytes()[:8] == b'ITPACK01', 'the built-in iPod is not a packed device'
-    stray = [p for p in device.rglob('*') if p.is_file() and p.name not in assets]
-    assert not stray, f'unexpected device assets (raw pages, iBoot?): {stray[:5]}'
-    first = next(e for e in catalog['entries'] if e['id'] == catalog['first_run'])
-    assert first['status'] == 'available' and first['source']['url'].startswith('https://secure-appldnld.apple.com/'), first['id']
-    print(f'PASS: {helper.name} signed (runtime, QEMU entitlements, minos {info}), closure in-bundle, loads {dylib.name} from Frameworks; SSLv3 in {imd.name}; SecureROMs and the built-in iPod, first run {first["id"]} from Apple')
-
-if len(sys.argv) > 1:
-    check_helper(sys.argv[1])
