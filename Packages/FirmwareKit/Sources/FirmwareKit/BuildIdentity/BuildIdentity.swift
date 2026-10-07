@@ -52,6 +52,10 @@ public struct RestoreInfo: Sendable, Equatable {
     /// KernelCachesByPlatform[platform].Release, SystemRestoreImages.User, RestoreRamDisks.User/Update:
     /// the 2.x component paths (3.x+ read them from the BuildManifest).
     public var kernelCache, systemImage, restoreRamDisk, updateRamDisk: String?
+    /// MinimumSystemPartition and this board's SystemPartitionPadding ({capacity GB: MiB}): what a restore sizes
+    /// the system partition to (3.x+; nil and empty before).
+    public var minimumSystemMiB: Int?
+    public var systemPaddingMiB: [String: Int] = [:]
 
     public init(_ ipsw: IPSWArchive) throws { try self.init(plistData: ipsw.read("Restore.plist")) }
 
@@ -72,6 +76,15 @@ public struct RestoreInfo: Sendable, Equatable {
         updateRamDisk = (p["RestoreRamDisks"] as? [String: Any])?["Update"] as? String
         productType = type; productBuildVersion = build; productVersion = version
         boardConfig = board; platform = map["Platform"] as? String ?? ""
+        minimumSystemMiB = ((p["MinimumSystemPartition"] as? [String: Any])?.values.first as? NSNumber)?.intValue
+            ?? (p["MinimumSystemPartition"] as? NSNumber)?.intValue
+        let padding = (p["SystemPartitionPadding"] as? [String: Any])?[String(board.dropLast(2))] as? [String: Any] ?? [:]
+        systemPaddingMiB = padding.compactMapValues { ($0 as? NSNumber)?.intValue }
+    }
+
+    /// The system partition a restore of this IPSW gives a `storage` ("16g") unit, in MiB: minimum plus padding.
+    public func systemPartitionMiB(storage: String) -> Int? {
+        minimumSystemMiB.map { $0 + (systemPaddingMiB[String(storage.dropLast())] ?? 0) }
     }
 
     /// device.py's check: (ProductType, ProductBuildVersion, BoardConfig) must be the entry's. The 1.1.2 beta

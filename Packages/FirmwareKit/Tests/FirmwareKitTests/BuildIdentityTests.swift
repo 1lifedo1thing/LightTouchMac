@@ -17,6 +17,19 @@ struct BuildIdentityTests {
         #expect(throws: FirmwareError.self) { try e.key(forPath: "nope.img3") }
     }
 
+    /// iPhone3,1 6.1.3's Restore.plist: a 16 GB unit's system partition is 1212 + 160 MiB, not the catalog's 1280.
+    @Test func systemPartitionFromRestorePlist() throws {
+        let plist: [String: Any] = [
+            "ProductType": "iPhone3,1", "ProductVersion": "6.1.3", "ProductBuildVersion": "10B329",
+            "DeviceMap": [["BoardConfig": "n90ap", "Platform": "s5l8930x"]],
+            "MinimumSystemPartition": ["048-2748-005.dmg": 1212],
+            "SystemPartitionPadding": ["n90": ["8": 80, "16": 160, "32": 320]],
+        ]
+        let r = try RestoreInfo(plistData: PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0))
+        #expect(r.systemPartitionMiB(storage: "16g") == 1372)
+        #expect(r.systemPartitionMiB(storage: "32g") == 1532)
+    }
+
     // ipad1_fw.components on the same IPSWs.
     static let ipad = Oracle.firmware("k48ap-7B500"), ios2 = Oracle.firmware("n72ap-5F138")
 

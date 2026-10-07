@@ -140,7 +140,12 @@ final class K48Board: Board {
 
     nonisolated(nonsending) func volumes(_ c: Recipe.Context) async throws {
         mbr = c.work.appendingPathComponent("mbr.bin")
-        try K48NAND.makeMBR(geometry: geometry, systemMiB: recipe.systemMiB).write(to: mbr)
+        // At least what a restore gives this unit (MinimumSystemPartition + padding): 6.x's rootfs fills the
+        // catalog's 1280 MiB on an iPhone 4, and a system volume under 10 % free raises "Storage Almost Full".
+        let stockMiB = try RestoreInfo(c.ipsw).systemPartitionMiB(storage: recipe.storage) ?? 0
+        let systemMiB = max(recipe.systemMiB, stockMiB)
+        c.log("system partition \(systemMiB) MiB (catalog \(recipe.systemMiB), restore \(stockMiB))")
+        try K48NAND.makeMBR(geometry: geometry, systemMiB: systemMiB).write(to: mbr)
         let parts = K48NAND.partitions(mbr: [UInt8](try Data(contentsOf: mbr)))
         var kernelcacheImg3: Data?
         if iboot {
