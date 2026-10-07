@@ -32,7 +32,7 @@ actor HostServiceWorkers {
                 let result = try await Subprocess.run(.path(FilePath(executable)),
                     arguments: Arguments(["--socket", endpoint.socket, "--udid", endpoint.udid ?? "", "--session", endpoint.session.uuidString]),
                     environment: .inherit.updating(["USBMUXD_SOCKET_ADDRESS": endpoint.socket,
-                        "LTM_SERVICE_UDID": endpoint.udid, "LTM_SERVICE_FRAMEWORKS": HostServiceResources.frameworksDirectory]),
+                        "LTM_SERVICE_UDID": endpoint.udid]),
                     input: .inputWriter, output: .sequence, error: .discarded) { execution in
                     _ = try await execution.standardInputWriter.write(bytes)
                     try await execution.standardInputWriter.finish()
@@ -118,7 +118,6 @@ actor HostServiceWorker {
         channel = continuation
         let token = UUID(); generation = token
         let endpoint = endpoint
-        let framework = HostServiceResources.frameworksDirectory
         let staging = HostServiceResources.stagingSession
         process = Task { [weak self] in
             var failure: Error = DeviceError.notAttached
@@ -126,7 +125,7 @@ actor HostServiceWorker {
                 _ = try await Subprocess.run(.path(FilePath(executable)),
                     arguments: Arguments(["--socket", endpoint.socket, "--udid", endpoint.udid ?? "", "--session", endpoint.session.uuidString]),
                     environment: .inherit.updating(["USBMUXD_SOCKET_ADDRESS": endpoint.socket,
-                        "LTM_SERVICE_FRAMEWORKS": framework, "LTM_SERVICE_UDID": endpoint.udid, "LTM_SERVICE_STAGING_SESSION": staging]),
+                        "LTM_SERVICE_UDID": endpoint.udid, "LTM_SERVICE_STAGING_SESSION": staging]),
                     input: .inputWriter, output: .sequence, error: .discarded) { execution in
                     try await withThrowingTaskGroup(of: Void.self) { group in
                         group.addTask {

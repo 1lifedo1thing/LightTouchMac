@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the production notification watcher with a controllable C-service boundary."""
 from pathlib import Path
-from host_service_fixtures import leaves
+from host_service_fixtures import engine, leaves
 import subprocess
 import tempfile
 
@@ -27,7 +27,7 @@ nonisolated func logEvent(_ message: String) { }
 nonisolated final class Library: @unchecked Sendable {
     static let shared = Library()
     struct Client: @unchecked Sendable {
-        var callback: IMobileDevice.NpNotifyCB?
+        var callback: np_notify_cb_t?
         var context: UnsafeMutableRawPointer?
     }
     let lock = NSLock()
@@ -39,7 +39,7 @@ nonisolated final class Library: @unchecked Sendable {
     let startRelease = DispatchSemaphore(value: 0)
     let freeRelease = DispatchSemaphore(value: 0)
 
-    func start(_ output: UnsafeMutablePointer<OpaquePointer?>) -> Int32 {
+    func start(_ output: UnsafeMutablePointer<OpaquePointer?>?) -> np_error_t {
         let (id, blocked) = lock.withLock {
             starts += 1
             clients[starts] = Client()
@@ -47,10 +47,10 @@ nonisolated final class Library: @unchecked Sendable {
             return (starts, blockStart)
         }
         if blocked { startRelease.wait() }
-        output.pointee = OpaquePointer(bitPattern: id)
-        return 0
+        output?.pointee = OpaquePointer(bitPattern: id)
+        return NP_E_SUCCESS
     }
-    func free(_ client: OpaquePointer?) -> Int32 {
+    func free(_ client: OpaquePointer?) -> np_error_t {
         precondition(!Thread.isMainThread, "C-client join must never run on the main actor")
         let id = Int(bitPattern: client!)
         let blocked = lock.withLock {
@@ -60,7 +60,7 @@ nonisolated final class Library: @unchecked Sendable {
         }
         if blocked { freeRelease.wait() }
         lock.withLock { clients.removeValue(forKey: id); frees += 1 }
-        return 0
+        return NP_E_SUCCESS
     }
     func emit(_ name: String) {
         let client = lock.withLock { clients[starts]! }
@@ -68,32 +68,23 @@ nonisolated final class Library: @unchecked Sendable {
     }
 }
 
-nonisolated enum IMobileDevice {
-    static let success: Int32 = 0
-    static let isAvailable = true
-    typealias NpNotifyCB = @convention(c) (UnsafePointer<CChar>?, UnsafeMutableRawPointer?) -> Void
-    typealias NewDevice = @convention(c) (UnsafeMutablePointer<OpaquePointer?>, UnsafePointer<CChar>?) -> Int32
-    typealias NewClient = @convention(c) (OpaquePointer?, UnsafeMutablePointer<OpaquePointer?>, UnsafePointer<CChar>?) -> Int32
-    typealias FreeHandle = @convention(c) (OpaquePointer?) -> Int32
-    typealias Observe = @convention(c) (OpaquePointer?, UnsafePointer<CChar>?) -> Int32
-    typealias SetCallback = @convention(c) (OpaquePointer?, NpNotifyCB?, UnsafeMutableRawPointer?) -> Int32
-    static let idevice_new: NewDevice? = { output, _ in output.pointee = OpaquePointer(bitPattern: 42); return 0 }
-    static func openDevice(_ output: inout OpaquePointer?) -> Int32 { idevice_new!(&output, nil) }
-    static let idevice_free: FreeHandle? = { _ in 0 }
-    static let np_client_start_service: NewClient? = { _, output, _ in Library.shared.start(output) }
-    static let np_client_free: FreeHandle? = { Library.shared.free($0) }
-    static let np_observe_notification: Observe? = { _, _ in
+/// notification_proxy as the watcher calls it (IMDFake), over Library.
+nonisolated func fakeNotificationProxy() {
+    IMDFake.ideviceNew = { output, _ in output?.pointee = OpaquePointer(bitPattern: 42); return IDEVICE_E_SUCCESS }
+    IMDFake.npStart = { _, output, _ in Library.shared.start(output) }
+    IMDFake.npFree = { Library.shared.free($0) }
+    IMDFake.npObserve = { _, _ in
         Library.shared.lock.withLock {
             Library.shared.subscriptions += 1
-            return Library.shared.failObserve ? -3 : 0
+            return Library.shared.failObserve ? NP_E_CONN_FAILED : NP_E_SUCCESS
         }
     }
-    static let np_set_notify_callback: SetCallback? = { client, callback, context in
+    IMDFake.npSetCallback = { client, callback, context in
         Library.shared.lock.withLock {
             let id = Int(bitPattern: client!)
             Library.shared.clients[id] = .init(callback: callback, context: context)
         }
-        return 0
+        return NP_E_SUCCESS
     }
 }
 
@@ -112,6 +103,7 @@ nonisolated enum IMobileDevice {
     }
     @MainActor static func main() async throws {
         Timeouts.serviceProbe = 0.025
+        fakeNotificationProxy()
         let library = Library.shared
         let activity = Activity()
         let watcher = NotificationProxy(clientSocket: "127.0.0.1:1", observe: { endpoint, allowed, change in
@@ -214,7 +206,7 @@ with tempfile.TemporaryDirectory(prefix="ltm-notifications-") as directory:
     source = Path(directory) / "check.swift"
     source.write_text(fixture + execution + watcher)
     binary = Path(directory) / "check"
-    subprocess.run(["xcrun", "swiftc", *leaves(root), "-parse-as-library", "-swift-version", "6",
+    subprocess.run(["xcrun", "swiftc", *engine(root), *leaves(root), "-parse-as-library", "-swift-version", "6",
                     "-default-isolation", "MainActor", "-module-cache-path", directory + "/modules",
                     str(source), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True, timeout=15)

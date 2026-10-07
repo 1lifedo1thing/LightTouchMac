@@ -6,7 +6,7 @@ and Transport/DeviceExecution.swift whole against a fake libimobiledevice, with 
 (after openBeforeDeadline stores the connection for the deadline's loser, and after it is handed to the install) so the races
 run deterministically; no production deadline, cancellation or cleanup is replaced."""
 from pathlib import Path
-from host_service_fixtures import leaves, local_engine_stub
+from host_service_fixtures import engine, leaves, local_engine_stub
 import subprocess
 import tempfile
 
@@ -43,7 +43,7 @@ nonisolated final class Fixture: @unchecked Sendable {
     var productVersion = "3.1.3", archives: [String: Any] = [:], lookups = 0
     var readStarted = false
     var installResult: Int32 = 0
-    var callback: IMobileDevice.InstproxyStatusCB?
+    var callback: instproxy_status_cb_t?
     var context: UnsafeMutableRawPointer?
     var handoff: CheckedContinuation<Void, Never>?
     let deviceRelease = DispatchSemaphore(value: 0), serviceRelease = DispatchSemaphore(value: 0)
@@ -72,112 +72,91 @@ nonisolated final class Fixture: @unchecked Sendable {
         let continuation = lock.withLock { let saved = handoff; handoff = nil; return saved }
         continuation?.resume()
     }
-    func command(_ name: String, _ target: UnsafePointer<CChar>?, _ callback: IMobileDevice.InstproxyStatusCB?,
-                 _ context: UnsafeMutableRawPointer?) -> Int32 {
+    func command(_ name: String, _ target: UnsafePointer<CChar>?, _ plist: plist_t?, _ callback: instproxy_status_cb_t?,
+                 _ context: UnsafeMutableRawPointer?) -> instproxy_error_t {
         let (status, result) = lock.withLock {
             installs += 1; self.callback = callback; self.context = context
+            options = IMDFake.value(plist) as? [String: String] ?? [:]
             let line = ([name, String(cString: target!)] + options.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" })
             commands.append(line.joined(separator: " "))
             return (script.isEmpty ? nil : script.removeFirst(), installResult)
         }
         if let status { DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(5)) { self.emit(status) } }
-        return result
+        return instproxy_error_t(rawValue: result)
     }
     func emit(_ status: Int) {
         let (callback, context) = lock.withLock { (callback, context) }
-        callback?(nil, OpaquePointer(bitPattern: status), context)
+        callback?(nil, UnsafeMutableRawPointer(bitPattern: status), context)
     }
 }
-nonisolated enum IMobileDevice {
-    static let success: Int32 = 0, isAvailable = true
-    typealias InstproxyStatusCB = @convention(c) (OpaquePointer?, OpaquePointer?, UnsafeMutableRawPointer?) -> Void
-    typealias NewDevice = @convention(c) (UnsafeMutablePointer<OpaquePointer?>, UnsafePointer<CChar>?) -> Int32
-    typealias Free = @convention(c) (OpaquePointer?) -> Int32
-    typealias Install = @convention(c) (OpaquePointer?, UnsafePointer<CChar>?, OpaquePointer?, InstproxyStatusCB?, UnsafeMutableRawPointer?) -> Int32
-    typealias InstproxyOp = Install
-    typealias StatusError = @convention(c) (OpaquePointer?, UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?, UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?, UnsafeMutablePointer<UInt64>?) -> Int32
-    typealias StatusName = @convention(c) (OpaquePointer?, UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) -> Void
-    typealias StatusPercent = @convention(c) (OpaquePointer?, UnsafeMutablePointer<Int32>) -> Void
-    static let idevice_new: NewDevice? = { output, _ in
+/// installation_proxy and the device as the install path calls them (IMDFake), over Fixture.
+nonisolated func fakeLibrary() {
+    IMDFake.ideviceNew = { output, _ in
         precondition(String(cString: getenv("USBMUXD_SOCKET_ADDRESS")) == "127.0.0.1:1", "gate did not select the install endpoint before startup")
         let state = Fixture.shared
         let blocked = state.lock.withLock { state.deviceEntered = true; return state.blockDevice }
         if blocked { state.deviceRelease.wait() }
         state.lock.withLock { state.opens += 1 }
-        output.pointee = OpaquePointer(bitPattern: 17)
-        return 0
+        output?.pointee = OpaquePointer(bitPattern: 17)
+        return IDEVICE_E_SUCCESS
     }
-    static func openDevice(_ output: inout OpaquePointer?) -> Int32 { idevice_new!(&output, nil) }
-    static let idevice_free: Free? = { pointer in
+    IMDFake.ideviceFree = { pointer in
         precondition(pointer == OpaquePointer(bitPattern: 17))
         Fixture.shared.lock.withLock { Fixture.shared.deviceFrees += 1; precondition(Fixture.shared.deviceFrees <= Fixture.shared.opens) }
-        return 0
+        return IDEVICE_E_SUCCESS
     }
-    static func startInstallationProxy(device: OpaquePointer) throws -> OpaquePointer {
+    // IMobileDevice.startInstallationProxy: lockdown's answers are IMDFake's defaults; the client is the boundary.
+    IMDFake.instproxyClientNew = { device, _, output in
         precondition(device == OpaquePointer(bitPattern: 17))
         let state = Fixture.shared
         let blocked = state.lock.withLock { state.serviceEntered = true; return state.blockService }
         if blocked { state.serviceRelease.wait() }
-        return OpaquePointer(bitPattern: 18)!
+        output?.pointee = OpaquePointer(bitPattern: 18)
+        return INSTPROXY_E_SUCCESS
     }
-    static let instproxy_client_free: Free? = { pointer in
+    IMDFake.instproxyClientFree = { pointer in
         precondition(pointer == OpaquePointer(bitPattern: 18))
         let state = Fixture.shared
         // Model a final reader callback during join. Its retained context must
         // survive until this C free has returned, including immediate failures.
         state.emit(1)
         state.lock.withLock { state.clientFrees += 1; precondition(state.clientFrees <= state.opens) }
-        return 0
+        return INSTPROXY_E_SUCCESS
     }
-    static let instproxy_install: Install? = { client, path, _, callback, context in
-        precondition(client == OpaquePointer(bitPattern: 18) && String(cString: path!) == "PublicStaging/test.ipa")
-        return Fixture.shared.command("install", path, callback, context)
-    }
-    static let instproxy_archive: Install? = { _, id, _, callback, context in
+    IMDFake.instproxyCommand = { name, client, target, options, callback, context in
         let state = Fixture.shared
-        state.lock.withLock { state.archives[String(cString: id!)] = ["ArchiveType": "DocumentsOnly"] }
-        return state.command("archive", id, callback, context)
+        switch name {
+        case "install":
+            precondition(client == OpaquePointer(bitPattern: 18) && String(cString: target!) == "PublicStaging/test.ipa")
+        case "archive":
+            state.lock.withLock { state.archives[String(cString: target!)] = ["ArchiveType": "DocumentsOnly"] }
+        case "restore":
+            state.lock.withLock { _ = state.archives.removeValue(forKey: String(cString: target!)) }   // Restore consumes the archive
+        default: preconditionFailure("unexpected \(name)")
+        }
+        return state.command(name, target, options, callback, context)
     }
-    static let instproxy_restore: Install? = { _, id, _, callback, context in
-        let state = Fixture.shared
-        state.lock.withLock { _ = state.archives.removeValue(forKey: String(cString: id!)) }   // Restore consumes the archive
-        return state.command("restore", id, callback, context)
-    }
-    typealias Browse2 = @convention(c) (OpaquePointer?, OpaquePointer?, UnsafeMutablePointer<OpaquePointer?>) -> Int32
-    static let instproxy_lookup_archives: Browse2? = { client, _, result in
+    IMDFake.instproxyLookupArchives = { client, _, result in
         precondition(client == OpaquePointer(bitPattern: 18))
         let state = Fixture.shared
-        state.lock.withLock { state.lookups += 1; state.callback = nil; state.context = nil }   // no install callback is live
-        result.pointee = OpaquePointer(bitPattern: 40)
-        return 0
+        let archives = state.lock.withLock { state.lookups += 1; state.callback = nil; state.context = nil; return state.archives }   // no install callback is live
+        result?.pointee = IMDFake.node(archives)
+        return INSTPROXY_E_SUCCESS
     }
-    static let instproxy_status_get_error: StatusError? = { status, name, description, _ in
-        if status == OpaquePointer(bitPattern: 4) {   // iPhone OS 2.x's answer to Install of an installed bundle id
+    IMDFake.instproxyStatusError = { status, name, description, _ in
+        if status == UnsafeMutableRawPointer(bitPattern: 4) {   // iPhone OS 2.x's answer to Install of an installed bundle id
             name?.pointee = strdup("ApplicationAlreadyInstalled")
-            return -9
+            return instproxy_error_t(rawValue: -9)
         }
-        guard status == OpaquePointer(bitPattern: 3) else { return 0 }
+        guard status == UnsafeMutableRawPointer(bitPattern: 3) else { return INSTPROXY_E_SUCCESS }
         name?.pointee = strdup("ApplicationVerificationFailed")
         description?.pointee = strdup("rejected fixture")
-        return -5
+        return instproxy_error_t(rawValue: -5)
     }
-    static let instproxy_status_get_name: StatusName? = { status, output in
-        output.pointee = strdup(status == OpaquePointer(bitPattern: 2) ? "Complete" : "Installing")
+    IMDFake.instproxyStatusName = { status, output in
+        output?.pointee = strdup(status == UnsafeMutableRawPointer(bitPattern: 2) ? "Complete" : "Installing")
     }
-    static let instproxy_status_get_percent_complete: StatusPercent? = { _, output in output.pointee = 50 }
-    // The list and uninstall halves of the file, not exercised here.
-    static let instproxy_uninstall: Install? = nil
-    typealias Browse = @convention(c) (OpaquePointer?, OpaquePointer?, UnsafeMutablePointer<OpaquePointer?>) -> Int32
-    typealias PlistFree = @convention(c) (OpaquePointer?) -> Void
-    static let instproxy_browse: Browse? = nil
-    static let plist_free: PlistFree? = { _ in }
-    static func encode(_ value: Any) -> OpaquePointer? {
-        Fixture.shared.lock.withLock { Fixture.shared.options = value as? [String: String] ?? [:] }
-        return nil
-    }
-    static func decode(_ node: OpaquePointer) -> Any? {
-        node == OpaquePointer(bitPattern: 40) ? Fixture.shared.lock.withLock { Fixture.shared.archives } : nil
-    }
+    IMDFake.instproxyStatusPercent = { _, output in output?.pointee = 50 }
 }
 struct DeviceServices: Sendable {
     let clientSocket: String
@@ -192,12 +171,12 @@ struct DeviceServices: Sendable {
         return Fixture.shared.lock.withLock { Fixture.shared.productVersion }
     }
     func run<T: Sendable>(_ seconds: Double, _ label: String,
-                          _ body: @escaping @Sendable (IMobileDevice.Type, OpaquePointer) throws -> T) async throws -> T {
+                          _ body: @escaping @Sendable (OpaquePointer) throws -> T) async throws -> T {
         // The archive lookup's short query, without the gate's endpoint plumbing.
         var device: OpaquePointer?
         _ = IMobileDevice.openDevice(&device)
-        defer { _ = IMobileDevice.idevice_free?(device) }
-        return try body(IMobileDevice.self, device!)
+        defer { _ = idevice_free(device) }
+        return try body(device!)
     }
 }
 '''
@@ -230,6 +209,7 @@ main = r'''
     }
     @MainActor static func main() async throws {
         Timeouts.serviceProbe = 0.04; Timeouts.installIdle = 0.20; Timeouts.installAbsolute = 1.0
+        fakeLibrary()
         let state = Fixture.shared
         // Block each startup boundary, then let it return AFTER timeout or
         // cancellation. Neither the early exit nor a late handle may install.
@@ -360,7 +340,7 @@ with tempfile.TemporaryDirectory(prefix="ltm-install-startup-") as directory:
     (path / "InstallationProxy.swift").write_text(install)
     (path / "DeviceExecution.swift").write_text(execution)
     binary = path / "check"
-    subprocess.run(["xcrun", "swiftc", *leaves(root), *local_engine_stub(path), "-parse-as-library", "-swift-version", "6",
+    subprocess.run(["xcrun", "swiftc", *engine(root), *leaves(root), *local_engine_stub(path), "-parse-as-library", "-swift-version", "6",
                     "-default-isolation", "MainActor", "-module-cache-path", str(path / "modules"),
                     str(path / "InstallationProxy.swift"), str(path / "DeviceExecution.swift"),
                     str(swift), "-o", str(binary)], check=True)

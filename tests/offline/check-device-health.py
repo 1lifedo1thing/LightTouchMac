@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Real connection probes preserve errors and abandon queued reads safely: Services/DeviceServices.swift
-(checkAttachment) and Transport/DeviceExecution.swift compiled whole against a fake attachment check, plus the
-inspector's read-suppression predicate (one declaration, looked up by name)."""
+(checkAttachment), Transport/IMobileDevice.swift and Transport/DeviceExecution.swift compiled whole against a fake
+libimobiledevice (idevice_new), plus the inspector's read-suppression predicate (one declaration, looked up by name)."""
 from pathlib import Path
 import subprocess, tempfile
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import swift_subprocess
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from host_service_fixtures import engine
 
 root = Path(__file__).resolve().parents[2]
 app = root / 'LightTouchMac'
@@ -16,17 +18,17 @@ suppression = next(line for line in inspector.splitlines() if 'private var reads
 source = r'''
 import Foundation
 nonisolated func logEvent(_ message: String) {}
-nonisolated enum IMobileDevice {
- static let success: Int32 = 0, isAvailable = true
- typealias NewDevice = @convention(c) (UnsafeMutablePointer<OpaquePointer?>, UnsafePointer<CChar>?) -> Int32
- typealias Free = @convention(c) (OpaquePointer?) -> Int32
- static let idevice_new: NewDevice? = nil, idevice_free: Free? = nil   // the run kernel, not exercised here
+/// The attachment check's one call: idevice_new over the gate-selected endpoint, attached unless told otherwise.
+nonisolated enum Attachment {
  static let lock = NSLock()
- nonisolated(unsafe) static var failure: DeviceError?
- static func setFailure(_ error: DeviceError?) { lock.withLock { failure = error } }
- static func checkAttachment() throws {
-  precondition(String(cString: getenv("USBMUXD_SOCKET_ADDRESS")) == "fixture", "gate did not select the endpoint before the attachment call")
-  try lock.withLock { if let failure { throw failure } }
+ nonisolated(unsafe) static var attached = true
+ static func set(attached value: Bool) { lock.withLock { attached = value } }
+ static func install() {
+  IMDFake.ideviceNew = { device, _ in
+   precondition(String(cString: getenv("USBMUXD_SOCKET_ADDRESS")) == "fixture", "gate did not select the endpoint before the attachment call")
+   guard lock.withLock({ attached }) else { return IDEVICE_E_NO_DEVICE }
+   device?.pointee = OpaquePointer(bitPattern: 1); return IDEVICE_E_SUCCESS
+  }
  }
 }
 /// Resumes one waiter once, whichever side comes first.
@@ -53,15 +55,13 @@ nonisolated final class Signal: @unchecked Sendable {
 @main struct Check {
  @MainActor static func main() async throws {
   Timeouts.serviceProbe = 0.015
+  Attachment.install()
   let device = DeviceServices(clientSocket: "fixture", local: true)
   try await device.checkAttachment()
-  IMobileDevice.setFailure(.unavailable)
-  do { try await device.checkAttachment(); preconditionFailure() }
-  catch DeviceError.unavailable {} catch { throw error }
-  IMobileDevice.setFailure(.notAttached)
+  Attachment.set(attached: false)
   do { try await device.checkAttachment(); preconditionFailure() }
   catch DeviceError.notAttached {} catch { throw error }
-  IMobileDevice.setFailure(nil)
+  Attachment.set(attached: true)
 
   // A probe waiting behind a long write must time out, leave the gate queue,
   // and retain a USB-specific cause instead of resetting app services.
@@ -101,7 +101,7 @@ nonisolated final class Signal: @unchecked Sendable {
 '''
 with tempfile.TemporaryDirectory(prefix='ltm-health-') as d:
     p = Path(d)/'check.swift'; p.write_text(source)
-    subprocess.run(['swiftc', *swift_subprocess.swift_flags(root), *[str(app/'Services'/name) for name in ['HostServiceTypes.swift','HostServiceProtocol.swift','HostServiceResources.swift','HostServiceWorkers.swift']], '-swift-version', '6', '-parse-as-library', '-module-cache-path', d+'/modules',
+    subprocess.run(['swiftc', *engine(root), *swift_subprocess.swift_flags(root), *[str(app/'Services'/name) for name in ['HostServiceTypes.swift','HostServiceProtocol.swift','HostServiceResources.swift','HostServiceWorkers.swift']], '-swift-version', '6', '-parse-as-library', '-module-cache-path', d+'/modules',
                     str(app / 'Services/DeviceServices.swift'), str(app / 'Transport/DeviceExecution.swift'), str(p),
                     '-o', d+'/check'], check=True)
     subprocess.run([d+'/check'], check=True, timeout=10)

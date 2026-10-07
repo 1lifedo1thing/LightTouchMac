@@ -3,7 +3,7 @@
 startup sweep may remove. Compiles Services/AFC.swift and Transport/DeviceExecution.swift whole, against a fake
 libimobiledevice and a DeviceServices whose run kernel calls straight through."""
 from pathlib import Path
-from host_service_fixtures import leaves, local_engine_stub
+from host_service_fixtures import engine, leaves, local_engine_stub
 import subprocess, tempfile
 root = Path(__file__).resolve().parents[2]
 app = root / 'LightTouchMac'
@@ -18,6 +18,7 @@ struct MediaSong: Sendable {
  static let extensions: Set<String> = ["mp3", "m4a", "wav"]
 }
 final class State: @unchecked Sendable {
+ static let shared = State()
  let lock = NSLock()
  var existing: Data?, readOffset = 0
  var bytes = Data(), removed = false, closeCalls = 0
@@ -26,48 +27,39 @@ final class State: @unchecked Sendable {
  var failure = false, badCount = false, closeFailure = false
  func reset() { lock.withLock { bytes = Data(); cancelOnClose = false; existing = nil; readOffset = 0; destination = ""; directories = []; published = [:]; removed = false; closeCalls = 0; failure = false; badCount = false; closeFailure = false } }
 }
-nonisolated enum IMobileDevice {
- static let state = State(), success: Int32 = 0, afcWriteMode: UInt64 = 3
- static func startService(_ name: String, device: OpaquePointer, newClient: Int?, freeClient: ((OpaquePointer)->Int32)?,
-                          connectError: (Int32) -> Error) throws -> OpaquePointer {
-  precondition(name == "com.apple.afc"); return OpaquePointer(bitPattern: 1)!
+/// The AFC the upload sees: libimobiledevice's calls (IMDFake) over State.
+func fakeAFC() {
+ let state = State.shared
+ IMDFake.afcClientNew = { _,_,c in c?.pointee = OpaquePointer(bitPattern: 1); return AFC_E_SUCCESS }
+ IMDFake.afcMakeDirectory = { _,p in state.directories.append(String(cString:p!)); return AFC_E_SUCCESS }
+ IMDFake.afcFileOpen = { _,p,mode,h in
+  if mode == AFC_FOPEN_RDONLY { if !state.published.isEmpty { state.existing=state.published[String(cString:p!)] };guard state.existing != nil else{return AFC_E_OBJECT_NOT_FOUND};state.readOffset=0;h?.pointee=2;return AFC_E_SUCCESS }
+  state.destination = String(cString:p!);state.bytes=Data();h?.pointee=1;return AFC_E_SUCCESS
  }
- static let afc_client_new: Int? = 0
- static let afc_make_directory: ((OpaquePointer, UnsafePointer<CChar>)->Int32)? = { _,p in state.directories.append(String(cString:p)); return 0 }
- static let afc_file_open: ((OpaquePointer, UnsafePointer<CChar>, UInt64, inout UInt64)->Int32)? = { _,p,mode,h in
-  if mode == 1 { if !state.published.isEmpty { state.existing=state.published[String(cString:p)] };guard state.existing != nil else{return 8};state.readOffset=0;h=2;return 0 }
-  state.destination = String(cString:p);state.bytes=Data();h=1;return 0
- }
- static let afc_file_read: ((OpaquePointer, UInt64, UnsafeMutablePointer<CChar>, UInt32, inout UInt32)->Int32)? = { _,_,p,n,count in
-  guard let bytes=state.existing else{return 8}
-  count=UInt32(min(Int(n),bytes.count-state.readOffset,317))
+ IMDFake.afcFileRead = { _,_,p,n,count in
+  guard let bytes=state.existing else{return AFC_E_OBJECT_NOT_FOUND}
+  let c=UInt32(min(Int(n),bytes.count-state.readOffset,317))
   bytes.withUnsafeBytes { raw in
-   if count>0 { UnsafeMutableRawPointer(p).copyMemory(from:raw.baseAddress!.advanced(by:state.readOffset),byteCount:Int(count)) }
+   if c>0 { UnsafeMutableRawPointer(p!).copyMemory(from:raw.baseAddress!.advanced(by:state.readOffset),byteCount:Int(c)) }
   }
-  state.readOffset+=Int(count);return 0
+  count?.pointee=c;state.readOffset+=Int(c);return AFC_E_SUCCESS
  }
- static let afc_rename_path: ((OpaquePointer, UnsafePointer<CChar>, UnsafePointer<CChar>)->Int32)? = { _,_,p in
-  state.destination=String(cString:p);state.existing=state.bytes;state.published[state.destination]=state.bytes;return 0
+ IMDFake.afcRenamePath = { _,_,p in
+  state.destination=String(cString:p!);state.existing=state.bytes;state.published[state.destination]=state.bytes;return AFC_E_SUCCESS
  }
- static let afc_file_write: ((OpaquePointer, UInt64, UnsafePointer<CChar>, UInt32, inout UInt32)->Int32)? = { _,_,p,n,w in
+ IMDFake.afcFileWrite = { _,_,p,n,w in
   state.lock.withLock {
-   if state.failure && !state.bytes.isEmpty { return 1 }
-   if state.badCount { w = n+1; return 0 }
-   w = min(n, 317); state.bytes.append(UnsafeRawPointer(p).assumingMemoryBound(to: UInt8.self), count: Int(w)); return 0
+   if state.failure && !state.bytes.isEmpty { return AFC_E_UNKNOWN_ERROR }
+   if state.badCount { w?.pointee = n+1; return AFC_E_SUCCESS }
+   let c = min(n, 317); w?.pointee = c; state.bytes.append(UnsafeRawPointer(p!).assumingMemoryBound(to: UInt8.self), count: Int(c)); return AFC_E_SUCCESS
   }
  }
- static let afc_file_close: ((OpaquePointer, UInt64)->Int32)? = { _,_ in state.lock.withLock { state.closeCalls += 1;if state.cancelOnClose { withUnsafeCurrentTask { $0?.cancel() } };return state.closeFailure ? 20 : 0 } }
- static let afc_remove_path: ((OpaquePointer, UnsafePointer<CChar>)->Int32)? = { _,_ in state.lock.withLock { state.removed=true;return 0 } }
- static let afc_client_free: ((OpaquePointer)->Int32)? = { _ in 0 }
- // Not reached by these uploads (free space, the sweep's and the browser's listings).
- static let afc_get_device_info_key: ((OpaquePointer, UnsafePointer<CChar>, inout UnsafeMutablePointer<CChar>?)->Int32)? = { _,_,_ in 8 }
- static let afc_read_directory: ((OpaquePointer, UnsafePointer<CChar>, inout UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?)->Int32)? = { _,_,_ in 8 }
- static let afc_get_file_info: ((OpaquePointer, UnsafePointer<CChar>, inout UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?)->Int32)? = { _,_,_ in 8 }
- static let afc_dictionary_free: ((UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>)->Int32)? = { _ in 0 }
+ IMDFake.afcFileClose = { _,_ in state.lock.withLock { state.closeCalls += 1;if state.cancelOnClose { withUnsafeCurrentTask { $0?.cancel() } };return state.closeFailure ? AFC_E_OP_NOT_SUPPORTED : AFC_E_SUCCESS } }
+ IMDFake.afcRemovePath = { _,_ in state.lock.withLock { state.removed=true;return AFC_E_SUCCESS } }
 }
 struct DeviceServices {
- func run<T: Sendable>(_ seconds: Double, _ label: String, _ body: @escaping @Sendable (IMobileDevice.Type, OpaquePointer) throws -> T) async throws -> T {
-  try await Task.detached { try body(IMobileDevice.self, OpaquePointer(bitPattern: 1)!) }.value
+ func run<T: Sendable>(_ seconds: Double, _ label: String, _ body: @escaping @Sendable (OpaquePointer) throws -> T) async throws -> T {
+  try await Task.detached { try body(OpaquePointer(bitPattern: 1)!) }.value
  }
 }
 func stagingNames() {
@@ -92,7 +84,8 @@ func stagingNames() {
   let path = URL(fileURLWithPath: CommandLine.arguments[1])
   let expected = Data((0..<200003).map { UInt8($0 % 251) })
   try expected.write(to: path)
-  let state = IMobileDevice.state
+  fakeAFC()
+  let state = State.shared
   _ = try await DeviceServices().stage(path) { _ in }
   precondition(state.bytes == expected && !state.removed && state.closeCalls == 1)
   state.reset()
@@ -150,6 +143,6 @@ func stagingNames() {
 with tempfile.TemporaryDirectory() as work:
     swift=Path(work)/'check.swift'; swift.write_text(source)
     exe=Path(work)/'check'
-    subprocess.run(['swiftc', *leaves(root), *local_engine_stub(Path(work)),'-parse-as-library','-module-cache-path','/tmp/ltm-module-cache',str(app/'Services/AFC.swift'), str(app/'Services/MediaStaging.swift'),
+    subprocess.run(['swiftc', *engine(root), *leaves(root), *local_engine_stub(Path(work)),'-parse-as-library','-module-cache-path',str(Path(work)/'modules'),str(app/'Services/AFC.swift'), str(app/'Services/MediaStaging.swift'),
                     str(app/'Transport/DeviceExecution.swift'),str(swift),'-o',str(exe)],check=True)
     subprocess.run([str(exe),str(Path(work)/'fixture.ipa')],check=True)

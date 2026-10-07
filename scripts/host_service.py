@@ -31,6 +31,7 @@ def build_worker(root, destination, flags, *, log=None):
                         lockdown / f'{name}.c', '-o', obj], check=True, stdout=log, stderr=subprocess.STDOUT if log else None)
         objects.append(obj)
     command = ['xcrun', 'swiftc', '-swift-version', '5', '-module-cache-path', destination.parent / 'modules',
+               '-D', 'LIGHTTOUCH_SERVICES', *[x for f in native if f.startswith('-I') for x in ('-Xcc', f)],
                *flags, *client_sources(root), root / 'LightTouchMac/Services/NotificationProxy.swift',
                root / 'LightTouchServices/ServiceMain.swift', '-import-objc-header', lockdown / 'Lockdown.h',
                *objects, *[f for f in native if not f.startswith('-I')], '-o', destination]

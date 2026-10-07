@@ -14,27 +14,24 @@ extension DeviceServices {
             guard case .apps(let apps) = try await remote(.apps, seconds: Timeouts.browse) else { throw DeviceError.unavailable }
             return apps
         }
-        return try await run(Timeouts.browse, "list apps") { imd, device in
-            guard let browse = imd.instproxy_browse,
-                  let plistFree = imd.plist_free else { throw DeviceError.unavailable }
-
-            let client = try imd.startInstallationProxy(device: device)
-            defer { _ = imd.instproxy_client_free?(client) }
+        #if LIGHTTOUCH_SERVICES
+        return try await run(Timeouts.browse, "list apps") { device in
+            let client = try IMobileDevice.startInstallationProxy(device: device)
+            defer { _ = instproxy_client_free(client) }
 
             // ApplicationType=User: skip Apple's own bundles. Built as a plist
-            // rather than via instproxy's variadic option builder (uncallable
-            // through a function pointer).
+            // rather than via instproxy's variadic option builder (not callable from Swift).
             guard let options = IMobileDevice.encode(["ApplicationType": "User"]) else {
                 throw DeviceError.unavailable
             }
-            defer { plistFree(options) }
+            defer { plist_free(options) }
 
-            var result: OpaquePointer?
-            let br = browse(client, options, &result)
-            guard br == imd.success, let result else {
-                throw DeviceError.instproxy(.init(code: br), phase: "browse")
+            var result: plist_t?
+            let br = instproxy_browse(client, options, &result)
+            guard br.ok, let result else {
+                throw DeviceError.instproxy(.init(code: br.code), phase: "browse")
             }
-            defer { plistFree(result) }
+            defer { plist_free(result) }
 
             let apps = (IMobileDevice.decode(result) as? [[String: Any]] ?? []).compactMap {
                 (dict: [String: Any]) -> InstalledApp? in
@@ -47,23 +44,29 @@ extension DeviceServices {
             }
             return apps.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         }
+        #else
+        throw Self.unrouted
+        #endif
     }
 
     // MARK: - Uninstall
 
     func uninstall(_ bundleID: String) async throws {
         if !local { _ = try await remote(.uninstall(bundleID), seconds: Timeouts.uninstall); return }
-        return try await run(Timeouts.uninstall, "uninstall \(bundleID)") { imd, device in
-            guard let uninstall = imd.instproxy_uninstall else { throw DeviceError.unavailable }
-            let client = try imd.startInstallationProxy(device: device)
-            defer { _ = imd.instproxy_client_free?(client) }
+        #if LIGHTTOUCH_SERVICES
+        return try await run(Timeouts.uninstall, "uninstall \(bundleID)") { device in
+            let client = try IMobileDevice.startInstallationProxy(device: device)
+            defer { _ = instproxy_client_free(client) }
             // Synchronous form: no status callback, so the return code is the
             // whole answer (unlike install, whose errors arrive in the callback).
-            let ur = bundleID.withCString { uninstall(client, $0, nil, nil, nil) }
-            guard ur == imd.success else {
-                throw DeviceError.instproxy(.init(code: ur), phase: "uninstall")
+            let ur = instproxy_uninstall(client, bundleID, nil, nil, nil)
+            guard ur.ok else {
+                throw DeviceError.instproxy(.init(code: ur.code), phase: "uninstall")
             }
         }
+        #else
+        throw Self.unrouted
+        #endif
     }
 
     // MARK: - Install (instproxy_install + owned idle watchdog)
@@ -94,18 +97,21 @@ extension DeviceServices {
             guard case .strings(let ids) = try await remote(.archives, seconds: Timeouts.browse) else { return [] }
             return ids
         }
-        return try await run(Timeouts.browse, "list archives") { imd, device in
-            guard let lookup = imd.instproxy_lookup_archives, let plistFree = imd.plist_free else { throw DeviceError.unavailable }
-            let client = try imd.startInstallationProxy(device: device)
-            defer { _ = imd.instproxy_client_free?(client) }
-            let options = imd.encode([String: String]())   // 2.x drops a request without ClientOptions
-            defer { if let options { plistFree(options) } }
-            var result: OpaquePointer?
-            let lr = lookup(client, options, &result)
-            guard lr == imd.success, let result else { throw DeviceError.instproxy(.init(code: lr), phase: "archives") }
-            defer { plistFree(result) }
+        #if LIGHTTOUCH_SERVICES
+        return try await run(Timeouts.browse, "list archives") { device in
+            let client = try IMobileDevice.startInstallationProxy(device: device)
+            defer { _ = instproxy_client_free(client) }
+            let options = IMobileDevice.encode([String: String]())   // 2.x drops a request without ClientOptions
+            defer { if let options { plist_free(options) } }
+            var result: plist_t?
+            let lr = instproxy_lookup_archives(client, options, &result)
+            guard lr.ok, let result else { throw DeviceError.instproxy(.init(code: lr.code), phase: "archives") }
+            defer { plist_free(result) }
             return ((IMobileDevice.decode(result) as? [String: Any]) ?? [:]).keys.sorted()
         }
+        #else
+        throw Self.unrouted
+        #endif
     }
 
     /// Install a staged .ipa. The owned idle watchdog is the fix for the
@@ -129,6 +135,7 @@ extension DeviceServices {
             }
             return
         }
+        #if LIGHTTOUCH_SERVICES
         let socket = self.clientSocket
         try await DeviceGate.shared.serialized(socket: socket) {
             let cancellation = InstallCancellation()
@@ -144,8 +151,12 @@ extension DeviceServices {
                 cancellation.cancel()
             }
         }
+        #else
+        throw Self.unrouted
+        #endif
     }
 
+    #if LIGHTTOUCH_SERVICES
     /// One installation_proxy command with a status callback.
     nonisolated private enum Command: Sendable {
         case install(String), archiveData(String), restore(String)
@@ -181,8 +192,8 @@ extension DeviceServices {
             self.device = device; self.client = client
         }
         func free() {
-            _ = IMobileDevice.instproxy_client_free?(client)
-            _ = IMobileDevice.idevice_free?(device)
+            _ = instproxy_client_free(client)
+            _ = idevice_free(device)
         }
     }
 
@@ -197,17 +208,14 @@ extension DeviceServices {
     }
 
     private nonisolated static func openInstallConnection() throws -> InstallConnection {
-        let imd = IMobileDevice.self
-        guard imd.isAvailable, imd.idevice_new != nil,
-              imd.instproxy_install != nil else { throw DeviceError.unavailable }
         var device: OpaquePointer?
-        guard imd.openDevice(&device) == imd.success, let device else { throw DeviceError.notAttached }
+        guard IMobileDevice.openDevice(&device).ok, let device else { throw DeviceError.notAttached }
         let client: OpaquePointer
         do {
             try Task.checkCancellation()
-            client = try imd.startInstallationProxy(device: device)
+            client = try IMobileDevice.startInstallationProxy(device: device)
         } catch {
-            _ = imd.idevice_free?(device)
+            _ = idevice_free(device)
             throw error
         }
         let connection = InstallConnection(device: device, client: client)
@@ -226,48 +234,43 @@ extension DeviceServices {
 
     /// The C status callback runs on libimobiledevice's updater thread. It only
     /// decodes and hands off — nothing that could block or throw.
-    nonisolated private static let installCallback: IMobileDevice.InstproxyStatusCB = { _, status, userData in
+    nonisolated private static let installCallback: instproxy_status_cb_t = { _, status, userData in
         guard let userData, let status else { return }
         let ctx = Unmanaged<InstallContext>.fromOpaque(userData).takeUnretainedValue()
-        let imd = IMobileDevice.self
         ctx.box.touch()
 
         var errName: UnsafeMutablePointer<CChar>?
         var errDesc: UnsafeMutablePointer<CChar>?
         var errCode: UInt64 = 0
-        let er = imd.instproxy_status_get_error?(status, &errName, &errDesc, &errCode) ?? 0
-        if er != imd.success || errName != nil {
+        let er = instproxy_status_get_error(status, &errName, &errDesc, &errCode)
+        if !er.ok || errName != nil {
             let desc = errDesc.map { String(cString: $0) }
                 ?? errName.map { String(cString: $0) } ?? "install failed"
             errName.map { free($0) }; errDesc.map { free($0) }
-            ctx.box.finish(.failed(InstproxyError(code: er == 0 ? -5 : er), desc))
+            ctx.box.finish(.failed(InstproxyError(code: er.ok ? -5 : er.code), desc))
             return
         }
 
         var namePtr: UnsafeMutablePointer<CChar>?
-        imd.instproxy_status_get_name?(status, &namePtr)
+        instproxy_status_get_name(status, &namePtr)
         let name = namePtr.map { String(cString: $0) } ?? ""
         namePtr.map { free($0) }
 
         if name == "Complete" { ctx.box.finish(.done); return }
 
         var percent: Int32 = -1
-        imd.instproxy_status_get_percent_complete?(status, &percent)
+        instproxy_status_get_percent_complete(status, &percent)
         ctx.progress(Int(percent), name)
     }
 
     nonisolated private static func blockingInstall(connection: InstallConnection,
                                                     cancellation: InstallCancellation, command: Command,
                                                     progress: @escaping @Sendable (Int, String) -> Void) throws {
-        let imd = IMobileDevice.self
-        let (function, target, clientOptions): (IMobileDevice.InstproxyOp?, String, [String: String]) = switch command {
-        case .install(let path): (imd.instproxy_install, path, [:])
-        case .archiveData(let id): (imd.instproxy_archive, id, ["ArchiveType": "DocumentsOnly"])
-        case .restore(let id): (imd.instproxy_restore, id, ["ArchiveType": "DocumentsOnly"])
-        }
-        guard let installFn = function else {
-            connection.free()
-            throw DeviceError.unavailable
+        typealias Operation = (instproxy_client_t?, UnsafePointer<CChar>?, plist_t?, instproxy_status_cb_t?, UnsafeMutableRawPointer?) -> instproxy_error_t
+        let (installFn, target, clientOptions): (Operation, String, [String: String]) = switch command {
+        case .install(let path): ({ instproxy_install($0, $1, $2, $3, $4) }, path, [:])
+        case .archiveData(let id): ({ instproxy_archive($0, $1, $2, $3, $4) }, id, ["ArchiveType": "DocumentsOnly"])
+        case .restore(let id): ({ instproxy_restore($0, $1, $2, $3, $4) }, id, ["ArchiveType": "DocumentsOnly"])
         }
         do { try cancellation.beginMutation() }
         catch { connection.free(); throw error }
@@ -276,13 +279,13 @@ extension DeviceServices {
         let ctxPtr = Unmanaged.passRetained(ctx).toOpaque()
         // An empty ClientOptions, never none: iPhone OS 2.x's installation_proxy silently drops an Install
         // request without the key (libimobiledevice omits it for NULL options), so no status ever arrives.
-        let options = imd.encode(clientOptions)
-        defer { if let options { imd.plist_free?(options) } }
+        let options = IMobileDevice.encode(clientOptions)
+        defer { if let options { plist_free(options) } }
         let ir = target.withCString { installFn(connection.client, $0, options, installCallback, ctxPtr) }
-        guard ir == imd.success else {
+        guard ir.ok else {
             connection.free()
             Unmanaged<InstallContext>.fromOpaque(ctxPtr).release()
-            throw DeviceError.instproxy(.init(code: ir), phase: "start")
+            throw DeviceError.instproxy(.init(code: ir.code), phase: "start")
         }
 
         // Block THIS detached thread until a terminal status or an idle/absolute
@@ -322,6 +325,7 @@ extension DeviceServices {
             throw DeviceError.timedOut(operation: "install")
         }
     }
+    #endif
 
     // MARK: - Service readiness
 
@@ -332,10 +336,14 @@ extension DeviceServices {
             guard case .boolean(let ready) = try? await remote(.installReady, seconds: Timeouts.serviceProbe) else { return false }
             return ready
         }
-        return (try? await run(Timeouts.serviceProbe, "installd probe") { imd, device in
-            let client = try imd.startInstallationProxy(device: device)
-            _ = imd.instproxy_client_free?(client)
+        #if LIGHTTOUCH_SERVICES
+        return (try? await run(Timeouts.serviceProbe, "installd probe") { device in
+            let client = try IMobileDevice.startInstallationProxy(device: device)
+            _ = instproxy_client_free(client)
             return true
         }) ?? false
+        #else
+        return false
+        #endif
     }
 }

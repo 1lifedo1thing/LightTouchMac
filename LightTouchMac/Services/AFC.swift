@@ -4,14 +4,15 @@
 
 import Foundation
 
+#if LIGHTTOUCH_SERVICES
 extension IMobileDevice {
     /// AFC through lockdown's StartService, each step's error kept (IMobileDevice.startService).
     nonisolated static func startAFC(device: OpaquePointer) throws -> OpaquePointer {
-        try startService("com.apple.afc", device: device, newClient: afc_client_new, freeClient: afc_client_free) {
-            DeviceError.afc(.init(code: $0))
-        }
+        try startService("com.apple.afc", device: device, newClient: { afc_client_new($0, $1, $2) },
+                         freeClient: { afc_client_free($0) }) { DeviceError.afc(.init(code: $0)) }
     }
 }
+#endif
 
 extension DeviceServices {
     // MARK: - Free space
@@ -23,16 +24,19 @@ extension DeviceServices {
             guard case .integer(let bytes) = try await remote(.freeSpace, seconds: Timeouts.query) else { throw DeviceError.unavailable }
             return bytes
         }
-        return try await run(Timeouts.query, "free space") { imd, device in
-            guard let infoKey = imd.afc_get_device_info_key else { throw DeviceError.unavailable }
-            let client = try imd.startAFC(device: device)
-            defer { _ = imd.afc_client_free?(client) }
+        #if LIGHTTOUCH_SERVICES
+        return try await run(Timeouts.query, "free space") { device in
+            let client = try IMobileDevice.startAFC(device: device)
+            defer { _ = afc_client_free(client) }
             var value: UnsafeMutablePointer<CChar>?
-            let fr = "FSFreeBytes".withCString { infoKey(client, $0, &value) }
-            guard fr == imd.success, let value else { throw DeviceError.afc(.init(code: fr)) }
+            let fr = afc_get_device_info_key(client, "FSFreeBytes", &value)
+            guard fr.ok, let value else { throw DeviceError.afc(.init(code: fr.code)) }
             defer { free(value) }
             return Int64(String(cString: value)) ?? 0
         }
+        #else
+        throw Self.unrouted
+        #endif
     }
 
     nonisolated static func validateFilePath(_ path: String) throws {
@@ -70,33 +74,29 @@ extension DeviceServices {
             }), let path else { throw DeviceError.unavailable }
             return path
         }
-        return try await run(Timeouts.stage, "upload") { imd, device in
+        #if LIGHTTOUCH_SERVICES
+        return try await run(Timeouts.stage, "upload") { device in
             // File I/O stays on the detached worker, including opening the file.
             let input = try FileHandle(forReadingFrom: ipa)
             defer { try? input.close() }
             let total = try input.seekToEnd()
             try input.seek(toOffset: 0)
             guard total > 0 || allowEmpty else { throw DeviceError.preflight("The file is empty.") }
-            guard let mkdir = imd.afc_make_directory,
-                  let open = imd.afc_file_open,
-                  let write = imd.afc_file_write,
-                  let close = imd.afc_file_close else { throw DeviceError.unavailable }
-            let client = try imd.startAFC(device: device)
-            defer { _ = imd.afc_client_free?(client) }
+            let client = try IMobileDevice.startAFC(device: device)
+            defer { _ = afc_client_free(client) }
             if reuseIdentical {
-                guard let read = imd.afc_file_read, imd.afc_rename_path != nil else { throw DeviceError.unavailable }
                 var existing: UInt64 = 0
-                let result = remote.withCString { open(client, $0, 1, &existing) } // AFC_FOPEN_RDONLY.
-                if result == imd.success {
-                    defer { _ = close(client, existing) }
+                let result = afc_file_open(client, remote, AFC_FOPEN_RDONLY, &existing)
+                if result.ok {
+                    defer { _ = afc_file_close(client, existing) }
                     var buffer = [CChar](repeating: 0, count: 65536)
                     while let chunk = try input.read(upToCount: 65536), !chunk.isEmpty {
                         var offset = 0
                         while offset < chunk.count {
                             try Task.checkCancellation()
                             var count: UInt32 = 0
-                            let rc = read(client, existing, &buffer, UInt32(chunk.count - offset), &count)
-                            guard rc == imd.success, count > 0, count <= chunk.count - offset,
+                            let rc = afc_file_read(client, existing, &buffer, UInt32(chunk.count - offset), &count)
+                            guard rc.ok, count > 0, count <= chunk.count - offset,
                                   Data(bytes: buffer, count: Int(count)) == chunk.subdata(in: offset..<(offset + Int(count))) else {
                                 throw DeviceError.preflight("An existing media file differs from this import. It was kept unchanged.")
                             }
@@ -104,13 +104,13 @@ extension DeviceServices {
                         }
                     }
                     var count: UInt32 = 0
-                    guard read(client, existing, &buffer, 1, &count) == imd.success, count == 0 else {
+                    guard afc_file_read(client, existing, &buffer, 1, &count).ok, count == 0 else {
                         throw DeviceError.preflight("An existing media file differs from this import. It was kept unchanged.")
                     }
                     progress(1)
                     return remote
                 }
-                guard result == 8 else { throw DeviceError.afc(.init(code: result)) } // Object not found.
+                guard result == AFC_E_OBJECT_NOT_FOUND else { throw DeviceError.afc(.init(code: result.code)) }
             }
             // Publish complete media only. Interrupted uploads never truncate a
             // library file or leave a partial file at its content-derived path.
@@ -118,16 +118,16 @@ extension DeviceServices {
             var parent = ""
             for component in remote.split(separator: "/").dropLast() {
                 parent = parent.isEmpty ? String(component) : parent + "/" + component
-                _ = parent.withCString { mkdir(client, $0) }
+                _ = afc_make_directory(client, parent)
             }
             var handle: UInt64 = 0
-            let opened = destination.withCString { open(client, $0, IMobileDevice.afcWriteMode, &handle) }
-            guard opened == imd.success else { throw DeviceError.afc(.init(code: opened)) }
+            let opened = afc_file_open(client, destination, AFC_FOPEN_WRONLY, &handle)
+            guard opened.ok else { throw DeviceError.afc(.init(code: opened.code)) }
             var closed = false
             var complete = false
             defer {
-                if !closed { _ = close(client, handle) }
-                if !complete { _ = destination.withCString { imd.afc_remove_path?(client, $0) } }
+                if !closed { _ = afc_file_close(client, handle) }
+                if !complete { _ = afc_remove_path(client, destination) }
             }
             var written: UInt64 = 0
             while written < total {
@@ -140,9 +140,9 @@ extension DeviceServices {
                     while offset < raw.count {
                         try Task.checkCancellation()
                         var count: UInt32 = 0
-                        let rc = write(client, handle, base + offset, UInt32(raw.count - offset), &count)
-                        guard rc == imd.success, count > 0, count <= raw.count - offset else {
-                            throw DeviceError.upload(.init(code: rc == 0 ? 1 : rc), written: written, total: total)
+                        let rc = afc_file_write(client, handle, base + offset, UInt32(raw.count - offset), &count)
+                        guard rc.ok, count > 0, count <= raw.count - offset else {
+                            throw DeviceError.upload(.init(code: rc.ok ? 1 : rc.code), written: written, total: total)
                         }
                         offset += Int(count)
                         written += UInt64(count)
@@ -150,20 +150,21 @@ extension DeviceServices {
                 }
                 progress(Double(written) / Double(total))
             }
-            let result = close(client, handle)
+            let result = afc_file_close(client, handle)
             closed = true
-            guard result == imd.success else { throw DeviceError.upload(.init(code: result), written: written, total: total) }
+            guard result.ok else { throw DeviceError.upload(.init(code: result.code), written: written, total: total) }
             try Task.checkCancellation()
             if reuseIdentical {
-                let renamed = destination.withCString { from in
-                    remote.withCString { to in imd.afc_rename_path!(client, from, to) }
-                }
-                guard renamed == imd.success else { throw DeviceError.afc(.init(code: renamed)) }
+                let renamed = afc_rename_path(client, destination, remote)
+                guard renamed.ok else { throw DeviceError.afc(.init(code: renamed.code)) }
             }
             complete = true
             progress(1)
             return remote
         }
+        #else
+        throw Self.unrouted
+        #endif
     }
 
     /// A stable device-side filename from the .ipa: staging paths must survive
@@ -204,18 +205,15 @@ extension DeviceServices {
 
     func sweepStaging() async {
         if !local { _ = try? await remote(.sweep, seconds: Timeouts.query); return }
-        _ = try? await run(Timeouts.query, "staging sweep") { imd, device in
-            guard let readDir = imd.afc_read_directory,
-                  let remove = imd.afc_remove_path,
-                  let dictFree = imd.afc_dictionary_free else { return }
-            guard let client = try? imd.startAFC(device: device) else { return }
-            defer { _ = imd.afc_client_free?(client) }
+        #if LIGHTTOUCH_SERVICES
+        _ = try? await run(Timeouts.query, "staging sweep") { device in
+            guard let client = try? IMobileDevice.startAFC(device: device) else { return }
+            defer { _ = afc_client_free(client) }
 
             func entries(_ path: String) -> [String] {
                 var list: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
-                guard path.withCString({ readDir(client, $0, &list) }) == imd.success,
-                      let list else { return [] }
-                defer { _ = dictFree(list) }
+                guard afc_read_directory(client, path, &list).ok, let list else { return [] }
+                defer { _ = afc_dictionary_free(list) }
                 var names: [String] = [], i = 0
                 while let entry = list[i] { names.append(String(cString: entry)); i += 1 }
                 return names
@@ -224,28 +222,30 @@ extension DeviceServices {
                 try Task.checkCancellation()
                 guard Self.isOrphanedStagingName(name) else { continue }
                 logEvent("device: removing orphaned staging upload \(name)")
-                _ = "PublicStaging/\(name)".withCString { remove(client, $0) }
+                _ = afc_remove_path(client, "PublicStaging/\(name)")
             }
             for directory in entries("LightTouch") where UUID(uuidString: directory) != nil {
                 try Task.checkCancellation()
                 for name in entries("LightTouch/\(directory)") {
                     try Task.checkCancellation()
                     guard Self.isOrphanedMediaUpload(name) else { continue }
-                    _ = "LightTouch/\(directory)/\(name)".withCString { remove(client, $0) }
+                    _ = afc_remove_path(client, "LightTouch/\(directory)/\(name)")
                 }
             }
         }
+        #endif
     }
 
     /// Best-effort cleanup of a staged upload.
     func removeStaged(_ path: String) async {
         if !local { _ = try? await remote(.remove(path), seconds: Timeouts.query); return }
-        _ = try? await run(Timeouts.query, "cleanup") { imd, device in
-            guard let remove = imd.afc_remove_path else { return }
-            guard let client = try? imd.startAFC(device: device) else { return }
-            defer { _ = imd.afc_client_free?(client) }
-            _ = path.withCString { remove(client, $0) }
+        #if LIGHTTOUCH_SERVICES
+        _ = try? await run(Timeouts.query, "cleanup") { device in
+            guard let client = try? IMobileDevice.startAFC(device: device) else { return }
+            defer { _ = afc_client_free(client) }
+            _ = afc_remove_path(client, path)
         }
+        #endif
     }
 }
 
@@ -257,16 +257,14 @@ extension DeviceServices {
             return files
         }
         try Self.validateFilePath(path)
-        return try await run(Timeouts.browse, "browse files") { imd, device in
-            guard let read = imd.afc_read_directory,
-                  let info = imd.afc_get_file_info,
-                  let free = imd.afc_dictionary_free else { throw DeviceError.unavailable }
-            let client = try imd.startAFC(device: device)
-            defer { _ = imd.afc_client_free?(client) }
+        #if LIGHTTOUCH_SERVICES
+        return try await run(Timeouts.browse, "browse files") { device in
+            let client = try IMobileDevice.startAFC(device: device)
+            defer { _ = afc_client_free(client) }
             var names: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
-            let result = (path.isEmpty ? "/" : path).withCString { read(client, $0, &names) }
-            guard result == imd.success, let names else { throw DeviceError.afc(.init(code: result)) }
-            defer { _ = free(names) }
+            let result = afc_read_directory(client, path.isEmpty ? "/" : path, &names)
+            guard result.ok, let names else { throw DeviceError.afc(.init(code: result.code)) }
+            defer { _ = afc_dictionary_free(names) }
             var entries: [DeviceFile] = []
             var i = 0
             while let raw = names[i] {
@@ -279,9 +277,9 @@ extension DeviceServices {
                 }
                 let child = path.isEmpty ? name : path + "/" + name
                 var values: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
-                let rc = child.withCString { info(client, $0, &values) }
-                guard rc == imd.success, let values else { throw DeviceError.afc(.init(code: rc)) }
-                defer { _ = free(values) }
+                let rc = afc_get_file_info(client, child, &values)
+                guard rc.ok, let values else { throw DeviceError.afc(.init(code: rc.code)) }
+                defer { _ = afc_dictionary_free(values) }
                 var metadata: [String: String] = [:]
                 var j = 0
                 while let key = values[j] {
@@ -301,6 +299,9 @@ extension DeviceServices {
                 return $0.name.localizedStandardCompare($1.name) == .orderedAscending
             }
         }
+        #else
+        throw Self.unrouted
+        #endif
     }
 
     /// Save to a private adjacent file, then publish only a completed transfer.
@@ -326,15 +327,14 @@ extension DeviceServices {
         guard file.isRegular, !file.path.isEmpty else {
             throw DeviceError.preflight("Select a regular file to export.")
         }
-        return try await run(Timeouts.stage, "export file") { imd, device in
-            guard let open = imd.afc_file_open, let read = imd.afc_file_read,
-                  let close = imd.afc_file_close else { throw DeviceError.unavailable }
-            let client = try imd.startAFC(device: device)
-            defer { _ = imd.afc_client_free?(client) }
+        #if LIGHTTOUCH_SERVICES
+        return try await run(Timeouts.stage, "export file") { device in
+            let client = try IMobileDevice.startAFC(device: device)
+            defer { _ = afc_client_free(client) }
             var handle: UInt64 = 0
-            let opened = file.path.withCString { open(client, $0, 1, &handle) }
-            guard opened == imd.success else { throw DeviceError.afc(.init(code: opened)) }
-            defer { _ = close(client, handle) }
+            let opened = afc_file_open(client, file.path, AFC_FOPEN_RDONLY, &handle)
+            guard opened.ok else { throw DeviceError.afc(.init(code: opened.code)) }
+            defer { _ = afc_file_close(client, handle) }
             let temporary = destination.deletingLastPathComponent().appendingPathComponent(".LightTouch-" + UUID().uuidString)
             let fd = temporary.path.withCString { Darwin.open($0, O_WRONLY | O_CREAT | O_EXCL, 0o600) }
             guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
@@ -345,9 +345,9 @@ extension DeviceServices {
             while true {
                 try Task.checkCancellation()
                 var count: UInt32 = 0
-                let rc = read(client, handle, &buffer, UInt32(buffer.count), &count)
-                guard rc == imd.success, count <= buffer.count else {
-                    throw DeviceError.afc(.init(code: rc == 0 ? 1 : rc))
+                let rc = afc_file_read(client, handle, &buffer, UInt32(buffer.count), &count)
+                guard rc.ok, count <= buffer.count else {
+                    throw DeviceError.afc(.init(code: rc.ok ? 1 : rc.code))
                 }
                 if count == 0 { break }
                 guard UInt64(count) <= file.size - min(received, file.size) else {
@@ -369,5 +369,8 @@ extension DeviceServices {
             guard result == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             progress(1)
         }
+        #else
+        throw Self.unrouted
+        #endif
     }
 }

@@ -18,26 +18,38 @@ with tempfile.TemporaryDirectory(prefix='ltm-host-workers-') as directory:
     if not os.environ.get('LTM_HOST_SERVICE_WORKER'):
         host_service.build_worker(ROOT, worker, flags)
     shim = tmp / 'shim.c'
+    # The worker links libimobiledevice; the probe replaces the calls it makes (dyld interposing).
     shim.write_text(r'''
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-int idevice_new(void **device, const char *udid) {
+#include <libimobiledevice/libimobiledevice.h>
+#include <libimobiledevice/notification_proxy.h>
+static idevice_error_t probe_new(idevice_t *device, const char *udid) {
  const char *socket = getenv("USBMUXD_SOCKET_ADDRESS");
  FILE *f=fopen(getenv("LTM_WORKER_PROBE_LOG"),"a");
  fprintf(f,"%ld %s %s\n",(long)getpid(),socket,udid?udid:"nil"); fclose(f);
  if (!udid || (strstr(socket,":31431") && strcmp(udid,"A")) || (strstr(socket,":31432") && strcmp(udid,"B"))) return -1;
  if (strstr(socket,":31431")) while (access(getenv("LTM_WORKER_PROBE_RELEASE"),F_OK)) usleep(10000);
- *device=(void*)1; return 0;
+ *device=(idevice_t)1; return 0;
 }
-int idevice_free(void *device) { return 0; }
-int np_client_start_service(void *device, void **client, const char *label) { *client=(void*)2;return 0; }
-int np_client_free(void *client) { return 0; }
-int np_observe_notification(void *client, const char *name) { return 0; }
-int np_set_notify_callback(void *client, void *cb, void *ctx) { return 0; }
+static idevice_error_t probe_free(idevice_t device) { return 0; }
+static np_error_t probe_np_start(idevice_t device, np_client_t *client, const char *label) { *client=(np_client_t)2; return 0; }
+static np_error_t probe_np_free(np_client_t client) { return 0; }
+static np_error_t probe_np_observe(np_client_t client, const char *name) { return 0; }
+static np_error_t probe_np_callback(np_client_t client, np_notify_cb_t cb, void *ctx) { return 0; }
+#define INTERPOSE(replacement, original) \
+ __attribute__((used)) static struct { const void *r, *o; } interpose_##original \
+ __attribute__((section("__DATA,__interpose"))) = { (const void *)replacement, (const void *)original }
+INTERPOSE(probe_new, idevice_new);
+INTERPOSE(probe_free, idevice_free);
+INTERPOSE(probe_np_start, np_client_start_service);
+INTERPOSE(probe_np_free, np_client_free);
+INTERPOSE(probe_np_observe, np_observe_notification);
+INTERPOSE(probe_np_callback, np_set_notify_callback);
 ''')
-    subprocess.run(['clang', '-dynamiclib', str(shim), '-o', str(tmp / 'libimobiledevice-1.0.dylib')], check=True)
+    subprocess.run(['clang', '-dynamiclib', *host_service.imobiledevice_flags(), str(shim), '-o', str(tmp / 'probe.dylib')], check=True)
     harness = tmp / 'Check.swift'
     harness.write_text(r'''
 import Foundation
@@ -104,6 +116,6 @@ func logEvent(_ value: String) {}
 }
 ''')
     subprocess.run([*common, '-parse-as-library', str(harness), '-o', str(tmp / 'check')], check=True)
-    env = os.environ | {'LTM_HOST_SERVICE_WORKER': str(worker), 'LTM_SERVICE_FRAMEWORKS': str(tmp),
+    env = os.environ | {'LTM_HOST_SERVICE_WORKER': str(worker), 'DYLD_INSERT_LIBRARIES': str(tmp / 'probe.dylib'),
         'LTM_WORKER_PROBE_LOG': str(tmp / 'calls'), 'LTM_WORKER_PROBE_RELEASE': str(tmp / 'release')}
     subprocess.run([str(tmp / 'check'), str(tmp)], env=env, check=True, timeout=20)

@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Load the production IMobileDevice bridge against a native service-connection fixture."""
+"""Link the production IMobileDevice service connection against a native service-connection fixture (a
+libimobiledevice of its own with the same symbols): each step's exact error, the native call order and cleanup."""
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+import host_service
 
 root = Path(__file__).resolve().parents[2]
 c_source = r'''
@@ -26,20 +30,23 @@ int lockdownd_start_service(void *connection, const char *name, void **output) {
 }
 int lockdownd_client_free(void *connection) { assert(connection == &lockdown); record('L'); return 0; }
 int lockdownd_service_descriptor_free(void *service) { assert(service == &descriptor); record('D'); return 0; }
-#ifndef OMIT_CONSTRUCTOR
 int instproxy_client_new(void *device, void *service, void **output) {
     assert(device == (void *)17 && service == &descriptor);
     assert(strcmp(calls, "HSL") == 0); /* lockdown must close before this socket opens */
     record('N'); *output = missing & 4 ? 0 : &client; return stage == 3 ? error : 0;
 }
-#endif
 int instproxy_client_free(void *connection) { assert(connection == &client); record('C'); return 0; }
+/* The rest of what IMobileDevice.swift links; not reached here. */
+int idevice_new(void **device, const char *udid) { return -1; }
+int idevice_free(void *device) { return 0; }
+int plist_to_xml(void *node, char **xml, unsigned *length) { return -1; }
+void plist_mem_free(void *ptr) {}
+int plist_from_xml(const char *xml, unsigned length, void **node) { return -1; }
 '''
 swift_source = r'''
 import Foundation
 nonisolated enum HostServiceResources {
     static let udid: String? = nil
-    static let frameworksDirectory: String? = CommandLine.arguments[1]
 }
 nonisolated struct InstproxyError: Equatable { let code: Int32 }
 nonisolated enum DeviceError: Error, Equatable {
@@ -47,8 +54,7 @@ nonisolated enum DeviceError: Error, Equatable {
 }
 @main struct Check {
     static func main() throws {
-        let path = CommandLine.arguments[1] + "/libimobiledevice-1.0.dylib"
-        let library = dlopen(path, RTLD_NOW)!
+        let library = dlopen(nil, RTLD_NOW)
         typealias Reset = @convention(c) (Int32, Int32, Int32) -> Void
         typealias Calls = @convention(c) () -> UnsafePointer<CChar>
         let reset = unsafeBitCast(dlsym(library, "fixture_reset")!, to: Reset.self)
@@ -64,11 +70,6 @@ nonisolated enum DeviceError: Error, Equatable {
                 precondition(error == expected, "wrong error: \(error), expected \(expected)")
             }
             precondition(String(cString: calls()) == trace, "wrong cleanup: \(String(cString: calls()))")
-        }
-        if CommandLine.arguments.last == "missing" {
-            try failure(0, 0, 0, expected: .unavailable, trace: "")
-            print("PASS: missing constructor rejected before creating any handles")
-            return
         }
         // Device locked, prohibited service, and transport failures retain
         // their exact lockdown code rather than turning into instproxy -256.
@@ -89,7 +90,7 @@ nonisolated enum DeviceError: Error, Equatable {
         reset(0, 0, 0)
         let client = try IMobileDevice.startInstallationProxy(device: device)
         precondition(String(cString: calls()) == "HSLND", "helper freed the caller's client")
-        _ = IMobileDevice.instproxy_client_free?(client)
+        _ = instproxy_client_free(client)
         precondition(String(cString: calls()) == "HSLNDC")
         print("PASS: exact lockdown/instproxy errors, native call order, partial/null handles, descriptor cleanup, caller-owned success")
     }
@@ -99,17 +100,16 @@ with tempfile.TemporaryDirectory(prefix="ltm-instproxy-connect-") as directory:
     temp = Path(directory)
     (temp / "fixture.c").write_text(c_source)
     (temp / "check.swift").write_text(swift_source)
-    for variant in ["complete", "missing"]:
-        folder = temp / variant
-        folder.mkdir()
-        subprocess.run(["xcrun", "clang", "-dynamiclib", "-Wall", "-Werror",
-                        *(["-DOMIT_CONSTRUCTOR"] if variant == "missing" else []),
-                        str(temp / "fixture.c"), "-o", str(folder / "libimobiledevice-1.0.dylib")], check=True)
+    subprocess.run(["xcrun", "clang", "-dynamiclib", "-Wall", "-Werror", "-install_name", "@rpath/libimobiledevice-1.0.dylib",
+                    str(temp / "fixture.c"), "-o", str(temp / "libimobiledevice-1.0.dylib")], check=True)
     binary = temp / "check"
-    # Match the app's Swift 5 language mode and default actor isolation.
-    subprocess.run(["xcrun", "swiftc", "-parse-as-library", "-swift-version", "5",
-                    "-default-isolation", "MainActor", "-module-cache-path", str(temp / "modules"),
+    # The services helper's build: its bridging header (the real C API), LIGHTTOUCH_SERVICES, Swift 5 and default
+    # MainActor isolation; linked to the fixture in place of libimobiledevice.
+    headers = [x for f in host_service.imobiledevice_flags() if f.startswith("-I") for x in ("-Xcc", f)]
+    subprocess.run(["xcrun", "swiftc", "-parse-as-library", "-swift-version", "5", "-D", "LIGHTTOUCH_SERVICES",
+                    "-default-isolation", "MainActor", "-module-cache-path", str(temp / "modules"), *headers,
+                    "-import-objc-header", str(root / "LightTouchServices/Lockdown/Lockdown.h"),
                     str(root / "LightTouchMac/Transport/IMobileDevice.swift"), str(temp / "check.swift"),
+                    "-L", str(temp), "-limobiledevice-1.0", "-Xlinker", "-rpath", "-Xlinker", str(temp),
                     "-o", str(binary)], check=True)
-    for variant in ["complete", "missing"]:
-        subprocess.run([str(binary), str(temp / variant), variant], check=True, timeout=10)
+    subprocess.run([str(binary)], check=True, timeout=10)

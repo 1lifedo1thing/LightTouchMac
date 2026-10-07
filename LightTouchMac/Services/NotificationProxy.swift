@@ -73,12 +73,14 @@ final class NotificationProxy {
         self.observe = observe
     }
 
+    #if LIGHTTOUCH_SERVICES
     /// The C callback runs on libimobiledevice's own thread. Classify the
     /// notification and hand it off without blocking that reader.
-    nonisolated private static let callback: IMobileDevice.NpNotifyCB = { notification, userData in
+    nonisolated private static let callback: np_notify_cb_t = { notification, userData in
         guard let userData else { return }
         Unmanaged<Sink>.fromOpaque(userData).takeUnretainedValue().receive(notification)
     }
+    #endif
 
     /// Only inspect host activity in `attachAllowed`; existing subscriptions
     /// stay open during installs. The library reports loss of this specific
@@ -120,6 +122,7 @@ final class NotificationProxy {
     nonisolated static func localObserveOnce(socket: String,
                                                 attachAllowed: @escaping @Sendable () async -> Bool,
                                                 onChange: @escaping @Sendable () -> Void) async -> Bool {
+        #if LIGHTTOUCH_SERVICES
         // np_client_start_service does a full lockdown handshake and start_service
         // internally, so it goes through the gate like every other service
         // connect. Its factory then closes lockdown; the lasting subscription
@@ -155,37 +158,36 @@ final class NotificationProxy {
         // This independent task must run even when the watcher was cancelled.
         await freeDetached(handles, Timeouts.serviceProbe * 2, "notification")
         return true
+        #else
+        return false
+        #endif
     }
+
+    #if LIGHTTOUCH_SERVICES
 
     /// The blocking half: open the session and arm the callback.
     private nonisolated static func connect(onChange: @escaping @Sendable () -> Void)
         -> Session?
     {
-        let imd = IMobileDevice.self
-        guard imd.idevice_new != nil,
-              let start = imd.np_client_start_service,
-              let observe = imd.np_observe_notification,
-              let setCB = imd.np_set_notify_callback else { return nil }
-
         var device: OpaquePointer?
-        guard imd.openDevice(&device) == imd.success, let device else { return nil }
-        defer { _ = imd.idevice_free?(device) }
+        guard IMobileDevice.openDevice(&device).ok, let device else { return nil }
+        defer { _ = idevice_free(device) }
 
         var client: OpaquePointer?
-        guard start(device, &client, "LightTouchMac") == imd.success, let client else { return nil }
+        guard np_client_start_service(device, &client, "LightTouchMac").ok, let client else { return nil }
 
         for name in observed {
-            guard name.withCString({ observe(client, $0) }) == imd.success else {
-                _ = imd.np_client_free?(client)
+            guard np_observe_notification(client, name).ok else {
+                _ = np_client_free(client)
                 return nil
             }
         }
 
         let sink = Sink(onChange)
         let ctx = Unmanaged.passRetained(sink).toOpaque()
-        guard setCB(client, callback, ctx) == imd.success else {
+        guard np_set_notify_callback(client, callback, ctx).ok else {
             Unmanaged<Sink>.fromOpaque(ctx).release()
-            _ = imd.np_client_free?(client)
+            _ = np_client_free(client)
             return nil
         }
         return Session(client: client, ctx: ctx, closed: sink.closed)
@@ -202,8 +204,9 @@ final class NotificationProxy {
             self.closed = closed
         }
         func free() {
-            _ = IMobileDevice.np_client_free?(client)
+            _ = np_client_free(client)
             Unmanaged<Sink>.fromOpaque(ctx).release()
         }
     }
+    #endif
 }

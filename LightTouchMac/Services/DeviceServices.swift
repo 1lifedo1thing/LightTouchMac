@@ -16,12 +16,11 @@ nonisolated struct DeviceServices: Sendable {
 
     // MARK: - Execution: gate + deadline + fresh handles
 
+    #if LIGHTTOUCH_SERVICES
     /// Run blocking libimobiledevice work under the process-wide gate and a
     /// deadline, with a freshly-opened idevice handle freed on the way out.
-    /// `body` gets the loaded library and an attached device; it opens whatever
-    /// service clients it needs and frees them itself.
-    func run<T: Sendable>(_ seconds: Double, _ label: String,
-                          _ body: @escaping @Sendable (IMobileDevice.Type, OpaquePointer) throws -> T)
+    /// `body` gets an attached device; it opens whatever service clients it needs and frees them itself.
+    func run<T: Sendable>(_ seconds: Double, _ label: String, _ body: @escaping @Sendable (OpaquePointer) throws -> T)
         async throws -> T
     {
         guard local else { throw DeviceToolsError.failed("Unrouted host service operation.") }
@@ -30,17 +29,11 @@ nonisolated struct DeviceServices: Sendable {
             let started = ContinuousClock.now
             do {
                 return try await withDeadline(seconds, label) {
-                    let imd = IMobileDevice.self
-                    guard imd.isAvailable, let idevice_new = imd.idevice_new else {
-                        throw DeviceError.unavailable
-                    }
                     var device: OpaquePointer?
                     let opened = endpoint.udid.map { id in id.withCString { idevice_new(&device, $0) } } ?? idevice_new(&device, nil)
-                    guard opened == imd.success, let device else {
-                        throw DeviceError.notAttached
-                    }
-                    defer { _ = imd.idevice_free?(device) }
-                    return try body(imd, device)
+                    guard opened.ok, let device else { throw DeviceError.notAttached }
+                    defer { _ = idevice_free(device) }
+                    return try body(device)
                 }
             } catch {
                 if !(error is CancellationError) {
@@ -50,6 +43,11 @@ nonisolated struct DeviceServices: Sendable {
             }
         }
     }
+    #endif
+
+    /// The engine halves below run in the services helper only (LIGHTTOUCH_SERVICES); anywhere else a local call has
+    /// nothing to run.
+    static var unrouted: Error { DeviceToolsError.failed("Unrouted host service operation.") }
 
     // MARK: - Attachment
 
@@ -60,6 +58,7 @@ nonisolated struct DeviceServices: Sendable {
     /// the blocked thread; the gate keeps it from racing other device work.
     func checkAttachment() async throws {
         if !local { _ = try await remote(.attachment, seconds: Timeouts.serviceProbe * 2); return }
+        #if LIGHTTOUCH_SERVICES
         let socket = clientSocket
         // Bounded INCLUDING the wait for the gate. withDeadline bounds the probe
         // itself, but not the queue in front of it, and this is called from the
@@ -82,5 +81,8 @@ nonisolated struct DeviceServices: Sendable {
         try Task.checkCancellation()
         guard let result else { throw DeviceError.timedOut(operation: "USB connection") }
         try result.get()
+        #else
+        throw Self.unrouted
+        #endif
     }
 }

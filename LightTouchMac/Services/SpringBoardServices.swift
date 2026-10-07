@@ -26,7 +26,11 @@ extension DeviceServices {
             guard case .strings(let ids) = try await remote(.homeOrder, seconds: Timeouts.query) else { throw DeviceError.unavailable }
             return ids
         }
+        #if LIGHTTOUCH_SERVICES
         return try await withIconState { state, _ in HomeScreenLayout.flatten(state) }
+        #else
+        throw Self.unrouted
+        #endif
     }
 
     /// Move `bundleID` into the slot `other` currently occupies, or to the end
@@ -44,6 +48,7 @@ extension DeviceServices {
             guard case .strings(let ids) = try await remote(.move(bundle: bundleID, before: other, deviceName: deviceName), seconds: Timeouts.query) else { throw DeviceError.unavailable }
             return ids
         }
+        #if LIGHTTOUCH_SERVICES
         return try await withIconState { state, client in
             var ids = HomeScreenLayout.flatten(state)
             // Not "return ids". Returning the unchanged order looked like a
@@ -62,6 +67,9 @@ extension DeviceServices {
             try HomeScreenLayout.write(HomeScreenLayout.rebuild(state, order: ids), to: client)
             return ids
         }
+        #else
+        throw Self.unrouted
+        #endif
     }
 
     /// SpringBoard's UIInterfaceOrientation (1 portrait, 2 upside down,
@@ -72,20 +80,22 @@ extension DeviceServices {
             guard case .integer(let orientation) = try await remote(.orientation, seconds: Timeouts.query) else { throw DeviceError.unavailable }
             return Int(orientation)
         }
+        #if LIGHTTOUCH_SERVICES
         return try await withSpringBoard { client in
-            guard let get = IMobileDevice.sbservices_get_interface_orientation else {
-                throw DeviceToolsError.failed("App services are missing from this copy of Light Touch. Reinstall Light Touch.")
-            }
-            var orientation: Int32 = 0
-            guard get(client, &orientation) == IMobileDevice.success else {
+            var orientation = SBSERVICES_INTERFACE_ORIENTATION_UNKNOWN
+            guard sbservices_get_interface_orientation(client, &orientation).ok else {
                 throw DeviceToolsError.failed("The Home screen didn’t report its orientation. Try again.")
             }
-            return Int(orientation)
+            return Int(orientation.rawValue)
         }
+        #else
+        throw Self.unrouted
+        #endif
     }
 
     // MARK: - libimobiledevice
 
+    #if LIGHTTOUCH_SERVICES
     /// Connect, run `body` against the current icon state, disconnect. Every
     /// handle is released on the way out, including on a throw — a leaked
     /// lockdown client is a service slot the device does not get back, and
@@ -94,16 +104,10 @@ extension DeviceServices {
         _ body: @Sendable @escaping ([Any], OpaquePointer) throws -> T
     ) async throws -> T {
         return try await withSpringBoard { client in
-            let imd = IMobileDevice.self
-            guard let sbservices_get_icon_state = imd.sbservices_get_icon_state,
-                  let plist_free = imd.plist_free else {
-                throw DeviceToolsError.failed("App services are missing from this copy of Light Touch. Reinstall Light Touch.")
-            }
-            var raw: OpaquePointer?
+            var raw: plist_t?
             // "2" is the format version SpringBoard has spoken since iOS 3 —
             // the one that reports the dock as its own list.
-            guard sbservices_get_icon_state(client, &raw, "2") == imd.success,
-                  let raw else {
+            guard sbservices_get_icon_state(client, &raw, "2").ok, let raw else {
                 throw DeviceToolsError.failed("The Home screen didn’t report its layout. Try again.")
             }
             defer { plist_free(raw) }
@@ -125,37 +129,28 @@ extension DeviceServices {
     private func withSpringBoard<T: Sendable>(
         _ body: @Sendable @escaping (OpaquePointer) throws -> T
     ) async throws -> T {
-        return try await run(Timeouts.browse, "home-screen layout") { imd, device in
-            guard let lockdownd_client_new_with_handshake = imd.lockdownd_client_new_with_handshake,
-                  let lockdownd_start_service = imd.lockdownd_start_service,
-                  let sbservices_client_new = imd.sbservices_client_new else {
-                throw DeviceToolsError.failed(
-                    "App services are missing from this copy of Light Touch. Reinstall Light Touch.")
-            }
-
+        return try await run(Timeouts.browse, "home-screen layout") { device in
             var lockdown: OpaquePointer?
-            guard lockdownd_client_new_with_handshake(device, &lockdown, "LightTouchMac")
-                    == imd.success, let lockdown else {
+            guard lockdownd_client_new_with_handshake(device, &lockdown, "LightTouchMac").ok, let lockdown else {
                 throw DeviceToolsError.failed("The device refused the connection. Try again.")
             }
-            defer { _ = imd.lockdownd_client_free?(lockdown) }
+            defer { _ = lockdownd_client_free(lockdown) }
 
-            var service: OpaquePointer?
-            guard lockdownd_start_service(lockdown, "com.apple.springboardservices", &service)
-                    == imd.success, let service else {
+            var service: lockdownd_service_descriptor_t?
+            guard lockdownd_start_service(lockdown, "com.apple.springboardservices", &service).ok, let service else {
                 throw DeviceToolsError.failed("The Home screen isn’t responding yet. Try again in a moment.")
             }
-            defer { _ = imd.lockdownd_service_descriptor_free?(service) }
+            defer { _ = lockdownd_service_descriptor_free(service) }
 
             var client: OpaquePointer?
-            guard sbservices_client_new(device, service, &client) == imd.success,
-                  let client else {
+            guard sbservices_client_new(device, service, &client).ok, let client else {
                 throw DeviceToolsError.failed("Couldn’t reach the Home screen. Try again.")
             }
-            defer { _ = imd.sbservices_client_free?(client) }
+            defer { _ = sbservices_client_free(client) }
             return try body(client)
         }
     }
+    #endif
 }
 
 /// The icon state's shape: flattened to bundle IDs and refilled from them.
@@ -228,30 +223,20 @@ nonisolated enum HomeScreenLayout {
     /// plist_t -> Foundation, via the XML both sides already speak. Converting
     /// through a string beats walking the plist_t node by node, and an icon
     /// layout is a few KB.
-    fileprivate static func decode(_ node: OpaquePointer) throws -> Any {
-        var xml: UnsafeMutablePointer<CChar>?
-        var length: UInt32 = 0
-        IMobileDevice.plist_to_xml?(node, &xml, &length)
-        guard let xml else { throw DeviceToolsError.failed("The Home screen reported a layout Light Touch can’t read.") }
-        defer { IMobileDevice.plist_mem_free?(xml) }
-        let data = Data(bytes: xml, count: Int(length))
-        return try PropertyListSerialization.propertyList(from: data, format: nil)
+    #if LIGHTTOUCH_SERVICES
+    fileprivate static func decode(_ node: plist_t) throws -> Any {
+        guard let state = IMobileDevice.decode(node) else {
+            throw DeviceToolsError.failed("The Home screen reported a layout Light Touch can’t read.")
+        }
+        return state
     }
 
     fileprivate static func write(_ state: [Any], to client: OpaquePointer) throws {
-        let data = try PropertyListSerialization.data(fromPropertyList: state,
-                                                      format: .xml, options: 0)
-        var node: OpaquePointer?
-        // plist_from_xml's own return code is dropped: it reports the same
-        // failure the nil node does, and the nil check has to be here anyway.
-        _ = data.withUnsafeBytes { buffer in
-            IMobileDevice.plist_from_xml?(buffer.baseAddress?.assumingMemoryBound(to: CChar.self),
-                                          UInt32(buffer.count), &node)
-        }
-        guard let node else { throw DeviceToolsError.failed("Couldn’t save the Home screen layout.") }
-        defer { IMobileDevice.plist_free?(node) }
-        guard IMobileDevice.sbservices_set_icon_state?(client, node) == IMobileDevice.success else {
+        guard let node = IMobileDevice.encode(state) else { throw DeviceToolsError.failed("Couldn’t save the Home screen layout.") }
+        defer { plist_free(node) }
+        guard sbservices_set_icon_state(client, node).ok else {
             throw DeviceToolsError.failed("The Home screen didn’t accept the new layout.")
         }
     }
+    #endif
 }

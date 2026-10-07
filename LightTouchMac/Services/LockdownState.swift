@@ -17,21 +17,22 @@ extension DeviceServices {
             guard case .string(let state) = try await remote(.lockdownValue(key), seconds: Timeouts.query) else { return nil }
             return state
         }
-        return try await run(Timeouts.query, "lockdown " + key) { imd, device in
-            guard let newClient = imd.lockdownd_client_new_with_handshake,
-                  let getValue = imd.lockdownd_get_value,
-                  let plistFree = imd.plist_free else { throw DeviceError.unavailable }
+        #if LIGHTTOUCH_SERVICES
+        return try await run(Timeouts.query, "lockdown " + key) { device in
             var client: OpaquePointer?
-            let rc = newClient(device, &client, "LightTouchMac")
-            guard rc == imd.success, let client else { throw DeviceError.lockdown(rc) }
-            defer { _ = imd.lockdownd_client_free?(client) }
+            let rc = lockdownd_client_new_with_handshake(device, &client, "LightTouchMac")
+            guard rc.ok, let client else { throw DeviceError.lockdown(rc.code) }
+            defer { _ = lockdownd_client_free(client) }
 
-            var value: OpaquePointer?
-            let vr = key.withCString { getValue(client, nil, $0, &value) }
-            guard vr == imd.success, let value else { throw DeviceError.lockdown(vr) }
-            defer { plistFree(value) }
+            var value: plist_t?
+            let vr = lockdownd_get_value(client, nil, key, &value)
+            guard vr.ok, let value else { throw DeviceError.lockdown(vr.code) }
+            defer { plist_free(value) }
             return IMobileDevice.decode(value) as? String
         }
+        #else
+        throw Self.unrouted
+        #endif
     }
 
 }

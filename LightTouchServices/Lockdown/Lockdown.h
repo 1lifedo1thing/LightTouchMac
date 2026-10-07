@@ -1,3 +1,18 @@
+// The services helper's C: libimobiledevice and libplist, which it links (the Swift engine under
+// LIGHTTOUCH_SERVICES calls them directly), and its two lockdown write operations.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdocumentation"
+#pragma clang diagnostic ignored "-Wdocumentation-deprecated-sync"
+#pragma clang diagnostic ignored "-Wstrict-prototypes"
+#include <libimobiledevice/libimobiledevice.h>
+#include <libimobiledevice/lockdown.h>
+#include <libimobiledevice/afc.h>
+#include <libimobiledevice/installation_proxy.h>
+#include <libimobiledevice/notification_proxy.h>
+#include <libimobiledevice/sbservices.h>
+#include <plist/plist.h>
+#pragma clang diagnostic pop
+
 // The lockdown writes the services helper runs as operations of its own child process
 // (`LightTouchServices lockdown-tz …`, `LightTouchServices lockdown-mcinstall …`): lockdownd_set_value made
 // in-process against 3.1.3's lockdownd corrupts the caller's heap, so each write gets a process to itself.
