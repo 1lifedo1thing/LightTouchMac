@@ -101,10 +101,22 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         outline.reloadData()
         refresh()
 
-        for name in [DeviceLibrary.didChangeNotification, DeviceSession.didChangeNotification,
-                     DeviceSessionHost.didChangeNotification, FirmwareJobs.didChangeNotification] {
+        for name in [DeviceLibrary.didChangeNotification, FirmwareJobs.didChangeNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(stateDidChange), name: name, object: nil)
         }
+        NotificationCenter.default.addObserver(self, selector: #selector(sessionsDidChange),
+                                               name: DeviceSessionHost.didChangeNotification, object: nil)
+        sessionTracking = ObservationLoop(read: { [weak self] in self?.trackedSessionState() },
+                                          onChange: { [weak self] in self?.stateDidChange() })
+    }
+
+    /// What a row shows of its running device: the session's phase (running, stopping, stopped, dead and why).
+    /// The host's notification says when the sessions themselves come and go: the tracking follows them.
+    private var sessionTracking: ObservationLoop?
+    private func trackedSessionState() { for session in host.sessions { _ = session.phase } }
+    @objc private func sessionsDidChange() {
+        sessionTracking?.rearm()
+        stateDidChange()
     }
 
     // MARK: - The list

@@ -2,6 +2,7 @@
 // provably got (BootStage), and the one display wake a boot gets before input is enabled.
 
 import Foundation
+import Observation
 import HostRuntime
 import HostServiceWire
 import DeviceRuntime
@@ -26,14 +27,13 @@ public protocol ReadinessHost: AnyObject {
     func readyForInput()
 }
 
-public final class ReadinessWatch {
+@Observable public final class ReadinessWatch {
     private unowned let host: ReadinessHost
     private let notices: DeviceNotices
-    /// Fired with the old value when `preparingDevice` is set; `onChange` for the rest.
-    public var onPreparingChange: ((Bool) -> Void)?
-    public var onChange: (() -> Void)?
+    /// Fired with the old value when `preparingDevice` is set (the startup clock).
+    @ObservationIgnored public var onPreparingChange: ((Bool) -> Void)?
     /// The board's boot budget (shorter in tests).
-    var budget: Duration
+    @ObservationIgnored var budget: Duration
 
     public init(host: ReadinessHost, notices: DeviceNotices) {
         self.host = host
@@ -43,10 +43,10 @@ public final class ReadinessWatch {
 
     /// From the boot until SpringBoard answers; the status line says where it is.
     public internal(set) var preparingDevice = false { didSet { onPreparingChange?(oldValue) } }
-    public private(set) var preparationStatus = "Starting iOS…" { didSet { onChange?() } }
+    public private(set) var preparationStatus = "Starting iOS…"
     /// How far this boot has provably got (BootStage): the boot toast's subtitle.
     public private(set) var bootStage = BootStage.poweringOn {
-        didSet { if oldValue != bootStage { logEvent("boot: \(bootStage.text)"); onChange?() } }
+        didSet { if oldValue != bootStage { logEvent("boot: \(bootStage.text)") } }
     }
     public func noteBoot(_ event: BootStage.Event) { bootStage = bootStage.after(event) }
     /// The loader's report when this boot began: a reset keeps the last boot's, which proves nothing now.

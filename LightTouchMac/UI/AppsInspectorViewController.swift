@@ -257,7 +257,8 @@ final class AppsInspectorViewController: NSViewController {
         nc.addObserver(self, selector: #selector(installProgressed(_:)), name: .ltmInstallProgress, object: nil)
         nc.addObserver(self, selector: #selector(refreshIconDimming), name: NSApplication.didBecomeActiveNotification, object: nil)
         nc.addObserver(self, selector: #selector(refreshIconDimming), name: NSApplication.didResignActiveNotification, object: nil)
-        nc.addObserver(self, selector: #selector(deviceStatusChanged(_:)), name: DeviceSession.didChangeNotification, object: nil)
+        statusTracking = ObservationLoop(read: { [weak self] in self?.trackedDeviceState() },
+                                         onChange: { [weak self] in self?.deviceStatusChanged() })
         startInitialLoad()
         scheduleSearch()   // Store is the default view — fetch the suggested list
     }
@@ -415,8 +416,11 @@ final class AppsInspectorViewController: NSViewController {
     /// The rows' buttons follow the device (Install needs `canQueueInstall`): booting, readiness, USB and
     /// power changes re-evaluate them here, not on the next poll that happens to reload the table. Unchanged
     /// rows keep their views (reloadTablePreservingSelection compares appearances).
-    @objc private func deviceStatusChanged(_ note: Notification) {
-        guard (note.object as? DeviceSession)?.emulator === emulator else { return }
+    private var statusTracking: ObservationLoop?
+    /// What of the device the rows and buttons show: its reachability and install state (`device`), not the
+    /// status line's every tick.
+    private func trackedDeviceState() { _ = device }
+    private func deviceStatusChanged() {
         reloadTablePreservingSelection()
         updateButtons()
     }

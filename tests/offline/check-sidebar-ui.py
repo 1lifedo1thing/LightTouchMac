@@ -52,8 +52,8 @@ final class DeviceLibrary {
 extension FirmwareCatalog.Entry.Status { static let allCasesForCheck: [Self] = [.available, .experimental, .untested, .comingSoon, .userIPSW] }
 final class EmulatorController { var canQueueInstall = false }
 final class DeviceSession {
-    static let didChangeNotification = Notification.Name("DeviceSessionDidChange")
     let emulator = EmulatorController()
+    var phase: SessionPhase { .running }
 }
 nonisolated enum PreparedMedia { static let extensions: Set<String> = [] }
 enum AppInstaller { static func start(_ url: URL, with emulator: EmulatorController, presenting: NSWindow?) {} }
@@ -64,6 +64,7 @@ final class DeviceSessionHost {
     var prepared: [String: UUID] = [:]
     var downloaded: Set<String> = []
     var running: Set<String> = []
+    var sessions: [DeviceSession] = []
     var deleted: [String] = []
     let deletions = DeviceDeletions()
     /// The fake removal: this long on its thread, then a throw when `failing`.
@@ -473,7 +474,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-sidebar-ui-') as tmp:
                     '-module-cache-path', str(tmp / 'modules'),
                     str(app / 'Library/FirmwareCatalog.swift'), str(app / 'Device/Board+App.swift'),
                     str(app / 'Device/DeviceRow.swift'), str(app / 'Library/SidebarList.swift'),
-                    str(app / 'UI/DroppedFiles.swift'), str(app / 'Device/DeviceDeletions.swift'), str(app / 'UI/DeviceLibraryViewController.swift'),
+                    str(app / 'UI/DroppedFiles.swift'), str(app / 'UI/ObservationLoop.swift'), str(app / 'Device/DeviceDeletions.swift'), str(app / 'UI/DeviceLibraryViewController.swift'),
                     str(app / 'UI/AddDeviceView.swift'), str(app / 'UI/AppleDeviceType.swift'), str(app / 'UI/Board+Icon.swift'), str(tmp / 'stubs.swift'), str(tmp / 'main.swift'),
                     '-o', str(tmp / 'check')], check=True)
     subprocess.run([str(tmp / 'check'), str(app / 'Resources/firmware-catalog.json'), str(out)], check=True, timeout=60)

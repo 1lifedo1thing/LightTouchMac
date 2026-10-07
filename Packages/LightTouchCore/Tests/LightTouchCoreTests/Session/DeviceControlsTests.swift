@@ -16,21 +16,20 @@ struct DeviceControlsTests {
     @Test func keyboardToggleGatesPressesButNotReleasesAndPersists() throws {
         try withTemporaryDirectory { directory in
             let machine = Machine()
-            var sent: [LinkCommand] = [], canPress = true, changes = 0
+            var sent: [LinkCommand] = [], canPress = true
             let settings = DeviceSettingsFile(directory: directory)
             let keyboard = KeyboardInput(settings: settings, canToggleHardwareKeyboard: true, control: machine.control,
                                          send: { sent.append($0) }, canPress: { canPress })
-            keyboard.onChange = { changes += 1 }
             #expect(keyboard.enabled)
             keyboard.sendKey(macKeyCode: 0, down: true)
             #expect(sent == [.key(macKeyCode: 0, down: true)])
-            keyboard.toggleEnabled()
-            #expect(!keyboard.enabled && changes == 1 && DeviceSettings.load(directory).keyboardInputEnabled == false)
+            #expect(observes({ _ = keyboard.enabled }) { keyboard.toggleEnabled() }, "the menu's checkmark follows")
+            #expect(!keyboard.enabled && DeviceSettings.load(directory).keyboardInputEnabled == false)
             keyboard.sendKey(macKeyCode: 0, down: true)
             keyboard.sendKey(macKeyCode: 0, down: false)
             #expect(sent == [.key(macKeyCode: 0, down: true), .key(macKeyCode: 0, down: false)], "a release still goes after disabling")
             keyboard.toggleEnabled()
-            #expect(keyboard.enabled && changes == 2)
+            #expect(keyboard.enabled)
             canPress = false   // asleep, stopped or not taking input
             keyboard.sendKey(macKeyCode: 0, down: true)
             #expect(sent.count == 2, "a sleeping or stopped device gets no presses")
@@ -40,14 +39,12 @@ struct DeviceControlsTests {
     @Test func connectHardwareKeyboardNowAndAtBoot() throws {
         try withTemporaryDirectory { directory in
             let machine = Machine()
-            var changes = 0
             let keyboard = KeyboardInput(settings: DeviceSettingsFile(directory: directory), canToggleHardwareKeyboard: true,
                                          control: machine.control, send: { _ in }, canPress: { true })
-            keyboard.onChange = { changes += 1 }
             keyboard.applyHardware()
             #expect(machine.requests.isEmpty, "a boot with the keyboard on asks nothing")
-            keyboard.toggleHardware()
-            #expect(!keyboard.hardwareConnected && machine.requests == [.hardwareKeyboard(false)] && changes == 1)
+            #expect(observes({ _ = keyboard.hardwareConnected }) { keyboard.toggleHardware() })
+            #expect(!keyboard.hardwareConnected && machine.requests == [.hardwareKeyboard(false)])
             #expect(DeviceSettings.load(directory).hardwareKeyboard == false)
             keyboard.applyHardware()
             #expect(machine.requests == [.hardwareKeyboard(false), .hardwareKeyboard(false)], "a boot unplugs it when it's off")

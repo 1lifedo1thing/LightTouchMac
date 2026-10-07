@@ -15,18 +15,17 @@ struct DeviceNoticesTests {
                 DeviceNotices(settings: DeviceSettingsFile(directory: directory), shortName: "iPod") { failed }
             }
             let notices = open()
-            var changes = 0
-            notices.onChange = { changes += 1 }
-            notices.report("Retry preparation", for: .preparation)
-            #expect(changes == 1 && notices.message == "Retry preparation")
+            #expect(observes({ _ = notices.message }) { notices.report("Retry preparation", for: .preparation) },
+                    "the window's notice follows a report")
+            #expect(notices.message == "Retry preparation")
             #expect(open().message == "Retry preparation", "a relaunch reads the notice back")
             #expect(DeviceSettings.load(directory).deviceNotice == .init(message: "Retry preparation", operation: "preparation"))
             #expect(!notices.offersErase)
 
-            notices.resolve(.powerOff)
+            #expect(!observes({ _ = notices.message }) { notices.resolve(.powerOff) })
             #expect(notices.message != nil && open().message != nil, "another operation's success leaves it")
-            notices.resolve(.preparation)
-            #expect(notices.message == nil && open().message == nil && changes == 2)
+            #expect(observes({ _ = notices.message }) { notices.resolve(.preparation) })
+            #expect(notices.message == nil && open().message == nil)
 
             notices.report("Couldn’t finish erasing", for: .erase)
             #expect(notices.offersErase)
@@ -54,7 +53,8 @@ struct DeviceNoticesTests {
             saved.motionPose = 1
             try saved.save(directory)
             let file = DeviceSettingsFile(directory: directory)
-            file.change { $0.keyboardInputEnabled = false }
+            #expect(observes({ _ = file.value }) { file.change { $0.keyboardInputEnabled = false } })
+            #expect(!observes({ _ = file.value }) { file.change { $0.keyboardInputEnabled = false } }, "no change, no update")
             let read = DeviceSettings.load(directory)
             #expect(read.motionPose == 1 && read.keyboardInputEnabled == false)
         }

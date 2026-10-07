@@ -2,6 +2,7 @@
 // helper's death all end a boot as `.dead` with a named reason (the row and the overlay show it).
 
 import Foundation
+import Observation
 import HostRuntime
 import DeviceRuntime
 
@@ -23,7 +24,7 @@ public protocol BootWatchHost: AnyObject {
     func releaseBootResources()
 }
 
-public final class BootWatch {
+@Observable public final class BootWatch {
     private unowned let host: BootWatchHost
     public init(host: BootWatchHost) { self.host = host }
 
@@ -48,7 +49,7 @@ public final class BootWatch {
     /// Why the helper died, for the row and the dead overlay.
     public private(set) var deathReason: String?
     /// The board's boot budget (shorter in tests).
-    lazy var budget: TimeInterval = host.profile.bootBudget
+    @ObservationIgnored lazy var budget: TimeInterval = host.profile.bootBudget
     /// How long an aborted boot's helper gets to exit before it is killed.
     var haltBudget = ShutdownLadder.Budgets().halt
 

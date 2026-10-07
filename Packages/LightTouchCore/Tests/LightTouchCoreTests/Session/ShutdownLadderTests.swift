@@ -79,7 +79,8 @@ struct ShutdownLadderTests {
             let clean = session(directory, state: .running)
             #expect(clean.ladder.canShutDown)
             var result: Bool?
-            clean.ladder.shutDown { result = $0 }
+            #expect(observes({ _ = clean.ladder.shuttingDown }) { clean.ladder.shutDown { result = $0 } },
+                    "the window's Shutting down… follows")
             #expect(clean.link.commands == [.machine(.shutdown)] && clean.steps == ["willStop"])
             #expect(clean.shuttingDown && clean.ladder.isShuttingDownCleanly && !clean.ladder.canShutDown && clean.ladder.canForceStop)
             try await Task.sleep(for: .milliseconds(100))

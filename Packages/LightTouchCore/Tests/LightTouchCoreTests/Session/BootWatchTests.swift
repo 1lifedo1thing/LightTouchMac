@@ -107,7 +107,8 @@ struct BootWatchTests {
             #expect(reason == "This iPod’s system files are incomplete: iBoot.bin is missing. Delete it and prepare it again.")
             #expect(BootWatch.bootFilesReason(CocoaError(.fileReadCorruptFile), profile: .k48).hasPrefix("Couldn’t prepare the iPad’s storage: "))
             let failing = session(directory)
-            failing.bootWatch.failBoot(missing)
+            #expect(observes({ _ = failing.bootWatch.deathReason }) { failing.bootWatch.failBoot(missing) },
+                    "the dead overlay's reason follows")
             #expect(failing.state == .dead(exitCode: 1) && failing.bootWatch.deathReason == reason && failing.notices.message == reason)
         }
     }

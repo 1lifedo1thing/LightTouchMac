@@ -76,7 +76,8 @@ struct ReadinessWatchTests {
             noUSB.readiness.budget = .milliseconds(100)
             noUSB.usbAnswers = false
             noUSB.readiness.start()
-            noUSB.readiness.noteBoot(.serial("launchd[1] has started up"))
+            #expect(observes({ _ = noUSB.readiness.bootStage }) { noUSB.readiness.noteBoot(.serial("launchd[1] has started up")) },
+                    "the boot toast's stage follows")
             #expect(noUSB.bootStage == .system)
             await eventually("the deadline passed") { noUSB.notices.message != nil }
             #expect(!noUSB.preparingDevice && noUSB.readiness.readinessFailure == nil, "kept running, not a startup failure")

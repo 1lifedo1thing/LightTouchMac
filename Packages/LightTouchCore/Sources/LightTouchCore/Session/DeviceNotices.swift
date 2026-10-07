@@ -2,17 +2,25 @@
 // notice survives a relaunch until it is resolved or dismissed).
 
 import Foundation
+import Observation
 import HostRuntime
 import DeviceRuntime
 
-/// This device's settings.plist (DeviceSettings), read once and written on every change.
-public final class DeviceSettingsFile {
+/// This device's settings.plist (DeviceSettings), read once and written on every change. Observable: whatever
+/// reads a setting through it (the keyboard, the notice, the menus' toggles) updates with it.
+@Observable public final class DeviceSettingsFile {
     public let directory: URL
     public init(directory: URL) { self.directory = directory }
-    public private(set) lazy var value = DeviceSettings.load(directory)
+    @ObservationIgnored private lazy var stored = DeviceSettings.load(directory)
+    public var value: DeviceSettings {
+        access(keyPath: \.value)
+        return stored
+    }
 
     public func change(_ change: (inout DeviceSettings) -> Void) {
+        var value = stored
         change(&value)
+        if value != stored { withMutation(keyPath: \.value) { stored = value } }
         do { try value.save(directory) } catch { logEvent("settings: could not save: \(error.localizedDescription)") }
     }
 }
@@ -25,16 +33,15 @@ public final class DeviceNotices {
     private let shortName: String
     /// The helper reports its storage failing: every notice then says so, and none can be dismissed.
     private let storageFailed: () -> Bool
-    public var onChange: (() -> Void)?
-
     public init(settings: DeviceSettingsFile, shortName: String, storageFailed: @escaping () -> Bool) {
         self.settings = settings
         self.shortName = shortName
         self.storageFailed = storageFailed
     }
 
-    public private(set) lazy var message = settings.value.deviceNotice?.message
-    private lazy var operation = settings.value.deviceNotice?.operation
+    /// Kept in the settings file, so it is observable through it.
+    public var message: String? { settings.value.deviceNotice?.message }
+    private var operation: String? { settings.value.deviceNotice?.operation }
 
     public func report(_ message: String, for operation: Operation) {
         let failed = storageFailed()
@@ -42,11 +49,8 @@ public final class DeviceNotices {
             ? "Couldn’t save to disk, so the \(shortName) stopped and recent changes were lost. Free up space, then reopen Light Touch."
             : message
         logEvent(value)
-        self.message = value
         let kind = (failed ? .storage : operation).rawValue
-        self.operation = kind
         settings.change { $0.deviceNotice = .init(message: value, operation: kind) }
-        onChange?()
     }
 
     /// The notice's remedy is Erase All Content and Settings (a refused overlay, an unfinished or failed erase,
@@ -57,10 +61,7 @@ public final class DeviceNotices {
 
     public func dismiss() {
         guard !storageFailed() else { return }
-        message = nil
-        operation = nil
         settings.change { $0.deviceNotice = nil }
-        onChange?()
     }
 
     public func resolve(_ operation: Operation) {
