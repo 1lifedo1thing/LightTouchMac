@@ -2,7 +2,7 @@
 # Build the package's guest payloads: a thin caller of qemu-ios contrib/export-guest-artifacts.sh, the
 # emulator repository's export (the recipes live there; this script only resolves the checkout and the SDKs).
 # Usage: ARMV6_SDK=/path/to/iPhoneOS3.1.3.sdk build-guest-tools.sh NEW-WORK-DIRECTORY
-# QEMU_IOS_DIR selects the source checkout (default: the pin, scripts/sources.py); IPAD_SDK the iPhoneOS3.2.sdk;
+# QEMU_IOS_DIR selects the source checkout (default: the pin, scripts/sources); IPAD_SDK the iPhoneOS3.2.sdk;
 # LDID the existing signer. The export writes NEW-WORK-DIRECTORY/guest-tools (the flat iPod set the app uploads),
 # NEW-WORK-DIRECTORY/ipad-guest-tools (the flat directory firmwarekit reads: helpers, the public OpenGLES front end and the 1.x front end
 # OpenGLES-1x with gles-names.h, armv6.itpack and armv7.itpack) and manifest.json (source commit, dirty flag, sha256 per input and output),
@@ -15,7 +15,7 @@ if [ "$#" -ne 1 ]; then
 fi
 ROOT="$1"
 HERE="$(cd "$(dirname "$0")" && pwd)"
-QEMU="$(python3 "$HERE/sources.py" qemu-ios)"
+QEMU="$("$HERE/sources" qemu-ios)"
 EXPORT="$QEMU/contrib/export-guest-artifacts.sh"
 [ ! -e "$ROOT" ] && [ ! -L "$ROOT" ] || fail "use a new build directory: $ROOT"
 [ -n "${ARMV6_SDK:-}" ] || fail "set ARMV6_SDK to the iPhoneOS3.1.3.sdk directory"

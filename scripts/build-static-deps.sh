@@ -11,7 +11,7 @@ ROOT="${1:?usage: build-static-deps.sh new-work-directory}"
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 JOBS="${LTM_JOBS:-$(sysctl -n hw.ncpu)}"
 [[ "$JOBS" =~ ^[1-9][0-9]*$ ]] || { echo 'LTM_JOBS must be a positive integer' >&2; exit 1; }
-for tool in python3 curl make pkg-config xcrun; do
+for tool in curl make pkg-config xcrun; do
     command -v "$tool" >/dev/null || { echo "missing build tool: $tool" >&2; exit 1; }
 done
 [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]] || { echo 'requires an Apple Silicon Mac' >&2; exit 1; }
@@ -26,10 +26,10 @@ ROOT="$(cd "$ROOT" && pwd)"
 trap 'echo "Static dependency build failed; see $ROOT/logs" >&2' ERR
 PREFIX="$ROOT/prefix"
 LOG="$ROOT/logs"
-SOURCE_ARGS=(fetch --group static --destination "$ROOT/src")
+SOURCE_ARGS=(sources fetch --group static --destination "$ROOT/src")
 if [ -n "${LTM_SOURCE_CACHE:-}" ]; then SOURCE_ARGS+=(--cache "$LTM_SOURCE_CACHE"); fi
 if [ "${LTM_OFFLINE:-0}" = 1 ]; then SOURCE_ARGS+=(--offline); fi
-python3 "$SRC/scripts/dependency-sources.py" "${SOURCE_ARGS[@]}"
+"$SRC/scripts/ltm-build" "${SOURCE_ARGS[@]}"
 
 # Preserve the former deps12 source versions and build options, targeting the
 # application's supported macOS 14 baseline. Never discover Homebrew libraries.
@@ -102,24 +102,12 @@ autobuild libimobiledevice-1.4.0.tar.bz2 libimobiledevice-1.4.0 --without-cython
 # Linked statically into the shipped libimobiledevice and usbmuxd (LGPL-2.1): their texts and sources.
 for package in libimobiledevice-glue:libimobiledevice-glue-1.3.2 libusbmuxd:libusbmuxd-2.1.1 libtatsu:libtatsu-1.0.5; do
     license "${package%%:*}" "${package#*:}" COPYING
-    python3 "$SRC/scripts/dependency-sources.py" note "${package%%:*}" > "$PREFIX/share/licenses/${package%%:*}/SOURCE.txt"
+    "$SRC/scripts/ltm-build" sources note "${package%%:*}" > "$PREFIX/share/licenses/${package%%:*}/SOURCE.txt"
 done
 # The library is LGPL-2.1, but tools/inetcat.c is GPL-2.0-or-later.
 # Preserve its notice, GPL text and the same pinned archive provenance.
 license inetcat "$SRC/build-support/licenses" GPL-2.0.txt
 cp "$ROOT/build/libusbmuxd-2.1.1/tools/inetcat.c" "$PREFIX/share/licenses/inetcat/"
-python3 "$SRC/scripts/dependency-sources.py" note libusbmuxd > "$PREFIX/share/licenses/inetcat/SOURCE.txt"
-python3 - "$SRC" "$ROOT" "$ARCH" <<'PY'
-import hashlib, json, pathlib, subprocess, sys
-source, root = map(pathlib.Path, sys.argv[1:3])
-record = {
-    'schema_version': 1, 'static_deps': str(root / 'prefix'),
-    'deployment_target': '14.0', 'architecture': sys.argv[3],
-    'sources': json.loads((root / 'src/static-sources.json').read_text()),
-    'recipe_sha256': hashlib.sha256((source / 'scripts/build-static-deps.sh').read_bytes()).hexdigest(),
-    'xcode': subprocess.check_output(['xcodebuild', '-version'], text=True).strip(),
-    'sdk': subprocess.check_output(['xcrun', '--sdk', 'macosx', '--show-sdk-version'], text=True).strip(),
-}
-(root / 'static-build.json').write_text(json.dumps(record, indent=2) + '\n')
-PY
+"$SRC/scripts/ltm-build" sources note libusbmuxd > "$PREFIX/share/licenses/inetcat/SOURCE.txt"
+"$SRC/scripts/ltm-build" static-record "$ROOT" "$ARCH"
 echo "Static dependencies ready: $PREFIX"

@@ -36,8 +36,8 @@ else
     step "notarize"
     xcrun notarytool submit "$WORK/submit.zip" --keychain-profile ltm-notary --wait --output-format json > "$WORK/submit.json" \
         || true
-    ID="$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id",""))' "$WORK/submit.json" 2>/dev/null || true)"
-    STATUS="$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("status",""))' "$WORK/submit.json" 2>/dev/null || true)"
+    ID="$(plutil -extract id raw -o - "$WORK/submit.json" 2>/dev/null || true)"
+    STATUS="$(plutil -extract status raw -o - "$WORK/submit.json" 2>/dev/null || true)"
     echo "submission $ID: $STATUS"
     if [[ "$STATUS" != "Accepted" ]]; then
         [[ -n "$ID" ]] && xcrun notarytool log "$ID" --keychain-profile ltm-notary >&2

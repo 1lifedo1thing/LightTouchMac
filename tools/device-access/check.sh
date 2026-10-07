@@ -39,11 +39,7 @@ if "$CASE/access" config --instance "$ID" --usbmux 127.0.0.1:22 --inetcat "$PROX
 INSTANCE="$CASE/known hosts/7dceceb7-1b4c-4f12-9f9d-3b4f93f5ba45"
 /usr/bin/ssh-keygen -q -t ecdsa -b 256 -m PEM -N '' -f "$INSTANCE/id_ecdsa"
 printf '%s %s\n' "$HOST" "$(cat "$INSTANCE/id_ecdsa.pub")" > "$INSTANCE/known_hosts"
-python3 - "$INSTANCE/connection.json" "$ID" "$PROXY" <<'PYPROFILE'
-import json,sys
-with open(sys.argv[1], 'w') as file:
-    json.dump(dict(instance=sys.argv[2],usbmux='127.0.0.1:27019',inetcat=sys.argv[3]),file)
-PYPROFILE
+printf '{"instance":"%s","usbmux":"127.0.0.1:27019","inetcat":"%s"}\n' "$ID" "$PROXY" > "$INSTANCE/connection.json"
 "$CASE/access" config --instance "$ID" --state "$CASE/known hosts" > "$CASE/provisioned"
 /usr/bin/ssh -G -F "$CASE/provisioned" "$HOST" > "$CASE/provisioned-resolved" 2>/dev/null
 rg -q '^stricthostkeychecking true$|^stricthostkeychecking yes$' "$CASE/provisioned-resolved"
@@ -55,11 +51,6 @@ if "$CASE/access" ssh --instance "$ID" --state "$CASE/known hosts" > "$CASE/out"
 [ -f "$INSTANCE/enabled" ]
 "$CASE/access" disable --instance "$ID" --state "$CASE/known hosts" > /dev/null
 [ ! -f "$INSTANCE/enabled" ]
-python3 - "$INSTANCE/connection.json" "$OTHER" <<'PYPROFILE'
-import json,sys
-with open(sys.argv[1]) as file: profile=json.load(file)
-profile['instance']=sys.argv[2]
-with open(sys.argv[1],'w') as file: json.dump(profile,file)
-PYPROFILE
+plutil -replace instance -string "$OTHER" "$INSTANCE/connection.json"
 if "$CASE/access" config --instance "$ID" --state "$CASE/known hosts" > /dev/null 2>&1; then exit 1; fi
 printf '%s\n' 'PASS: OpenSSH config, quoted inetcat invocation, immutable endpoint, per-instance identity, GDB command, invalid endpoint/path rejection'

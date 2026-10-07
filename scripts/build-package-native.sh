@@ -4,13 +4,14 @@
 # Usage: build-package-native.sh NEW-WORK-DIRECTORY
 # Builds static dependencies from pinned sources unless LTM_STATIC_DEPS is explicit.
 # LTM_ARCH=x86_64 cross-compiles the Intel slice (default arm64, built exactly as before);
-# scripts/vendor builds both and merges them with merge-native.py.
+# scripts/vendor builds both and merges them (scripts/ltm-build merge-native).
 set -euo pipefail
 ROOT="${1:?usage: build-package-native.sh new-work-directory}"
 [ ! -e "$ROOT" ] || { echo "use a new build directory: $ROOT" >&2; exit 1; }
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
-QEMU="$(python3 "$SRC/scripts/sources.py" qemu-ios)"    # the pin; QEMU_IOS_DIR overrides
-USB="$(python3 "$SRC/scripts/sources.py" usbmuxd)"      # USBMUXD_SOURCE_DIR overrides
+QEMU="$("$SRC/scripts/sources" qemu-ios)"    # the pin; QEMU_IOS_DIR overrides
+USB="$("$SRC/scripts/sources" usbmuxd)"      # USBMUXD_SOURCE_DIR overrides
+TOOL="$SRC/scripts/ltm-build"
 MESON="${MESON:-meson}"
 JOBS="${LTM_JOBS:-$(sysctl -n hw.ncpu)}"
 [[ "$JOBS" =~ ^[1-9][0-9]*$ ]] || { echo 'LTM_JOBS must be a positive integer' >&2; exit 1; }
@@ -23,7 +24,7 @@ case "$ARCH" in
         FFMPEG_CROSS=(--enable-cross-compile --arch=x86_64 --target-os=darwin) ;;
     *) echo "unsupported LTM_ARCH: $ARCH" >&2; exit 1 ;;
 esac
-for tool in python3 curl make ninja pkg-config glibtoolize autoreconf "$MESON"; do
+for tool in curl make ninja pkg-config glibtoolize autoreconf "$MESON"; do
     command -v "$tool" >/dev/null || { echo "missing build tool: $tool" >&2; exit 1; }
 done
 [ -f "$QEMU/configure" ] || { echo "missing QEMU source: $QEMU" >&2; exit 1; }
@@ -35,15 +36,15 @@ ROOT="$(cd "$ROOT" && pwd)"
 # usbmuxd from its pinned commit (build-support/sources.json) through a temporary worktree,
 # never the checkout's working tree (10-06: a one-step build shipped the checkout's
 # 41631a7 while the pin was e19fac2, and only recorded it).
-USB_COMMIT="$(python3 "$SRC/scripts/sources.py" commit usbmuxd)"
+USB_COMMIT="$("$SRC/scripts/sources" commit usbmuxd)"
 USB_TREE="$ROOT/usbmuxd-worktree"
 git -C "$USB" worktree add --detach "$USB_TREE" "$USB_COMMIT"
-python3 "$SRC/scripts/dependency-sources.py" stage-git --source "$USB_TREE" \
+"$TOOL" sources stage-git --source "$USB_TREE" \
     --destination "$ROOT/build/usbmuxd" --record "$ROOT/usbmuxd-source.json"
 # Autotools requires a source version even though the staged tree omits .git.
 git -C "$USB_TREE" describe --tags --always --dirty > "$ROOT/build/usbmuxd/.tarball-version"
 git -C "$USB" worktree remove --force "$USB_TREE"
-STAGED="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["commit"])' "$ROOT/usbmuxd-source.json")"
+STAGED="$(plutil -extract commit raw -o - "$ROOT/usbmuxd-source.json")"
 [ "$STAGED" = "$USB_COMMIT" ] || { echo "usbmuxd staged at $STAGED, pinned $USB_COMMIT" >&2; exit 1; }
 if [ -n "${LTM_STATIC_DEPS:-}" ]; then
     STATIC="$(cd "$LTM_STATIC_DEPS" && pwd)"
@@ -62,11 +63,11 @@ export lt_cv_sys_max_cmd_len=131072
 unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH
 [ -f "$STATIC/lib/libcrypto.a" ] || { echo "missing static prefix: $STATIC" >&2; exit 1; }
 fetch_group() {   # GROUP: its pinned archives into src/, from the caches when they have them
-    local args=(fetch --group "$1" --destination "$ROOT/src")
+    local args=(sources fetch --group "$1" --destination "$ROOT/src")
     if [ -n "${LTM_SOURCE_CACHE:-}" ]; then args+=(--cache "$LTM_SOURCE_CACHE"); fi
     if [ -d "$ROOT/static/src" ]; then args+=(--cache "$ROOT/static/src"); fi
     if [ "${LTM_OFFLINE:-0}" = 1 ]; then args+=(--offline); fi
-    python3 "$SRC/scripts/dependency-sources.py" "${args[@]}"
+    "$TOOL" "${args[@]}"
 }
 # What a library compiles in about its own prefix (glib's GIO module and locale dirs, FFmpeg's configure
 # line) must not name this build's path: glib and FFmpeg are configured for NEUTRAL, which cannot hold
@@ -86,7 +87,7 @@ license() {
 }
 source_note() {   # MANIFEST-NAME LICENSE-NAME [PATCH...]
     local package="$1" name="$2"; shift 2
-    python3 "$SRC/scripts/dependency-sources.py" note "$package" "$@" > "$P/share/licenses/$name/SOURCE.txt"
+    "$TOOL" sources note "$package" "$@" > "$P/share/licenses/$name/SOURCE.txt"
 }
 fetch_group native
 cd "$ROOT/build"
@@ -198,47 +199,54 @@ ninja -j"$JOBS" qemu-system-arm
 # make-dylib-macos.sh compiles the entry files itself: CCC_OVERRIDE_OPTIONS gives its clang the same prefix maps.
 CCC_OVERRIDE_OPTIONS="+-fmacro-prefix-map=$QEMU/= +-fmacro-prefix-map=$ROOT/qemu-build/=" \
     bash "$QEMU/contrib/macos-app/make-dylib-macos.sh" "$ROOT/qemu-build"
-python3 "$SRC/scripts/check-macho.py" --no-weak-imports --arch "$ARCH" "$ROOT/qemu-build/libqemu-arm.dylib" "$P/lib/libimobiledevice-1.0.dylib" "$P/lib/libplist-2.0.dylib" "$ROOT/build/usbmuxd/src/usbmuxd" "$ROOT/build/iBoot32Patcher/iBoot32Patcher"
-python3 "$SRC/scripts/test-glib-compat.py" --arch "$ARCH" --native-build "$ROOT"
-python3 - "$SRC" "$ROOT" "$STATIC" "$QEMU" "$USB" "$ARCH" <<'PY'
-import hashlib, json, pathlib, subprocess, sys
-source, root, static, qemu, usb = map(pathlib.Path, sys.argv[1:6])
-def digest(path):
-    result = hashlib.sha256()
-    with path.open('rb') as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b''):
-            result.update(block)
-    return result.hexdigest()
-def git(*args):
-    return subprocess.check_output(['git', '-C', str(qemu), *args])
-record = {
-    'schema_version': 1, 'static_deps': str(static), 'qemu_source': str(qemu),
-    'usbmuxd_source': str(usb), 'qemu_build': str(root / 'qemu-build'),
-    'deps_prefix': str(root / 'prefix'), 'usbmuxd_binary': str(root / 'build/usbmuxd/src/usbmuxd'),
-    'deployment_target': '14.0', 'architecture': sys.argv[6],
-    'sources': json.loads((root / 'src/native-sources.json').read_text()),
-    'usbmuxd': json.loads((root / 'usbmuxd-source.json').read_text()),
-    'usbmuxd_commit': json.loads((root / 'usbmuxd-source.json').read_text())['commit'],
-    'iboot32patcher': json.loads((root / 'build/iBoot32Patcher/build.json').read_text()),
-    'qemu_commit': git('rev-parse', 'HEAD').decode().strip(),
-    'qemu_tracked_diff_sha256': hashlib.sha256(git('diff', '--binary', 'HEAD')).hexdigest(),
-    'recipes': {str(path.relative_to(source)): digest(path) for path in (
-        source / 'scripts/build-package-native.sh', source / 'scripts/build-static-deps.sh',
-        source / 'scripts/dependency-sources.py', source / 'build-support/dependencies.json', source / 'scripts/build-iboot32patcher.sh',
-        source / 'build-support/patches/glib-pipe2-availability.patch', source / 'build-support/patches/iBoot32Patcher-ltm.patch',
-        source / 'build-support/patches/libimobiledevice-sslv3-ios1.patch',
-        source / 'scripts/test-glib-compat.py', source / 'scripts/check-macho.py')},
-    'static_inputs': [{'path': str(path.relative_to(static)), 'sha256': digest(path)}
-                      for path in sorted(static.rglob('*')) if path.is_file()],
-    'xcode': subprocess.check_output(['xcodebuild', '-version'], text=True).strip(),
-    'sdk': subprocess.check_output(['xcrun', '--sdk', 'macosx', '--show-sdk-version'], text=True).strip(),
+"$TOOL" check-macho --no-weak-imports --arch "$ARCH" "$ROOT/qemu-build/libqemu-arm.dylib" "$P/lib/libimobiledevice-1.0.dylib" "$P/lib/libplist-2.0.dylib" "$ROOT/build/usbmuxd/src/usbmuxd" "$ROOT/build/iBoot32Patcher/iBoot32Patcher"
+# GLib's macOS API selection: the SDK's pipe2 (macOS 26) must not be picked for a macOS 14 build (a real Meson probe),
+# the generated config and QEMU must not import it, and the built static GLib's pipe fallback must work.
+GLIB_CHECK="$ROOT/glib-compat"
+mkdir -p "$GLIB_CHECK/probe"
+cat > "$GLIB_CHECK/probe/meson.build" <<'EOF'
+project('glib-pipe-compatibility', 'c')
+cc = meson.get_compiler('c')
+# This declaration carries the SDK's macOS introduction version.
+if cc.has_function('pipe2', prefix: '#include <unistd.h>')
+  error('pipe2 must not be selected for the macOS 14 deployment target')
+endif
+assert(cc.has_function('pipe', prefix: '#include <unistd.h>'))
+EOF
+(unset LDFLAGS CXXFLAGS; CC=/usr/bin/clang CFLAGS='-O2 -mmacosx-version-min=14.0' LDFLAGS='-mmacosx-version-min=14.0' \
+    "$MESON" setup "$GLIB_CHECK/probe-build" "$GLIB_CHECK/probe" --wrap-mode=nodownload > "$GLIB_CHECK/probe.log" 2>&1) \
+    || { cat "$GLIB_CHECK/probe.log" >&2; echo "the Meson/SDK probe selects pipe2 for macOS 14" >&2; exit 1; }
+! grep -Eq '^[[:space:]]*#[[:space:]]*define[[:space:]]+HAVE_PIPE2\b' "$ROOT/build/glib-out/config.h" \
+    || { echo "build/glib-out/config.h defines HAVE_PIPE2 for the macOS 14 build" >&2; exit 1; }
+no_pipe2() { ! xcrun nm -m "$1" | grep '(undefined)' | grep -Eq '\b_pipe2\b' || { echo "$1 imports pipe2, unavailable on macOS 14" >&2; exit 1; }; }
+no_pipe2 "$ROOT/qemu-build/libqemu-arm.dylib"
+cat > "$GLIB_CHECK/pipe-check.c" <<'EOF'
+#include <glib-unix.h>
+#include <fcntl.h>
+#include <string.h>
+#include <unistd.h>
+int main(void)
+{
+    int fds[2];
+    GError *error = NULL;
+    if (!g_unix_open_pipe(fds, O_CLOEXEC | O_NONBLOCK, &error)) return 1;
+    for (int i = 0; i < 2; ++i) {
+        int fd_flags = fcntl(fds[i], F_GETFD), status = fcntl(fds[i], F_GETFL);
+        if (fd_flags < 0 || !(fd_flags & FD_CLOEXEC) || status < 0 || !(status & O_NONBLOCK)) return 2;
+    }
+    const char expected[] = "GLib pipe compatibility";
+    char actual[sizeof expected] = {0};
+    if (write(fds[1], expected, sizeof expected) != sizeof expected || read(fds[0], actual, sizeof actual) != sizeof actual
+        || memcmp(expected, actual, sizeof expected)) return 3;
+    return close(fds[0]) || close(fds[1]) ? 4 : 0;
 }
-if (root / 'static/static-build.json').is_file():
-    record['static_build'] = json.loads((root / 'static/static-build.json').read_text())
-elif (static.parent / 'static-build.json').is_file():
-    record['static_build'] = json.loads((static.parent / 'static-build.json').read_text())
-    record['static_build']['origin'] = 'explicit LTM_STATIC_DEPS override'
-else:
-    record['static_build'] = {'origin': 'explicit LTM_STATIC_DEPS override'}
-(root / 'native-build.json').write_text(json.dumps(record, indent=2) + '\n')
-PY
+EOF
+# shellcheck disable=SC2046
+/usr/bin/clang -arch "$ARCH" -mmacosx-version-min=14.0 -Wl,-no_weak_imports "$GLIB_CHECK/pipe-check.c" -o "$GLIB_CHECK/pipe-check" \
+    $(PKG_CONFIG_PATH= PKG_CONFIG_LIBDIR="$P/lib/pkgconfig:$P/share/pkgconfig" pkg-config --static --cflags --libs glib-2.0 \
+      | sed "s|-lglib-2.0|$P/lib/libglib-2.0.a|")
+no_pipe2 "$GLIB_CHECK/pipe-check"
+"$GLIB_CHECK/pipe-check" || { echo "the built GLib's pipe fallback failed ($?)" >&2; exit 1; }
+rm -rf "$GLIB_CHECK"
+echo "GLib: no pipe2 for macOS 14 (Meson probe, config.h, QEMU), pipe fallback works"
+"$TOOL" native-record "$ROOT" "$STATIC" "$QEMU" "$USB" "$ARCH"
