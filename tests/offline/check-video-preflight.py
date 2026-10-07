@@ -7,6 +7,7 @@ DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device
 root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(root / 'scripts'))
 import sources  # the pinned checkouts (build-support/sources.json)
+import host_runtime
 fixtures = sources.path('qemu-ios') / 'contrib/it-harness/build/Payload/Harness.app'
 if not fixtures.is_dir():
     print(f'SKIP: no harness fixtures at {fixtures}; build them with contrib/it-harness/build.sh in the pinned checkout (or set QEMU_IOS_DIR)'); raise SystemExit(0)
@@ -84,7 +85,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-video-check-') as directory:
     shutil.copyfile(fixtures / 'aac.m4a', work / 'audio.mov')
     (work / 'folder.mp4').mkdir()
     shutil.copyfile(movie, work / 'unknown.avi')
-    subprocess.run(['xcrun', 'swiftc', DEVICE_PROFILE, '-swift-version', '6', '-default-isolation', 'MainActor',
+    subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(root), DEVICE_PROFILE, '-swift-version', '6', '-default-isolation', 'MainActor',
                     '-module-cache-path', str(work / 'modules'), str(root / 'LightTouchMac/Features/MediaIdentity.swift'),
                     str(root / 'LightTouchMac/Features/MediaVideo.swift'), str(work / 'check.swift'), '-o', str(work / 'check')], check=True)
     subprocess.run([str(work / 'check'), str(movie), str(work)], check=True, timeout=90)
