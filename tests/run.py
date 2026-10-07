@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """The app's test runner: one tier per invocation, one line per check, a summary, exit 1 on any FAIL.
 
-    tests/run.py offline  [--only NAME ...] [-j N]     no emulator: tests/offline/check-*.py (swiftc on the app's
-                                                        sources plus temp fixtures), run-catalog-checks.py, and the
-                                                        --offline halves of check-activation-gate / check-boot-deadline
+    tests/run.py offline  [--only NAME ...] [-j N]     no emulator: the Unit test plan (xcodebuild test on
+                                                        LightTouchMac.xcworkspace: the packages' Swift Testing suites),
+                                                        tests/offline/check-*.py (swiftc on the app's sources plus temp
+                                                        fixtures), run-catalog-checks.py, and the --offline halves of
+                                                        check-activation-gate / check-boot-deadline
     tests/run.py release  [--only NAME ...] [-j N] [--network]
                                                         packaging and build checks: tests/release/*.py and
                                                         scripts/test-glib-compat.py; test-dependency-sources.py (the
@@ -53,6 +55,8 @@ TIMEOUT = 1800
 
 def name_of(argv):
     """'offline/check-x' or 'sessions/check-sessions --guest': the check's path under tests/ plus its flags (not their values)."""
+    if argv[0] == 'xcodebuild':
+        return 'unit: xcodebuild test (Unit.xctestplan)'
     path = Path(argv[0])
     rel = path.relative_to(TESTS) if TESTS in path.parents else Path('scripts') / path.name
     return ' '.join([str(rel), *[a for a in argv[1:] if str(a).startswith('--')]])
@@ -136,7 +140,8 @@ def run_one(argv, out, env):
     t0 = time.monotonic()
     with open(log, 'w') as stream:
         try:
-            ok = subprocess.run([sys.executable, *map(str, argv)], stdout=stream, stderr=subprocess.STDOUT,
+            command = list(map(str, argv)) if argv[0] == 'xcodebuild' else [sys.executable, *map(str, argv)]
+            ok = subprocess.run(command, stdout=stream, stderr=subprocess.STDOUT,
                                 cwd=ROOT, env=env, timeout=TIMEOUT).returncode == 0
         except subprocess.TimeoutExpired:
             stream.write(f'\nTIMEOUT after {TIMEOUT}s\n')
@@ -149,7 +154,10 @@ def run_one(argv, out, env):
 
 
 def offline_checks():
-    checks = [[p] for p in sorted((TESTS / 'offline').glob('check-*.py'))]
+    # The Swift Testing suites (LightTouchCore, HostRuntime, FirmwareKit, HostServiceWire) through the Unit plan.
+    unit = ['xcodebuild', '-workspace', ROOT / 'LightTouchMac.xcworkspace', '-scheme', 'LightTouchMac', '-testPlan', 'Unit',
+            '-derivedDataPath', ROOT / '.build/xcode-unit', '-quiet', 'test']
+    checks = [unit, *[[p] for p in sorted((TESTS / 'offline').glob('check-*.py'))]]
     checks.append([TESTS / 'offline/run-catalog-checks.py'])
     checks.append([TESTS / 'sessions/check-activation-gate.py', '--offline'])
     checks.append([TESTS / 'sessions/check-boot-deadline.py', '--offline'])
@@ -161,10 +169,10 @@ def offline_checks():
     # Opt-in (Sam, 09-29): nothing on screen by default. LTM_DISPLAY_CHECKS=1 runs them.
     if os.environ.get('LTM_DISPLAY_CHECKS') != '1':
         skips = [(f'offline/{c}', 'opens windows on screen; LTM_DISPLAY_CHECKS=1 runs it') for c in NEEDS_DISPLAY]
-        checks = [c for c in checks if c[0].name not in NEEDS_DISPLAY]
+        checks = [c for c in checks if Path(c[0]).name not in NEEDS_DISPLAY]
     elif display_asleep():
         skips = [(f'offline/{c}', 'the main display is asleep; Metal presents and ScreenCaptureKit capture nothing') for c in NEEDS_DISPLAY]
-        checks = [c for c in checks if c[0].name not in NEEDS_DISPLAY]
+        checks = [c for c in checks if Path(c[0]).name not in NEEDS_DISPLAY]
     return checks, skips
 
 
