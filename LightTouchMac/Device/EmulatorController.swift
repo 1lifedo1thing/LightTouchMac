@@ -283,8 +283,7 @@ final class EmulatorController {
         var config = preparedBootConfiguration(hardware: hardware)
         config?.webProxy = proxyEndpoint
         config?.storageProof = admittedStorage
-        debugPort = debugPortEnabled && config != nil ? DebugPort.freePort() : nil
-        if let port = debugPort {
+        if let port = options.chooseDebugPort(booting: config != nil) {
             config?.argv += DebugPort.arguments(port: port)
             logEvent("debug port: QEMU gdbstub on 127.0.0.1:\(port)")
         }
@@ -349,7 +348,7 @@ final class EmulatorController {
                                                      localNetwork: localNetworkEnabled) : nil
         }
         do {
-            return try prepared.configuration(hardware: machine, bootArgs: Self.bootArgs, usbAddress: usbSession?.guestAddress,
+            return try prepared.configuration(hardware: machine, bootArgs: DeviceOptions.bootArgs(), usbAddress: usbSession?.guestAddress,
                 wifi: network, guestPackage: composeGuestOffer(), serial: serialCapture?.argument ?? "null",
                 // Every board: 16 CoreAudio buffers (186 ms) ride out a busy emulator thread. The A4 boards
                 // had QEMU's default 4 (46 ms), and the iPod touch 4's sounds crackled on a slower Mac.
@@ -841,26 +840,16 @@ final class EmulatorController {
     func modem(_ property: String, _ value: String, done: @escaping (Bool) -> Void = { _ in }) { carrier.modem(property, value, done: done) }
     func modemStatus(_ done: @escaping (ModemStatus?) -> Void) { carrier.modemStatus(done) }
 
-    /// Attach to Local Network, per device (DeviceSettings.localNetwork), off by default: while off the
-    /// emulator refuses the guest's LAN traffic (BootRecipe.wifiNetdev), so macOS never asks on its own.
-    /// Turning it on asks macOS for Local Network access right then and opens the running device in place.
-    var localNetworkEnabled: Bool { settings.localNetwork ?? false }
-    func toggleLocalNetwork() {
-        let enabled = !localNetworkEnabled
-        changeSettings { $0.localNetwork = enabled }
-        if enabled { LocalNetworkAccess.request() }
-        link?.send(.netLocalNetwork(enabled))
-    }
+    // MARK: - Options
 
-    /// Debug port, per device (DeviceSettings.debugPort), off by default; read at each start. QEMU's gdbstub on a
-    /// free loopback port, `debugPort` while this boot has one (qemu-ios docs/guest-debug.md).
-    var debugPortEnabled: Bool { settings.debugPort ?? false }
-    func toggleDebugPort() {
-        let enabled = !debugPortEnabled
-        changeSettings { $0.debugPort = enabled }
-    }
-    private(set) var debugPort: Int?
-    var lldbAttachCommand: String? { debugPort.map { DebugPort.lldbCommand(board: instance.board, port: $0) } }
+    /// Attach to Local Network, the debug port and the boot arguments (DeviceOptions).
+    @ObservationIgnored private(set) lazy var options = DeviceOptions(settings: settingsFile, board: instance.board) { [weak self] in self?.link }
+    var localNetworkEnabled: Bool { options.localNetworkEnabled }
+    func toggleLocalNetwork() { options.toggleLocalNetwork() }
+    var debugPortEnabled: Bool { options.debugPortEnabled }
+    func toggleDebugPort() { options.toggleDebugPort() }
+    var debugPort: Int? { options.debugPort }
+    var lldbAttachCommand: String? { options.lldbAttachCommand }
 
 
 
@@ -1305,28 +1294,12 @@ final class EmulatorController {
         try await device.commit(media)
     }
 
-    // MARK: - Boot environment
-    
-    /// UserDefaults key for Settings ▸ verbose boot.
-    static let verboseBootDefaultsKey = "verboseBoot"
-    static var verboseBoot: Bool {
-        UserDefaults.standard.bool(forKey: verboseBootDefaultsKey)
-    }
+    // MARK: - Boot environment (DeviceOptions)
 
-    static let kernelConsoleDefaultsKey = "kernelConsole"
-    static var kernelConsole: Bool {
-        UserDefaults.standard.bool(forKey: kernelConsoleDefaultsKey)
-    }
-
-    /// Early iBoot handoff arguments; serial output is included in diagnostics.
-    /// The regression checker compares the base command line with the harness;
-    /// verbose boot and kernel-console output remain optional app settings.
-    static var bootArgs: String {
-        var args = "amfi_allow_any_signature=1 cs_enforcement_disable=1"
-        if verboseBoot { args += " -v" }
-        if kernelConsole { args += " serial=3 debug=0x8" }
-        return args
-    }
+    static let verboseBootDefaultsKey = DeviceOptions.verboseBootDefaultsKey
+    static var verboseBoot: Bool { UserDefaults.standard.bool(forKey: verboseBootDefaultsKey) }
+    static let kernelConsoleDefaultsKey = DeviceOptions.kernelConsoleDefaultsKey
+    static var kernelConsole: Bool { UserDefaults.standard.bool(forKey: kernelConsoleDefaultsKey) }
 
 }
 
