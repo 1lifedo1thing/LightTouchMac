@@ -7,18 +7,17 @@
 // The built-in device (the catalog's `bundled`): its packed base unpacked by
 // `firmwarekit unpack-base` with an identity of its own, published the same way.
 
-import LightTouchCore
 import FirmwareSchema
-import Cocoa
+import Foundation
 
-@MainActor final class FirmwareJobs {
-    static let shared = FirmwareJobs()
+/// The app's instance is FirmwareJobs.shared (FirmwareJobs+App.swift); tests make their own over temporary roots.
+@MainActor public final class FirmwareJobs {
     /// Posted on the main actor after `jobs` changes.
-    static let didChangeNotification = Notification.Name("FirmwareJobsDidChange")
+    public static let didChangeNotification = Notification.Name("FirmwareJobsDidChange")
     /// Posted on the main actor when a preparation becomes a device; `object` is its catalog entry id.
-    static let didPublishNotification = Notification.Name("FirmwareJobsDidPublish")
+    public static let didPublishNotification = Notification.Name("FirmwareJobsDidPublish")
 
-    var jobs: [String: FirmwareJob] = [:] {
+    public internal(set) var jobs: [String: FirmwareJob] = [:] {
         didSet { NotificationCenter.default.post(name: Self.didChangeNotification, object: self) }
     }
 
@@ -40,17 +39,37 @@ import Cocoa
     private var speedSamples: [String: (date: Date, bytes: Double)] = [:]
     private var speeds: [String: Double] = [:]
     private let firstHosts: [String: String]
+    /// The state root (Preparing/ and Devices/), the log root, and ~/Library/Caches/<bundle> (the preparer's Decrypted/).
+    private let state: URL, logs: URL, caches: URL
+    /// firmwarekit, if this build has it (FirmwareJobs.preparer).
+    public let preparer: URL?
+    /// The bundle's Resources (the built-in device's packed base).
+    private let resources: URL?
+    private let library: DeviceLibrary
+    /// Errors with no row to show them on (an IPSW dropped on the window, a second device for an entry).
+    private let presentError: (any Error) -> Void
 
-    /// `configuration`: tests use an ephemeral session and file URLs.
-    init(catalog: FirmwareCatalog = .bundled, store: IPSWStore = .shared,
-         configuration: URLSessionConfiguration = .background(withIdentifier: FirmwareDownloads.identifier)) {
+    /// `configuration`: tests use an ephemeral session and file URLs. `sweep`: this process holds the library's
+    /// lock (Bundled.requireStorage), so staging and torn downloads a previous launch left can go.
+    public init(catalog: FirmwareCatalog = .bundled, store: IPSWStore = .shared,
+         configuration: URLSessionConfiguration = .background(withIdentifier: FirmwareDownloads.identifier),
+         state: URL = Bundled.stateDirectory, logs: URL = Bundled.logsDirectory, caches: URL = IPSWStore.cachesDirectory,
+         preparer: URL? = FirmwareJobs.preparer, resources: URL? = Bundle.main.resourceURL, library: DeviceLibrary = .shared,
+         sweep: Bool = (try? Bundled.requireStorage()) != nil, presentError: @escaping (any Error) -> Void) {
         self.catalog = catalog
         self.store = store
+        self.state = state
+        self.logs = logs
+        self.caches = caches
+        self.preparer = preparer
+        self.resources = resources
+        self.library = library
+        self.presentError = presentError
         // Staging a previous launch left behind is never a device; nor is a
         // torn download or import. Only the app holding the library's lock
         // may sweep: another copy's jobs could be live.
-        if (try? Bundled.requireStorage()) != nil {
-            PreparationJob.sweep(state: Bundled.stateDirectory, preparer: Self.preparer)
+        if sweep {
+            PreparationJob.sweep(state: state, preparer: preparer)
             store.sweep()
         }
         // Keyed by the IPSW's sha1 (a task's name); what is downloaded and weighed is the archive for a "rar" source.
@@ -62,7 +81,6 @@ import Cocoa
         firstHosts = urls.compactMapValues { $0.first?.host }
         // Made at launch so a download the last launch started reports here.
         // ponytail: a task resumed at launch from a mirror shows no mirror line until the next fallback.
-        let preparer = Self.preparer
         // The source or mirror the file came from decides how it is checked: a "rar" one is unwrapped.
         let install: @Sendable (String, URL, URL?) throws -> URL = { sha1, file, from in
             guard var entry = entries[sha1] else { return try store.install(file, sha1: sha1, bytes: bytes[sha1]) }
@@ -96,7 +114,7 @@ import Cocoa
     // MARK: - Preparer
 
     /// Contents/MacOS/firmwarekit; a Debug build may name another with LTM_FIRMWAREKIT.
-    static var preparer: URL? {
+    public nonisolated static var preparer: URL? {
         #if DEBUG
         if let path = ProcessInfo.processInfo.environment["LTM_FIRMWAREKIT"] {
             return FileManager.default.isExecutableFile(atPath: path) ? URL(fileURLWithPath: path) : nil
@@ -107,23 +125,23 @@ import Cocoa
     }
 
     /// Contents/MacOS/LightTouchDevice, for the preparer's one-shot boots.
-    static var helper: URL {
+    public static var helper: URL {
         Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/LightTouchDevice")
     }
 
     /// True once a download and preparation can run: the preparer is present.
-    var canDownload: Bool { Self.preparer != nil }
+    public var canDownload: Bool { preparer != nil }
 
     /// Why Download and Prepare is off, for the placeholder.
-    var unavailableReason: String? {
+    public var unavailableReason: String? {
         canDownload ? nil : "This copy of Light Touch can’t prepare devices because a component is missing. Reinstall Light Touch."
     }
 
     // MARK: - Commands
 
-    func downloadAndPrepare(_ entry: FirmwareCatalog.Entry) {
+    public func downloadAndPrepare(_ entry: FirmwareCatalog.Entry) {
         guard jobs[entry.id].map({ if case .failed = $0 { true } else { false } }) ?? true else { return }
-        if let blob = Self.bundledBlob(entry) { return prepare(entry, ipsw: blob, bundled: true) }
+        if let blob = Self.bundledBlob(entry, resources: resources) { return prepare(entry, ipsw: blob, bundled: true) }
         guard let sha1 = entry.source.sha1, !refuseExisting(entry) else { return }
         // The entry's IPSW and its keybag sibling's (4.3.1–4.3.5 boot 4.3's ramdisk), whichever aren't here yet.
         let sources = ([entry] + [entry.recipe?.keybagRamdiskFrom.flatMap(catalog.entry(id:))].compactMap { $0 })
@@ -165,7 +183,7 @@ import Cocoa
 
     /// Hashes, matches in the catalog and clones into State/IPSW, then
     /// prepares. `entry` is the row it was dropped on or imported for, if any.
-    func importIPSW(_ url: URL, for entry: FirmwareCatalog.Entry?) {
+    public func importIPSW(_ url: URL, for entry: FirmwareCatalog.Entry?) {
         if let entry, refuseExisting(entry) { return }
         if let entry { jobs[entry.id] = .preparing(.init(name: "Checking the IPSW")) }
         let catalog = catalog, store = store
@@ -182,7 +200,7 @@ import Cocoa
                     jobs[matched.id] = nil
                     prepare(matched, ipsw: ipsw)
                 case let .failure(error):
-                    if let entry { fail(entry, error) } else { NSApp.presentError(error) }
+                    if let entry { fail(entry, error) } else { presentError(error) }
                 }
             }
         }
@@ -190,7 +208,7 @@ import Cocoa
 
     /// App quit: every preparer gets SIGTERM (its own cancel path detaches
     /// its images); the next launch's sweep removes what's left.
-    func cancelAll() {
+    public func cancelAll() {
         for job in preparations.values { job.cancel() }
     }
 
@@ -207,13 +225,13 @@ import Cocoa
     /// One device per entry: an IPSW for an entry that has one (a drop, an
     /// import, a download) is refused rather than prepared again.
     private func refuseExisting(_ entry: FirmwareCatalog.Entry) -> Bool {
-        guard !DeviceLibrary.shared.instances(firmware: entry.id).isEmpty else { return false }
+        guard !library.instances(firmware: entry.id).isEmpty else { return false }
         logEvent("firmware: \(entry.id) already has a device; not preparing another")
-        NSApp.presentError(FirmwareError.failed("\(entry.marketingName) iOS \(entry.version) already has a device."))
+        presentError(FirmwareError.failed("\(entry.marketingName) iOS \(entry.version) already has a device."))
         return true
     }
 
-    func cancel(_ entry: FirmwareCatalog.Entry) {
+    public func cancel(_ entry: FirmwareCatalog.Entry) {
         speedSamples[entry.id] = nil
         speeds[entry.id] = nil
         if let job = preparations[entry.id] { job.cancel() }
@@ -289,8 +307,8 @@ import Cocoa
     }
 
     /// The entry's packed base in this bundle (a development build has none).
-    static func bundledBlob(_ entry: FirmwareCatalog.Entry) -> URL? {
-        guard let resource = entry.bundled, let blob = Bundle.main.resourceURL?.appendingPathComponent(resource),
+    public static func bundledBlob(_ entry: FirmwareCatalog.Entry, resources: URL? = Bundle.main.resourceURL) -> URL? {
+        guard let resource = entry.bundled, let blob = resources?.appendingPathComponent(resource),
               FileManager.default.fileExists(atPath: blob.path) else { return nil }
         return blob
     }
@@ -298,9 +316,9 @@ import Cocoa
     /// A fresh install (`sidebarSaved` false: no launch has saved a sidebar yet; and no device in the library): the
     /// built-in device is unpacked and returned, for the launch to select. A Mac that already has a library gets
     /// nothing new; its Prepare is the user's (the row offers it once added with +, and after a Delete).
-    func prepareBundledIfFresh(sidebarSaved: Bool) -> FirmwareCatalog.Entry? {
-        guard !sidebarSaved, DeviceInstance.all(state: Bundled.stateDirectory).isEmpty,
-              let entry = catalog.bundledEntry, let blob = Self.bundledBlob(entry) else { return nil }
+    public func prepareBundledIfFresh(sidebarSaved: Bool) -> FirmwareCatalog.Entry? {
+        guard !sidebarSaved, DeviceInstance.all(state: state).isEmpty,
+              let entry = catalog.bundledEntry, let blob = Self.bundledBlob(entry, resources: resources) else { return nil }
         prepare(entry, ipsw: blob, bundled: true)
         return entry
     }
@@ -312,11 +330,11 @@ import Cocoa
         speeds[entry.id] = nil
         guard preparations[entry.id] == nil else { return }
         if refuseExisting(entry) { jobs[entry.id] = nil; return }
-        guard let preparer = Self.preparer else { return fail(entry, FirmwareError.failed(unavailableReason ?? "")) }
+        guard let preparer else { return fail(entry, FirmwareError.failed(unavailableReason ?? "")) }
         let others = jobs.filter { $0.key != entry.id }.compactMap { id, job -> Int64? in
             if case .preparing = job { return catalog.entry(id: id)?.estimates.peakBytes } else { return nil }
         }.reduce(0, +)
-        do { try IPSWStore.checkSpace(entry.estimates.peakBytes + others, at: Bundled.stateDirectory) }
+        do { try IPSWStore.checkSpace(entry.estimates.peakBytes + others, at: state) }
         catch { return fail(entry, error) }
         var sibling: (entry: FirmwareCatalog.Entry, ipsw: URL)?
         if !bundled, let from = entry.recipe?.keybagRamdiskFrom {
@@ -326,9 +344,9 @@ import Cocoa
             sibling = (sib, sibIPSW)
         }
         let request = PreparationJob.Request(
-            entry: entry, ipsw: ipsw, sibling: sibling, state: Bundled.stateDirectory, preparer: preparer, helper: Self.helper,
-            cache: IPSWStore.cachesDirectory.appendingPathComponent("Decrypted", isDirectory: true),
-            log: Bundled.logsDirectory.appendingPathComponent("Preparing/\(entry.id).log"), blob: bundled ? ipsw : nil)
+            entry: entry, ipsw: ipsw, sibling: sibling, state: state, preparer: preparer, helper: Self.helper,
+            cache: caches.appendingPathComponent("Decrypted", isDirectory: true),
+            log: logs.appendingPathComponent("Preparing/\(entry.id).log"), blob: bundled ? ipsw : nil)
         let job = PreparationJob(request) { event in
             Task { @MainActor [weak self] in self?.preparation(entry, event) }
         }
@@ -363,7 +381,7 @@ import Cocoa
             preparations[entry.id] = nil
             jobs[entry.id] = nil
             logEvent("firmware: \(entry.id) is device \(instance.id.uuidString)")
-            DeviceLibrary.shared.reload()
+            library.reload()
             NotificationCenter.default.post(name: Self.didPublishNotification, object: entry.id)
         case let .failed(message):
             preparations[entry.id] = nil

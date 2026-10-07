@@ -27,6 +27,12 @@ enum LibraryFixtures {
         try run("/usr/bin/zip", ["-q", "-j", url.path, plist.path])
     }
 
+    static func randomData(_ count: Int) -> Data {
+        var data = Data(count: count)
+        data.withUnsafeMutableBytes { arc4random_buf($0.baseAddress!, count) }
+        return data
+    }
+
     /// Runs `executable` to its exit; its stdout. Throws on a non-zero status.
     @discardableResult
     static func run(_ executable: String, _ arguments: [String], environment: [String: String]? = nil) throws -> String {
