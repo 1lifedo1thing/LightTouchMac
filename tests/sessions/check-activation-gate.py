@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
 """The app verifies activation once per boot and blocks commands, persistently, when it didn't happen.
 
-Two halves. Offline (always): EmulatorController's first-answer check, sliced with a fake
-lockdown, must ask ActivationState on the first answer of a boot, retry a failed or unactivated
-answer twice before deciding, set the persistent DeviceConnectionIssue ("This iPod isn't
-activated. Choose Erase All Content and Settings, then prepare it again."), drop reachability,
-cancel the boot preparation, report the notice, and keep that issue over later transient
-failures; a service that answers later clears it. The known activated states
-(Activated, FactoryActivated, WildcardActivated) pass, and so does a lockdown whose
-services answer whatever the string says (the built-in iPod reports Unactivated and works);
-an activated guest asks nothing again until the next boot. lockdown -34 maps to the same issue; the sidebar row notes
-"Prepared without activation" from the lock alone.
+The offline half (the controller's first-answer check: three answers before a verdict, the persistent
+DeviceConnectionIssue, services that answer winning over the string, -34, the lock's note) is LightTouchCoreTests'
+ConnectionRecoveryTests, on Session/ConnectionRecovery.swift's ActivationCheck; --offline is a no-op kept for
+tests/run.py.
 
 With --device (default: a hook-less device.py iPod 3.1.3 base), the session driver boots it
 as the app does and asks the same question over its own usbmuxd: the state is not Activated,
@@ -29,138 +23,8 @@ ROOT = Path(__file__).resolve().parents[2]
 HOME = Path.home()
 sys.path.insert(0, str(ROOT / "scripts"))
 import sources  # the pinned checkouts (build-support/sources.json)
-import host_service
-import host_runtime
 DEFAULT_DEVICE = HOME / "Developer/qemu-ios-files/ipod-ipsw/devices/7E18-a"
 TEXT = "This iPod isn’t activated. Choose Erase All Content and Settings, then prepare it again."
-
-
-def offline():
-    s = (ROOT / "LightTouchMac/Device/EmulatorController.swift").read_text()
-    a = s.index("    func reportConnectionFailure(_ error: Error, operation: String) {")
-    report = s[a:s.index("    private var connectionFailures =", a)]
-    a = s.index("    // MARK: - Activation (prepared offline, completed and verified per boot")
-    activation = s[a:s.index("    func launchApp(_ bundleID: String)", a)]
-    instance = (ROOT / "Packages/LightTouchCore/Sources/LightTouchCore/Library/DeviceInstance.swift").read_text()
-    a = instance.index("    public static func lockLacksActivation(_ url: URL) -> Bool {")
-    lock = instance[a:instance.index("\n    }", a) + 6]
-    source = r'''import Foundation
-nonisolated func logEvent(_ message: String) {}
-@MainActor final class Controller {
- let profile = Board.n72
- var usbConnected = true, liveAgentStatus = 1, connectionFailures = 0
- var onStatusChange: (() -> Void)?
- let bootScope = BootSessionScope()
- var bootGeneration: Int { bootScope.generation }
- var preparingDevice = true
- var readinessTask: Task<Void, Never>? = Task { try? await Task.sleep(for: .seconds(60)) }
- var notices: [String] = [], resolved: [String] = []
- enum NoticeOperation { case activation }
- func reportDeviceNotice(_ text: String, for operation: NoticeOperation) { notices.append(text) }
- func resolveDeviceNotice(for operation: NoticeOperation) { resolved.append("\(operation)") }
- var answers: [String?] = [], asked = 0
- func activationState() async -> String? { asked += 1; return answers.isEmpty ? nil : answers.removeFirst() }
- var finished = 0, completionFailures = 0
- func finishActivation() async throws {
-  finished += 1
-  if completionFailures > 0 { completionFailures -= 1; throw NSError(domain: "activation", code: 1) }
- }
- var servicesAnswer = false, probed = 0
- func installProxyReady() async -> Bool { probed += 1; return servicesAnswer }
- var services: Controller { get throws { self } }  // EmulatorController.services: lockdown's answers
- var connectionIssue: DeviceConnectionIssue?
- var deviceReachable: Bool? {
-  didSet {
-   // As EmulatorController.deviceReachable's didSet: a service answered, nothing blocks any more.
-   if deviceReachable == true, let issue = connectionIssue {
-    if issue.persistent { resolveDeviceNotice(for: .activation) }
-    connectionIssue = nil
-   }
-   checkActivationIfNeeded()
-  }
- }
- func considerConnectionRecovery() {}
-''' + report + activation + r'''}
-enum Lock {
-''' + lock + r'''}
-@main struct Check {
- @MainActor static func main() async throws {
-  Controller.activationRetryDelay = .milliseconds(5)
-  func settle() async { try? await Task.sleep(for: .milliseconds(80)); for _ in 0..<20 { await Task.yield() } }
-  // The known activated states pass; unknown names do not.
-  for state in ["Activated", "FactoryActivated", "WildcardActivated"] {
-   precondition(DeviceConnectionIssue.activation(state: state, profile: .n72) == nil, state)
-  }
-  for state in ["Unactivated", "Pending", "", "SomeOtherActivated"] { precondition(DeviceConnectionIssue.activation(state: state, profile: .n72) != nil, state) }
-  precondition(DeviceConnectionIssue.activation(state: nil, profile: .n72) == nil)
-  // Unactivated three times: persistent issue, blocked, no retry, preparation cancelled, notice.
-  let c = Controller(); c.answers = ["Unactivated", "Unactivated", "Unactivated"]
-  c.deviceReachable = true; await settle()
-  precondition(c.asked == 3 && c.connectionIssue?.summary == TEXT && c.connectionIssue?.persistent == true, "\(c.asked)")
-  precondition(c.connectionIssue?.blocksCommands == true && c.connectionIssue?.reconnectManagement == false)
-  precondition(c.deviceReachable == false && !c.preparingDevice && c.readinessTask!.isCancelled && c.notices == [TEXT])
-  // Transient failures leave it; -34 maps to it.
-  c.reportConnectionFailure(DeviceError.lockdown(-8), operation: "Refreshing apps")
-  precondition(c.connectionIssue?.summary == TEXT)
-  c.reportConnectionFailure(DeviceError.lockdown(-34), operation: "Refreshing apps")
-  precondition(c.connectionIssue?.summary == TEXT && c.connectionIssue?.persistent == true)
-  // A service that answers later (the inspector's list read) clears the stale issue: installs are no longer blocked.
-  c.deviceReachable = true; await settle()
-  precondition(c.asked == 3 && c.connectionIssue == nil && c.deviceReachable == true && c.resolved == ["activation"], "\(c.asked)")
-  // The next boot asks again.
-  c.bootScope.renew(); c.answers = ["Activated"]
-  c.deviceReachable = true; await settle()
-  precondition(c.asked == 4 && c.connectionIssue == nil && c.resolved == ["activation", "activation"])
-  // Services that answer win over the string: the built-in iPod reports Unactivated and works (Sam's screenshot 17).
-  let works = Controller(); works.answers = ["Unactivated", "Unactivated", "Unactivated"]; works.servicesAnswer = true
-  works.deviceReachable = true; await settle()
-  precondition(works.asked == 3 && works.probed == 1 && works.connectionIssue == nil && works.deviceReachable == true && works.preparingDevice
-               && works.notices.isEmpty && works.resolved == ["activation"], "\(works.asked) \(works.probed)")
-  // A -34 issue standing when a service read later succeeds clears with it.
-  works.reportConnectionFailure(DeviceError.lockdown(-34), operation: "Refreshing apps")
-  precondition(works.connectionIssue?.persistent == true && works.deviceReachable == false)
-  works.deviceReachable = true; await settle()
-  precondition(works.connectionIssue == nil && works.resolved == ["activation", "activation"])
-  // A transient failure never decides: one failed query, then an unactivated one, then activated -> no issue.
-  let flaky = Controller(); flaky.answers = [nil, "Unactivated", "WildcardActivated"]
-  flaky.deviceReachable = true; await settle(); precondition(flaky.asked == 3 && flaky.connectionIssue == nil && flaky.preparingDevice)
-  // Activated: asked once; three unanswered questions are asked again on the next answer.
-  let ok = Controller(); ok.answers = [nil, nil, nil, "Activated"]
-  ok.deviceReachable = true; await settle(); precondition(ok.asked == 3 && ok.connectionIssue == nil)
-  ok.deviceReachable = true; await settle(); precondition(ok.asked == 4 && ok.connectionIssue == nil && ok.preparingDevice)
-  ok.deviceReachable = true; await settle(); precondition(ok.asked == 4)
-  precondition(ok.finished == 1)
-  let retry = Controller(); retry.answers = Array(repeating: "Activated", count: 4); retry.completionFailures = 3
-  retry.deviceReachable = true; await settle(); precondition(retry.finished == 3)
-  retry.deviceReachable = true; await settle(); precondition(retry.finished == 4)
-  retry.deviceReachable = true; await settle(); precondition(retry.finished == 4)
-  // A fresh -34 with no prior issue is the same persistent issue.
-  let refused = Controller()
-  refused.reportConnectionFailure(DeviceError.lockdown(-34), operation: "Refreshing apps")
-  precondition(refused.connectionIssue?.summary == TEXT && refused.connectionIssue?.persistent == true)
-  // The lock: null or absent activation is "prepared without activation"; a recorded one isn't.
-  let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ltm-activation-\(UUID().uuidString)")
-  try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-  defer { try? FileManager.default.removeItem(at: dir) }
-  func lock(_ text: String) -> Bool {
-   let url = dir.appendingPathComponent("device.lock.json")
-   try! Data(text.utf8).write(to: url)
-   return Lock.lockLacksActivation(url)
-  }
-  precondition(lock(#"{"inputs": {"ipsw": {}, "activation": null}}"#))
-  precondition(lock(#"{"inputs": {"ipsw": {}, "activation_hook": null}}"#))
-  precondition(!lock(#"{"inputs": {"activation": {"input_sha256": "a", "output_sha256": "b"}}}"#))
-  precondition(!lock("not json") && !Lock.lockLacksActivation(dir.appendingPathComponent("missing")))
-  print("PASS: activation verified per boot with retries; known activated states pass, completion retries, services that answer win; unactivated is a persistent issue that a later service answer clears; -34 maps to it; the lock's note")
- }
-}
-'''.replace("TEXT", json.dumps(TEXT, ensure_ascii=False))
-    with tempfile.TemporaryDirectory(prefix="ltm-activation-") as d:
-        p = Path(d) / "check.swift"
-        p.write_text(source)
-        subprocess.run(["swiftc", *host_runtime.swift_flags(ROOT), *host_service.wire_flags(ROOT), "-parse-as-library", "-module-cache-path", d + "/modules", str(ROOT / "LightTouchMac/Device/Board+App.swift"), str(ROOT / "LightTouchMac/Device/BootSessionScope.swift"),
-                        str(ROOT / "LightTouchMac/Device/DeviceConnectionIssue.swift"), str(p), "-o", d + "/check"], check=True)
-        subprocess.run([d + "/check"], check=True, timeout=60)
 
 
 def live(args):
@@ -242,7 +106,7 @@ def live(args):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--offline", action="store_true", help="only the sliced controller check")
+    ap.add_argument("--offline", action="store_true", help="the offline half is LightTouchCoreTests now: a no-op")
     ap.add_argument("--device", type=Path, default=DEFAULT_DEVICE, help="a prepared base whose lock has no activation; "
                     "`shipping`: the app's built-in iPod image (qemu-ios-files/nand-current)")
     ap.add_argument("--board", choices=("ipod", "ipad"), default="ipod")
@@ -254,11 +118,11 @@ def main():
     ap.add_argument("--frameworks")
     ap.add_argument("--work", type=Path)
     args = ap.parse_args()
-    offline()
     if args.offline:
+        print("ported to LightTouchCoreTests")
         return 0
     if str(args.device) != "shipping" and not args.device.is_dir():
-        print(f"no device at {args.device}: offline half only")
+        print(f"no device at {args.device}: nothing to boot")
         return 0
     return 0 if live(args) else 1
 
