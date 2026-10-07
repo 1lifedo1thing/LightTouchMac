@@ -551,8 +551,17 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
     // MARK: - Health / status surfacing
 
+    /// The Files window follows the selected device; its title says which.
+    private func titleFilesWindow() {
+        guard let window = filesWindow?.window else { return }
+        let label = selectedEntry.map { library.label(for: $0) }
+        window.title = "\(label?.title ?? currentProfile.shortName) Files"
+        window.subtitle = label?.subtitle ?? ""
+    }
+
     private func refreshForState() {
         proxySettingsEditor?.updateStatus(emulator?.webProxyStatus ?? .waiting)
+        titleFilesWindow()
         if let filesVC {
             let socket = emulator.flatMap { $0.canReachDevice ? $0.usbmuxSession : nil }
             if filesVC.services?.clientSocket != socket {
@@ -975,6 +984,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
             files.browser.services = emulator.flatMap { $0.canReachDevice ? $0.usbmuxSession : nil }.map { DeviceServices(clientSocket: $0) }
             files.browser.onActivityChange = { [weak self] in self?.refreshFileStatus() }
             files.browser.reload()
+            titleFilesWindow()
         }
         filesWindow?.showWindow(sender)
     }
