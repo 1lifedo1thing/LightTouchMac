@@ -36,6 +36,8 @@ struct SingleConfig: Decodable {
     /// With lockdownTZ: the region and clock format to set beside the zone (the app sends the Mac's, ClockRegion.mac).
     struct Region: Decodable { var locale: String; var uses24HourClock: Bool }
     var region: Region?
+    /// With reboot: boot 2 asks for this zone instead of the Mac's (the Mac's zone changed between boots).
+    var secondZone: String?
     /// false: skip the IPA install (the entry has no AppSync, so the stock installd refuses it).
     var install: Bool?
     /// Qualify the shared host gesture using generic virtual-time input; never GUI Stop.
@@ -140,15 +142,16 @@ struct SingleConfig: Decodable {
             // with the agent where the boot has one, as the app's (EmulatorController.guest): a zone 4.x kept is retried after it
             let guest = agent || (a4 && offered)
                 ? GuestServices(agent: GuestAgent(link: d.process.link, cache: GuestAgentCache()), packaged: offered) : nil
+            let want = generation == 2 ? s.secondZone ?? TimeZone.current.identifier : TimeZone.current.identifier
             for _ in 0..<12 where zone == nil {   // services come up after lockdown answers; the app retries every 5 s
-                do { zone = try await DeviceServices.setTimeZone(TimeZone.current.identifier, keepClock: d.ipod?.machine["rtc-epoch"] != nil,
+                do { zone = try await DeviceServices.setTimeZone(want, keepClock: d.ipod?.machine["rtc-epoch"] != nil,
                                                                 tool: tool, socket: d.mux.clientSocket, guest: guest,
                                                                 region: s.region.map { ClockRegion(locale: $0.locale, uses24HourClock: $0.uses24HourClock) }) }
                 catch DeviceToolsError.zoneKept(let kept) { emit("timezoneKept", ["device": d.name, "generation": generation, "zone": kept]); break }
                 catch {}
                 if zone == nil { try? await Task.sleep(for: .seconds(5)) }
             }
-            emit("timezone", ["device": d.name, "generation": generation, "zone": zone ?? ""])
+            emit("timezone", ["device": d.name, "generation": generation, "zone": zone ?? "", "want": want])
             if s.region != nil {
                 // What lockdown holds now, and the screen it shows.
                 func info(_ args: [String]) -> String { lockdownInfo(d.mux.clientSocket, args) }

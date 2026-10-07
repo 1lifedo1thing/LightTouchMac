@@ -36,28 +36,30 @@ extension DeviceServices {
         logEvent("timezone: guest zone now \(zone)")
     }
 
-    /// The lockdown-tz child itself (memory lockdown-setvalue-trap); the zone in effect. When the
-    /// guest kept its own zone (4.x's locationd applies only the first external one) and there is
-    /// a guest agent, once more after it clears locationd's record of that one.
+    /// The lockdown-tz child itself (memory lockdown-setvalue-trap); the zone in effect. A zone the guest kept is
+    /// written again, up to 3 times: 4.x's locationd applies only the first external zone (cleared first through the
+    /// guest agent, when there is one and it holds such a record), and a write that lands while locationd restarts
+    /// (the guest package's it_prefs restarts it once Wi-Fi is up) is dropped, so the same write 5 s later takes.
     /// keepClock: leave the guest's clock alone (a dated device, lock machine rtc-epoch: the Mac's clock would expire it).
     static func setTimeZone(_ identifier: String, keepClock: Bool = false, tool: String, socket: String,
                             guest: GuestServices? = nil, region: ClockRegion? = nil) async throws -> String {
         try Task.checkCancellation()
+        var kept: String
         do { return try await lockdownTZ(identifier, keepClock: keepClock, tool: tool, socket: socket, region: region) }
-        catch DeviceToolsError.zoneKept(let zone) {
+        catch DeviceToolsError.zoneKept(let zone) { kept = zone }
+        try Task.checkCancellation()
+        let agent = await guest?.agent.waitAlive(seconds: 60) == true ? guest : nil
+        for _ in 0..<3 {
             try Task.checkCancellation()
-            guard let guest, await guest.agent.waitAlive(seconds: 60) else {
-                try Task.checkCancellation()
-                throw DeviceToolsError.zoneKept(zone)
+            if let agent, try await agent.forgetExternalTimeZone() {
+                logEvent("timezone: the device kept \(kept); cleared locationd's first zone, setting again")
+            } else {
+                try await Task.sleep(for: .seconds(5))
             }
-            try Task.checkCancellation()
-            guard try await guest.forgetExternalTimeZone() else {
-                throw DeviceToolsError.zoneKept(zone)
-            }
-            try Task.checkCancellation()
-            logEvent("timezone: the device kept \(zone); cleared locationd's first zone, setting again")
-            return try await lockdownTZ(identifier, keepClock: keepClock, tool: tool, socket: socket, region: region)
+            do { return try await lockdownTZ(identifier, keepClock: keepClock, tool: tool, socket: socket, region: region) }
+            catch DeviceToolsError.zoneKept(let zone) { kept = zone }
         }
+        throw DeviceToolsError.zoneKept(kept)
     }
 
     private static func lockdownTZ(_ identifier: String, keepClock: Bool, tool: String, socket: String,
