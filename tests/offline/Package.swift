@@ -27,8 +27,11 @@ let package = Package(name: "OfflineChecks", platforms: [.macOS("14.4")],
         // The sidebar and the Add Device sheet over a stand-in session host, jobs and library.
         .target(name: "Sidebar", dependencies: [.product(name: "LightTouchCore", package: "LightTouchCore"), .product(name: "HostRuntime", package: "HostRuntime")],
                 swiftSettings: settings),
+        // The real main menu over no-op action targets.
+        .target(name: "Menus", dependencies: [.product(name: "LightTouchCore", package: "LightTouchCore"), .product(name: "HostRuntime", package: "HostRuntime")],
+                swiftSettings: settings),
         // A private home and app state for the test process (LightTouchCore's own, Tests/TestIsolation).
         .target(name: "TestIsolation"),
-        .testTarget(name: "OfflineTests", dependencies: ["AppViews", "Sidebar", "TestIsolation"], swiftSettings: settings),
+        .testTarget(name: "OfflineTests", dependencies: ["AppViews", "Menus", "Sidebar", "TestIsolation"], swiftSettings: settings),
     ],
     swiftLanguageModes: [.v5])
