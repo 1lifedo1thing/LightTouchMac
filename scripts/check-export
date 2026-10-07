@@ -5,13 +5,13 @@
 #
 #     scripts/check-export "path/to/Light Touch.app"
 #
-# Writes "Light Touch.zip" and SHA256SUMS beside the app. Exit 1 on any failure.
+# Writes LightTouchMac-universal.zip (the release download) and SHA256SUMS naming it beside the app. Exit 1 on any failure.
 set -euo pipefail
 APP="${1:?usage: scripts/check-export path/to/Light Touch.app}"
 APP="$(cd "$(dirname "$APP")" && pwd)/$(basename "$APP")"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$(dirname "$APP")"
-ZIP="$OUT/Light Touch.zip"
+ZIP="$OUT/LightTouchMac-universal.zip"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/ltm-check-export.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 

@@ -88,9 +88,10 @@ A release is an Xcode archive; nothing edits the bundle after Xcode.
    the bundled helper, dylib, services worker and usbmuxd. `TEST_RUNNER_LTM_RELEASE_FULL=1` also prepares and boots
    every release entry (minutes each).
 4. **Organizer ▸ Distribute App ▸ Direct Distribution** notarizes and exports the app.
-5. **`scripts/check-export "path/to/Light Touch.app"`** zips the exported app (ditto), runs the Release plan on the
-   unzipped copy as an export (adding the stapled ticket and Gatekeeper's "Notarized Developer ID"), and writes
-   `Light Touch.zip` and `SHA256SUMS` beside the app.
+5. **`scripts/check-export "path/to/Light Touch.app"`** makes the release download, since Xcode has no hook after
+   notarization: `LightTouchMac-universal.zip` (`ditto -c -k --keepParent`) and `SHA256SUMS` naming it, beside the
+   exported app. It runs the Release plan on the zip's unzipped copy as an export (adding the stapled ticket and
+   Gatekeeper's "Notarized Developer ID") before it writes `SHA256SUMS`.
 
 ## Gates
 
