@@ -83,13 +83,19 @@ var noticed: [String: Double] = [:]
 let noticeLock = NSLock()
 func notice(_ what: String) { noticeLock.withLock { noticed[what] = Date().timeIntervalSince1970 } }
 var audioBytes = 0
+/// S16 samples of the capture above a quiet floor (|s| > 1000): sound, not silence or dither.
+var audioLoud = 0
 var watches: [DeviceFileWatch] = []
 
 link.onEvent = { event in
     switch event {
     case .qemuExited(let rc): emit("qemuExited", ["code": rc]); exitedEvent.signal()
-    case .audio(_, _, let pcm): audioBytes += pcm.count
-    case .audioEnded(let g, let failed): emit("audioEnded", ["generation": g, "failed": failed, "bytes": audioBytes])
+    case .audio(_, _, let pcm):
+        audioBytes += pcm.count
+        pcm.withUnsafeBytes { raw in audioLoud += raw.bindMemory(to: Int16.self).reduce(0) { $0 + (abs(Int($1)) > 1000 ? 1 : 0) } }
+    case .audioEnded(let g, let failed):
+        emit("audioEnded", ["generation": g, "failed": failed, "bytes": audioBytes, "loud": audioLoud])
+        audioBytes = 0; audioLoud = 0
     }
 }
 link.onInvalidated = { error in notice("invalidated"); emit("invalidated", ["error": "\(error)"]); invalidated.signal() }

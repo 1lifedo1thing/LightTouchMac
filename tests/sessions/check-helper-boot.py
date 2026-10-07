@@ -22,8 +22,8 @@ status block, frame ring, framed link). Cases:
   headless   --headless: an iPod boot to a lit lock screen, dump, quit
   carrier    --iphone-device (a FirmwareKit n90ap/n88ap/m68ap device): the Carrier panel's path, app -> link ->
              qemu_ios_ui_modem_set/_status -> the modem: booted with saved settings (-global), carrier renamed, a bad
-             MCC/MNC refused (error in the next status), signal moved, an incoming SMS delivered, a call
-             rung (incoming) and hung up (idle), quit. 6.x/7.x GM's Setup Assistant rejects an incoming call (iOS policy),
+             MCC/MNC refused (error in the next status), signal moved, an incoming SMS delivered and its tone heard (the app's
+             audio capture), a call rung (incoming) and hung up (idle), quit. 6.x/7.x GM's Setup Assistant rejects an incoming call (iOS policy),
              so on such a base the case needs --iphone-overlay, the overlay of a boot that walked Setup (check-sessions
              --single DIR leaves one in --work/<board>/overlay); without it the case is skipped, not failed 7/8
   rotate     --iphone-device: lit, unlocked, Safari opened, then the app's rotation (the orientation request, no other input):
@@ -391,8 +391,8 @@ def main():
             d = Driver(args, bin_dir, helper, work, "carrier", {**boot,
                        "steps": ["boot", "lit 0.1 300", "wait 60", "dump registered", "modemStatus",
                                  "modem carrier Cell Panel", "modem signal-dbm -97", "modem mcc-mnc 001", "wait 1", "modemStatus",
-                                 "modem incoming-sms +15555550100|hello from the panel", "wait 2", "modemStatus",
-                                 "modem incoming-call 15555550100", "wait 3", "modemStatus",
+                                 "modem incoming-sms +15555550100|hello from the panel", "audio 10", "modemStatus",
+                                 "modem incoming-call 15555550100", "audio 12", "modemStatus",
                                  "modem remote-hangup 1", "wait 3", "modemStatus",
                                  "modem no-such-property x", "quit", "expectExit 60"]})
             rc = d.wait(600)
@@ -406,6 +406,13 @@ def main():
                       and "mcc-mnc" in st[1].get("error", ""), f"renamed, signal moved, the bad MCC/MNC refused ({st[1]})", "carrier", results)
                 check("error" not in st[2] and "ok(true)" in replies.get("incoming-sms", ""), f"SMS delivered ({st[2]})", "carrier", results)
                 check(st[3].get("call-state") == "incoming", f"ringing: {st[3].get('call-state')}", "carrier", results)
+            # The app's audio capture through each: the SMS tone, then the ringing. iOS 7's ringtone is still silent
+            # (Sam 10-07; its AAC goes through the A4's AMC, whose 7.x stream contract isn't mapped), so the ringing's
+            # level is printed, not judged.
+            heard = [e.get("loud", 0) for e in d.find("audioEnded")]
+            if check(len(heard) == 2, f"two captures ({len(heard)})", "carrier", results):
+                check(heard[0] > 2000, f"the SMS tone is heard ({heard[0]} loud samples)", "carrier", results)
+                print(f"   ringing: {heard[1]} loud samples in 12 s")
                 check(st[4].get("call-state") == "idle", f"hung up: {st[4].get('call-state')}", "carrier", results)
             check("ok(false)" in replies.get("no-such-property", ""), "an unknown property is refused at the link", "carrier", results)
 
