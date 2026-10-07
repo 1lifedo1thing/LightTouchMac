@@ -23,7 +23,9 @@ status block, frame ring, framed link). Cases:
   carrier    --iphone-device (a FirmwareKit n90ap/n88ap/m68ap device): the Carrier panel's path, app -> link ->
              qemu_ios_ui_modem_set/_status -> the modem: booted with saved settings (-global), carrier renamed, a bad
              MCC/MNC refused (error in the next status), signal moved, an incoming SMS delivered, a call
-             rung (incoming) and hung up (idle), quit
+             rung (incoming) and hung up (idle), quit. 6.x/7.x GM's Setup Assistant rejects an incoming call (iOS policy),
+             so on such a base the case needs --iphone-overlay, the overlay of a boot that walked Setup (check-sessions
+             --single DIR leaves one in --work/<board>/overlay); without it the case is skipped, not failed 7/8
   rotate     --iphone-device: lit, unlocked, Safari opened, then the app's rotation (the orientation request, no other input):
              within 1 s a new frame is published and it differs from the Home screen (the guest turned its UI)
   shutdown   --iphone-device: lit, then Shut Down (MachineOp.shutdown, qemu_ios_ui_shutdown: the agent's halt, or 1.x's
@@ -207,6 +209,12 @@ def iphone_boot(device, ovl, serial):
     return {"machine": board, "argv": argv}
 
 
+def setup_rejects_calls(device):
+    """6.x and 7.x bases walk the Setup Assistant on their first boot, and it rejects an incoming call."""
+    major = str(json.loads((device / "device.lock.json").read_text()).get("product_version", "0")).split(".")[0]
+    return major.isdigit() and int(major) >= 6
+
+
 def parent_kill(d, case, results, budget):
     """SIGKILL the driver (the 'app') once it holds; the helper must halt (no guest shutdown) and exit."""
     hold = d.wait_event("hold", 400)
@@ -228,6 +236,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--ipad-device", type=Path)
     ap.add_argument("--iphone-device", type=Path, help="a FirmwareKit n90ap/n88ap device for the carrier case")
+    ap.add_argument("--iphone-overlay", type=Path, help="carrier: a past-Setup overlay of --iphone-device, copied in (6.x/7.x)")
     ap.add_argument("--helper")
     ap.add_argument("--dylib", default=os.environ.get("LTM_QEMU_DYLIB"))
     ap.add_argument("--files", type=Path, default=HOME / "Developer/qemu-ios-files")
@@ -244,6 +253,9 @@ def main():
     if not args.iphone_device:
         cases = [c for c in cases if c not in ("carrier", "rotate", "shutdown", "keyboard")]
         print("no --iphone-device: skipping the carrier case")
+    elif "carrier" in cases and not args.iphone_overlay and setup_rejects_calls(args.iphone_device):
+        cases.remove("carrier")
+        print("SKIP carrier: a 6.x/7.x base is in Setup on its first boot, which rejects calls; pass --iphone-overlay")
     work = args.work or Path(tempfile.mkdtemp(prefix="ltm-helper-boot-"))
     work.mkdir(parents=True, exist_ok=True)
     bin_dir = work / "bin"
@@ -385,6 +397,9 @@ def main():
         if "carrier" in cases:
             print("carrier", flush=True)
             ovl = work / "carrier/overlay"
+            if args.iphone_overlay and not ovl.exists():
+                ovl.parent.mkdir(parents=True, exist_ok=True)
+                subprocess.run(["cp", "-cR", args.iphone_overlay, ovl], check=True)   # a clone: the source stays as it was
             boot = iphone_boot(args.iphone_device, ovl, work / "carrier/serial.log")
             d = Driver(args, bin_dir, helper, work, "carrier", {"machine": boot["machine"], "boot": boot,
                        "steps": ["boot", "lit 0.1 300", "wait 60", "dump registered", "modemStatus",
