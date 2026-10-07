@@ -1,5 +1,6 @@
 import DeviceRuntime
 import HostRuntime
+import LightTouchCore
 // Stands in for the app in tests/sessions/check-helper-boot.py: spawns LightTouchDevice
 // through DeviceLink (rendezvous, validation, status block, frame ring, link)
 // and runs a scripted scenario. JSON lines on stdout; built by the test with

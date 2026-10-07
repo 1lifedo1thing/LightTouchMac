@@ -16,3 +16,20 @@ struct TestIsolationTests {
         }
     }
 }
+
+/// The real app.log (~/Library/Logs/gold.samhenri.LightTouchMac, the user's own home): what a test run must never write.
+let realAppLog = URL(fileURLWithPath: getpwuid(getuid()).map { String(cString: $0.pointee.pw_dir) } ?? "/Users")
+    .appendingPathComponent("Library/Logs/\(StorageLocations.bundleIdentifier)/app.log")
+
+struct AppLogIsolationTests {
+    /// logEvent (IPALibrary's notes, the session's notices) lands in the test's own Logs, never the real app.log.
+    @Test func appEventsStayOutOfTheRealAppLog() async throws {
+        let marker = "test-isolation marker \(UUID().uuidString)"
+        logEvent(marker)
+        await AppEventLog.shared.flush()
+        let isolated = try String(contentsOf: Bundled.logsDirectory.appendingPathComponent("app.log"), encoding: .utf8)
+        #expect(isolated.contains(marker), "the event went nowhere (\(Bundled.logsDirectory.path))")
+        let real = (try? String(contentsOf: realAppLog, encoding: .utf8)) ?? ""
+        #expect(!real.contains(marker), "a test wrote the real \(realAppLog.path)")
+    }
+}

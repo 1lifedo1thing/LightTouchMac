@@ -1,5 +1,8 @@
 import DeviceRuntime
 import HostRuntime
+import HostServiceClient
+import HostServiceWire
+@testable import LightTouchCore
 // One prepared device (tests/sessions/check-sessions.py --single, ReleaseBootTests, tests/matrix.py): a firmwarekit
 // base booted as the app boots it, through the bundled helper, dylib and usbmuxd. It must light, answer lockdown
 // over its own usbmuxd, take AFC round trips past 16 KiB (max-packet multiples, whose transfers end in a real ZLP),
@@ -10,6 +13,7 @@ import HostRuntime
 // lockdown and still hold a file uploaded before the clean shutdown (tests/matrix.py's persist check).
 
 import Foundation
+import SessionKit
 import Vision
 import ImageIO
 
@@ -33,9 +37,6 @@ struct SingleConfig: Decodable {
     /// connect (TimeZoneSync). Also completes the first-host handshake,
     /// independently of the clock, as ActivationCheck.checkIfNeeded does.
     var lockdownTZ: String?
-    /// With lockdownTZ: the region and clock format to set beside the zone (the app sends the Mac's, ClockRegion.mac).
-    struct Region: Decodable { var locale: String; var uses24HourClock: Bool }
-    var region: Region?
     /// With reboot: boot 2 asks for this zone instead of the Mac's (the Mac's zone changed between boots).
     var secondZone: String?
     /// false: skip the IPA install (the entry has no AppSync, so the stock installd refuses it).
@@ -61,12 +62,6 @@ struct SingleConfig: Decodable {
     /// keeping a file written into the app's data before it (judged through the agent). installd may move the data
     /// to a fresh container UUID; the data is what an upgrade keeps.
     var upgradeIPA: String?
-    /// Files through the app's media import after the install, then read back and played (media.swift).
-    var media: [String]?
-    /// The itmedia/itphoto MediaImport uploads.
-    var mediaTools: String?
-    /// After the imports, Music is opened and these normalized points tapped (media.swift); nil skips Music.
-    var mediaTaps: [[Double]]?
     /// The guest's audio to this WAV instead of none (a playback check); never the Mac's speakers.
     var audioWAV: String?
     /// A file the guest agent reads back at home (fileRead), e.g. a marker a stopped edit wrote into the root FS.
@@ -89,17 +84,8 @@ struct SingleConfig: Decodable {
     // The A4 and S5L8920 boards boot as the iPad does (kboot, the armv7 offer from ipadItpack); input, wake and
     // power-off stay the phone's.
     let a4 = profile.isKBoot
-    let d = Device(name: s.board, profile: profile)
     let b = URL(fileURLWithPath: s.base)
-    if s.board == "ipod" || (a4 && !ipad) { d.preparedBase = b }
-    if !a4 {
-        let iBoot: String
-        do { iBoot = try BootRecipe.iPodIBoot(base: b) }
-        catch { fail("boot lock: \(error)") }
-        d.ipod = .init(nand: b.appendingPathComponent("nand").path, nor: b.appendingPathComponent("nor.bin").path,
-                       iBoot: iBoot, gidBlobs: b.appendingPathComponent("gid-blobs.bin").path,
-                       machine: (try? DeviceLock.read(base: b))??.machineOptions(base: b) ?? [:])
-    }
+    let d = Device(name: s.board, profile: profile, base: b)
     // Composed per boot from the device's verdicts, as the app's GuestPackageWatch.compose (an iPad's in Device.boot);
     // `offered`: this boot carries one (compose gives none for a stub seed).
     var offered = a4 && config.ipadItpack != nil
@@ -161,41 +147,13 @@ struct SingleConfig: Decodable {
                 ? GuestServices(agent: GuestAgent(link: d.process.link, cache: GuestAgentCache()), packaged: offered) : nil
             let want = generation == 2 ? s.secondZone ?? TimeZone.current.identifier : TimeZone.current.identifier
             for _ in 0..<12 where zone == nil {   // services come up after lockdown answers; the app retries every 5 s
-                do { zone = try await DeviceServices.setTimeZone(want, keepClock: d.ipod?.machine["rtc-epoch"] != nil,
-                                                                tool: tool, socket: d.mux.clientSocket, guest: guest,
-                                                                region: s.region.map { ClockRegion(locale: $0.locale, uses24HourClock: $0.uses24HourClock) }) }
+                do { zone = try await DeviceServices.setTimeZone(want, keepClock: lock?.machineOptions(base: b)["rtc-epoch"] != nil,
+                                                                tool: tool, socket: d.mux.clientSocket, guest: guest, region: nil) }
                 catch DeviceToolsError.zoneKept(let kept) { emit("timezoneKept", ["device": d.name, "generation": generation, "zone": kept]); break }
                 catch {}
                 if zone == nil { try? await Task.sleep(for: .seconds(5)) }
             }
             emit("timezone", ["device": d.name, "generation": generation, "zone": zone ?? "", "want": want])
-            if s.region != nil {
-                // What lockdown holds now, and the screen it shows.
-                func info(_ args: [String]) -> String { lockdownInfo(d.mux.clientSocket, args) }
-                try? await Task.sleep(for: .seconds(10))
-                d.process.link.send(.button(0, down: true)); try? await Task.sleep(for: .milliseconds(150))
-                d.process.link.send(.button(0, down: false))
-                try? await Task.sleep(for: .seconds(2))
-                // The lock screen's clock as read off the screen (lockdown's Uses24HourClock reads back its old value on
-                // 4.x even when the clock has changed), beside the Mac's time in both formats.
-                let shot = d.screenshot("clock-\(generation)") ?? ""
-                var lines: [String] = []
-                if let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: shot) as CFURL, nil),
-                   let image = CGImageSourceCreateImageAtIndex(source, 0, nil) {
-                    let request = VNRecognizeTextRequest()
-                    request.usesLanguageCorrection = false
-                    try? VNImageRequestHandler(cgImage: image).perform([request])
-                    lines = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
-                }
-                let now = Date(), format = DateFormatter()
-                format.timeZone = .current
-                format.dateFormat = "H:mm"; let h24 = format.string(from: now)
-                format.dateFormat = "h:mm"; let h12 = format.string(from: now)
-                emit("region", ["device": d.name, "generation": generation,
-                                "locale": info(["-q", "com.apple.international", "-k", "Locale"]),
-                                "uses24HourClock": info(["-k", "Uses24HourClock"]), "zone": info(["-k", "TimeZone"]),
-                                "screenshot": shot, "text": lines, "mac24": h24, "mac12": h12])
-            }
         }
         emit("activation", ["device": d.name, "generation": generation, "state": await d.lockdownValue("ActivationState") ?? ""])
         if s.board == "ipod" || ipad, let identity {
@@ -274,9 +232,7 @@ struct SingleConfig: Decodable {
                 if setupFront == nil { try? await Task.sleep(for: .seconds(3)) }
             }
         }
-        var walkedSetup = false
         if let setupFront, setupFront.bundleID == Setup5.bundleID {
-            walkedSetup = true
             let (ok, detail) = await Setup5.walk(d)
             let after = try? await GuestAgent(link: d.process.link, cache: GuestAgentCache()).frontmost().bundleID
             emit("setup", ["device": d.name, "generation": generation, "ok": ok && after != Setup5.bundleID, "detail": detail,
@@ -294,19 +250,9 @@ struct SingleConfig: Decodable {
             }
         }
         if let front = phoneFront, front.bundleID == Setup5.bundleID || front.name == "Lock Screen" {
-            walkedSetup = true
             let (ok, detail) = await SetupPhone.walk(d, agent: guestAgent, generation: generation)
             emit("setup", ["device": d.name, "generation": generation, "ok": ok, "detail": detail])
             try? await Task.sleep(for: .seconds(5))
-        }
-        // Setup's country page sets the locale (7.x's list starts at Afghanistan: fa_AF, Persian digits); the app
-        // applies the Mac's region again once Setup is over (EmulatorController's Setup gate), and so does this.
-        if let region = s.region, let tool = s.lockdownTZ, walkedSetup {
-            _ = try? await DeviceServices.setTimeZone(TimeZone.current.identifier, keepClock: true, tool: tool,
-                                                      socket: d.mux.clientSocket, guest: nil,
-                                                      region: ClockRegion(locale: region.locale, uses24HourClock: region.uses24HourClock))
-            emit("regionAfterSetup", ["device": d.name, "generation": generation,
-                                      "locale": lockdownInfo(d.mux.clientSocket, ["-q", "com.apple.international", "-k", "Locale"])])
         }
         let hp = await d.wakeForShot(generation == 1 ? "home" : "home\(generation)")
         // Judge the home screen, not just a lit boot: the panel sleeps ~12 s after `lit` (audit
@@ -443,12 +389,6 @@ struct SingleConfig: Decodable {
     await d.wakeForShot("installed")   // wake first: the panel may have slept during the install
     // launch() goes through the guest agent wherever it answers (judged on the frontmost app), else taps the icon.
     if s.launch == true { await launch(d, at: s.launchAt, tap: s.tapAfterLaunch) }
-    if s.media != nil {
-        let version = lock?.productVersion ?? ""
-        let firmware = MediaSupport.Firmware(version: version, name: "iOS \(version)",
-                                             media: lock?.entry?["content"]?["media"]?.strings ?? [])
-        await mediaRoundTrip(d, s, firmware: firmware, packaged: offered)
-    }
 
     // The persist marker: a file that must still be there after the clean shutdown and the second boot.
     let marker = "ltm-matrix-persist.bin"
@@ -556,7 +496,7 @@ struct SingleConfig: Decodable {
         for i in stride(from: 0, to: px.count, by: 16) { n += 1; if px[i] > 225 && px[i + 1] > 225 && px[i + 2] > 225 { white += 1 } }
         return n == 0 ? 0 : Double(white) / Double(n)
     }
-    static func appleIDUp(_ d: Device) -> Bool { kind(fingerprint(d)) == "apple id" }
+    static func appleIDUp(_ d: Device) -> Bool { SetupPages.kind(fingerprint(d)) == "apple id" }
 
     /// A Setup page's fingerprint: the white fraction of seven boxes (the two button columns and the gap between them,
     /// a strip left of the center art, the iPad outline's left edge, the center, the left list column), measured on
@@ -564,27 +504,6 @@ struct SingleConfig: Decodable {
     static let printBoxes: [Box] = [(795, 170, 830, 600), (860, 170, 895, 600), (840, 170, 852, 600),
                                     (180, 300, 230, 450), (255, 300, 285, 450), (330, 300, 560, 450), (100, 150, 135, 700)]
     static func fingerprint(_ d: Device) -> [Double] { printBoxes.map { whiteFraction(d, $0) } }
-
-    /// Which kind of Setup page a fingerprint is: "list" (language, country), "location", "wi-fi", "set up",
-    /// "apple id", "diagnostics", "thank you"; nil for anything else (Terms, a page mid-transition, a dark panel).
-    static func kind(_ f: [Double]) -> String? {
-        guard f.count == 7 else { return nil }
-        let (b1, b2, gap, left, frame, mid, list) = (f[0], f[1], f[2], f[3], f[4], f[5], f[6])
-        if b1 > 0.85, b2 > 0.85, gap < 0.2, frame < 0.1 { return "apple id" }
-        if b1 > 0.85, b2 > 0.85, gap > 0.9, left < 0.1, frame > 0.9, mid < 0.1 { return "set up" }
-        if b1 > 0.85, gap > 0.7, left > 0.8, frame > 0.9, mid > 0.8 { return "list" }
-        if b1 > 0.85, b2 < 0.1, gap > 0.85 { return "location" }
-        if b1 < 0.1, b2 < 0.1, left > 0.9, frame > 0.15, frame < 0.45 { return "diagnostics" }
-        if b1 < 0.1, b2 < 0.1, left < 0.2, frame < 0.1, mid < 0.1, list > 0.9 { return "diagnostics" }   // 5.0 beta 1
-        if b1 < 0.1, b2 > 0.7 { return "thank you" }
-        if b1 < 0.1, b2 < 0.1, gap < 0.1, left > 0.15, left < 0.45, frame < 0.1, mid < 0.1 { return "wi-fi" }
-        return nil
-    }
-    /// The page kind each walk step shows (Terms has no fingerprint of its own).
-    static func kind(of page: String) -> String? {
-        ["language": "list", "country": "list", "location": "location", "wi-fi": "wi-fi", "set up": "set up",
-         "apple id": "apple id", "diagnostics": "diagnostics", "thank you": "thank you"][page]
-    }
 
     /// The box once it holds still for a second (a page still sliding in under load).
     static func settled(_ d: Device, _ box: Box, timeout: Double = 20) async -> [UInt8]? {
@@ -606,57 +525,6 @@ struct SingleConfig: Decodable {
         d.process.link.send(.touch(slot: 0, phase: 2, x: nx, y: ny))
     }
 
-    /// From the first Setup page (the driver has already slid "slide to set up"): (walked, detail).
-    /// Taps until `answered` holds on `hold` consecutive one-second polls, or `budget` runs out, tapping again every
-    /// `every` seconds while nothing answered. A lost tap (a page still sliding in, a frame the host was too loaded to
-    /// deliver) is retried instead of failing the walk; a pressed button's flash (the title bar changes for a moment,
-    /// the page stays: 9B176's Set Up Next) is not an answer; a tap that did land is not repeated.
-    static func tapUntil(budget: Double, every: Double, hold: Int = 3, tap: () async -> Void, answered: () -> Bool) async -> Bool {
-        let t0 = Date()
-        var streak = 0
-        while Date().timeIntervalSince(t0) < budget {
-            await tap()
-            let t1 = Date()
-            while Date().timeIntervalSince(t1) < every || streak > 0, Date().timeIntervalSince(t0) < budget {
-                streak = answered() ? streak + 1 : 0
-                if streak >= hold { return true }
-                try? await Task.sleep(for: .seconds(1))
-            }
-        }
-        return false
-    }
-
-    /// tapUntil's contract, with a fake page: a lost tap is retried, a landed tap is not repeated, a page that never
-    /// answers gives up once the budget is spent (one tap per `every`).
-    static func selfTest() async -> Bool {
-        var ok = true
-        func expect(_ label: String, _ cond: Bool) { print((cond ? "PASS " : "FAIL ") + label); ok = ok && cond }
-        var taps = 0
-        var r = await tapUntil(budget: 6, every: 1.5, tap: { taps += 1 }, answered: { taps >= 2 })
-        expect("the first tap lost: tapped again, answered", r && taps == 2)
-        taps = 0
-        r = await tapUntil(budget: 6, every: 1.5, tap: { taps += 1 }, answered: { taps >= 1 })
-        expect("a landed tap is not repeated", r && taps == 1)
-        taps = 0
-        r = await tapUntil(budget: 5, every: 2, tap: { taps += 1 }, answered: { false })
-        expect("a page that never answers fails after the budget, one tap per interval", !r && taps == 3)
-        taps = 0
-        var polls = 0
-        r = await tapUntil(budget: 12, every: 3, tap: { taps += 1; polls = 0 }, answered: { polls += 1; return taps >= 2 || polls == 1 })
-        expect("a one-poll flash is not an answer: tapped again", r && taps == 2)
-        // fingerprints measured off real Setup screenshots (9A5220p, 9A334, 9A405, 9B176, 9B206)
-        let measured: [(String?, [Double])] = [
-            ("list", [0.97, 0.92, 0.83, 0.92, 1.0, 0.95, 0.8]), ("list", [0.98, 0.92, 0.83, 0.92, 1.0, 0.96, 0.79]),
-            ("location", [0.97, 0.0, 0.95, 0.05, 0.0, 0.34, 0.0]), ("wi-fi", [0.0, 0.0, 0.0, 0.28, 0.0, 0.0, 0.75]),
-            ("set up", [0.93, 0.92, 0.99, 0.0, 1.0, 0.0, 0.0]), ("set up", [0.94, 0.92, 0.99, 0.0, 1.0, 0.0, 0.0]),
-            ("apple id", [0.92, 0.92, 0.0, 0.07, 0.0, 0.09, 0.0]), ("apple id", [0.92, 0.92, 0.0, 0.04, 0.0, 0.1, 0.0]),
-            ("diagnostics", [0.0, 0.0, 0.0, 1.0, 0.27, 0.01, 0.0]), ("diagnostics", [0.0, 0.0, 0.0, 1.0, 0.29, 0.0, 0.0]),
-            ("diagnostics", [0.0, 0.0, 0.0, 0.12, 0.0, 0.0, 0.95]), ("thank you", [0.0, 0.83, 0.17, 0.05, 0.0, 0.18, 0.0]),
-            (nil, [0.0, 0.0, 0.0, 0.0, 0.0, 0.04, 0.0]), (nil, [0.78, 0.69, 0.86, 1.0, 1.0, 0.74, 0.92])]
-        for (want, f) in measured { expect("page \(want ?? "unrecognized") from \(f)", kind(f) == want) }
-        return ok
-    }
-
     /// From the first Setup page (the driver has already slid "slide to set up"): (walked, detail). Each page is
     /// entered only once its title bar has settled and differs from the page before (the previous Next landed);
     /// each tap is retried inside a per-page budget scaled from the board's boot budget (the iPad's 300 s: 120 s).
@@ -674,20 +542,20 @@ struct SingleConfig: Decodable {
             // The page on screen decides, not the list's order: 5.0 beta 1 opens on Set Up iPad (no language,
             // country, location or Wi-Fi pages), 5.1.1 drops Apple ID after "Continue without Wi-Fi?" and 5.0.1 keeps it.
             // Wait for this step's page, or skip ahead to a later step whose page is showing.
-            if let want = kind(of: name) {
+            if let want = SetupPages.kind(of: name) {
                 let t0 = Date()
                 var seen: String? = nil, unknown = 0
                 while Date().timeIntervalSince(t0) < budget {
                     _ = await settled(d, title)
-                    seen = kind(fingerprint(d))
+                    seen = SetupPages.kind(fingerprint(d))
                     if seen == want { break }
-                    if let seen, let later = pages.indices.first(where: { $0 > index && kind(of: pages[$0].0) == seen }) {
+                    if let seen, let later = pages.indices.first(where: { $0 > index && SetupPages.kind(of: pages[$0].0) == seen }) {
                         walked.append("\(name) (absent)"); skipTo = later; continue page
                     }
                     // Terms has no fingerprint: a lit, settled page nothing recognizes, read twice, is it when it is the
                     // next step (5.1.1 goes Wi-Fi -> Terms without Apple ID)
                     unknown = seen == nil && (d.brightness() ?? 0) > 0.05 ? unknown + 1 : 0
-                    if unknown >= 2, index + 1 < pages.count, kind(of: pages[index + 1].0) == nil {
+                    if unknown >= 2, index + 1 < pages.count, SetupPages.kind(of: pages[index + 1].0) == nil {
                         walked.append("\(name) (absent)"); continue page
                     }
                     await wake(d); try? await Task.sleep(for: .seconds(2))
@@ -710,13 +578,13 @@ struct SingleConfig: Decodable {
                 // lays that page out differently, and its Next still has to be taken.
                 let optional = name == "diagnostics" && t.box != title
                 // behind a modal alert a second tap does nothing, so an alert tap is retried sooner
-                let ok = await tapUntil(budget: isAlert || optional ? 60 : budget, every: 20, tap: { await tap(d, t.x, t.y, hold: t.hold) },
+                let ok = await SetupPages.tapUntil(budget: isAlert || optional ? 60 : budget, every: 20, tap: { await tap(d, t.x, t.y, hold: t.hold) },
                                         answered: answered)
                 // Terms' button highlight can look like a page transition. Let
                 // it settle before deciding that Agree advanced without an alert.
                 if name == "terms", i == 0, ok {
                     try? await Task.sleep(for: .seconds(3))
-                    if !alertUp(d), kind(fingerprint(d)) == nil {
+                    if !alertUp(d), SetupPages.kind(fingerprint(d)) == nil {
                         await tap(d, t.x, t.y, hold: 0.3)
                         try? await Task.sleep(for: .seconds(3))
                     }
@@ -731,7 +599,7 @@ struct SingleConfig: Decodable {
             }
             if name == "wi-fi", alertUp(d) {   // "Continue without Wi-Fi?": no join (the Apple ID page may still follow)
                 let ref = await settled(d, title)
-                _ = await tapUntil(budget: budget, every: 20, tap: { await tap(d, wifiContinue.0, wifiContinue.1) },
+                _ = await SetupPages.tapUntil(budget: budget, every: 20, tap: { await tap(d, wifiContinue.0, wifiContinue.1) },
                                    answered: { region(d, title) != ref })
                 lastTitle = ref
                 walked.append("wi-fi (not joined: continued without)")
@@ -744,19 +612,6 @@ struct SingleConfig: Decodable {
 }
 
 /// installd's own record of where each app lives (iOS 2-5): the container an upgrade must keep.
-/// What lockdown holds (Homebrew's ideviceinfo over the device's usbmuxd).
-func lockdownInfo(_ socket: String, _ args: [String]) -> String {
-    let p = Process(), out = Pipe()
-    p.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/ideviceinfo")
-    p.arguments = args
-    p.environment = ProcessInfo.processInfo.environment.merging(["USBMUXD_SOCKET_ADDRESS": socket]) { $1 }
-    p.standardOutput = out
-    p.standardError = FileHandle.nullDevice
-    guard (try? p.run()) != nil else { return "" }
-    p.waitUntilExit()
-    return String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-}
-
 @MainActor func container(_ agent: GuestAgent, _ id: String) async -> String? {
     guard let data = try? await agent.get("/var/mobile/Library/Caches/com.apple.mobile.installation.plist"),
           let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
@@ -798,12 +653,6 @@ func lockdownInfo(_ socket: String, _ args: [String]) -> String {
 /// Next (the language page's is an arrow, top right). The welcome page (SpringBoard's "slide to set up", in a
 /// rotating language) has none of those and is slid. Done when the agent says the home screen is up.
 @MainActor enum SetupPhone {
-    static let picks = ["Start Using iPod touch", "Start Using iPod", "Start Using iPhone", "Get Started", "Set Up as New iPod touch",
-                        "Set Up as New iPod", "Set Up as New iPhone", "Disable Location Services", "Skip This Step", "Agree",
-                        "Don't Add Passcode", "Don't Use iCloud", "Don't Send", "Australia", "United States"]
-    static let alertYes = ["OK", "Skip", "Agree", "Continue", "Don't Use", "Don't Add"]
-    static let nextArrow = (x: 587.0 / 640, y: 84.0 / 960)
-
     /// Each label Vision reads on the screenshot, at its center as a touch point (top-left origin, 0...1).
     static func labels(_ path: String) -> [String: (x: Double, y: Double)] {
         let request = VNRecognizeTextRequest()
@@ -815,74 +664,6 @@ func lockdownInfo(_ socket: String, _ args: [String]) -> String {
             found[text] = found[text] ?? (o.boundingBox.midX, 1 - o.boundingBox.midY)
         }
         return found
-    }
-
-    enum Step: Equatable { case tap(Double, Double, String?), pause(Double), slideIfLockScreen }
-
-    /// One Setup page's taps, from the labels Vision read on it (`pages`: what the walk has tapped so far).
-    static func plan(_ found: [String: (x: Double, y: Double)], pages: [String]) -> [Step] {
-        // Setup's Home sheet (Emergency Call / Start Over) dims the page, whose labels Vision still reads and whose
-        // rows and Next it would tap in vain (n88 6.0.1: 40 pages of English): dismiss it before anything else.
-        if let cancel = found["Cancel"], found["Start Over"] != nil {
-            return [.tap(cancel.x, cancel.y, "(Cancel)")]
-        }
-        if let yes = alertYes.first(where: { found[$0] != nil }), let p = found[yes] {
-            return [.tap(p.x, p.y, "(\(yes))")]
-        }
-        var steps: [Step] = []
-        var pick = picks.first { found[$0] != nil }
-        // The country list without Australia/United States on screen (the 3GS's 480-line panel, 7.x's "Select Your
-        // Country or Region" with "MORE COUNTRIES AND REGIONS" over Afghanistan): the first row below the page's
-        // last country heading in its top 60 %. Next stays disabled until one is chosen.
-        let headings = found.filter { $0.key.localizedCaseInsensitiveContains("countr") && $0.value.y < 0.6 }
-        if pick == nil, let below = headings.map({ $0.value.y }).max(),
-           let first = found.filter({ $0.value.y > max(below, 0.15) && $0.value.y < 0.9 && !["Next", "Back"].contains($0.key) })
-                            .min(by: { $0.value.y < $1.value.y }) {
-            pick = first.key
-        }
-        if let pick, let p = found[pick] {
-            // a label tapped again and again: nudge the tap (as walk_setup, the digitizer's edges)
-            let again = pages.filter { $0 == pick }.count
-            steps.append(.tap(p.x, p.y + [0, -14, 14, -24, 24][again % 5] / 960, pick))
-            if pick.hasPrefix("Start Using") || pick == "Get Started" { return steps }
-            steps.append(.pause(1.5))
-        }
-        // The language page: 7.x moves on when its English row is tapped; 6.x needs its arrow after (top right).
-        if pick == nil, let english = found["English"] {
-            steps += [.tap(english.x, english.y, "English"), .pause(1.5)]
-        }
-        if let next = found["Next"] ?? (found["English"] != nil ? nextArrow : nil) {
-            steps.append(.tap(next.x, next.y, pick == nil ? (found.filter { $0.value.y < 130.0 / 960 && $0.key != "Next" }.keys.first ?? "?") : nil))
-        } else if pick == nil {
-            steps.append(.slideIfLockScreen)
-        }
-        return steps
-    }
-
-    /// `plan` against label sets read off real Setup screenshots (positions rounded): session-driver --selftest-walk.
-    static func selfTest() -> Bool {
-        var ok = true
-        func expect(_ label: String, _ cond: Bool) { print((cond ? "PASS " : "FAIL ") + label); ok = ok && cond }
-        func taps(_ steps: [Step]) -> [String] { steps.compactMap { if case .tap(_, _, let log) = $0 { return log ?? "(next)" }; return nil } }
-        // n88ap-10A523 (3GS 6.0.1), fold-9 run 2: the language page with the Home sheet up
-        let sheetOnLanguage: [String: (x: Double, y: Double)] = [
-            "Test Network": (0.2, 0.02), "9:43 PM": (0.5, 0.02), "English": (0.15, 0.2), "Français": (0.15, 0.29),
-            "Deutsch": (0.15, 0.39), "Emergency Call": (0.5, 0.66), "Start Over": (0.5, 0.77), "Cancel": (0.5, 0.91)]
-        expect("Home sheet over the language page: Cancel only", plan(sheetOnLanguage, pages: []) == [.tap(0.5, 0.91, "(Cancel)")])
-        var sheetOnPick = sheetOnLanguage; sheetOnPick["Skip This Step"] = (0.82, 0.95)
-        expect("Home sheet over a page with a pick: Cancel only", taps(plan(sheetOnPick, pages: [])) == ["(Cancel)"])
-        var language = sheetOnLanguage; ["Emergency Call", "Start Over", "Cancel"].forEach { language[$0] = nil }
-        let lang = plan(language, pages: [])
-        expect("language page: English, then the arrow", lang.count == 3 && lang[0] == .tap(0.15, 0.2, "English")
-               && { if case .tap(let x, let y, _) = lang[2] { return x == nextArrow.x && y == nextArrow.y }; return false }())
-        // n90ap-11D257 (7.1.2), fold-10 run 1: the Country page
-        let country7: [String: (x: Double, y: Double)] = [
-            "Back": (0.12, 0.09), "Select Your Country": (0.5, 0.19), "or Region": (0.5, 0.26),
-            "MORE COUNTRIES AND REGIONS": (0.4, 0.5), "Afghanistan": (0.2, 0.595), "Åland Islands": (0.22, 0.72)]
-        expect("7.x Country page: its first row", taps(plan(country7, pages: [])) == ["Afghanistan"])
-        expect("an alert's OK", taps(plan(["OK": (0.5, 0.6), "Location Services": (0.5, 0.4)], pages: [])) == ["(OK)"])
-        expect("nothing known: the welcome slide, if on the lock screen", plan(["slide to set up": (0.5, 0.9)], pages: []) == [.slideIfLockScreen])
-        return ok
     }
 
     static func walk(_ d: Device, agent: GuestAgent, generation: Int) async -> (Bool, String) {
@@ -904,7 +685,7 @@ func lockdownInfo(_ socket: String, _ args: [String]) -> String {
                 pages.append("(sheet probe)")
             }
             guard let shot = await d.wakeForShot("setup\(generation)-\(n)") else { continue }
-            for step in plan(labels(shot), pages: pages) {
+            for step in SetupPlan.plan(labels(shot), pages: pages) {
                 switch step {
                 case .tap(let x, let y, let log):
                     await d.tap(x, y); if let log { pages.append(log) }

@@ -1,38 +1,33 @@
 import DeviceRuntime
+import FirmwareSchema
+import Foundation
 import HostRuntime
-// Stands in for the app in tests/sessions/check-sessions.py: two devices at once, each in
-// its own LightTouchDevice helper through the app's own DeviceSessionProcess and
-// BootRecipe (DeviceSession.swift), each with its own usbmuxd (USBMux's flags),
-// and every libimobiledevice call through the app's DeviceServices and its one
-// DeviceGate. JSON lines on stdout.
+import HostServiceClient
+import HostServiceWire
+import IOSurface
+@testable import LightTouchCore
+// Stands in for the app in `sessions` (Sources/sessions): devices booted in their own LightTouchDevice helpers through
+// the app's own DeviceSessionProcess and BootRecipe, each with its own usbmuxd (USBMux's flags), every
+// libimobiledevice call through the app's DeviceServices and its one DeviceGate. JSON lines on stdout; `sessions`
+// judges them.
 //
 //   session-driver CONFIG.json
 //
-// config: {helper, requirement, usbmuxd, ipa, bundleID, work, files, ipodNAND, ipadBase, ipadItpack?, guest?, single?, activation?}
-// With `guest` it runs the guest-services scenario instead (guest.swift); with `single`, one prepared
-// device (single.swift). `frameworks` is where libimobiledevice is loaded from (default Homebrew's).
-// `ipadItpack` boots the iPad with the app's composed offer and checks the loader and the agent.
+// config: {helper, requirement, usbmuxd, ipa, bundleID, work, files, ipodBase, ipadBase, ipadItpack?, single?, proxy?, …}
+// Without a mode: two devices at once (`sessions pair`); with `single`, one prepared device (single.swift); with
+// `proxy`, the web proxy (proxy.swift). `ipadItpack` boots the iPad with the app's composed offer.
 
-import Foundation
-import IOSurface
-
-struct Config: Decodable {
+nonisolated struct Config: Decodable {
     var helper: String, usbmuxd: String, ipa: String, bundleID: String
     var requirement: String?
     /// Same stopped-storage worker used by the GUI before helper lease acquisition.
     var firmwarekit: String?
-    var work: String, files: String, ipodNAND: String, ipadBase: String
+    var work: String, files: String, ipodBase: String, ipadBase: String
     /// The app's armv7.itpack: the iPad boots with the offer EmulatorController composes from it.
     var ipadItpack: String?
-    var guest: GuestConfig?
     var single: SingleConfig?
-    /// One base's activation question (activation.swift).
-    var activation: ActivationConfig?
-    /// A base that never starts iOS (deadline.swift).
-    var deadline: DeadlineConfig?
     /// The web proxy's certificate trusted through the guest agent, no profile screen (proxy.swift).
     var proxy: ProxyConfig?
-    var frameworks: String?
     /// The driver's own deadline in seconds (default 560; tests/matrix.py's second boot needs more).
     var timeout: Double?
     /// Hello/lease followed by a preparation error; never sends a boot request.
@@ -60,32 +55,13 @@ func fail(_ why: String) -> Never {
     exit(1)
 }
 
-// App stubs the compiled sources reference.
-nonisolated enum Bundled {
-    static var frameworksDirectory: String? { config.frameworks ?? "/opt/homebrew/lib" }
-    static var logsDirectory: URL { URL(fileURLWithPath: config.work) }
-    static var stateDirectory: URL { URL(fileURLWithPath: config.work) }
-    static var workDirectory: URL { URL(fileURLWithPath: config.work) }
-    static var filesRoot: String { config.files }
-    static func tool(_ name: String) -> String? { nil }
-    /// The guest helpers MediaImport uploads (single's mediaTools).
-    static func resolve(_ name: String, fallbacks: [String]) -> String? { config.single?.mediaTools.map { "\($0)/\(name)" } }
-    static var binarySearchPaths: [String] { [] }
-}
-extension DeviceInstance { var paths: Paths { paths(state: Bundled.stateDirectory, logs: Bundled.logsDirectory) } }
-
-// --selftest-walk: the Setup walk's retry core (Setup5.tapUntil) against fake taps, and the phone walk's page plan
-// (SetupPhone.plan) against recorded labels, no emulator
-// (tests/sessions/check-setup-walk.py).
-if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "--selftest-walk" {
-    Task { @MainActor in let phone = SetupPhone.selfTest(); exit(await Setup5.selfTest() && phone ? 0 : 1) }
-    CFRunLoopRun()
-}
 nonisolated(unsafe) let config = try! JSONDecoder().decode(Config.self, from: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1])))
-// Standalone matrix callers pass resource paths in config, while the app gets
-// them from its bundle. Forward the fixed library directory to owned children.
-setenv("LTM_SERVICE_FRAMEWORKS", config.frameworks ?? "/opt/homebrew/lib", 1)
+// The app's own Bundled answers from these: state, logs and work under the run's directory, the SecureROMs from `files`.
+setenv("LTM_STATE_DIR", config.work, 1)
+setenv("LTM_FILES", config.files, 1)
 let work = URL(fileURLWithPath: config.work)
+// `sessions` looks for this line in the real app.log afterwards: it must land in the run's own Logs.
+logEvent("session-driver: \(config.work)")
 
 // MARK: - usbmuxd, as USBMux starts it
 
@@ -142,17 +118,14 @@ extension String {
     private(set) var preparationError: String?
     private(set) var bootError: String?
     private(set) var helloPID: pid_t?
-    /// An iPod's own files (a device.py device); nil: the shipping image in `files`.
-    struct IPodFiles { var nand, nor, iBoot: String; var gidBlobs: String?; var machine: [String: String] = [:] }
-    var ipod: IPodFiles?
-    /// Prepared bases use typed runtime strategy validation; raw historical fixtures use legacyN72.
-    var preparedBase: URL?
+    /// The prepared base (firmwarekit create output) this device boots; read only.
+    let base: URL
     /// DeviceWebProxy.forward's guestfwd, appended to the wifi netdev, and the proxy the helper serves (proxy.swift).
     var netdevExtra: String?
     var webProxy: WebProxyEndpoint?
     /// The device's Attach to Local Network, off as the app's default (BootRecipe.wifiNetdev's lan=off).
     var localNetwork = false
-    init(name: String, profile: Board) { self.name = name; self.profile = profile }
+    init(name: String, profile: Board, base: URL) { self.name = name; self.profile = profile; self.base = base }
     var dir: URL { work.appendingPathComponent(name) }
     /// When `dir` is an app state's device (a link to Devices/<uuid> with its device.plist): its storage key, and the
     /// boot is admitted and pinned as the app's (EmulatorController: managed admission, instance.storage.key).
@@ -177,27 +150,12 @@ extension String {
         // Preparation runs after hello, when the helper owns the storage lease.
         func configuration(_ hardware: DeviceInfo?) throws -> BootConfig {
             let overlay = dir.appendingPathComponent("overlay")
-            let prepared: PreparedDeviceBoot
             var offer = guestPackage
-            if profile.isKBoot || profile == .n45 || profile == .m68 {
-                let base = profile.isKBoot ? preparedBase ?? URL(fileURLWithPath: Self.ipadBase)
-                    : URL(fileURLWithPath: ipod!.nand).deletingLastPathComponent()
-                let nor = !profile.isKBoot || FileManager.default.fileExists(atPath: base.appendingPathComponent("nor.bin").path)
-                    ? dir.appendingPathComponent("nor.bin") : nil
-                prepared = try PreparedDeviceBoot.prepare(board: profile,
-                    base: base, overlay: overlay, writableNOR: nor, storageKey: managedKey,
-                    bootrom: BootRecipe.bootrom(profile.bootrom, filesRoot: Self.files))
-                if profile.isKBoot { offer = try iPadOffer(base: base) }
-            } else if let base = preparedBase {
-                prepared = try PreparedDeviceBoot.prepare(board: .n72, base: base, overlay: overlay,
-                    writableNOR: dir.appendingPathComponent("nor.bin"), storageKey: managedKey,
-                    bootrom: BootRecipe.bootrom(profile.bootrom, filesRoot: Self.files))
-            } else {
-                let files = ipod ?? IPodFiles(nand: Self.ipodNAND, nor: Self.files + "/ios3/nor_7E18.bin", iBoot: Self.files + "/ios3/iBoot.bin")
-                prepared = try PreparedDeviceBoot.legacyN72(nand: URL(fileURLWithPath: files.nand),
-                    nor: URL(fileURLWithPath: files.nor), iBoot: files.iBoot, gidBlobs: files.gidBlobs,
-                    machine: files.machine, overlay: overlay, bootrom: Self.files + "/bootrom_240_4")
-            }
+            let nor = !profile.isKBoot || FileManager.default.fileExists(atPath: base.appendingPathComponent("nor.bin").path)
+                ? dir.appendingPathComponent("nor.bin") : nil
+            let prepared = try PreparedDeviceBoot.prepare(board: profile, base: base, overlay: overlay, writableNOR: nor,
+                storageKey: managedKey, bootrom: BootRecipe.bootrom(profile.bootrom, filesRoot: Self.files))
+            if profile.isKBoot { offer = try iPadOffer(base: base) }
             let netdev = profile.isKBoot ? netdevExtra.map { BootRecipe.wifiNetdev(guestForward: $0, restricted: false, localNetwork: localNetwork) }
                 : BootRecipe.wifiNetdev(guestForward: netdevExtra ?? "", restricted: false, localNetwork: localNetwork)
             return try prepared.configuration(hardware: hardware, bootArgs: "amfi_allow_any_signature=1 cs_enforcement_disable=1",
@@ -277,8 +235,6 @@ extension String {
     static var helper: String { config.helper }
     static var requirement: String? { config.requirement }
     static var files: String { config.files }
-    static var ipodNAND: String { config.ipodNAND }
-    static var ipadBase: String { config.ipadBase }
 
     var services: DeviceServices { DeviceServices(clientSocket: mux.clientSocket, session: serviceSession) }
 
@@ -537,7 +493,8 @@ func checkPreparedFiles() throws {
 
 @MainActor func run() async {
     do { try checkPreparedFiles() } catch { fail("prepared files: \(error)") }
-    let ipod = Device(name: "ipod", profile: .n72), ipad = Device(name: "ipad", profile: .k48)
+    let ipod = Device(name: "ipod", profile: .n72, base: URL(fileURLWithPath: config.ipodBase))
+    let ipad = Device(name: "ipad", profile: .k48, base: URL(fileURLWithPath: config.ipadBase))
     do { try ipod.boot(generation: 1); try ipad.boot(generation: 1) } catch { fail("boot: \(error)") }
     async let a: Void = waitLit(ipod, 0.03, 240)
     async let b: Void = waitLit(ipad, 0.2, 240)
@@ -612,10 +569,8 @@ func checkPreparedFiles() throws {
 
 /// Exercise the actual helper hello and owned-process reaping without booting QEMU.
 @MainActor func runPreparationFailure() async {
-    let d = Device(name: "preparation-failure", profile: .n72)
-    let missing = work.appendingPathComponent("missing-nor.bin")
-    d.ipod = .init(nand: work.appendingPathComponent("missing-nand").path,
-                   nor: missing.path, iBoot: "unused")
+    let missing = work.appendingPathComponent("missing-base")
+    let d = Device(name: "preparation-failure", profile: .n72, base: missing)
     do { try d.boot(generation: 1) } catch { fail("preparation scenario could not start: \(error)") }
     let exited = await d.process.waitForExit(timeout: 20)
     if !exited { d.process.kill(); _ = await d.process.waitForExit(timeout: 5) }
@@ -744,9 +699,7 @@ Task { @MainActor in
     if config.killBeforeBoot == true { await runKillBeforeBoot() }
     else if config.leaseAdmission == true { await runLeaseAdmission() }
     else if config.preparationFailure == true { await runPreparationFailure() }
-    else if let guest = config.guest { await runGuest(guest) } else if let single = config.single { await runSingle(single) }
-    else if let activation = config.activation { await runActivation(activation) }
-    else if let deadline = config.deadline { await runDeadline(deadline) }
+    else if let single = config.single { await runSingle(single) }
     else if let proxy = config.proxy { await runProxy(proxy) } else { await run() }
 }
 DispatchQueue.main.asyncAfter(deadline: .now() + (config.timeout ?? 560)) { fail("driver timed out") }

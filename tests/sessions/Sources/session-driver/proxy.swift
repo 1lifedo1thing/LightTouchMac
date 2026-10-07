@@ -1,7 +1,9 @@
 import DeviceRuntime
 import HostRuntime
-// The web proxy's certificate, trusted the way the app does it (tests/sessions/check-proxy-trust.py): one prepared
-// base (or the shipping iPod image) booted with the helper's web proxy on the wifi guestfwd, the CA from WebProxyCA
+import HostServiceClient
+import HostServiceWire
+@testable import LightTouchCore
+// The web proxy's certificate, trusted the way the app does it (`sessions proxy-trust`): one prepared base booted with the helper's web proxy on the wifi guestfwd, the CA from WebProxyCA
 // trusted through the guest agent (GuestServices.trustCertificate: the package's ittrust or the app's copy
 // out of the armv6 itpack), never the MCInstall profile screen. Proof: httpget (the guest's own CFNetwork
 // over the proxy, to a host only the proxy answers) fails before the trust and gets the proxy's answer after; Safari opens the HTTPS page
@@ -12,7 +14,7 @@ import Foundation
 
 struct ProxyConfig: Decodable {
     var board: String   // "ipod" | "ipad"
-    /// A firmwarekit base; empty for an iPod: the shipping image (config.ipodNAND).
+    /// A prepared base (firmwarekit create output).
     var base: String
     /// The app's armv6.itpack: ittrust for a guest whose package lacks it (WebProxySetup.bundledGuestTool).
     var itpack: String
@@ -20,10 +22,7 @@ struct ProxyConfig: Decodable {
     var httpget: String?
     /// Safari's page (the httpget fetches use `ProxyProbe`, a host only the proxy answers).
     var url: String
-    /// Extra pages for Safari after the trust: "ADDRESS" (direct), "archive:yyyyMMdd ADDRESS" (archive), "search:WORDS"
-    /// (Safari's Google field); an address without a scheme (typeURL); iPad only.
-    var pages: [String]?
-    /// tests/sessions/check-local-network.py: after the route, httpget `internet` and `lan` (a Mac listener on its
+    /// `sessions local-network`: after the route, httpget `internet` and `lan` (a Mac listener on its
     /// LAN address) with Attach to Local Network off, then `lan` again once `.netLocalNetwork(true)` opens it; then stop.
     var lan: String?
     var internet: String?
@@ -44,16 +43,7 @@ nonisolated enum ProxyProbe {
 
 @MainActor func runProxy(_ p: ProxyConfig) async {
     let ipad = p.board == "ipad"
-    let d = Device(name: p.board, profile: ipad ? .k48 : .n72)
-    if !ipad, !p.base.isEmpty {
-        let b = URL(fileURLWithPath: p.base)
-        let iBoot: String
-        do { iBoot = try BootRecipe.iPodIBoot(base: b) }
-        catch { fail("boot lock: \(error)") }
-        d.ipod = .init(nand: b.appendingPathComponent("nand").path, nor: b.appendingPathComponent("nor.bin").path,
-                       iBoot: iBoot, gidBlobs: b.appendingPathComponent("gid-blobs.bin").path,
-                       machine: (try? DeviceLock.read(base: b))??.machineOptions(base: b) ?? [:])
-    }
+    let d = Device(name: p.board, profile: ipad ? .k48 : .n72, base: URL(fileURLWithPath: p.base))
     // The proxy's files, as WebProxyConfiguration keeps them per device: routing (direct) and the CA.
     let proxyDir = work.appendingPathComponent("\(p.board)/proxy")
     var routing = WebProxyConfiguration(); routing.mode = .direct
@@ -124,10 +114,10 @@ nonisolated enum ProxyProbe {
         } catch { emit("trust", ["device": d.name, "generation": generation, "ok": false, "packaged": packaged, "error": "\(error)"]) }
     }
 
-    /// Safari's address field (or, `search`, its Google field) on the iPad: tap it, clear it, type, Return (macOS virtual
-    /// key codes; the helper's usb-kbd path). That path drops modifiers (':' comes out ';', ⌘A an "a") and 3.2.2's Safari
+    /// Safari's address field on the iPad: tap it, clear it, type, Return (macOS virtual key codes; the helper's usb-kbd
+    /// path). That path drops modifiers (':' comes out ';', ⌘A an "a") and 3.2.2's Safari
     /// has no it_typein, so text is unshifted characters only: a scheme-less address Safari completes to http://.
-    func typeURL(_ url: String, search: Bool = false, shot: String? = nil) async {
+    func typeURL(_ url: String, shot: String? = nil) async {
         func tap(_ x: Double, _ y: Double) async {
             d.process.link.send(.touch(slot: 0, phase: 0, x: x, y: y)); try? await Task.sleep(for: .milliseconds(120))
             d.process.link.send(.touch(slot: 0, phase: 2, x: x, y: y)); try? await Task.sleep(for: .seconds(2))
@@ -136,7 +126,7 @@ nonisolated enum ProxyProbe {
             d.process.link.send(.key(macKeyCode: code, down: true)); try? await Task.sleep(for: .milliseconds(150))
             d.process.link.send(.key(macKeyCode: code, down: false)); try? await Task.sleep(for: .milliseconds(150))
         }
-        let (x, y, clear) = search ? (0.058, 0.14, 0.03) : (0.065, 0.55, 0.285)
+        let (x, y, clear) = (0.065, 0.55, 0.285)
         await tap(x, y); await tap(x, y)   // twice: the first can land while Safari is still settling
         await tap(x - 0.01, clear)         // the field's clear button
         let codes: [Character: Int] = ["a": 0, "b": 11, "c": 8, "d": 2, "e": 14, "f": 3, "g": 5, "h": 4, "i": 34, "j": 38, "k": 40,
@@ -229,30 +219,6 @@ nonisolated enum ProxyProbe {
         d.screenshot("safari-https")
     }
     emit("safari", ["device": d.name, "launched": launched])
-    // The compatibility pages, each under the routing it names, as the
-    // proxy panel writes it: page-N.png to look at. iPad only (the keyboard path).
-    if ipad, launched == "Safari" {
-        for (index, page) in (p.pages ?? []).enumerated() {
-            var routing = WebProxyConfiguration(); routing.mode = .direct
-            var url = page
-            if page.hasPrefix("archive:"), let space = page.firstIndex(of: " ") {
-                routing.mode = .archive; routing.archiveDate = String(page[page.index(page.startIndex, offsetBy: 8)..<space])
-                url = String(page[page.index(after: space)...])
-            }
-            let search = url.hasPrefix("search:")
-            if search { url = String(url.dropFirst(7)) }
-            try? routing.save(in: proxyDir)
-            // OK on a "Cannot Open Page" the page before left up, if any (a short tap).
-            d.process.link.send(.touch(slot: 0, phase: 0, x: 0.566, y: 0.499)); try? await Task.sleep(for: .milliseconds(120))
-            d.process.link.send(.touch(slot: 0, phase: 2, x: 0.566, y: 0.499)); try? await Task.sleep(for: .seconds(2))
-            await typeURL(url, search: search, shot: "typed-\(index + 1)")
-            try? await Task.sleep(for: .seconds(routing.mode == .archive ? 90 : 45))   // archive fetches are paced, one a second
-            d.screenshot("page-\(index + 1)")
-            emit("page", ["device": d.name, "index": index + 1, "url": url, "mode": routing.mode.rawValue])
-        }
-        try? routing.save(in: proxyDir)
-    }
-
     // A restart on the same overlay: the trust runs again (idempotent, silent); unlocked, the home screen, no profile screen.
     _ = try? await d.process.link.request(.agent(request: "\(UUID().uuidString) halt \n", deadline: 0), timeout: 5)
     let quit = Date()
