@@ -119,7 +119,6 @@ with tempfile.TemporaryDirectory(prefix='ltm-package-session-') as temporary:
     main.write_text(DRIVER)
     executable = folder / 'probe'
     sources = [
-        'Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift',
         'LightTouchMac/Guest/GuestPackage.swift',
         'LightTouchMac/Device/BootSessionScope.swift',
         'LightTouchMac/Library/DeviceInstance.swift',
@@ -127,7 +126,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-package-session-') as temporary:
         'LightTouchMac/Library/StorageLocations.swift',
         'LightTouchMac/Library/FirmwareCatalog.swift',
     ]
-    subprocess.run(['xcrun', 'swiftc', *device_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-swift-version', '5', '-default-isolation', 'MainActor',
+    subprocess.run(['xcrun', 'swiftc', *__import__('host_runtime').schema_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), *device_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-swift-version', '5', '-default-isolation', 'MainActor',
                     '-parse-as-library', '-module-cache-path', str(folder / 'modules'),
                     *[str(ROOT / source) for source in sources], str(main), '-o', str(executable)], check=True)
     subprocess.run([str(executable)], check=True, timeout=10)

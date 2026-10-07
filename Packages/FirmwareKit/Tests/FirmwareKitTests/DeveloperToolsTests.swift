@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import FirmwareKit
+@testable import FirmwareSchema
 
 struct DeveloperToolsTests {
     @Test(arguments: ["9B206", "7B500"])

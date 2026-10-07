@@ -1,3 +1,4 @@
+import FirmwareSchema
 import Cocoa
 
 /// Settings > Storage: what each device and the app's stores take on disk

@@ -15,6 +15,7 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [
         .library(name: "FirmwareKit", targets: ["FirmwareKit"]),
+        .library(name: "FirmwareSchema", type: .static, targets: ["FirmwareSchema"]),
         .executable(name: "firmwarekit", targets: ["FirmwareKitCLI"]),
     ],
     dependencies: [
@@ -38,6 +39,6 @@ let package = Package(
         .executableTarget(name: "FirmwareKitCLI", dependencies: ["FirmwareKit",
             .product(name: "HostRuntime", package: "HostRuntime"),
         ]),
-        .testTarget(name: "FirmwareKitTests", dependencies: ["FirmwareKit", .product(name: "HostRuntime", package: "HostRuntime")]),
+        .testTarget(name: "FirmwareKitTests", dependencies: ["FirmwareKit", "FirmwareSchema", .product(name: "HostRuntime", package: "HostRuntime")]),
     ]
 )

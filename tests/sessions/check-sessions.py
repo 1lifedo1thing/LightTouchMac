@@ -66,6 +66,7 @@ ROOT = Path(__file__).resolve().parents[2]
 HOME = Path.home()
 sys.path.insert(0, str(ROOT / "scripts"))
 import sources  # the pinned checkouts (build-support/sources.json)
+import host_runtime
 import swift_subprocess
 import host_service
 import device_runtime
@@ -168,8 +169,8 @@ def guest_checks(find, check, events):
 
 
 def build(args, out):
-    subprocess.run(["xcrun", "swiftc", *device_runtime.swift_flags(ROOT), "-swift-version", "5", "-default-isolation", "MainActor", "-module-cache-path", out / "modules",
-                    *swift_subprocess.swift_flags(ROOT), ROOT / "Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift",
+    subprocess.run(["xcrun", "swiftc", *host_runtime.schema_flags(ROOT), *device_runtime.swift_flags(ROOT), "-swift-version", "5", "-default-isolation", "MainActor", "-module-cache-path", out / "modules",
+                    *swift_subprocess.swift_flags(ROOT),
                     ROOT / "Shared/WebProxyCA.swift",
                     ROOT / "LightTouchDevice/FrameTools.swift", *[ROOT / f"LightTouchMac/{n}.swift" for n in APP_SOURCES],
                     ROOT / "tests/drivers/session-driver/main.swift", ROOT / "tests/drivers/session-driver/guest.swift",

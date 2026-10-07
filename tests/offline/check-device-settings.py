@@ -54,8 +54,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-device-settings-') as directory:
     work = Path(directory)
     (work / 'check.swift').write_text(code)
     sources = ['Library/DeviceSettings', 'Library/DeviceInstance', 'Device/Board+App', '../tests/fixtures/machines', 'Library/StorageLocations', 'Library/FirmwareCatalog']
-    subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(ROOT), '-swift-version', '5', '-parse-as-library',
-                    '-module-cache-path', str(work / 'modules'),
-                    str(ROOT / 'Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift'), *[str(ROOT / f'LightTouchMac/{s}.swift') for s in sources],
+    subprocess.run(['xcrun', 'swiftc', *__import__('host_runtime').schema_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), *host_runtime.swift_flags(ROOT), '-swift-version', '5', '-parse-as-library',
+                    '-module-cache-path', str(work / 'modules'), *[str(ROOT / f'LightTouchMac/{s}.swift') for s in sources],
                     str(work / 'check.swift'), '-o', str(work / 'check')], check=True)
     subprocess.run([str(work / 'check'), str(work / 'state')], check=True, timeout=60)

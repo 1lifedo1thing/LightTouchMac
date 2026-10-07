@@ -14,13 +14,12 @@ import tempfile
 
 root = Path(__file__).resolve().parents[2]
 with tempfile.TemporaryDirectory(prefix='ltm-managed-boot-') as tmp:
-    subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(root), '-parse-as-library',
+    subprocess.run(['xcrun', 'swiftc', *__import__('host_runtime').schema_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), *host_runtime.swift_flags(root), '-parse-as-library',
                     '-module-cache-path', tmp + '/modules',
                     *[str(root / p) for p in ['LightTouchMac/Library/DeviceStateStorage.swift',
                                              'LightTouchMac/Library/DeviceInstance.swift',
                                              'LightTouchMac/Library/StorageLocations.swift',
                                              'LightTouchMac/Library/FirmwareCatalog.swift',
-                                             'Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift',
                                              'LightTouchMac/Device/Board+App.swift',
                                              'tests/fixtures/managed-boot-paths.swift']],
                     '-o', tmp + '/check'], check=True)

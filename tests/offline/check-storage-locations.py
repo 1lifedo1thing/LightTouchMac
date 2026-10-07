@@ -4,6 +4,7 @@ All state and simulated Library directories are temporary fixtures.
 """
 from pathlib import Path
 import os
+import sys as _sys, pathlib as _pl; _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[2] / "scripts"))
 import subprocess
 import tempfile
 
@@ -123,10 +124,9 @@ import Foundation
     }
 }
 '''.replace('precondition(try ', 'precondition(try! '))
-    subprocess.run(['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor',
+    subprocess.run(['xcrun','swiftc', *__import__('host_runtime').schema_flags(__import__('pathlib').Path(__file__).resolve().parents[2]),'-swift-version','6','-default-isolation','MainActor',
                     '-module-cache-path',str(work/'modules'),
                     *[str(root/'LightTouchMac'/name) for name in ['Library/StorageLocations.swift','Transport/NativeLogging.swift','Library/Bundled.swift','Transport/AppEventLog.swift']],
-                    str(root/'Packages/FirmwareKit/Sources/FirmwareKit/GuestPackage/GuestArchive.swift'),
                     str(source),'-o',str(work/'check')],check=True)
     subprocess.run([str(work/'check'),str(work/'fixtures')],
                    env=dict(os.environ,LTM_STATE_DIR=str(work/'isolated-app')),check=True)

@@ -17,6 +17,7 @@ root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(root / 'scripts'))
 import device_runtime
 import sources  # the pinned checkouts (build-support/sources.json)
+import host_runtime
 ap = argparse.ArgumentParser()
 ap.add_argument('--qemu-ios', type=Path, default=sources.path('qemu-ios'))
 args = ap.parse_args()
@@ -208,7 +209,7 @@ func check(_ ok: Bool, _ message: String = "", line: Int = #line) { precondition
     check = check.replace('__SHARED_PACKAGE_REPORT__', '')
     (t / 'check.swift').write_text(check.replace('GuestPackage.Manifest.mbx', '"%s"' % MBX).replace('ENTRY_COUNT', str(len(entries))))
     app = root / 'LightTouchMac'
-    subprocess.run(['xcrun', 'swiftc', *device_runtime.swift_flags(root), str(root / 'Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift'), '-swift-version', '5', '-default-isolation', 'MainActor', '-parse-as-library',
+    subprocess.run(['xcrun', 'swiftc', *host_runtime.schema_flags(root), *device_runtime.swift_flags(root), '-swift-version', '5', '-default-isolation', 'MainActor', '-parse-as-library',
                     '-module-cache-path', str(t / 'modules'), str(app / 'Guest/GuestPackage.swift'), str(app / 'Library/DeviceInstance.swift'),
                     str(app / 'Device/Board+App.swift'), str(app / 'Library/StorageLocations.swift'), str(app / 'Library/FirmwareCatalog.swift'), str(t / 'check.swift'), '-o', str(t / 'check')],
                    check=True)

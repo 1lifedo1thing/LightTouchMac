@@ -5,6 +5,7 @@
 // LightTouchDevice helper (DeviceProcess), so any number can run at once, a
 // dead one restarts without the app, and the others never notice.
 
+import FirmwareSchema
 import HostRuntime
 import Cocoa
 

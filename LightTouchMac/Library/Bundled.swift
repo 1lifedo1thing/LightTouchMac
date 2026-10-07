@@ -16,6 +16,7 @@
 // code paths the dev build does, rather than a packaging-only branch nobody
 // runs until it breaks.
 
+import FirmwareSchema
 import Foundation
 
 /// Nonisolated: the project defaults to MainActor, and these are read from the

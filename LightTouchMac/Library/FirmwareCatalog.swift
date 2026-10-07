@@ -2,6 +2,7 @@
 // Distinct from CatalogClient's app catalog. Field names follow qemu-ios
 // manifests/*.json.
 
+import FirmwareSchema
 import HostRuntime
 import Foundation
 

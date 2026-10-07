@@ -22,12 +22,10 @@
 		A1D0C0DE3900000000000000013 /* usbmuxd-conf in Copy Vendor Resources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3800000000000000093; };
 		A1D0C0DE3900000000000000014 /* build-inputs.json in Copy Vendor Resources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3800000000000000094; };
 		A1D0C0DE39000000000000031 /* Models in Resources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE39000000000000030; };
-		A1D0C0DE39000000000000041 /* GuestArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE39000000000000040; };
 		A1D0C0DE3A000000000000002 /* firmwarekit in Embed Device Helper */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3A000000000000001; };
 		A1D0C0DE3A000000000000020 /* FirmwareKit in Frameworks */ = {isa = PBXBuildFile; productRef = A1D0C0DE3A000000000000011; };
+		A1D0C0DE3A000000000000022 /* FirmwareSchema in Frameworks */ = {isa = PBXBuildFile; productRef = A1D0C0DE3A000000000000012; };
 		A1D0C0DE3A000000000000021 /* HostRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = A1D0C0DE35000000000000002; };
-		A1D0C0DE34000000000000002 /* DeveloperTools in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE34000000000000001; };
-		A1D0C0DE33000000000000002 /* FirmwareWire in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE33000000000000001; };
 		A1D0C0DE32000000000000063 /* HostServiceResources in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000062; };
 		A1D0C0DE32000000000000061 /* HostServiceTypes in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000060; };
 		A1D0C0DE32000000000000040 /* Services/DeviceServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000020; };
@@ -42,7 +40,6 @@
 		A1D0C0DE32000000000000049 /* Transport/IMobileDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000029; };
 		A1D0C0DE32000000000000002 /* LightTouchServices in Embed Device Helper */ = {isa = PBXBuildFile; fileRef = A1D0C0DE32000000000000001; };
 		A1D0C0DE3200000000000000C /* Subprocess in Frameworks */ = {isa = PBXBuildFile; productRef = EA17D84C3023A55900BDF83E; };
-		A1D0C0DE3100000000000021 /* StorageCapacity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3100000000000020 /* StorageCapacity.swift */; };
 		A1D0C0DE3100000000000002 /* LightTouchDevice in Embed Device Helper */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3100000000000001 /* LightTouchDevice */; };
 		EA17D84D3023A55900BDF83E /* Subprocess in Frameworks */ = {isa = PBXBuildFile; productRef = EA17D84C3023A55900BDF83E /* Subprocess */; };
 		A1D0C0DE35000000000000003 = {isa = PBXBuildFile; productRef = A1D0C0DE35000000000000002; };
@@ -119,11 +116,8 @@
 		A1D0C0DE3800000000000000093 /* usbmuxd-conf */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "Resources/usbmuxd-conf"; sourceTree = VENDOR_DIR; };
 		A1D0C0DE3800000000000000094 /* build-inputs.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "Resources/build-inputs.json"; sourceTree = VENDOR_DIR; };
 		A1D0C0DE39000000000000030 /* Models */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Models; sourceTree = "<group>"; };
-		A1D0C0DE39000000000000040 /* GuestArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Packages/FirmwareKit/Sources/FirmwareKit/GuestPackage/GuestArchive.swift; sourceTree = SOURCE_ROOT; };
 		A1D0C0DE3A000000000000001 /* firmwarekit */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = firmwarekit; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1D0C0DE3A000000000000030 /* LightTouchDevice.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LightTouchDevice.entitlements; sourceTree = "<group>"; };
-		A1D0C0DE34000000000000001 /* DeveloperTools */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Packages/FirmwareKit/Sources/FirmwareKit/DeveloperTools/DeveloperTools.swift; sourceTree = SOURCE_ROOT; };
-		A1D0C0DE33000000000000001 /* FirmwareWire */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift; sourceTree = SOURCE_ROOT; };
 		A1D0C0DE32000000000000062 /* HostServiceResources */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/HostServiceResources.swift; sourceTree = SOURCE_ROOT; };
 		A1D0C0DE32000000000000060 /* HostServiceTypes */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/HostServiceTypes.swift; sourceTree = SOURCE_ROOT; };
 		A1D0C0DE32000000000000020 /* Services/DeviceServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Services/DeviceServices.swift; sourceTree = SOURCE_ROOT; };
@@ -137,7 +131,6 @@
 		A1D0C0DE32000000000000028 /* Transport/DeviceExecution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Transport/DeviceExecution.swift; sourceTree = SOURCE_ROOT; };
 		A1D0C0DE32000000000000029 /* Transport/IMobileDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightTouchMac/Transport/IMobileDevice.swift; sourceTree = SOURCE_ROOT; };
 		A1D0C0DE32000000000000001 /* LightTouchServices */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = LightTouchServices; sourceTree = BUILT_PRODUCTS_DIR; };
-		A1D0C0DE3100000000000020 /* StorageCapacity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Packages/FirmwareKit/Sources/FirmwareKit/StorageCapacity/StorageCapacity.swift; sourceTree = SOURCE_ROOT; };
 		A1D0C0DE3100000000000001 /* LightTouchDevice */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = LightTouchDevice; sourceTree = BUILT_PRODUCTS_DIR; };
 		EA17D83230239D9B00BDF83E /* Light Touch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Light Touch.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		EB72984030B2091100000001 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
@@ -184,6 +177,7 @@
 			files = (
 				A1D0C0DE35000000000000003,
 				A1D0C0DE36000000000000003,
+				A1D0C0DE3A000000000000022 /* FirmwareSchema in Frameworks */,
 				EA17D84D3023A55900BDF83E /* Subprocess in Frameworks */,
 				A1D0C0DE37000000000000003 /* ZIPFoundation in Frameworks */,
 			);
@@ -196,10 +190,6 @@
 			isa = PBXGroup;
 			children = (
 				EA17D83430239D9B00BDF83E /* LightTouchMac */,
-				A1D0C0DE3100000000000020 /* StorageCapacity.swift */,
-				A1D0C0DE33000000000000001 /* FirmwareWire */,
-				A1D0C0DE34000000000000001 /* DeveloperTools */,
-				A1D0C0DE39000000000000040 /* GuestArchive.swift */,
 				A1D0C0DE39000000000000030 /* Models */,
 				A1D0C0DE3A000000000000006 /* FirmwareKitCLI */,
 				A1D0C0DE39000000000000050 /* Vendor */,
@@ -303,6 +293,7 @@
 			packageProductDependencies = (
 				A1D0C0DE35000000000000002,
 				A1D0C0DE36000000000000002,
+				A1D0C0DE3A000000000000012 /* FirmwareSchema */,
 				EA17D84C3023A55900BDF83E /* Subprocess */,
 				A1D0C0DE37000000000000002 /* ZIPFoundation */,
 			);
@@ -390,10 +381,6 @@
 		EA17D82E30239D9B00BDF83E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
-				A1D0C0DE3100000000000021 /* StorageCapacity.swift in Sources */,
-				A1D0C0DE33000000000000002 /* FirmwareWire in Sources */,
-				A1D0C0DE34000000000000002 /* DeveloperTools in Sources */,
-				A1D0C0DE39000000000000041 /* GuestArchive.swift in Sources */,
 			);
 		};
 /* End PBXSourcesBuildPhase section */
@@ -735,6 +722,7 @@
 
 /* Begin XCSwiftPackageProductDependency section */
 		A1D0C0DE3A000000000000011 = {isa = XCSwiftPackageProductDependency; package = A1D0C0DE3A000000000000010; productName = FirmwareKit; };
+		A1D0C0DE3A000000000000012 = {isa = XCSwiftPackageProductDependency; package = A1D0C0DE3A000000000000010; productName = FirmwareSchema; };
 		A1D0C0DE35000000000000002 = {isa = XCSwiftPackageProductDependency; package = A1D0C0DE35000000000000001; productName = HostRuntime; };
 		EA17D84C3023A55900BDF83E /* Subprocess */ = {
 			isa = XCSwiftPackageProductDependency;

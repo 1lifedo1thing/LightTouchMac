@@ -1,3 +1,4 @@
+import FirmwareSchema
 import FirmwareKit
 import Foundation
 

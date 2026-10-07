@@ -2,6 +2,7 @@
 // from the record and what the sessions say about it. Pure Foundation, so tests/offline/check-device-rows.py
 // compiles it whole.
 
+import FirmwareSchema
 import HostRuntime
 import Foundation
 

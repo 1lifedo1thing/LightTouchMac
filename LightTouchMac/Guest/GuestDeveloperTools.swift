@@ -1,3 +1,4 @@
+import FirmwareSchema
 import Foundation
 
 /// Developer access uses the same package loader and health verdicts as other

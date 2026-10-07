@@ -1,10 +1,15 @@
-"""Compile the same Foundation capacity leaf used by the GUI and FirmwareKit."""
+"""FirmwareKit's FirmwareSchema product: the leaf the GUI links (wire types, StorageCapacity, GuestArchive)."""
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'scripts'))
+import host_runtime  # noqa: E402
+
 
 def capacity_sources(root, tmp):
-    return [str(root / "Packages/FirmwareKit/Sources/FirmwareKit/StorageCapacity/StorageCapacity.swift")]
+    return []   # StorageCapacity is in FirmwareSchema: schema_sources() links it
 
 
 def schema_sources():
-    from pathlib import Path
-    root = Path(__file__).resolve().parents[2]
-    return [str(root / "Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift")]
+    return host_runtime.schema_flags(ROOT)

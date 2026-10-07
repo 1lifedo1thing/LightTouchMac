@@ -5,6 +5,7 @@
 // which entry they are for (the clicked row for its context menu, the
 // selection otherwise).
 
+import FirmwareSchema
 import HostRuntime
 import Cocoa
 import UniformTypeIdentifiers

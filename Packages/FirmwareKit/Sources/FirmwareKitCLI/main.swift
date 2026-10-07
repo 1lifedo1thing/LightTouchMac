@@ -20,6 +20,7 @@
 // mount device + mountPoint (attached read-only, visible in Finder)}. unmount detaches them and deletes --out.
 // An error prints {"error": ...} and exits 1.
 
+import FirmwareSchema
 import FirmwareKit
 import HostRuntime
 import Foundation

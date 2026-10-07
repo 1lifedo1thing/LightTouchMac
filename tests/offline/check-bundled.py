@@ -3,6 +3,7 @@
 (FirmwareKit GuestArchive); the files root from LTM_FILES."""
 from pathlib import Path
 import os, shutil, subprocess, tempfile
+import sys as _sys, pathlib as _pl; _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[2] / "scripts"))
 root = Path(__file__).resolve().parents[2]
 with tempfile.TemporaryDirectory(prefix='ltm-bundled-') as tmp:
     work = Path(tmp)
@@ -37,8 +38,7 @@ print(Bundled.guestRoot!.path)
     (packed / 'itmedia').chmod(0o755)
     (contents / 'Resources/Guest').mkdir(parents=True)
     subprocess.run(['aa', 'archive', '-d', packed.parent, '-o', contents / 'Resources/Guest/guest.aar'], check=True)
-    subprocess.run(['swiftc', '-module-cache-path', str(work/'modules'), str(root/'LightTouchMac/Library/Bundled.swift'),
-                    str(root/'Packages/FirmwareKit/Sources/FirmwareKit/GuestPackage/GuestArchive.swift'),
+    subprocess.run(['swiftc', *__import__('host_runtime').schema_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), '-module-cache-path', str(work/'modules'), str(root/'LightTouchMac/Library/Bundled.swift'),
                     str(root/'LightTouchMac/Library/StorageLocations.swift'), str(root/'LightTouchMac/Transport/NativeLogging.swift'),
                     str(source), '-o', str(executable)], check=True)
     result = subprocess.run([str(executable), str(work), str(work / 'files')], check=True, capture_output=True, text=True,

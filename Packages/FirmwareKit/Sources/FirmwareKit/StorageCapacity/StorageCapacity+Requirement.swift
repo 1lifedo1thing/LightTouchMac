@@ -1,3 +1,4 @@
+import FirmwareSchema
 import Foundation
 
 extension StorageCapacity {

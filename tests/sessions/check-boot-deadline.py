@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 HOME = Path.home()
 sys.path.insert(0, str(ROOT / "scripts"))
 import sources  # the pinned checkouts (build-support/sources.json)
+import host_runtime
 DEFAULT_DEVICE = HOME / "Developer/qemu-ios-files/ipod-ipsw/devices/8C148-b"
 
 
@@ -201,14 +202,13 @@ final class Matches: @unchecked Sendable {
         p.write_text(source)
         if os.environ.get("LTM_DUMP"):
             Path(os.environ["LTM_DUMP"]).write_text(source)
-        subprocess.run(["swiftc", "-parse-as-library", "-module-cache-path", d + "/modules", str(ROOT / "LightTouchMac/Device/BootStage.swift"), str(ROOT / "LightTouchMac/Device/BootSessionScope.swift"),
+        subprocess.run(["swiftc", *host_runtime.schema_flags(ROOT), "-parse-as-library", "-module-cache-path", d + "/modules", str(ROOT / "LightTouchMac/Device/BootStage.swift"), str(ROOT / "LightTouchMac/Device/BootSessionScope.swift"),
                         str(p), "-o", d + "/check"], check=True)
         subprocess.run([d + "/check"], check=True, timeout=120)
         w = Path(d) / "watch.swift"
         w.write_text(watch)
-        subprocess.run(["swiftc", "-parse-as-library", "-module-cache-path", d + "/modules", *[str(ROOT / "LightTouchMac" / f)
+        subprocess.run(["swiftc", *host_runtime.schema_flags(ROOT), "-parse-as-library", "-module-cache-path", d + "/modules", *[str(ROOT / "LightTouchMac" / f)
                         for f in ("Transport/NativeLogging.swift", "Library/StorageLocations.swift", "Library/Bundled.swift", "Transport/AppEventLog.swift")],
-                        str(ROOT / "Packages/FirmwareKit/Sources/FirmwareKit/GuestPackage/GuestArchive.swift"),
                         str(w), "-o", d + "/watch"], check=True)
         subprocess.run([d + "/watch"], check=True, timeout=120, env=dict(os.environ, LTM_STATE_DIR=d + "/state"))
 

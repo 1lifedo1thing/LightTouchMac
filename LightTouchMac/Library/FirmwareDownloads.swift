@@ -9,6 +9,7 @@
 // doesn't resolve or answer) or serves other bytes moves the download on to
 // the entry's next source (FirmwareWire.Entry.Source.urls); the last one's failure is the download's.
 
+import FirmwareSchema
 import Foundation
 
 nonisolated final class FirmwareDownloads: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {

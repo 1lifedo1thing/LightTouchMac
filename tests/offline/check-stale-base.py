@@ -105,7 +105,6 @@ with tempfile.TemporaryDirectory(prefix='ltm-stale-base-') as tmp:
             (device / 'migrated-recipe.json').write_text(json.dumps(marker[0]))
         specs.append(f'{name}:{entry_id}:{path}:{int(flagged)}:{device}')
     (tmp / 'main.swift').write_text(check)
-    subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(root), '-parse-as-library', '-swift-version', '5', '-module-cache-path', str(tmp / 'modules'),
-                    str(root / 'Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift'), str(app / 'Library/FirmwareCatalog.swift'), str(app / 'Device/Board+App.swift'),
+    subprocess.run(['xcrun', 'swiftc', *__import__('host_runtime').schema_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), *host_runtime.swift_flags(root), '-parse-as-library', '-swift-version', '5', '-module-cache-path', str(tmp / 'modules'), str(app / 'Library/FirmwareCatalog.swift'), str(app / 'Device/Board+App.swift'),
                     str(app / 'Device/DeviceRow.swift'), str(tmp / 'main.swift'), '-o', str(tmp / 'check')], check=True)
     subprocess.run([str(tmp / 'check'), str(app / 'Resources/firmware-catalog.json'), *specs], check=True, timeout=60)

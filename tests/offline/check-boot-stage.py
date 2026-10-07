@@ -11,6 +11,7 @@ Home-screen wait's second answer: the guest agent naming SpringBoard or Setup As
 """
 from pathlib import Path
 import os, subprocess, tempfile
+import sys as _sys, pathlib as _pl; _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[2] / "scripts"))
 
 ROOT = Path(__file__).resolve().parents[2]
 APP = ROOT / 'LightTouchMac'
@@ -94,9 +95,9 @@ final class Seen: @unchecked Sendable {
 with tempfile.TemporaryDirectory(prefix='ltm-boot-stage-') as d:
     main = Path(d) / 'main.swift'
     main.write_text(check)
-    subprocess.run(['xcrun', 'swiftc', '-parse-as-library', '-module-cache-path', d + '/modules',
+    subprocess.run(['xcrun', 'swiftc', *__import__('host_runtime').schema_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), '-parse-as-library', '-module-cache-path', d + '/modules',
                     *[str(APP / f) for f in ('Device/BootStage.swift', 'Transport/NativeLogging.swift', 'Library/StorageLocations.swift',
-                                             'Library/Bundled.swift', 'Transport/AppEventLog.swift')], str(ROOT / 'Packages/FirmwareKit/Sources/FirmwareKit/GuestPackage/GuestArchive.swift'),
+                                             'Library/Bundled.swift', 'Transport/AppEventLog.swift')],
                     str(main), '-o', d + '/check'], check=True)
     subprocess.run([d + '/check', str(ROOT / 'tests/fixtures/serial-k48ap-8C148.log')], check=True, timeout=30,
                    env=dict(os.environ, LTM_STATE_DIR=d + '/state'))
