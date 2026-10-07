@@ -85,7 +85,7 @@ func check(_ ok: Bool, _ message: String = "", line: Int = #line) { precondition
  static func main() throws {
   let t = URL(fileURLWithPath: CommandLine.arguments[1])
   let pack = t.appendingPathComponent("armv6.itpack")
-  let entries = try GuestPackage.read(pack)
+  let entries = try GuestPack.read(pack)
   check(entries.count == ENTRY_COUNT && entries.last?.name == "loader/com.qemu.it-boot.plist")
   // The same offer and payloads as mkpkg.py offer, with the record's verdicts.
   var record = DeviceInstance.Guest(); record.lastGood = 5; record.bad = [6]
@@ -139,7 +139,7 @@ func check(_ ok: Bool, _ message: String = "", line: Int = #line) { precondition
   }
   // Not an itpack.
   do {
-   _ = try GuestPackage.read(t.appendingPathComponent("oracle/offer")); fatalError("not an itpack accepted")
+   _ = try GuestPack.read(t.appendingPathComponent("oracle/offer")); fatalError("not an itpack accepted")
   } catch {}
   // UI status.
   let o = GuestPackage.Offer(bundled: 7, version: "1.7.0", serial: 7, glHook: true)
@@ -186,11 +186,12 @@ func check(_ ok: Bool, _ message: String = "", line: Int = #line) { precondition
   // The preparer's record.
   let lockFile = t.appendingPathComponent("device.lock.json")
   try Data("{\"guest_package\": {\"family\": \"n72-ios3\", \"seed\": 1, \"gles\": false, \"hooks\": [\"/usr/lib/libappsync.dylib\"]}}".utf8).write(to: lockFile)
-  check(GuestPackage.lockRecord(lockFile) == GuestPackage.LockRecord(seed: 1, gles: false, hooks: ["/usr/lib/libappsync.dylib"]))
-  try Data("{\"guest_package\": {\"seed\": 1, \"gli\": \"7E18\"}}".utf8).write(to: lockFile)
-  check(GuestPackage.lockRecord(lockFile)?.gles == true, "a lock from before gl-runtime: a gli id is a shim")
-  check(GuestPackage.lockRecord(t.appendingPathComponent("missing.json")) == nil)
-  check(GuestPackage.arch(board: "n72ap") == "armv6" && GuestPackage.arch(board: "k48ap") == "armv7")
+  func lockRecord(_ url: URL) -> GuestPackage.LockRecord? { GuestPackage.lockRecord((try? DeviceLock.read(url)) ?? nil) }
+  check(lockRecord(lockFile) == GuestPackage.LockRecord(seed: 1, gles: false, hooks: ["/usr/lib/libappsync.dylib"]))
+  try Data("{\"guest_package\": {\"seed\": 1, \"gli\": \"7E18\"}}".utf8).write(to: lockFile, options: .atomic)
+  check(lockRecord(lockFile)?.gles == true, "a lock from before gl-runtime: a gli id is a shim")
+  check(lockRecord(t.appendingPathComponent("missing.json")) == nil)
+  check(Board.n72.arch == "armv6" && Board.k48.arch == "armv7")
   print("PASS: itpack read, offer identical to mkpkg.py (verdicts, lock-dropped hooks), built-in serial 0, no offer for stubs/other builds/host protocols, UI status, verdicts, guest record")
  }
 }
