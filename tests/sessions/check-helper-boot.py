@@ -26,6 +26,9 @@ status block, frame ring, framed link). Cases:
              rung (incoming) and hung up (idle), quit
   rotate     --iphone-device: lit, unlocked, Safari opened, then the app's rotation (the orientation request, no other input):
              within 1 s a new frame is published and it differs from the Home screen (the guest turned its UI)
+  shutdown   --iphone-device: lit, then Shut Down (MachineOp.shutdown, qemu_ios_ui_shutdown: the agent's halt, or 1.x's
+             power-off gesture): the guest confirms its power-off within 120 s, then quit
+  keyboard   --iphone-device (n90ap): lit, Connect Hardware Keyboard off then on: both accepted (ok(true)), quit
 
     tests/sessions/check-helper-boot.py --ipad-device DIR [--helper PATH] [--dylib PATH] [--work DIR] [--only a,b]
 
@@ -198,6 +201,7 @@ def iphone_boot(device, ovl, serial):
         drive = []
     argv = ["LightTouchDevice", "-M", machine, *drive, "-display", "none", "-audio", "driver=none", "-no-shutdown",
             "-serial", f"file:{serial}", "-netdev", "user,id=wifi0", "-netdev", "user,id=cell0",
+            *(["-device", "usb-kbd,bus=usb-bus.0,max-power=20"] if board == "iPhone-4" else []),   # as BootRecipe
             # saved Carrier settings, as CarrierSettings.globals passes them at boot
             "-global", "ios-baseband.carrier=Saved, Carrier", "-global", "ios-baseband.signal-dbm=-81"]
     return {"machine": board, "argv": argv}
@@ -230,14 +234,15 @@ def main():
     ap.add_argument("--work", type=Path)
     ap.add_argument("--only")
     args = ap.parse_args()
-    cases = ["reject", "lease", "ipod", "ipad", "restore", "ipad-orphan", "oneshot", "headless", "meddle", "carrier", "rotate"]
+    cases = ["reject", "lease", "ipod", "ipad", "restore", "ipad-orphan", "oneshot", "headless", "meddle", "carrier", "rotate",
+             "shutdown", "keyboard"]
     if args.only:
         cases = [c for c in cases if c in args.only.split(",")]
     if not args.ipad_device:
         cases = [c for c in cases if not c.startswith(("ipad", "restore", "oneshot"))]
         print("no --ipad-device: skipping the iPad cases")
     if not args.iphone_device:
-        cases = [c for c in cases if c not in ("carrier", "rotate")]
+        cases = [c for c in cases if c not in ("carrier", "rotate", "shutdown", "keyboard")]
         print("no --iphone-device: skipping the carrier case")
     work = args.work or Path(tempfile.mkdtemp(prefix="ltm-helper-boot-"))
     work.mkdir(parents=True, exist_ok=True)
@@ -421,6 +426,26 @@ def main():
             check(dumps.get("turned", {}).get("ok") and not same,
                   f"the turned frame differs from portrait Safari (brightness {dumps.get('home', {}).get('brightness', 0):.2f} -> "
                   f"{dumps.get('turned', {}).get('brightness', 0):.2f})", "rotate", results)
+
+        if "shutdown" in cases:
+            print("shutdown", flush=True)
+            boot = iphone_boot(args.iphone_device, work / "shutdown/overlay", work / "shutdown/serial.log")
+            d = Driver(args, bin_dir, helper, work, "shutdown", {"machine": boot["machine"], "boot": boot,
+                       "steps": ["boot", "lit 0.03 300", "wait 20", "shutdown 120", "status", "quit", "expectExit 60"]})
+            rc = d.wait(600)
+            check(rc == 0, "scenario completed", "shutdown", results) or print(d.tail())
+            done = (d.find("shutdown") or [{}])[0]
+            check(done.get("confirmed") is True, f"the guest powered itself off ({done.get('seconds', 0):.0f} s)", "shutdown", results)
+
+        if "keyboard" in cases:
+            print("keyboard", flush=True)
+            boot = iphone_boot(args.iphone_device, work / "keyboard/overlay", work / "keyboard/serial.log")
+            d = Driver(args, bin_dir, helper, work, "keyboard", {"machine": boot["machine"], "boot": boot,
+                       "steps": ["boot", "lit 0.03 300", "wait 5", "keyboard off", "wait 2", "keyboard on", "quit", "expectExit 60"]})
+            rc = d.wait(400)
+            check(rc == 0, "scenario completed", "keyboard", results) or print(d.tail())
+            replies = [e.get("reply", "") for e in d.find("reply")]
+            check(len(replies) == 2 and all("ok(true)" in r for r in replies), f"unplugged and replugged: {replies}", "keyboard", results)
 
         if "headless" in cases:
             print("headless", flush=True)

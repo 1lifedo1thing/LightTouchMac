@@ -206,6 +206,13 @@ Thread.detachNewThread {
             }
             watches.append(watch)
             emit("watching", ["count": watch.count])
+        case "shutdown":    // shutdown <seconds>: Shut Down (MachineOp.shutdown), until the guest has powered off
+            let start = Date()
+            link.send(.machine(.shutdown))
+            while link.status?.shutdownConfirmed != true, Date().timeIntervalSince(start) < v[0] { usleep(200_000) }
+            emit("shutdown", ["confirmed": link.status?.shutdownConfirmed == true, "seconds": Date().timeIntervalSince(start)])
+        case "keyboard":    // keyboard on|off: Connect Hardware Keyboard (qemu_ios_ui_hardware_keyboard)
+            emit("reply", ["reply": "\(request(.hardwareKeyboard(p[1] == "on")))", "keyboard": p[1]])
         case "quit":
             link.send(.machine(.quit))
         case "expectExit":
