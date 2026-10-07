@@ -19,5 +19,5 @@ import Foundation
     }
 }
 SWIFT
-swiftc -module-cache-path "$TMP/modules" "$ROOT/Packages/FirmwareKit/Sources/FirmwareKit/DeveloperTools/DeveloperTools.swift" "$TMP/Audit.swift" -o "$TMP/audit"
+swiftc -module-cache-path "$TMP/modules" "$ROOT/Packages/FirmwareKit/Sources/FirmwareSchema/DeveloperTools.swift" "$TMP/Audit.swift" -o "$TMP/audit"
 "$TMP/audit" "$PAYLOAD"
