@@ -14,7 +14,7 @@ import Foundation
         var flags: [String: String] = [:]
         var it = argv.makeIterator()
         while let a = it.next() {
-            guard ["--device", "--volume", "--out", "--record-policy"].contains(a), let v = it.next() else { try fail("bad argument \(a)") }
+            guard ["--device", "--volume", "--out", "--record-policy", "--root"].contains(a), let v = it.next() else { try fail("bad argument \(a)") }
             flags[a] = v
         }
         let url = { (p: String) in URL(fileURLWithPath: (p as NSString).expandingTildeInPath).standardizedFileURL }
@@ -40,7 +40,7 @@ import Foundation
         }
         let src = try VolumeExport.Source(device: url(device), policy: policy)
         let log = { (s: String) in FirmwareDiagnostics.write(Data("firmwarekit: \(s)\n".utf8)) }
-        let vols = command == "mount" ? try await VolumeExport.mount(src, volumes: volumes, out: out, log: log)
+        let vols = command == "mount" ? try await VolumeExport.mount(src, volumes: volumes, out: out, root: flags["--root"].map(url), log: log)
             : try await VolumeExport.export(src, volumes: volumes, out: out, log: log)
         for v in vols {
             let o = try JSONSerialization.jsonObject(with: JSONEncoder().encode(v)) as! [String: Any]

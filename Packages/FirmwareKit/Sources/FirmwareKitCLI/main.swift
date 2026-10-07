@@ -11,13 +11,15 @@
 //
 //   firmwarekit pack-base / unpack-base: the built-in device's blob (PreparedBase.swift)
 //
-//   firmwarekit mount  --device DIR [--volume system|data|all] [--out DIR]   (a STOPPED device only)
+//   firmwarekit mount  --device DIR [--volume system|data|all] [--out DIR] [--root DIR]   (a STOPPED device only)
 //   firmwarekit export --device DIR [--volume system|data|all] [--out DIR]
 //   firmwarekit unmount --out DIR
 //
 // mount/export rebuild the device's HFS+ volumes from base + overlay into sparse images in --out (default:
 // a new temp dir) and print one JSON line per volume: {volume, image, clean, repaired, seconds, and for
-// mount device + mountPoint (attached read-only, visible in Finder)}. unmount detaches them and deletes --out.
+// mount device + mountPoint (attached read-only, visible in Finder)}. With --root, mount puts the device's one
+// tree there instead, out of Finder's sidebar: system at DIR, data on DIR/private/var. unmount detaches them
+// (data first) and deletes --out.
 // An error prints {"error": ...} and exits 1.
 
 import FirmwareSchema
@@ -69,7 +71,7 @@ guard command == "create" else {
     FirmwareDiagnostics.write(Data("""
         firmwarekit \(FirmwareKit.version)
         usage: firmwarekit boot-admit --device DIR [--record-policy standalone|managed] [--allow-raw]
-               firmwarekit edit --device DIR --action begin|mount|commit|discard|recover [--session UUID]
+               firmwarekit edit --device DIR --action begin|mount|commit|discard|recover [--session UUID] [--mount-point DIR]
                firmwarekit edit --device DIR --action trust-anchor --cert DER   (1.x: the certificate as a system anchor)
                firmwarekit cache-prune --root DIR [--ipsw SHA1]
                firmwarekit detach-images --root DIR   (force-detach disk images whose files are under DIR)
@@ -79,7 +81,7 @@ guard command == "create" else {
                                   [--stop-after volumes]   (fit.json: the fit checks' survey, no device)
                firmwarekit create --catalog CATALOG.json --id ENTRY_ID --ipsw IPSW --out DIR [create options]
                --gl-test adds the GL fixture job to a test device
-               firmwarekit mount|export --device DIR [--volume system|data|all] [--out DIR]
+               firmwarekit mount|export --device DIR [--volume system|data|all] [--out DIR] [--root DIR]
                firmwarekit unmount --out DIR
                firmwarekit pack-base --base CREATE_OUTPUT --out BLOB
                firmwarekit unpack-base --blob BLOB --out DIR --seed S   (an n72ap blob; JSON Lines, as create)

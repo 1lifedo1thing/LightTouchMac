@@ -5,7 +5,7 @@ import Foundation
     var flags: [String: String] = [:]
     var args = argv.makeIterator()
     while let flag = args.next() {
-        guard ["--device", "--action", "--session", "--record-policy", "--cert"].contains(flag), let value = args.next() else {
+        guard ["--device", "--action", "--session", "--record-policy", "--cert", "--mount-point"].contains(flag), let value = args.next() else {
             FirmwareDiagnostics.write(Data("firmwarekit edit: bad argument \(flag)\n".utf8)); _ = await FirmwareDiagnostics.finish(); exit(64)
         }
         flags[flag] = value
@@ -35,7 +35,9 @@ import Foundation
             throw FirmwareError(.internal, "edit requires its --session UUID")
         }
         switch action {
-        case "mount": try emit(try await StoppedVolumeEdit.mount(device: device, id: session, policy: policy))
+        case "mount":
+            let mountPoint = flags["--mount-point"].map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+            try emit(try await StoppedVolumeEdit.mount(device: device, id: session, policy: policy, mountPoint: mountPoint))
         case "commit": try await StoppedVolumeEdit.commit(device: device, id: session, policy: policy, log: log); try emit(["committed": session.uuidString])
         case "discard": try await StoppedVolumeEdit.discard(device: device, id: session, policy: policy); try emit(["discarded": session.uuidString])
         case "recover": try await StoppedVolumeEdit.recover(device: device, id: session, policy: policy); try emit(["recovered": session.uuidString])

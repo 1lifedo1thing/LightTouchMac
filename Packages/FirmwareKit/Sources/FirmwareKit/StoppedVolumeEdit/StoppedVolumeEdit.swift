@@ -99,11 +99,14 @@ public enum StoppedVolumeEdit {
 
     /// The durable edit intent, rather than a long-lived CLI process, excludes
     /// guest boot for the entire Finder mount. Closing Finder is not commit.
-    nonisolated(nonsending) public static func mount(device: URL, id: UUID, policy: StorageRecordPolicy = .standalone) async throws -> Session {
+    /// `mountPoint`: the folder the volume is mounted on, out of Finder's sidebar (nobrowse); the edit's own
+    /// "File System" folder when nil.
+    nonisolated(nonsending) public static func mount(device: URL, id: UUID, policy: StorageRecordPolicy = .standalone,
+                                                     mountPoint: URL? = nil) async throws -> Session {
         return try await StorageGeneration.withOwner(try StorageGeneration.resume(device: device, id: id, policy: policy)) { edit in
             let session = try readSession(edit)
             try await eject(edit)
-            let attached = try await DiskImage.attach(session.image, mount: true)
+            let attached = try await VolumeMount.attachHidden(session.image, at: mountPoint ?? edit.root.appendingPathComponent("File System"))
             let mounted = Session(id: id, device: device, image: session.image, mountPoint: attached.mountPoint)
             try StorageGeneration.write(JSONEncoder().encode(mounted), to: edit.root.appendingPathComponent("session.json"))
             return mounted

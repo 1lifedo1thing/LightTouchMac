@@ -135,13 +135,22 @@ public enum VolumeExport {
         }
     }
 
-    /// Export, then attach every image read-only where Finder shows it.
-    nonisolated(nonsending) public static func mount(_ src: Source, volumes: Set<String>? = nil, out: URL, log: (String) -> Void = { _ in }) async throws -> [Exported] {
+    /// Export, then attach every image read-only where Finder shows it. With `root`, the device's one tree there
+    /// instead, out of Finder's sidebar (nobrowse): system at `root`, data on its private/var, as the device mounts them.
+    nonisolated(nonsending) public static func mount(_ src: Source, volumes: Set<String>? = nil, out: URL, root: URL? = nil,
+                                                     log: (String) -> Void = { _ in }) async throws -> [Exported] {
         var vols = try await export(src, volumes: volumes, out: out, log: log)
+        if root != nil { vols.sort { $0.volume == "system" && $1.volume != "system" } }   // data mounts on system's tree
         do {
             for i in vols.indices {
                 let t = Date()
-                let a = try await DiskImage.attach(URL(fileURLWithPath: vols[i].image), readOnly: true, mount: true)
+                let image = URL(fileURLWithPath: vols[i].image)
+                let a = if let root {
+                    try await VolumeMount.attachHidden(image, at: vols[i].volume == "data" && vols.contains { $0.volume == "system" }
+                                                       ? root.appendingPathComponent("private/var") : root, readOnly: true)
+                } else {
+                    try await DiskImage.attach(image, readOnly: true, mount: true)
+                }
                 vols[i].device = a.device
                 vols[i].mountPoint = a.mountPoint
                 vols[i].seconds += Date().timeIntervalSince(t)
@@ -149,7 +158,7 @@ public enum VolumeExport {
             }
         } catch {
             // `vols` includes an attachment even if publishing export.json failed.
-            for v in vols { if let device = v.device { await VolumeMount.cleanupDetach(device) } }
+            for v in vols.reversed() { if let device = v.device { await VolumeMount.cleanupDetach(device) } }
             do { try await Task.detached { try await unmount(out: out) }.value }
             catch { log("export staging retained at \(out.path): \(error)") }
             throw error
@@ -157,13 +166,15 @@ public enum VolumeExport {
         return vols
     }
 
-    /// Detaches what `out`'s export.json says is attached, then deletes `out`.
+    /// Detaches what `out`'s export.json says is attached, last mounted first (data off system's tree), then deletes `out`.
     nonisolated(nonsending) public static func unmount(out: URL) async throws {
         let vols = try readManifest(out)
         let paths = Set(vols.map { URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path })
-        for attached in try await DiskImage.checkedAttachedImages() where paths.contains(URL(fileURLWithPath: attached.image).resolvingSymlinksInPath().path) {
-            // Query the current device node: a manifest's old /dev/diskN may have been reused.
-            try await VolumeMount.detach(attached.device)
+        // Query the current device node: a manifest's old /dev/diskN may have been reused.
+        let attached = Dictionary(try await DiskImage.checkedAttachedImages().map {
+            (URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path, $0.device) }, uniquingKeysWith: { a, _ in a })
+        for v in vols.reversed() {
+            if let device = attached[URL(fileURLWithPath: v.image).resolvingSymlinksInPath().path] { try await VolumeMount.detach(device) }
         }
         for attached in try await DiskImage.checkedAttachedImages() where paths.contains(URL(fileURLWithPath: attached.image).resolvingSymlinksInPath().path) {
             throw FirmwareError(.internal, "\(attached.image) is still attached; close its files before unmounting")

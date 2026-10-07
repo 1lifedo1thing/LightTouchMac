@@ -78,6 +78,18 @@ public enum VolumeMount {
     /// Attaches a raw image without mounting it; returns its /dev/diskN.
     public static func attach(_ image: URL) async throws -> String { try await DiskImage.attach(image).device }
 
+    /// Attaches `image` and mounts it at `mountPoint` (created if needed) out of Finder's sidebar and Desktop
+    /// (nobrowse), owners ignored, for a Finder window opened on the folder. Detaching the device unmounts it.
+    public static func attachHidden(_ image: URL, at mountPoint: URL, readOnly: Bool = false) async throws -> DiskImage.Attached {
+        try FileManager.default.createDirectory(at: mountPoint, withIntermediateDirectories: true)
+        let dev = try await DiskImage.attach(image, readOnly: readOnly).device
+        do {
+            try await run("/usr/sbin/diskutil", ["mount"] + (readOnly ? ["readOnly"] : [])
+                          + ["-mountOptions", "nobrowse,noowners", "-mountPoint", mountPoint.path, dev])
+        } catch { await cleanupDetach(dev, force: true); throw error }
+        return DiskImage.Attached(device: dev, mountPoint: mountPoint.path)
+    }
+
     /// Detaches `dev`, retrying; with `force`, the retries force it.
     /// Failure remains observable so callers cannot release ownership as if detached.
     public static func detach(_ dev: String, force: Bool = false) async throws { try await DiskImage.detach(dev, force: force) }
