@@ -13,8 +13,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var host: DeviceSessionHost?
     /// Every device this launch started; quitting shuts each one down.
     private var emulators: [EmulatorController] { host?.sessions.map(\.emulator) ?? [] }
-    /// The running device, for settings that apply to it on its next boot.
-    private var emulator: EmulatorController? { windowController?.session?.emulator ?? emulators.first }
+    /// The selected device's session (DeviceSettingsMenu.target): nil when the selection isn't running.
+    private var emulator: EmulatorController? {
+        DeviceSettingsMenu.target(hasWindow: windowController != nil, selected: windowController?.session?.emulator, running: emulators)
+    }
+    /// The selected device when it isn't running: its settings for its next start.
+    private var stoppedSelection: DeviceInstance? { emulator == nil ? windowController?.selectedInstance : nil }
     private var helpController: HelpWindowController?
     private let quitting = QuitCoordinator(budget: EmulatorController.stopBudget) { NSApp.reply(toApplicationShouldTerminate: true) }
 
@@ -48,11 +52,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSPasteboard.general.setString(command, forType: .string)
     }
     @objc func toggleInternetAccess(_ sender: Any?) { NetworkAccessPreference.toggle(running: emulator?.network) }
-    @objc func toggleLocalNetwork(_ sender: Any?) { emulator?.toggleLocalNetwork() }
+    @objc func toggleLocalNetwork(_ sender: Any?) {
+        if let emulator { return emulator.toggleLocalNetwork() }
+        guard let instance = stoppedSelection else { return }
+        DeviceOptions(settings: DeviceSettingsFile(directory: instance.paths.directory), board: instance.board, link: { nil }).toggleLocalNetwork()
+    }
 
     /// The settings items for the running device (DeviceSettingsMenu).
     private var settingsMenu: DeviceSettingsMenu {
-        DeviceSettingsMenu(device: emulator.map {
+        let stopped = stoppedSelection.flatMap { instance in
+            instance.profile.map {
+                var device = DeviceSettingsMenu.Device(marketingName: $0.marketingName, shortName: $0.shortName)
+                device.localNetworkEnabled = DeviceSettings.load(instance.paths.directory).localNetwork ?? false
+                device.isRunning = false
+                return device
+            }
+        }
+        return DeviceSettingsMenu(device: stopped ?? emulator.map {
             var device = DeviceSettingsMenu.Device(marketingName: $0.profile.marketingName, shortName: $0.profile.shortName)
             device.localNetworkEnabled = $0.localNetworkEnabled
             device.autoRotateEnabled = $0.autoRotateEnabled

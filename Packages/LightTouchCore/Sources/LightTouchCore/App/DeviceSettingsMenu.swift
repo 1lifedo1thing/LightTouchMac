@@ -14,6 +14,8 @@ public struct DeviceSettingsMenu {
         public var lldbAttachCommand: String?
         /// Whether this boot has the Mac's network.
         public var network = true
+        /// False: the selected device isn't running; only Attach to Local Network (its next start) applies.
+        public var isRunning = true
 
         public init(marketingName: String, shortName: String) {
             self.marketingName = marketingName; self.shortName = shortName
@@ -26,6 +28,13 @@ public struct DeviceSettingsMenu {
 
     public init(device: Device?, desiredNetwork: Bool) {
         self.device = device; self.desiredNetwork = desiredNetwork
+    }
+
+    /// The device the items name and change: the window's selection, running or not, never another device that
+    /// happens to be running (an iPad's name on a selected iPhone still preparing). Only with no window to follow,
+    /// the first running device.
+    public static func target<T>(hasWindow: Bool, selected: T?, running: [T]) -> T? {
+        hasWindow ? selected : running.first
     }
 
     public enum Item { case localNetwork, autoRotate, debugPort, copyLLDBCommand, internet }
@@ -49,11 +58,11 @@ public struct DeviceSettingsMenu {
             return Validation(isEnabled: device != nil, title: device.map { "Attach \($0.marketingName) to Local Network" } ?? "Attach to Local Network",
                               isOn: device?.localNetworkEnabled ?? false)
         case .autoRotate:
-            return Validation(isEnabled: device != nil, isOn: device?.autoRotateEnabled ?? true)
+            return Validation(isEnabled: device?.isRunning == true, isOn: device?.autoRotateEnabled ?? true)
         case .debugPort:
             // A switch the running boot doesn't have yet says when it applies.
             let enabled = device?.debugPortEnabled ?? false
-            return Validation(isEnabled: device != nil, isOn: enabled,
+            return Validation(isEnabled: device?.isRunning == true, isOn: enabled,
                               toolTip: device.flatMap { enabled != ($0.debugPort != nil) ? "Takes effect the next time the \($0.shortName) starts." : nil })
         case .copyLLDBCommand:
             return Validation(isEnabled: device?.lldbAttachCommand != nil,

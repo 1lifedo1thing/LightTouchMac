@@ -43,6 +43,19 @@ struct DeviceSettingsMenuTests {
                 == .init(isEnabled: false, title: "Attach to Local Network", isOn: false))
     }
 
+    /// Sam, 10-07: "Attach iPad to Local Network" with a preparing iPhone selected. The window's selection wins,
+    /// stopped or not; another running device is only the target with no window.
+    @Test func theSettingsFollowTheSelectionNotAnotherRunningDevice() {
+        #expect(DeviceSettingsMenu.target(hasWindow: true, selected: nil as String?, running: ["iPad"]) == nil)
+        #expect(DeviceSettingsMenu.target(hasWindow: true, selected: "iPhone", running: ["iPad"]) == "iPhone")
+        #expect(DeviceSettingsMenu.target(hasWindow: false, selected: nil as String?, running: ["iPad"]) == "iPad")
+        var stopped = DeviceSettingsMenu.Device(marketingName: "iPhone 4", shortName: "iPhone")
+        stopped.isRunning = false
+        let menu = DeviceSettingsMenu(device: stopped, desiredNetwork: true)
+        #expect(menu.validate(.localNetwork) == .init(isEnabled: true, title: "Attach iPhone 4 to Local Network", isOn: false))
+        #expect(!menu.validate(.autoRotate).isEnabled && !menu.validate(.debugPort).isEnabled)
+    }
+
     @Test func debugPortFollowsTheNextStartAndOffersLLDBOnlyWithAPort() {
         var device = iPod
         func menu() -> DeviceSettingsMenu { DeviceSettingsMenu(device: device, desiredNetwork: true) }
