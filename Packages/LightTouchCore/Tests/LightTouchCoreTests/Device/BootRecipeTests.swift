@@ -102,6 +102,22 @@ struct BootRecipeTests {
         #expect(!argv("user,id=wifi0,guestfwd=tcp:10.0.2.100:3128-cmd:/usr/bin/nc -U /tmp/restrict=on").wifiRestricted, "a path containing restrict=on")
     }
 
+    /// An iPhone's cell0 follows wifi0's lan=, and with no wifi0 given (networking off) still starts off the LAN.
+    @Test func anIPhonesCell0StaysOffTheLANLikeWifi0() {
+        let fwd = ",guestfwd=tcp:10.0.2.100:3128-cmd:/usr/bin/nc -U /tmp/p.sock"
+        let m68 = DeviceInfo(machine: "iphone2g", board: "m68ap", screenWidth: 320, screenHeight: 480, screenScale: 1, defaultOrientation: 0,
+                             hasCellular: true, hasUSBHost: false, hasCompass: false, hasUSBCharger: false,
+                             panelMin: 0, panelMaxWidth: 0, panelMaxHeight: 0, panelWidthStep: 0, panelMaxPixels: 0)
+        let phone = BootRecipe.IPod1G(bootrom: "b", iBoot: "i", nand: "n", writableNOR: "w", overlay: "o")
+        func cell(_ netdev: String?) -> String? {
+            let a = BootRecipe.iPod1G(phone, hardware: m68, serial: "null", audio: [], netdev: netdev).argv
+            return zip(a, a.dropFirst()).first { $0 == "-netdev" && $1.hasPrefix("user,id=cell0") }?.1
+        }
+        #expect(cell(nil) == "user,id=cell0,lan=off", "cell0 without wifi0 reaches the LAN")
+        #expect(cell(BootRecipe.wifiNetdev(guestForward: fwd, restricted: false)) == "user,id=cell0" + fwd + ",lan=off")
+        #expect(cell(BootRecipe.wifiNetdev(guestForward: fwd, restricted: false, localNetwork: true)) == "user,id=cell0" + fwd)
+    }
+
     typealias Poll = (String?, String?)
     static let SB = "com.apple.springboard", PB = "com.apple.purplebuddy"
     func lifts(_ seq: [Poll]) -> Int? {
