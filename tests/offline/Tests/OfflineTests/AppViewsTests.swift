@@ -1,10 +1,10 @@
 import AppKit
 import Testing
 @testable import LightTouchCore
-@testable import Controls
+@testable import AppViews
 
 /// Small AppKit controls, laid out in windows that are never ordered in.
-@Suite struct ControlsTests {
+@Suite struct AppViewsTests {
     init() { _ = NSApplication.shared; NSApp.setActivationPolicy(.prohibited) }
 
     /// The Apps pane keeps its width (280, 320, 400 pt, held like the inspector's split view) whatever its message

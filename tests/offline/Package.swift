@@ -20,8 +20,8 @@ let package = Package(name: "OfflineChecks", platforms: [.macOS("14.4")],
         .package(path: "../../Packages/FirmwareKit"),
     ],
     targets: [
-        // Small AppKit controls: the Apps pane's message, the horizon button, the record button, the Apps rows.
-        .target(name: "Controls", dependencies: [.product(name: "LightTouchCore", package: "LightTouchCore")], swiftSettings: settings),
-        .testTarget(name: "OfflineTests", dependencies: ["Controls"], swiftSettings: settings),
+        // The app's views and windows that stand alone: production files whole, with a stand-in EmulatorController for the panels that name it.
+        .target(name: "AppViews", dependencies: [.product(name: "LightTouchCore", package: "LightTouchCore"), .product(name: "HostRuntime", package: "HostRuntime")], swiftSettings: settings),
+        .testTarget(name: "OfflineTests", dependencies: ["AppViews"], swiftSettings: settings),
     ],
     swiftLanguageModes: [.v5])
