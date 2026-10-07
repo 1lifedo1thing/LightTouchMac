@@ -69,7 +69,8 @@ struct MediaVideo: Sendable {
             try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true,
                                                     attributes: [.posixPermissions: 0o700])
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: cache.path)
-            let cached = cache.appendingPathComponent(try MediaIdentity.identifier(for: snapshot) + ".m4v")
+            let cached = cache.appendingPathComponent(try MediaIdentity.identifier(for: snapshot)
+                                                      + (MediaVideoExport.playsHD(profile) ? "-720p" : "") + ".m4v")
             var reused = false
             if FileManager.default.fileExists(atPath: cached.path) {
                 do {
@@ -166,15 +167,19 @@ private final class MediaVideoExport {
     private let profile: DeviceProfile
     private var session: AVAssetExportSession?
 
+    /// The A4 devices (iPad, iPhone 4, iPod touch 4th generation) play H.264 up to 720p.
+    nonisolated static func playsHD(_ profile: DeviceProfile) -> Bool { [.iPad1, .iPhone4, .iPodTouch4G].contains(profile) }
+
     init(source: URL, destination: URL, profile: DeviceProfile) {
         self.source = source; self.destination = destination; self.profile = profile
     }
 
     func run() async throws {
         try Task.checkCancellation()
-        // Apple's device preset produces the H.264/AAC profile, dimensions
-        // and frame rate supported by the original iPod hardware.
-        guard let session = AVAssetExportSession(asset: AVURLAsset(url: source), presetName: AVAssetExportPresetAppleM4ViPod) else {
+        // Apple's device presets produce the H.264/AAC profile, dimensions and frame rate the hardware plays:
+        // 640×480 for the iPods and the iPhone 3GS, 720p for the A4 devices.
+        let preset = Self.playsHD(profile) ? AVAssetExportPresetAppleM4V720pHD : AVAssetExportPresetAppleM4ViPod
+        guard let session = AVAssetExportSession(asset: AVURLAsset(url: source), presetName: preset) else {
             throw DeviceToolsError.failed("This video couldn’t be converted for the \(profile.shortName).")
         }
         self.session = session

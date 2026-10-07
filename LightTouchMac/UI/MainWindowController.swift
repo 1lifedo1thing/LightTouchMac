@@ -109,6 +109,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         inspectorItem.maximumThickness = 400
 
         split.addSplitViewItem(inspectorItem)
+        // The sidebar's width and the inspector's, and whether each is shown, as the user left them.
+        split.splitView.autosaveName = "Main"
         
         let window = NSWindow(contentViewController: split)
         window.title = profile.displayName
@@ -505,6 +507,23 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         }
     }
 
+    /// Files opened from Finder, the Dock or `open` (AppDelegate.application(_:open:)), sorted as a drop is:
+    /// an IPSW to the library (the catalog names its entry), an .ipa to the device on screen.
+    func open(_ urls: [URL]) {
+        showWindow(nil)
+        DroppedFiles.files(urls, .ipsw).forEach { handOffIPSW($0, for: nil) }
+        let ipas = DroppedFiles.files(urls, .ipa)
+        guard !ipas.isEmpty else { return }
+        guard let deviceVC else {
+            let alert = NSAlert()
+            alert.messageText = "No device is running"
+            alert.informativeText = "Start a device, then open the app again."
+            if let window { alert.beginSheetModal(for: window) { _ in } } else { alert.runModal() }
+            return
+        }
+        ipas.forEach(deviceVC.installDropped)
+    }
+
     private func handOffIPSW(_ url: URL, for entry: FirmwareCatalog.Entry?) {
         FirmwareJobs.shared.importIPSW(url, for: entry)
     }
@@ -534,8 +553,17 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
     // MARK: - Health / status surfacing
 
+    /// The Files window follows the selected device; its title says which.
+    private func titleFilesWindow() {
+        guard let window = filesWindow?.window else { return }
+        let label = selectedEntry.map { library.label(for: $0) }
+        window.title = "\(label?.title ?? currentProfile.shortName) Files"
+        window.subtitle = label?.subtitle ?? ""
+    }
+
     private func refreshForState() {
         proxySettingsEditor?.updateStatus(emulator?.webProxyStatus ?? .waiting)
+        titleFilesWindow()
         if let filesVC {
             let socket = emulator.flatMap { $0.canReachDevice ? $0.usbmuxSession : nil }
             if filesVC.services?.clientSocket != socket {
@@ -958,6 +986,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
             files.browser.services = emulator.flatMap { $0.canReachDevice ? $0.usbmuxSession : nil }.map { DeviceServices(clientSocket: $0) }
             files.browser.onActivityChange = { [weak self] in self?.refreshFileStatus() }
             files.browser.reload()
+            titleFilesWindow()
         }
         filesWindow?.showWindow(sender)
     }
@@ -1312,13 +1341,19 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
             network: \(emulator.network)   usbmuxd: \(emulator.usbmuxSession ?? "none")
             canManageApps: \(emulator.canManageApps)
             """ } ?? "state: not running"
+        let executables = Bundle.main.executableURL.flatMap {
+            try? FileManager.default.contentsOfDirectory(atPath: $0.deletingLastPathComponent().path)
+        } ?? []
+        let reports = DiagnosticsExport.crashReports(executables: executables)
         let info = """
         LightTouchMac diagnostics
+        \(DiagnosticsExport.systemSummary())
+        crash reports: \(reports.isEmpty ? "none in the last 30 days" : reports.map(\.lastPathComponent).joined(separator: ", "))
         device: \(diagnosticInstance.map { "\($0.name) \($0.firmware) \($0.id)" } ?? "none")
         \(device)
         """
         do {
-            try await DiagnosticsExport.write(to: dest, logs: logs, info: info)
+            try await DiagnosticsExport.write(to: dest, logs: logs, info: info, crashReports: reports)
             NSWorkspace.shared.activateFileViewerSelecting([dest])
         } catch is CancellationError {
             // The exporter waits for its child to stop before removing scratch.

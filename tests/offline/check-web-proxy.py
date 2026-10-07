@@ -172,6 +172,21 @@ def main():
                 assert status(r) == b'HTTP/1.0 200 OK' and '/offline' in Origin.seen, r[:120]
             finally:
                 offline.kill()
+            # Attach to Local Network off: private, link-local, multicast and .local destinations get the proxy's own
+            # 502 without a connection (one would make macOS ask for Local Network access); loopback still works.
+            lan_sock = str(work / 'lan-off.sock')
+            lan = subprocess.Popen([exe, 'serve-lan-off', config, lan_sock], stdout=subprocess.PIPE, text=True)
+            assert lan.stdout.readline().strip() == 'listening'
+            try:
+                for probe in ('GET http://192.168.77.1:9/x HTTP/1.0\r\n\r\n', 'GET http://10.1.2.3/ HTTP/1.0\r\n\r\n',
+                              'CONNECT 169.254.9.9:443 HTTP/1.0\r\n\r\n', 'CONNECT [fe80::1]:443 HTTP/1.0\r\n\r\n',
+                              'CONNECT printer.local:631 HTTP/1.0\r\n\r\n', 'GET http://224.0.0.251:5353/ HTTP/1.0\r\n\r\n'):
+                    r = request(probe.encode(), lan_sock)
+                    assert status(r) == b'HTTP/1.0 502 Local network access is off', (probe.split()[1], r[:80])
+                r = request(f'GET {url}/lan-off HTTP/1.0\r\n\r\n'.encode(), lan_sock)
+                assert status(r) == b'HTTP/1.0 200 OK' and '/lan-off' in Origin.seen, r[:120]
+            finally:
+                lan.kill()
             r = request(f'GET {url}/chunked HTTP/1.0\r\n\r\n'.encode())
             assert r.endswith(b'\r\n\r\nhello') and b'Transfer-Encoding' not in r, r
             r = request(f'GET {url}/gzip HTTP/1.0\r\nAccept-Encoding: gzip\r\n\r\n'.encode())

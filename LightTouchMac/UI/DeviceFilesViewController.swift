@@ -1,7 +1,11 @@
 import Cocoa
+import Quartz
+import UniformTypeIdentifiers
 
-/// AFC's media folder, presented in its own retained Mac window.
-final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMenuItemValidation {
+/// AFC's media folder, presented in its own retained Mac window. Files drag in (onto a folder, or the
+/// column's folder) and out (file promises), several at a time, and Space shows them in Quick Look.
+final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMenuItemValidation,
+                                       NSFilePromiseProviderDelegate, QLPreviewPanelDataSource {
     var services: DeviceServices?
     var onActivityChange: (() -> Void)?
     var hasTransfer: Bool { transfer != nil }
@@ -23,6 +27,12 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
     private var transfer: Task<Void, Never>?
     private var revision = 0
     private var transferID = UUID()
+    /// Quick Look's copies of the selected files, in a private temporary folder removed when the panel closes.
+    private var previewItems: [URL] = []
+    private var previewFolder: URL?
+    private var spaceMonitor: Any?
+    /// Drag-out promises run one after another (AFC transfers are serial anyway).
+    private var promiseChain: Task<Void, Never>?
     private var idleStatusWidth: NSLayoutConstraint!
     private var activeStatusWidth: NSLayoutConstraint!
 
@@ -39,6 +49,9 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
         pathLabel.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .medium)
         pathLabel.lineBreakMode = .byTruncatingMiddle
         let hiddenMenu = NSMenu()
+        let look = hiddenMenu.addItem(withTitle: "Quick Look", action: #selector(quickLook(_:)), keyEquivalent: "")
+        look.target = self
+        hiddenMenu.addItem(.separator())
         let hidden = hiddenMenu.addItem(withTitle: "Show Hidden Files", action: #selector(toggleHidden(_:)), keyEquivalent: "")
         hidden.target = self
         browser.menu = hiddenMenu
@@ -47,7 +60,9 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
         browser.action = #selector(selectionChanged)
         browser.minColumnWidth = 160
         browser.maxVisibleColumns = 3
-        browser.allowsMultipleSelection = false
+        browser.allowsMultipleSelection = true
+        browser.registerForDraggedTypes([.fileURL])
+        browser.setDraggingSourceOperationMask(.copy, forLocal: false)
         browser.takesTitleFromPreviousColumn = false
         browser.isTitled = false
         browser.hasHorizontalScroller = true
@@ -108,7 +123,17 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
         idleStatusWidth = status.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -12)
         activeStatusWidth = status.trailingAnchor.constraint(equalTo: progress.leadingAnchor, constant: -12)
         updateControls()
+        // Space toggles Quick Look while the browser has focus (its matrix takes the key otherwise).
+        spaceMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.window === view.window, event.charactersIgnoringModifiers == " ",
+                  event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
+                  let responder = view.window?.firstResponder as? NSView, responder.isDescendant(of: browser) else { return event }
+            quickLook(nil)
+            return nil
+        }
     }
+
+    deinit { if let spaceMonitor { NSEvent.removeMonitor(spaceMonitor) } }
 
     func focusBrowser() {
         if view.window?.makeFirstResponder(browser) != true { view.window?.makeFirstResponder(view) }
@@ -141,7 +166,8 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
         case #selector(importFile): return services != nil && !hasTransfer
-        case #selector(exportFile): return services != nil && !hasTransfer && selected?.isRegular == true
+        case #selector(exportFile): return services != nil && !hasTransfer && !selectedFiles.isEmpty
+        case #selector(quickLook(_:)): return services != nil && !hasTransfer && !selectedFiles.isEmpty
         case #selector(cancelTransfer): return hasTransfer
         case #selector(refreshFiles(_:)): return !hasTransfer
         case #selector(toggleHidden(_:)):
@@ -217,6 +243,19 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
         return entries.indices.contains(row) ? entries[row] : nil
     }
 
+    /// The selected regular files (several with ⌘/⇧-click); folders in the selection are left out.
+    private var selectedFiles: [DeviceFile] {
+        let column = browser.selectedColumn
+        guard column >= 0, let path = directory(for: column), let entries = directories[path],
+              let rows = browser.selectedRowIndexes(inColumn: column) else { return [] }
+        return rows.filter { entries.indices.contains($0) }.map { entries[$0] }.filter(\.isRegular)
+    }
+
+    /// The folder a new file goes into: the selected folder, else the selected column's.
+    private var targetDirectory: String {
+        selected.flatMap { $0.isDirectory ? $0.path : nil } ?? directory(for: max(0, browser.selectedColumn)) ?? ""
+    }
+
     @objc private func selectionChanged() {
         let path = selected?.path ?? directory(for: max(0, browser.selectedColumn)) ?? ""
         pathLabel.stringValue = path.isEmpty ? "Media" : "Media / " + path.replacingOccurrences(of: "/", with: " / ")
@@ -224,7 +263,7 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
     }
     private func updateControls() {
         upload.isEnabled = services != nil && transfer == nil
-        download.isEnabled = services != nil && transfer == nil && selected?.isRegular == true
+        download.isEnabled = services != nil && transfer == nil && !selectedFiles.isEmpty
         refresh.isEnabled = transfer == nil
         cancel.isHidden = transfer == nil
         idleStatusWidth?.isActive = false
@@ -243,36 +282,187 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
     }
 
     @objc func importFile() {
-        guard let window = view.window, let services, transfer == nil else { return }
-        let path = selected.flatMap { $0.isDirectory ? $0.path : nil }
-            ?? directory(for: max(0, browser.selectedColumn)) ?? ""
+        guard let window = view.window, transfer == nil else { return }
+        let path = targetDirectory
         let panel = NSOpenPanel()
         panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
+        panel.allowsMultipleSelection = true
         let generation = revision
         panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let self, generation == self.revision, let url = panel.url else { return }
-            self.beginTransfer { progress in
-                try await services.uploadFile(url, into: path, progress: progress)
+            guard response == .OK, let self, generation == self.revision else { return }
+            self.upload(panel.urls, into: path)
+        }
+    }
+
+    private func upload(_ urls: [URL], into path: String) {
+        guard let services, transfer == nil, !urls.isEmpty else { return }
+        beginTransfer { progress in
+            for (index, url) in urls.enumerated() {
+                try await services.uploadFile(url, into: path) { progress((Double(index) + $0) / Double(urls.count)) }
             }
         }
     }
 
     @objc func exportFile() {
-        guard let window = view.window, let services, let file = selected,
-              file.isRegular, transfer == nil else { return }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = file.name
+        guard let window = view.window, let services, transfer == nil else { return }
+        let files = selectedFiles
         let generation = revision
-        panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let self, generation == self.revision, let url = panel.url else { return }
-            self.beginTransfer { progress in
-                try await services.download(file, to: url, progress: progress)
+        if files.count == 1, let file = files.first {
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = file.name
+            panel.beginSheetModal(for: window) { [weak self] response in
+                guard response == .OK, let self, generation == self.revision, let url = panel.url else { return }
+                self.beginTransfer { progress in
+                    try await services.download(file, to: url, progress: progress)
+                }
+            }
+        } else if !files.isEmpty {
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = false
+            panel.canChooseDirectories = true
+            panel.canCreateDirectories = true
+            panel.prompt = "Save"
+            panel.message = "Choose where to save \(files.count) files."
+            panel.beginSheetModal(for: window) { [weak self] response in
+                guard response == .OK, let self, generation == self.revision, let folder = panel.url else { return }
+                self.beginTransfer { progress in
+                    for (index, file) in files.enumerated() {
+                        let url = folder.appendingPathComponent(file.name).unused
+                        try await services.download(file, to: url) { progress((Double(index) + $0) / Double(files.count)) }
+                    }
+                }
             }
         }
     }
 
-    private func beginTransfer(_ work: @escaping @Sendable (@escaping @Sendable (Double) -> Void) async throws -> Void) {
+    // MARK: - Drag in and out
+
+    private func droppedFiles(_ info: NSDraggingInfo) -> [URL] {
+        (info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? [])
+            .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
+    }
+
+    func browser(_ browser: NSBrowser, validateDrop info: NSDraggingInfo, proposedRow row: UnsafeMutablePointer<Int>,
+                 column: UnsafeMutablePointer<Int>, dropOperation: UnsafeMutablePointer<NSBrowser.DropOperation>) -> NSDragOperation {
+        guard services != nil, transfer == nil, info.draggingSource as? NSBrowser !== browser, !droppedFiles(info).isEmpty,
+              let path = directory(for: column.pointee), let entries = directories[path] else { return [] }
+        // Onto a folder row: into it. Anywhere else in a column: that column's folder.
+        if dropOperation.pointee == .on, entries.indices.contains(row.pointee), entries[row.pointee].isDirectory { return .copy }
+        row.pointee = -1
+        dropOperation.pointee = .above
+        return .copy
+    }
+
+    func browser(_ browser: NSBrowser, acceptDrop info: NSDraggingInfo, atRow row: Int, column: Int,
+                 dropOperation: NSBrowser.DropOperation) -> Bool {
+        guard let path = directory(for: column), let entries = directories[path] else { return false }
+        let into = dropOperation == .on && entries.indices.contains(row) && entries[row].isDirectory ? entries[row].path : path
+        let urls = droppedFiles(info)
+        upload(urls, into: into)
+        return !urls.isEmpty
+    }
+
+    func browser(_ browser: NSBrowser, canDragRowsWith rowIndexes: IndexSet, inColumn column: Int, with event: NSEvent) -> Bool {
+        guard services != nil, transfer == nil, let path = directory(for: column), let entries = directories[path] else { return false }
+        return rowIndexes.allSatisfy { entries.indices.contains($0) && entries[$0].isRegular }
+    }
+
+    func browser(_ browser: NSBrowser, writeRowsWith rowIndexes: IndexSet, inColumn column: Int, to pasteboard: NSPasteboard) -> Bool {
+        guard let path = directory(for: column), let entries = directories[path] else { return false }
+        let providers = rowIndexes.filter { entries.indices.contains($0) && entries[$0].isRegular }.map { promise(entries[$0]) }
+        pasteboard.clearContents()
+        return !providers.isEmpty && pasteboard.writeObjects(providers)
+    }
+
+    func promise(_ file: DeviceFile) -> NSFilePromiseProvider {
+        let type = UTType(filenameExtension: (file.name as NSString).pathExtension) ?? .data
+        let provider = NSFilePromiseProvider(fileType: type.identifier, delegate: self)
+        provider.userInfo = file
+        return provider
+    }
+
+    nonisolated func filePromiseProvider(_ provider: NSFilePromiseProvider, fileNameForType fileType: String) -> String {
+        MainActor.assumeIsolated { (provider.userInfo as? DeviceFile)?.name ?? "File" }
+    }
+
+    nonisolated func filePromiseProvider(_ provider: NSFilePromiseProvider, writePromiseTo url: URL,
+                                         completionHandler: @escaping (Error?) -> Void) {
+        let handler = UncheckedHandler(completionHandler)
+        MainActor.assumeIsolated {
+            guard let file = provider.userInfo as? DeviceFile, let services else {
+                handler.call(CocoaError(.fileReadUnknown)); return
+            }
+            let previous = promiseChain
+            status.stringValue = "Copying \(file.name)…"
+            promiseChain = Task { [weak self] in
+                await previous?.value
+                do {
+                    try await services.download(file, to: url) { _ in }
+                    handler.call(nil)
+                    self?.status.stringValue = "File copied"
+                } catch {
+                    handler.call(error)
+                    self?.status.stringValue = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    // MARK: - Quick Look
+
+    /// Shows the panel on the copies (a check replaces it to stay off screen).
+    var presentPreview: () -> Void = {
+        QLPreviewPanel.shared()?.makeKeyAndOrderFront(nil)
+        QLPreviewPanel.shared()?.reloadData()
+    }
+    var previewURLs: [URL] { previewItems }
+
+    @objc func quickLook(_ sender: Any?) {
+        if QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(), panel.isVisible { panel.orderOut(nil); return }
+        let files = selectedFiles
+        guard let services, transfer == nil, !files.isEmpty else { return }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("LightTouch-QuickLook-" + UUID().uuidString, isDirectory: true)
+        let generation = revision
+        beginTransfer(reloadAfter: false) { progress in
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            for (index, file) in files.enumerated() {
+                try await services.download(file, to: folder.appendingPathComponent(file.name)) { progress((Double(index) + $0) / Double(files.count)) }
+            }
+        } done: { [weak self] ok in
+            guard let self, generation == revision else { try? FileManager.default.removeItem(at: folder); return }
+            guard ok else { try? FileManager.default.removeItem(at: folder); return }
+            clearPreview()
+            previewFolder = folder
+            previewItems = files.map { folder.appendingPathComponent($0.name) }
+            presentPreview()
+        }
+    }
+
+    private func clearPreview() {
+        if let previewFolder { try? FileManager.default.removeItem(at: previewFolder) }
+        previewFolder = nil
+        previewItems = []
+    }
+
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = self
+        panel.reloadData()
+    }
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = nil
+        clearPreview()
+    }
+    nonisolated func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
+        MainActor.assumeIsolated { previewItems.count }
+    }
+    nonisolated func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
+        MainActor.assumeIsolated { previewItems[index] as NSURL }
+    }
+
+    private func beginTransfer(reloadAfter: Bool = true,
+                               _ work: @escaping @Sendable (@escaping @Sendable (Double) -> Void) async throws -> Void,
+                               done: ((Bool) -> Void)? = nil) {
         let generation = revision
         let id = UUID()
         transferID = id
@@ -291,14 +481,21 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
                 }
                 guard let self, generation == revision else { return }
                 transfer = nil
-                transferMessage = "File copied"
-                reload()
+                if reloadAfter {
+                    transferMessage = "File copied"
+                    reload()
+                } else {
+                    status.stringValue = transferMessage ?? ""
+                    updateControls()
+                }
+                done?(true)
             } catch {
                 guard let self, generation == revision else { return }
                 transfer = nil
                 status.stringValue = error is CancellationError ? "Copy cancelled" : error.localizedDescription
                 transferMessage = status.stringValue
                 updateControls()
+                done?(false)
             }
         }
         updateControls()
@@ -316,4 +513,10 @@ private final class FilesBackground: NSView {
     override func rotate(with event: NSEvent) {}
     override func keyDown(with event: NSEvent) {}
     override func keyUp(with event: NSEvent) {}
+}
+
+/// A file promise's completion handler, called once from the main actor.
+private struct UncheckedHandler: @unchecked Sendable {
+    let call: (Error?) -> Void
+    init(_ call: @escaping (Error?) -> Void) { self.call = call }
 }

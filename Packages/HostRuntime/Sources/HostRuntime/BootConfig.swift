@@ -30,7 +30,15 @@ public nonisolated struct BootConfig: Codable, Sendable, Equatable {
     /// argv's wifi0 user netdev boots restricted (BootRecipe.wifiNetdev): 5.x Setup runs offline. The
     /// helper's web proxy starts offline to match and opens with `.netRestrict(false)`.
     public var wifiRestricted: Bool {
-        zip(argv, argv.dropFirst()).contains { $0 == "-netdev" && $1.hasPrefix("user,id=wifi0,") && $1.split(separator: ",").contains("restrict=on") }
+        wifiOptions.contains("restrict=on")
+    }
+
+    /// argv's wifi0 netdev reaches the Mac's local networks (no `lan=off`, BootRecipe.wifiNetdev); the
+    /// helper's web proxy refuses local destinations to match until `.netLocalNetwork(true)`.
+    public var wifiLocalNetwork: Bool { !wifiOptions.contains("lan=off") }
+
+    private var wifiOptions: [Substring] {
+        zip(argv, argv.dropFirst()).first { $0 == "-netdev" && $1.hasPrefix("user,id=wifi0,") }?.1.split(separator: ",") ?? []
     }
 }
 

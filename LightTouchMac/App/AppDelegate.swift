@@ -6,6 +6,7 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     
     private var windowController: MainWindowController?
+    private let dockProgress = DockProgress()
     private var host: DeviceSessionHost?
     /// Every device this launch started; quitting shuts each one down.
     private var emulators: [EmulatorController] { host?.sessions.map(\.emulator) ?? [] }
@@ -33,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc func quit(_ sender: Any?) { Self.requestTermination() }
 
+
     @objc func showDeviceWindow(_ sender: Any?) { windowController?.focusDeviceScreen(sender) }
     @objc func showFilesWindow(_ sender: Any?) { windowController?.toggleFiles(sender) }
 
@@ -58,8 +60,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let current = UserDefaults.standard.object(forKey: NetworkAccessPreference.key) as? Bool ?? emulator?.network ?? true
         UserDefaults.standard.set(!current, forKey: NetworkAccessPreference.key)
     }
+    @objc func toggleLocalNetwork(_ sender: Any?) { emulator?.toggleLocalNetwork() }
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        if item.action == #selector(toggleAutomaticRotation(_:)) {
+        if item.action == #selector(toggleLocalNetwork(_:)) {
+            item.title = emulator.map { "Attach \($0.profile.marketingName) to Local Network" } ?? "Attach to Local Network"
+            item.state = emulator?.localNetworkEnabled ?? false ? .on : .off
+            return emulator != nil
+        } else if item.action == #selector(toggleAutomaticRotation(_:)) {
             item.state = emulator?.autoRotateEnabled ?? true ? .on : .off
             return emulator != nil
         } else if item.action == #selector(showDebugPort(_:)) {
@@ -183,6 +190,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         self.host = host
         self.windowController = controller
         controller.selectLaunchDevice()
+        dockProgress.start()
+        if !pendingOpen.isEmpty { controller.open(pendingOpen); pendingOpen = [] }
     }
 
     /// Development runs: LTM_DEV_BASE names a `firmwarekit create` output directory to run as a
@@ -248,6 +257,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if emulators.contains(where: \.isErasing) { return .terminateCancel }
         if awaitingTermination { return .terminateLater }
         if windowController?.finishRecordingBeforeQuit() == true { return .terminateCancel }
+        // A preparation doesn't survive a quit (a download does: it resumes).
+        let preparing = FirmwareJobs.shared.jobs.values.filter { if case .preparing = $0 { true } else { false } }.count
+        if preparing > 0 {
+            let alert = NSAlert()
+            alert.messageText = preparing == 1 ? "A device is being prepared" : "Devices are being prepared"
+            alert.informativeText = "Quitting stops the preparation. It starts over the next time you prepare the device."
+            alert.addButton(withTitle: "Quit Anyway")
+            alert.addButton(withTitle: "Cancel")
+            alert.buttons.first?.hasDestructiveAction = true
+            guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
+        }
         guard !emulators.isEmpty else { return .terminateNow }
 
         // Queued installs count too. isInstalling is set only around the install
@@ -305,6 +325,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    /// Finder, the Dock and `open` hand over IPSWs and .ipa files here (Configuration/LightTouchMac-Info.plist).
+    /// A launch by opening one arrives before the window exists: held until finishLaunching.
+    private var pendingOpen: [URL] = []
+    func application(_ application: NSApplication, open urls: [URL]) {
+        if let windowController { windowController.open(urls) } else { pendingOpen += urls }
     }
 
     /// Reopen the retained device window even when Files or Help is still visible.

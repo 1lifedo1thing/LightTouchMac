@@ -3,7 +3,9 @@
 // Manages the forked usbmuxd that carries USB between the guest and the host's
 // libimobiledevice tools. QEMU dials OUT to usbmuxd when the guest USB core
 // comes up, so usbmuxd must be listening BEFORE the VM boots — hence this is
-// started ahead of the QEMU thread and its address handed over as IT_USB_TCP.
+// started ahead of the QEMU thread and its address handed over (usb-tcp-addr).
+// Both ends are Unix sockets in the per-user temporary directory, owner-only:
+// no loopback port any local process could reach, and no free-port race.
 //
 // Spawned with swift-subprocess. The daemon is kept alive inside a detached
 // task; cancelling that task makes Subprocess run its teardown (SIGTERM), which
@@ -18,8 +20,15 @@ import System
 final class USBMux {
     
     struct Session: Sendable {
-        let clientSocket: String   // USBMUXD_SOCKET_ADDRESS for host tools
-        let guestAddress: String   // IT_USB_TCP the VM dials out to
+        let clientSocket: String   // USBMUXD_SOCKET_ADDRESS for host tools: "UNIX:<path>"
+        let guestAddress: String   // usb-tcp-addr the VM dials out to: a socket path
+
+        /// Fresh socket paths under the per-user temporary directory (a Unix socket path stays under 104 bytes).
+        static func make() -> (session: Session, client: String) {
+            let base = NSTemporaryDirectory() + "ltm-mux-" + UUID().uuidString.prefix(8)
+            return (Session(clientSocket: "UNIX:" + base + "-c.sock", guestAddress: base + "-g.sock"), base + "-c.sock")
+        }
+        var paths: [String] { [String(clientSocket.dropFirst("UNIX:".count)), guestAddress] }
     }
     
     private(set) var session: Session?
@@ -107,9 +116,8 @@ final class USBMux {
         // else's process.
         reapStaleDaemon(pidFile)
 
-        let clientSocket = "127.0.0.1:\(Self.freePort())"
-        let guestAddress = "127.0.0.1:\(Self.freePort())"
-        let session = Session(clientSocket: clientSocket, guestAddress: guestAddress)
+        let (session, clientSocket) = Session.make()
+        let guestAddress = session.guestAddress
         self.session = session
 
         let binary = Self.binary, conf = Self.conf(paths.usbmuxConf)
@@ -216,38 +224,10 @@ final class USBMux {
         // the task cancellation would otherwise run. Only ever our own child.
         if let pid = daemonPID { kill(pid, SIGTERM) }
         if let pidFile { try? FileManager.default.removeItem(atPath: pidFile) }
+        session?.paths.forEach { unlink($0) }
         daemonPID = nil
         daemonTask?.cancel()
         daemonTask = nil
         session = nil
-    }
-    
-    // MARK: - Free-port pick
-    
-    /// Bind a socket to port 0, read what the kernel assigned, release it. Small
-    /// TOCTOU window, same approach the shell tooling uses.
-    private static func freePort() -> UInt16 {
-        let fd = socket(AF_INET, SOCK_STREAM, 0)
-        guard fd >= 0 else { return 0 }
-        defer { close(fd) }
-        
-        var addr = sockaddr_in()
-        addr.sin_family = sa_family_t(AF_INET)
-        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
-        addr.sin_port = 0
-        let bound = withUnsafePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
-            }
-        }
-        guard bound == 0 else { return 0 }
-        
-        var len = socklen_t(MemoryLayout<sockaddr_in>.size)
-        _ = withUnsafeMutablePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                getsockname(fd, $0, &len)
-            }
-        }
-        return UInt16(bigEndian: addr.sin_port)
     }
 }

@@ -37,8 +37,10 @@ for v in ["3.2", "3.2.2", "4.2.1", "4.3", "4.3.5", "3.1.3"] { expect(!BootRecipe
 
 // The wifi0 netdev: guestfwd kept both ways; unrestricted is the pre-#54 string.
 let fwd = ",guestfwd=tcp:10.0.2.100:3128-cmd:/usr/bin/nc -U /tmp/p.sock"
-expect(BootRecipe.wifiNetdev(guestForward: fwd, restricted: false) == "user,id=wifi0" + fwd, "unrestricted netdev changed")
-let r = BootRecipe.wifiNetdev(guestForward: fwd, restricted: true)
+// Local network off (the default) refuses the guest's LAN traffic in slirp; on, the pre-toggle string.
+expect(BootRecipe.wifiNetdev(guestForward: fwd, restricted: false) == "user,id=wifi0" + fwd + ",lan=off", "default netdev must refuse the LAN")
+expect(BootRecipe.wifiNetdev(guestForward: fwd, restricted: false, localNetwork: true) == "user,id=wifi0" + fwd, "attached netdev changed")
+let r = BootRecipe.wifiNetdev(guestForward: fwd, restricted: true, localNetwork: true)
 expect(r.hasPrefix("user,id=wifi0" + fwd) && r.hasSuffix(",restrict=on"), "restricted netdev: \(r)")
 // The helper reads the same argv to start its web proxy offline (DeviceHost; the PAC routes public hosts
 // through it, and slirp's restrict lets guestfwd traffic by).
@@ -46,6 +48,9 @@ func argv(_ netdev: String?) -> BootConfig { BootConfig(argv: ["LightTouchMac", 
 expect(argv(r).wifiRestricted, "helper doesn't see the restricted netdev")
 expect(!argv(BootRecipe.wifiNetdev(guestForward: fwd, restricted: false)).wifiRestricted, "helper sees an unrestricted netdev as restricted")
 expect(!argv(nil).wifiRestricted, "no netdev read as restricted")
+// The helper's proxy follows lan= the same way (BootConfig.wifiLocalNetwork).
+expect(!argv(BootRecipe.wifiNetdev(guestForward: fwd, restricted: true)).wifiLocalNetwork, "helper's proxy would reach the LAN with lan=off")
+expect(argv(BootRecipe.wifiNetdev(guestForward: fwd, restricted: false, localNetwork: true)).wifiLocalNetwork, "attached device's proxy refuses the LAN")
 expect(!argv("user,id=wifi0,guestfwd=tcp:10.0.2.100:3128-cmd:/usr/bin/nc -U /tmp/restrict=on").wifiRestricted, "a path containing restrict=on")
 
 // The gate over frontmost sequences: (bundleID, name) per 3 s poll; nil = agent not up yet.

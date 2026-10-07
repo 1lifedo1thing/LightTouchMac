@@ -12,7 +12,7 @@
                                                         -audio driver=none: check-helper-boot, check-sessions
                                                         (--ipad-device, then --guest), check-guest-package,
                                                         check-activation-gate, check-boot-deadline, check-files-native,
-                                                        check-media-native, check-proxy-trust
+                                                        check-media-native, check-proxy-trust, check-local-network
 
 --only matches a substring of the check's name (repeatable). Offline and release run -j at a time (default 4)
 through one shared Swift module cache: the runner puts a swiftc/xcrun shim on PATH that rewrites every
@@ -24,6 +24,7 @@ Inputs for the sessions tier, resolved here once (the checks' own flags otherwis
   LTM_QEMU_DYLIB   the helper's dylib (default $(scripts/sources.py qemu-build)/libqemu-arm.dylib)
   LTM_IPAD_DEVICE  a device.py iPad (default ~/Developer/qemu-ios-files/ipad1/repro/default-iboot)
   LTM_IPOD_DEVICE  --guest: a fresh device.py 7E18 iPod with a baked seed package (no default)
+  LTM_IPOD_BASE    check-local-network: a prepared n72 base (firmwarekit create output; no default)
   LTM_ITPACK       --guest: the armv6 package (default $QEMU_IOS_DIR/build/guest-package/armv6.itpack)
 A check whose input is missing is SKIP with the path it wanted. A check listed in XFAIL below fails on today's
 code for the reason given: it runs and reports XFAIL (XPASS once it passes again) and neither fails the run.
@@ -203,6 +204,12 @@ def session_checks():
             and want(trust, itpack, 'armv6 package (LTM_ITPACK)') \
             and want(trust, qemu_ios / 'contrib/it-proxy/httpget', 'httpget (contrib/it-proxy/build.sh)'):
         checks.append([S / 'check-proxy-trust.py', '--board', 'ipod', '--itpack', itpack, '--httpget', qemu_ios / 'contrib/it-proxy/httpget', '--dylib', dylib])
+    # Attach to Local Network off: internet yes, the Mac's LAN no, until turned on (a prepared n72 base: its PAC).
+    lan = 'sessions/check-local-network.py'
+    base = Path(os.environ.get('LTM_IPOD_BASE', '/nonexistent'))
+    if dylib.exists() and want(lan, base, 'prepared n72 base (LTM_IPOD_BASE)') \
+            and want(lan, qemu_ios / 'contrib/it-proxy/httpget', 'httpget (contrib/it-proxy/build.sh)'):
+        checks.append([S / 'check-local-network.py', '--base', base, '--itpack', itpack, '--httpget', qemu_ios / 'contrib/it-proxy/httpget', '--dylib', dylib])
     return checks, skips
 
 

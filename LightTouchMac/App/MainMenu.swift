@@ -204,6 +204,7 @@ enum MainMenuBuilder {
         menu.addItem(submenu(input, title: "Input"))
         let network = NSMenu(title: "Network")
         network.addItem(item("Connect to the Internet", #selector(AppDelegate.toggleInternetAccess(_:))))
+        network.addItem(item("Attach to Local Network", #selector(AppDelegate.toggleLocalNetwork(_:))))
         network.addItem(.separator())
         network.addItem(item("Proxy…", #selector(MainWindowController.configureWebProxy(_:))))
         menu.addItem(submenu(network, title: "Network"))

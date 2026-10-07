@@ -26,7 +26,7 @@ final class Screen {
     var window: Window? = Window(backingScaleFactor: 2)
     var appliedScale: CGFloat = 1
     var freeFormActive = false   // the shipped screen
-""" + block(display, "var pixelMultiple:") + "\n" + block(display, "private func shellScale(").replace("private ", "") + """
+""" + block(display, "var pixelMultiple:") + "\n" + block(display, "private func shellScale(").replace("private ", "") + "\n" + block(display, "static func contentsFilter(") + """
 }
 final class Controller {
     struct Device { let screen = Screen() }
@@ -50,8 +50,12 @@ for backing: CGFloat in [1, 2] {
     for step in ZoomMode.steps {
         s.appliedScale = s.shellScale(guestPixelsPerDisplayPixel: step)
         assert(abs(s.pixelMultiple - CGFloat(step)) < 0.00001)
+        assert(Screen.contentsFilter(s.pixelMultiple) == .nearest, "a whole step is drawn crisp")
     }
 }
+// Fit lands between steps: filtered, not uneven nearest-neighbour pixels.
+s.appliedScale = s.shellScale(guestPixelsPerDisplayPixel: 2) * 1.37
+assert(Screen.contentsFilter(s.pixelMultiple) == .linear, "a fractional Fit is filtered")
 s.appliedScale = s.shellScale(guestPixelsPerDisplayPixel: 2) * 1.2
 c.stepZoom(1); assert(c.zoom == .pixels(3))
 c.stepZoom(-1); assert(c.zoom == .pixels(2))
@@ -59,7 +63,7 @@ s.appliedScale = s.shellScale(guestPixelsPerDisplayPixel: 8)
 c.stepZoom(1); assert(c.zoom == .pixels(8))
 s.appliedScale = s.shellScale(guestPixelsPerDisplayPixel: 1)
 c.stepZoom(-1); assert(c.zoom == .pixels(1))
-print("PASS: backing scale, manual pixel scale, fit-to-step transitions and limits, saved zoom (Pixel Accurate stays 100%)")
+print("PASS: backing scale, manual pixel scale, nearest at whole steps and linear between, fit-to-step transitions and limits, saved zoom (Pixel Accurate stays 100%)")
 """
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory) / "check.swift"

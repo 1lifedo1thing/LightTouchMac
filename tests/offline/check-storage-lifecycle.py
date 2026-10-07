@@ -56,7 +56,22 @@ nonisolated func logEvent(_ format: String, _ arguments: CVarArg...) {}
         let log = root.appendingPathComponent("app.log")
         try put("sample events", log)
         let success = exports.appendingPathComponent("success.zip")
-        try await DiagnosticsExport.write(to: success, logs: [log], info: "real ditto archive", temporaryRoot: scratch)
+        // The app's own crash reports, newest first, nobody else's and nothing older than 30 days.
+        let reports = root.appendingPathComponent("DiagnosticReports")
+        try FileManager.default.createDirectory(at: reports, withIntermediateDirectories: true)
+        for (name, age) in [("LightTouch-2026-10-07-101010.ips", 60.0), ("LightTouchDevice-2026-10-07-101011.ips", 30.0),
+                            ("Safari-2026-10-07-101012.ips", 10.0), ("LightTouchServices-2026-08-01-101010.ips", 40 * 86_400.0),
+                            ("LightTouchDevice-notes.txt", 5.0)] {
+            let url = reports.appendingPathComponent(name)
+            try put("report", url)
+            try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-age)], ofItemAtPath: url.path)
+        }
+        let found = DiagnosticsExport.crashReports(executables: ["LightTouch", "LightTouchDevice", "LightTouchServices"], in: reports)
+        precondition(found.map(\.lastPathComponent) == ["LightTouchDevice-2026-10-07-101011.ips", "LightTouch-2026-10-07-101010.ips"], "\(found)")
+        let summary = DiagnosticsExport.systemSummary()
+        precondition(summary.contains("macOS ") && summary.contains(ProcessInfo.processInfo.operatingSystemVersionString)
+                     && (summary.contains("arm64") || summary.contains("x86_64")), summary)
+        try await DiagnosticsExport.write(to: success, logs: [log], info: "real ditto archive", crashReports: found, temporaryRoot: scratch)
         precondition(exists(success) && (try children(scratch)).isEmpty)
         let archiver = URL(fileURLWithPath: ProcessInfo.processInfo.environment["LTM_TEST_ARCHIVER"]!)
         let preserved = exports.appendingPathComponent("preserved.zip")
@@ -134,3 +149,5 @@ exit 1
         subprocess.run(["/usr/bin/unzip", "-tq", str(archive)], check=True)
         actual = subprocess.check_output(["/usr/bin/unzip", "-p", str(archive), "LightTouchMac-diagnostics/info.txt"], text=True)
         assert actual == info
+    listing = subprocess.check_output(["/usr/bin/unzip", "-Z1", str(work / "exports" / "success.zip")], text=True).split()
+    assert "LightTouchMac-diagnostics/CrashReports/LightTouchDevice-2026-10-07-101011.ips" in listing, listing

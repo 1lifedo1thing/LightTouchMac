@@ -122,6 +122,7 @@ Device/Input/Send Keyboard Input
 Device/Input/Connect Hardware Keyboard  ⇧⌘k
 Device/Network ▸
 Device/Network/Connect to the Internet
+Device/Network/Attach to Local Network
 Device/Network/-
 Device/Network/Proxy…
 Device/Carrier…
@@ -190,6 +191,7 @@ struct Instance { let id=UUID() }
 @MainActor enum AppInstaller { static var hasPendingWork=false; static func hasPendingWork(for id:UUID)->Bool {hasPendingWork} }
 @MainActor final class AppDelegate:NSObject { @objc func toggleAutomaticRotation(_ sender:Any?) {}
  @objc func toggleInternetAccess(_ sender:Any?) {}
+ @objc func toggleLocalNetwork(_ sender:Any?) {}
  @objc func showDebugPort(_ sender:Any?) {}
  @objc func copyLLDBCommand(_ sender:Any?) {}
  @objc func showHelp(_ sender:Any?) {}

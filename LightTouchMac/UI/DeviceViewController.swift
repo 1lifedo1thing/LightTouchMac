@@ -67,7 +67,7 @@ final class DeviceViewController: NSViewController {
     /// boot (or with app sync off) was accepted, put a spinner in a sidebar
     /// that wasn't even polling, and failed a moment later with a modal —
     /// while the button for the identical operation sat greyed out.
-    private func installDropped(_ url: URL) {
+    func installDropped(_ url: URL) {
         // Deliberately NOT gated on isInstalling: AppInstaller queues each job
         // when their bytes are ready, so dropping another IPA is supported.
         // Refusing it was a regression — dropping three at once is the whole

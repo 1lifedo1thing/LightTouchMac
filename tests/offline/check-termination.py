@@ -20,6 +20,8 @@ source=r'''import AppKit
  static let hasPendingWork=false
  static func cancelPendingWork(){}
 }
+@MainActor enum FirmwareJob { case preparing(Int), failed(String) }
+@MainActor final class FirmwareJobs { static let shared=FirmwareJobs(); var jobs:[String:FirmwareJob]=[:] }
 @MainActor final class MainWindowController {
  let hasFileTransfer=false
  func cancelFileTransfer(){}

@@ -7,6 +7,7 @@ DEVICE_PROFILE = str(Path(__file__).resolve().parents[2] / 'LightTouchMac/Device
 root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(root / 'scripts'))
 import sources  # the pinned checkouts (build-support/sources.json)
+import host_runtime
 fixtures = sources.path('qemu-ios') / 'contrib/it-harness/build/Payload/Harness.app'
 if not fixtures.is_dir():
     print(f'SKIP: no harness fixtures at {fixtures}; build them with contrib/it-harness/build.sh in the pinned checkout (or set QEMU_IOS_DIR)'); raise SystemExit(0)
@@ -20,6 +21,14 @@ enum DeviceToolsError: LocalizedError {
  static func main() async throws {
   let source = URL(fileURLWithPath: CommandLine.arguments[1])
   let work = URL(fileURLWithPath: CommandLine.arguments[2])
+  if CommandLine.arguments.count > 3 {   // a 720p source: the iPad keeps 720p, the iPod gets its own 640-wide copy
+   for (profile, name) in [(DeviceProfile.iPad1, "hd-ipad.m4v"), (.iPodTouch2G, "hd-ipod.m4v")] {
+    let prepared = try await MediaVideo.prepare(source, cacheDirectory: work.appendingPathComponent("hd-cache"), profile: profile)
+    try FileManager.default.copyItem(at: prepared.video, to: work.appendingPathComponent(name))
+    try? FileManager.default.removeItem(at: prepared.directory)
+   }
+   return
+  }
   let original = try Data(contentsOf: source)
   let first = try await MediaVideo.prepare(source, cacheDirectory: work.appendingPathComponent("cache"), profile: .iPodTouch2G)
   defer { try? FileManager.default.removeItem(at: first.directory) }
@@ -84,7 +93,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-video-check-') as directory:
     shutil.copyfile(fixtures / 'aac.m4a', work / 'audio.mov')
     (work / 'folder.mp4').mkdir()
     shutil.copyfile(movie, work / 'unknown.avi')
-    subprocess.run(['xcrun', 'swiftc', DEVICE_PROFILE, '-swift-version', '6', '-default-isolation', 'MainActor',
+    subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(root), DEVICE_PROFILE, '-swift-version', '6', '-default-isolation', 'MainActor',
                     '-module-cache-path', str(work / 'modules'), str(root / 'LightTouchMac/Features/MediaIdentity.swift'),
                     str(root / 'LightTouchMac/Features/MediaVideo.swift'), str(work / 'check.swift'), '-o', str(work / 'check')], check=True)
     subprocess.run([str(work / 'check'), str(movie), str(work)], check=True, timeout=90)
@@ -98,3 +107,16 @@ with tempfile.TemporaryDirectory(prefix='ltm-video-check-') as directory:
     for audio in (stream for stream in streams if stream['codec_type'] == 'audio'):
         assert audio['codec_name'] == 'aac' and audio['channels'] <= 2 and int(audio['sample_rate']) <= 48000, audio
     print('PASS: H.264 Baseline Level ≤3, ≤640×480 at ≤30 fps and compatible audio')
+    # Per device: a 720p movie stays 720p for the iPad (A4), 640 wide for the iPod, from one cache.
+    hd = work / 'hd.mp4'
+    subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc=size=1280x720:rate=30', '-t', '2', '-pix_fmt', 'yuv420p',
+                    '-c:v', 'libx264', str(hd)], check=True)
+    subprocess.run([str(work / 'check'), str(hd), str(work), 'hd'], check=True, timeout=90)
+    def size(name):
+        stream = next(s for s in json.loads(subprocess.check_output(['ffprobe', '-v', 'error', '-show_streams', '-of', 'json',
+                                                                     str(work / name)]))['streams'] if s['codec_type'] == 'video')
+        return stream['width'], stream['height'], stream['level']
+    ipad, ipod = size('hd-ipad.m4v'), size('hd-ipod.m4v')
+    assert ipad[:2] == (1280, 720) and ipad[2] <= 31, ipad
+    assert ipod[0] <= 640 and ipod[1] <= 480, ipod
+    print('PASS: 720p kept for the iPad, 640 wide for the iPod, cached apart')

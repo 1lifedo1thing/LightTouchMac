@@ -93,8 +93,7 @@ final class LogWindowController: NSWindowController, NSWindowDelegate {
         window.title = "Device Logs"
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 420, height: 250)
-        WindowRestorationPolicy.configure(window)
-        window.center()
+        if !WindowRestorationPolicy.configure(window, frameAutosaveName: "Logs") { window.center() }
         window.delegate = self
         picker.addItems(withTitles: logs.map(\.lastPathComponent))
         picker.setAccessibilityLabel("Log file")

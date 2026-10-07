@@ -401,10 +401,13 @@ final class EmulatorController {
         if profile.isA4 {
             let setupDone = FileManager.default.fileExists(atPath: BootRecipe.setupDoneMark(overlay: overlayURL).path)
             let restrict = network && BootRecipe.setupPhonesHome(iosVersion: iosVersion) && !setupDone
-            netdev = network ? proxyForward().map { BootRecipe.wifiNetdev(guestForward: $0, restricted: restrict) } : nil
+            netdev = network ? proxyForward().map {
+                BootRecipe.wifiNetdev(guestForward: $0, restricted: restrict, localNetwork: localNetworkEnabled)
+            } : nil
             setupGate = netdev != nil && restrict ? BootRecipe.SetupNetworkGate() : nil
         } else {
-            netdev = network ? "user,id=wifi0" + (proxyForward() ?? "") : nil
+            netdev = network ? BootRecipe.wifiNetdev(guestForward: proxyForward() ?? "", restricted: false,
+                                                     localNetwork: localNetworkEnabled) : nil
         }
         do {
             return try prepared.configuration(bootArgs: Self.bootArgs, usbAddress: usbSession?.guestAddress,
@@ -1188,6 +1191,18 @@ final class EmulatorController {
     // loses their manual angle when the front app actually changes what it wants,
     // which is the moment they asked us to follow.
 
+    /// Attach to Local Network, per device (DeviceSettings.localNetwork), off by default: while off the
+    /// emulator refuses the guest's LAN traffic (BootRecipe.wifiNetdev), so macOS never asks on its own.
+    /// Turning it on asks macOS for Local Network access right then and opens the running device in place.
+    var localNetworkEnabled: Bool { settings.localNetwork ?? false }
+    func toggleLocalNetwork() {
+        let enabled = !localNetworkEnabled
+        changeSettings { $0.localNetwork = enabled }
+        if enabled { LocalNetworkAccess.request() }
+        link?.send(.netLocalNetwork(enabled))
+        onStatusChange?()
+    }
+
     /// Debug port, per device (DeviceSettings.debugPort), off by default; read at each start. QEMU's gdbstub on a
     /// free loopback port, `debugPort` while this boot has one (qemu-ios docs/guest-debug.md).
     var debugPortEnabled: Bool { settings.debugPort ?? false }
@@ -1463,7 +1478,7 @@ final class EmulatorController {
         guard !down || (keyboardInputEnabled && acceptsInput && !isSleeping) else { return }
         link?.send(.key(macKeyCode: Int(macKeyCode), down: down))
     }
-    
+
     // MARK: - Machine control
 
     func pause()  { link?.send(.machine(.pause));  if state == .running { state = .paused } }
@@ -1659,6 +1674,30 @@ final class EmulatorController {
     }
 
     func pasteToGuest(_ text: String) { link?.send(.paste(text)) }
+
+    /// Composed text (DisplayView's NSTextInputClient): it_agent's `type` into the focused field (it_typein),
+    /// in order; where the agent can't (no it_typein, no field), the US keys that type it, one by one.
+    private var typing: Task<Void, Never>?
+    func typeText(_ text: String, shiftHeld: Bool) {
+        guard !text.isEmpty, keyboardInputEnabled, acceptsInput, !isSleeping else { return }
+        let previous = typing
+        typing = Task { [weak self] in
+            await previous?.value
+            guard let self else { return }
+            let agent = guestAgent
+            if (try? await agent.capabilities().has("type")) == true,
+               (try? await agent.perform("type", body: Data(text.utf8))) != nil { return }
+            for character in text {
+                guard let (code, shift) = GuestKeyboard.key(for: character) else { continue }
+                let pressShift = shift && !shiftHeld
+                if pressShift { link?.send(.key(macKeyCode: 56, down: true)) }
+                link?.send(.key(macKeyCode: Int(code), down: true))
+                link?.send(.key(macKeyCode: Int(code), down: false))
+                if pressShift { link?.send(.key(macKeyCode: 56, down: false)) }
+                try? await Task.sleep(for: .milliseconds(15))
+            }
+        }
+    }
 
     /// Guest audio for a recording (ScreenMovieWriter). Its clock is the
     /// dylib's: monotonic seconds since the capture started.

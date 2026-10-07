@@ -352,7 +352,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-free-form-') as tmp:
     (work / 'check.swift').write_text(source)
     exe = app / 'MacOS/check'
     sources = ['UI/DisplayView', 'UI/MouseTouchPair', 'Device/DeviceProfile', 'Device/DeviceProfile+Display', 'UI/DisplayMeasurements', 'UI/AttitudeIndicatorButton',
-               'UI/InlineLiveTextView', 'UI/DroppedFiles', 'UI/DropHighlight']
+               'UI/InlineLiveTextView', 'UI/DroppedFiles', 'UI/DropHighlight','UI/GuestKeyboard']
     subprocess.run(['swiftc', *device_runtime.swift_flags(root), '-module-cache-path', str(work / 'modules'), '-default-isolation', 'MainActor',
                     *[str(root / 'LightTouchMac' / f'{s}.swift') for s in sources], str(work / 'check.swift'), '-o', str(exe)], check=True)
     subprocess.run([str(exe)], check=True, timeout=60)

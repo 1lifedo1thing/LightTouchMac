@@ -19,6 +19,8 @@ nonisolated struct DeviceSettings: Codable, Equatable {
     var carrier: CarrierSettings?
     /// Connect Hardware Keyboard (⇧⌘K); nil is connected.
     var hardwareKeyboard: Bool?
+    /// Attach to Local Network; nil is off.
+    var localNetwork: Bool?
 
     static func url(_ device: URL) -> URL { device.appendingPathComponent("settings.plist") }
 

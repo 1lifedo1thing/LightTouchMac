@@ -28,6 +28,22 @@ nonisolated enum FirmwareJob: Equatable, Sendable {
     static func thirdParty(_ host: String) -> String? {
         host == "apple.com" || host.hasSuffix(".apple.com") ? nil : host
     }
+
+    /// The job's one bar, as its row shows it (DeviceRow.progress); nil for a failure or no fraction yet.
+    var progress: Double? {
+        switch self {
+        case let .downloading(fraction, _, _, _, _): fraction / 2
+        case let .preparing(p): p.bar
+        case .failed: nil
+        }
+    }
+
+    /// The Dock's bar: every running job's, averaged; nil when none is running.
+    static func dockProgress(_ jobs: some Collection<FirmwareJob>) -> Double? {
+        let running = jobs.filter { if case .failed = $0 { false } else { true } }
+        guard !running.isEmpty else { return nil }
+        return running.map { $0.progress ?? 0 }.reduce(0, +) / Double(running.count)
+    }
 }
 
 /// Where a preparation stands (the preparer contract's begin, step and progress events).
@@ -44,6 +60,9 @@ nonisolated struct Preparation: Equatable, Sendable {
     var remaining: TimeInterval?
     /// Where the preparation starts on the job's one bar: 0.5 after a download (the first half), else 0.
     var startsAt = 0.0
+
+    /// Its part of the job's one bar (DeviceRow.progress).
+    var bar: Double? { overall.map { startsAt + (1 - startsAt) * $0 } ?? (startsAt > 0 ? startsAt : nil) }
 
     /// Finished steps plus this one's fraction, weighted by expected seconds; nil with no steps yet.
     var overall: Double? {
@@ -150,7 +169,7 @@ nonisolated struct DeviceRow: Equatable, Sendable {
     var progress: Double? {
         switch state {
         case let .downloading(fraction, _, _, _, _): fraction / 2
-        case let .preparing(p): p.overall.map { p.startsAt + (1 - p.startsAt) * $0 } ?? (p.startsAt > 0 ? p.startsAt : nil)
+        case let .preparing(p): p.bar
         default: nil
         }
     }

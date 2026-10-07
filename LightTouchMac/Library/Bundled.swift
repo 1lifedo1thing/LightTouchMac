@@ -86,8 +86,8 @@ nonisolated enum Bundled {
         if case .success(let value) = layout { return value.state }
         return ProcessInfo.processInfo.environment["LTM_STATE_DIR"].map {
             URL(fileURLWithPath: $0, isDirectory: true)
-        } ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent(StorageLocations.bundleIdentifier, isDirectory: true)
+        } ?? StorageLocations.stateRoot(
+            applicationSupport: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0])
     }
 
     static var preparedLogsDirectory: URL? {

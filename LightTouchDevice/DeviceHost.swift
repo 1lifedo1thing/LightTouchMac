@@ -122,6 +122,7 @@ final class DeviceHost: @unchecked Sendable {
         if let endpoint = config.webProxy {
             let proxy = WebProxy(config: URL(fileURLWithPath: endpoint.config))
             proxy.offline = config.wifiRestricted   // Setup offline: the PAC's proxy too, not just slirp
+            proxy.localNetwork = config.wifiLocalNetwork
             do { try proxy.listen(socket: endpoint.socket); webProxy = proxy } catch { helperLog("web proxy: \(error)") }
         }
         activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical],
@@ -171,6 +172,9 @@ final class DeviceHost: @unchecked Sendable {
         case let .netRestrict(on):
             webProxy?.offline = on
             "wifi0".withCString { p in qemu.netRestrict?(p, on) }
+        case let .netLocalNetwork(allowed):
+            webProxy?.localNetwork = allowed
+            "wifi0".withCString { p in qemu.netLAN?(p, allowed) }
         }
     }
 

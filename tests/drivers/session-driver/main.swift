@@ -93,22 +93,14 @@ final class Mux {
     let clientSocket: String, guestAddress: String
     let process = Process()
     init(name: String) throws {
-        func freePort() -> Int {
-            let fd = socket(AF_INET, SOCK_STREAM, 0)
-            defer { close(fd) }
-            var addr = sockaddr_in(sin_len: UInt8(MemoryLayout<sockaddr_in>.size), sin_family: sa_family_t(AF_INET),
-                                   sin_port: 0, sin_addr: in_addr(s_addr: inet_addr("127.0.0.1")), sin_zero: (0, 0, 0, 0, 0, 0, 0, 0))
-            var len = socklen_t(MemoryLayout<sockaddr_in>.size)
-            _ = withUnsafeMutablePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, len) } }
-            _ = withUnsafeMutablePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(fd, $0, &len) } }
-            return Int(UInt16(bigEndian: addr.sin_port))
-        }
-        clientSocket = "127.0.0.1:\(freePort())"
-        guestAddress = "127.0.0.1:\(freePort())"
+        // As USBMux.Session.make: both ends Unix sockets in the per-user temporary directory.
+        let base = NSTemporaryDirectory() + "ltm-mux-" + UUID().uuidString.prefix(8)
+        clientSocket = "UNIX:" + base + "-c.sock"
+        guestAddress = base + "-g.sock"
         let conf = work.appendingPathComponent("\(name)/usbmuxd-conf")
         try FileManager.default.createDirectory(at: conf, withIntermediateDirectories: true)
         process.executableURL = URL(fileURLWithPath: config.usbmuxd)
-        process.arguments = ["-f", "-v", "-S", clientSocket, "-P", "NONE", "-C", conf.path]
+        process.arguments = ["-f", "-v", "-S", String(clientSocket.dropFirst("UNIX:".count)), "-P", "NONE", "-C", conf.path]
         process.environment = ProcessInfo.processInfo.environment.merging(["USBMUXD_QEMU_ADDR": guestAddress, "USBMUXD_QEMU_DELAY": "0"]) { $1 }
         let log = FileHandle(forWritingAtPath: work.appendingPathComponent("\(name)/usbmuxd.log").path)
             ?? { FileManager.default.createFile(atPath: work.appendingPathComponent("\(name)/usbmuxd.log").path, contents: nil)
@@ -121,7 +113,10 @@ final class Mux {
         try "\(process.processIdentifier)\n".appendLine(to: work.appendingPathComponent("pids"))
         emit("usbmuxd", ["device": name, "pid": process.processIdentifier, "client": clientSocket, "guest": guestAddress])
     }
-    func stop() { process.terminate(); process.waitUntilExit() }
+    func stop() {
+        process.terminate(); process.waitUntilExit()
+        [String(clientSocket.dropFirst("UNIX:".count)), guestAddress].forEach { unlink($0) }
+    }
 }
 
 extension String {
@@ -155,6 +150,8 @@ extension String {
     /// EmulatorController.proxyForward's guestfwd, appended to the wifi netdev, and the proxy the helper serves (proxy.swift).
     var netdevExtra: String?
     var webProxy: WebProxyEndpoint?
+    /// The device's Attach to Local Network, off as the app's default (BootRecipe.wifiNetdev's lan=off).
+    var localNetwork = false
     init(name: String, profile: DeviceProfile) { self.name = name; self.profile = profile }
     var dir: URL { work.appendingPathComponent(name) }
     /// When `dir` is an app state's device (a link to Devices/<uuid> with its device.plist): its storage key, and the
@@ -201,8 +198,8 @@ extension String {
                     nor: URL(fileURLWithPath: files.nor), iBoot: files.iBoot, gidBlobs: files.gidBlobs,
                     machine: files.machine, overlay: overlay, bootrom: Self.files + "/bootrom_240_4")
             }
-            let netdev = profile.isA4 ? netdevExtra.map { "user,id=wifi0" + $0 }
-                : "user,id=wifi0" + (netdevExtra ?? "")
+            let netdev = profile.isA4 ? netdevExtra.map { BootRecipe.wifiNetdev(guestForward: $0, restricted: false, localNetwork: localNetwork) }
+                : BootRecipe.wifiNetdev(guestForward: netdevExtra ?? "", restricted: false, localNetwork: localNetwork)
             return try prepared.configuration(bootArgs: "amfi_allow_any_signature=1 cs_enforcement_disable=1",
                 usbAddress: mux.guestAddress, wifi: true, guestPackage: offer, serial: serial!.argument,
                 audio: ["-audio", config.single?.audioWAV.map { "driver=wav,path=\($0)" } ?? "driver=none"], netdev: netdev, webProxy: webProxy)

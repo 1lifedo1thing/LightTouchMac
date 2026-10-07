@@ -9,6 +9,7 @@ any other tool), its load closure and
 the dlopened Frameworks/libqemu-arm.dylib resolved inside the bundle, and a
 --probe that actually loads the bundled emulator library.
 """
+import plistlib
 import json
 import os
 import pathlib
@@ -123,6 +124,11 @@ def check_helper(app):
     subprocess.run(['codesign', '--verify', '--strict', helper], check=True)
     info = subprocess.run(['/usr/libexec/PlistBuddy', '-c', 'Print :LSMinimumSystemVersion', app / 'Contents/Info.plist'],
                           capture_output=True, text=True, check=True).stdout.strip()
+    # IPSWs and .ipa files open here from Finder and the Dock (application(_:open:)), never taken over: Alternate.
+    plist = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
+    claimed = {t: d.get('LSHandlerRank') for d in plist.get('CFBundleDocumentTypes', []) for t in d.get('LSItemContentTypes', [])}
+    assert claimed == {'com.apple.itunes.ipsw': 'Alternate', 'com.apple.itunes.ipa': 'Alternate'}, claimed
+    assert plist.get('NSSupportsAutomaticGraphicsSwitching') is True, 'a dual-GPU Intel Mac would switch to its discrete GPU'
     worker = app / 'Contents/MacOS/LightTouchServices'
     assert worker.is_file() and os.access(worker, os.X_OK), f'missing service worker {worker}'
     subprocess.run(['codesign', '--verify', '--strict', worker], check=True)

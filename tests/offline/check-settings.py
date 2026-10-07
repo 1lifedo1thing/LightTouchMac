@@ -12,7 +12,9 @@ import SwiftUI
 @MainActor enum NetworkAccessPreference { static let key="guestNetworkEnabled" }
 @MainActor final class EmulatorController {
  var network = true
- struct Profile { let shortName = "iPod" }
+ struct Profile { let shortName = "iPod"; let marketingName = "iPod touch (2nd generation)" }
+ var localNetworkEnabled = false
+ func toggleLocalNetwork() { localNetworkEnabled.toggle() }
  let profile = Profile()
  static let autoRotateDefaultsKey="autoRotateWithGuest"
  static var autoRotateEnabled:Bool { UserDefaults.standard.object(forKey:autoRotateDefaultsKey) as? Bool ?? true }
@@ -48,6 +50,13 @@ import SwiftUI
   delegate.emulator!.network=false
   defaults.removeObject(forKey:NetworkAccessPreference.key)
   precondition(delegate.validateMenuItem(network) && network.state == .off && network.toolTip == nil)
+  // Attach to Local Network: named for the device, off until turned on, and disabled with no device.
+  let lan=NSMenuItem(title:"Attach to Local Network",action:#selector(AppDelegate.toggleLocalNetwork(_:)),keyEquivalent:"")
+  precondition(delegate.validateMenuItem(lan) && lan.state == .off && lan.title == "Attach iPod touch (2nd generation) to Local Network", lan.title)
+  delegate.toggleLocalNetwork(nil)
+  precondition(delegate.validateMenuItem(lan) && lan.state == .on)
+  let device=delegate.emulator;delegate.emulator=nil
+  precondition(!delegate.validateMenuItem(lan) && lan.title == "Attach to Local Network");delegate.emulator=device
   let debug=NSMenuItem(title:"Debug Port…",action:#selector(AppDelegate.showDebugPort(_:)),keyEquivalent:"")
   let copy=NSMenuItem(title:"Copy lldb Command",action:#selector(AppDelegate.copyLLDBCommand(_:)),keyEquivalent:"")
   precondition(delegate.validateMenuItem(debug) && debug.state == .off && debug.toolTip == nil && !delegate.validateMenuItem(copy))

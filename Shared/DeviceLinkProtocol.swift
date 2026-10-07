@@ -63,6 +63,8 @@ nonisolated public enum LinkCommand: Codable, Sendable, Equatable {
     /// qemu_ios_ui_net_restrict on the wifi0 user netdev: flip slirp's restrict
     /// flag in place (false opens outbound networking after Setup, no link event).
     case netRestrict(Bool)
+    /// qemu_ios_ui_net_lan on wifi0: allow (true) or refuse the guest's traffic to the Mac's local networks.
+    case netLocalNetwork(Bool)
 }
 
 nonisolated public enum LinkRequest: Codable, Sendable, Equatable {
