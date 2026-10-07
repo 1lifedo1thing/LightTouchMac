@@ -17,12 +17,15 @@ struct ForegroundWatchTests {
         var guestAgentAlive = true
         let overlay: URL
         var fronts: [(bundleID: String, name: String?)?] = []
+        /// What a poll answers once `fronts` is used up (nil: no agent), so a loaded host can't race past it.
+        var settled: (bundleID: String, name: String?)?
         var proxyPasses = 0
         var finished: [Int] = []
         /// Polls still to come when Setup finished.
         var remainingAtFinish: Int?
         init(overlay: URL) { self.overlay = overlay }
         func foregroundApp() async throws -> (bundleID: String, name: String?) {
+            if fronts.isEmpty, let settled { return settled }
             guard !fronts.isEmpty, let front = fronts.removeFirst() else { throw NoAgent() }
             return front
         }
@@ -41,13 +44,14 @@ struct ForegroundWatchTests {
             let host = Host(overlay: overlay)
             host.isSleeping = true
             let watch = watch(host)
-            host.fronts = [("com.apple.mobilesafari", "Safari"), nil]
+            host.settled = ("com.apple.mobilesafari", "Safari")
             watch.start()
             try await Task.sleep(for: .milliseconds(40))
             #expect(watch.appName == nil && host.proxyPasses == 0, "asleep: no polls")
             host.isSleeping = false
             await eventually("Safari") { watch.appName == "Safari" }
-            await eventually("the failed poll") { watch.appName == nil && host.fronts.isEmpty }
+            host.settled = nil
+            await eventually("the failed poll") { watch.appName == nil }
             #expect(host.proxyPasses >= 2, "the proxy is applied on every pass")
             watch.stop()
         }
