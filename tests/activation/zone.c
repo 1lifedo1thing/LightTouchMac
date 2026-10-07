@@ -1,23 +1,14 @@
-#!/usr/bin/env python3
-"""LightTouchServices/Lockdown/lockdown-tz.c's zone step (set_zone, refresh_clocks) against a fake lockdownd (smoke #58).
-
-The fake applies a TimeZone write the way the guest does: lockdownd hands it to locationd/timed, and the
-zone reads back a few reads later. Checked: a changed zone is written once, polled until it reads back,
-and only then Uses24HourClock is written back with the value it held (true or false, never flipped),
-which is what makes SpringBoard rebuild the lock screen's clock; a zone that already matches writes
-nothing; a lockdownd without Uses24HourClock gets only the zone; a zone that never applies, or a refused
-write, gets no refresh.
-"""
-from pathlib import Path
-import os, subprocess, sys, tempfile
-root = Path(__file__).resolve().parents[2]
-
-harness = r'''
+/* LightTouchServices/Lockdown/lockdown-tz.c's zone and region steps against a fake lockdownd (smoke #58): the fake
+ * applies a TimeZone write the way the guest does (lockdownd hands it to locationd/timed and the zone reads back a
+ * few reads later). A changed zone is written once, polled until it reads back, and only then Uses24HourClock is
+ * written back with the value it held, which makes SpringBoard rebuild the lock clock; a matching zone writes
+ * nothing; a lockdownd without Uses24HourClock gets only the zone; a zone that never applies, or a refused write,
+ * is reported. The Mac's side (ClockRegion) is LightTouchCoreTests' ClockRegionTests. */
 #define lockdownd_get_value fake_get
 #define lockdownd_set_value fake_set
 #define usleep fake_usleep
 #define main helper_main
-#include "SRC"
+#include "../../LightTouchServices/Lockdown/lockdown-tz.c"
 #undef main
 #include <assert.h>
 
@@ -99,23 +90,3 @@ int main(void)
     puts("PASS: lockdown-tz writes a changed zone, waits for it, then refreshes the lock clock (Uses24HourClock kept); "
          "the Mac's locale and 24-hour setting only where they differ");
 }
-'''
-
-with tempfile.TemporaryDirectory() as work:
-    c = Path(work, "zone.c")
-    c.write_text(harness.replace("SRC", str(root / "LightTouchServices/Lockdown/lockdown-tz.c")))
-    flags = subprocess.run(["/bin/sh", "-c", "PATH=/opt/homebrew/bin:/usr/local/bin:$PATH; "
-                            "pkg-config --cflags --libs libimobiledevice-1.0 libplist-2.0"],
-                           capture_output=True, text=True).stdout.split()
-    exe = Path(work, "zone")
-    r = subprocess.run(["cc", "-O1", "-g", "-Wall", "-Wextra", "-Werror", "-fsanitize=address,undefined",
-                        str(c), *flags, "-o", str(exe)], capture_output=True, text=True)
-    if r.returncode:
-        sys.exit("FAIL: building the lockdown-tz harness\n" + r.stderr)
-    r = subprocess.run([str(exe)], capture_output=True, text=True,
-                       env=dict(os.environ, ASAN_OPTIONS="abort_on_error=1", UBSAN_OPTIONS="halt_on_error=1"))
-    sys.stdout.write(r.stdout)
-    if r.returncode:
-        sys.exit("FAIL: lockdown-tz zone step\n" + r.stderr[-2000:])
-
-# The Mac's side (ClockRegion) is LightTouchCoreTests' ClockRegionTests.
