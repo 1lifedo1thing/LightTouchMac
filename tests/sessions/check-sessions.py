@@ -87,7 +87,7 @@ def helper_requirement(args):
     return getattr(args, "helper_requirement", None) or (None if getattr(args, "helper", None) else TEAM_REQ)
 
 
-APP_SOURCES = ["Services/DeviceServices", "Transport/DeviceExecution", "Services/AFC", "Services/InstallationProxy", "Services/LockdownTools", "Transport/IMobileDevice", "Device/DeviceProfile", "Device/DeviceProfile+Display",
+APP_SOURCES = ["Services/DeviceServices", "Transport/DeviceExecution", "Services/AFC", "Services/InstallationProxy", "Services/LockdownTools", "Services/ClockRegion", "Transport/IMobileDevice", "Device/DeviceProfile", "Device/DeviceProfile+Display",
                "Transport/NativeLogging", "Library/StorageLocations", "Library/DeviceStateStorage", "Guest/GuestServices", "Guest/GuestAgent", "Guest/GuestPackage",
                "Library/DeviceInstance", "Library/FirmwareCatalog", "Features/MediaPhoto", "Features/MediaIdentity", "Device/DeviceConnectionIssue",
                "Device/WebProxyConfiguration", "Services/SpringBoardServices", "Services/LockdownState", "Services/HostServiceTypes", "Services/HostServiceProtocol", "Services/HostServiceResources", "Services/HostServiceWorkers", "Services/MediaStaging", "Services/HomeScreenOrdering", "Library/FirmwareTool",
@@ -225,6 +225,7 @@ def main():
                     "(it_agent, it_typein.dylib, itphoto); default: the qemu-ios checkout's contrib binaries")
     ap.add_argument("--contrib", type=Path, default=sources.path("qemu-ios") / "contrib")
     ap.add_argument("--time-zone", default="Asia/Tokyo")
+    ap.add_argument("--region", help="--single: LOCALE:12|24 set beside the zone (lockdown-tz --locale/--24h), then read back")
     ap.add_argument("--helper")
     ap.add_argument("--firmwarekit", default=os.environ.get("LTM_FIRMWAREKIT"),
                     help="stopped-storage admission worker (default: firmwarekit beside the helper)")
@@ -300,6 +301,9 @@ def main():
         cfg["single"] = {"board": args.board, "base": str(args.single), "lockdownTZ": str(tz),
                          "launch": args.launch, "reboot": args.reboot, "hostPowerGesture": args.host_power_gesture,
                          "install": not args.no_install}
+        if args.region:
+            locale, hours = args.region.split(":")
+            cfg["single"]["region"] = {"locale": locale, "uses24HourClock": hours == "24"}
         if args.upgrade_ipa:
             cfg["single"]["upgradeIPA"] = str(args.upgrade_ipa)
         if args.read_file:
@@ -395,6 +399,18 @@ def main():
                                   (lock.get("entry") or {}).get("id") or f"{lock.get('board')}-{lock.get('build')}",
                                   ROOT / "tests/sessions/matrix-refs")
         check(home.get("ok") is True, f"{d}: usable Home screen: {home}")
+        if args.region:
+            locale, hours = args.region.split(":")
+            region = (find("region", device=d) or [{}])[0]
+            check(region.get("locale") == locale, f"{d}: region {region.get('locale')} (zone {region.get('zone')})")
+            # The lock clock in the asked format: the Mac's time as H:mm or h:mm (the same before 1 p.m.: no verdict then).
+            want, other = (region.get("mac24"), region.get("mac12")) if hours == "24" else (region.get("mac12"), region.get("mac24"))
+            text = region.get("text") or []
+            if want == other:
+                print(f"  --  {d}: lock clock {text}: 12- and 24-hour read alike now ({want})")
+            else:
+                check(want in text and other not in text, f"{d}: lock clock {[t for t in text if ':' in t]} in {hours}-hour form "
+                      f"({want}; {region.get('screenshot')})")
         activation = find("activationCompleted", device=d)
         check(activation and all(e.get("ok") for e in activation),
               f"{d}: automatic activation handshake completed" +

@@ -11,6 +11,8 @@ import HostRuntime
 
 import Foundation
 import Vision
+import ImageIO
+
 struct SingleConfig: Decodable {
     var board: String   // "ipod" | "ipad" | "ipod1g" | "iphone2g" | "ipod4g" | "iphone4" | "ipod3g" | "iphone3gs"
     var base: String
@@ -31,6 +33,9 @@ struct SingleConfig: Decodable {
     /// connect (EmulatorController.syncTimeZoneWhenReady). Also completes the first-host handshake,
     /// independently of the clock, as EmulatorController.checkActivationIfNeeded does.
     var lockdownTZ: String?
+    /// With lockdownTZ: the region and clock format to set beside the zone (the app sends the Mac's, ClockRegion.mac).
+    struct Region: Decodable { var locale: String; var uses24HourClock: Bool }
+    var region: Region?
     /// false: skip the IPA install (the entry has no AppSync, so the stock installd refuses it).
     var install: Bool?
     /// Qualify the shared host gesture using generic virtual-time input; never GUI Stop.
@@ -137,12 +142,50 @@ struct SingleConfig: Decodable {
                 ? GuestServices(agent: GuestAgent(link: d.process.link, cache: GuestAgentCache()), packaged: offered) : nil
             for _ in 0..<12 where zone == nil {   // services come up after lockdown answers; the app retries every 5 s
                 do { zone = try await DeviceServices.setTimeZone(TimeZone.current.identifier, keepClock: d.ipod?.machine["rtc-epoch"] != nil,
-                                                                tool: tool, socket: d.mux.clientSocket, guest: guest) }
+                                                                tool: tool, socket: d.mux.clientSocket, guest: guest,
+                                                                region: s.region.map { ClockRegion(locale: $0.locale, uses24HourClock: $0.uses24HourClock) }) }
                 catch DeviceToolsError.zoneKept(let kept) { emit("timezoneKept", ["device": d.name, "generation": generation, "zone": kept]); break }
                 catch {}
                 if zone == nil { try? await Task.sleep(for: .seconds(5)) }
             }
             emit("timezone", ["device": d.name, "generation": generation, "zone": zone ?? ""])
+            if s.region != nil {
+                // What lockdown holds now (Homebrew's ideviceinfo over this device's usbmuxd), and the screen it shows.
+                func info(_ args: [String]) -> String {
+                    let p = Process(), out = Pipe()
+                    p.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/ideviceinfo")
+                    p.arguments = args
+                    p.environment = ProcessInfo.processInfo.environment.merging(["USBMUXD_SOCKET_ADDRESS": d.mux.clientSocket]) { $1 }
+                    p.standardOutput = out
+                    p.standardError = FileHandle.nullDevice
+                    guard (try? p.run()) != nil else { return "" }
+                    p.waitUntilExit()
+                    return String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                try? await Task.sleep(for: .seconds(10))
+                d.process.link.send(.button(0, down: true)); try? await Task.sleep(for: .milliseconds(150))
+                d.process.link.send(.button(0, down: false))
+                try? await Task.sleep(for: .seconds(2))
+                // The lock screen's clock as read off the screen (lockdown's Uses24HourClock reads back its old value on
+                // 4.x even when the clock has changed), beside the Mac's time in both formats.
+                let shot = d.screenshot("clock-\(generation)") ?? ""
+                var lines: [String] = []
+                if let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: shot) as CFURL, nil),
+                   let image = CGImageSourceCreateImageAtIndex(source, 0, nil) {
+                    let request = VNRecognizeTextRequest()
+                    request.usesLanguageCorrection = false
+                    try? VNImageRequestHandler(cgImage: image).perform([request])
+                    lines = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+                }
+                let now = Date(), format = DateFormatter()
+                format.timeZone = .current
+                format.dateFormat = "H:mm"; let h24 = format.string(from: now)
+                format.dateFormat = "h:mm"; let h12 = format.string(from: now)
+                emit("region", ["device": d.name, "generation": generation,
+                                "locale": info(["-q", "com.apple.international", "-k", "Locale"]),
+                                "uses24HourClock": info(["-k", "Uses24HourClock"]), "zone": info(["-k", "TimeZone"]),
+                                "screenshot": shot, "text": lines, "mac24": h24, "mac12": h12])
+            }
         }
         emit("activation", ["device": d.name, "generation": generation, "state": await d.lockdownValue("ActivationState") ?? ""])
         if s.board == "ipod" || ipad, let identity {
