@@ -234,6 +234,9 @@ final class EmulatorController {
             guard let executable = FirmwareJobs.preparer else {
                 throw DeviceToolsError.failed("The firmware worker is unavailable.")
             }
+            // The boot configuration (on main, after the helper's hello) reads the unpacked guest tools: their
+            // first read hashes guest.aar, so it happens here, off the main thread.
+            await Self.unpackGuestTools()
             // 1.x has no agent to trust the web proxy's CA: once it exists, the stopped device takes it as an anchor.
             let ca = URL(fileURLWithPath: WebProxyConfiguration.file(in: self.proxyDirectory).path + ".ca.der")
             if self.trustsStopped, FileManager.default.fileExists(atPath: ca.path) {
@@ -504,10 +507,16 @@ final class EmulatorController {
     }
 
     /// Booting and recording: a notice (non-blocking) below 2 GB free, gone once there's room.
+    /// The volume query (CacheDelete, ~0.1 s) runs off the main thread.
     func warnIfLowOnSpace() {
-        if let warning = IPSWStore.lowSpaceWarning(at: stateDir) { reportDeviceNotice(warning, for: .lowSpace) }
-        else { resolveDeviceNotice(for: .lowSpace) }
+        let stateDir = stateDir
+        Task {
+            let warning = await Self.lowSpaceWarning(at: stateDir)
+            if let warning { reportDeviceNotice(warning, for: .lowSpace) } else { resolveDeviceNotice(for: .lowSpace) }
+        }
     }
+    @concurrent private nonisolated static func unpackGuestTools() async { _ = Bundled.guestRoot }
+    @concurrent private nonisolated static func lowSpaceWarning(at url: URL) async -> String? { IPSWStore.lowSpaceWarning(at: url) }
 
     /// The helper is gone (QEMU returned, it crashed or was killed). Flip to
     /// `.dead`; the window shows a Restart overlay, and the other devices keep running.

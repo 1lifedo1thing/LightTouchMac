@@ -151,6 +151,7 @@ public final class DeviceFilesystemEdits {
         // One tree, as the device mounts it: system at the root, data on its private/var.
         let out = browseDirectory(instance.id)
         let root = out.appendingPathComponent(instance.profile?.marketingName ?? instance.name, isDirectory: true)
+        browsing.insert(instance.id)
         _ = try await FirmwareTool.run(["mount", "--device", paths(instance).directory.path, "--record-policy", "managed",
                                         "--out", out.path, "--root", root.path], executable: executable)
         open(root)
@@ -246,18 +247,24 @@ public final class DeviceFilesystemEdits {
         let out = browseDirectory(id)
         guard let executable = executable ?? preparer, FileManager.default.fileExists(atPath: out.path) else { return }
         _ = try await FirmwareTool.run(["unmount", "--out", out.path], executable: executable)
+        browsing.remove(id)
     }
 
-    /// At quit: every read-only view detached before the app goes.
+    /// The read-only views this run attached. Quit detaches only these: listing the temporary directory to find
+    /// them took seconds on a Mac whose $TMPDIR holds 100,000 entries. A view an earlier run left (a crash) is
+    /// detached at its device's next Show File System or Start (endBrowsing).
+    private var browsing: Set<UUID> = []
+
+    /// At quit: every read-only view this run attached, detached before the app goes; nothing to do, nothing run.
     public func endAllBrowsing() {
         guard let executable = preparer else { return }
-        let temporary = FileManager.default.temporaryDirectory
-        for name in (try? FileManager.default.contentsOfDirectory(atPath: temporary.path)) ?? [] where name.hasPrefix("LightTouch-files-") {
+        let unmounts = browsing.map(browseDirectory).filter { FileManager.default.fileExists(atPath: $0.path) }.compactMap { out in
             let process = Process()
             process.executableURL = executable
-            process.arguments = ["unmount", "--out", temporary.appendingPathComponent(name).path]
-            try? process.run()
-            process.waitUntilExit()
+            process.arguments = ["unmount", "--out", out.path]
+            return (try? process.run()) == nil ? nil : process
         }
+        unmounts.forEach { $0.waitUntilExit() }
+        browsing = []
     }
 }

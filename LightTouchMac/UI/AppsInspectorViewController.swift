@@ -902,9 +902,16 @@ final class AppsInspectorViewController: NSViewController {
         }
     }
 
+    /// Icons landing together repaint once: a reload per icon rebuilt every row each time.
+    private var catalogIconReload: Task<Void, Never>?
     private func reloadCatalogRow(_ ipaID: Int) {
-        guard searching, catalogResults.contains(where: { $0.ipaID == ipaID }) else { return }
-        reloadTablePreservingSelection()
+        guard searching, catalogResults.contains(where: { $0.ipaID == ipaID }), catalogIconReload == nil else { return }
+        catalogIconReload = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(100))
+            guard let self else { return }
+            catalogIconReload = nil
+            if searching { reloadTablePreservingSelection() }
+        }
     }
 
     fileprivate func catalogJob(for app: CatalogApp) -> InstallJob? { rows.catalogJob(for: app) }

@@ -115,6 +115,34 @@ import HostRuntime
         }
     }
 
+    /// Quit detaches the read-only views this run attached and touches nothing else: no listing of the temporary
+    /// directory (seconds on a $TMPDIR of 100,000 entries), no unmount of another run's folder, nothing at all with
+    /// no view open.
+    @Test func quitDetachesOnlyTheViewsThisRunAttached() async throws {
+        try await LibraryFixtures.withScratch { dir in
+            let state = dir.appendingPathComponent("state"), fm = FileManager.default
+            let edits = DeviceFilesystemEdits(preparer: try firmwarekit(dir), state: state, logs: dir.appendingPathComponent("logs"),
+                                              open: { _ in }, presentError: { _ in })
+            let library = DeviceLibrary(state: state)
+            let entry = try #require(try FirmwareCatalog.load(from: LibraryFixtures.shippedCatalog).entry(id: "n72ap-7E18"))
+            func calls() -> [String] { ((try? String(contentsOf: dir.appendingPathComponent("calls"), encoding: .utf8)) ?? "").split(separator: "\n").map(String.init) }
+            let stray = fm.temporaryDirectory.appendingPathComponent("LightTouch-files-\(UUID().uuidString)")
+            try fm.createDirectory(at: stray, withIntermediateDirectories: true)
+            defer { try? fm.removeItem(at: stray) }
+
+            edits.endAllBrowsing()
+            #expect(calls().isEmpty, "quit with no view open ran \(calls())")
+
+            let phone = try device("n90ap", state: state)
+            edits.perform(.openFilesystem, entry: entry, instance: phone, library: library, releaseStopped: { true })
+            let view = fm.temporaryDirectory.appendingPathComponent("LightTouch-files-\(phone.id.uuidString)")
+            await wait { edits.activity[phone.id] == nil && fm.fileExists(atPath: view.path) }
+            edits.endAllBrowsing()
+            #expect(calls().filter { $0.hasPrefix("unmount") } == ["unmount --out \(view.path)"], "quit's unmounts: \(calls())")
+            #expect(!fm.fileExists(atPath: view.path) && fm.fileExists(atPath: stray.path), "the view stayed, or another run's folder went")
+        }
+    }
+
     /// The edit's volume mounted, then unmounted from outside (Eject in Finder): that saves it, as Save Changes does.
     /// An edit already unmounted when watching starts (after a restart of the Mac) is left for the user.
     @Test func ejectingTheMountedEditSavesIt() async throws {
