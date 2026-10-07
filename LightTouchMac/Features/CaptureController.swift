@@ -221,18 +221,10 @@ import UniformTypeIdentifiers
     var captureFolder: URL { capturePreferences.saveLocation }
 
     func captureDestination(_ kind: String, extension suffix: String) throws -> URL {
-        let folder = captureFolder
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        return folder.appendingPathComponent(captureName(kind)).appendingPathExtension(suffix).unused
+        try capturePreferences.captureDestination(kind, extension: suffix)
     }
 
-    /// "Light Touch Screenshot 2026-10-07 at 17.22.14", in the Mac's time zone (as macOS names its own).
-    func captureName(_ kind: String, at date: Date = Date()) -> String {
-        let format = DateFormatter()
-        format.locale = Locale(identifier: "en_US_POSIX")
-        format.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-        return "Light Touch \(kind) \(format.string(from: date))"
-    }
+    func captureName(_ kind: String, at date: Date = Date()) -> String { CapturePreferences.captureName(kind, at: date) }
 
     // MARK: - Space bar
 

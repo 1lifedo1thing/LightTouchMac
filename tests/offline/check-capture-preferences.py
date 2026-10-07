@@ -150,7 +150,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-capture-preferences-') as directory
  work = Path(directory)
  (work/'check.swift').write_text(fixture)
  subprocess.run(['swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), DEVICE_PROFILE, '-swift-version', '6', '-default-isolation', 'MainActor', '-module-cache-path', str(work/'modules'),
-   *[str(root/'LightTouchMac'/name) for name in ['Features/CapturePreferences.swift', 'UI/CaptureOptionsView.swift', 'Features/CaptureNotifications.swift', 'Features/CaptureNotificationContent.swift',
+   *[str(root/'LightTouchMac'/name) for name in ['Features/CapturePreferences.swift', 'Library/UnusedURL.swift', 'UI/CaptureOptionsView.swift', 'Features/CaptureNotifications.swift', 'Features/CaptureNotificationContent.swift',
                                                   'UI/SettingsWindowController.swift', 'App/WindowRestorationPolicy.swift', 'App/NetworkAccessPreference.swift']],
    str(work/'check.swift'), '-o', str(work/'check')], check=True)
  subprocess.run([str(work/'check'), *([args.out] if args.out else [])], check=True, timeout=25)

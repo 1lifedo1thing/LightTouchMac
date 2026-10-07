@@ -106,6 +106,21 @@ public struct CapturePreferences {
         nonmutating set { defaults.set(newValue.rawValue, forKey: "spaceBarAction") }
     }
 
+    /// A new capture's file in the save location (created if need be): named for now, " 2" and on when that's taken.
+    public func captureDestination(_ kind: String, extension suffix: String, at date: Date = Date()) throws -> URL {
+        let folder = saveLocation
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder.appendingPathComponent(Self.captureName(kind, at: date)).appendingPathExtension(suffix).unused
+    }
+
+    /// "Light Touch Screenshot 2026-10-07 at 17.22.14", in the Mac's time zone (as macOS names its own).
+    public static func captureName(_ kind: String, at date: Date = Date()) -> String {
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US_POSIX")
+        format.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+        return "Light Touch \(kind) \(format.string(from: date))"
+    }
+
     private func bool(_ key: String, default fallback: Bool) -> Bool {
         (defaults.object(forKey: key) as? NSNumber)?.boolValue ?? fallback
     }
