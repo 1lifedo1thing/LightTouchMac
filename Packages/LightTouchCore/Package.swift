@@ -32,6 +32,8 @@ let package = Package(name: "LightTouchCore", platforms: [.macOS("14.4")],
             .product(name: "Subprocess", package: "swift-subprocess"),
             .product(name: "ZIPFoundation", package: "ZIPFoundation"),
         ], swiftSettings: settings),
-        .testTarget(name: "LightTouchCoreTests", dependencies: ["LightTouchCore"], swiftSettings: settings),
+        // Gives each test process a private home and app state before any test runs.
+        .target(name: "TestIsolation", path: "Tests/TestIsolation"),
+        .testTarget(name: "LightTouchCoreTests", dependencies: ["LightTouchCore", "TestIsolation"], swiftSettings: settings),
     ],
     swiftLanguageModes: [.v5])
