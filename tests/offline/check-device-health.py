@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Real connection probes preserve errors and abandon queued reads safely: the helper's Engine/DeviceServices+Engine.swift
 (checkAttachment), Engine/IMobileDevice.swift and Engine/DeviceExecution.swift compiled whole against a fake
-libimobiledevice (idevice_new), plus the inspector's read-suppression predicate (one declaration, looked up by name)."""
+libimobiledevice (idevice_new). The engine is the helper target's, so this stays here; the inspector's
+read-suppression predicate is AppsInspectorRowsTests'."""
 from pathlib import Path
 import subprocess, tempfile
 import sys
@@ -11,9 +12,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from host_service_fixtures import engine, leaves
 
 root = Path(__file__).resolve().parents[2]
-app = root / 'LightTouchMac'
-inspector = (app / 'UI/AppsInspectorViewController.swift').read_text()
-suppression = next(line for line in inspector.splitlines() if 'private var readsSuppressed:' in line).replace('private ', '')
 
 source = r'''
 import Foundation
@@ -44,13 +42,6 @@ nonisolated final class Signal: @unchecked Sendable {
    if lock.withLock({ if fired { return true }; waiter = c; return false }) { c.resume() }
   }
  }
-}
-@MainActor final class Inspector {
- final class Emulator { var hasFileTransfer = false, isReconnecting = false, preparingDevice = false }
- let emulator = Emulator()
- var installing = false
- var uninstalling: Set<String> = []
-''' + suppression + r'''
 }
 @main struct Check {
  @MainActor static func main() async throws {
@@ -85,17 +76,7 @@ nonisolated final class Signal: @unchecked Sendable {
   do { try await cancelled.value; preconditionFailure() }
   catch is CancellationError {} catch { throw error }
 
-  let inspector = Inspector()
-  inspector.uninstalling = ["queued-behind-paused-install"]
-  precondition(!inspector.readsSuppressed, "queued removal must not deadlock recovery")
-  inspector.installing = true; precondition(inspector.readsSuppressed)
-  inspector.installing = false; inspector.emulator.hasFileTransfer = true
-  precondition(inspector.readsSuppressed)
-  inspector.emulator.hasFileTransfer = false; inspector.emulator.isReconnecting = true
-  precondition(inspector.readsSuppressed)
-  inspector.emulator.isReconnecting = false; inspector.emulator.preparingDevice = true
-  precondition(inspector.readsSuppressed, "boot preparation owns device services too")
-  print("PASS: typed health failures, bounded queued probes, cancellation, and health reads during paused removals")
+  print("PASS: typed health failures, bounded queued probes and cancellation")
  }
 }
 '''

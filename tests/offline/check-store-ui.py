@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
-"""The Store's filter menu and the version sheet, against recorded Legacy Store responses. Offline, nothing on screen.
+"""The Store's filter pull-down and the version sheet as AppKit draws them. Offline, nothing on screen.
 
-tests/fixtures/store-filter: live /api/emulator/apps answers (2026-09-30) for Hotel Dash (family 1), Hotel Dash
-Deluxe (family 2, iPad only), Diner Dash (1, 2) and Agent Dash (1, 2; needs iOS 4.1) judged for iPod2,1 3.1.3 and
-iPad1,1 3.2, plus Hotel Dash's and Tap Tap Dash's version lists and copy records.
-
-Filter (real CatalogFilter + CatalogFilterButton, driven through its menu items, in a throwaway defaults suite):
-the iPod's menu offers only Show Unavailable Apps; turning it off hides the iPad-only Hotel Dash Deluxe and Agent
-Dash there; iPad Apps Only on the iPad leaves Hotel Dash Deluxe and Diner Dash and drops iPhone-only Hotel Dash;
-the same saved choice never hides iPhone apps on the iPod; a new button reads both choices back.
-Sheet (real CatalogDetailsModel/View over CatalogClient and a local server): Hotel Dash on the iPod lists its armv6
-copies with twin copies numbered, revalidates 207203 and installs it, and notes a downgrade from 1.10.3; Tap Tap
-Dash on the iPad (arm64 only) shows the processor reason and keeps Install disabled. The sheet fits its content.
+The filter's rules (CatalogFilter) and the sheet's model (CatalogDetailsModel) are Swift Testing's CatalogFilterTests
+and CatalogDetailsModelTests; this is the AppKit side over them, against the recorded Legacy Store responses in
+tests/fixtures/store-filter. Filter (real CatalogFilterButton, driven through its menu items, in a throwaway defaults
+suite): the iPod's family choice is dimmed and its Show Unavailable Apps toggle live and checked; a toggle reports
+and checks off; the iPad offers both families, checks iPad Apps Only when chosen, and a new button reads the saved
+choices back. Sheet (real CatalogDetailsView over CatalogDetailsModel and a local server): fits its content for a
+compatible and an incompatible copy.
 Renders filter-*.png and sheet-*.png into --out (offscreen windows, never ordered front).
 """
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -74,7 +70,6 @@ import SwiftUI
    try rep.representation(using: .png, properties: [:])!.write(to: out.appendingPathComponent(name))
   }
   let ipod = try apps("ipod2-3.1.3-dash.json"), ipad = try apps("ipad1-3.2-dash.json")
-  let names = { (list: [CatalogApp]) in Set(list.map(\.name)) }
   let suite = "ltm-store-ui-check-\(ProcessInfo.processInfo.processIdentifier)"
   let defaults = UserDefaults(suiteName: suite)!
   defer { defaults.removePersistentDomain(forName: suite) }
@@ -88,65 +83,41 @@ import SwiftUI
   var changes = 0
   podButton.onChange = { changes += 1 }
   podButton.menu!.performActionForItem(at: 4)
-  check(changes == 1 && items[4].state == .off, "toggle reports and checks off")
-  check(names(podButton.apply(ipod)) == ["Hotel Dash", "Diner Dash"], "iPad-only and too-new apps hidden on the iPod: \(names(podButton.apply(ipod)))")
+  check(changes == 1 && items[4].state == .off && podButton.apply(ipod).count == 2, "toggle reports, checks off and filters")
 
   // iPad: the family choice, read back with the toggle the iPod saved.
   let padButton = CatalogFilterButton(isIPad: true, defaults: defaults)
   let padItems = padButton.menu!.items
   check(!padButton.filter.showUnavailable, "Show Unavailable persisted")
   check(padItems[1].isEnabled && padItems[2].isEnabled && padItems[1].state == .on, "iPad offers both families, all apps by default")
-  check(names(padButton.apply(ipad)) == ["Hotel Dash", "Hotel Dash Deluxe", "Diner Dash"], "iPad, all families, runnable")
   try render(strip(padButton), "filter-ipad-all.png")
   padButton.menu!.performActionForItem(at: 2)
-  check(padItems[2].state == .on && padItems[1].state == .off, "iPad Apps Only checked")
-  check(names(padButton.apply(ipad)) == ["Hotel Dash Deluxe", "Diner Dash"], "iPad Apps Only drops iPhone-only Hotel Dash")
+  check(padItems[2].state == .on && padItems[1].state == .off && padButton.filter.iPadOnly, "iPad Apps Only checked")
   padButton.menu!.performActionForItem(at: 4)
-  check(names(padButton.apply(ipad)) == ["Hotel Dash Deluxe", "Diner Dash", "Agent Dash"], "unavailable iPad-capable app shown again")
+  check(padButton.apply(ipad).count == 3, "iPad Apps Only with unavailable apps shown")
   try render(strip(padButton), "filter-ipad-ipad-only.png")
+  let reread = CatalogFilterButton(isIPad: true, defaults: defaults)
+  check(reread.filter.iPadOnly && reread.filter.showUnavailable && reread.menu!.items[2].state == .on, "a new button reads both choices back")
+  try render(strip(CatalogFilterButton(isIPad: false, defaults: defaults)), "filter-ipod.png")
 
-  // Both choices survive a relaunch; the iPad-only choice never narrows an iPod.
-  let reread = CatalogFilter.load(defaults)
-  check(reread.iPadOnly && reread.showUnavailable, "both choices persisted")
-  let pod2 = CatalogFilterButton(isIPad: false, defaults: defaults)
-  check(names(pod2.apply(ipod)) == names(ipod), "iPad Apps Only doesn't apply on an iPod")
-  try render(strip(pod2), "filter-ipod.png")
-  check(CatalogFilter.load(UserDefaults(suiteName: suite + "-fresh")!) == CatalogFilter(), "fresh defaults: all apps, unavailable shown")
-
-  // The version sheet: a compatible app on the iPod, installed at a newer version.
+  // The version sheet fits its content, for a compatible copy and an incompatible one.
   let hotel = ipod.first { $0.name == "Hotel Dash" }!
-  var installed: Int?
   let good = CatalogDetailsModel(app: hotel, device: "iPod2,1", deviceOS: "3.1.3", arch: "armv6", installedVersion: "1.10.3",
-                                 canInstall: { true }, install: { installed = $0.ipaID })
-  await good.load()
-  let rows = good.rows ?? []
-  check(rows.count == 7 && rows.allSatisfy { $0.copy.architectures?.contains("armv6") == true }, "the iPod's armv6 copies: \(rows.map(\.copy.ipa_id))")
-  check(good.selection == "207203", "the row's own copy selected")
-  let own = rows.first { $0.copy.ipa_id == "207203" }!, twin = rows.first { $0.copy.ipa_id == "5635" }!
-  check(good.title(own) == "1.1.51 · 65.6 MB" && good.title(twin).hasSuffix(" · Copy 5635"), "\(good.title(own)) / \(good.title(twin))")
-  await good.check()
-  check(good.problem == nil && good.canInstallSelection, "compatible copy installable: \(good.problem ?? "")")
-  check(good.downgradeNote == "Version 1.10.3 is installed. An older version may not read its data.", "downgrade note")
+                                 canInstall: { true }, install: { _ in })
+  await good.load(); await good.check()
+  check(good.canInstallSelection && good.downgradeNote != nil, "the compatible sheet has its copy and note")
   let goodView = NSHostingView(rootView: CatalogDetailsView(model: good))
   check(goodView.fittingSize.height < 360, "sheet fits its content: \(goodView.fittingSize)")
   try render(goodView, "sheet-compatible.png")
-  good.installSelection()
-  check(installed == 207203, "Install fetches the revalidated copy")
-
-  // An arm64-only app on the iPad: the reason, Install disabled.
   let dash = try apps("search-86286-ipad1-4.2.1.json")[0]
   let bad = CatalogDetailsModel(app: dash, device: "iPad1,1", deviceOS: "4.2.1", arch: "armv7", installedVersion: nil,
-                                canInstall: { true }, install: { _ in preconditionFailure("installed an incompatible copy") })
-  await bad.load()
-  check(bad.rows?.map(\.copy.ipa_id) == ["86286"], "only the row's own copy: \(bad.rows?.map(\.copy.ipa_id) ?? [])")
-  await bad.check()
-  check(bad.problem == "This copy needs a newer processor than this device has." && !bad.canInstallSelection && bad.downgradeNote == nil,
-        "incompatible: \(bad.problem ?? "nil")")
-  bad.installSelection()
+                                canInstall: { true }, install: { _ in })
+  await bad.load(); await bad.check()
+  check(bad.problem != nil, "the incompatible sheet shows its reason")
   let badView = NSHostingView(rootView: CatalogDetailsView(model: bad))
   check(badView.fittingSize.height < 360, "sheet fits its content: \(badView.fittingSize)")
   try render(badView, "sheet-incompatible.png")
-  print("PASS: Store filter (iPod toggle only, iPad family choice, persistence) and version sheet (install, reason, downgrade note)")
+  print("PASS: Store filter pull-down (iPod toggle only, iPad family choice, read back) and the version sheet's fit")
  }
 
  /// The pane's top row as the inspector lays it out: Installed/Store, then the filter.
@@ -177,7 +148,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-store-ui-') as directory:
     (work / 'home').mkdir()
     (work / 'check.swift').write_text(code)
     (work / 'paths.swift').write_text('extension DeviceInstance { var paths: Paths { paths(state: Bundled.stateDirectory, logs: Bundled.logsDirectory) } }\n')
-    sources = ['Features/CatalogClient', 'Features/CatalogCopy', 'Features/CatalogFilter', 'UI/CatalogFilterButton',
+    sources = ['Features/CatalogClient', 'Features/CatalogCopy', 'Features/CatalogFilter', 'Catalog/CatalogDetailsModel', 'UI/CatalogFilterButton',
                'UI/CatalogDetailsViewController', 'Library/Bundled', 'Transport/AppEventLog', 'Library/StorageLocations',
                'Transport/NativeLogging', 'Library/IPALibrary', 'Library/DeviceInstance', 'Device/Board+App', 'Library/FirmwareCatalog']
     subprocess.run(['xcrun', 'swiftc', *__import__('host_runtime').schema_flags(__import__('pathlib').Path(__file__).resolve().parents[2]), *host_runtime.swift_flags(root), '-parse-as-library', '-module-cache-path', str(work / 'modules'), *[str(root / f'LightTouchMac/{s}.swift') for s in sources], str(work / 'paths.swift'), str(work / 'check.swift'),

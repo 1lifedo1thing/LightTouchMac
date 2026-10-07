@@ -366,92 +366,37 @@ final class AppsInspectorViewController: NSViewController {
         }
     }
 
-    private enum RowIdentity: Hashable {
-        case job(ObjectIdentifier), app(String), catalog(Int)
-    }
-    private var displayedRows: [RowIdentity] = []
-    private var rowIdentities: [RowIdentity] {
-        if searching { return catalogResults.map { .catalog($0.ipaID) } }
-        return pending.map { .job(ObjectIdentifier($0)) } + visibleApps.map { .app($0.id) }
+    /// The rows on screen; see AppTableRows.
+    private var displayed = AppTableRows()
+
+    /// What the inspector knows, as the table's rows (LightTouchCore's AppsInspectorRows).
+    private var rows: AppsInspectorRows {
+        AppsInspectorRows(searching: searching, apps: apps, pending: pending, installedQuery: queries[.installed, default: ""],
+                          catalogResults: catalogResults, uninstalling: uninstalling, removingApp: removingApp, device: device,
+                          displayName: { [unowned self] in displayName($0) },
+                          icons: AppRowIcons(catalog: { [unowned self] in catalogIcon($0).map(ObjectIdentifier.init) },
+                                             pending: { [unowned self] in pendingIcon($0).map(ObjectIdentifier.init) },
+                                             installed: { AppMetadataCache.shared.icon(for: $0).map(ObjectIdentifier.init) }))
     }
 
-    private struct RowAppearance: Equatable {
-        enum Kind { case app, install, open, progress, failed, resume }
-        var title: String
-        var subtitle: String
-        var icon: ObjectIdentifier?
-        var kind: Kind = .app
-        var progress: Double?
-        var enabled = true
-    }
-    private var displayedAppearances: [RowAppearance] = []
-
-    /// Capture only values that affect a row's presentation. A device poll or
-    /// unrelated transfer must not replace buttons under the pointer or reset
-    /// VoiceOver's current element.
-    private var rowAppearances: [RowAppearance] {
-        func transfer(_ job: InstallJob, icon: NSImage?) -> RowAppearance {
-            RowAppearance(title: job.name, subtitle: job.isCancelled ? "Cancelling…" : job.status,
-                          icon: icon.map(ObjectIdentifier.init),
-                          kind: job.failed ? .failed : job.status == "Paused" ? .resume : .progress,
-                          progress: job.downloadProgress, enabled: job.failed || job.isCancellable)
-        }
-        if searching {
-            return catalogResults.map { app in
-                let icon = catalogIcon(app).map(ObjectIdentifier.init)
-                if let id = app.bundleID, uninstalling.contains(id) {
-                    return RowAppearance(title: app.name, subtitle: removalStatus(for: id), icon: icon, kind: .progress)
-                }
-                if let failed = pending.last(where: {
-                    $0.failed && !$0.dismissed && ($0.catalogIpaID == app.ipaID || ($0.bundleID != nil && $0.bundleID == app.bundleID))
-                }) { return transfer(failed, icon: catalogIcon(app)) }
-                let state = catalogState(of: app)
-                if let job = catalogJob(for: app), !job.isFinished {
-                    return transfer(job, icon: catalogIcon(app))
-                }
-                return RowAppearance(title: app.name, subtitle: app.subtitle, icon: icon,
-                                     kind: state == .installed ? .open : .install,
-                                     enabled: state == .installed
-                                        ? emulator.canReachDevice && !busyWithDevice && apps.contains { $0.id == app.bundleID }
-                                        : state == .installable)
-            }
-        }
-        let transfers = pending.map { job in
-            if job.isFinished, !job.isCancelled, !job.failed {
-                return RowAppearance(title: job.name, subtitle: job.bundleID ?? job.status,
-                                     icon: job.bundleID.flatMap { AppMetadataCache.shared.icon(for: $0) }.map(ObjectIdentifier.init))
-            }
-            return transfer(job, icon: pendingIcon(job))
-        }
-        return transfers + visibleApps.map { app in
-            RowAppearance(title: displayName(app),
-                          subtitle: uninstalling.contains(app.id) ? removalStatus(for: app.id) : app.version,
-                          icon: AppMetadataCache.shared.icon(for: app.id).map(ObjectIdentifier.init),
-                          kind: uninstalling.contains(app.id) ? .progress : .app)
-        }
+    /// The device, as the rows and menus weigh it.
+    private var device: AppsDevice {
+        AppsDevice(id: emulator.instance.id, canQueueInstall: emulator.canQueueInstall, canReachDevice: emulator.canReachDevice,
+                   installing: installing, preparingDevice: emulator.preparingDevice, hasFileTransfer: emulator.hasFileTransfer,
+                   isReconnecting: emulator.isReconnecting, transfersPaused: AppInstaller.isPaused(emulator.instance.id))
     }
 
     /// Keep selection attached to objects, rebuilding only changed rows. An
     /// unchanged background poll leaves native views and accessibility intact.
     private func reloadTablePreservingSelection() {
-        let identities = rowIdentities
-        let appearances = rowAppearances
-        if identities == displayedRows {
-            let changed = IndexSet(appearances.indices.filter {
-                !displayedAppearances.indices.contains($0) || appearances[$0] != displayedAppearances[$0]
-            })
-            displayedAppearances = appearances
-            if !changed.isEmpty { tableView.reloadData(forRowIndexes: changed, columnIndexes: [0]) }
-            return
+        let rows = rows
+        switch displayed.show(rows.identities, rows.appearances, selected: tableView.selectedRowIndexes) {
+        case .rows(let changed): tableView.reloadData(forRowIndexes: changed, columnIndexes: [0])
+        case .table(let selection):
+            tableView.reloadData()
+            tableView.selectRowIndexes(selection, byExtendingSelection: false)
+        case nil: break
         }
-        let selected = Set(tableView.selectedRowIndexes.compactMap {
-            displayedRows.indices.contains($0) ? displayedRows[$0] : nil
-        })
-        displayedRows = identities
-        displayedAppearances = appearances
-        tableView.reloadData()
-        let indexes = IndexSet(displayedRows.indices.filter { selected.contains(displayedRows[$0]) })
-        tableView.selectRowIndexes(indexes, byExtendingSelection: false)
     }
 
     @objc private func appsChanged(_ note: Notification) {
@@ -479,17 +424,14 @@ final class AppsInspectorViewController: NSViewController {
     @objc private func installStarted(_ note: Notification) {
         guard let job = note.object as? InstallJob, job.deviceID == emulator.instance.id else { return }
         pending.append(job)
-        // Files dropped on the canvas have no Store row to carry their
-        // progress. Reveal the accepted transfer immediately, even when the
-        // inspector was closed or the user was browsing the Store.
-        if job.catalogIpaID == nil {
+        if AppsInspector.revealsTransfer(job) {
             setMode(.installed)
             if let split = parent as? NSSplitViewController,
                let item = split.splitViewItem(for: self) { item.animator().isCollapsed = false }
         }
         showInstalledPlaceholder(nil)
         reloadTablePreservingSelection()
-        if job.catalogIpaID == nil { tableView.scrollRowToVisible(pending.count - 1) }
+        if AppsInspector.revealsTransfer(job) { tableView.scrollRowToVisible(pending.count - 1) }
         updateButtons()
     }
 
@@ -630,15 +572,8 @@ final class AppsInspectorViewController: NSViewController {
     // this releasing it triggers; nothing else here may touch main-actor state.
     deinit { loadTask?.cancel(); searchTask?.cancel() }
 
-    static func freshnessText(since date: Date?, now: Date = Date()) -> String {
-        guard let date else { return "not yet refreshed" }
-        guard now.timeIntervalSince(date) >= 60 else { return "last updated just now" }
-        let relative = RelativeDateTimeFormatter().localizedString(for: date, relativeTo: now)
-        return "last updated \(relative)"
-    }
-
     private func showStaleBanner() {
-        let when = Self.freshnessText(since: lastLoaded)
+        let when = AppsInspector.freshnessText(since: lastLoaded)
         if emulator.isPoweredOff { banner.stringValue = "Device powered off" }
         else if emulator.shuttingDown { banner.stringValue = "Device powering off…" }
         else if emulator.isReconnecting { banner.stringValue = "Reconnecting app services…" }
@@ -681,12 +616,13 @@ final class AppsInspectorViewController: NSViewController {
     private func showPlaceholder(_ text: String?) {
         placeholder.stringValue = text ?? ""
         placeholder.isHidden = (text == nil)
-        let empty = !searching && haveLoaded && apps.isEmpty && pending.isEmpty
-        browseButton.isHidden = !empty
-        installButton.isHidden = !empty
+        let actions = AppsInspector.placeholderActions(message: text, searching: searching, haveLoaded: haveLoaded,
+                                                       nothingListed: apps.isEmpty && pending.isEmpty, catalogFailed: catalogFailed)
+        browseButton.isHidden = !actions.browseAndInstall
+        installButton.isHidden = !actions.browseAndInstall
         installButton.isEnabled = emulator.canQueueInstall
-        retryButton.isHidden = !catalogFailed || !searching
-        emptyActions.isHidden = text == nil || (!empty && (!catalogFailed || !searching))
+        retryButton.isHidden = !actions.retry
+        emptyActions.isHidden = !actions.group
     }
 
     /// Installed-list placeholders only — a no-op while the catalog results own
@@ -697,13 +633,7 @@ final class AppsInspectorViewController: NSViewController {
         showPlaceholder(text)
     }
 
-    /// What the installed list's placeholder should say right now — for
-    /// restoring it when a search is cleared. The poll re-corrects within a
-    /// tick if this guesses wrong.
-    private var installedPlaceholderText: String? {
-        if !haveLoaded { return pending.isEmpty ? "Waiting for the device…" : nil }
-        return visibleApps.isEmpty && pending.isEmpty ? (queries[.installed, default: ""].isEmpty ? "No apps installed" : "No matching apps") : nil
-    }
+    private var installedPlaceholderText: String? { rows.installedPlaceholder(haveLoaded: haveLoaded) }
 
     /// Network downloads and waiting rows do not hold a device session.
     private var installing: Bool { AppInstaller.isUsingDevice(emulator.instance.id) || emulator.isInstalling }
@@ -714,23 +644,14 @@ final class AppsInspectorViewController: NSViewController {
     private var uninstalling: Set<String> = []
     private var removingApp: String?
 
-    private func canUninstall(_ selection: [InstalledApp]) -> Bool {
-        emulator.canQueueInstall && !selection.isEmpty
-            && !selection.contains { uninstalling.contains($0.id) }
-    }
-
-    private func removalStatus(for bundleID: String) -> String {
-        if removingApp == bundleID { return "Removing…" }
-        return AppInstaller.isPaused(emulator.instance.id) ? "Removal paused" : "Waiting to remove…"
-    }
+    private func canUninstall(_ selection: [InstalledApp]) -> Bool { rows.canUninstall(selection) }
+    private func removalStatus(for bundleID: String) -> String { rows.removalStatus(for: bundleID) }
 
     /// Any device operation of ours in flight.
-    private var busyWithDevice: Bool { installing || !uninstalling.isEmpty }
+    private var busyWithDevice: Bool { rows.busyWithDevice }
 
-    /// Waiting removals must not suppress recovery: a paused transfer queue can
-    /// contain them indefinitely. Only the operation actually owning the guest
-    /// connection (or a recovery in progress) needs reads to stand aside.
-    private var readsSuppressed: Bool { installing || emulator.preparingDevice || emulator.hasFileTransfer || emulator.isReconnecting }
+    /// See AppsDevice.readsSuppressed.
+    private var readsSuppressed: Bool { device.readsSuppressed }
 
     private func updateButtons() {
         // A cached list can outlive the connection. Match the removal action's
@@ -745,31 +666,9 @@ final class AppsInspectorViewController: NSViewController {
         addRemove.setEnabled(haveLoaded && canUninstall(selectedApps), forSegment: 1)
     }
 
-    /// Every selected installed app — pending rows and catalog rows resolve to
-    /// nil through app(at:) and drop out.
-    private var selectedApps: [InstalledApp] {
-        tableView.selectedRowIndexes.compactMap { app(at: $0) }
-    }
-
-    /// The installed apps actually shown. An app being replaced by a newer
-    /// build is hidden while its pending row is up — otherwise a reinstall
-    /// lists the same app twice, once installing and once as the old version,
-    /// and the old row's Uninstall would remove what is being installed.
-    private var visibleApps: [InstalledApp] {
-        let replacing = Set(pending.compactMap { $0.isFinished ? nil : $0.bundleID })
-        let query = queries[.installed, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
-        return apps.filter { !replacing.contains($0.id) && (query.isEmpty || displayName($0).localizedStandardContains(query) || $0.id.localizedStandardContains(query)) }
-    }
-
-    private func app(at row: Int) -> InstalledApp? {
-        // Catalog mode: the rows are CatalogApps, and every installed-list
-        // interaction that resolves a row through here (uninstall, reorder,
-        // context menu) must come up empty.
-        guard !searching else { return nil }
-        let index = row - pending.count
-        let shown = visibleApps
-        return shown.indices.contains(index) ? shown[index] : nil
-    }
+    private var selectedApps: [InstalledApp] { rows.selectedApps(tableView.selectedRowIndexes) }
+    private var visibleApps: [InstalledApp] { rows.visibleApps }
+    private func app(at row: Int) -> InstalledApp? { rows.app(at: row) }
 
     // MARK: - Actions
 
@@ -887,7 +786,7 @@ final class AppsInspectorViewController: NSViewController {
     private func filterChanged() {
         reloadTablePreservingSelection()
         if searching, !catalogFetched.isEmpty {
-            showPlaceholder(catalogResults.isEmpty ? "No apps match the filter." : nil)
+            showPlaceholder(AppsInspector.searchFinished(query: "", fetched: catalogFetched.count, shown: catalogResults.count))
         }
         updateButtons()
     }
@@ -949,16 +848,12 @@ final class AppsInspectorViewController: NSViewController {
         reloadTablePreservingSelection()
         // iPhone OS 1 predates the App Store: Legacy Store's suggested list is empty for it by definition,
         // which read as the store being broken. A search still runs (and says why each app can't install).
-        if query.isEmpty, emulator.iosVersion.compare("2.0", options: .numeric) == .orderedAscending {
-            showPlaceholder("iPhone OS \(emulator.iosVersion) has no App Store.")
+        // Replace the other mode's overlay before any debounce/network await.
+        showPlaceholder(AppsInspector.searchStarting(query: query, iosVersion: emulator.iosVersion, haveResults: !catalogResults.isEmpty))
+        guard AppsInspector.searchRuns(query: query, iosVersion: emulator.iosVersion) else {
             updateButtons()
             return
         }
-        // Replace the other mode's overlay before any debounce/network await.
-        // Cached Store rows remain usable while their refresh is in flight.
-        showPlaceholder(catalogResults.isEmpty
-            ? (query.isEmpty ? "Loading Legacy Store…" : "Searching Legacy Store…")
-            : nil)
         searchTask = Task { [weak self] in
             if !query.isEmpty {
                 try? await Task.sleep(for: .milliseconds(300))   // debounce typing
@@ -976,23 +871,14 @@ final class AppsInspectorViewController: NSViewController {
                 guard !Task.isCancelled, current() else { return }
                 self.catalogFetched = results
                 self.reloadTablePreservingSelection()
-                self.showPlaceholder(results.isEmpty
-                    ? (query.isEmpty ? "Legacy Store is empty right now."
-                                     : "No compatible apps found for “\(query)”.")
-                    : self.catalogResults.isEmpty ? "No apps match the filter." : nil)
+                self.showPlaceholder(AppsInspector.searchFinished(query: query, fetched: results.count, shown: self.catalogResults.count))
                 self.fetchCatalogIcons(results)
             } catch {
                 guard !Task.isCancelled, current() else { return }
                 self.catalogFetched = []
                 self.catalogFailed = true
                 self.reloadTablePreservingSelection()
-                // Legacy Store's own errors say it plainly; a network error needs the name.
-                if case CatalogError.unsupportedDevice = error {
-                    self.showPlaceholder(CatalogError.unsupportedDevice(name: self.emulator.profile.marketingName).localizedDescription)
-                } else {
-                    self.showPlaceholder(error is CatalogError ? error.localizedDescription
-                                                               : "Couldn’t reach Legacy Store — \(error.localizedDescription)")
-                }
+                self.showPlaceholder(AppsInspector.searchFailed(error, marketingName: self.emulator.profile.marketingName))
             }
             self.updateButtons()
         }
@@ -1017,37 +903,8 @@ final class AppsInspectorViewController: NSViewController {
         reloadTablePreservingSelection()
     }
 
-    /// The job working on this catalog app, if one is. Matched by the copy's
-    /// own id first, then bundle id (a local .ipa install of the same app
-    /// counts too). Failed and cancelled jobs don't claim the row — the user
-    /// should be able to try again.
-    fileprivate func catalogJob(for app: CatalogApp) -> InstallJob? {
-        pending.first { job in
-            guard !job.failed, !job.isCancelled else { return false }
-            if job.catalogIpaID == app.ipaID { return true }
-            return job.bundleID != nil && job.bundleID == app.bundleID
-        }
-    }
-
-    /// Is this catalog app already on the device, or on its way there?
-    fileprivate func catalogState(of app: CatalogApp) -> CatalogRowState {
-        if let job = catalogJob(for: app) {
-            // A cleanly finished job reads as installed even before the device
-            // lists it — otherwise Install flashed back for the second between
-            // the install completing and installd admitting the app exists.
-            if job.isFinished { return .installed }
-            if let fraction = job.downloadProgress { return .downloading(fraction) }
-            return .installing
-        }
-        if let id = app.bundleID, apps.contains(where: { $0.id == id }) { return .installed }
-        if app.incompatibility != nil { return .unavailable }   // greyed, with the server's reason
-        // Busy with our own install means the device is fine, just serialized —
-        // more jobs may queue behind it. (The poll deliberately parks
-        // deviceReachable at nil while device work runs, so canReachDevice
-        // alone would disable every Install button for the whole install.)
-        if emulator.canQueueInstall { return .installable }
-        return .unavailable
-    }
+    fileprivate func catalogJob(for app: CatalogApp) -> InstallJob? { rows.catalogJob(for: app) }
+    fileprivate func catalogState(of app: CatalogApp) -> CatalogRowState { rows.catalogState(of: app) }
 
     @objc fileprivate func catalogInstallClicked(_ sender: NSButton) {
         guard searching, catalogResults.indices.contains(sender.tag) else { return }
@@ -1142,14 +999,6 @@ final class AppsInspectorViewController: NSViewController {
     }
 }
 
-/// What a catalog row can offer right now.
-enum CatalogRowState: Equatable {
-    case installable
-    /// 0…1, or negative when the total size is unknown (indeterminate).
-    case downloading(Double)
-    case installing, installed, unavailable
-}
-
 // MARK: - Search field
 
 extension AppsInspectorViewController: NSSearchFieldDelegate {
@@ -1160,166 +1009,55 @@ extension AppsInspectorViewController: NSSearchFieldDelegate {
 
 extension AppsInspectorViewController: NSMenuDelegate {
 
+    /// The Apps menu and a row's context menu, as LightTouchCore's AppsMenu lays them out.
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let isMainMenu = menu !== tableView.menu
-        if isMainMenu {
-            let install = menu.addItem(withTitle: "Install App…", action: #selector(MainWindowController.installApp(_:)),
-                                       keyEquivalent: "i")
-            install.keyEquivalentModifierMask = [.shift, .command]
-            install.isEnabled = emulator.canQueueInstall
-            let media = menu.addItem(withTitle: "Import Media…", action: #selector(MainWindowController.syncMedia(_:)), keyEquivalent: "")
-            media.isEnabled = emulator.canQueueInstall
-            menu.addItem(.separator())
-        }
-        // The Apps menu always lists Resume Transfers (dimmed unless paused); a row's menu only when paused.
-        if isMainMenu || AppInstaller.isPaused(emulator.instance.id) {
-            let resume = menu.addItem(withTitle: "Resume Transfers", action: #selector(resumeInstallsClicked(_:)), keyEquivalent: "")
-            resume.target = self
-            resume.isEnabled = AppInstaller.isPaused(emulator.instance.id)
-            menu.addItem(.separator())
-        }
-        appendAppActions(to: menu, row: isMainMenu ? tableView.selectedRow : tableView.clickedRow)
-        if isMainMenu, tableView.selectedRow < 0 {
-            for title in ["Open", "Uninstall…"] {
-                let item = menu.addItem(withTitle: title, action: nil, keyEquivalent: "")
-                item.isEnabled = false
-            }
-        }
-        if menu.items.last?.isSeparatorItem == false { menu.addItem(.separator()) }
-        let refresh = menu.addItem(withTitle: isMainMenu ? "Refresh Apps" : "Refresh", action: #selector(refreshClicked(_:)),
-                                   keyEquivalent: "")
-        refresh.target = self
-        // These explicit targets must obey the same window scope as the
-        // responder-chain device commands. Never refresh or delete a selection
-        // behind the Files, Help, or log window.
-        if isMainMenu, view.window !== NSApp.mainWindow {
-            for item in menu.items { item.isEnabled = false }
-        }
+        let model = AppsMenu(rows: rows, isMainMenu: isMainMenu, row: isMainMenu ? tableView.selectedRow : tableView.clickedRow,
+                             selection: tableView.selectedRowIndexes, inFrontWindow: view.window === NSApp.mainWindow,
+                             retainedCopy: { [emulator] in IPALibrary.url(for: $0, device: emulator.instance) },
+                             targets: (DeviceSessionHost.shared?.sessions ?? []).map { session in
+                                 let entry = FirmwareCatalog.bundled.entry(id: session.instance.firmware)
+                                 return AppsMenuTarget(title: entry.map { "\($0.marketingName) iOS \($0.version)" } ?? session.instance.name,
+                                                       canQueueInstall: session.emulator.canQueueInstall,
+                                                       isThisDevice: session.emulator === emulator, device: session.emulator)
+                             })
+        for item in model.items { menu.addItem(menuItem(item)) }
     }
 
-    private func appendAppActions(to menu: NSMenu, row: Int) {
-        if searching {
-            guard catalogResults.indices.contains(row) else { return }
-            let app = catalogResults[row]
-            // A right-click inside a multi-row selection offers the batch; the
-            // whole queue machinery (independent downloads and serial installs,
-            // per-row progress) already handles N jobs.
-            let selection = tableView.selectedRowIndexes
-            if selection.count > 1, selection.contains(row) {
-                let installable = selection
-                    .compactMap { catalogResults.indices.contains($0) ? catalogResults[$0] : nil }
-                    .filter { catalogState(of: $0) == .installable }
-                if installable.count > 1 {
-                    let batch = menu.addItem(withTitle: "Install \(installable.count) Apps",
-                                             action: #selector(installSelectedCatalogClicked(_:)),
-                                             keyEquivalent: "")
-                    batch.target = self
-                    batch.representedObject = installable
-                    return
-                }
-            }
-            let installedApp = apps.first { $0.id == app.bundleID }
-            if let job = catalogJob(for: app), !job.isFinished {
-                let cancel = menu.addItem(withTitle: "Cancel Install",
-                                          action: #selector(cancelInstallClicked(_:)), keyEquivalent: "")
-                cancel.target = self
-                cancel.representedObject = job
-                cancel.isEnabled = !job.isCancelled && job.isCancellable
-            } else if installedApp == nil {
-                let install = menu.addItem(withTitle: "Install",
-                                           action: #selector(installCatalogClicked(_:)), keyEquivalent: "")
-                install.target = self
-                install.representedObject = app
-                install.isEnabled = catalogState(of: app) == .installable
-            }
-            if let installed = installedApp {
-                if menu.items.last?.isSeparatorItem == false { menu.addItem(.separator()) }
-                let open = menu.addItem(withTitle: "Open",
-                                        action: #selector(openClicked(_:)), keyEquivalent: "")
-                open.target = self
-                open.representedObject = installed
-                open.isEnabled = !busyWithDevice && emulator.canReachDevice
-                let uninstall = menu.addItem(withTitle: "Uninstall…",
-                                             action: #selector(uninstallClicked(_:)), keyEquivalent: "")
-                uninstall.target = self
-                uninstall.representedObject = installed
-                uninstall.isEnabled = canUninstall([installed])
-                    && catalogJob(for: app)?.isFinished != false
-                menu.addItem(.separator())
-            }
-            let details = menu.addItem(withTitle: "Choose Version…",
-                                       action: #selector(catalogDetailsClicked(_:)), keyEquivalent: "")
-            details.target = self
-            details.representedObject = app
-            if app.appURL != nil {
-                let view = menu.addItem(withTitle: "View on Legacy Store",
-                                        action: #selector(viewOnLegacyStoreClicked(_:)), keyEquivalent: "")
-                view.target = self
-                view.representedObject = app
-            }
-            return
+    private func menuItem(_ item: AppsMenuItem) -> NSMenuItem {
+        if item.isSeparator { return .separator() }
+        let (action, object): (Selector?, Any?) = switch item.action {
+        case .installApp: (#selector(MainWindowController.installApp(_:)), nil)
+        case .importMedia: (#selector(MainWindowController.syncMedia(_:)), nil)
+        case .resumeTransfers: (#selector(resumeInstallsClicked(_:)), nil)
+        case .refresh: (#selector(refreshClicked(_:)), nil)
+        case .install(let app): (#selector(installCatalogClicked(_:)), app)
+        case .installBatch(let apps): (#selector(installSelectedCatalogClicked(_:)), apps)
+        case .chooseVersion(let app): (#selector(catalogDetailsClicked(_:)), app)
+        case .viewOnLegacyStore(let app): (#selector(viewOnLegacyStoreClicked(_:)), app)
+        case .cancelInstall(let job): (#selector(cancelInstallClicked(_:)), job)
+        case .dismissInstall(let job): (#selector(dismissInstallClicked(_:)), job)
+        case .open(let app): (#selector(openClicked(_:)), app)
+        case .uninstall(let apps): (#selector(uninstallClicked(_:)), apps.count == 1 ? apps[0] : apps)
+        case .showInLegacyStore(let app): (#selector(showInLegacyStoreClicked(_:)), app)
+        case .installOn(let file, let device): (#selector(installOnClicked(_:)), (file: file, emulator: device as! EmulatorController))
+        case .none, .separator: (nil, nil)
         }
-        // `!isFinished`, not just the index: a finished job is DRAWN as an
-        // ordinary app row, so classifying by index alone offered "Cancel
-        // Install" (which by then does nothing) on a row showing an installed
-        // app's own icon and name, and never offered Uninstall.
-        if row >= 0, row < pending.count, pending[row].failed {
-            let item = menu.addItem(withTitle: "Dismiss", action: #selector(dismissInstallClicked(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = pending[row]
-        } else if row >= 0, row < pending.count, !pending[row].isFinished {
-            let job = pending[row]
-            let item = menu.addItem(withTitle: "Cancel Install",
-                                    action: #selector(cancelInstallClicked(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = job
-            item.isEnabled = !job.isCancelled && job.isCancellable
-        } else if let app = app(at: row) {
-            // A right-click inside a multi-row selection acts on the batch.
-            let selection = selectedApps
-            let batch = selection.count > 1 && selection.contains(where: { $0.id == app.id })
-            if batch {
-                let uninstall = menu.addItem(withTitle: "Uninstall \(selection.count) Apps…",
-                                             action: #selector(uninstallClicked(_:)), keyEquivalent: "")
-                uninstall.target = self
-                uninstall.representedObject = selection
-                uninstall.isEnabled = canUninstall(selection)
-            } else {
-                let open = menu.addItem(withTitle: "Open",
-                                        action: #selector(openClicked(_:)), keyEquivalent: "")
-                open.target = self
-                open.representedObject = app
-                open.isEnabled = !busyWithDevice && emulator.canReachDevice && !uninstalling.contains(app.id)
-                let uninstall = menu.addItem(withTitle: "Uninstall…",
-                                             action: #selector(uninstallClicked(_:)), keyEquivalent: "")
-                uninstall.target = self
-                uninstall.representedObject = app
-                uninstall.isEnabled = canUninstall([app])
-                // The retained copy can go to any other running device that takes installs.
-                if let file = IPALibrary.url(for: app.id, device: emulator.instance) {
-                    let targets = (DeviceSessionHost.shared?.sessions ?? [])
-                        .filter { $0.emulator !== emulator && $0.emulator.canQueueInstall }
-                    if !targets.isEmpty {
-                        let submenu = NSMenu()
-                        for session in targets {
-                            let entry = FirmwareCatalog.bundled.entry(id: session.instance.firmware)
-                            let title = entry.map { "\($0.marketingName) iOS \($0.version)" } ?? session.instance.name
-                            let item = submenu.addItem(withTitle: title, action: #selector(installOnClicked(_:)), keyEquivalent: "")
-                            item.target = self
-                            item.representedObject = (file: file, emulator: session.emulator)
-                        }
-                        menu.addItem(withTitle: "Install on", action: nil, keyEquivalent: "").submenu = submenu
-                    }
-                }
-
-                let store = menu.addItem(withTitle: "View on Legacy Store",
-                                         action: #selector(showInLegacyStoreClicked(_:)), keyEquivalent: "")
-                store.target = self
-                store.representedObject = app
-                menu.addItem(.separator())
-            }
+        let result = NSMenuItem(title: item.title, action: action, keyEquivalent: item.keyEquivalent)
+        if item.shift { result.keyEquivalentModifierMask = [.shift, .command] }
+        // The responder chain finds the window controller's own actions; the rest are this inspector's.
+        switch item.action {
+        case .installApp, .importMedia, .none: break
+        default: result.target = self
         }
+        result.representedObject = object
+        result.isEnabled = item.isEnabled
+        if let submenu = item.submenu {
+            result.submenu = NSMenu()
+            for entry in submenu { result.submenu!.addItem(menuItem(entry)) }
+        }
+        return result
     }
 }
 
@@ -1352,7 +1090,7 @@ extension AppsInspectorViewController: NSTableViewDataSource, NSTableViewDelegat
                 cell.textField?.stringValue = job.name
                 (cell.viewWithTag(Self.appSubtitleTag) as? NSTextField)?.stringValue =
                     job.bundleID ?? job.status
-                Self.setIcon(job.bundleID.flatMap { AppMetadataCache.shared.icon(for: $0) },
+                AppRowCells.setIcon(job.bundleID.flatMap { AppMetadataCache.shared.icon(for: $0) },
                              on: cell.imageView)
                 cell.imageView?.layer?.opacity = NSApp.isActive ? 1 : 0.5
                 return cell
@@ -1370,7 +1108,7 @@ extension AppsInspectorViewController: NSTableViewDataSource, NSTableViewDelegat
         cell.textField?.stringValue = displayName(app)
         (cell.viewWithTag(Self.appSubtitleTag) as? NSTextField)?.stringValue =
             app.version
-        Self.setIcon(AppMetadataCache.shared.icon(for: app.id), on: cell.imageView)
+        AppRowCells.setIcon(AppMetadataCache.shared.icon(for: app.id), on: cell.imageView)
         // AppKit only dims a *selected* row when the window resigns key,
         // leaving every other icon at full strength — inconsistent with the
         // rest of the sidebar, which dims as a whole. Set explicitly instead
@@ -1485,15 +1223,6 @@ extension AppsInspectorViewController: NSTableViewDataSource, NSTableViewDelegat
         return true
     }
 
-    /// The row's icon well: the image when we have one, else a quiet
-    /// system-fill square as the view's own background (rounded by its mask).
-    /// The color is resolved for the current appearance here; rows rebuild on
-    /// every reload, so a theme switch catches up on the next one.
-    private static func setIcon(_ image: NSImage?, on view: NSImageView?) {
-        view?.image = image
-        view?.layer?.backgroundColor = NSColor.systemFill.cgColor
-    }
-
     private func appCell(_ tableView: NSTableView) -> NSTableCellView {
         let id = NSUserInterfaceItemIdentifier("appCell")
         if let cell = tableView.makeView(withIdentifier: id, owner: self) as? NSTableCellView {
@@ -1543,103 +1272,15 @@ extension AppsInspectorViewController: NSTableViewDataSource, NSTableViewDelegat
 
     private static let appSubtitleTag = 8
 
-    /// A Legacy Store result: icon, name, "developer · iOS 2.2+ · 66 MB", and
-    /// an Install button. Built fresh each time, like pendingCell — a page of
-    /// results is small, and the button's tag has to track the row it was
-    /// built for (every state change reloads the row, so tags never go stale).
+    /// A Legacy Store result, or its transfer or removal in flight (LightTouchCore's catalogRow decides which).
     private func catalogCell(for app: CatalogApp, row: Int) -> NSTableCellView {
-        if let bundleID = app.bundleID, uninstalling.contains(bundleID) {
-            return progressCell(icon: catalogIcon(app), title: app.name,
-                                subtitle: removalStatus(for: bundleID))
+        switch rows.catalogRow(for: app) {
+        case .progress(let subtitle, let fraction, let job):
+            return progressCell(icon: catalogIcon(app), title: app.name, subtitle: subtitle, fraction: fraction, job: job)
+        case .result(let button, let enabled):
+            return AppRowCells.catalogCell(app, icon: catalogIcon(app), button: button, enabled: enabled, row: row,
+                                           target: self, action: #selector(catalogInstallClicked(_:)))
         }
-        // In-flight states use the same row the installed list uses for its
-        // own pending work — icon, status subtitle, trailing circular
-        // progress — so the two modes can never drift apart visually.
-        if let failed = pending.last(where: {
-            $0.failed && !$0.dismissed && ($0.catalogIpaID == app.ipaID || ($0.bundleID != nil && $0.bundleID == app.bundleID))
-        }) {
-            return progressCell(icon: catalogIcon(app), title: app.name, subtitle: failed.status, job: failed)
-        }
-        let state = catalogState(of: app)
-        if case .downloading(let fraction) = state {
-            return progressCell(icon: catalogIcon(app), title: app.name,
-                                subtitle: catalogJob(for: app)?.status ?? "Downloading…",
-                                fraction: fraction, job: catalogJob(for: app))
-        }
-        if state == .installing {
-            return progressCell(icon: catalogIcon(app), title: app.name,
-                                subtitle: catalogJob(for: app)?.status ?? "Installing…", job: catalogJob(for: app))
-        }
-        let cell = NSTableCellView()
-        let image = NSImageView()
-        image.imageScaling = .scaleProportionallyUpOrDown
-        image.wantsLayer = true
-        image.layer?.cornerRadius = 6
-        image.layer?.cornerCurve = .circular
-        image.layer?.masksToBounds = true
-        image.translatesAutoresizingMaskIntoConstraints = false
-        Self.setIcon(catalogIcon(app), on: image)
-
-        let text = NSTextField(labelWithString: app.name)
-        text.lineBreakMode = .byTruncatingTail
-        text.maximumNumberOfLines = 1
-        text.cell?.wraps = false
-        text.allowsExpansionToolTips = true
-        text.translatesAutoresizingMaskIntoConstraints = false
-        let incompatible = app.incompatibility != nil
-        if incompatible {
-            text.textColor = .secondaryLabelColor
-            image.alphaValue = 0.5
-        }
-
-        let subtitle = NSTextField(labelWithString: app.subtitle)
-        subtitle.textColor = incompatible ? .tertiaryLabelColor : .secondaryLabelColor
-        subtitle.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        subtitle.lineBreakMode = .byTruncatingTail
-        subtitle.translatesAutoresizingMaskIntoConstraints = false
-
-        let button = NSButton(title: "Install", target: self,
-                              action: #selector(catalogInstallClicked(_:)))
-        button.bezelStyle = .rounded
-        button.controlSize = .small
-        button.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        button.tag = row
-        button.translatesAutoresizingMaskIntoConstraints = false
-        switch catalogState(of: app) {
-        case .installable:
-            break
-        case .installed:
-            button.title = "Open"
-            button.isEnabled = emulator.canReachDevice && !busyWithDevice && apps.contains { $0.id == app.bundleID }
-        case .unavailable:
-            // The device can't take an install right now (booting, or gone) —
-            // same gate as every other install entry point.
-            button.isEnabled = false
-        case .downloading, .installing:
-            break   // returned above as a progressCell; not reachable here
-        }
-
-        [image, text, subtitle, button].forEach(cell.addSubview)
-        cell.imageView = image
-        cell.textField = text
-        cell.toolTip = [app.bundleID, app.version.map { "v\($0)" }]
-            .compactMap { $0 }.joined(separator: " — ")
-        NSLayoutConstraint.activate([
-            image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-            image.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            image.widthAnchor.constraint(equalToConstant: 32),
-            image.heightAnchor.constraint(equalToConstant: 32),
-            button.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
-            button.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            button.widthAnchor.constraint(equalToConstant: 60),
-            text.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: 8),
-            text.trailingAnchor.constraint(equalTo: button.leadingAnchor, constant: -6),
-            text.bottomAnchor.constraint(equalTo: cell.centerYAnchor, constant: 0),
-            subtitle.leadingAnchor.constraint(equalTo: text.leadingAnchor),
-            subtitle.trailingAnchor.constraint(lessThanOrEqualTo: button.leadingAnchor, constant: -6),
-            subtitle.topAnchor.constraint(equalTo: text.bottomAnchor, constant: 1),
-        ])
-        return cell
     }
 
     /// The catalog's icon for a result, if it has arrived.
@@ -1658,77 +1299,11 @@ extension AppsInspectorViewController: NSTableViewDataSource, NSTableViewDelegat
         return job.bundleID.flatMap { AppMetadataCache.shared.icon(for: $0) }
     }
 
-    /// A row for work in flight — icon, title, status subtitle and a trailing
-    /// circular progress indicator, determinate when a download knows its
-    /// size. One style for installs, downloads, removals and catalog rows.
-    /// Built fresh each time (such rows are few) so the indicator animates.
-    private func progressCell(icon: NSImage?, title: String, subtitle subtitleText: String,
+    private func progressCell(icon: NSImage?, title: String, subtitle: String,
                               fraction: Double? = nil, job: InstallJob? = nil) -> NSTableCellView {
-        let cell = NSTableCellView()
-        let image = NSImageView()
-        image.imageScaling = .scaleProportionallyUpOrDown
-        image.wantsLayer = true
-        image.layer?.cornerRadius = 6
-        image.layer?.cornerCurve = .circular
-        image.layer?.masksToBounds = true
-        image.translatesAutoresizingMaskIntoConstraints = false
-        Self.setIcon(icon, on: image)
-        image.layer?.opacity = NSApp.isActive ? 1 : 0.5
-        let text = NSTextField(labelWithString: title)
-        text.lineBreakMode = .byTruncatingTail
-        text.maximumNumberOfLines = 1
-        text.cell?.wraps = false
-        text.allowsExpansionToolTips = true
-        text.translatesAutoresizingMaskIntoConstraints = false
-        let subtitle = NSTextField(labelWithString: subtitleText)
-        subtitle.textColor = .secondaryLabelColor
-        subtitle.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        subtitle.lineBreakMode = .byTruncatingTail
-        subtitle.translatesAutoresizingMaskIntoConstraints = false
-        let progress = NSProgressIndicator()
-        progress.style = .spinning
-        progress.controlSize = .small
-        progress.translatesAutoresizingMaskIntoConstraints = false
-        if let fraction, fraction >= 0 {
-            progress.isIndeterminate = false
-            progress.minValue = 0
-            progress.maxValue = 1
-            progress.doubleValue = fraction
-        } else {
-            progress.startAnimation(nil)
+        AppRowCells.progressCell(icon: icon, title: title, subtitle: subtitle, fraction: fraction, job: job) { [weak self] in
+            self?.resumeInstallsClicked(nil)
         }
-        let action = InlineActionButton(title: job?.failed == true ? "Retry" : job?.status == "Paused" ? "Resume" : "Cancel") { [weak self, weak job] in
-            guard let job else { return }
-            if job.failed { job.retry?() }
-            else if AppInstaller.isPaused(job.deviceID) { self?.resumeInstallsClicked(nil) }
-            else { job.cancel() }
-        }
-        action.isHidden = job == nil
-        action.isEnabled = job?.failed == true || job?.isCancellable == true
-        action.translatesAutoresizingMaskIntoConstraints = false
-        progress.isHidden = job?.failed == true
-        [image, text, subtitle, progress, action].forEach(cell.addSubview)
-        cell.imageView = image
-        cell.textField = text
-        NSLayoutConstraint.activate([
-            image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-            image.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            image.widthAnchor.constraint(equalToConstant: 32),
-            image.heightAnchor.constraint(equalToConstant: 32),
-            action.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
-            action.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            action.widthAnchor.constraint(equalToConstant: job == nil ? 0 : 54),
-            progress.trailingAnchor.constraint(equalTo: action.leadingAnchor, constant: -4),
-            progress.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            progress.widthAnchor.constraint(equalToConstant: 16),
-            progress.heightAnchor.constraint(equalToConstant: 16),
-            text.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: 8),
-            text.trailingAnchor.constraint(equalTo: progress.leadingAnchor, constant: -6),
-            text.bottomAnchor.constraint(equalTo: cell.centerYAnchor, constant: 0),
-            subtitle.leadingAnchor.constraint(equalTo: text.leadingAnchor),
-            subtitle.trailingAnchor.constraint(lessThanOrEqualTo: progress.leadingAnchor, constant: -6),
-            subtitle.topAnchor.constraint(equalTo: text.bottomAnchor, constant: 1),
-        ])
-        return cell
     }
+
 }

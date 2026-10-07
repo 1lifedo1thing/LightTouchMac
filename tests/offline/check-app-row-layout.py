@@ -1,76 +1,64 @@
 #!/usr/bin/env python3
-"""Exercise production Store and transfer cells at narrow/wide inspector widths."""
+"""The Apps inspector's Store and transfer rows at narrow and wide widths: UI/AppRowCells.swift and
+UI/InlineActionButton.swift compiled whole, against stand-ins for the LightTouchCore types they draw (CatalogApp,
+InstallJob, AppInstaller.isPaused). Icons and labels align, the title stays one line, the action keeps its width
+whatever its text, and a transfer shows determinate or indeterminate progress beside Cancel. What each row says
+(and which row a Store result is) is AppsInspectorRowsTests'."""
 from pathlib import Path
-import subprocess,tempfile
-root=Path(__file__).resolve().parents[2]
-source=(root/'LightTouchMac/UI/AppsInspectorViewController.swift').read_text()
-def method(signature):
- a=source.index(signature)
- return source[a:source.index('\n    }',a)+6]
-fixture=r'''import Cocoa
-struct CatalogApp {var name:String; var bundleID:String?="test";var ipaID=1;var version:String?="1.0";var subtitle="Example Developer · 5 MB";var incompatibility:String?=nil}
-final class InstallJob {
- let deviceID=UUID()
- var failed=false,dismissed=false,isCancellable=true
- var catalogIpaID:Int?=1;var bundleID:String?="test";var status="Downloading…";var retry:(()->Void)?
- func cancel(){}
+import subprocess, tempfile
+root = Path(__file__).resolve().parents[2]
+fixture = r'''import Cocoa
+struct CatalogApp {
+ var name: String; var bundleID: String? = "test"; var version: String? = "1.0"
+ var subtitle = "Example Developer · 5 MB"; var incompatibility: String? = nil
 }
-enum AppInstaller {static var isPaused=false; static func isPaused(_ id:UUID)->Bool {isPaused}}
-final class Fixture:NSObject {
- enum State:Equatable {case installable,installed,unavailable,downloading(Double?),installing}
- var state=State.installable
- var pending:[InstallJob]=[]
- var uninstalling=Set<String>(),removingApp:String?
-
- struct App {var id:String};var apps=[App(id:"test")]
- struct Instance {let id=UUID()}
- struct Emulator {var canReachDevice=true;let instance=Instance()};var emulator=Emulator();var busyWithDevice=false
- func catalogState(of app:CatalogApp)->State {state}
- func catalogIcon(_ app:CatalogApp)->NSImage? {nil}
- func catalogJob(for app:CatalogApp)->InstallJob? {pending.first}
- static func setIcon(_ icon:NSImage?,on image:NSImageView){image.image=icon}
- @objc func catalogInstallClicked(_ sender:Any?){}
- @objc func resumeInstallsClicked(_ sender:Any?){}
-'''+method('    private func removalStatus(')+'\n'+method('    private func catalogCell(')+'\n'+method('    private func progressCell(')+r'''
- static func run() {
-  let window=NSWindow(contentRect:NSRect(x:0,y:0,width:400,height:56),styleMask:[.titled],backing:.buffered,defer:false)
-  let fixture=Fixture()
-  for width in [240.0,320.0,500.0] {
+@MainActor final class InstallJob {
+ let deviceID = UUID()
+ var failed = false, isCancellable = true, status = "Downloading…"
+ var retry: (() -> Void)?
+ func cancel() {}
+}
+@MainActor enum AppInstaller { static func isPaused(_ id: UUID) -> Bool { false } }
+@main struct Check {
+ @MainActor static func main() {
+  _ = NSApplication.shared
+  let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 56), styleMask: [.titled], backing: .buffered, defer: false)
+  enum Row { case result(String), progress(Double?) }
+  for width in [240.0, 320.0, 500.0] {
    for name in ["Facebook", "Doodle Jump — BE WARNED: Insanely Addictive!"] {
-    for state in [State.installable,.installed,.downloading(0.5),.installing] {
-     fixture.state=state;fixture.pending=[InstallJob()]
-     let cell=fixture.catalogCell(for:CatalogApp(name:name),row:0)
-     window.contentView=cell;window.setContentSize(NSSize(width:width,height:56));window.orderFront(nil)
+    for row in [Row.result("Install"), .result("Open"), .progress(0.5), .progress(nil)] {
+     let cell: NSTableCellView
+     switch row {
+     case .result(let button): cell = AppRowCells.catalogCell(CatalogApp(name: name), icon: nil, button: button, enabled: true, row: 0, target: nil, action: nil)
+     case .progress(let fraction): cell = AppRowCells.progressCell(icon: nil, title: name, subtitle: "Downloading… 50%", fraction: fraction, job: InstallJob()) {}
+     }
+     window.contentView = cell; window.setContentSize(NSSize(width: width, height: 56)); window.orderFront(nil)
      cell.layoutSubtreeIfNeeded()
-     let title=cell.textField!,image=cell.imageView!
-     let subtitle=cell.subviews.compactMap{$0 as? NSTextField}.first{$0 !== title}!
-     precondition(title.maximumNumberOfLines==1)
-     precondition(abs(title.frame.minX-subtitle.frame.minX)<0.5)
-     precondition(abs(image.frame.midY-28)<0.5 && abs(image.frame.width-32)<0.5)
-     let button=cell.subviews.compactMap{$0 as? NSButton}.first!
-     let buttonFrame=button.alignmentRect(forFrame:button.frame)
-     precondition(abs(buttonFrame.width-(state == .installed || state == .installable ? 60:54))<0.5,"Action width changed with text")
-     precondition(title.frame.maxX<buttonFrame.minX && title.frame.minX>image.frame.maxX)
-     if state == .installing || state == .downloading(0.5) {
-      let progress=cell.subviews.compactMap{$0 as? NSProgressIndicator}.first!
-      precondition(!progress.isHidden && !button.isHidden && progress.frame.width==16,"Progress must remain visible alongside Cancel")
-      precondition(progress.isIndeterminate == (state == .installing))
+     let title = cell.textField!, image = cell.imageView!
+     let subtitle = cell.subviews.compactMap { $0 as? NSTextField }.first { $0 !== title }!
+     precondition(title.maximumNumberOfLines == 1)
+     precondition(abs(title.frame.minX - subtitle.frame.minX) < 0.5)
+     precondition(abs(image.frame.midY - 28) < 0.5 && abs(image.frame.width - 32) < 0.5)
+     let button = cell.subviews.compactMap { $0 as? NSButton }.first!
+     let buttonFrame = button.alignmentRect(forFrame: button.frame)
+     if case .result = row { precondition(abs(buttonFrame.width - 60) < 0.5, "Action width changed with text") }
+     else { precondition(abs(buttonFrame.width - 54) < 0.5, "Action width changed with text") }
+     precondition(title.frame.maxX < buttonFrame.minX && title.frame.minX > image.frame.maxX)
+     if case .progress(let fraction) = row {
+      let progress = cell.subviews.compactMap { $0 as? NSProgressIndicator }.first!
+      precondition(!progress.isHidden && !button.isHidden && progress.frame.width == 16, "Progress must remain visible alongside Cancel")
+      precondition(progress.isIndeterminate == (fraction == nil))
      }
     }
    }
   }
-  fixture.uninstalling=["test"];fixture.state = .installed
-  let queued=fixture.catalogCell(for:CatalogApp(name:"Diner Dash"),row:0)
-  precondition(queued.subviews.compactMap{$0 as? NSTextField}.contains{$0.stringValue=="Waiting to remove…"})
-  fixture.removingApp="test"
-  let removing=fixture.catalogCell(for:CatalogApp(name:"Diner Dash"),row:0)
-  precondition(removing.subviews.compactMap{$0 as? NSTextField}.contains{$0.stringValue=="Removing…"})
   print("PASS: Store/transfer rows align icons and labels, preserve compact actions and show determinate/indeterminate progress with Cancel")
  }
 }
-@main struct Check { @MainActor static func main(){_=NSApplication.shared;Fixture.run()} }
 '''
 with tempfile.TemporaryDirectory(prefix='ltm-row-layout-') as directory:
- work=Path(directory);(work/'check.swift').write_text(fixture)
- subprocess.run(['swiftc','-default-isolation','MainActor',str(root/'LightTouchMac/UI/InlineActionButton.swift'),str(work/'check.swift'),'-o',str(work/'check')],check=True)
- subprocess.run([str(work/'check')],check=True,timeout=20)
+    work = Path(directory)
+    (work / 'check.swift').write_text(fixture)
+    subprocess.run(['swiftc', '-parse-as-library', '-default-isolation', 'MainActor', str(root / 'LightTouchMac/UI/InlineActionButton.swift'),
+                    str(root / 'LightTouchMac/UI/AppRowCells.swift'), str(work / 'check.swift'), '-o', str(work / 'check')], check=True)
+    subprocess.run([str(work / 'check')], check=True, timeout=20)
