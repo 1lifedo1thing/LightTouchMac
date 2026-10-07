@@ -29,7 +29,7 @@ import UniformTypeIdentifiers
     private(set) var copiedScreenshot = false
     private var copyConfirmation: Task<Void, Never>?
     private var captureKeyMonitor: Any?
-    private var consumedCaptureSpace = false
+    private var spaceBar = SpaceBarCapture()
     private var quitAfterRecording = false
     private var closeAfterRecording = false
 
@@ -231,29 +231,24 @@ import UniformTypeIdentifiers
     private func installCaptureKeyboardShortcuts() {
         captureKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             guard let self else { return event }
-            if event.keyCode == 49, event.type == .keyUp, consumedCaptureSpace {
-                consumedCaptureSpace = false
-                return nil
-            }
-            if event.keyCode == 49, event.type == .keyDown {
-                if event.isARepeat, consumedCaptureSpace { return nil }
-                if !event.isARepeat { consumedCaptureSpace = false }
-            }
-            guard event.type == .keyDown, event.keyCode == 49,
-                  let window, event.window === window, window.isKeyWindow,
-                  window.attachedSheet == nil, NSApp.modalWindow == nil,
-                  let screen = deviceVC?.screen, window.firstResponder === screen,
-                  !screen.isShowingLiveText,
-                  event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
-                  capturePreferences.spaceBarAction != .none else { return event }
-            guard !event.isARepeat else { return consumedCaptureSpace ? nil : event }
-            consumedCaptureSpace = true
-            switch capturePreferences.spaceBarAction {
-            case .none: return event
-            case .copyScreenshot: copyScreen()
-            case .saveScreenshot: saveScreenshot()
-            case .saveScreenshotAs: saveScreenshotAs()
-            case .toggleRecording: toggleRecording()
+            guard event.type == .keyDown || event.type == .keyUp else { return event }
+            let eligible: Bool = { [self] in
+                guard let window = self.window, event.window === window, window.isKeyWindow, window.attachedSheet == nil, NSApp.modalWindow == nil,
+                      let screen = self.deviceVC?.screen, window.firstResponder === screen else { return false }
+                return !screen.isShowingLiveText
+            }()
+            switch spaceBar.key(event.keyCode, down: event.type == .keyDown, isRepeat: event.type == .keyDown && event.isARepeat,
+                                modifiers: KeyModifiers(event.modifierFlags), eligible: eligible, action: capturePreferences.spaceBarAction) {
+            case .pass: return event
+            case .swallow: return nil
+            case .capture(let action):
+                switch action {
+                case .none: break
+                case .copyScreenshot: copyScreen()
+                case .saveScreenshot: saveScreenshot()
+                case .saveScreenshotAs: saveScreenshotAs()
+                case .toggleRecording: toggleRecording()
+                }
             }
             return nil
         }

@@ -67,7 +67,7 @@ func flags(_ code:UInt16,_ f:NSEvent.ModifierFlags)->NSEvent {
 with tempfile.TemporaryDirectory(prefix='ltm-typing-') as tmp:
     work = Path(tmp)
     (work / 'check.swift').write_text(source)
-    sources = ['UI/DisplayView', 'Input/MouseTouchPair', 'Device/Board+App', '../tests/fixtures/machines', 'UI/DisplayMeasurements', 'UI/ZoomMode', 'Capture/PanelCapture', 'Input/KeyboardPointer', 'UI/AttitudeIndicatorButton',
+    sources = ['UI/DisplayView', 'Input/MouseTouchPair', 'Device/Board+App', '../tests/fixtures/machines', 'UI/DisplayMeasurements', 'UI/ZoomMode', 'Capture/PanelCapture', 'Input/KeyboardPointer', 'UI/KeyModifiers+AppKit', 'UI/AttitudeIndicatorButton',
                'UI/InlineLiveTextView', 'UI/DroppedFiles', 'UI/DropHighlight', 'UI/GuestKeyboard']
     subprocess.run(['swiftc', *device_runtime.swift_flags(root), '-module-cache-path', str(work / 'modules'), '-default-isolation', 'MainActor',
                     *[str(root / 'LightTouchMac' / f'{s}.swift') for s in sources], str(work / 'check.swift'), '-o', str(work / 'check')], check=True)
