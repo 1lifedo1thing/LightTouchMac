@@ -252,6 +252,7 @@ final class DisplayView: NSView {
         }
         addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
 
+        contentLayer.magnificationFilter = .nearest   // until a layout picks by scale (contentsFilter)
         // The shell is opaque, so the LCD draws on top of it. Black backing
         // shows a powered-on device screen during boot, before the first frame.
         contentLayer.contentsGravity = .resize
