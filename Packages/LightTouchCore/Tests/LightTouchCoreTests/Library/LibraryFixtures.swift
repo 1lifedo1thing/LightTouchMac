@@ -12,10 +12,8 @@ enum LibraryFixtures {
     /// directory before anything in this process reads them, so code under test that logs never writes the real
     /// library. Call first in any test whose code logs.
     static let isolatedAppState: URL = {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("ltm-tests-state-\(getpid())", isDirectory: true)
-        setenv("LTM_STATE_DIR", url.path, 1)
-        atexit { try? FileManager.default.removeItem(at: FileManager.default.temporaryDirectory.appendingPathComponent("ltm-tests-state-\(getpid())")) }
-        return url
+        // Tests/TestIsolation sets LTM_STATE_DIR to a private directory before any test runs.
+        URL(fileURLWithPath: ProcessInfo.processInfo.environment["LTM_STATE_DIR"]!, isDirectory: true)
     }()
 
     /// An IPSW-shaped zip holding only a Restore.plist with this ProductType and build.
