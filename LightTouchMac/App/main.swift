@@ -7,7 +7,7 @@ import Cocoa
 // is a weak reference). Program entry is the main thread; assumeIsolated lets
 // the delegate's MainActor-isolated conformance be assigned without a hop.
 logEvent("Light Touch started")
-WindowRestorationPolicy.configureDefaults()
+RestorationDefaults.configure()
 let delegate = AppDelegate()
 MainActor.assumeIsolated {
     LightTouchApplication.shared.delegate = delegate

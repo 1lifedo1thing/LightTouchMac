@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Exercise AppKit's real restoration entry points without opening the emulator."""
+"""Exercise AppKit's real restoration entry points without opening the emulator (App/WindowRestorationPolicy.swift whole).
+The process-only defaults are RestorationDefaultsTests'."""
 from pathlib import Path
 import subprocess, tempfile
 root = Path(__file__).resolve().parents[2]
@@ -13,21 +14,6 @@ nonisolated final class UntouchedCoder: NSCoder {
 }
 @main struct Check {
  @MainActor static func main() {
-  let domain = "ltm-window-restoration-test-" + UUID().uuidString
-  let defaults = UserDefaults(suiteName: domain)!
-  defer { defaults.removePersistentDomain(forName: domain) }
-  defaults.set(true, forKey: "NSQuitAlwaysKeepsWindows")
-  defaults.set(false, forKey: "ApplePersistenceIgnoreState")
-  defaults.set("/chosen/captures", forKey: "captureFolder")
-  defaults.set("guest-state", forKey: "resumeOnLaunch")
-  let persisted = defaults.persistentDomain(forName: domain)!
-  defaults.setVolatileDomain(["testArgument": "retained"], forName: UserDefaults.argumentDomain)
-  WindowRestorationPolicy.configureDefaults(defaults)
-  precondition(!defaults.bool(forKey: "NSQuitAlwaysKeepsWindows"))
-  precondition(defaults.bool(forKey: "ApplePersistenceIgnoreState"))
-  precondition(defaults.string(forKey: "testArgument") == "retained")
-  precondition(defaults.persistentDomain(forName: domain)! as NSDictionary == persisted as NSDictionary,
-               "restoration policy must not change emulator or user preferences")
   let app = LightTouchApplication.shared
   precondition(app is LightTouchApplication)
   let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
@@ -57,7 +43,7 @@ nonisolated final class UntouchedCoder: NSCoder {
   app.encodeRestorableState(with: coder)
   app.encodeRestorableState(with: coder, backgroundQueue: OperationQueue())
   precondition(coder.accesses == 0, "old window archives must never be inspected")
-  print("PASS: no window restoration/encoding, completed restoration callbacks, per-window opt-out, remembered frames only by name, process-only defaults and preserved preferences")
+  print("PASS: no window restoration/encoding, completed restoration callbacks, per-window opt-out, remembered frames only by name")
  }
 }
 '''
@@ -74,7 +60,7 @@ for path in ['UI/HelpWindowController.swift', 'UI/SettingsWindowController.swift
  assert 'WindowRestorationPolicy.configure(' in text, path
  assert 'setFrameAutosaveName(' not in text and 'setFrameUsingName(' not in text, path
 main = (root/'LightTouchMac/App/main.swift').read_text()
-assert main.index('WindowRestorationPolicy.configureDefaults()') < main.index('LightTouchApplication.shared')
+assert main.index('RestorationDefaults.configure()') < main.index('LightTouchApplication.shared')
 assert main.index('LightTouchApplication.shared') < main.index('NSApplicationMain(')
 project = (root/'LightTouchMac.xcodeproj/project.pbxproj').read_text()
 assert project.count('INFOPLIST_KEY_NSPrincipalClass = LightTouchApplication;') == 2

@@ -7,19 +7,6 @@ import DeviceRuntime
 import Cocoa
 
 /// Fit the whole device in the window, or use an integer display-pixel scale.
-enum ZoomMode: Equatable {
-    case fit
-    case physical
-    case pixels(Int)
-
-    static let steps = [1, 2, 3, 4, 6, 8]
-
-    var percent: Int? {
-        guard case .pixels(let n) = self else { return nil }
-        return n * 100
-    }
-}
-
 final class DisplayView: NSView {
 
     /// The device this view shows, fixed at init.
@@ -464,7 +451,11 @@ final class DisplayView: NSView {
         guard let window else { return nil }
         let center = window.convertPoint(toScreen: convert(CGPoint(x: bounds.midX, y: bounds.midY), to: nil))
         let screen = NSScreen.screens.first { $0.frame.contains(center) } ?? window.screen
-        return screen.flatMap { DisplayMeasurements.pointsPerMillimeter($0) }.map {
+        return screen.flatMap { screen in
+            (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber).flatMap {
+                DisplayMeasurements.pointsPerMillimeter(display: CGDirectDisplayID($0.uint32Value), logical: screen.frame.size)
+            }
+        }.map {
             let height = profile.physicalHeightMillimeters * $0
             return modelView?.physicalScale(heightInPoints: height) ?? height / shellPixels.height
         }
@@ -630,9 +621,8 @@ final class DisplayView: NSView {
     /// Scale is independent of a framebuffer arriving before or after rotation.
     var pixelMultiple: CGFloat {
         // Free-form steps in points per guest pixel, the unit its Nx is in.
-        if freeFormActive { return appliedScale }
-        return appliedScale * screenCutout.width / nativeScreenPixels.width
-            * (window?.backingScaleFactor ?? 2)
+        ZoomMode.pixelMultiple(appliedScale: appliedScale, cutoutWidth: screenCutout.width, nativeWidth: nativeScreenPixels.width,
+                               backingScale: window?.backingScaleFactor ?? 2, freeForm: freeFormActive)
     }
 
     private var appliedScale: CGFloat = 1
@@ -640,12 +630,12 @@ final class DisplayView: NSView {
     /// Whole display pixels per guest pixel stay crisp (nearest); between the steps (Fit, Physical Size)
     /// nearest would draw guest pixels one or two display pixels wide, so those are filtered (linear).
     static func contentsFilter(_ pixelMultiple: CGFloat) -> CALayerContentsFilter {
-        abs(pixelMultiple - pixelMultiple.rounded()) < 0.01 ? .nearest : .linear
+        ZoomMode.drawsNearest(pixelMultiple) ? .nearest : .linear
     }
 
     private func shellScale(guestPixelsPerDisplayPixel multiple: Int) -> CGFloat {
-        CGFloat(multiple) / (window?.backingScaleFactor ?? 2)
-            * nativeScreenPixels.width / screenCutout.width
+        ZoomMode.shellScale(guestPixelsPerDisplayPixel: multiple, cutoutWidth: screenCutout.width, nativeWidth: nativeScreenPixels.width,
+                            backingScale: window?.backingScaleFactor ?? 2)
     }
 
     /// The largest uniform scale that fits `nativeSize` in the pane inset on
@@ -1051,27 +1041,10 @@ final class DisplayView: NSView {
         if let liveTextView { return liveTextView.capturedImage }
         guard let image = capturePanelFrame(includeTouches: includeTouches) else { return nil }
         // Match the window: scan-to-upright plus, where the surface doesn't follow it, the device's own quarter-turn.
-        let device = profile.surfaceFollowsRotation ? 0 : (emulator?.rotationDegrees ?? 0) / 90
-        let turns = ((Int((guestTurn * 2 / .pi).rounded()) + device) % 4 + 4) % 4
+        let turns = PanelCapture.quarterTurns(guestTurn: guestTurn, deviceDegrees: emulator?.rotationDegrees ?? 0,
+                                              surfaceFollowsRotation: profile.surfaceFollowsRotation)
         guard turns != 0 else { return image }
-        return Self.rotated(image, clockwiseQuarterTurns: turns) ?? image
-    }
-
-    private static func rotated(_ image: CGImage, clockwiseQuarterTurns turns: Int) -> CGImage? {
-        let w = CGFloat(image.width), h = CGFloat(image.height)
-        let size = turns % 2 == 0 ? CGSize(width: w, height: h) : CGSize(width: h, height: w)
-        guard turns != 0, let context = CGContext(data: nil, width: Int(size.width), height: Int(size.height),
-                                                  bitsPerComponent: 8, bytesPerRow: 0,
-                                                  space: image.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
-                                                  bitmapInfo: image.bitmapInfo.rawValue) else { return image }
-        // CG is y-up, so a visual clockwise turn is a negative angle.
-        switch turns {
-        case 1: context.translateBy(x: 0, y: w); context.rotate(by: -.pi / 2)
-        case 2: context.translateBy(x: w, y: h); context.rotate(by: .pi)
-        default: context.translateBy(x: h, y: 0); context.rotate(by: .pi / 2)
-        }
-        context.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
-        return context.makeImage()
+        return PanelCapture.rotated(image, clockwiseQuarterTurns: turns) ?? image
     }
 
     private func capturePanelFrame(includeTouches: Bool) -> CGImage? {
@@ -1491,8 +1464,8 @@ final class DisplayView: NSView {
     private func updatePairRings(_ flags: NSEvent.ModifierFlags) {
         guard !touchDown else { return }
         let point = window.flatMap { normalized(windowPoint: $0.mouseLocationOutsideOfEventStream) }.map { CGPoint(x: $0.0, y: $0.1) }
-        touchPair.track(flags, at: point)
-        guard touchInteractionEnabled, let point, let second = touchPair.secondFinger(for: point, flags) else {
+        touchPair.track(KeyModifiers(flags), at: point)
+        guard touchInteractionEnabled, let point, let second = touchPair.secondFinger(for: point, KeyModifiers(flags)) else {
             showPairRings(nil); return
         }
         showPairRings((point, second))
@@ -1691,56 +1664,33 @@ final class DisplayView: NSView {
     // MARK: - Keyboard pointer (typing disabled)
 
     private let keyboardPointerLayer = CAShapeLayer()
-    private var keyboardPoint = CGPoint(x: 0.5, y: 0.5)
-    private var keyboardTouchKeys = Set<UInt16>()
-    private var hasKeyboardPointer = false
+    private var keyboardPointer = KeyboardPointer()
 
-    private func endKeyboardTouch() {
-        guard !keyboardTouchKeys.isEmpty else { return }
-        keyboardTouchKeys.removeAll()
-        sendVisualTouch(0, TouchPhase.end, keyboardPoint.x, keyboardPoint.y, keyboard: true)
+    private func send(_ touch: KeyboardPointer.Touch?) {
+        guard let touch else { return }
+        let phase = switch touch.phase { case .begin: TouchPhase.begin; case .update: TouchPhase.update; case .end: TouchPhase.end }
+        sendVisualTouch(0, phase, touch.point.x, touch.point.y, keyboard: true)
     }
 
-    /// Tab leaves the screen while the arrow keys drive the pointer, and Control-Tab (with Shift,
-    /// backwards) always does, so a keyboard user is never trapped here (HIG p.266). Typing sends Tab to the device.
+    private func endKeyboardTouch() { send(keyboardPointer.end()) }
+
+    /// Tab out of the screen (KeyboardPointer.focusMove).
     private func moveFocusOut(_ event: NSEvent) -> Bool {
-        guard event.keyCode == 48, event.modifierFlags.intersection([.command, .option]).isEmpty,
-              event.modifierFlags.contains(.control) || emulator?.keyboardInputEnabled == false else { return false }
-        if event.modifierFlags.contains(.shift) { window?.selectPreviousKeyView(self) } else { window?.selectNextKeyView(self) }
+        switch KeyboardPointer.focusMove(keyCode: event.keyCode, modifiers: KeyModifiers(event.modifierFlags),
+                                         typingOff: emulator?.keyboardInputEnabled == false) {
+        case .next?: window?.selectNextKeyView(self)
+        case .previous?: window?.selectPreviousKeyView(self)
+        case nil: return false
+        }
         return true
     }
 
     private func keyboardPointerKey(_ event: NSEvent, down: Bool) -> Bool {
-        let code = event.keyCode
-        guard [49, 123, 124, 125, 126].contains(code) else { return false }
-        if !down, keyboardTouchKeys.contains(code) {
-            if keyboardTouchKeys.count == 1 { endKeyboardTouch() }
-            else { keyboardTouchKeys.remove(code) }
-            return true
-        }
-        guard emulator?.keyboardInputEnabled == false,
-              event.modifierFlags.intersection([.command, .control, .option]).isEmpty else { return false }
-        guard down, touchInteractionEnabled, !touchDown, !pinchingGuest, scrollPoint == nil else { return true }
-        hasKeyboardPointer = true
-        let touching = code == 49 || event.modifierFlags.contains(.shift)
-        if touching, !keyboardTouchKeys.contains(code) {
-            let began = keyboardTouchKeys.isEmpty
-            keyboardTouchKeys.insert(code)
-            if began { sendVisualTouch(0, TouchPhase.begin, keyboardPoint.x, keyboardPoint.y, keyboard: true) }
-        }
-        if code != 49 {
-            let delta: CGFloat = 0.02
-            switch code {
-            case 123: keyboardPoint.x = max(0, keyboardPoint.x - delta)
-            case 124: keyboardPoint.x = min(1, keyboardPoint.x + delta)
-            case 125: keyboardPoint.y = min(1, keyboardPoint.y + delta)
-            default: keyboardPoint.y = max(0, keyboardPoint.y - delta)
-            }
-            if !keyboardTouchKeys.isEmpty {
-                sendVisualTouch(0, TouchPhase.update, keyboardPoint.x, keyboardPoint.y, keyboard: true)
-            }
-        }
-        return true
+        let (handled, touches) = keyboardPointer.key(event.keyCode, down: down, modifiers: KeyModifiers(event.modifierFlags),
+                                                     typingOff: emulator?.keyboardInputEnabled == false,
+                                                     canTouch: touchInteractionEnabled && !touchDown && !pinchingGuest && scrollPoint == nil)
+        touches.forEach(send)
+        return handled
     }
 
     private func updateKeyboardPointer() {
@@ -1748,8 +1698,8 @@ final class DisplayView: NSView {
         if !active { endKeyboardTouch() }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        keyboardPointerLayer.isHidden = !active || !hasKeyboardPointer
-        if active { keyboardPointerLayer.position = projectedPanelPoint(keyboardPoint) }
+        keyboardPointerLayer.isHidden = !active || !keyboardPointer.isShown
+        if active { keyboardPointerLayer.position = projectedPanelPoint(keyboardPointer.point) }
         CATransaction.commit()
     }
 
@@ -1806,7 +1756,7 @@ final class DisplayView: NSView {
 
     override func keyUp(with event: NSEvent) {
         if event.keyCode == 49 && consumedWakeSpace { consumedWakeSpace = false; return }
-        if !keyboardTouchKeys.isEmpty, keyboardPointerKey(event, down: false) { return }
+        if !keyboardPointer.touchKeys.isEmpty, keyboardPointerKey(event, down: false) { return }
         if isShowingLiveText { return }
         if !event.modifierFlags.intersection([.command, .control]).isEmpty {
             super.keyUp(with: event)
@@ -1832,9 +1782,7 @@ final class DisplayView: NSView {
             emulator?.sendKey(macKeyCode: event.keyCode, down: down)
         }
         updatePairRings(event.modifierFlags)
-        if !event.modifierFlags.contains(.shift), !keyboardTouchKeys.isDisjoint(with: [123, 124, 125, 126]) {
-            endKeyboardTouch()
-        }
+        send(keyboardPointer.modifiersChanged(KeyModifiers(event.modifierFlags)))
         super.flagsChanged(with: event)
     }
 

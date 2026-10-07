@@ -1,0 +1,152 @@
+import CoreServices
+import Foundation
+import HostRuntime
+
+/// Capture choices are shared by the toolbar, menus, and focused options panel.
+/// The existing folder key is retained so upgrading never moves a user's saves.
+public struct CapturePreferences {
+    public static let shared = CapturePreferences()
+    private let defaults: UserDefaults
+
+    public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+
+    public var saveLocation: URL {
+        get {
+            guard let path = defaults.string(forKey: "captureFolder"), !path.isEmpty else {
+                return Self.desktopDirectory
+            }
+            return URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+        }
+        nonmutating set {
+            guard newValue.isFileURL else { return }
+            let url = URL(fileURLWithPath: newValue.standardizedFileURL.path, isDirectory: true)
+            defaults.set(url.path, forKey: "captureFolder")
+            guard url != Self.desktopDirectory else { return }
+            var recent = defaults.stringArray(forKey: "captureRecentFolders") ?? []
+            recent.removeAll { URL(fileURLWithPath: $0).standardizedFileURL.path == url.path }
+            recent.insert(url.path, at: 0)
+            defaults.set(Array(recent.prefix(3)), forKey: "captureRecentFolders")
+        }
+    }
+
+    public var saveLocations: [URL] {
+        var locations = [Self.desktopDirectory]
+        for url in [saveLocation] + (defaults.stringArray(forKey: "captureRecentFolders") ?? [])
+            .map({ URL(fileURLWithPath: $0, isDirectory: true).standardizedFileURL }) {
+            if !locations.contains(url) { locations.append(url) }
+        }
+        return locations
+    }
+
+    public static var desktopDirectory: URL {
+        FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)[0].standardizedFileURL
+    }
+
+    public var openInApplicationURL: URL? {
+        get {
+            if let path = defaults.string(forKey: "openInApplicationPath"), !path.isEmpty {
+                let url = URL(fileURLWithPath: path, isDirectory: true)
+                if Self.isApplication(url) { return url }
+            }
+            return Self.previewApplicationURL
+        }
+        nonmutating set {
+            guard let newValue else { defaults.removeObject(forKey: "openInApplicationPath"); return }
+            guard Self.isApplication(newValue) else { return }
+            defaults.set(newValue.standardizedFileURL.path, forKey: "openInApplicationPath")
+        }
+    }
+
+    public var openInApplicationName: String {
+        openInApplicationURL.map(Self.applicationName) ?? "Preview"
+    }
+
+    public static var previewApplicationURL: URL? {
+        (LSCopyApplicationURLsForBundleIdentifier("com.apple.Preview" as CFString, nil)?.takeRetainedValue() as? [URL])?.first
+    }
+
+    public static func isApplication(_ url: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        guard url.isFileURL, url.pathExtension.lowercased() == "app",
+              FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue,
+              let bundle = Bundle(url: url), bundle.object(forInfoDictionaryKey: "CFBundlePackageType") as? String == "APPL"
+        else { return false }
+        return true
+    }
+
+    public static func applicationName(_ url: URL) -> String {
+        let name = FileManager.default.displayName(atPath: url.path)
+        return name.hasSuffix(".app") ? String(name.dropLast(4)) : name
+    }
+
+    public var copyOnCapture: Bool {
+        get { bool("copyOnCapture", default: false) }
+        nonmutating set { defaults.set(newValue, forKey: "copyOnCapture") }
+    }
+    public var openFinderAfterCapture: Bool {
+        get { bool("openFinderAfterCapture", default: true) }
+        nonmutating set { defaults.set(newValue, forKey: "openFinderAfterCapture") }
+    }
+    public var soundEffectsEnabled: Bool {
+        get { bool("soundEffectsEnabled", default: true) }
+        nonmutating set { defaults.set(newValue, forKey: "soundEffectsEnabled") }
+    }
+    public var notifyOnRecordingRecovery: Bool {
+        get { bool("notifyOnRecordingRecovery", default: false) }
+        nonmutating set { defaults.set(newValue, forKey: "notifyOnRecordingRecovery") }
+    }
+    public var reminderAfterDuration: Int {
+        get { CaptureReminderDuration(rawValue: defaults.integer(forKey: "reminderAfterDuration"))?.rawValue ?? 0 }
+        nonmutating set {
+            defaults.set(CaptureReminderDuration(rawValue: newValue)?.rawValue ?? 0, forKey: "reminderAfterDuration")
+        }
+    }
+    public var spaceBarAction: CaptureSpaceBarAction {
+        get { CaptureSpaceBarAction(rawValue: defaults.integer(forKey: "spaceBarAction")) ?? .none }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: "spaceBarAction") }
+    }
+
+    /// A new capture's file in the save location (created if need be): named for now, " 2" and on when that's taken.
+    public func captureDestination(_ kind: String, extension suffix: String, at date: Date = Date()) throws -> URL {
+        let folder = saveLocation
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder.appendingPathComponent(Self.captureName(kind, at: date)).appendingPathExtension(suffix).unused
+    }
+
+    /// "Light Touch Screenshot 2026-10-07 at 17.22.14", in the Mac's time zone (as macOS names its own).
+    public static func captureName(_ kind: String, at date: Date = Date()) -> String {
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US_POSIX")
+        format.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+        return "Light Touch \(kind) \(format.string(from: date))"
+    }
+
+    private func bool(_ key: String, default fallback: Bool) -> Bool {
+        (defaults.object(forKey: key) as? NSNumber)?.boolValue ?? fallback
+    }
+}
+
+public enum CaptureSpaceBarAction: Int, CaseIterable {
+    case none = 0, copyScreenshot = 2, saveScreenshot = 3, saveScreenshotAs = 4, toggleRecording = 5
+    public func title(for profile: Board) -> String {
+        switch self {
+        case .none: "Send to \(profile.shortName)"
+        case .copyScreenshot: "Copy Screenshot"
+        case .saveScreenshot: "Save Screenshot"
+        case .saveScreenshotAs: "Save Screenshot As…"
+        case .toggleRecording: "Start/Stop Recording"
+        }
+    }
+}
+
+public enum CaptureReminderDuration: Int, CaseIterable {
+    case never = 0
+    #if DEBUG
+    case tenSeconds = 10
+    #endif
+    case oneMinute = 60, fiveMinutes = 300, tenMinutes = 600, thirtyMinutes = 1800, oneHour = 3600
+    public var title: String {
+        if self == .never { return "Never" }
+        return Duration.seconds(rawValue).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide))
+    }
+}

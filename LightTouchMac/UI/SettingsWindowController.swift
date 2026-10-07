@@ -1,3 +1,4 @@
+import LightTouchCore
 import Cocoa
 
 /// A Settings pane: sized by its `fittingSize`, and says when that changes.

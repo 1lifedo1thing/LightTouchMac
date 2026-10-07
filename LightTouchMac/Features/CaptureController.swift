@@ -29,7 +29,7 @@ import UniformTypeIdentifiers
     private(set) var copiedScreenshot = false
     private var copyConfirmation: Task<Void, Never>?
     private var captureKeyMonitor: Any?
-    private var consumedCaptureSpace = false
+    private var spaceBar = SpaceBarCapture()
     private var quitAfterRecording = false
     private var closeAfterRecording = false
 
@@ -37,17 +37,22 @@ import UniformTypeIdentifiers
     private var deviceVC: DeviceViewController? { session()?.workspace.deviceVC }
     var captureMode: Int { UserDefaults.standard.integer(forKey: "captureMode") == 1 ? 1 : 0 }
 
-    var canTakeScreenshot: Bool {
-        guard let emulator else { return false }
-        return (emulator.isRunning || emulator.isPaused) && !emulator.isSleeping && !screenshotBusy
+    var availability: CaptureAvailability {
+        var availability = CaptureAvailability()
+        if let emulator {
+            availability.isRunning = emulator.isRunning
+            availability.isPaused = emulator.isPaused
+            availability.isSleeping = emulator.isSleeping
+        }
+        availability.screenshotBusy = screenshotBusy
+        availability.recordingSaving = recording.phase == .saving
+        availability.recordingCanStop = recording.canStop
+        availability.recordingNeedsRecovery = recording.needsRecovery
+        return availability
     }
-    var canStartRecording: Bool {
-        guard let emulator else { return false }
-        return emulator.isRunning && !emulator.isSleeping && !screenshotBusy
-    }
-    var canToggleRecording: Bool {
-        recording.phase != .saving && (recording.canStop || recording.needsRecovery || canStartRecording)
-    }
+    var canTakeScreenshot: Bool { availability.canTakeScreenshot }
+    var canStartRecording: Bool { availability.canStartRecording }
+    var canToggleRecording: Bool { availability.canToggleRecording }
 
     init(preferences: CapturePreferences = .shared) {
         capturePreferences = preferences
@@ -216,47 +221,34 @@ import UniformTypeIdentifiers
     var captureFolder: URL { capturePreferences.saveLocation }
 
     func captureDestination(_ kind: String, extension suffix: String) throws -> URL {
-        let folder = captureFolder
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        return folder.appendingPathComponent(captureName(kind)).appendingPathExtension(suffix).unused
+        try capturePreferences.captureDestination(kind, extension: suffix)
     }
 
-    /// "Light Touch Screenshot 2026-10-07 at 17.22.14", in the Mac's time zone (as macOS names its own).
-    func captureName(_ kind: String, at date: Date = Date()) -> String {
-        let format = DateFormatter()
-        format.locale = Locale(identifier: "en_US_POSIX")
-        format.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-        return "Light Touch \(kind) \(format.string(from: date))"
-    }
+    func captureName(_ kind: String, at date: Date = Date()) -> String { CapturePreferences.captureName(kind, at: date) }
 
     // MARK: - Space bar
 
     private func installCaptureKeyboardShortcuts() {
         captureKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             guard let self else { return event }
-            if event.keyCode == 49, event.type == .keyUp, consumedCaptureSpace {
-                consumedCaptureSpace = false
-                return nil
-            }
-            if event.keyCode == 49, event.type == .keyDown {
-                if event.isARepeat, consumedCaptureSpace { return nil }
-                if !event.isARepeat { consumedCaptureSpace = false }
-            }
-            guard event.type == .keyDown, event.keyCode == 49,
-                  let window, event.window === window, window.isKeyWindow,
-                  window.attachedSheet == nil, NSApp.modalWindow == nil,
-                  let screen = deviceVC?.screen, window.firstResponder === screen,
-                  !screen.isShowingLiveText,
-                  event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
-                  capturePreferences.spaceBarAction != .none else { return event }
-            guard !event.isARepeat else { return consumedCaptureSpace ? nil : event }
-            consumedCaptureSpace = true
-            switch capturePreferences.spaceBarAction {
-            case .none: return event
-            case .copyScreenshot: copyScreen()
-            case .saveScreenshot: saveScreenshot()
-            case .saveScreenshotAs: saveScreenshotAs()
-            case .toggleRecording: toggleRecording()
+            guard event.type == .keyDown || event.type == .keyUp else { return event }
+            let eligible: Bool = { [self] in
+                guard let window = self.window, event.window === window, window.isKeyWindow, window.attachedSheet == nil, NSApp.modalWindow == nil,
+                      let screen = self.deviceVC?.screen, window.firstResponder === screen else { return false }
+                return !screen.isShowingLiveText
+            }()
+            switch spaceBar.key(event.keyCode, down: event.type == .keyDown, isRepeat: event.type == .keyDown && event.isARepeat,
+                                modifiers: KeyModifiers(event.modifierFlags), eligible: eligible, action: capturePreferences.spaceBarAction) {
+            case .pass: return event
+            case .swallow: return nil
+            case .capture(let action):
+                switch action {
+                case .none: break
+                case .copyScreenshot: copyScreen()
+                case .saveScreenshot: saveScreenshot()
+                case .saveScreenshotAs: saveScreenshotAs()
+                case .toggleRecording: toggleRecording()
+                }
             }
             return nil
         }

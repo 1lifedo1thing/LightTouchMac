@@ -227,7 +227,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-capture-shortcuts-') as directory:
     (work / 'CaptureController.swift').write_text(capture)
     subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(Path(__file__).resolve().parents[2]), '-parse-as-library', '-swift-version', '5', '-default-isolation', 'MainActor',
                     '-module-cache-path', str(work / 'modules'),
-                    *[str(app / f) for f in ['Device/Board+App.swift', 'Features/CapturePreferences.swift', 'Features/CaptureSound.swift', 'Library/UnusedURL.swift']],
+                    *[str(app / f) for f in ['Device/Board+App.swift', 'Features/CapturePreferences.swift', 'Features/CaptureSound.swift', 'Library/UnusedURL.swift', 'UI/DeviceMenuState.swift', 'Features/SpaceBarCapture.swift', 'Input/KeyboardPointer.swift', 'Input/MouseTouchPair.swift', 'UI/KeyModifiers+AppKit.swift']],
                     str(work / 'CaptureController.swift'), str(root / 'tests/fixtures/capture-controller.swift'),
                     str(work / 'check.swift'), '-o', str(work / 'check')], check=True)
     subprocess.run([str(work / 'check')], check=True, timeout=25)

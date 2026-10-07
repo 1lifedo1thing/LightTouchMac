@@ -16,23 +16,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// The running device, for settings that apply to it on its next boot.
     private var emulator: EmulatorController? { windowController?.session?.emulator ?? emulators.first }
     private var helpController: HelpWindowController?
-    private var awaitingTermination = false
-    private var terminationBackstop: Task<Void, Never>?
+    private let quitting = QuitCoordinator(budget: EmulatorController.stopBudget) { NSApp.reply(toApplicationShouldTerminate: true) }
 
-    /// NSApplication's deferred quit runs a nested modal loop. Invoking it
-    /// inside a main-queue callback occupies that serial queue until quit
-    /// finishes, starving the Swift main-actor tasks needed to finish it.
-    /// A run-loop timer invokes AppKit without holding the dispatch queue.
-    /// System logout still uses applicationShouldTerminate's native reply.
+    /// Quit, from a menu or an alert (QuitRequest): not while one is already waiting on the devices.
     static func requestTermination() {
-        guard (NSApp.delegate as? AppDelegate)?.awaitingTermination != true else { return }
-        let timer = Timer(timeInterval: 0, repeats: false) { _ in
-            MainActor.assumeIsolated {
-                guard (NSApp.delegate as? AppDelegate)?.awaitingTermination != true else { return }
-                NSApp.terminate(nil)
-            }
-        }
-        RunLoop.main.add(timer, forMode: .common)
+        QuitRequest.post { (NSApp.delegate as? AppDelegate)?.quitting.awaitingTermination == true }
     }
 
     @objc func quit(_ sender: Any?) { Self.requestTermination() }
@@ -59,34 +47,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(command, forType: .string)
     }
-    @objc func toggleInternetAccess(_ sender: Any?) {
-        let current = UserDefaults.standard.object(forKey: NetworkAccessPreference.key) as? Bool ?? emulator?.network ?? true
-        UserDefaults.standard.set(!current, forKey: NetworkAccessPreference.key)
-    }
+    @objc func toggleInternetAccess(_ sender: Any?) { NetworkAccessPreference.toggle(running: emulator?.network) }
     @objc func toggleLocalNetwork(_ sender: Any?) { emulator?.toggleLocalNetwork() }
+
+    /// The settings items for the running device (DeviceSettingsMenu).
+    private var settingsMenu: DeviceSettingsMenu {
+        DeviceSettingsMenu(device: emulator.map {
+            var device = DeviceSettingsMenu.Device(marketingName: $0.profile.marketingName, shortName: $0.profile.shortName)
+            device.localNetworkEnabled = $0.localNetworkEnabled
+            device.autoRotateEnabled = $0.autoRotateEnabled
+            device.debugPortEnabled = $0.debugPortEnabled
+            device.debugPort = $0.debugPort
+            device.lldbAttachCommand = $0.lldbAttachCommand
+            device.network = $0.network
+            return device
+        }, desiredNetwork: NetworkAccessPreference.desired(running: emulator?.network))
+    }
+
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        if item.action == #selector(toggleLocalNetwork(_:)) {
-            item.title = emulator.map { "Attach \($0.profile.marketingName) to Local Network" } ?? "Attach to Local Network"
-            item.state = emulator?.localNetworkEnabled ?? false ? .on : .off
-            return emulator != nil
-        } else if item.action == #selector(toggleAutomaticRotation(_:)) {
-            item.state = emulator?.autoRotateEnabled ?? true ? .on : .off
-            return emulator != nil
-        } else if item.action == #selector(showDebugPort(_:)) {
-            let enabled = emulator?.debugPortEnabled ?? false
-            item.state = enabled ? .on : .off
-            item.toolTip = emulator.map { enabled != ($0.debugPort != nil) ? "Takes effect the next time the \($0.profile.shortName) starts." : nil } ?? nil
-            return emulator != nil
-        } else if item.action == #selector(copyLLDBCommand(_:)) {
-            item.toolTip = emulator?.debugPort.map { "QEMU's gdbstub is on 127.0.0.1:\($0). Replace KERNELCACHE and QEMU_IOS; see qemu-ios docs/guest-debug.md." }
-            return emulator?.lldbAttachCommand != nil
-        } else if item.action == #selector(toggleInternetAccess(_:)) {
-            let desired = UserDefaults.standard.object(forKey: NetworkAccessPreference.key) as? Bool ?? emulator?.network ?? true
-            // The title stays put; a choice the running device doesn't have yet says when it applies.
-            item.state = desired ? .on : .off
-            item.toolTip = emulator.map { desired != $0.network ? "Takes effect the next time Light Touch opens the \($0.profile.shortName)." : nil } ?? nil
+        let menuItem: DeviceSettingsMenu.Item
+        switch item.action {
+        case #selector(toggleLocalNetwork(_:)): menuItem = .localNetwork
+        case #selector(toggleAutomaticRotation(_:)): menuItem = .autoRotate
+        case #selector(showDebugPort(_:)): menuItem = .debugPort
+        case #selector(copyLLDBCommand(_:)): menuItem = .copyLLDBCommand
+        case #selector(toggleInternetAccess(_:)): menuItem = .internet
+        default: return true
         }
-        return true
+        let validation = settingsMenu.validate(menuItem)
+        if let title = validation.title { item.title = title }
+        if let on = validation.isOn { item.state = on ? .on : .off }
+        item.toolTip = validation.toolTip
+        return validation.isEnabled
     }
 
     @objc func showHelp(_ sender: Any?) {
@@ -244,7 +236,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        terminationBackstop?.cancel()
+        quitting.willTerminate()
         // A quit (or a crash, through firmwarekit's parent watch) cancels
         // every preparation; the next launch's sweep removes its staging.
         if host != nil { FirmwareJobs.shared.cancelAll() }
@@ -255,73 +247,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// On quit: guard an in-flight install, then halt each device
     /// (EmulatorController.halt: storage flushed, no guest shutdown).
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if emulators.contains(where: \.isErasing) { return .terminateCancel }
-        if awaitingTermination { return .terminateLater }
-        if windowController?.finishRecordingBeforeQuit() == true { return .terminateCancel }
-        // A preparation doesn't survive a quit (a download does: it resumes).
-        let preparing = FirmwareJobs.shared.jobs.values.filter { if case .preparing = $0 { true } else { false } }.count
-        if preparing > 0 {
-            let alert = NSAlert()
-            alert.messageText = preparing == 1 ? "A device is being prepared" : "Devices are being prepared"
-            alert.informativeText = "Quitting stops the preparation. It starts over the next time you prepare the device."
-            alert.addButton(withTitle: "Quit Anyway")
-            alert.addButton(withTitle: "Cancel")
-            alert.buttons.first?.hasDestructiveAction = true
-            guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
+        let answer = quitting.shouldTerminate(
+            erasing: emulators.contains(where: \.isErasing),
+            finishRecording: { windowController?.finishRecordingBeforeQuit() == true },
+            preparing: FirmwareJobs.shared.jobs.values.filter { if case .preparing = $0 { true } else { false } }.count,
+            confirmPreparation: { preparing in
+                let alert = NSAlert()
+                alert.messageText = preparing == 1 ? "A device is being prepared" : "Devices are being prepared"
+                alert.informativeText = "Quitting stops the preparation. It starts over the next time you prepare the device."
+                alert.addButton(withTitle: "Quit Anyway")
+                alert.addButton(withTitle: "Cancel")
+                alert.buttons.first?.hasDestructiveAction = true
+                return alert.runModal() == .alertFirstButtonReturn
+            },
+            hasDevices: !emulators.isEmpty,
+            changesInProgress: emulators.contains(where: \.isInstalling) || AppInstaller.hasPendingWork || windowController?.hasFileTransfer == true,
+            confirmChanges: {
+                let alert = NSAlert()
+                alert.messageText = "Device changes are in progress"
+                alert.informativeText = "Quitting cancels changes that haven’t finished."
+                alert.addButton(withTitle: "Quit Anyway")
+                alert.addButton(withTitle: "Cancel")
+                alert.buttons.first?.hasDestructiveAction = true
+                return alert.runModal() == .alertFirstButtonReturn
+            },
+            cancelChanges: {
+                AppInstaller.cancelPendingWork()
+                windowController?.cancelFileTransfer()
+            },
+            running: emulators.filter { !$0.isDead && !$0.isPoweredOff }.map { emulator in { done in emulator.halt { _ in done() } } })
+        switch answer {
+        case .now: return .terminateNow
+        case .cancel: return .terminateCancel
+        case .later: return .terminateLater
         }
-        guard !emulators.isEmpty else { return .terminateNow }
-
-        // Queued installs count too. isInstalling is set only around the install
-        // that is executing; jobs waiting their turn are parked on the previous
-        // job's task, so quitting with three .ipas queued used to take no notice
-        // and drop them without a word.
-        if emulators.contains(where: \.isInstalling) || AppInstaller.hasPendingWork || windowController?.hasFileTransfer == true {
-            let alert = NSAlert()
-            alert.messageText = "Device changes are in progress"
-            alert.informativeText = "Quitting cancels changes that haven’t finished."
-            alert.addButton(withTitle: "Quit Anyway")
-            alert.addButton(withTitle: "Cancel")
-            alert.buttons.first?.hasDestructiveAction = true
-            guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
-            AppInstaller.cancelPendingWork()
-            windowController?.cancelFileTransfer()
-            // Falls through to the SAME shutdown as any other quit. It used to
-            // return .terminateNow, on the reasoning that a half-finished
-            // install is not a clean state to snapshot — true, and irrelevant
-            // to the flush. Skipping the flush threw away every app installed
-            // earlier in the session as well as the one in flight.
-        }
-
-        let running = emulators.filter { !$0.isDead && !$0.isPoweredOff }
-        guard !running.isEmpty else { return .terminateNow }
-
-        awaitingTermination = true
-        let reply = { [weak self] in
-            // A guard can complete synchronously. Reply only after this
-            // delegate invocation has returned terminateLater to AppKit.
-            DispatchQueue.main.async {
-                guard let self, self.awaitingTermination else { return }
-                self.awaitingTermination = false
-                self.terminationBackstop?.cancel()
-                self.terminationBackstop = nil
-                NSApp.reply(toApplicationShouldTerminate: true)
-            }
-        }
-        let backstop = EmulatorController.stopBudget
-        terminationBackstop = Task {
-            do { try await Task.sleep(for: .seconds(backstop)) } catch { return }
-            logEvent("quit: shutdown did not finish in time — quitting anyway")
-            reply()
-        }
-
-        // Every device shuts down at once; quit waits for the last of them.
-        var remaining = running.count
-        let finished = {
-            remaining -= 1
-            if remaining == 0 { reply() }
-        }
-        for emulator in running { emulator.halt { _ in finished() } }
-        return .terminateLater
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
