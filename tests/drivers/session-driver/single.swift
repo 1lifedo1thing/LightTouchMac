@@ -30,8 +30,8 @@ struct SingleConfig: Decodable {
     var raceBoots: Int?
     var raceDirty: Bool?
     /// The bundled lockdown-tz: set the zone and the Mac's clock once lockdown answers, as the app does on every
-    /// connect (EmulatorController.syncTimeZoneWhenReady). Also completes the first-host handshake,
-    /// independently of the clock, as EmulatorController.checkActivationIfNeeded does.
+    /// connect (TimeZoneSync). Also completes the first-host handshake,
+    /// independently of the clock, as ActivationCheck.checkIfNeeded does.
     var lockdownTZ: String?
     /// With lockdownTZ: the region and clock format to set beside the zone (the app sends the Mac's, ClockRegion.mac).
     struct Region: Decodable { var locale: String; var uses24HourClock: Bool }
@@ -100,7 +100,7 @@ struct SingleConfig: Decodable {
                        iBoot: iBoot, gidBlobs: b.appendingPathComponent("gid-blobs.bin").path,
                        machine: (try? DeviceLock.read(base: b))??.machineOptions(base: b) ?? [:])
     }
-    // Composed per boot from the device's verdicts, as the app's composeGuestOffer (an iPad's in Device.boot);
+    // Composed per boot from the device's verdicts, as the app's GuestPackageWatch.compose (an iPad's in Device.boot);
     // `offered`: this boot carries one (compose gives none for a stub seed).
     var offered = a4 && config.ipadItpack != nil
     func offer() -> String? {
