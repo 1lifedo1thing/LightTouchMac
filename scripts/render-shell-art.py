@@ -93,8 +93,9 @@ with tempfile.TemporaryDirectory(prefix="ltm-shell-art-") as tmp:
     app = work / "Render.app/Contents"
     (app / "MacOS").mkdir(parents=True)
     (app / "Resources").mkdir()
-    (app / "Resources/N72Studio.realityenv").symlink_to(root / "LightTouchMac/N72Studio.realityenv")
-    (app / "Resources/N45Rim.realityenv").symlink_to(root / "LightTouchMac/N45Rim.realityenv")
+    (app / "Resources/Models").mkdir(parents=True, exist_ok=True)
+    (app / "Resources/Models/N72Studio.realityenv").symlink_to(root / "Models/N72Studio.realityenv")
+    (app / "Resources/Models/N45Rim.realityenv").symlink_to(root / "Models/N45Rim.realityenv")
     (work / "render.swift").write_text(source)
     exe = app / "MacOS/render"
     src = root / "LightTouchMac"

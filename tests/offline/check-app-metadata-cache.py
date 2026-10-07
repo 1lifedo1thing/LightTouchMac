@@ -32,7 +32,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-app-metadata-') as directory:
     sources = ['Library/AppMetadataCache', 'Library/IPAMembers', 'Library/Bundled', 'Library/StorageLocations']
     subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(ROOT), *swift_subprocess.swift_flags(ROOT), *swift_subprocess.zip_flags(ROOT), '-swift-version', '5',
                     '-default-isolation', 'MainActor', '-parse-as-library', '-module-cache-path', str(work / 'modules'),
-                    *[str(ROOT / f'LightTouchMac/{s}.swift') for s in sources], str(work / 'check.swift'), '-o', str(work / 'check')],
+                    *[str(ROOT / f'LightTouchMac/{s}.swift') for s in sources], str(ROOT / 'Packages/FirmwareKit/Sources/FirmwareKit/GuestPackage/GuestArchive.swift'), str(work / 'check.swift'), '-o', str(work / 'check')],
                    check=True)
     subprocess.run([str(work / 'check')], check=True, timeout=60,
                    env=dict(os.environ, LTM_STATE_DIR=str(work / 'state'), CFFIXED_USER_HOME=str(work)))

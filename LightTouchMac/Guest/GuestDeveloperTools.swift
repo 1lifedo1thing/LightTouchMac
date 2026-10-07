@@ -19,7 +19,7 @@ nonisolated enum GuestDeveloperTools {
             guard bundled > 0, bundled <= (Int64(Int32.max) - revision) / 100 else {
                 throw DeviceToolsError.failed("Developer SSH package serial is invalid")
             }
-            let payload = Bundle.main.resourceURL?.appendingPathComponent("developer-tools")
+            let payload = Bundled.guestRoot?.appendingPathComponent("developer-tools")
                 ?? state.appendingPathComponent("payload")
             let resolved = FileManager.default.fileExists(atPath: payload.appendingPathComponent("developer-tools.json").path)
                 ? payload : state.appendingPathComponent("payload")

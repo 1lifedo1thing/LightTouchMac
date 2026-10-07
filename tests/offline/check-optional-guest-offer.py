@@ -7,13 +7,13 @@ s=(root/'LightTouchMac/Device/EmulatorController.swift').read_text()
 a=s.index('    private func composeGuestOffer()');b=s.index('    /// Judge this boot',a)
 method=s[a:b].replace('private func composeGuestOffer','func composeGuestOffer',1)
 source=r'''import Foundation
-@MainActor enum Bundled {static let filesRoot=URL(fileURLWithPath:ProcessInfo.processInfo.environment["OFFER_TEST_ROOT"]!)}
+@MainActor enum Bundled {static let filesRoot=URL(fileURLWithPath:ProcessInfo.processInfo.environment["OFFER_TEST_ROOT"]!); static let guestRoot: URL? = nil}
 struct Instance {let board="n72ap",firmware="n72ap-7E18";struct Paths{let work:URL};let paths=Paths(work:URL(fileURLWithPath:ProcessInfo.processInfo.environment["OFFER_TEST_ROOT"]!))}
 @MainActor enum GuestPackage {
  struct Offer {let serial:Int64;let version:String}
  static var calls=0,builtinFails=false
  static func arch(board:String)->String?{"armv6"}
- static func bundledPack(arch:String,filesRoot:URL)->URL?{filesRoot}
+ static func bundledPack(arch:String,filesRoot:URL,guestRoot:URL?)->URL?{filesRoot}
  static func compose(itpack:URL,board:String,build:String,lock:Int?,guest:Int?,into:URL,augment:((URL,Int64)throws->(serial:Int64,version:String))?=nil)throws->Offer? {
   calls+=1
   if let augment {let r=try augment(into,2);return Offer(serial:r.serial,version:r.version)}

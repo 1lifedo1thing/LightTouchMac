@@ -104,11 +104,8 @@ class RunnerTests(unittest.TestCase):
             result = root / 'results.json'
             def build(args, tools):
                 (tools / 'session-driver').write_bytes(b'driver')
+                (tools / 'LightTouchServices').write_bytes(b'worker')
                 return binaries['helper']
-            def tz(tools, frameworks):
-                path = tools / 'lockdown-tz'
-                path.write_bytes(b'tz')
-                return path
             def prepare(entry, entry_file, ipsw, base, a, helper, env):
                 base.mkdir()
                 return {'ok': True, 'seconds': 0, 'error': None}, root / 'fk.log'
@@ -123,7 +120,6 @@ class RunnerTests(unittest.TestCase):
             with patch.object(matrix, 'ROOT', root), patch.object(matrix, 'CATALOG', catalog), \
                  patch.object(matrix, 'RESULTS_JSON', result), patch.object(matrix, 'write_md'), \
                  patch.object(matrix.check_sessions, 'build', side_effect=build), \
-                 patch.object(matrix.check_sessions, 'build_lockdown_tz', side_effect=tz), \
                  patch.object(matrix.check_sessions, 'tree', return_value={}), \
                  patch.object(matrix, 'test_app', return_value={'ipa': str(binaries['ipa']), 'bundle_id': 'test', 'min_os': '3.0', 'source': 'fixture'}), \
                  patch.object(matrix, 'fetch_ipsw', return_value=(binaries['ipsw'], None)), \

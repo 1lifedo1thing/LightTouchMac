@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+"""The Archive post-action: check the archived app as it would ship and record the verdict in the archive.
+
+    scripts/verify-archive ARCHIVE.xcarchive     (the scheme runs it with $ARCHIVE_PATH)
+    scripts/verify-archive --static APP          the signature, slice and scan checks only (scripts/check-export)
+
+0. the vendor directory Archive copied is the one for the current pins (scripts/vendor --print)
+1. codesign --verify --deep --strict; the hardened runtime on every Mach-O; entitlements: QEMU's set on
+   LightTouchDevice, none anywhere else (and never get-task-allow)
+2. every host Mach-O carries arm64 and x86_64 and loads only from the bundle (check-macho.py --bundle)
+3. tests/release/test-package.py and test-bundle-hygiene.py on the app (the helper loads the bundled dylib; every
+   binary licensed and stripped, no local paths); no Mach-O under Resources; the identity scan (qemu-ios-files/scrub/scan-release-zip.py) of a zip of the app
+4. in-bundle: the bundled firmwarekit prepares each VERIFY_ENTRIES device (unpacks the built-in one) and
+   tests/sessions/check-sessions.py boots it through the bundled helper, dylib, services worker and usbmuxd:
+   lit, lockdown, time zone, AFC, an IPA install, a clean shutdown
+The verdict goes to <archive>/verify.log and the archive's Organizer comment ("verify passed: …" or
+"VERIFY FAILED: …"); a failed archive's Organizer name ends "(VERIFY FAILED)". Exit 1 on failure.
+"""
+import json
+import os
+from pathlib import Path
+import plistlib
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import uuid
+
+ROOT = Path(__file__).resolve().parents[1]
+HOME = Path.home()
+SCAN = Path(os.environ.get('LTM_SCRUB_DIR', HOME / 'Developer/qemu-ios-files/scrub')) / 'scan-release-zip.py'
+IPSW_CACHE = HOME / 'Library/Caches/gold.samhenri.LightTouchMac/IPSW'
+ARCHS = {'arm64', 'x86_64'}
+QEMU_ENTITLEMENTS = plistlib.loads((ROOT / 'Configuration/LightTouchDevice.entitlements').read_bytes())
+BUILT_IN = 'n72ap-7E18'
+# entry: (check-sessions board, IPSW; None: the app's IPSW cache by the catalog's sha1). 'built-in' is the bundle's
+# packed iPod, unpacked with a fresh identity as the app's first launch does.
+VERIFY_ENTRIES = {
+    'built-in': ('ipod', None),
+    'k48ap-7B500': ('ipad', HOME / 'Downloads/ipad1-ios32-feasibility/iPad1,1_3.2.2_7B500_Restore.ipsw'),
+    'k48ap-8C148': ('ipad', HOME / 'Downloads/ipad1-ios32-feasibility/iPad1,1_4.2.1_8C148_Restore.ipsw'),
+    'k48ap-7B367': ('ipad', HOME / 'Downloads/ipad1-ios32-feasibility/iPad1,1_3.2_7B367_Restore.ipsw'),
+    'n72ap-7E18': ('ipod', HOME / 'Developer/ipod2g-re/OldSDK/iPod2,1_3.1.3_7E18_Restore.ipsw'),
+    'n72ap-8C148': ('ipod', HOME / 'Downloads/ios4/iPod2,1_4.2.1_8C148_Restore.ipsw'),
+}
+
+
+class Failed(Exception):
+    pass
+
+
+def run(*command, **kwargs):
+    return subprocess.run(list(map(str, command)), capture_output=True, text=True, **kwargs)
+
+
+def macho(path):
+    with open(path, 'rb') as stream:
+        return stream.read(4) in (b'\xcf\xfa\xed\xfe', b'\xca\xfe\xba\xbe')
+
+
+def static_checks(app, log):
+    contents = app / 'Contents'
+    result = run('codesign', '--verify', '--deep', '--strict', app)
+    if result.returncode:
+        raise Failed(f'codesign --verify --deep --strict: {result.stderr.strip()}')
+    binaries = [p for p in contents.rglob('*') if p.is_file() and not p.is_symlink() and macho(p)]
+    resources = [str(p.relative_to(app)) for p in binaries if p.is_relative_to(contents / 'Resources')]
+    if resources:
+        raise Failed('Mach-O under Resources: ' + ', '.join(resources[:5]))
+    for path in binaries:
+        name = str(path.relative_to(app))
+        flags = run('codesign', '-dv', path).stderr
+        if '(runtime)' not in flags:
+            raise Failed(f'{name}: no hardened runtime')
+        found = set(run('lipo', '-archs', path).stdout.split())
+        if found != ARCHS:
+            raise Failed(f'{name}: slices {sorted(found)}, want {sorted(ARCHS)}')
+        dump = run('codesign', '-d', '--entitlements', '-', '--xml', path).stdout
+        entitlements = plistlib.loads(dump.encode()) if dump.strip() else {}
+        want = QEMU_ENTITLEMENTS if path.name == 'LightTouchDevice' else {}
+        if entitlements != want:
+            raise Failed(f'{name}: entitlements {entitlements}, want {want}')
+    host = [p for p in binaries if p.parent.name in ('MacOS', 'Frameworks')]
+    result = run(sys.executable, ROOT / 'scripts/check-macho.py', '--minos', '14.4', '--bundle', app,
+                 *(f for a in sorted(ARCHS) for f in ('--arch', a)), *host)
+    if result.returncode:
+        raise Failed(f'check-macho: {(result.stdout + result.stderr).strip()[-600:]}')
+    for test in ('test-package.py', 'test-bundle-hygiene.py'):   # the helper's probe and closure; licenses, paths
+        result = run(sys.executable, ROOT / 'tests/release' / test, app, env=clean_env())
+        log.write(result.stdout + result.stderr)
+        if result.returncode:
+            raise Failed(f'{test}: {(result.stdout + result.stderr).strip()[-600:]}')
+    if not SCAN.is_file():
+        raise Failed(f'no identity scanner at {SCAN} (LTM_SCRUB_DIR)')
+    with tempfile.TemporaryDirectory(prefix='ltm-verify-zip-') as scratch:
+        archive = Path(scratch) / 'LightTouchMac.zip'
+        subprocess.run(['ditto', '-c', '-k', '--keepParent', app, archive], check=True)
+        result = run(sys.executable, SCAN, archive)
+        log.write(result.stdout + result.stderr)
+        if result.returncode:
+            raise Failed('identity scan: ' + (result.stdout + result.stderr).strip()[-300:])
+    return f'{len(binaries)} Mach-O signed, universal, entitlements as declared; package and hygiene checks; scan clean'
+
+
+def clean_env():
+    env = {k: v for k, v in os.environ.items() if not k.startswith('LTM_')}
+    env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:' + env.get('PATH', '/usr/bin:/bin')
+    return env
+
+
+def remove(path):
+    if path.exists():
+        subprocess.run(['chflags', '-R', 'nouchg', path])
+        subprocess.run(['chmod', '-R', 'u+w', path])
+        shutil.rmtree(path, ignore_errors=True)
+
+
+def boot_check(app, entry_id, work, log):
+    """One entry: prepare (or unpack) with the bundled firmwarekit, then boot it through the bundle."""
+    contents = app / 'Contents'
+    board, ipsw = VERIFY_ENTRIES[entry_id]
+    catalog = json.loads((contents / 'Resources/firmware-catalog.json').read_text())
+    built_in = entry_id == 'built-in'
+    entry = next(e for e in catalog['entries'] if e['id'] == (BUILT_IN if built_in else entry_id))
+    if not built_in and not (ipsw and ipsw.is_file()):
+        ipsw = IPSW_CACHE / f'{entry["source"].get("sha1")}.ipsw'
+        if not ipsw.is_file():
+            raise Failed(f'{entry_id}: no IPSW ({ipsw})')
+    out, frames = work / entry_id / 'out', work / entry_id / 'frames'
+    out.mkdir(parents=True)
+    frames.mkdir()
+    (work / entry_id / 'entry.json').write_text(json.dumps(entry))
+    firmwarekit = contents / 'MacOS/firmwarekit'
+    seed = str(uuid.uuid4()).upper()
+    if built_in:
+        command = [firmwarekit, 'unpack-base', '--blob', contents / 'Resources' / catalog['bundled'][BUILT_IN],
+                   '--out', out, '--seed', seed]
+    else:
+        command = [firmwarekit, 'create', '--entry', work / entry_id / 'entry.json', '--ipsw', ipsw, '--out', out,
+                   '--cache', work / entry_id / 'cache', '--helper', contents / 'MacOS/LightTouchDevice']
+    started = time.monotonic()
+    result = subprocess.run(list(map(str, command)), capture_output=True, text=True, env=clean_env(), timeout=480)
+    log.write(result.stderr)
+    events = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+    if result.returncode or not events or events[-1].get('event') != 'done':
+        raise Failed(f'{entry_id}: firmwarekit {command[1]} failed ({result.returncode}): {events[-1] if events else ""}')
+    prepared = time.monotonic() - started
+    lock = json.loads((out / events[-1]['lock']).read_text())
+    if built_in and lock['identity']['seed'] != seed:
+        raise Failed(f'{entry_id}: the unpacked iPod did not take its own identity')
+    subprocess.run(['find', out, '-type', 'd', '-exec', 'chflags', 'uchg', '{}', '+'], check=True)   # as the app locks a base
+    guest = work / 'guest'
+    if not guest.is_dir():
+        subprocess.run(['aa', 'extract', '-i', contents / 'Resources/Guest/guest.aar', '-d', guest], check=True)
+    boot = [sys.executable, ROOT / 'tests/sessions/check-sessions.py', '--single', out, '--board', board,
+            '--helper', contents / 'MacOS/LightTouchDevice', '--dylib', contents / 'Frameworks/libqemu-arm.dylib',
+            '--service-worker', contents / 'MacOS/LightTouchServices', '--usbmuxd', contents / 'MacOS/usbmuxd',
+            '--frameworks', contents / 'Frameworks', '--files', contents / 'Resources/Device', '--work', frames]
+    if board == 'ipad':
+        boot += ['--ipad-itpack', guest / 'guest-tools/armv7.itpack']
+    checked = subprocess.run(list(map(str, boot)), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                             env=clean_env(), timeout=590)
+    log.write(checked.stdout)
+    summary = next((l for l in checked.stdout.splitlines() if ' passed; events ' in l), '').split(';')[0].strip()
+    if checked.returncode:
+        raise Failed(f'{entry_id}: boot {summary or "failed"} (see {frames})')
+    return f'{entry_id} {"unpacked" if built_in else "prepared"} in {prepared:.0f} s, boot {summary}'
+
+
+def comment(archive, text, failed=False):
+    """The Organizer's comment; a failed archive's name says so too, in the list Distribute starts from."""
+    info = archive / 'Info.plist'
+    if info.is_file():
+        value = plistlib.loads(info.read_bytes())
+        value['Comment'] = text
+        name = value.get('Name', 'Light Touch').removesuffix(' (VERIFY FAILED)')
+        value['Name'] = f'{name} (VERIFY FAILED)' if failed else name
+        info.write_bytes(plistlib.dumps(value))
+
+
+# What the checks and the tools they run see: the user's basics, not the Xcode build settings a scheme action exports
+# (cctools warn about some of them on stdout, which breaks parsing).
+KEEP = ('HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'LANG', 'PATH')
+
+
+def main(argv):
+    vendor = os.environ.get('VENDOR_DIR')
+    for key in [k for k in os.environ if k not in KEEP]:
+        del os.environ[key]
+    os.environ['PATH'] = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'
+    if len(argv) == 2 and argv[0] == '--static':
+        app = Path(argv[1])
+        try:
+            print(static_checks(app, sys.stdout))
+        except Failed as error:
+            sys.exit(f'FAILED: {error}')
+        return
+    if len(argv) != 1:
+        sys.exit(__doc__)
+    archive = Path(argv[0])
+    apps = list((archive / 'Products/Applications').glob('*.app'))
+    products = sorted(p.name for p in (archive / 'Products').iterdir())
+    if len(apps) != 1 or products != ['Applications']:   # anything else makes a generic archive Organizer can't distribute
+        comment(archive, f'VERIFY FAILED: not an app archive (Products: {products})', failed=True)
+        sys.exit(f'verify-archive: expected only Applications/<one app> in {archive}/Products, found {products}')
+    app = apps[0]
+    if vendor and (Path(vendor) / 'dSYMs').is_dir():   # the vendored binaries' symbols beside the app's
+        shutil.copytree(Path(vendor) / 'dSYMs', archive / 'dSYMs', dirs_exist_ok=True)
+    lines, failure = [], None
+    with open(archive / 'verify.log', 'w') as log, tempfile.TemporaryDirectory(prefix='ltm-verify-') as scratch:
+        try:
+            current = run(sys.executable, ROOT / 'scripts/vendor', '--print').stdout.strip()
+            if vendor and Path(vendor) != Path(current):
+                raise Failed(f'the archive copied {vendor}, but the pins want {current}: run scripts/vendor')
+            lines.append(static_checks(app, log))
+            for entry_id in VERIFY_ENTRIES:
+                lines.append(boot_check(app, entry_id, Path(scratch), log))
+                log.write(lines[-1] + '\n')
+                log.flush()
+                remove(Path(scratch) / entry_id)
+        except (Failed, subprocess.SubprocessError, OSError, KeyError, ValueError) as error:
+            failure = str(error)
+        finally:
+            for path in Path(scratch).iterdir():
+                remove(path)
+        log.write('\n'.join(lines) + '\n' + (f'VERIFY FAILED: {failure}\n' if failure else 'verify passed\n'))
+    if failure:
+        comment(archive, f'VERIFY FAILED: {failure}', failed=True)
+        sys.exit(f'VERIFY FAILED: {failure}')
+    boots = len(VERIFY_ENTRIES)
+    comment(archive, f'verify passed: {boots}/{boots} devices prepared and booted in-bundle; signatures, slices, scan')
+    print('\n'.join(lines))
+
+
+if __name__ == '__main__':
+    main(sys.argv[1:])

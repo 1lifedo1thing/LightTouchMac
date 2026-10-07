@@ -2,7 +2,7 @@
 #define lockdownd_get_value fake_get
 #define lockdownd_set_value fake_set
 #define main helper_main
-#include "../../scripts/lockdown-tz.c"
+#include "../../LightTouchServices/Lockdown/lockdown-tz.c"
 #undef main
 #include <assert.h>
 

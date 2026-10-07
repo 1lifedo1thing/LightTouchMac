@@ -182,7 +182,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-ipa-library-') as directory:
                    'Library/DeviceInstance', 'Device/DeviceProfile', 'Library/FirmwareCatalog', 'Features/InstallationQueue',
                    'Features/AppInstaller', 'Features/MediaSupport', 'Transport/DeviceExecution']
         subprocess.run(['xcrun', 'swiftc', *host_runtime.swift_flags(root), '-swift-version', '5', '-default-isolation', 'MainActor', '-parse-as-library',
-                        '-module-cache-path', str(work / 'modules'), str(root / 'Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift'), *[str(root / f'LightTouchMac/{s}.swift') for s in sources],
+                        '-module-cache-path', str(work / 'modules'), str(root / 'Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift'), str(root / 'Packages/FirmwareKit/Sources/FirmwareKit/GuestPackage/GuestArchive.swift'), *[str(root / f'LightTouchMac/{s}.swift') for s in sources],
                         str(root / 'tests/fixtures/app-installer.swift'), str(work / 'check.swift'), '-o', str(work / 'check')], check=True)
         subprocess.run([str(work / 'check'), str(server.server_port)], check=True, timeout=60, env=env)
     finally:

@@ -15,3 +15,7 @@ docs/matrix-results.json.lock
 # Working notes and generated reports stay local
 docs/
 *.profraw
+
+# scripts/vendor output and local overrides
+Configuration/Vendor.xcconfig
+Configuration/Local.xcconfig

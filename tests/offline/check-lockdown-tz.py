@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/lockdown-tz.c's zone step (set_zone, refresh_clocks) against a fake lockdownd (smoke #58).
+"""LightTouchServices/Lockdown/lockdown-tz.c's zone step (set_zone, refresh_clocks) against a fake lockdownd (smoke #58).
 
 The fake applies a TimeZone write the way the guest does: lockdownd hands it to locationd/timed, and the
 zone reads back a few reads later. Checked: a changed zone is written once, polled until it reads back,
@@ -103,7 +103,7 @@ int main(void)
 
 with tempfile.TemporaryDirectory() as work:
     c = Path(work, "zone.c")
-    c.write_text(harness.replace("SRC", str(root / "scripts/lockdown-tz.c")))
+    c.write_text(harness.replace("SRC", str(root / "LightTouchServices/Lockdown/lockdown-tz.c")))
     flags = subprocess.run(["/bin/sh", "-c", "PATH=/opt/homebrew/bin:/usr/local/bin:$PATH; "
                             "pkg-config --cflags --libs libimobiledevice-1.0 libplist-2.0"],
                            capture_output=True, text=True).stdout.split()

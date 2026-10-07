@@ -132,7 +132,7 @@ real_source = prefix + r'''
     "Visible model did not render the green guest LCD: \(pixel)")
   window.orderOut(nil);window.contentView=nil
   // A first-frame waiter with no drawable must still cancel promptly.
-  let unattached=try await DeviceModelView(url:Bundle.main.url(forResource:"N72",withExtension:"usdz")!,profile:.iPodTouch2G)
+  let unattached=try await DeviceModelView(url:Bundle.main.url(forResource:"N72",withExtension:"usdz",subdirectory:"Models")!,profile:.iPodTouch2G)
   let waiter=Task { await unattached.prepareFirstFrame() }
   waiter.cancel()
   let cancelledResult=await waiter.value
@@ -143,8 +143,9 @@ real_source = prefix + r'''
 '''
 with tempfile.TemporaryDirectory(prefix='ltm-model-startup-') as tmp:
     work=Path(tmp);app=work/'Check.app/Contents';(app/'MacOS').mkdir(parents=True);(app/'Resources').mkdir()
+    (app/'Resources/Models').mkdir()
     for name in ['N72.usdz', 'N72Studio.realityenv']:
-        (app/'Resources'/name).symlink_to(root/'LightTouchMac'/name)
+        (app/'Resources/Models'/name).symlink_to(root/'Models'/name)
     windowed = os.environ.get('LTM_DISPLAY_CHECKS') == '1'
     for name, source, actual_model in [('stub', stub_source, False), *([('renderer', real_source, True)] if windowed else [])]:
         swift=work/f'{name}.swift';swift.write_text(source);exe=app/'MacOS'/name

@@ -79,7 +79,7 @@ nonisolated enum IMobileDevice {
     // NO lockdownd_set_value here, deliberately: called in-process against
     // 3.1.3's lockdownd it corrupts the heap (the app died ~20 s later in
     // unrelated Swift runtime code, reproducibly). Writes go through the
-    // bundled lockdown-tz tool — see LockdownTools (DeviceServices.setTimeZone).
+    // services helper's lockdown-tz child — see LockdownTools (DeviceServices.setTimeZone).
     typealias PlistFree = @convention(c) (OpaquePointer?) -> Void
     typealias MemFree = @convention(c) (UnsafeMutableRawPointer?) -> Void
 

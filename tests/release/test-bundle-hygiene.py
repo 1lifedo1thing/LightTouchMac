@@ -10,10 +10,12 @@ Fails when:
   - a Swift package either Package.resolved pins has no licenses/swift/<package>/ text;
   - Help.txt does not name every component;
   - any file names a local path (/Users/ or this Mac's home), the packed built-in device's contents included;
-  - the packed built-in device carries a unit identity (its seed must be build-release's placeholder; every unpack
+  - the packed built-in device carries a unit identity (its seed must be scripts/vendor's placeholder; every unpack
     gets an identity of its own);
   - a host Mach-O still carries a debug map (it was not stripped) or a .dSYM ships;
-  - the same Mach-O ships twice.
+  - the same Mach-O ships twice;
+  - a Mach-O sits loose under Contents/Resources (the guest binaries ship packed, Resources/Guest/guest.aar, whose
+    contents get every check above).
 Without an app it runs the same checks on fixture bundles, each broken one way.
 """
 import fnmatch
@@ -55,8 +57,6 @@ BINARIES = {
     'Contents/MacOS/LightTouchServices': (),
     'Contents/MacOS/inetcat': ('inetcat', 'libusbmuxd', 'libimobiledevice-glue', 'libplist'),
     'Contents/MacOS/firmwarekit': (),
-    'Contents/MacOS/lockdown-tz': (),
-    'Contents/MacOS/lockdown-mcinstall': (),
     'Contents/MacOS/ipod-helper': ('qemu',),
     'Contents/MacOS/usbmuxd': ('usbmuxd', 'glib', 'proxy-libintl', 'pcre2', 'libslirp', 'libimobiledevice-glue'),
     'Contents/MacOS/iBoot32Patcher': ('iBoot32Patcher',),
@@ -65,10 +65,11 @@ BINARIES = {
     'Contents/Frameworks/libavutil*.dylib': ('ffmpeg',),
     'Contents/Frameworks/libimobiledevice-1.0*.dylib': ('libimobiledevice', 'openssl', 'libimobiledevice-glue', 'libusbmuxd', 'libtatsu'),
     'Contents/Frameworks/libplist-2.0*.dylib': ('libplist',),
-    'Contents/Resources/guest-tools/*': ('qemu',),   # the guest tools: qemu-ios contrib, built for the guest
-    'Contents/Resources/tools/*': ('qemu',),
+    'Contents/Resources/Guest/guest.aar/guest-tools/*': ('qemu',),   # the guest tools: qemu-ios contrib, built for the guest
+    'Contents/Resources/Guest/guest.aar/tools/*': ('qemu',),
 }
-# build-release.py BUNDLED_SEED: the identity a packed base carries until the app unpacks it with a seed of its own.
+GUEST = 'Contents/Resources/Guest/guest.aar'
+# scripts/vendor SEED: the identity a packed base carries until the app unpacks it with a seed of its own.
 PLACEHOLDER_SEED = 'lighttouch-built-in'
 LICENSE_TEXTS = ('LICENSE*', 'LICENCE*', 'COPYING*', 'COPYRIGHT*', 'GPL-*.txt')
 RESOLVED = (ROOT / 'LightTouchMac.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved',
@@ -124,16 +125,24 @@ def packed_problems(path, name, local):
 
 def problems(app, packages):
     app = Path(app)
+    with tempfile.TemporaryDirectory(prefix='ltm-hygiene-guest-') as unpacked:
+        files = [(str(p.relative_to(app)), p) for p in sorted(app.rglob('*'))]
+        if (app / GUEST).is_file():   # what the app unpacks at use is checked as if it shipped loose
+            subprocess.run(['aa', 'extract', '-i', app / GUEST, '-d', unpacked], check=True)
+            files += [(f'{GUEST}/{p.relative_to(unpacked)}', p) for p in sorted(Path(unpacked).rglob('*'))]
+        return file_problems(app, files, packages)
+
+
+def file_problems(app, files, packages):
     licenses = app / 'Contents/Resources/licenses'
     found, needed, seen = [], set(), {}
     local = (b'/Users/', str(Path.home()).encode())
-    developer = app / 'Contents/Resources/developer-tools'
-    if developer.exists():
+    developer = dict(files).get(f'{GUEST}/developer-tools')
+    if developer:
         audited = subprocess.run([app / 'Contents/MacOS/firmwarekit', 'developer-audit', '--payload', developer], capture_output=True, text=True)
         if audited.returncode:
             found.append('developer source/license/binary audit failed: ' + audited.stderr.strip())
-    for path in sorted(app.rglob('*')):
-        name = str(path.relative_to(app))
+    for name, path in files:
         if path.is_dir() and path.suffix == '.dSYM':
             found.append(f'a dSYM ships: {name}')
         if path.is_symlink() or not path.is_file():
@@ -146,7 +155,9 @@ def problems(app, packages):
             found.append(f'names a local path: {name}')
         if not macho(path):
             continue
-        if name.startswith('Contents/Resources/developer-tools/'):
+        if name.startswith('Contents/Resources/') and not name.startswith(GUEST + '/'):
+            found.append(f'nested code under Resources (pack it into {GUEST}): {name}')
+        if name.startswith(f'{GUEST}/developer-tools/'):
             continue  # Exact binaries and complete sources/licenses are certified above.
         owners = [components for pattern, components in BINARIES.items() if fnmatch.fnmatch(name, pattern)]
         if not owners:
@@ -191,10 +202,10 @@ def self_test():
         def bundle(label):
             app = tmp / f'{label}.app'
             for name, salt in (('Contents/MacOS/usbmuxd', b'u'), ('Contents/Frameworks/libplist-2.0.4.dylib', b'p'),
-                               ('Contents/Resources/guest-tools/it_agent', b'a'), ('Contents/MacOS/inetcat', b'i'),
-                               ('Contents/MacOS/LightTouchServices', b'w')):
+                               ('Contents/MacOS/inetcat', b'i'), ('Contents/MacOS/LightTouchServices', b'w')):
                 (app / name).parent.mkdir(parents=True, exist_ok=True)
                 (app / name).write_bytes(stripped + salt)   # distinct contents, still a Mach-O
+            guest({'guest-tools/it_agent': stripped + b'a'}, app)
             licenses = app / 'Contents/Resources/licenses'
             for directory in ('usbmuxd', 'glib', 'proxy-libintl', 'pcre2', 'libslirp', 'libimobiledevice-glue', 'libplist', 'qemu', 'inetcat', 'libusbmuxd'):
                 (licenses / directory).mkdir(parents=True)
@@ -205,6 +216,16 @@ def self_test():
             (app / 'Contents/Resources/Help.txt').write_text('Licenses: usbmuxd, GLib, proxy-libintl, PCRE2, libslirp, '
                                                              'libimobiledevice-glue, libplist, QEMU, inetcat, libusbmuxd')
             return app
+
+        def guest(members, app):
+            staged = tmp / f'{app.name}-guest'
+            shutil.rmtree(staged, ignore_errors=True)
+            for name, data in members.items():
+                (staged / name).parent.mkdir(parents=True, exist_ok=True)
+                (staged / name).write_bytes(data)
+            (app / GUEST).parent.mkdir(parents=True, exist_ok=True)
+            (app / GUEST).unlink(missing_ok=True)
+            subprocess.run(['aa', 'archive', '-d', staged, '-o', app / GUEST], check=True)
 
         def expect(app, text):
             found = problems(app, ['example'])
@@ -226,14 +247,14 @@ def self_test():
             files = [('device.lock.json', json.dumps({'identity': {'seed': seed}}).encode()), ('identity.json', json.dumps({'seed': seed}).encode()),
                      ('nand/cs0/1.page', b'p' * 5000 + extra)]
             index = json.dumps({'entries': [{'name': n, 'size': len(d), 'mode': 0o444} for n, d in files]}).encode()
-            blob = app / 'Contents/Resources/device/n72ap-7E18.itbase'
+            blob = app / 'Contents/Resources/Device/n72ap-7E18.itbase'
             blob.parent.mkdir(parents=True, exist_ok=True)
             blob.write_bytes(b'ITPACK01' + struct.pack('<I', len(index)) + index + zlib.compress(b''.join(d for _, d in files)))
         packed(good, PLACEHOLDER_SEED)
         assert problems(good, ['example']) == [], problems(good, ['example'])
         broken = bundle('packed-local-path')
         packed(broken, PLACEHOLDER_SEED, b'/Users/someone/Library/Caches/x.ipsw')
-        expect(broken, 'names a local path: Contents/Resources/device/n72ap-7E18.itbase (packed)')
+        expect(broken, 'names a local path: Contents/Resources/Device/n72ap-7E18.itbase (packed)')
         broken = bundle('packed-identity')
         packed(broken, '6A1F0E2B-0000-4000-8000-000000000000')
         expect(broken, 'carries a unit identity')
@@ -247,9 +268,15 @@ def self_test():
         (broken / 'Contents/Resources/usbmuxd.dSYM/Contents').mkdir(parents=True)
         expect(broken, 'a dSYM ships')
         broken = bundle('twice')
-        (broken / 'Contents/Resources/tools').mkdir(parents=True)
-        shutil.copy(broken / 'Contents/Resources/guest-tools/it_agent', broken / 'Contents/Resources/tools/it_agent')
-        expect(broken, 'ships twice: Contents/Resources/guest-tools/it_agent and Contents/Resources/tools/it_agent')
+        guest({'guest-tools/it_agent': stripped + b'a', 'tools/it_agent': stripped + b'a'}, broken)
+        expect(broken, f'ships twice: {GUEST}/guest-tools/it_agent and {GUEST}/tools/it_agent')
+        broken = bundle('loose')
+        (broken / 'Contents/Resources/guest-tools').mkdir(parents=True)
+        (broken / 'Contents/Resources/guest-tools/it_pbd').write_bytes(stripped + b'g')
+        expect(broken, 'nested code under Resources (pack it into')
+        broken = bundle('packed-local')
+        guest({'guest-tools/it_agent': stripped + b'a', 'guest-tools/it.plist': b'/Users/someone/x'}, broken)
+        expect(broken, f'names a local path: {GUEST}/guest-tools/it.plist')
         broken = bundle('swift')
         shutil.rmtree(broken / 'Contents/Resources/licenses/swift/Example')
         expect(broken, 'no license text for the Swift package example')
@@ -257,8 +284,8 @@ def self_test():
         (broken / 'Contents/Resources/Help.txt').write_text('Licenses: usbmuxd')
         expect(broken, 'Help.txt does not name GLib')
     print('PASS: fixture bundles: complete passes; missing license, SOURCE.txt, Swift package license, Help entry, '
-          'local path (also inside the packed device), a packed unit identity, unattributed binary, unstripped binary, dSYM '
-          'and duplicate each fail')
+          'local path (also inside the packed device and the guest archive), a packed unit identity, unattributed binary, '
+          'unstripped binary, dSYM, duplicate and loose code under Resources each fail')
 
 
 if __name__ == '__main__':

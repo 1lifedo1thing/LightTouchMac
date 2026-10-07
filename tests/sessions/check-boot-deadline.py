@@ -208,6 +208,7 @@ final class Matches: @unchecked Sendable {
         w.write_text(watch)
         subprocess.run(["swiftc", "-parse-as-library", "-module-cache-path", d + "/modules", *[str(ROOT / "LightTouchMac" / f)
                         for f in ("Transport/NativeLogging.swift", "Library/StorageLocations.swift", "Library/Bundled.swift", "Transport/AppEventLog.swift")],
+                        str(ROOT / "Packages/FirmwareKit/Sources/FirmwareKit/GuestPackage/GuestArchive.swift"),
                         str(w), "-o", d + "/watch"], check=True)
         subprocess.run([d + "/watch"], check=True, timeout=120, env=dict(os.environ, LTM_STATE_DIR=d + "/state"))
 

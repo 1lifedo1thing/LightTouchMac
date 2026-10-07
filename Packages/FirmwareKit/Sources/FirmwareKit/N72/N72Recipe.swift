@@ -199,11 +199,11 @@ final class N72Board: Board {
         ]
     }
 
-    /// The iPod bootrom the keybag boot's machine loads: LTM_FILES, then the app bundle's Resources/device next to
+    /// The iPod bootrom the keybag boot's machine loads: LTM_FILES, then the app bundle's Resources/Device next to
     /// the helper (Contents/MacOS), then the development assets.
     static func bootromPath(helper: URL?) -> URL? {
         let env = ProcessInfo.processInfo.environment["LTM_FILES"].map { URL(fileURLWithPath: $0) }
-        let bundled = helper?.resolvingSymlinksInPath().deletingLastPathComponent().appendingPathComponent("../Resources/device").standardizedFileURL
+        let bundled = helper?.resolvingSymlinksInPath().deletingLastPathComponent().appendingPathComponent("../Resources/Device").standardizedFileURL
         let dev = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Developer/qemu-ios-files")
         return [env, bundled, dev].compactMap { $0?.appendingPathComponent("bootrom_240_4") }
             .first { FileManager.default.fileExists(atPath: $0.path) }

@@ -59,5 +59,5 @@ with tempfile.TemporaryDirectory(prefix='ltm-events-') as temp:
  }
 }
 ''')
- subprocess.run(['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor','-module-cache-path',str(p/'modules'),str(root/'LightTouchMac/Transport/AppEventLog.swift'),str(root/'LightTouchMac/Library/Bundled.swift'), str(root/'LightTouchMac/Library/StorageLocations.swift'), str(root/'LightTouchMac/Transport/NativeLogging.swift'),str(p/'check.swift'),'-o',str(p/'check')],check=True)
+ subprocess.run(['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor','-module-cache-path',str(p/'modules'),str(root/'LightTouchMac/Transport/AppEventLog.swift'),str(root/'LightTouchMac/Library/Bundled.swift'),str(root/'Packages/FirmwareKit/Sources/FirmwareKit/GuestPackage/GuestArchive.swift'), str(root/'LightTouchMac/Library/StorageLocations.swift'), str(root/'LightTouchMac/Transport/NativeLogging.swift'),str(p/'check.swift'),'-o',str(p/'check')],check=True)
  subprocess.run([str(p/'check'),str(p/'events')],env=dict(os.environ,LTM_STATE_DIR=str(p/'state')),check=True)

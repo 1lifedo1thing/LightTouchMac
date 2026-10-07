@@ -1,12 +1,13 @@
 /*
- * lockdown-tz <olson zone> [epoch | keep] [--locale <id>] [--24h 0|1]
- * lockdown-tz --finish-activation
+ * LightTouchServices lockdown-tz <olson zone> [epoch | keep] [--locale <id>] [--24h 0|1]
+ * LightTouchServices lockdown-tz --finish-activation
  *
  * Point the device's lockdown TimeZone at the given zone — the same call
  * iTunes used; the guest's lockdownd rewrites /var/db/timezone/localtime and
  * SpringBoard follows live, the lock screen once refresh_clocks pokes it.
  *
- * A separate process ON PURPOSE, not a call inside LightTouchMac:
+ * An operation of the services helper run as its own child process ON PURPOSE, not a call inside
+ * LightTouchMac or a long-lived services helper:
  * lockdownd_set_value invoked in-process against iOS 3.1.3's lockdownd
  * corrupts the heap — the app died ~20 s later in unrelated Swift runtime
  * code, reproducibly, three runs out of three — while this identical
@@ -43,6 +44,7 @@
 #include <libimobiledevice/libimobiledevice.h>
 #include <libimobiledevice/lockdown.h>
 #include <plist/plist.h>
+#include "Lockdown.h"
 
 /* Match the type the device reports (uint on old lockdownd, real on newer),
  * like idevicedate. */
@@ -252,7 +254,8 @@ static char *set_zone(lockdownd_client_t cli, const char *want)
     }
 }
 
-int main(int argc, char **argv)
+/* argv[0] is the operation name, the rest as the standalone tool took them. */
+int ltm_lockdown_tz(int argc, char **argv)
 {
     const char *locale = NULL;
     int h24 = -1;

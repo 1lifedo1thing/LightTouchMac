@@ -501,10 +501,11 @@ with tempfile.TemporaryDirectory(prefix="ltm-model-") as tmp:
     app=work/"Check.app/Contents"
     (app/"MacOS").mkdir(parents=True)
     (app/"Resources").mkdir()
+    (app/"Resources/Models").mkdir()
     for model in MODELS:
-        (app/f"Resources/{model}.usdz").symlink_to(root/f"LightTouchMac/{model}.usdz")
-    (app/"Resources/N72Studio.realityenv").symlink_to(root/"LightTouchMac/N72Studio.realityenv")
-    (app/"Resources/N45Rim.realityenv").symlink_to(root/"LightTouchMac/N45Rim.realityenv")
+        (app/f"Resources/Models/{model}.usdz").symlink_to(root/f"Models/{model}.usdz")
+    for env in ("N72Studio", "N45Rim"):
+        (app/f"Resources/Models/{env}.realityenv").symlink_to(root/f"Models/{env}.realityenv")
     sources=root/"LightTouchMac"
     qemu=Path(os.environ["QEMU_SRC"]) if os.environ.get("QEMU_SRC") else pins.path("qemu-ios")
     attitude_header=qemu/"include/hw/arm/ipod-attitude.h"
@@ -521,6 +522,6 @@ with tempfile.TemporaryDirectory(prefix="ltm-model-") as tmp:
         bridge=["-import-objc-header",str(attitude_header)] if name == "model" else []
         subprocess.run(["swiftc", *device_runtime.swift_flags(root), "-module-cache-path",str(work/"modules"),"-default-isolation","MainActor",*bridge,str(sources/"UI/DeviceModelView.swift"),*[str(sources/(x+".swift")) for x in extra],str(swift),"-o",str(exe)],check=True)
         for model in MODELS:
-            subprocess.run([str(exe),str(root/f"LightTouchMac/{model}.usdz"),str(renders),model],check=True,timeout=90)
+            subprocess.run([str(exe),str(root/f"Models/{model}.usdz"),str(renders),model],check=True,timeout=90)
     if not windowed:
         print("SKIP: DisplayView input with the presented model (a visible window); LTM_DISPLAY_CHECKS=1 runs it")

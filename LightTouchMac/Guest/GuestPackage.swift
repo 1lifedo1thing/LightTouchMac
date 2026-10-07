@@ -80,11 +80,11 @@ nonisolated enum GuestPackage {
         ["n72ap": "armv6", "n45ap": "armv6", "m68ap": "armv6", "k48ap": "armv7", "n81ap": "armv7", "n90ap": "armv7", "n88ap": "armv7", "n18ap": "armv7"][board]
     }
 
-    /// The bundled itpack for an arch: the app's flat Resources/guest-tools (which
+    /// The bundled itpack for an arch: the app's guest-tools (Bundled.guestRoot, which
     /// firmwarekit also seeds from), else (development) LTM_GUEST_PACKAGE or a
     /// qemu-ios checkout's build/guest-package.
-    static func bundledPack(arch: String, filesRoot: String, resources: URL? = Bundle.main.resourceURL) -> URL? {
-        var candidates = [resources?.appendingPathComponent("guest-tools/\(arch).itpack")].compactMap { $0 }
+    static func bundledPack(arch: String, filesRoot: String, guestRoot: URL?) -> URL? {
+        var candidates = [guestRoot?.appendingPathComponent("guest-tools/\(arch).itpack")].compactMap { $0 }
         if let dir = ProcessInfo.processInfo.environment["LTM_GUEST_PACKAGE"] {
             candidates.append(URL(fileURLWithPath: dir).appendingPathComponent("\(arch).itpack"))
         }

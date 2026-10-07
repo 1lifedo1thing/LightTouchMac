@@ -114,14 +114,16 @@ let staging = url(out)
 }
 var options: Preparer.Options
 do {
-    let bundled = Bundle.main.executableURL!.resolvingSymlinksInPath().deletingLastPathComponent()
-        .appendingPathComponent("../Resources/guest-tools").standardizedFileURL
+    // The app's packed guest tools (Resources/Guest/guest.aar), unpacked; --guest-tools names another directory.
+    let resources = Bundle.main.executableURL!.resolvingSymlinksInPath().deletingLastPathComponent()
+        .appendingPathComponent("../Resources").standardizedFileURL
+    let bundled = try flags["--guest-tools"] == nil ? GuestArchive.unpacked(resources: resources)?.appendingPathComponent("guest-tools") : nil
     var entry = try flags["--entry"].map { try FirmwareEntry.load(from: url($0)) }
         ?? FirmwareEntry.load(id: flags["--id"]!, fromCatalog: url(flags["--catalog"]!))
     if flags["--gl-test"] != nil { entry.recipe?.options["gl_test"] = true }
     options = .init(entry: entry, ipsw: url(ipsw), out: staging, seed: flags["--seed"],
                     helper: flags["--helper"].map(url),
-                    guestTools: flags["--guest-tools"].map(url) ?? bundled, cache: flags["--cache"].map(url),
+                    guestTools: flags["--guest-tools"].map(url) ?? bundled ?? resources.appendingPathComponent("guest-tools"), cache: flags["--cache"].map(url),
                     sibling: try flags["--sibling-entry"].map { (try FirmwareEntry.load(from: url($0)), url(flags["--sibling-ipsw"] ?? "")) })
 } catch { await fail(error) }
 if let stop = flags["--stop-after"] {

@@ -1369,7 +1369,7 @@ final class EmulatorController {
     private func composeGuestOffer() -> String? {
         guestOffer = nil
         guard status?.guestPackageSupported == true, let arch = GuestPackage.arch(board: instance.board),
-              let pack = GuestPackage.bundledPack(arch: arch, filesRoot: Bundled.filesRoot) else {
+              let pack = GuestPackage.bundledPack(arch: arch, filesRoot: Bundled.filesRoot, guestRoot: Bundled.guestRoot) else {
             try? FileManager.default.removeItem(at: guestOfferDirectory)
             return nil
         }

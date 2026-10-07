@@ -3,7 +3,7 @@
 
     tests/release/test-package.py [PACKAGED.app]
 
-With an app (package.sh output), also check its device helper: present in
+With an app (an archived or exported Light Touch.app), also check its device helper: present in
 Contents/MacOS, hardened runtime with the QEMU entitlements (and no entitlements on the app or
 any other tool), its load closure and
 the dlopened Frameworks/libqemu-arm.dylib resolved inside the bundle, and a
@@ -86,7 +86,7 @@ with tempfile.TemporaryDirectory() as directory:
     verify(weaklib)  # A low LC_BUILD_VERSION alone cannot establish runtime compatibility.
     verify(weaklib, no_weak_imports=True, error='unexpected weak imports')
     verify(root / 'lib26.0.dylib', no_weak_imports=True, error='requires macOS 26.0')
-    # A universal binary (build-release.py --universal) needs every slice of every dependency.
+    # A universal binary needs every slice of every dependency.
     both = root / 'both.dylib'
     run('cc', '-arch', 'arm64', '-arch', 'x86_64', '-mmacosx-version-min=14.0', '-dynamiclib',
         libsrc, '-install_name', both, '-o', both)
@@ -95,7 +95,7 @@ with tempfile.TemporaryDirectory() as directory:
     verify(fat)
     run('lipo', both, '-thin', 'arm64', '-output', both)
     verify(fat, error='missing x86_64 slice')
-    # package.sh's --arch per app slice: a thin tool in a universal app is refused.
+    # --arch per app slice: a thin tool in a universal app is refused.
     (root / 'plain.c').write_text('int main(void) { return 0; }\n')
     run('cc', '-arch', 'arm64', '-mmacosx-version-min=14.0', root / 'plain.c', '-o', root / 'thin')
     thin = subprocess.run([sys.executable, CHECK, '--arch', 'arm64', '--arch', 'x86_64', root / 'thin'],
@@ -151,10 +151,10 @@ def check_helper(app):
     # (build-static-deps.sh); without it libimobiledevice-sslv3-ios1.patch asks for a protocol the library lacks.
     imd = app / 'Contents/Frameworks/libimobiledevice-1.0.dylib'
     assert '_SSLv3_client_method' in run('nm', '-gU', imd).stdout, f'{imd.name} links an OpenSSL without SSLv3'
-    device = app / 'Contents/Resources/device'
+    device = app / 'Contents/Resources/Device'
     catalog = json.loads((app / 'Contents/Resources/firmware-catalog.json').read_text())
     # the 2G's and 1G's SecureROMs, and the built-in iPod (one opaque blob, never raw pages)
-    assert catalog['bundled'] == {'n72ap-7E18': 'device/n72ap-7E18.itbase'}, catalog.get('bundled')
+    assert catalog['bundled'] == {'n72ap-7E18': 'Device/n72ap-7E18.itbase'}, catalog.get('bundled')
     assets = ('bootrom_240_4', 'bootrom_s5l8900', 'n72ap-7E18.itbase')
     assert all((device / name).is_file() for name in assets), f'missing device assets under {device}'
     assert (device / 'n72ap-7E18.itbase').read_bytes()[:8] == b'ITPACK01', 'the built-in iPod is not a packed device'

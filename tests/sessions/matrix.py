@@ -614,7 +614,7 @@ def main():
     tools.mkdir()
     log(f"building the session driver and helper in {tools}")
     helper = check_sessions.build(argparse.Namespace(helper=str(a.helper) if a.helper else None, service_worker=a.service_worker), tools)
-    a.lockdown_tz = check_sessions.build_lockdown_tz(tools, a.frameworks)
+    a.lockdown_tz = tools / "LightTouchServices"   # its lockdown-tz operation, as the app runs it
     if a.build_only:
         lock.close()
         return log(f"built: {helper}")

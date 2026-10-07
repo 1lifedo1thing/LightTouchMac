@@ -6,12 +6,12 @@
 // heard of Homebrew should be able to drag it to /Applications and have app
 // installs, media import and the home-screen placeholder all work. So every
 // external binary and library is looked for INSIDE the bundle first —
-// Contents/MacOS for native helpers, Resources/tools for scripts and guest data,
-// Contents/Frameworks for
-// dylibs — and only then in the places a development checkout keeps them.
+// Contents/MacOS for native helpers, Contents/Frameworks for dylibs, the
+// unpacked Resources/Guest/guest.aar for guest binaries — and only then in the
+// places a development checkout keeps them.
 //
-// Run from Xcode there is nothing in the bundle and the checkout answers every
-// time; scripts/package.sh is what fills it in for a shippable build. Keeping
+// A Debug build from Xcode has none of the vendored parts and the checkout
+// answers; Archive copies them in from scripts/vendor's directory. Keeping
 // the search order the same in both means the packaged app exercises the same
 // code paths the dev build does, rather than a packaging-only branch nobody
 // runs until it breaks.
@@ -22,21 +22,29 @@ import Foundation
 /// detached tasks that do the blocking device work as well as from the UI.
 nonisolated enum Bundled {
 
-    /// Scripts and guest upload payloads shipped with the app.
-    static let toolsDirectory = Bundle.main.resourceURL?
-        .appendingPathComponent("tools", isDirectory: true).path
+    /// Resources/Guest/guest.aar unpacked (FirmwareKit GuestArchive): guest-tools/, developer-tools/ and tools/;
+    /// nil in a build without it.
+    static let guestRoot: URL? = Bundle.main.resourceURL.flatMap { (resources: URL) -> URL? in
+        do { return try GuestArchive.unpacked(resources: resources) } catch {
+            NSLog("guest tools: couldn’t unpack %@/Guest/guest.aar: %@", resources.path, "\(error)")
+            return nil
+        }
+    }
+
+    /// Guest upload payloads shipped with the app (the iPod media helpers).
+    static var toolsDirectory: String? { guestRoot?.appendingPathComponent("tools", isDirectory: true).path }
 
     /// Native helper executables share the standard executable directory.
     static let hostToolsDirectory = Bundle.main.executableURL?.deletingLastPathComponent().path
 
-    /// Dylibs shipped with the app, where package.sh repoints @rpath.
+    /// Dylibs shipped with the app (scripts/vendor sets their @rpath install names).
     static let frameworksDirectory = Bundle.main.privateFrameworksPath
 
     /// The device assets (the iPod SecureROMs): LTM_FILES,
-    /// then the bundle's Resources/device, then the dev checkout's qemu-ios-files.
+    /// then the bundle's Resources/Device, then the dev checkout's qemu-ios-files.
     static let filesRoot: String = {
         if let env = ProcessInfo.processInfo.environment["LTM_FILES"] { return env }
-        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("device").path,
+        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("Device").path,
            FileManager.default.fileExists(atPath: bundled) {
             return bundled
         }

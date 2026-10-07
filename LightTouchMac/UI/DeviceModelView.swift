@@ -153,7 +153,7 @@ final class DeviceModelView: NSView {
       for child in entity.children { tune(child) }
     }
     tune(loaded)
-    let lighting = try await EnvironmentResource(named: "N72Studio", in: .main)
+    let lighting = try await EnvironmentResource(named: "Models/N72Studio", in: .main)
     renderer.environment.lighting.resource = lighting
     renderer.environment.lighting.intensityExponent = 2
     var homeLight = ImageBasedLightComponent(source: .single(lighting), intensityExponent: 2)
@@ -165,7 +165,7 @@ final class DeviceModelView: NSView {
       let rimLighting = Entity()
       anchor.addChild(rimLighting)
       rimLighting.components.set(ImageBasedLightComponent(
-        source: .single(try await EnvironmentResource(named: "N45Rim", in: .main)), intensityExponent: 2))
+        source: .single(try await EnvironmentResource(named: "Models/N45Rim", in: .main)), intensityExponent: 2))
       for name in ["Front_frame___broad_graphite_bevel", "Cover_glass___opaque_masked_surround",
                    "Display___inactive_optical_border", "Ambient_proximity_sensor___1"] {
         loaded.findEntity(named: name)?.components.set(ImageBasedLightReceiverComponent(imageBasedLight: rimLighting))

@@ -185,7 +185,8 @@ with tempfile.TemporaryDirectory(prefix='ltm-bare-screen-') as tmp:
     app = work / 'Check.app/Contents'
     (app / 'MacOS').mkdir(parents=True)
     (app / 'Resources').mkdir()
-    (app / 'Resources/N72.usdz').symlink_to(root / 'LightTouchMac/N72.usdz')
+    (app / 'Resources/Models').mkdir()
+    (app / 'Resources/Models/N72.usdz').symlink_to(root / 'Models/N72.usdz')
     (app / 'Resources/shell.png').symlink_to(root / 'LightTouchMac/Assets.xcassets/shell.imageset/shell_opaque.png')
     (work / 'check.swift').write_text(source)
     exe = app / 'MacOS/check'

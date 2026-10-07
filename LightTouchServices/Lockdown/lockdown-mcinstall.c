@@ -1,6 +1,6 @@
 /*
- * lockdown-mcinstall <certificate.der>
- * lockdown-mcinstall --installed
+ * LightTouchServices lockdown-mcinstall <certificate.der>
+ * LightTouchServices lockdown-mcinstall --installed
  *
  * Offer the device a configuration profile that trusts one root certificate
  * (the per-device web proxy CA, WebProxyCA), through lockdown's
@@ -13,7 +13,7 @@
  * --installed asks GetProfileList and exits 0 when the profile is installed
  * (3 when it is not), so the app never offers it twice.
  *
- * A separate process like lockdown-tz, for the same reason: lockdown writes
+ * Its own child process like lockdown-tz, for the same reason: lockdown writes
  * made in-process from the app have corrupted its heap. Finds the device via
  * USBMUXD_SOCKET_ADDRESS. Exits 0 when the device acknowledges the request.
  */
@@ -24,6 +24,7 @@
 #include <libimobiledevice/lockdown.h>
 #include <libimobiledevice/property_list_service.h>
 #include <plist/plist.h>
+#include "Lockdown.h"
 
 #define PROFILE_ID "com.lighttouch.webproxy"
 
@@ -39,7 +40,7 @@ static plist_t payload(const char *type, const char *id, const char *uuid, const
     return p;
 }
 
-int main(int argc, char **argv)
+int ltm_lockdown_mcinstall(int argc, char **argv)
 {
     idevice_t dev = NULL;
     lockdownd_client_t ld = NULL;

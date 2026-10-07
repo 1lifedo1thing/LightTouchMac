@@ -1,7 +1,8 @@
 // lockdownd itself: ActivationState in-process, and the writes that must not be
 // in-process (lockdownd_set_value against 3.1.3 corrupts the app's heap) as child
-// processes pointed at this device's usbmuxd: lockdown-tz for the time zone,
-// lockdown-mcinstall for the proxy's profile.
+// processes pointed at this device's usbmuxd: the services helper's lockdown-tz
+// operation for the time zone, lockdown-mcinstall for the proxy's profile
+// (LightTouchServices/Lockdown).
 
 import Foundation
 import Subprocess
@@ -11,32 +12,26 @@ extension DeviceServices {
     /// Complete activation acknowledgement and an old iPod's first host connection.
     /// Uses the guest protocol, independently of the clock and timezone preferences.
     func finishActivation() async throws {
-        guard let tool = Bundled.tool("lockdown-tz") ?? Self.developmentHelper("lockdown-tz") else {
-            throw DeviceToolsError.toolMissing("lockdown-tz")
-        }
+        guard let tool = Self.servicesHelper else { throw DeviceToolsError.toolMissing("LightTouchServices") }
         try await Self.finishActivation(tool: tool, socket: clientSocket)
     }
 
-    /// The same child protocol with an explicit executable, for native session tests.
+    /// The same child protocol with an explicit services helper, for native session tests.
     static func finishActivation(tool: String, socket: String) async throws {
-        let result = try await lockdownChild(tool, ["--finish-activation"], socket: socket)
+        let result = try await lockdownChild(tool, ["lockdown-tz", "--finish-activation"], socket: socket)
         guard result.status == 0 else {
             throw DeviceToolsError.failed("Couldn’t complete device activation. \(result.error)")
         }
     }
 
-    /// Sync the guest's timezone through the bundled lockdown-tz helper — a
-    /// child process ON PURPOSE. lockdownd_set_value called in-process against
-    /// 3.1.3's lockdownd corrupts the heap: the app died ~20 s later in
-    /// unrelated Swift runtime code, reproducibly, while the identical call
-    /// from a child process is clean (scripts/lockdown-tz.c). The tool reads
-    /// first, sets only on mismatch, and prints the zone in effect. Dev builds
-    /// without the bundled tool skip quietly — the zone is cosmetic.
+    /// Sync the guest's timezone through the services helper's lockdown-tz
+    /// operation — a child process ON PURPOSE. lockdownd_set_value called
+    /// in-process against 3.1.3's lockdownd corrupts the heap: the app died ~20 s
+    /// later in unrelated Swift runtime code, reproducibly, while the identical
+    /// call from a child process is clean (LightTouchServices/Lockdown). The
+    /// operation reads first, sets only on mismatch, and prints the zone in effect.
     func setTimeZone(_ identifier: String, keepClock: Bool = false, guest: GuestServices?, region: ClockRegion? = nil) async throws {
-        guard let tool = Bundled.tool("lockdown-tz") ?? Self.developmentHelper("lockdown-tz") else {
-            logEvent("timezone: no bundled lockdown-tz (dev build) — leaving the guest's zone alone")
-            return
-        }
+        guard let tool = Self.servicesHelper else { throw DeviceToolsError.toolMissing("LightTouchServices") }
         let zone = try await Self.setTimeZone(identifier, keepClock: keepClock, tool: tool, socket: clientSocket, guest: guest, region: region)
         logEvent("timezone: guest zone now \(zone)")
     }
@@ -67,7 +62,8 @@ extension DeviceServices {
 
     private static func lockdownTZ(_ identifier: String, keepClock: Bool, tool: String, socket: String,
                                    region: ClockRegion?) async throws -> String {
-        let result = try await lockdownChild(tool, [identifier] + (keepClock ? ["keep"] : []) + (region?.arguments ?? []), socket: socket)
+        let result = try await lockdownChild(tool, ["lockdown-tz", identifier] + (keepClock ? ["keep"] : []) + (region?.arguments ?? []),
+                                             socket: socket)
         let zone = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
         if result.status == 4 { throw DeviceToolsError.zoneKept(zone) }
         guard result.status == 0 else {
@@ -77,15 +73,13 @@ extension DeviceServices {
     }
 
     /// Offer a CA as a configuration profile through lockdown's stock MCInstall
-    /// service (the lockdown-mcinstall child, like lockdown-tz), once: false when
-    /// one is installed already, true when it was offered and waits for Install
-    /// on the device.
+    /// service (the lockdown-mcinstall operation's child, like lockdown-tz), once:
+    /// false when one is installed already, true when it was offered and waits for
+    /// Install on the device.
     func offerProfile(_ certificate: String) async throws -> Bool {
-        // Packaged apps bundle it (package.sh); dev builds find it on the usual PATH directories.
-        guard let tool = Bundled.resolve("lockdown-mcinstall", fallbacks: Bundled.binarySearchPaths.map { "\($0)/lockdown-mcinstall" })
-        else { throw DeviceToolsError.toolMissing("lockdown-mcinstall") }
-        if try await Self.lockdownChild(tool, ["--installed"], socket: clientSocket).status == 0 { return false }
-        let offered = try await Self.lockdownChild(tool, [certificate], socket: clientSocket)
+        guard let tool = Self.servicesHelper else { throw DeviceToolsError.toolMissing("LightTouchServices") }
+        if try await Self.lockdownChild(tool, ["lockdown-mcinstall", "--installed"], socket: clientSocket).status == 0 { return false }
+        let offered = try await Self.lockdownChild(tool, ["lockdown-mcinstall", certificate], socket: clientSocket)
         guard offered.status == 0 else {
             logEvent("proxy: offering the certificate profile failed: \(offered.error)")
             throw DeviceToolsError.failed("Couldn’t offer the proxy certificate to the device.")
@@ -124,34 +118,6 @@ extension DeviceServices {
         return (result.0, result.1, result.2)
     }
 
-    /// A development build has no bundled lockdown helpers (package.sh builds
-    /// them), so the time zone was never synced when running from Xcode.
-    /// Debug builds compile scripts/<name>.c against Homebrew's
-    /// libimobiledevice into the work directory, once per source change.
-    static func developmentHelper(_ name: String) -> String? {
-        #if DEBUG
-        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-            .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("scripts/\(name).c")
-        let binary = Bundled.workDirectory.appendingPathComponent("dev-tools/\(name)")
-        let fm = FileManager.default
-        guard let sourceDate = (try? fm.attributesOfItem(atPath: source.path))?[.modificationDate] as? Date else { return nil }
-        if let built = (try? fm.attributesOfItem(atPath: binary.path))?[.modificationDate] as? Date,
-           built >= sourceDate, fm.isExecutableFile(atPath: binary.path) { return binary.path }
-        try? fm.createDirectory(at: binary.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let build = Process()
-        build.executableURL = URL(fileURLWithPath: "/bin/sh")
-        build.arguments = ["-c", "PATH=/opt/homebrew/bin:/usr/local/bin:$PATH; "
-            + "cc -O2 -o \"$1\" \"$2\" $(pkg-config --cflags --libs libimobiledevice-1.0 libplist-2.0)",
-            "sh", binary.path, source.path]
-        do { try build.run() } catch { return nil }
-        build.waitUntilExit()
-        guard build.terminationStatus == 0 else {
-            logEvent("\(name): could not build the development helper")
-            return nil
-        }
-        return binary.path
-        #else
-        return nil
-        #endif
-    }
+    /// Contents/MacOS/LightTouchServices: Xcode embeds it in Debug and Release builds alike.
+    static var servicesHelper: String? { Bundled.tool("LightTouchServices") }
 }

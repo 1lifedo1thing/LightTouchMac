@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebuild N45's rim-and-glass environment (NumPy, Pillow, Xcode): LightTouchMac/N45Rim.realityenv.
+"""Rebuild N45's rim-and-glass environment (NumPy, Pillow, Xcode): Models/N45Rim.realityenv.
 
 DeviceModelView lights only N45's graphite frame and cover glass with it; every other surface keeps
 N72Studio. Apple's product shots light the brushed rim from the upper left: a dark graphite, lighter there and
@@ -32,5 +32,5 @@ with tempfile.TemporaryDirectory() as temporary:
     Image.fromarray(np.uint8(np.round(srgb * 255))).save(image)
     subprocess.run(["xcrun", "realitytool", "image", "--platform", "macosx",
         "--deployment-target", "14.0", "--cube-face-size", "256", "--specular-size", "256",
-        "--output-reality-asset", str(Path(__file__).resolve().parents[1] / "LightTouchMac/N45Rim.realityenv"),
+        "--output-reality-asset", str(Path(__file__).resolve().parents[1] / "Models/N45Rim.realityenv"),
         str(image)], check=True)

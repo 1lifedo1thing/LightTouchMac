@@ -31,8 +31,8 @@ stopping 20-45 s into the shutdown.
 
 --single boots one prepared base (firmwarekit create output) as the app does: lit, lockdown over its own
 usbmuxd, AFC upload + download round trips of 16384, 16385, 65536 and 1048583 bytes (no restore), an IPA
-install, and a clean shutdown; screenshots lock/home/installed in --work/<board>/. build-release.py's verify
-runs it with the bundle's helper, dylib, usbmuxd, Frameworks and Resources/device.
+install, and a clean shutdown; screenshots lock/home/installed in --work/<board>/. scripts/verify-archive
+runs it with the bundle's helper, dylib, usbmuxd, Frameworks and Resources/Device.
 
 --guest runs the no-shell guest-services scenario (tests/drivers/session-driver/guest.swift) on two
 iPods at once: the shipping image (nand-current) and a fresh firmwarekit 7E18 (--ipod-device),
@@ -44,7 +44,7 @@ each through the app's GuestServices/GuestAgent, DeviceServices, lockdown-tz and
              package and judges it good; the shipping image has no loader (legacy tools)
   install    an IPA through installation_proxy, then launch it through the agent
   respring   launchd restarts SpringBoard (a new pid) and it answers again
-  timezone   lockdown SetValue through the lockdown-tz child process
+  timezone   lockdown SetValue through the services worker's lockdown-tz child process
   media      a photo staged over AFC and committed with itphoto
   rollback   (fresh) the package judged bad: after a clean halt and a fresh helper the loader reverts
   halt       the agent's halt, confirmed power-off, helper exit 0; the base is unchanged
@@ -167,26 +167,6 @@ def guest_checks(find, check, events):
         check(len(offers) == 2 and "verdict bad" in offers[-1].get("text", ""), "fresh: the rollback offer carries the bad verdict")
 
 
-def build_lockdown_tz(out, frameworks=None):
-    """out/lockdown-tz; the app's Debug build compiles the same source (LockdownTools: DeviceServices.developmentHelper).
-    With `frameworks` (a prefix's lib/), linked against that libimobiledevice as package.sh links the bundled one."""
-    tz = out / "lockdown-tz"
-    packages = ["libimobiledevice-1.0", "libplist-2.0"]
-    env = dict(os.environ, PATH="/opt/homebrew/bin:/usr/local/bin:" + os.environ.get("PATH", ""))
-    if frameworks:
-        headers = Path(frameworks).parent / "include"
-        cflags = (["-I" + str(headers)] if headers.is_dir() else
-                  shlex.split(subprocess.check_output(["pkg-config", "--cflags", *packages], env=env, text=True)))
-        flags = [*cflags, "-L" + str(frameworks), "-Wl,-rpath," + str(frameworks),
-                 "-limobiledevice-1.0", "-lplist-2.0"]
-    else:
-        flags = shlex.split(subprocess.check_output(["pkg-config", "--cflags", "--libs", *packages], env=env, text=True))
-    r = subprocess.run(["cc", "-O2", "-o", str(tz), str(ROOT / "scripts/lockdown-tz.c"), *flags], env=env)
-    if r.returncode:
-        sys.exit("FAIL: building lockdown-tz")
-    return tz
-
-
 def build(args, out):
     subprocess.run(["xcrun", "swiftc", *device_runtime.swift_flags(ROOT), "-swift-version", "5", "-default-isolation", "MainActor", "-module-cache-path", out / "modules",
                     *swift_subprocess.swift_flags(ROOT), ROOT / "Packages/FirmwareKit/Sources/FirmwareSchema/FirmwareWire.swift",
@@ -296,9 +276,8 @@ def main():
     if args.frameworks:
         cfg["frameworks"] = args.frameworks
     if args.single:
-        bundled_tz = helper.parent / "lockdown-tz"
-        tz = bundled_tz if os.access(bundled_tz, os.X_OK) else build_lockdown_tz(work, args.frameworks)
-        cfg["single"] = {"board": args.board, "base": str(args.single), "lockdownTZ": str(tz),
+        # the services worker's lockdown-tz operation (LightTouchServices/Lockdown), as the app runs it
+        cfg["single"] = {"board": args.board, "base": str(args.single), "lockdownTZ": str(work / "LightTouchServices"),
                          "launch": args.launch, "reboot": args.reboot, "hostPowerGesture": args.host_power_gesture,
                          "install": not args.no_install}
         if args.region:
@@ -327,7 +306,7 @@ def main():
     if args.ipad_itpack:
         cfg["ipadItpack"] = str(args.ipad_itpack)
     if args.guest:
-        tz = build_lockdown_tz(work, args.frameworks)
+        tz = work / "LightTouchServices"
         dev = args.ipod_device
         c, g = args.contrib, args.guest_tools
         tools = {n: str(g / n if g else c / sub / n) for n, sub in (("it_agent", "it-agent"), ("it_typein.dylib", "it-agent"),

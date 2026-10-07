@@ -56,7 +56,7 @@ struct WebProxySetup: Sendable {
     /// A guest binary out of the bundled iPod package (armv6; ittrust runs on the iPad too), for a
     /// guest whose package lacks it.
     static func bundledGuestTool(_ name: String) throws -> Data {
-        guard let pack = GuestPackage.bundledPack(arch: "armv6", filesRoot: Bundled.filesRoot),
+        guard let pack = GuestPackage.bundledPack(arch: "armv6", filesRoot: Bundled.filesRoot, guestRoot: Bundled.guestRoot),
               let tool = try GuestPackage.package(in: pack, board: "n72ap", build: "7E18")?.1["bin/\(name)"] else {
             throw DeviceToolsError.toolMissing(name)
         }

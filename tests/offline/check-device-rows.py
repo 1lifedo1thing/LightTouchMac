@@ -42,7 +42,7 @@ import Foundation
         precondition(r.primaryTitle == "Download and Prepare" && allowed(r, canDownload: true) == ["importIPSW", "downloadAndPrepare"])
         // iPod 3.1.3 ships prepared (the catalog's `bundled`): with no record it is "Built in" and Prepare unpacks it,
         // which needs the preparer like any preparation. Without the packed base it downloads like any other entry.
-        precondition(catalog.bundledEntry?.id == iPod.id && iPod.bundled == "device/n72ap-7E18.itbase")
+        precondition(catalog.bundledEntry?.id == iPod.id && iPod.bundled == "Device/n72ap-7E18.itbase")
         r = row(iPod)
         precondition(r.state == .bundled && r.primaryTitle == "Prepare" && r.stateDescription == "Built in" && !r.isStartable, "\(r.state)")
         precondition(allowed(r, canDownload: true) == ["importIPSW", "downloadAndPrepare"] && allowed(r) == ["importIPSW"], "\(allowed(r, canDownload: true))")

@@ -24,5 +24,5 @@ with tempfile.TemporaryDirectory() as temporary:
     Image.fromarray(np.uint8(srgb*255)).save(image)
     subprocess.run(["xcrun", "realitytool", "image", "--platform", "macosx",
         "--deployment-target", "14.0", "--cube-face-size", "256", "--specular-size", "256",
-        "--output-reality-asset", str(Path(__file__).resolve().parents[1]/"LightTouchMac/N72Studio.realityenv"),
+        "--output-reality-asset", str(Path(__file__).resolve().parents[1]/"Models/N72Studio.realityenv"),
         str(image)], check=True)

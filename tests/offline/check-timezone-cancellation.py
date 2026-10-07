@@ -12,7 +12,7 @@ import swift_subprocess
 package_flags = swift_subprocess.swift_flags(ROOT)
 source = (ROOT / 'LightTouchMac/Services/LockdownTools.swift').read_text()
 methods = source[source.index('    static func setTimeZone(_ identifier:'):source.index('    /// Offer a CA')]
-methods += source[source.index('    private static func lockdownChild('):source.index('    /// A development build')]
+methods += source[source.index('    private static func lockdownChild('):source.index('    /// Contents/MacOS/LightTouchServices')]
 methods = methods.replace('private static func', 'static func')
 agent_source = (ROOT / 'LightTouchMac/Guest/GuestAgent.swift').read_text()
 wait = agent_source[agent_source.index('    func waitAlive(seconds:'):agent_source.rfind('\n}')]

@@ -20,6 +20,11 @@ nonisolated final class EventWriter: @unchecked Sendable {
 @main struct ServiceMain {
     static func main() async {
         let args = Array(CommandLine.arguments.dropFirst())
+        // The lockdown writes (Lockdown/Lockdown.h): one per process, which exits with the operation's status.
+        let operations = ["lockdown-tz": ltm_lockdown_tz, "lockdown-mcinstall": ltm_lockdown_mcinstall]
+        if let name = args.first, let operation = operations[name] {
+            exit(operation(CommandLine.argc - 1, CommandLine.unsafeArgv + 1))
+        }
         guard args.count == 6, args[0] == "--socket", args[2] == "--udid", args[4] == "--session",
               let session = UUID(uuidString: args[5]),
               ProcessInfo.processInfo.environment["USBMUXD_SOCKET_ADDRESS"] == args[1] else { exit(2) }

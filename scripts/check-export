@@ -1,0 +1,29 @@
+#!/bin/bash
+# After Organizer ▸ Distribute ▸ Direct Distribution: zip the notarized, stapled app for release and check what
+# a download of that zip will be: signature, Gatekeeper, the stapled ticket, slices, entitlements, identity scan.
+#
+#     scripts/check-export "path/to/Light Touch.app"
+#
+# Writes "Light Touch.zip" and SHA256SUMS beside the app. Exit 1 on any failure.
+set -euo pipefail
+APP="${1:?usage: scripts/check-export path/to/Light Touch.app}"
+APP="$(cd "$(dirname "$APP")" && pwd)/$(basename "$APP")"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+OUT="$(dirname "$APP")"
+ZIP="$OUT/Light Touch.zip"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/ltm-check-export.XXXXXX")"
+trap 'rm -rf "$WORK"' EXIT
+fail() { echo "FAILED: $*" >&2; exit 1; }
+
+rm -f "$ZIP"
+ditto -c -k --keepParent "$APP" "$ZIP"
+ditto -x -k "$ZIP" "$WORK"
+UNZIPPED="$WORK/$(basename "$APP")"
+codesign --verify --deep --strict "$UNZIPPED" || fail "codesign --verify --deep --strict"
+xcrun stapler validate "$UNZIPPED" >/dev/null || fail "no stapled notarization ticket"
+ASSESS="$(spctl -a -vv -t exec "$UNZIPPED" 2>&1)" || fail "Gatekeeper: $ASSESS"
+grep -q 'source=Notarized Developer ID' <<<"$ASSESS" || fail "Gatekeeper: $ASSESS"
+PATH="/opt/homebrew/bin:$PATH" python3 "$HERE/verify-archive" --static "$UNZIPPED" >/dev/null || fail "static checks (run scripts/verify-archive --static on the app)"
+(cd "$OUT" && shasum -a 256 "$(basename "$ZIP")" > SHA256SUMS)
+echo "ok: $ZIP"
+cat "$OUT/SHA256SUMS"

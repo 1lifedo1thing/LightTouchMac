@@ -111,6 +111,7 @@ import Foundation
     subprocess.run(['xcrun','swiftc','-swift-version','6','-default-isolation','MainActor',
                     '-module-cache-path',str(work/'modules'),
                     *[str(root/'LightTouchMac'/name) for name in ['Library/StorageLocations.swift','Transport/NativeLogging.swift','Library/Bundled.swift','Transport/AppEventLog.swift']],
+                    str(root/'Packages/FirmwareKit/Sources/FirmwareKit/GuestPackage/GuestArchive.swift'),
                     str(source),'-o',str(work/'check')],check=True)
     subprocess.run([str(work/'check'),str(work/'fixtures')],
                    env=dict(os.environ,LTM_STATE_DIR=str(work/'isolated-app')),check=True)

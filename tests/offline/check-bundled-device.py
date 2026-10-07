@@ -2,9 +2,9 @@
 """The built-in iPod: a fresh install unpacks it as a device of its own; a Mac with a library gets nothing new.
 
 Builds firmwarekit (Packages/FirmwareKit, debug) and packs a small base in the n72 shape with its pack-base, as
-build-release.py does with a real one. Then compiles the production FirmwareJobs (with PreparationJob, the shipped
+scripts/vendor does with a real one. Then compiles the production FirmwareJobs (with PreparationJob, the shipped
 catalog's `bundled` and the rest, stub Bundled/DeviceLibrary) and runs it with that firmwarekit as the preparer and
-the blob where the bundle keeps it (Resources/device/n72ap-7E18.itbase, beside the check binary):
+the blob where the bundle keeps it (Resources/Device/n72ap-7E18.itbase, beside the check binary):
 
   fresh      no sidebar saved, no device: prepareBundledIfFresh starts the unpack (the "Unpacking" step, a growing
              bar) and returns n72ap-7E18; it publishes as Devices/<id> with the files the n72 boot wants, a locked

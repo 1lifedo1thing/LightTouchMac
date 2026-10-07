@@ -1,6 +1,6 @@
 import DeviceRuntime
 import HostRuntime
-// One prepared device (tests/sessions/check-sessions.py --single, build-release.py's verify, tests/matrix.py): a firmwarekit
+// One prepared device (tests/sessions/check-sessions.py --single, scripts/verify-archive, tests/matrix.py): a firmwarekit
 // base booted as the app boots it, through the bundled helper, dylib and usbmuxd. It must light, answer lockdown
 // over its own usbmuxd, take AFC round trips past 16 KiB (max-packet multiples, whose transfers end in a real ZLP),
 // take an IPA, and shut down cleanly. No restore is involved. Screenshots of each stage land in the work directory.

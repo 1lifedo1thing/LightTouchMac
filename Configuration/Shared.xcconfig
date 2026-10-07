@@ -3,15 +3,23 @@
 MACOSX_DEPLOYMENT_TARGET = 14.4
 
 // The pinned qemu-ios checkout and its development build (build-support/sources.json: "path" and
-// "build_dir"; an xcconfig cannot run scripts/sources.py, so these two lines repeat the pin and
-// scripts/test-release.py checks that they agree). Override either setting in Xcode or on the
-// xcodebuild command line for another checkout/build.
+// "build_dir"). A Debug helper loads libqemu-arm.dylib from there (its rpath) unless LTM_QEMU_DYLIB names
+// another; a release loads only the one Archive copies into Contents/Frameworks.
 QEMU_IOS_DIR = $(HOME)/Developer/qemu-ios-ipad1
 QEMU_BUILD_DIR = $(QEMU_IOS_DIR)/build-w1-native
 
-HEADER_SEARCH_PATHS = $(inherited) "$(QEMU_IOS_DIR)/contrib/ios-app" "$(QEMU_IOS_DIR)/contrib/macos-app"
-OTHER_LDFLAGS = $(inherited) "$(QEMU_BUILD_DIR)/libqemu-arm.dylib"
+// scripts/vendor's directory for the current pins: what Archive copies into the app (Frameworks, the tools in
+// MacOS, Resources/Guest, Device and licenses) and the libimobiledevice headers and libraries the services helper
+// links. scripts/vendor writes Vendor.xcconfig (VENDOR_DIR); Local.xcconfig, also gitignored, overrides
+// anything here.
+VENDOR_DIR = $(HOME)/Developer/ltm-vendor/run-scripts-vendor
 
-// Development builds load QEMU from its build directory. package.sh copies the
-// release libraries into Frameworks and rewrites their install names/rpaths.
-LD_RUNPATH_SEARCH_PATHS = $(inherited) "@executable_path/../Frameworks" "$(QEMU_BUILD_DIR)"
+// The build number (CFBundleVersion) is the commit count, stamped into the app's Info.plist by its
+// "Build Number" phase at every build; this is only what the helpers' embedded Info.plists carry.
+CURRENT_PROJECT_VERSION = 1
+
+LD_RUNPATH_SEARCH_PATHS = $(inherited) "@executable_path/../Frameworks"
+LD_RUNPATH_SEARCH_PATHS[config=Debug] = $(inherited) "@executable_path/../Frameworks" "$(QEMU_BUILD_DIR)" "$(VENDOR_DIR)/Frameworks"
+
+#include? "Vendor.xcconfig"
+#include? "Local.xcconfig"

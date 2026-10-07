@@ -96,7 +96,7 @@ with tempfile.TemporaryDirectory(prefix='ltm-boot-stage-') as d:
     main.write_text(check)
     subprocess.run(['xcrun', 'swiftc', '-parse-as-library', '-module-cache-path', d + '/modules',
                     *[str(APP / f) for f in ('Device/BootStage.swift', 'Transport/NativeLogging.swift', 'Library/StorageLocations.swift',
-                                             'Library/Bundled.swift', 'Transport/AppEventLog.swift')],
+                                             'Library/Bundled.swift', 'Transport/AppEventLog.swift')], str(ROOT / 'Packages/FirmwareKit/Sources/FirmwareKit/GuestPackage/GuestArchive.swift'),
                     str(main), '-o', d + '/check'], check=True)
     subprocess.run([d + '/check', str(ROOT / 'tests/fixtures/serial-k48ap-8C148.log')], check=True, timeout=30,
                    env=dict(os.environ, LTM_STATE_DIR=d + '/state'))

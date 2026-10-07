@@ -1,0 +1,407 @@
+#!/usr/bin/env python3
+"""Build what Xcode can't, from the pins, into a cached vendor directory that Archive copies into the app.
+
+    scripts/vendor               build (or reuse) ~/Developer/ltm-vendor/<pin-hash>/ and point
+                                 Configuration/Vendor.xcconfig at it
+    scripts/vendor --print       print the vendor directory for the current pins
+
+The pin hash covers build-support/sources.json (qemu-ios and usbmuxd commits), dependencies.json, the patches and
+the native recipes. A run with the vendor directory complete does nothing; the built-in iPod is prepared again
+when FirmwareKit, the helper or the guest tools changed. Nothing here deletes a vendor directory.
+
+<vendor>/Frameworks/   libqemu-arm.dylib and its closure, libimobiledevice-1.0 and libplist-2.0: universal,
+                       @rpath install names, stripped, ad-hoc signed with the hardened runtime (Xcode re-signs)
+<vendor>/MacOS/        usbmuxd, iBoot32Patcher, inetcat, ipod-helper (the same)
+<vendor>/Resources/    Guest/guest.aar (the guest binaries, packed: no nested code), Device/ (SecureROMs and
+                       the built-in iPod), licenses/, usbmuxd-conf/, build-inputs.json
+<vendor>/include/      libimobiledevice and libplist headers (LightTouchServices links them)
+<vendor>/dSYMs/        symbols of what Frameworks and MacOS ship stripped
+<vendor>/work/         build trees and logs (reused by reruns)
+
+Inputs besides the pins: ARMV6_SDK (default ~/Developer/ipod2g-re/OldSDK/iPhoneOS3.1.3.sdk), LTM_ASSETS (the
+SecureROMs, default ~/Developer/qemu-ios-files), the n72ap-7E18 IPSW in the app's IPSW cache, network for the
+pinned source archives. LTM_VENDOR_ROOT moves the cache (default ~/Developer/ltm-vendor).
+"""
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS = ROOT / 'scripts'
+sys.path.insert(0, str(SCRIPTS))
+import sources as pins  # noqa: E402
+
+HOME = Path.home()
+VENDOR_ROOT = Path(os.environ.get('LTM_VENDOR_ROOT', HOME / 'Developer/ltm-vendor')).expanduser()
+ARCHS = ('arm64', 'x86_64')
+MINOS = '14.4'
+SDK = Path(os.environ.get('ARMV6_SDK', HOME / 'Developer/ipod2g-re/OldSDK/iPhoneOS3.1.3.sdk'))
+ASSETS = Path(os.environ.get('LTM_ASSETS', HOME / 'Developer/qemu-ios-files'))
+IPSW_CACHE = HOME / 'Library/Caches/gold.samhenri.LightTouchMac/IPSW'
+CATALOG = ROOT / 'LightTouchMac/Resources/firmware-catalog.json'
+BOOTROMS = ('bootrom_240_4', 'ipod1g/bootrom_s5l8900')   # the iPod touch 2G's and 1G's SecureROMs
+BUILT_IN, SEED = 'n72ap-7E18', 'lighttouch-built-in'     # the unpack gives every copy its own identity
+# What the app and firmwarekit look for in the guest export (qemu-ios contrib/export-guest-artifacts.sh).
+IPOD_TOOLS = ('itmedia', 'itphoto')
+GUEST_TOOLS = ('it_pbd', 'it_ethlink', 'it_prefs', 'it_msmquiet.dylib', 'it_seal', 'it_keybag', 'libappsync.dylib',
+               'OpenGLES', 'gles-names.h', 'OpenGLES-1x', 'opengles-1x.exports', 'armv6.itpack', 'armv7.itpack',
+               'sblaunch', 'sbdlicon', 'it_agent', 'it_typein.dylib', 'it_keybag-armv6')
+GUEST_PACKAGE_MIN_SERIAL = 16
+KEYED = ('build-support/sources.json', 'build-support/dependencies.json', 'scripts/build-package-native.sh',
+         'scripts/build-static-deps.sh', 'scripts/build-iboot32patcher.sh', 'scripts/dependency-sources.py',
+         'scripts/merge-native.py')
+# The built-in iPod is prepared again when any of these change (firmwarekit, the helper it boots).
+DEVICE_SOURCES = ('Packages/FirmwareKit/Sources', 'Packages/FirmwareKit/Package.swift', 'Packages/HostRuntime/Sources',
+                  'LightTouchDevice', 'Shared')
+
+
+def digest(path):
+    value = hashlib.sha256()
+    with open(path, 'rb') as stream:
+        for block in iter(lambda: stream.read(1 << 20), b''):
+            value.update(block)
+    return value.hexdigest()
+
+
+def tree_hash(*names):
+    value = hashlib.sha256()
+    for name in names:
+        root = ROOT / name
+        for path in sorted([root] if root.is_file() else root.rglob('*')):
+            if path.is_file() and path.name != '.DS_Store':
+                value.update(f'{path.relative_to(ROOT)}\0{digest(path)}\0'.encode())
+    return value.hexdigest()
+
+
+def pin_key():
+    patches = sorted(str(p.relative_to(ROOT)) for p in (ROOT / 'build-support/patches').iterdir())
+    return tree_hash(*KEYED, *patches)[:12]
+
+
+def run(command, log, env=None, cwd=None):
+    """Run quietly into log; on failure print its tail and stop."""
+    command = list(map(str, command))
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with open(log, 'ab') as out:
+        out.write(f'\n+ {" ".join(command)}\n'.encode())
+        out.flush()
+        result = subprocess.run(command, stdout=out, stderr=subprocess.STDOUT, env=env, cwd=cwd)
+    if result.returncode:
+        tail = log.read_text(errors='replace').splitlines()[-25:]
+        sys.exit('\n'.join(tail) + f'\nvendor: {command[0]} failed ({result.returncode}); see {log}')
+
+
+def out(*command):
+    return subprocess.check_output(list(map(str, command)), text=True).strip()
+
+
+def write_xcconfig(vendor):
+    text = f'// Written by scripts/vendor (gitignored): the vendor directory for the current pins.\nVENDOR_DIR = {vendor}\n'
+    path = ROOT / 'Configuration/Vendor.xcconfig'
+    if not path.is_file() or path.read_text() != text:
+        path.write_text(text)
+
+
+def qemu_tree(work):
+    """The pinned qemu-ios commit, as a detached worktree of the checkout sources.json names."""
+    tree, commit = work / 'qemu-src', pins.commit('qemu-ios')
+    if not tree.is_dir():
+        subprocess.run(['git', '-C', pins.path('qemu-ios'), 'worktree', 'add', '--detach', '-q', tree, commit], check=True)
+    if out('git', '-C', tree, 'rev-parse', 'HEAD') != commit:
+        sys.exit(f'vendor: {tree} is not at the pinned qemu-ios {commit}')
+    return tree
+
+
+def native(work, qemu):
+    """One build-package-native.sh root per slice (usbmuxd at its pin, the QEMU dylib, iBoot32Patcher), with the
+    static prefix cached per recipe, then merged into one universal root."""
+    universal = work / 'universal'
+    if (universal / 'native-build.json').is_file() and (universal / 'build/iBoot32Patcher/iBoot32Patcher').is_file():
+        return universal
+    static_key = tree_hash('scripts/build-static-deps.sh', 'build-support/dependencies.json',
+                           'scripts/dependency-sources.py')[:12]
+    for arch in ARCHS:   # one at a time: both stage usbmuxd through a worktree of the same checkout
+        root, static = work / 'native' / arch, VENDOR_ROOT / 'static' / static_key / arch
+        if (root / 'native-build.json').is_file():
+            continue
+        log = work / f'logs/native-{arch}.log'
+        print(f'vendor: native {arch} (dependencies, usbmuxd, QEMU); log {log}', flush=True)
+        shutil.rmtree(root, ignore_errors=True)
+        root.parent.mkdir(parents=True, exist_ok=True)
+        env = dict(os.environ, LTM_ARCH=arch, QEMU_IOS_DIR=str(qemu), LTM_STATIC_DEPS=str(static / 'prefix'))
+        if not (static / 'prefix/lib/libcrypto.a').is_file():
+            shutil.rmtree(static, ignore_errors=True)
+            static.parent.mkdir(parents=True, exist_ok=True)
+            run(['bash', SCRIPTS / 'build-static-deps.sh', static], log, env=env)
+        run(['bash', SCRIPTS / 'build-package-native.sh', root], log, env=env)
+    shutil.rmtree(universal, ignore_errors=True)
+    log = work / 'logs/universal.log'
+    run([sys.executable, SCRIPTS / 'merge-native.py', universal, *(work / 'native' / a for a in ARCHS)], log)
+    run(['bash', SCRIPTS / 'build-iboot32patcher.sh', work / 'native/arm64/src', universal / 'build/iBoot32Patcher'],
+        log, env=dict(os.environ, LTM_ARCH=' '.join(ARCHS)))
+    return universal
+
+
+def guest(work, qemu):
+    """qemu-ios's guest export (build-guest-tools.sh), checked for what the app and firmwarekit read."""
+    root = work / 'guest'
+    if not (root / 'manifest.json').is_file():
+        print('vendor: guest tools', flush=True)
+        shutil.rmtree(root, ignore_errors=True)
+        run(['bash', SCRIPTS / 'build-guest-tools.sh', root], work / 'logs/guest.log',
+            env=dict(os.environ, QEMU_IOS_DIR=str(qemu), ARMV6_SDK=str(SDK)))
+    manifest = json.loads((root / 'manifest.json').read_text())
+    serial = (manifest.get('guest_package') or {}).get('serial') or 0
+    missing = [f'guest-tools/{n}' for n in IPOD_TOOLS if not (root / 'guest-tools' / n).is_file()]
+    missing += [f'ipad-guest-tools/{n}' for n in GUEST_TOOLS if not (root / 'ipad-guest-tools' / n).is_file()]
+    if serial < GUEST_PACKAGE_MIN_SERIAL or missing:
+        sys.exit(f'vendor: the guest export (serial {serial}) lacks {", ".join(missing) or "a current guest package"}')
+    return root, manifest
+
+
+def developer_tools(work, qemu):
+    payload = work / 'developer-tools'
+    if not (payload / 'developer-tools.json').is_file():
+        print('vendor: developer tools', flush=True)
+        shutil.rmtree(payload, ignore_errors=True)
+        run(['bash', ROOT / 'tools/developer-packages/fetch.sh', payload], work / 'logs/developer-tools.log',
+            env=dict(os.environ, LTM_QEMU_SOURCE_DIR=str(qemu), LTM_BASH_SDK=str(SDK)))
+    run(['bash', ROOT / 'tools/developer-packages/audit.sh', payload], work / 'logs/developer-tools.log')
+    return payload
+
+
+def firmwarekit(work):
+    """firmwarekit (host slice) and the Release helper it boots, staged as an app would hold them."""
+    log = work / 'logs/device.log'
+    scratch = work / 'firmwarekit-build'
+    swift = ['swift', 'build', '-c', 'release', '--package-path', ROOT / 'Packages/FirmwareKit', '--scratch-path', scratch]
+    run(swift, log)
+    tool = Path(out(*swift, '--show-bin-path')) / 'firmwarekit'
+    run(['xcodebuild', '-project', ROOT / 'LightTouchMac.xcodeproj', '-target', 'LightTouchDevice', '-configuration',
+         'Release', f'SYMROOT={work}/xcode', f'OBJROOT={work}/xcode/obj', 'CODE_SIGNING_ALLOWED=NO', 'build'], log)
+    return tool, work / 'xcode/Release/LightTouchDevice', scratch / 'checkouts'
+
+
+def built_in(vendor, work, guest_root, tool, helper):
+    """The built-in iPod: `firmwarekit create` of BUILT_IN with the export's guest tools, packed by pack-base."""
+    log = work / 'logs/device.log'
+    stage = work / 'stage/Contents'
+    shutil.rmtree(stage.parent, ignore_errors=True)
+    (stage / 'MacOS').mkdir(parents=True)
+    (stage / 'Resources').mkdir()
+    shutil.copy2(tool, stage / 'MacOS/firmwarekit')
+    shutil.copy2(helper, stage / 'MacOS/LightTouchDevice')
+    (stage / 'Frameworks').symlink_to(vendor / 'Frameworks')
+    (stage / 'Resources/Device').symlink_to(vendor / 'Resources/Device')
+    catalog = json.loads(CATALOG.read_text())
+    entry = next(e for e in catalog['entries'] if e['id'] == BUILT_IN)
+    ipsw = Path(os.environ.get('LTM_BUILT_IN_IPSW', IPSW_CACHE / f'{entry["source"]["sha1"]}.ipsw'))
+    if not ipsw.is_file():
+        sys.exit(f'vendor: no {BUILT_IN} IPSW at {ipsw} (download it in the app, or set LTM_BUILT_IN_IPSW)')
+    device = work / 'device'
+    if device.exists():
+        subprocess.run(['chmod', '-R', 'u+w', device], check=True)
+        shutil.rmtree(device)
+    (device / 'out').mkdir(parents=True)
+    (device / 'entry.json').write_text(json.dumps(entry))
+    print(f'vendor: preparing the built-in {BUILT_IN}', flush=True)
+    clean = {k: v for k, v in os.environ.items() if not k.startswith('LTM_')}
+    run([stage / 'MacOS/firmwarekit', 'create', '--entry', device / 'entry.json', '--ipsw', ipsw, '--out', device / 'out',
+         '--seed', SEED, '--cache', device / 'cache', '--guest-tools', guest_root / 'ipad-guest-tools',
+         '--helper', stage / 'MacOS/LightTouchDevice'], log, env=clean)
+    lock = (device / 'out/device.lock.json').read_text()
+    if str((guest_root / 'ipad-guest-tools').resolve()) not in lock:
+        sys.exit('vendor: the built-in iPod was not prepared with the vendored guest tools')
+    blob = device / f'{BUILT_IN}.itbase'
+    run([stage / 'MacOS/firmwarekit', 'pack-base', '--base', device / 'out', '--out', blob], log, env=clean)
+    for name in ('out', 'cache'):
+        subprocess.run(['chmod', '-R', 'u+w', device / name], check=True)
+        shutil.rmtree(device / name)
+    return blob
+
+
+def macho(path):
+    with open(path, 'rb') as stream:
+        return stream.read(4) in (b'\xcf\xfa\xed\xfe', b'\xca\xfe\xba\xbe')
+
+
+def binaries(vendor, universal, qemu, work):
+    """Frameworks/ and MacOS/: every non-system dependency embedded once under @rpath, build rpaths dropped."""
+    frameworks, tools = vendor / 'Frameworks', vendor / 'MacOS'
+    check = [sys.executable, SCRIPTS / 'check-macho.py']
+    names = {}
+
+    def deps(path):
+        lines = out(*check, '--deps', path).splitlines()
+        return [line.split('\t') for line in lines if line]
+
+    def relink(path, rpath):
+        edits = []
+        for dep, resolved in deps(path):
+            edits += ['-change', dep, '@rpath/' + embed(Path(resolved))]
+        for old in out(*check, '--rpaths', path).splitlines():
+            if old.startswith('/'):
+                edits += ['-delete_rpath', old]
+        if edits and rpath not in out(*check, '--rpaths', path).splitlines():   # only what loads from Frameworks
+            edits += ['-add_rpath', rpath]
+        return edits
+
+    def embed(source, name=None):
+        real = source.resolve()
+        if real not in names:
+            names[real] = name or real.name
+            target = frameworks / names[real]
+            shutil.copyfile(real, target)
+            target.chmod(0o755)
+            subprocess.run(['install_name_tool', '-id', f'@rpath/{names[real]}', *relink(real, '@loader_path'), target],
+                           check=True, capture_output=True)
+        return names[real]
+
+    for directory in (frameworks, tools):
+        shutil.rmtree(directory, ignore_errors=True)
+        directory.mkdir(parents=True)
+    prefix = universal / 'prefix'
+    embed(prefix / 'lib/libimobiledevice-1.0.dylib', 'libimobiledevice-1.0.dylib')   # the names the app dlopens
+    embed(prefix / 'lib/libplist-2.0.dylib', 'libplist-2.0.dylib')
+    embed(universal / 'qemu-build/libqemu-arm.dylib', 'libqemu-arm.dylib')
+    helper = work / 'ipod-helper'
+    run(['cc', '-O2', '-Wall', *(f for a in ARCHS for f in ('-arch', a)), f'-mmacosx-version-min={MINOS}',
+         qemu / 'contrib/macos-app/ipod-helper.c', '-lz', '-o', helper], work / 'logs/tools.log')
+    for source in (universal / 'build/usbmuxd/src/usbmuxd', universal / 'build/iBoot32Patcher/iBoot32Patcher',
+                   universal / 'static/prefix/bin/inetcat', helper):
+        target = tools / source.name
+        shutil.copyfile(source, target)
+        target.chmod(0o755)
+        edits = relink(source, '@executable_path/../Frameworks')
+        if edits:
+            subprocess.run(['install_name_tool', *edits, target], check=True, capture_output=True)
+    shipped = sorted([*frameworks.iterdir(), *tools.iterdir()])
+    dsyms = vendor / 'dSYMs'
+    shutil.rmtree(dsyms, ignore_errors=True)
+    dsyms.mkdir()
+    for path in shipped:
+        if ' OSO ' in subprocess.run(['nm', '-ap', path], capture_output=True, text=True).stdout:
+            subprocess.run(['dsymutil', path, '-o', dsyms / f'{path.name}.dSYM'], check=True, capture_output=True)
+        subprocess.run(['strip', '-S', '-x', path], check=True, capture_output=True)
+    run([*check, '--no-weak-imports', '--minos', MINOS, *(f for a in ARCHS for f in ('--arch', a)), *shipped],
+        work / 'logs/tools.log')
+    for path in shipped:   # Xcode's Code Sign On Copy keeps these flags when it signs with the app's identity
+        subprocess.run(['codesign', '-f', '-o', 'runtime', '-s', '-', path], check=True, capture_output=True)
+    include = vendor / 'include'
+    shutil.rmtree(include, ignore_errors=True)
+    include.mkdir()
+    for name in ('libimobiledevice', 'plist'):
+        shutil.copytree(prefix / 'include' / name, include / name)
+
+
+def resources(vendor, work, universal, qemu, guest_root, manifest, developer, checkouts):
+    res = vendor / 'Resources'
+    for name in ('Guest', 'licenses', 'usbmuxd-conf'):
+        shutil.rmtree(res / name, ignore_errors=True)
+    (res / 'Device').mkdir(parents=True, exist_ok=True)
+    for name in BOOTROMS:
+        shutil.copyfile(ASSETS / name, res / 'Device' / Path(name).name)
+    # The guest binaries ship as one archive: codesign and the notary see no nested code in Resources, and the app
+    # and firmwarekit unpack it on first use (FirmwareKit GuestArchive).
+    packed = work / 'guest-archive'
+    shutil.rmtree(packed, ignore_errors=True)
+    shutil.copytree(guest_root / 'ipad-guest-tools', packed / 'guest-tools')
+    shutil.copytree(developer, packed / 'developer-tools')
+    (packed / 'tools').mkdir()
+    for name in IPOD_TOOLS:
+        shutil.copy2(guest_root / 'guest-tools' / name, packed / 'tools' / name)
+    (res / 'Guest').mkdir()
+    run(['aa', 'archive', '-d', packed, '-o', res / 'Guest/guest.aar', '-exclude-field', 'uid,gid,flg,mtm,btm,ctm'],
+        work / 'logs/tools.log')
+    (res / 'usbmuxd-conf').mkdir()
+    (res / 'usbmuxd-conf/SystemConfiguration.plist').write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict/></plist>\n')
+    licenses = res / 'licenses'
+    for source in (universal / 'prefix/share/licenses', universal / 'static/prefix/share/licenses'):
+        shutil.copytree(source, licenses, dirs_exist_ok=True)
+    (licenses / 'qemu').mkdir(exist_ok=True)
+    for name in ('LICENSE', 'COPYING', 'COPYING.LIB'):
+        shutil.copyfile(qemu / name, licenses / 'qemu' / name)
+    pin = json.loads((ROOT / 'build-support/sources.json').read_text())
+    (licenses / 'qemu/SOURCE.txt').write_text(
+        f'QEMU {(qemu / "VERSION").read_text().strip()} for iOS devices (qemu-ios): {pin["qemu-ios"]["repository"]}, '
+        f'commit {pin["qemu-ios"]["commit"]}.\nThe emulator (Frameworks/libqemu-arm.dylib), ipod-helper and the guest '
+        'tools (Resources/Guest) are built from that tree.\n')
+    if (qemu / 'hw/arm/powervr/LICENSE.md').is_file():
+        (licenses / 'powervr').mkdir(exist_ok=True)
+        for name in ('LICENSE.md', 'README.md'):
+            shutil.copyfile(qemu / 'hw/arm/powervr' / name, licenses / 'powervr' / name)
+    usb = work / 'native/arm64/build/usbmuxd'
+    (licenses / 'usbmuxd').mkdir(exist_ok=True)
+    for name in ('COPYING.GPLv2', 'COPYING.GPLv3'):
+        shutil.copyfile(usb / name, licenses / 'usbmuxd' / name)
+    (licenses / 'usbmuxd/SOURCE.txt').write_text(
+        f"usbmuxd (Light Touch's fork): {pin['usbmuxd']['repository']}, branch {pin['usbmuxd']['branch']}, "
+        f"commit {pin['usbmuxd']['commit']}.\n")
+    patcher = universal / 'build/iBoot32Patcher'
+    (licenses / 'iBoot32Patcher').mkdir(exist_ok=True)
+    for name in ('LICENSE', 'SOURCE.txt', 'iBoot32Patcher-ltm.patch'):
+        shutil.copyfile(patcher / name, licenses / 'iBoot32Patcher' / name)
+    for package in sorted(checkouts.iterdir()):
+        texts = [p for p in package.iterdir() if p.is_file() and p.name.upper().startswith(('LICENSE', 'LICENCE', 'COPYING', 'NOTICE'))]
+        unrar = package / 'Sources/Cunrar/license.txt'   # RARLAB's UnRAR licence travels with its source
+        (licenses / 'swift' / package.name).mkdir(parents=True, exist_ok=True)
+        for text in texts:
+            shutil.copyfile(text, licenses / 'swift' / package.name / text.name)
+        if unrar.is_file():
+            shutil.copyfile(unrar, licenses / 'swift' / package.name / 'UnRAR-license.txt')
+    package = manifest['guest_package']
+    record = {
+        'schema_version': 2,
+        'pins': {name: {k: pin[name][k] for k in ('repository', 'branch', 'commit')} for name in ('qemu-ios', 'usbmuxd')},
+        'components': {'qemu-ios': pin['qemu-ios']['commit'][:10], 'usbmuxd': pin['usbmuxd']['commit'][:10],
+                       'guest tools': f"{package['version']} (serial {package['serial']})",
+                       **{p['name']: p['version'][:10] for p in
+                          json.loads((ROOT / 'build-support/dependencies.json').read_text())['packages']}},
+        'host_architectures': list(ARCHS),
+        'firmware': {'bootroms_sha256': {Path(n).name: digest(ASSETS / n) for n in BOOTROMS}},
+        'guest_manifest_sha256': digest(guest_root / 'manifest.json'),
+        'xcode': out('xcodebuild', '-version'),
+        'macos_sdk': out('xcrun', '--sdk', 'macosx', '--show-sdk-version'),
+    }
+    (res / 'build-inputs.json').write_text(json.dumps(record, indent=2) + '\n')
+
+
+def main(argv):
+    vendor = VENDOR_ROOT / pin_key()
+    if argv == ['--print']:
+        return print(vendor)
+    if argv:
+        sys.exit(__doc__)
+    work = vendor / 'work'
+    stamp = {'recipe': digest(__file__), 'device': tree_hash(*DEVICE_SOURCES)}
+    done = vendor / 'vendor.json'
+    previous = json.loads(done.read_text()) if done.is_file() else {}
+    write_xcconfig(vendor)
+    if previous == stamp:
+        return print(vendor)
+    for name in BOOTROMS:
+        if not (ASSETS / name).is_file():
+            sys.exit(f'vendor: no SecureROM {ASSETS / name} (LTM_ASSETS)')
+    qemu = qemu_tree(work)
+    universal = native(work, qemu)
+    guest_root, manifest = guest(work, qemu)
+    developer = developer_tools(work, qemu)
+    tool, helper, checkouts = firmwarekit(work)
+    if previous.get('recipe') != stamp['recipe'] or not (vendor / 'Frameworks/libqemu-arm.dylib').is_file():
+        binaries(vendor, universal, qemu, work)
+        resources(vendor, work, universal, qemu, guest_root, manifest, developer, checkouts)
+    blob = vendor / 'Resources/Device' / f'{BUILT_IN}.itbase'
+    if previous.get('device') != stamp['device'] or previous.get('recipe') != stamp['recipe'] or not blob.is_file():
+        shutil.copyfile(built_in(vendor, work, guest_root, tool, helper), blob)
+    done.write_text(json.dumps(stamp, indent=2) + '\n')
+    print(vendor)
+
+
+if __name__ == '__main__':
+    main(sys.argv[1:])

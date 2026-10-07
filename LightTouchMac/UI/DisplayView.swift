@@ -314,7 +314,7 @@ final class DisplayView: NSView {
         modelPresentationFinished = true
         // macOS 14 keeps the photo shell; RealityKit texture rotation requires 15.
         if bezel == .model, #available(macOS 15, *), let name = profile.deviceModelName,
-           let url = Bundle.main.url(forResource: name, withExtension: "usdz") {
+           let url = Bundle.main.url(forResource: name, withExtension: "usdz", subdirectory: "Models") {
             modelPresentationFinished = false
             // Give RealityKit one second to present the device itself. Slower
             // startup shows a temporary photo while the live model keeps

@@ -139,7 +139,7 @@ public nonisolated enum BootRecipe {
     }
 
     /// A board's SecureROM image (DeviceProfile.bootromName) under the device assets: `root/<name>` (the bundle's
-    /// Resources/device, LTM_FILES), else a qemu-ios-files checkout's `root/ipod1g/<name>` (devos50's n45ap set).
+    /// Resources/Device, LTM_FILES), else a qemu-ios-files checkout's `root/ipod1g/<name>` (devos50's n45ap set).
     public static func bootrom(_ name: String, filesRoot root: String) -> String {
         let flat = "\(root)/\(name)", set = "\(root)/ipod1g/\(name)"
         return !FileManager.default.fileExists(atPath: flat) && FileManager.default.fileExists(atPath: set) ? set : flat
