@@ -60,9 +60,17 @@ public enum StoppedVolumeEdit {
             try clone(originalBase, to: transaction.base)
             try makeWritable(transaction.base)
             let oldNAND = transaction.base.appendingPathComponent("nand")
-            if try VolumeRebuild.board(of: oldNAND) != .ipod {
-                // legacy: edited in place, the overlay as the guest left it written over at commit; YaFTL: the store
-                // as the guest left it, read at commit for its MBR and signature
+            let store = try VolumeRebuild.board(of: oldNAND)
+            if store == .ipad {
+                // The store and overlay as the guest left them, commit's inputs (never written: a commit cut short
+                // starts over from them); the new store goes in the base, under an empty overlay.
+                try fm.moveItem(at: oldNAND, to: transaction.root.appendingPathComponent("guest-nand"))
+                if let overlay = source.overlay {
+                    try clone(overlay, to: transaction.root.appendingPathComponent("guest-overlay"))
+                }
+                try fm.createDirectory(at: transaction.overlay, withIntermediateDirectories: false)
+            } else if store == .legacy {
+                // edited in place: the overlay as the guest left it, written over at commit
                 if let overlay = source.overlay {
                     try clone(overlay, to: transaction.overlay)
                 } else {
@@ -223,24 +231,24 @@ public enum StoppedVolumeEdit {
             let originalLockData = try Data(contentsOf: lockURL)
             var lock = try object(lockURL)
             let nand = edit.base.appendingPathComponent("nand")
-            let yaftl = fm.fileExists(atPath: nand.appendingPathComponent("geometry.json").path)
+            let guestNAND = edit.root.appendingPathComponent("guest-nand")
+            let yaftl = fm.fileExists(atPath: guestNAND.path)
             if yaftl {
                 log("building the edited store")
-                let built = edit.root.appendingPathComponent("nand")
-                if fm.fileExists(atPath: built.path) { try fm.removeItem(at: built) }
+                if fm.fileExists(atPath: nand.path) {  // a commit cut short, maybe after its base was made read-only
+                    try makeWritable(edit.base)
+                    try fm.removeItem(at: nand)
+                }
+                let guestOverlay = edit.root.appendingPathComponent("guest-overlay")
                 try await K48NAND.rebuild(
-                    store: nand,
-                    overlay: edit.overlay,
+                    store: guestNAND,
+                    overlay: fm.fileExists(atPath: guestOverlay.path) ? guestOverlay : nil,
                     system: session.image,
                     data: session.data,
-                    out: built,
+                    out: nand,
                     work: edit.root,
                     log: log
                 )
-                try fm.removeItem(at: nand)
-                try fm.moveItem(at: built, to: nand)
-                try fm.removeItem(at: edit.overlay)  // the guest's YaFTL state went with the old store
-                try fm.createDirectory(at: edit.overlay, withIntermediateDirectories: false)
             } else {
                 guard let epoch = (lock["derived"] as? [String: Any])?["nand_epoch"] as? Int else {
                     throw FirmwareError(.unsupported, "device lock lacks its NAND epoch")
@@ -304,6 +312,10 @@ public enum StoppedVolumeEdit {
             try Preparer.readOnly(edit.base)
             try await edit.publish(record: edit.candidateRecord(provenance: provenance))
             log("published storage generation \(id.uuidString)")
+            // the old store's clones would keep its blocks for as long as this generation lives
+            for input in ["guest-nand", "guest-overlay"] {
+                try? fm.removeItem(at: edit.root.appendingPathComponent(input))
+            }
         }
     }
 

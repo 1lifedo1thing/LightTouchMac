@@ -217,10 +217,20 @@ import Testing
             try fm.removeItem(at: $0.appendingPathComponent("\(documents)/save.dat"))
             try Data("new save".utf8).write(to: $0.appendingPathComponent("\(documents)/save.dat"))
         }
+        // A commit cut short (the app quit): half a store in the base, made read-only. The next commit starts over.
+        let generationBase = device.appendingPathComponent("generations/\(session.id.uuidString)/base")
+        #expect(!fm.fileExists(atPath: generationBase.appendingPathComponent("nand").path))
+        try fm.createDirectory(at: generationBase.appendingPathComponent("nand"), withIntermediateDirectories: false)
+        try Data("partial".utf8).write(to: generationBase.appendingPathComponent("nand/bus0-ce0.pages"))
+        try Preparer.readOnly(generationBase)
         try await StoppedVolumeEdit.commit(device: device, id: session.id)
 
         let published = try DeviceRecord.object(Data(contentsOf: device.appendingPathComponent(DeviceRecord.name)))
         let generation = URL(fileURLWithPath: try #require((published["base"] as? [String: String])?["path"]))
+        #expect(generation.standardizedFileURL == generationBase.standardizedFileURL)
+        #expect(
+            !fm.fileExists(atPath: generation.deletingLastPathComponent().appendingPathComponent("guest-nand").path)
+        )
         let newOverlay = try #require((published["storage"] as? [String: Any])?["overlay"] as? String)
         #expect(try fm.contentsOfDirectory(atPath: newOverlay).isEmpty)
         let nand = generation.appendingPathComponent("nand")
