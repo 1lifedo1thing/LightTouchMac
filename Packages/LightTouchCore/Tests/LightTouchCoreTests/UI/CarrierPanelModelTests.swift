@@ -42,6 +42,25 @@ struct CarrierPanelModelTests {
         #expect(!model.applyingNetwork, "still applying once the modem reports it")
     }
 
+    @Test func aReplacedSessionTakesThePanelOver() throws {
+        let old = Modem()
+        let model = CarrierPanelModel(backend: old)
+        model.poll()
+        let new = Modem()
+        new.carrierSettings.carrier = "Restarted"
+        new.reported = try #require(ModemStatus(json: #"{"call-state": "incoming", "mo-sms-count": 4}"#))
+        model.rebind(to: new)
+        #expect(model.settings == new.carrierSettings && model.carrierName == "Restarted", "the new session's network")
+        #expect(model.status == nil, "no state from the old modem")
+        model.poll()
+        #expect(model.callState == "incoming")
+        model.set(bars: 2)
+        model.callNumber = "+15555550199"
+        model.hangUp()
+        #expect(new.carrierSettings.bars == 2 && new.actions == ["remote-hangup=1"])
+        #expect(old.carrierSettings == CarrierSettings() && old.actions.isEmpty, "the old session hears nothing")
+    }
+
     @Test func invalidNetworkIsRefusedBeforeTheModem() {
         let modem = Modem()
         let model = CarrierPanelModel(backend: modem)

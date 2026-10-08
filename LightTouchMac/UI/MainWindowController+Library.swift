@@ -35,7 +35,10 @@ extension MainWindowController {
 
     func libraryRowsDidChange(_ library: DeviceLibraryViewController) { show(selectedEntry) }
 
-    func librarySessionsDidChange(_ library: DeviceLibraryViewController) { show(selectedEntry) }
+    func librarySessionsDidChange(_ library: DeviceLibraryViewController) {
+        show(selectedEntry)
+        followCarrierPanels()
+    }
 
     @objc func filesystemActivityDidChange() { show(selectedEntry) }
 

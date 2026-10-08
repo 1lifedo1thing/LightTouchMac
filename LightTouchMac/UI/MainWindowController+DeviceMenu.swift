@@ -130,10 +130,21 @@ extension MainWindowController {
     @objc func showCarrier(_ sender: Any?) {
         guard let emulator, emulator.hasCellular else { return }
         let id = emulator.instance.id
-        if carrierWindows[id] == nil || carrierWindows[id]?.window == nil {
-            carrierWindows[id] = CarrierWindowController(emulator: emulator)
-        }
+        if carrierWindows[id] == nil { carrierWindows[id] = CarrierWindowController(emulator: emulator) }
+        carrierWindows[id]?.model.rebind(to: emulator)
         carrierWindows[id]?.showWindow(sender)
+    }
+
+    /// Each Carrier panel drives its device's current session; one whose device no longer runs closes.
+    func followCarrierPanels() {
+        for (id, panel) in carrierWindows {
+            if let session = host.sessions.first(where: { $0.instance.id == id }) {
+                panel.model.rebind(to: session.emulator)
+            } else {
+                panel.close()
+                carrierWindows[id] = nil
+            }
+        }
     }
     @objc func specialTrick(_ sender: Any?) {
         guard let screen = deviceVC?.screen, screen.canPerformSpecialTrick else { return }

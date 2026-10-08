@@ -113,8 +113,10 @@ struct CarrierPanel: View {
 
 /// A Carrier panel per running device: a utility panel that floats above the device window.
 @MainActor final class CarrierWindowController: NSWindowController {
+    let model: CarrierPanelModel
     init(emulator: EmulatorController) {
-        let hosting = NSHostingController(rootView: CarrierPanel(model: CarrierPanelModel(backend: emulator)))
+        model = CarrierPanelModel(backend: emulator)
+        let hosting = NSHostingController(rootView: CarrierPanel(model: model))
         let panel = NSPanel(contentViewController: hosting)
         panel.styleMask = [.titled, .closable, .resizable, .utilityWindow]
         panel.title = "Carrier — \(emulator.instance.name)"

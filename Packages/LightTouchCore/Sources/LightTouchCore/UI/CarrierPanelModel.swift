@@ -19,7 +19,7 @@ import Observation
         public let text: String
     }
 
-    @ObservationIgnored private let backend: CarrierBackend
+    @ObservationIgnored private var backend: CarrierBackend
     public var settings: CarrierSettings
     /// The network fields as typed; applied (validated) with Apply.
     public var carrierName: String
@@ -40,6 +40,20 @@ import Observation
         carrierName = backend.carrierSettings.carrier
         mcc = String(backend.carrierSettings.mccMNC.prefix(3))
         mnc = String(backend.carrierSettings.mccMNC.dropFirst(3))
+    }
+
+    /// The device's session was replaced (Restart, Erase, a free-form size): the panel drives the new session's modem
+    /// and shows its saved network; the old one's settings cache never writes again.
+    public func rebind(to backend: CarrierBackend) {
+        guard backend !== self.backend else { return }
+        self.backend = backend
+        settings = backend.carrierSettings
+        carrierName = settings.carrier
+        mcc = String(settings.mccMNC.prefix(3))
+        mnc = String(settings.mccMNC.dropFirst(3))
+        status = nil
+        message = nil
+        lastMOCount = nil
     }
 
     public var typedPLMN: String { mcc + mnc }
