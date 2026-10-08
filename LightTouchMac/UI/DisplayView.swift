@@ -41,7 +41,8 @@ final class DisplayView: NSView {
     static let rotationDuration = 0.4
 
     var deviceLayoutRect: CGRect { safeAreaRect }
-    /// The board's own zoom, as last left (ZoomMode.saved); the window saves what the user picks.
+    /// The board's own zoom, as last left (ZoomMode.saved), read again at each window entry; the window saves what
+    /// the user picks.
     var zoom: ZoomMode = .fit {
         didSet {
             guard oldValue != zoom else { return }
@@ -335,6 +336,8 @@ final class DisplayView: NSView {
             return
         }
         guard displayLink == nil else { return }
+        // The zoom is saved per board: another device of this board may have changed it while this view was away.
+        zoom = .saved(for: profile)
         // Every window entry: leaving one dropped all of this view's observers (above), the bezel's included,
         // so a view that had left a window (a session swap, a restart at a new panel) ignored View ▸ Show Device
         // Bezel for good. The preference may have changed meanwhile too.

@@ -128,5 +128,23 @@ extension SharedState {
             #expect(DisplayView(frame: frame, profile: .k48).zoom == .physical)
             #expect(DisplayView(frame: frame, profile: .n90).zoom == .fit)
         }
+
+        /// Two devices of one board: a zoom picked on one is the other's too when its view comes back to the window
+        /// (selected again), where each view kept the zoom it had when it was made.
+        @Test func aBoardsZoomFollowsItsOtherDeviceOnReturn() {
+            UserDefaults.standard.removeObject(forKey: ZoomMode.defaultsKey(for: .n72))
+            defer { UserDefaults.standard.removeObject(forKey: ZoomMode.defaultsKey(for: .n72)) }
+            let frame = NSRect(x: 0, y: 0, width: 400, height: 400)
+            let first = DisplayView(frame: frame, profile: .n72)
+            let second = DisplayView(frame: frame, profile: .n72)
+            let window = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
+            window.contentView = second
+            // What the window's zoom control does (MainWindowController.apply).
+            second.zoom = .pixelAccurate
+            ZoomMode.pixelAccurate.save(for: .n72)
+            window.contentView = first
+            #expect(first.zoom == .pixelAccurate)
+            window.contentView = nil
+        }
     }
 }
