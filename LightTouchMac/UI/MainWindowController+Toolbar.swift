@@ -182,7 +182,7 @@ extension MainWindowController {
         return item
     }
 
-    /// Frequent capture actions live beside the device controls, as in WireView.
+    /// Frequent capture actions live beside the device controls.
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
             .toggleSidebar, .flexibleSpace, .addDevice, .sidebarTrackingSeparator, .home, .lock, .rotate, .zoom,

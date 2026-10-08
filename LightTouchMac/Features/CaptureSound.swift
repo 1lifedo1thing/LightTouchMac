@@ -1,7 +1,7 @@
 import AudioToolbox
 import LightTouchCore
 
-/// The same system effects used by WireView for explicit capture actions.
+/// The system sounds for explicit capture actions: screenshot, recording started and stopped.
 enum CaptureSound: SystemSoundID {
     case screenshot = 1393
     case recordingStarted = 1113

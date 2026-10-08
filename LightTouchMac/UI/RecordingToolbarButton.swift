@@ -1,6 +1,6 @@
 import Cocoa
 
-/// WireView's single recording action: record, elapsed time and stop, then progress.
+/// One recording button: record, elapsed time and stop, then progress.
 final class RecordingToolbarButton: NSButton {
     enum Phase { case idle, recording, saving, recovery }
     private let progress = NSProgressIndicator()
