@@ -8,7 +8,7 @@
   "rules": {
     "AllPublicDeclarationsHaveDocumentation": false,
     "AlwaysUseLiteralForEmptyCollectionInit": true,
-    "AlwaysUseLowerCamelCase": false,
+    "AlwaysUseLowerCamelCase": true,
     "AmbiguousTrailingClosureOverload": true,
     "AvoidRetroactiveConformances": true,
     "BeginDocumentationCommentWithOneLineSummary": false,

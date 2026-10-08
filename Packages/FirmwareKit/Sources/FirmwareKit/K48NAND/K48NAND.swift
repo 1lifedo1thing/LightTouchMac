@@ -110,7 +110,7 @@ public enum K48NAND {
         }
 
         /// iBoot-817.29's 0xB614D5AD row: 2 buses x 4 CE x 4096 blocks x 128 pages x 4 KiB; the captured 16 GB unit.
-        public static let k48_16g = Geometry(
+        public static let k48With16GB = Geometry(
             name: "k48-16g",
             chipID: 0xB614_D5AD,
             buses: 2,
@@ -122,8 +122,8 @@ public enum K48NAND {
         )
         /// The same part as 3.0's AppleS5L8920XIOPFMI table lists it on 2x4 CEs: vendor type 0x10001, one VFL bank per CE,
         /// 1024-page superblocks whose block TOC fits one page. 3.0's yaFTL assumes one TOC page (YAFTL_Init 0xc05c74ec on
-        /// N88 7A341; fixed in 3.1), so k48_16g's 2048-page superblocks restore a garbage map there. ipad1_nand k48-16g-v1.
-        public static let k48_16g_v1 = Geometry(
+        /// N88 7A341; fixed in 3.1), so k48With16GB's 2048-page superblocks restore a garbage map there. ipad1_nand k48-16g-v1.
+        public static let k48With16GBV1 = Geometry(
             name: "k48-16g-v1",
             chipID: 0xB614_D5AD,
             buses: 2,
@@ -145,7 +145,7 @@ public enum K48NAND {
             pageSize: 4096,
             spareBytes: 0x80
         )
-        static let known = [k48_16g, k48_16g_v1, selfcheck]
+        static let known = [k48With16GB, k48With16GBV1, selfcheck]
 
         func poolPBlock(_ bank: Int, _ slot: Int) -> Int { vflBanks * (usable + slot) + bank }
         func busCE(_ cs: Int) -> (Int, Int) { (cs / cePerBus, cs % cePerBus) }
@@ -403,7 +403,7 @@ public enum K48NAND {
     /// The logical disk's head as a 7B500 restore leaves it on a K48, up to partition 1 (LBA 63): p1 Apple_HFS
     /// system at 63, p3 an 8-sector 0xAF stub one sector past its end, p2 0xAE data to 45 sectors before the
     /// exported end (make_mbr; the gaps are measured on one 16 GB unit).
-    public static func makeMBR(geometry geo: Geometry = .k48_16g, systemMiB: Int = 1280) -> Data {
+    public static func makeMBR(geometry geo: Geometry = .k48With16GB, systemMiB: Int = 1280) -> Data {
         let ps = geo.pageSize
         let n = systemMiB * (1 << 20) / ps
         var head = [UInt8](repeating: 0, count: 63 * ps)
@@ -572,7 +572,7 @@ public enum K48NAND {
     /// ipad1_nand.py build: the store for `system` (+ `s3` + the data volume) at the MBR's partitions, into `out`.
     @discardableResult
     nonisolated(nonsending) public static func build(
-        geometry geo: Geometry = .k48_16g,
+        geometry geo: Geometry = .k48With16GB,
         mbr: URL,
         kernelVersion: [UInt8],
         epoch: UInt8 = 1,

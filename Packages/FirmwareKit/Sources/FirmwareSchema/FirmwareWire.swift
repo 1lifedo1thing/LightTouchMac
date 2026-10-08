@@ -135,7 +135,7 @@ nonisolated public enum FirmwareWire {
             /// whitened): the iPod touch 3G's 3.1.x AppleNANDFTL writes 4 and refuses anything above it.
             public var nandSigFlags: Int?
             /// The NAND vendor type the store's VFL context declares, when not the part's default (0x100014, two VFL banks
-            /// per CE). 0x10001 (one bank) for iOS 3.0 on the S5L8920 boards: K48NAND.Geometry.k48_16g_v1.
+            /// per CE). 0x10001 (one bank) for iOS 3.0 on the S5L8920 boards: K48NAND.Geometry.k48With16GBV1.
             public var nandVendorType: Int?
             /// The PMU clock at power-on (Unix seconds) for every boot, when not the host's: a developer beta
             /// checks its expiry date against it (6.0 beta 1's lockdownd: 2012-07-18).

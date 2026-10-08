@@ -238,7 +238,7 @@ public enum CatalogClient {
 
     public static func copyDetails(_ id: Int) async throws -> CatalogCopy {
         let copy: CatalogCopy = try await get(baseURL.appendingPathComponent("api/v1/copies/\(id)"))
-        guard copy.ipa_id == String(id) else {
+        guard copy.ipaID == String(id) else {
             throw CatalogError.invalidCopy("Legacy Store returned a different archived copy.")
         }
         return copy
@@ -300,7 +300,7 @@ public enum CatalogClient {
         var details: CatalogCopy?
         if known == nil {
             let copy = try await copyDetails(app.ipaID)
-            guard copy.bundle_id == current.bundleID else {
+            guard copy.bundleID == current.bundleID else {
                 throw CatalogError.invalidCopy("The archived copy no longer matches this app.")
             }
             if let reason = copy.unavailableReason(minimumOS: current.minOS, deviceOS: deviceOS, arch: arch) {

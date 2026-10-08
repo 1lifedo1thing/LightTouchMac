@@ -42,13 +42,13 @@ import Observation
         self.install = install
     }
 
-    public var selectedRow: Row? { rows?.first { $0.copy.ipa_id == selection } }
+    public var selectedRow: Row? { rows?.first { $0.copy.ipaID == selection } }
 
     public func title(_ row: Row) -> String {
         let size = row.copy.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
         // Two archived copies of one version need their copy number to tell apart.
         let twin = (rows ?? []).filter { $0.version.version == row.version.version }.count > 1
-        return [row.version.version ?? "Unknown", size, twin ? "Copy \(row.copy.ipa_id)" : nil]
+        return [row.version.version ?? "Unknown", size, twin ? "Copy \(row.copy.ipaID)" : nil]
             .compactMap { $0 }.joined(separator: " · ")
     }
 
@@ -66,10 +66,10 @@ import Observation
             let records = try await CatalogClient.versions(for: app)
             let found: [Row] = records.flatMap { version in
                 version.copies.filter { copy in
-                    copy.ipa_id == String(app.ipaID)
-                        || (copy.install_status == "installable" && CatalogCopy.runs(copy.architectures, on: arch)
-                            && CatalogCopy.osIssue(version.minimum_os_version, deviceOS: deviceOS) == nil
-                            && CatalogCopy.osIssue(copy.macho_min_os, deviceOS: deviceOS) == nil)
+                    copy.ipaID == String(app.ipaID)
+                        || (copy.installStatus == "installable" && CatalogCopy.runs(copy.architectures, on: arch)
+                            && CatalogCopy.osIssue(version.minimumOSVersion, deviceOS: deviceOS) == nil
+                            && CatalogCopy.osIssue(copy.machOMinOS, deviceOS: deviceOS) == nil)
                 }.map { (version, $0) }
             }
             rows = found
@@ -77,7 +77,7 @@ import Observation
                 problem = "No version of this app runs on this device."
                 return
             }
-            selection = found.first { $0.copy.ipa_id == String(app.ipaID) }?.copy.ipa_id ?? found[0].copy.ipa_id
+            selection = found.first { $0.copy.ipaID == String(app.ipaID) }?.copy.ipaID ?? found[0].copy.ipaID
         } catch {
             guard !Task.isCancelled else { return }
             rows = []
@@ -87,19 +87,19 @@ import Observation
 
     /// Runs for each selection; the view cancels it when the selection changes.
     public func check() async {
-        guard let row = selectedRow, row.copy.ipa_id != details?.ipa_id else { return }
+        guard let row = selectedRow, row.copy.ipaID != details?.ipaID else { return }
         details = nil
         candidate = nil
         problem = nil
         do {
-            guard let id = Int(row.copy.ipa_id), id > 0 else {
+            guard let id = Int(row.copy.ipaID), id > 0 else {
                 throw CatalogError.invalidCopy("The archive returned an invalid copy identifier.")
             }
             let copy = try await CatalogClient.copyDetails(id)
             try Task.checkCancellation()
             details = copy
             if let issue = copy.unavailableReason(
-                minimumOS: row.version.minimum_os_version,
+                minimumOS: row.version.minimumOSVersion,
                 deviceOS: deviceOS,
                 arch: arch
             ) {

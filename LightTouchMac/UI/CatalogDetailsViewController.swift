@@ -41,7 +41,7 @@ struct CatalogDetailsView: View {
                 Section {
                     if let rows = model.rows, !rows.isEmpty {
                         Picker("Version", selection: $model.selection) {
-                            ForEach(rows, id: \.copy.ipa_id) { Text(model.title($0)).tag(Optional($0.copy.ipa_id)) }
+                            ForEach(rows, id: \.copy.ipaID) { Text(model.title($0)).tag(Optional($0.copy.ipaID)) }
                         }
                     } else {
                         LabeledContent("Version") {
@@ -82,8 +82,8 @@ struct CatalogDetailsView: View {
 
     /// What the copy needs: the listing's minimum, or the binary's own when it asks for more.
     private var minimumOS: String? {
-        let listed = model.selectedRow?.version.minimum_os_version
-        guard let binary = model.details?.binary?.macho_min_os else { return listed }
+        let listed = model.selectedRow?.version.minimumOSVersion
+        guard let binary = model.details?.binary?.machOMinOS else { return listed }
         guard let listed else { return binary }
         return binary.compare(listed, options: .numeric) == .orderedDescending ? binary : listed
     }

@@ -55,7 +55,7 @@ struct K48NANDTests {
             try FileManager.default.createDirectory(at: overlay, withIntermediateDirectories: false)
             try Data("nand-xor-ff-v2\n".utf8).write(to: overlay.appendingPathComponent("storage-format"))
             #expect(throws: FirmwareError.self) { try K48NAND.StoreReader(dir, geo: .selfcheck, overlay: overlay) }
-            #expect(throws: FirmwareError.self) { try K48NAND.StoreReader(dir, geo: .k48_16g) }
+            #expect(throws: FirmwareError.self) { try K48NAND.StoreReader(dir, geo: .k48With16GB) }
         }
     }
 
@@ -65,7 +65,7 @@ struct K48NANDTests {
             let out = dir.appendingPathComponent("export")
             try FileManager.default.createDirectory(at: base, withIntermediateDirectories: false)
             var geometry = try #require(
-                JSONSerialization.jsonObject(with: Data(K48NAND.Geometry.k48_16g.json.utf8)) as? [String: Any]
+                JSONSerialization.jsonObject(with: Data(K48NAND.Geometry.k48With16GB.json.utf8)) as? [String: Any]
             )
             geometry["storage_format"] = "nand-xor-ff-v2"
             try JSONSerialization.data(withJSONObject: geometry).write(to: base.appendingPathComponent("geometry.json"))
@@ -77,16 +77,16 @@ struct K48NANDTests {
     }
 
     @Test func geometryMatchesKernel() {
-        let g = K48NAND.Geometry.k48_16g
+        let g = K48NAND.Geometry.k48With16GB
         #expect(g.usable == 1952 && g.toc == 2 && g.dataPages == 2046)
         #expect(g.exportedPages == 3_925_449)  // the real 16 GB unit's sector count
     }
 
     /// 3.0's layout of the same part (vendor type 0x10001): one VFL bank, 1024-page superblocks, a one-page block TOC.
     @Test func oneBankGeometryForIOS30() {
-        let g = K48NAND.Geometry.k48_16g_v1
+        let g = K48NAND.Geometry.k48With16GBV1
         #expect(g.vflBanks == 1 && g.ppsublk == 1024 && g.toc == 1 && g.dataPages == 1023)
-        #expect(g.json.contains("\"vendor_type\": 65537") && !K48NAND.Geometry.k48_16g.json.contains("vendor_type"))
+        #expect(g.json.contains("\"vendor_type\": 65537") && !K48NAND.Geometry.k48With16GB.json.contains("vendor_type"))
     }
 
     /// The FIL's epoch getter, `ldr rN, [pc, #8]; blx rN; adds r0, #0x30; uxtb r0, r0; pop {r7, pc}` naming `movs r0, #2;

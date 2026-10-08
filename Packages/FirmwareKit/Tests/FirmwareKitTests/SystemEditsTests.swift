@@ -506,9 +506,9 @@ enum K48Oracle {
             let hex = { (d: Data) in
                 d[off + at..<min(off + at + 16, d.count)].map { String(format: "%02x", $0) }.joined()
             }
-            let where_ = "\(off)+\(at) \(hex(da)) vs \(hex(db))"
+            let location = "\(off)+\(at) \(hex(da)) vs \(hex(db))"
             if let r = regions.first(where: { off >= $0.1 && off < $0.1 + $0.2 }) {
-                guard r.0 == "catalog file" else { return "\(where_) (\(r.0))" }
+                guard r.0 == "catalog file" else { return "\(location) (\(r.0))" }
                 // the catalog record (and the field offset in its body) at that byte
                 var forkOff = 0
                 var base = 0
@@ -527,16 +527,16 @@ enum K48Oracle {
                     $0.node == node && inNode >= $0.bodyOffset && inNode < $0.bodyOffset + ($0.kind == .file ? 248 : 88)
                 }
                 return
-                    "\(where_) (catalog node \(node) byte \(inNode)\(rec.map { ": \($0.kind) \($0.name) cnid \($0.cnid) body+\(inNode - $0.bodyOffset)" } ?? ""))"
+                    "\(location) (catalog node \(node) byte \(inNode)\(rec.map { ": \($0.kind) \($0.name) cnid \($0.cnid) body+\(inNode - $0.bodyOffset)" } ?? ""))"
             }
             if let r = records.first(where: {
                 $0.data?.extents.contains {
                     off >= Int($0.start) * v.blockSize && off < Int($0.start + $0.count) * v.blockSize
                 } ?? false
             }) {
-                return "\(where_) (\(r.name))"
+                return "\(location) (\(r.name))"
             }
-            return where_
+            return location
         }
     }
 }

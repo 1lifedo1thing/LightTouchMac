@@ -44,11 +44,11 @@ extension SharedState {
                     let rows = model.rows ?? []
                     #expect(
                         rows.count == 7 && rows.allSatisfy { $0.copy.architectures?.contains("armv6") == true },
-                        "\(rows.map(\.copy.ipa_id))"
+                        "\(rows.map(\.copy.ipaID))"
                     )
                     #expect(model.selection == "207203", "the row's own copy selected")
-                    let own = rows.first { $0.copy.ipa_id == "207203" }!
-                    let twin = rows.first { $0.copy.ipa_id == "5635" }!
+                    let own = rows.first { $0.copy.ipaID == "207203" }!
+                    let twin = rows.first { $0.copy.ipaID == "5635" }!
                     #expect(model.title(own) == "1.1.51 · 65.6 MB")
                     #expect(model.title(twin).hasSuffix(" · Copy 5635"), "twin copies are numbered")
                     await model.check()
@@ -77,7 +77,7 @@ extension SharedState {
                         install: { _ in installs += 1 }
                     )
                     await model.load()
-                    #expect(model.rows?.map(\.copy.ipa_id) == ["86286"], "only the row's own copy")
+                    #expect(model.rows?.map(\.copy.ipaID) == ["86286"], "only the row's own copy")
                     await model.check()
                     #expect(model.problem == "This copy needs a newer processor than this device has.")
                     #expect(!model.canInstallSelection && model.downgradeNote == nil)

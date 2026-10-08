@@ -81,7 +81,7 @@ struct CatalogCopyTests {
             CatalogCopy.self,
             from: Data(contentsOf: fixture("store-compat/live-copy-1682.json"))
         )
-        #expect(box.binary?.device_family_macho == ["1", "2"])
+        #expect(box.binary?.deviceFamilyMachO == ["1", "2"])
         #expect(box.unavailableReason(minimumOS: "3.0", deviceOS: "4.2", arch: "armv7") == nil)
     }
 
@@ -97,7 +97,7 @@ struct CatalogCopyTests {
             CatalogCopy.self,
             from: Data(contentsOf: fixture("store-compat/old-copy-195588.json"))
         )
-        #expect(old.binary?.armv7_code == nil && old.unavailableReason(minimumOS: "3.0") == nil)
+        #expect(old.binary?.armv7Code == nil && old.unavailableReason(minimumOS: "3.0") == nil)
     }
 }
 

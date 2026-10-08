@@ -189,7 +189,7 @@ final class K48Board: Board {
 
     /// MBR, system + data volumes (+ activation); the iBoot fsboot kernelcache goes in the system volume.
     /// The store geometry: the part's default, or the recipe's nand_vendor_type variant (iOS 3.0: one VFL bank per CE).
-    var geometry: K48NAND.Geometry { recipe.nandVendorType == 0x10001 ? .k48_16g_v1 : .k48_16g }
+    var geometry: K48NAND.Geometry { recipe.nandVendorType == 0x10001 ? .k48With16GBV1 : .k48With16GB }
 
     nonisolated(nonsending) func volumes(_ c: Recipe.Context) async throws {
         let mbr = c.work.appendingPathComponent("mbr.bin")

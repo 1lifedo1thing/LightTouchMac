@@ -2,39 +2,54 @@ import CryptoKit
 import Foundation
 
 public nonisolated struct CatalogCopy: Decodable, Sendable {
-    public let ipa_id: String
+    public let ipaID: String
     public let filename: String?
     public let size: Int64?
     public let md5: String?
     public let available: Bool
     public let version: String?
-    public let bundle_id: String?
+    public let bundleID: String?
     public let binary: Binary?
 
+    enum CodingKeys: String, CodingKey {
+        case ipaID = "ipa_id"
+        case filename
+        case size
+        case md5
+        case available
+        case version
+        case bundleID = "bundle_id"
+        case binary
+    }
+
     public struct Binary: Decodable, Sendable {
-        public let install_status: String?
+        public let installStatus: String?
         public let architectures: [String]?
-        public let macho_min_os: String?
-        public let device_family_macho: [String]?
+        public let machOMinOS: String?
+        public let deviceFamilyMachO: [String]?
         /// API 2.1: the armv6 slice's instructions are really ARMv7 (a
         /// cracked release that relabeled its armv7 slice); nil = not scanned.
-        public let armv7_code: Bool?
+        public let armv7Code: Bool?
 
         public enum CodingKeys: String, CodingKey {
-            case install_status, architectures, macho_min_os, device_family_macho, armv7_code
+            case installStatus = "install_status"
+            case architectures
+            case machOMinOS = "macho_min_os"
+            case deviceFamilyMachO = "device_family_macho"
+            case armv7Code = "armv7_code"
         }
 
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
-            install_status = try c.decodeIfPresent(String.self, forKey: .install_status)
+            installStatus = try c.decodeIfPresent(String.self, forKey: .installStatus)
             architectures = try c.decodeIfPresent([String].self, forKey: .architectures)
-            macho_min_os = try c.decodeIfPresent(String.self, forKey: .macho_min_os)
-            armv7_code = try c.decodeIfPresent(Bool.self, forKey: .armv7_code)
+            machOMinOS = try c.decodeIfPresent(String.self, forKey: .machOMinOS)
+            armv7Code = try c.decodeIfPresent(Bool.self, forKey: .armv7Code)
             // The server sends the Mach-O families as numbers ([1,2]) while compat.device_family is strings; take either.
-            if let strings = try? c.decodeIfPresent([String].self, forKey: .device_family_macho) {
-                device_family_macho = strings
+            if let strings = try? c.decodeIfPresent([String].self, forKey: .deviceFamilyMachO) {
+                deviceFamilyMachO = strings
             } else {
-                device_family_macho = try c.decodeIfPresent([Int].self, forKey: .device_family_macho)?.map(String.init)
+                deviceFamilyMachO = try c.decodeIfPresent([Int].self, forKey: .deviceFamilyMachO)?.map(String.init)
             }
         }
     }
@@ -67,20 +82,20 @@ public nonisolated struct CatalogCopy: Decodable, Sendable {
     public func unavailableReason(minimumOS: String?, deviceOS: String = "3.1.3", arch: String = "armv6") -> String? {
         guard available else { return "This archived download is no longer available." }
         guard let binary else { return "This copy has not been analyzed for compatibility." }
-        guard binary.install_status == "installable" else {
-            return binary.install_status == "encrypted"
+        guard binary.installStatus == "installable" else {
+            return binary.installStatus == "encrypted"
                 ? "This copy is encrypted and can’t launch in Light Touch."
                 : "This copy has not been classified as installable."
         }
         // Also an armv6 slice that is really ARMv7 code (API 2.1's scan): an
         // armv7 CPU runs it, an armv6 one can't.
-        guard Self.runs(binary.architectures, on: arch), arch != "armv6" || binary.armv7_code != true else {
+        guard Self.runs(binary.architectures, on: arch), arch != "armv6" || binary.armv7Code != true else {
             return "This copy needs a newer processor than this device has."
         }
-        if let family = binary.device_family_macho, !family.isEmpty, !family.contains("1"), !family.contains("2") {
+        if let family = binary.deviceFamilyMachO, !family.isEmpty, !family.contains("1"), !family.contains("2") {
             return "This copy does not support iPhone, iPod touch or iPad."
         }
-        return Self.osIssue(minimumOS, deviceOS: deviceOS) ?? Self.osIssue(binary.macho_min_os, deviceOS: deviceOS)
+        return Self.osIssue(minimumOS, deviceOS: deviceOS) ?? Self.osIssue(binary.machOMinOS, deviceOS: deviceOS)
     }
 
     /// MD5 is the archive's file-integrity check, not a signature or trust decision.
@@ -112,14 +127,28 @@ public nonisolated struct CatalogCopy: Decodable, Sendable {
 
 public nonisolated struct CatalogVersion: Decodable, Sendable {
     public let version: String?
-    public let minimum_os_version: String?
+    public let minimumOSVersion: String?
     public let copies: [Copy]
 
+    enum CodingKeys: String, CodingKey {
+        case version
+        case minimumOSVersion = "minimum_os_version"
+        case copies
+    }
+
     public struct Copy: Decodable, Sendable {
-        public let ipa_id: String
+        public let ipaID: String
         public let size: Int64?
-        public let install_status: String?
+        public let installStatus: String?
         public let architectures: [String]?
-        public let macho_min_os: String?
+        public let machOMinOS: String?
+
+        enum CodingKeys: String, CodingKey {
+            case ipaID = "ipa_id"
+            case size
+            case installStatus = "install_status"
+            case architectures
+            case machOMinOS = "macho_min_os"
+        }
     }
 }

@@ -139,7 +139,10 @@ extension SharedState {
         /// A response that didn't decode: the row says so plainly; the log has the DecodingError and its coding path.
         @Test func undecodableResponseReadsPlainly() async throws {
             try await withInstallerState { _, log in
-                struct Copy: Decodable { let ipa_id: String }
+                struct Copy: Decodable {
+                    let ipaID: String
+                    enum CodingKeys: String, CodingKey { case ipaID = "ipa_id" }
+                }
                 var decodeError: Error?
                 do { _ = try JSONDecoder().decode(Copy.self, from: Data(#"{"ipa_id": [1, 2]}"#.utf8)) } catch {
                     decodeError = error

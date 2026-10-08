@@ -212,7 +212,7 @@ struct BootRecipeTests {
     }
 
     typealias Poll = (String?, String?)
-    static let SB = "com.apple.springboard", PB = "com.apple.purplebuddy"
+    static let springBoard = "com.apple.springboard", purpleBuddy = "com.apple.purplebuddy"
     func lifts(_ seq: [Poll]) -> Int? {
         var gate = BootRecipe.SetupNetworkGate()
         for (i, p) in seq.enumerated() where gate.observe(bundleID: p.0, name: p.1) { return i }
@@ -220,32 +220,38 @@ struct BootRecipeTests {
     }
 
     @Test func theSetupGateLiftsOnlyPastSetupAndTheLockScreen() throws {
-        let SB = Self.SB
-        let PB = Self.PB
+        let springBoard = Self.springBoard
+        let purpleBuddy = Self.purpleBuddy
         let fresh: [Poll] = [
-            (nil, nil), (nil, nil), (SB, "Lock Screen"), (SB, "Lock Screen"), (SB, "Lock Screen"),
-            (PB, "Setup"), (PB, "Setup"), (PB, "Setup"), (SB, "Home Screen"), (SB, "Home Screen"),
+            (nil, nil), (nil, nil), (springBoard, "Lock Screen"), (springBoard, "Lock Screen"),
+            (springBoard, "Lock Screen"),
+            (purpleBuddy, "Setup"), (purpleBuddy, "Setup"), (purpleBuddy, "Setup"), (springBoard, "Home Screen"),
+            (springBoard, "Home Screen"),
         ]
         #expect(lifts(fresh) == 9, "a fresh 5.x lifts at the second Home poll")
-        #expect(lifts(Array(repeating: (SB, "Lock Screen"), count: 20)) == nil, "never on the lock screen")
-        #expect(lifts(Array(repeating: (PB, "Setup"), count: 20)) == nil, "never during Setup")
+        #expect(lifts(Array(repeating: (springBoard, "Lock Screen"), count: 20)) == nil, "never on the lock screen")
+        #expect(lifts(Array(repeating: (purpleBuddy, "Setup"), count: 20)) == nil, "never during Setup")
         #expect(
-            lifts([(SB, "Lock Screen"), (SB, "Home Screen"), (PB, "Setup"), (PB, "Setup")]) == nil,
+            lifts([
+                (springBoard, "Lock Screen"), (springBoard, "Home Screen"), (purpleBuddy, "Setup"),
+                (purpleBuddy, "Setup"),
+            ]) == nil,
             "one stray unlocked poll"
         )
         #expect(
-            lifts([(PB, "Setup"), (SB, "Home Screen"), (nil, nil), (SB, "Home Screen")]) == nil,
+            lifts([(purpleBuddy, "Setup"), (springBoard, "Home Screen"), (nil, nil), (springBoard, "Home Screen")])
+                == nil,
             "a failed poll breaks the streak"
         )
         let reused: [Poll] = [
-            (SB, "Lock Screen"), (SB, "Lock Screen"), ("com.apple.mobilesafari", "Safari"),
+            (springBoard, "Lock Screen"), (springBoard, "Lock Screen"), ("com.apple.mobilesafari", "Safari"),
             ("com.apple.mobilesafari", "Safari"),
         ]
         #expect(lifts(reused) == 3, "a device past Setup with no mark lifts at its first unlocked screen")
         var once = BootRecipe.SetupNetworkGate()
-        _ = once.observe(bundleID: SB, name: "Home Screen")
-        let first = once.observe(bundleID: SB, name: "Home Screen")
-        let again = once.observe(bundleID: SB, name: "Home Screen")
+        _ = once.observe(bundleID: springBoard, name: "Home Screen")
+        let first = once.observe(bundleID: springBoard, name: "Home Screen")
+        let again = once.observe(bundleID: springBoard, name: "Home Screen")
         #expect(first && !again && once.lifted, "answers true once")
 
         // Recorded by the net-restrict-live gate (9B206), one "bundle\tname" per poll.
@@ -257,8 +263,8 @@ struct BootRecipeTests {
             let f = $0.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
             return (f[0].isEmpty ? nil : f[0], f.count > 1 && !f[1].isEmpty ? f[1] : nil)
         }
-        let firstHome = try #require(seq.firstIndex { $0.0 == SB && $0.1 == "Home Screen" })
-        let lastSetup = try #require(seq.lastIndex { $0.0 == PB })
+        let firstHome = try #require(seq.firstIndex { $0.0 == springBoard && $0.1 == "Home Screen" })
+        let lastSetup = try #require(seq.lastIndex { $0.0 == purpleBuddy })
         let at = try #require(lifts(seq))
         #expect(
             at > lastSetup && at == firstHome + 1,
