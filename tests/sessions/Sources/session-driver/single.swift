@@ -1159,8 +1159,8 @@ enum DockBand {
 
     static func walk(_ d: Device, agent: GuestAgent, generation: Int) async -> (Bool, String) {
         var pages: [String] = []
-        // 80 pages: 7.x's Apple ID page ignores Skip This Step while its spinner runs (10-13 tries), and a 7.1.2 walk
-        // that needed 38 of 40 pages on 10-05 ran out at the passcode page on 10-06. The boot's 1400 s cap still bounds it.
+        // 80 pages: 7.x's Apple ID page ignores Skip This Step while its spinner runs (about a minute: 12-13 tries),
+        // and 7.x's country list takes 12-15 scrolls to United States. The boot's 1400 s cap still bounds it.
         for n in 0..<80 {
             try? await Task.sleep(for: .seconds(3))
             if let f = try? await agent.frontmost(), f.bundleID == "com.apple.springboard", f.name == "Home Screen" {
@@ -1189,6 +1189,19 @@ enum DockBand {
                     }
                 case .pause(let seconds):
                     try? await Task.sleep(for: .seconds(seconds))
+                case .scroll(let y0, let y1, let fast):
+                    if fast {  // four moves in 64 ms: a fling the list carries on
+                        let link = d.process.link
+                        link.send(.touch(slot: 0, phase: 0, x: 0.5, y: y0))
+                        for i in 1...4 {
+                            try? await Task.sleep(for: .milliseconds(16))
+                            link.send(.touch(slot: 0, phase: 1, x: 0.5, y: y0 + (y1 - y0) * Double(i) / 4))
+                        }
+                        link.send(.touch(slot: 0, phase: 2, x: 0.5, y: y1))
+                    } else {
+                        await d.drag(0.5, y0, 0.5, y1)
+                    }
+                    pages.append("(scroll)")
                 case .slideIfLockScreen:
                     guard (try? await agent.frontmost())?.name == "Lock Screen" else { break }
                     // The welcome page (SpringBoard's lock screen) and its slider. Home first, as app-install's unlock():

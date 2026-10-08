@@ -65,8 +65,11 @@ public enum SetupPlan {
         "Start Using iPod touch", "Start Using iPod", "Start Using iPhone", "Get Started",
         "Set Up as New iPod touch", "Set Up as New iPod", "Set Up as New iPhone",
         "Disable Location Services", "Skip This Step", "Agree", "Don't Add Passcode",
-        "Don't Use iCloud", "Don't Send", "Australia", "United States",
+        "Don't Use iCloud", "Don't Send", country,
     ]
+    /// The country row the walk picks, by its name wherever the list puts it: 7.x's list has no suggestions and starts
+    /// at Afghanistan, and a row picked by place gave the device a Persian or Arabic region.
+    public static let country = "United States"
     public static let alertYes = ["OK", "Skip", "Agree", "Continue", "Don't Use", "Don't Add"]
     public static let nextArrow = (x: 587.0 / 640, y: 84.0 / 960)
 
@@ -74,10 +77,28 @@ public enum SetupPlan {
         case tap(Double, Double, String?)
         case pause(Double)
         case slideIfLockScreen
+        /// A vertical drag through the list at mid-width, from y to y: `fast` lets it fling on.
+        case scroll(Double, Double, fast: Bool)
+    }
+
+    /// The labels as the plan matches them: Vision reads 7.x's curly apostrophe as such and sometimes a stray mark
+    /// before a label ("• Don't Add Passcode" on 11D257's passcode page, which kept the walk there until a read came
+    /// back clean or the page budget ran out), so a label's leading marks go and its apostrophes are straight. A mark
+    /// alone (a row's chevron) goes with them.
+    public static func normalized(_ found: [String: (x: Double, y: Double)]) -> [String: (x: Double, y: Double)] {
+        var out: [String: (x: Double, y: Double)] = [:]
+        for (label, p) in found {
+            let key = String(
+                label.replacingOccurrences(of: "\u{2019}", with: "'").drop { !$0.isLetter && !$0.isNumber }
+            )
+            if !key.isEmpty, out[key] == nil { out[key] = p }
+        }
+        return out
     }
 
     /// One Setup page's taps, from the labels read on it (`pages`: what the walk has tapped so far).
-    public static func plan(_ found: [String: (x: Double, y: Double)], pages: [String]) -> [Step] {
+    public static func plan(_ read: [String: (x: Double, y: Double)], pages: [String]) -> [Step] {
+        let found = normalized(read)
         // Setup's Home sheet (Emergency Call / Start Over) dims the page, whose labels Vision still reads and whose
         // rows and Next it would tap in vain (n88 6.0.1: 40 pages of English): dismiss it before anything else.
         if let cancel = found["Cancel"], found["Start Over"] != nil {
@@ -87,18 +108,12 @@ public enum SetupPlan {
             return [.tap(p.x, p.y, "(\(yes))")]
         }
         var steps: [Step] = []
-        var pick = picks.first { found[$0] != nil }
-        // The country list without Australia/United States on screen (the 3GS's 480-line panel, 7.x's "Select Your
-        // Country or Region" with "MORE COUNTRIES AND REGIONS" over Afghanistan): the first row below the page's
-        // last country heading in its top 60 %. Next stays disabled until one is chosen.
-        let headings = found.filter { $0.key.localizedCaseInsensitiveContains("countr") && $0.value.y < 0.6 }
-        if pick == nil, let below = headings.map({ $0.value.y }).max(),
-            let first = found.filter({
-                $0.value.y > max(below, 0.15) && $0.value.y < 0.9 && !["Next", "Back"].contains($0.key)
-            })
-            .min(by: { $0.value.y < $1.value.y })
-        {
-            pick = first.key
+        let pick = picks.first { found[$0] != nil }
+        // The country list without United States on screen (its title or section heading, or a list the walk has
+        // scrolled): scroll toward it by the names on screen. Next stays disabled until a country is chosen.
+        let list = pages.last == "(scroll)" || found.keys.contains { $0.localizedCaseInsensitiveContains("countr") }
+        if pick == nil, list, let move = scroll(found) {
+            return [move]
         }
         if let pick, let p = found[pick] {
             // a label tapped again and again: nudge the tap (as walk_setup, the digitizer's edges)
@@ -124,5 +139,24 @@ public enum SetupPlan {
             steps.append(.slideIfLockScreen)
         }
         return steps
+    }
+
+    /// Which way the country list moves toward `country`, from the names on screen (labels below the status bar that
+    /// start with a capital, not the page's own): a fling on while every name is before T, a screen on from there, a
+    /// screen back once every name is past it; nil without names.
+    static func scroll(_ found: [String: (x: Double, y: Double)]) -> Step? {
+        let names = found.filter {
+            $0.value.y > 0.06 && $0.key.first?.isUppercase == true && !["Back", "Next"].contains($0.key)
+                && !$0.key.localizedCaseInsensitiveContains("countr")
+                && !$0.key.localizedCaseInsensitiveContains("region")
+        }
+        .keys.sorted { order($0, $1) == .orderedAscending }
+        guard let first = names.first, let last = names.last else { return nil }
+        if order(first, country) == .orderedDescending { return .scroll(0.25, 0.85, fast: false) }
+        return .scroll(0.85, 0.25, fast: order(last, "T") == .orderedAscending)
+    }
+
+    static func order(_ a: String, _ b: String) -> ComparisonResult {
+        a.compare(b, options: [.caseInsensitive, .diacriticInsensitive])
     }
 }

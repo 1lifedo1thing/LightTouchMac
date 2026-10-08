@@ -105,13 +105,33 @@ struct SetupWalkTests {
         #expect(x == SetupPlan.nextArrow.x && y == SetupPlan.nextArrow.y)
     }
 
-    /// n90ap-11D257 (7.1.2): the Country page's first row.
-    @Test func theCountryPageTakesItsFirstRow() {
-        let country7: [String: (x: Double, y: Double)] = [
-            "Back": (0.12, 0.09), "Select Your Country": (0.5, 0.19), "or Region": (0.5, 0.26),
-            "MORE COUNTRIES AND REGIONS": (0.4, 0.5), "Afghanistan": (0.2, 0.595), "Åland Islands": (0.22, 0.72),
+    /// n90ap-11D257 (7.1.2): the Country page as Vision reads it, which starts at Afghanistan.
+    static let country7: [String: (x: Double, y: Double)] = [
+        "••••• Light Touch A 7:17 PM": (0.29, 0.02), "< Back": (0.12, 0.09), "Select Your Country": (0.5, 0.19),
+        "or Region": (0.47, 0.27), "MORE COUNTRIES AND REGIONS": (0.4, 0.5), "Afghanistan": (0.2, 0.6),
+        ">": (0.94, 0.6), "Åland Islands": (0.22, 0.72), "Albania": (0.15, 0.84), "Algeria": (0.14, 0.97),
+    ]
+
+    @Test func theCountryListIsScrolledToUnitedStates() {
+        // never a row by its place: fling on from the top of the list
+        #expect(SetupPlan.plan(Self.country7, pages: []) == [.scroll(0.85, 0.25, fast: true)])
+        // a scrolled list (no heading left): a screen at a time from T on, a screen back once past it
+        let s: [String: (x: Double, y: Double)] = ["Back": (0.12, 0.09), "Syria": (0.2, 0.3), "Taiwan": (0.2, 0.5)]
+        #expect(SetupPlan.plan(s, pages: ["(scroll)"]) == [.scroll(0.85, 0.25, fast: false)])
+        let v: [String: (x: Double, y: Double)] = ["Uruguay": (0.2, 0.3), "Vietnam": (0.2, 0.5)]
+        #expect(SetupPlan.plan(v, pages: ["(scroll)"]) == [.scroll(0.25, 0.85, fast: false)])
+        let us: [String: (x: Double, y: Double)] = ["United Kingdom": (0.2, 0.3), "United States": (0.2, 0.42)]
+        #expect(taps(SetupPlan.plan(us, pages: ["(scroll)"])) == ["United States"])
+        // a page that is not the list is not scrolled
+        #expect(SetupPlan.plan(["Syria": (0.2, 0.3)], pages: ["Skip This Step"]) == [.slideIfLockScreen])
+    }
+
+    /// n90ap-11D257 (7.1.2): the passcode page as Vision read it on 15 pages in a row (a stray mark, a curly apostrophe).
+    @Test func thePasscodePageIsReadPastAStrayMark() {
+        let passcode: [String: (x: Double, y: Double)] = [
+            "Create a Passcode": (0.5, 0.17), "• Don\u{2019}t Add Passcode": (0.48, 0.49), "1": (0.17, 0.59),
         ]
-        #expect(taps(SetupPlan.plan(country7, pages: [])) == ["Afghanistan"])
+        #expect(taps(SetupPlan.plan(passcode, pages: [])) == ["Don't Add Passcode"])
     }
 
     @Test func anAlertsOKAndTheWelcomeSlide() {
