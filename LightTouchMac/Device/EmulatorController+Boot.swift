@@ -91,14 +91,7 @@ extension EmulatorController {
         ) { [weak self] result in
             if case .failure(let error) = result, let self { logEvent("boot: \(instance.name): \(error)") }
         }
-        if hasGuestTools {
-            rotation.startGuestWatch()  // idle until the guest is up and reachable
-        } else {
-            rotation.startInterfaceWatch()
-        }
-        startTimeZoneSync()  // guest zone follows the Mac's, incl. travel
-        startForegroundWatch()
-        // The guest-package watch starts in bootConfiguration(), once this boot's offer is composed.
+        // The boot begins, with its watches, in bootConfiguration(), once it is built and its offer composed.
     }
 
     /// nil when the device can't boot; the notice says why and the state is dead.
@@ -116,11 +109,8 @@ extension EmulatorController {
         }
         if config != nil {
             // Stopped migration time is separate from the guest boot budget.
-            readiness.start()
-            publishDeveloperConnection()
+            cycle.begin()
             logEmulatorBuild()
-            startGuestPackageWatch()  // after guestPackage.compose(): a watch with no offer judges nothing
-            startBootWatch()
         }
         return config
     }
@@ -161,7 +151,7 @@ extension EmulatorController {
         } catch PreparedDeviceBoot.Failure.baseMismatch {
             baseImageMismatch = true
             reportDeviceNotice("This \(profile.shortName)’s data was made with an older system image.", for: .erase)
-            state = .dead(exitCode: 1)
+            endBoot(.unbuildable)
             return nil
         } catch {
             failBoot(error)
@@ -171,10 +161,7 @@ extension EmulatorController {
         let usbSession = usbmux.start(paths: instance.paths)
         openSerialLog()
         let netdev: String?
-        let setupDone = FileManager.default.fileExists(atPath: BootRecipe.setupDoneMark(overlay: overlayURL).path)
-        expectsSetup = BootRecipe.setupPhonesHome(iosVersion: iosVersion) && !setupDone
-        // Setup's end is watched on every boot that shows it (the mark, the readiness text), networked or not.
-        foreground.setupGate = expectsSetup ? BootRecipe.SetupNetworkGate() : nil
+        readSetupExpectation()
         foreground.liftsRestrict = false
         if profile.isKBoot {
             let restrict = network && expectsSetup
@@ -211,6 +198,15 @@ extension EmulatorController {
             failBoot(error)
             return nil
         }
+    }
+
+    /// Whether this boot ends in Setup: iOS 5 or later on an overlay that hasn't finished it (its mark), read at every
+    /// boot, so a Restart after Setup waits for the Home screen. Setup's end is watched on every boot that shows it
+    /// (the mark, the readiness text), networked or not.
+    func readSetupExpectation() {
+        let setupDone = FileManager.default.fileExists(atPath: BootRecipe.setupDoneMark(overlay: overlayURL).path)
+        expectsSetup = BootRecipe.setupPhonesHome(iosVersion: iosVersion) && !setupDone
+        foreground.setupGate = expectsSetup ? BootRecipe.SetupNetworkGate() : nil
     }
 
     private func openSerialLog() {

@@ -288,9 +288,14 @@ final class FakeSession: MachineHost, ConnectionHost, ActivationServices, Readin
         if syncFails { throw CocoaError(.fileReadUnknown) }
     }
     func publishDeveloperConnection() { steps.append("publish") }
-    func forgetConnectionWork() { steps.append("forgetConnectionWork") }
-    func forgetGuestFacts() { steps.append("forgetGuestFacts") }
-    func forgetReachability() { steps.append("forgetReachability") }
+    /// As EmulatorController.forgetBootFacts, for the facts the fake holds.
+    func forgetBootFacts() {
+        steps.append("forgetBootFacts")
+        isSleeping = false
+        deviceReachable = nil
+        recovery.forget()
+    }
+    func endBoot(_ end: BootEnd) { bootWatch.endBoot(end) }
     func resetRotation() { steps.append("resetRotation") }
     func startTimeZoneSync() { steps.append("timeZone") }
     func startForegroundWatch() { steps.append("foreground") }

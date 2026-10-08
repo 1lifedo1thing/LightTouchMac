@@ -59,15 +59,7 @@ extension EmulatorController {
             }
             if status.agentStatus == 2 { agentStaleSince = agentStaleSince ?? now } else { agentStaleSince = nil }
         }
-        if !poweringOn, status.shutdownConfirmed, !isDead, !isPoweredOff {
-            // Publish terminal state before observable fields: their callbacks
-            // must never render a stale running/sleeping subtitle mid-shutdown.
-            state = .poweredOff
-            retireBoot()
-            foreground.forget()
-            isSleeping = false
-            deviceReachable = false
-        }
+        if !poweringOn, status.shutdownConfirmed, !isDead, !isPoweredOff { endBoot(.guestPoweredOff) }
         if state == .running, !preparingDevice, !shuttingDown {
             isSleeping = status.displaySleeping
         } else if isSleeping {

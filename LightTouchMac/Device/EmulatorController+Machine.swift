@@ -62,18 +62,21 @@ extension EmulatorController {
 
     var isReleased: Bool { stopped || releasing }
     func syncGuest() async throws { try await guestAgent.sync() }
-    func forgetConnectionWork() {
+    /// Everything one boot learned about its guest: each boot begins with none of it and each ending drops it
+    /// (state audit A-12, A-13), so a dead device never draws as asleep and a Restart never inherits the last boot's
+    /// connection issue or its Setup.
+    func forgetBootFacts() {
         didSweepStaging = false
-        recovery.isReconnecting = false
-    }
-    func forgetGuestFacts() {
+        recovery.forget()
         foreground.forget()
         isSleeping = false
-    }
-    func forgetReachability() {
         deviceReachable = nil
         reachableSince = nil
+        agentStatus = 0
+        agentStaleSince = nil
+        readSetupExpectation()
     }
+    func endBoot(_ end: BootEnd) { bootWatch.endBoot(end) }
 
     func startForegroundWatch() { foreground.start() }
     var overlay: URL { overlayURL }

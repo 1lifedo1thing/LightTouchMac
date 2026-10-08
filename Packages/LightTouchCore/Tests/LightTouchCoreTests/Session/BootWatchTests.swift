@@ -31,7 +31,7 @@ struct BootWatchTests {
             #expect(late.state == .dead(exitCode: nil) && late.bootWatch.deathReason == BootWatch.deadlineReason(.n72))
             #expect(late.bootWatch.deathReason!.hasPrefix("The iPod didn’t start within"))
             #expect(
-                late.steps == ["retire", "discard", "release"] && late.timeZoneStops == 1,
+                late.steps == ["retire", "discard", "forgetBootFacts", "release"] && late.timeZoneStops == 1,
                 "the helper's death retires the boot's work"
             )
         }
@@ -119,10 +119,41 @@ struct BootWatchTests {
             #expect(c.state == .dead(exitCode: nil) && c.bootWatch.deathReason == "The iPod stopped unexpectedly.")
             c.bootWatch.helperDied("again")
             #expect(
-                c.steps == ["retire", "discard", "release"],
+                c.steps == ["retire", "discard", "forgetBootFacts", "release"],
                 "once, and the install queue goes with the helper (a restart or a crash leaves no jobs behind)"
             )
             #expect(c.bootWatch.deathReason == "The iPod stopped unexpectedly.")
+        }
+    }
+
+    /// State audit A-1: a boot that couldn't be built went `.dead` and stopped there; the helper's death that
+    /// followed was skipped as already dead, so the boot's status poll, loops, usbmuxd and serial capture ran on.
+    @Test func aBootThatCantBeBuiltEndsLikeAnyOther() async throws {
+        try await withScratchDirectory { directory in
+            let c = session(directory)
+            c.bootScope[.foreground] = Task { try? await Task.sleep(for: .seconds(60)) }
+            let loop = c.bootScope[.foreground]
+            c.bootWatch.failBoot(CocoaError(.fileReadCorruptFile))
+            #expect(c.state == .dead(exitCode: 1) && c.bootScope.retired && loop?.isCancelled == true)
+            #expect(c.steps == ["retire", "discard", "forgetBootFacts", "release"], "\(c.steps)")
+            c.bootWatch.helperDied("The emulator stopped.")
+            #expect(c.steps.count == 4 && c.state == .dead(exitCode: 1), "ended once")
+        }
+    }
+
+    /// State audit A-12: a device that crashed or stopped with its display asleep still drew as asleep (the toolbar
+    /// offered Wake) and still read as reachable.
+    @Test func anEndedBootForgetsTheGuest() async throws {
+        try await withScratchDirectory { directory in
+            for end in [BootEnd.helperGone, .guestPoweredOff, .unbuildable] {
+                let c = session(directory)
+                c.state = .running
+                c.isSleeping = true
+                c.deviceReachable = true
+                c.bootWatch.endBoot(end)
+                #expect(!c.isSleeping && c.deviceReachable == nil, "\(end)")
+                #expect(c.steps.contains("release") == (end != .guestPoweredOff), "the helper stays powered off")
+            }
         }
     }
 

@@ -10,10 +10,10 @@ import Testing
 /// nothing; a device without guest tools halts and restarts. Power On renews the boot in place and resumes the
 /// machine once the shutdown latch clears.
 struct BootCycleTests {
-    static let freshBoot = [
-        "publish", "forgetConnectionWork", "forgetReachability", "timeZone", "resetRotation",
-        "foreground", "orientation", "guestPackage", "bootWatch",
-    ]
+    /// What every boot begins with (BootCycleHost.beginBoot), then every watch it starts (startBootWatches).
+    static let begin = ["forgetBootFacts", "publish", "resetRotation"]
+    static let watches = ["timeZone", "foreground", "orientation", "guestPackage", "bootWatch"]
+    static let freshBoot = begin + watches
 
     func session(_ directory: URL) -> FakeSession {
         let s = FakeSession(directory: directory)
@@ -110,10 +110,7 @@ struct BootCycleTests {
             cold.cycle.powerOn()
             #expect(cold.bootScope.generation == 1 && cold.cycle.poweringOn && cold.state == .booting)
             #expect(
-                cold.steps == [
-                    "publish", "forgetConnectionWork", "forgetGuestFacts", "forgetReachability",
-                    "resetRotation", "timeZone",
-                ],
+                cold.steps == Self.begin,
                 "\(cold.steps)"
             )
             #expect(cold.link.commands == [.machine(.reset)])
@@ -122,11 +119,64 @@ struct BootCycleTests {
             cold.status = helperStatus(displaySleeping: true, shutdownConfirmed: false)
             await cold.bootScope[.powerOn]?.value
             #expect(cold.link.commands == [.machine(.reset), .machine(.resume)] && !cold.cycle.poweringOn)
-            #expect(Array(cold.steps.suffix(3)) == ["foreground", "guestPackage", "bootWatch"])
+            #expect(cold.steps == Self.freshBoot, "every watch a fresh boot starts, auto-rotation too")
+            #expect(cold.readiness.current != nil)
             // The new boot's readiness watch wakes the sleeping display once it's up.
             cold.state = .running
             await cold.readiness.current?.value
             #expect(cold.homes == 1)
+        }
+    }
+
+    /// State audit A-3: Shut Down then Start (an in-place power-on) left auto-rotation off, because Power On started
+    /// its own shorter list of watches. A fresh helper's boot, a Restart and a Power On now start one list.
+    @Test func everyBootStartsTheSameWatches() async throws {
+        try await withScratchDirectory { directory in
+            let fresh = session(directory)
+            fresh.state = .booting
+            fresh.cycle.begin()
+            #expect(fresh.steps == Self.freshBoot && fresh.readiness.current != nil, "\(fresh.steps)")
+            fresh.readiness.cancel()
+
+            let restarted = session(directory)
+            restarted.cycle.reset()
+            await restarted.bootScope[.reset]?.value
+            #expect(Array(restarted.steps.dropFirst()) == Self.freshBoot && restarted.readiness.current != nil)
+            restarted.readiness.cancel()
+
+            let poweredOn = session(directory)
+            poweredOn.state = .poweredOff
+            poweredOn.status = helperStatus(shutdownConfirmed: false)
+            poweredOn.cycle.powerOn()
+            await poweredOn.bootScope[.powerOn]?.value
+            #expect(poweredOn.steps == Self.freshBoot && poweredOn.readiness.current != nil, "\(poweredOn.steps)")
+            poweredOn.readiness.cancel()
+        }
+    }
+
+    /// State audit A-13: the last boot's connection issue outlived a Restart or a Power On, and the status line ranks
+    /// it above the new boot's "Starting iOS…"; the display's sleep and reachability did too.
+    @Test func aNewBootForgetsWhatTheLastOneLearned() async throws {
+        try await withScratchDirectory { directory in
+            for powerOn in [false, true] {
+                let c = session(directory)
+                c.isSleeping = true
+                c.deviceReachable = true
+                c.recovery.reportFailure(
+                    DeviceError.instproxy(.connFailed, phase: "connect"),
+                    operation: "Refreshing apps"
+                )
+                #expect(c.recovery.issue != nil)
+                if powerOn {
+                    c.state = .poweredOff
+                    c.cycle.powerOn()
+                } else {
+                    c.cycle.reset()
+                    await c.bootScope[.reset]?.value
+                }
+                #expect(c.recovery.issue == nil && !c.isSleeping && c.deviceReachable == nil, "power on: \(powerOn)")
+                c.retireBoot()
+            }
         }
     }
 

@@ -20,10 +20,23 @@ public protocol BootWatchHost: AnyObject {
     var readiness: ReadinessWatch { get }
     var notices: DeviceNotices { get }
     func retireBoot()
+    /// Everything this boot learned about its guest (reachability, sleep, the front app, the connection issue,
+    /// Setup): a boot begins or ends with none of it.
+    func forgetBootFacts()
     /// The device's install queue goes with its helper (AppInstaller.discard): nothing queued can land any more.
     func discardInstalls()
     /// The helper is gone: the file watch, status poll, recording audio, usbmuxd and serial capture end with it.
     func releaseBootResources()
+}
+
+/// How a boot ended (BootWatch.endBoot).
+public enum BootEnd: Equatable {
+    /// It couldn't be built (its files, the base it was made from): dead, and the helper's start fails.
+    case unbuildable
+    /// The guest powered itself off; the helper stays, for Power On.
+    case guestPoweredOff
+    /// The helper is gone: Stopped after a halt, else dead.
+    case helperGone
 }
 
 @Observable public final class BootWatch {
@@ -67,7 +80,25 @@ public protocol BootWatchHost: AnyObject {
         let reason = Self.bootFilesReason(error, profile: host.profile)
         deathReason = reason
         host.notices.report(reason, for: .storage)
-        host.state = .dead(exitCode: 1)
+        endBoot(.unbuildable)
+    }
+
+    /// The one way a boot ends, whichever way it ended: the state first (no observer sees a running or sleeping
+    /// subtitle on an ended boot), then this boot's work retired, its install queue dropped and what it learned
+    /// forgotten, and, unless the helper stays powered off, what lives only as long as the helper released. A boot
+    /// that couldn't be built used to stop at `.dead`, keeping its status poll, loops and usbmuxd (state audit A-1);
+    /// a dead device kept drawing as asleep (A-12).
+    public func endBoot(_ end: BootEnd) {
+        host.state =
+            switch end {
+            case .unbuildable: .dead(exitCode: 1)
+            case .guestPoweredOff: .poweredOff
+            case .helperGone: host.halting ? .poweredOff : .dead(exitCode: nil)
+            }
+        host.retireBoot()
+        host.discardInstalls()
+        host.forgetBootFacts()
+        if end != .guestPoweredOff { host.releaseBootResources() }
     }
 
     /// No answer within the board's budget ends the boot as a named error, with the helper halted, unless iOS is
@@ -111,11 +142,8 @@ public protocol BootWatchHost: AnyObject {
     /// The helper is gone (QEMU returned, it crashed or was killed): `.dead`, or powered off after a halt; the
     /// window shows a Restart overlay, and the other devices keep running.
     public func helperDied(_ reason: String) {
-        guard !host.state.isDead else { return }
-        host.retireBoot()
-        host.discardInstalls()
+        guard !host.state.isDead else { return }  // a boot that couldn't be built already ended
         if !host.halting, deathReason == nil { deathReason = reason }  // an aborted boot keeps its own reason
-        host.releaseBootResources()
-        host.state = host.halting ? .poweredOff : .dead(exitCode: nil)
+        endBoot(.helperGone)
     }
 }

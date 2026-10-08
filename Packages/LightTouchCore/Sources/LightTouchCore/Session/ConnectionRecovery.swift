@@ -80,6 +80,13 @@ public protocol ConnectionHost: AnyObject {
 
     public func cancel() { task?.cancel() }
 
+    /// A boot began or ended: its issue, its failure count and its reconnection are the last boot's.
+    public func forget() {
+        issue = nil
+        failures = 0
+        isReconnecting = false
+    }
+
     /// Every reachability change: a second failed read in a row of the kind that a management restart fixes,
     /// with nothing using the device, an agent to do it, and none in the last minute.
     public func consider() {

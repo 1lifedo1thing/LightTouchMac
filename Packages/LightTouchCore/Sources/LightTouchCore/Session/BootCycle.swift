@@ -29,22 +29,41 @@ public protocol BootCycleHost: AnyObject {
     @discardableResult func halt() -> Task<Bool, Never>
     func restart()
     func retireBoot()
+    func endBoot(_ end: BootEnd)
     // The per-boot steps, in the order a boot takes them.
+    /// Everything the last boot learned about its guest, forgotten (BootWatchHost.forgetBootFacts).
+    func forgetBootFacts()
     func publishDeveloperConnection()
-    /// The staging sweep runs again, and no recovery is under way.
-    func forgetConnectionWork()
-    /// No app in front, the display awake (a power-on's guest starts from nothing).
-    func forgetGuestFacts()
-    /// Reachability unknown again, and since when.
-    func forgetReachability()
     /// The guest cold-boots portrait, so the tracked orientation (and the iPad's accelerometer) follows it back.
     /// Leaving it at 90/270 left DisplayView posing the shell sideways while the guest published a portrait buffer.
     func resetRotation()
     func startTimeZoneSync()
     func startForegroundWatch()
+    /// Auto-rotation: the guest agent's, or springboardservices' where the board has no guest tools.
     func startOrientationWatch()
     func startGuestPackageWatch()
     func startBootWatch()
+}
+
+extension BootCycleHost {
+    /// A boot begins (a fresh helper's, a Restart's, a Power On's): a new scope and nothing the last boot learned.
+    public func beginBoot() {
+        bootScope.renew()
+        forgetBootFacts()
+        publishDeveloperConnection()
+        resetRotation()
+    }
+
+    /// Every watch a boot runs, in order: the one list a fresh helper's boot, a Restart and a Power On all start, so
+    /// none of them can leave one out (Power On used to leave auto-rotation off: state audit A-3).
+    public func startBootWatches() {
+        startTimeZoneSync()
+        startForegroundWatch()
+        startOrientationWatch()
+        readiness.start()
+        startGuestPackageWatch()
+        startBootWatch()
+    }
 }
 
 public final class BootCycle {
@@ -61,6 +80,12 @@ public final class BootCycle {
     var latchWait: Duration = .seconds(5)
 
     private var isPoweredOff: Bool { host.state == .poweredOff }
+
+    /// A fresh helper's boot is built: it begins, with every watch.
+    public func begin() {
+        host.beginBoot()
+        host.startBootWatches()
+    }
 
     /// Restart the guest. Flush first: a bare system_reset is the same hard cut as a SIGKILL as far as the guest's
     /// filesystem is concerned — it loses the HFS+ catalog updates still in memory, which is how a device ends up on
@@ -116,19 +141,10 @@ public final class BootCycle {
                 !host.shuttingDown,
                 !host.state.isDead, host.state != .poweredOff
             else { return }
-            host.bootScope.renew()
-            host.publishDeveloperConnection()
-            host.forgetConnectionWork()
-            host.forgetReachability()
-            host.startTimeZoneSync()
+            host.beginBoot()
             host.helperLink?.send(.machine(.reset))
-            host.resetRotation()
             host.state = .booting
-            host.startForegroundWatch()
-            if host.hasGuestTools { host.startOrientationWatch() }
-            host.readiness.start()
-            host.startGuestPackageWatch()
-            host.startBootWatch()
+            host.startBootWatches()
         }
     }
 
@@ -140,17 +156,11 @@ public final class BootCycle {
             host.restart()
             return
         }
-        host.bootScope.renew()
-        host.publishDeveloperConnection()
+        host.beginBoot()
         poweringOn = true
         powerOns += 1
         let run = powerOns
-        host.forgetConnectionWork()
-        host.forgetGuestFacts()
-        host.forgetReachability()
-        host.resetRotation()
         host.state = .booting
-        host.startTimeZoneSync()
         host.helperLink?.send(.machine(.reset))
         let generation = host.bootScope.generation
         let latchWait = latchWait
@@ -171,15 +181,11 @@ public final class BootCycle {
             }
             guard !Task.isCancelled, generation == host.bootScope.generation else { return }
             guard host.status?.shutdownConfirmed == false, !host.state.isDead else {
-                host.retireBoot()
-                host.state = .poweredOff
+                if !host.state.isDead { host.endBoot(.guestPoweredOff) }
                 return
             }
             host.helperLink?.send(.machine(.resume))
-            host.readiness.start()
-            host.startForegroundWatch()
-            host.startGuestPackageWatch()
-            host.startBootWatch()
+            host.startBootWatches()
         }
     }
 }

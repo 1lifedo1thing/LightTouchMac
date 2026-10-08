@@ -57,7 +57,9 @@ extension EmulatorController {
     func rotate(clockwise: Bool) { rotation.rotate(clockwise: clockwise) }
     var autoRotateEnabled: Bool { rotation.autoRotateEnabled }
     func toggleAutoRotate() { rotation.toggleAutoRotate() }
-    func startOrientationWatch() { rotation.startGuestWatch() }
+    func startOrientationWatch() {
+        if hasGuestTools { rotation.startGuestWatch() } else { rotation.startInterfaceWatch() }
+    }
     func resetRotation() { rotation.reset() }
 
     // MARK: - Carrier (radio boards)
