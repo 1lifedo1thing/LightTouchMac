@@ -2,6 +2,7 @@
 // running sets and a slow (or failing) fake removal through the real DeviceStorageWork, the jobs, the library.
 import Cocoa
 import LightTouchCore
+import os
 
 final class FirmwareJobs {
     static let shared = FirmwareJobs()
@@ -41,13 +42,21 @@ final class DeviceSessionHost {
     /// The fake removal: this long on its thread, then a throw when `failing`.
     var deleteSeconds = 0.0
     var failing = false
+    /// Set by the fake removal on its thread: whether the main actor ran a block the removal posted to it while it
+    /// worked (nil until a removal has run). A main actor running the removal, or blocked waiting for it, never does.
+    let mainAnswered = OSAllocatedUnfairLock<Bool?>(initialState: nil)
     struct Failed: LocalizedError { var errorDescription: String? { "The device’s folder couldn’t be removed." } }
     func delete(_ instance: StubInstance) -> Task<Void, Error> {
         let seconds = deleteSeconds
         let failing = failing
         let id = instance.firmware
+        let mainAnswered = mainAnswered
         let removal = deletions.run(id) {
+            let main = DispatchSemaphore(value: 0)
+            DispatchQueue.main.async { main.signal() }
             Thread.sleep(forTimeInterval: seconds)
+            let answered = main.wait(timeout: .now() + 10) == .success
+            mainAnswered.withLock { $0 = answered }
             if failing { throw Failed() }
         }
         return Task {

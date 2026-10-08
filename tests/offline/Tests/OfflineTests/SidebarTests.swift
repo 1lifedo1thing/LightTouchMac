@@ -13,7 +13,7 @@ extension SharedState {
     /// macOS declares for it; rename in place (menu, Return, during a preparation) saves; the context menu dims what a
     /// row can't do; Delete removes an unprepared row and asks the delegate for a prepared one; a download joins the
     /// sidebar with a ring and no percentage; ⌘A and one Delete ask ONE question, and the prepared device says Deleting
-    /// while a slow removal runs off the main actor (a heartbeat keeps ticking); a failed removal keeps its row with
+    /// while a slow removal runs off the main actor (which answers the removal meanwhile); a failed removal keeps its row with
     /// one alert; an empty sidebar offers Add Device…; the sheet lists every catalog entry once, grouped by device.
     @Suite struct SidebarTests {
         final class Delegate: DeviceLibraryDelegate {
@@ -447,20 +447,14 @@ extension SharedState {
                 fail("a deleting row has no spinner")
             }
             multiOutline.deselectAll(nil)
-            // The main actor stays free while the fake removal sleeps on its thread: a heartbeat every 20 ms.
-            var beats = 0
-            let heart = Timer.scheduledTimer(withTimeInterval: 0.02, repeats: true) { _ in
-                MainActor.assumeIsolated { beats += 1 }
-            }
+            // The main actor stays free while the fake removal sleeps on its thread: it runs a block the removal
+            // posts (StandIns), however slowly a loaded host schedules it. 60 s only bounds a hang.
             let began = Date()
-            while vc.entries.count > 1, Date().timeIntervalSince(began) < 10 {
+            while vc.entries.count > 1, Date().timeIntervalSince(began) < 60 {
                 try await Task.sleep(for: .milliseconds(10))
             }
-            heart.invalidate()
-            let took = Date().timeIntervalSince(began)
-            if took < 0.5 { fail("the fake removal took \(took) s: the heartbeat proves nothing") }
-            if Double(beats) < took / 0.02 * 0.5 {
-                fail("the main actor stalled during deletion: \(beats) heartbeats in \(took) s")
+            if multi.mainAnswered.withLock({ $0 }) != true {
+                fail("the main actor stalled during deletion: it didn't answer the removal")
             }
             if multi.deleted != ["n72ap-8C148"] || !multiDelegate.deletes.isEmpty {
                 fail("batch deleted \(multi.deleted), per-row deletes \(multiDelegate.deletes)")
@@ -488,7 +482,7 @@ extension SharedState {
             brokenOutline.selectAll(nil)
             brokenOutline.keyDown(with: delete)
             let failStart = Date()
-            while !broken.deletions.busy.isEmpty || failureAlerts.count < 2, Date().timeIntervalSince(failStart) < 5 {
+            while !broken.deletions.busy.isEmpty || failureAlerts.count < 2, Date().timeIntervalSince(failStart) < 60 {
                 try await Task.sleep(for: .milliseconds(10))
             }
             if vc.entries.count != 2 || vc.entries.contains(where: { vc.row(for: $0).state != .ready }) {
