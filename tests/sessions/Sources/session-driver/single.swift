@@ -67,6 +67,19 @@ struct SingleConfig: Decodable {
     var audioWAV: String?
     /// A file the guest agent reads back at home (fileRead), e.g. a marker a stopped edit wrote into the root FS.
     var readFile: String?
+    /// contrib/it-proxy/httpget (armv6): at the first Home the guest fetches `WiFiProbe.url`, which only wifi0's
+    /// guestfwd answers, so the board's Wi-Fi joined (`wifi`).
+    var httpget: String?
+}
+
+/// A page only wifi0 serves (a guestfwd to a shell that answers any request), so a cellular route can't stand in for
+/// Wi-Fi. "offline" (-1009) until the card has joined and taken its lease.
+nonisolated enum WiFiProbe {
+    static let url = "http://10.0.2.101/"
+    static let body = "wifi0"
+    static let guestForward =
+        #",guestfwd=tcp:10.0.2.101:80-cmd:/bin/sh -c "while read -r l && [ ${#l} -gt 1 ]; do :; done; "#
+        + #"printf 'HTTP/1.0 200 OK\r\nContent-Length: 5\r\n\r\n\#(body)'""#
 }
 
 @MainActor func runSingle(_ s: SingleConfig) async {
@@ -88,6 +101,7 @@ struct SingleConfig: Decodable {
     let a4 = profile.isKBoot
     let b = URL(fileURLWithPath: s.base)
     let d = Device(name: s.board, profile: profile, base: b)
+    if s.httpget != nil { d.netdevExtra = WiFiProbe.guestForward }
     // Composed per boot from the device's verdicts, as the app's GuestPackageWatch.compose (an iPad's in Device.boot);
     // `offered`: this boot carries one (compose gives none for a stub seed).
     var offered = a4 && config.ipadItpack != nil
@@ -356,6 +370,29 @@ struct SingleConfig: Decodable {
                 "screen": screen, "path": hp ?? "",
             ]
         )
+        if generation == 1, let httpget = s.httpget {
+            var output = ""
+            if asks, let bytes = try? Data(contentsOf: URL(fileURLWithPath: httpget)) {
+                for attempt in 0..<9 {
+                    if attempt > 0 { try? await Task.sleep(for: .seconds(10)) }
+                    do {
+                        try await guestAgent.put("/tmp/ltm-httpget", mode: 0o755, bytes)
+                        let page = try await guestAgent.spawn(["/tmp/ltm-httpget", WiFiProbe.url])
+                        output = String(decoding: page, as: UTF8.self)
+                    } catch let error as GuestAgentError {
+                        output = String(decoding: error.output.prefix(300), as: UTF8.self)
+                    } catch { output = "\(error)" }
+                    if output.hasPrefix("HTTP 200") { break }
+                }
+            }
+            emit(
+                "wifi",
+                [
+                    "device": d.name, "agent": asks, "output": String(output.prefix(200)),
+                    "ok": output.hasPrefix("HTTP 200") && output.hasSuffix(WiFiProbe.body),
+                ]
+            )
+        }
         if let path = s.readFile {
             let data = asks ? try? await guestAgent.get(path) : nil
             emit(

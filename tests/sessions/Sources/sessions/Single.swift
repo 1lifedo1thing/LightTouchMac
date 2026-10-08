@@ -18,7 +18,7 @@ func single(_ args: SingleCheck) -> Never {
 
     var single: [String: Any] = [
         "board": d, "base": base.url.path, "lockdownTZ": tools.services.path,
-        "launch": args.launch, "reboot": args.reboot, "install": install,
+        "launch": args.launch, "reboot": args.reboot, "install": install, "httpget": httpget(args.inputs).path,
     ]
     if args.hostPowerGesture { single["hostPowerGesture"] = true }
     if let zone = args.secondZone { single["secondZone"] = zone }
@@ -95,6 +95,15 @@ func single(_ args: SingleCheck) -> Never {
         } else {
             r.note("\(d): backlight level not decoded here (\(level))")
         }
+    }
+    let wifi = events.one("wifi", ["device": d])
+    if wifi.isEmpty || wifi.bool("agent") {
+        r.check(
+            wifi.bool("ok"),
+            "\(d): Wi-Fi up: the guest fetched wifi0's page: \(clip(wifi.string("output") ?? "not asked", 80))"
+        )
+    } else {
+        r.note("\(d): Wi-Fi not checked (no guest agent)")
     }
     let activation = events.find("activationCompleted", ["device": d])
     r.check(
