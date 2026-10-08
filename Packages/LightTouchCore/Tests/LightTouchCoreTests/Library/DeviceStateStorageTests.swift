@@ -95,6 +95,30 @@ struct DeviceStateStorageTests {
         }
     }
 
+    /// Erase is atomic (state audit B-8): the overlay is renamed aside before anything in it goes, so one whose removal
+    /// fails part way (here a page that can't be unlinked; a crash does the same) is already gone from its path, never
+    /// half there with its base identity removed; the launch sweep finishes it.
+    @Test func eraseRenamesTheOverlayAsideFirstAndTheLaunchSweepFinishesIt() throws {
+        try withTemporaryDirectory { state in
+            let id = UUID()
+            let device = state.appendingPathComponent("Devices/\(id.uuidString)")
+            let overlay = device.appendingPathComponent("overlay")
+            try fm.createDirectory(at: overlay, withIntermediateDirectories: true)
+            try Data("base-a".utf8).write(to: overlay.appendingPathComponent(".base-identity"))
+            let page = overlay.appendingPathComponent("bus0-ce0.pages")
+            try Data([1]).write(to: page)
+            #expect(chflags(page.path, UInt32(UF_IMMUTABLE)) == 0)
+            let doomed = device.appendingPathComponent(".erasing-overlay")
+            defer { chflags(doomed.appendingPathComponent("bus0-ce0.pages").path, 0) }
+            try DeviceStateStorage.erase(overlay: overlay, snapshots: [], state: state, owner: id)
+            #expect(!fm.fileExists(atPath: overlay.path), "the device boots erased")
+            #expect(fm.fileExists(atPath: doomed.path), "the stuck page waits for the sweep")
+            chflags(doomed.appendingPathComponent("bus0-ce0.pages").path, 0)
+            DeviceStateStorage.sweepDeleting(state: state)
+            #expect(!fm.fileExists(atPath: doomed.path) && fm.fileExists(atPath: device.path))
+        }
+    }
+
     /// Erase and Delete Device refuse a device another process holds (its work/lease) or with a durable filesystem
     /// edit (work/edit.json), and change nothing.
     @Test func eraseAndDeleteRefuseAnExternalLeaseAndAPendingEdit() throws {

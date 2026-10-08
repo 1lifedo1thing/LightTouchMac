@@ -9,6 +9,8 @@ public nonisolated enum DeviceStateStorage {
     /// `preparedNOR`: the device's private NOR copy, which pairs with its overlay. Removed under the same lease, so no
     /// helper starting meanwhile keeps the old one.
     /// `owner` is the device being erased; every path must pass checkRemovable before any is removed.
+    /// The overlay is renamed to .erasing-<name> beside it first, so a crash mid-removal never leaves a half-erased
+    /// overlay (pages without their base identity read as an older system image); sweepDeleting finishes it.
     public static func erase(
         overlay: URL,
         snapshots: [URL],
@@ -19,12 +21,20 @@ public nonisolated enum DeviceStateStorage {
         let lease = try stoppedLease(owner, state: state)
         defer { withExtendedLifetime(lease) {} }
         let fm = FileManager.default
-        let paths =
-            snapshots.flatMap { [$0, $0.appendingPathExtension("meta")] } + [preparedNOR].compactMap { $0 } + [overlay]
-        for path in paths { try checkRemovable(path, state: state, owner: owner) }
+        let doomed = overlay.deletingLastPathComponent().appendingPathComponent(".erasing-" + overlay.lastPathComponent)
+        let paths = snapshots.flatMap { [$0, $0.appendingPathExtension("meta")] } + [preparedNOR].compactMap { $0 }
+        for path in paths + [overlay, doomed] { try checkRemovable(path, state: state, owner: owner) }
+        if fm.fileExists(atPath: overlay.path) {
+            try removeTree(doomed)
+            guard rename(overlay.path, doomed.path) == 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+        }
         for path in paths where fm.fileExists(atPath: path.path) {
             try fm.removeItem(at: path)
         }
+        // Erased once renamed; what can't go now goes at the next launch.
+        try? removeTree(doomed)
     }
 
     /// The helper/export/edit lock is the authority, including external CLI
@@ -140,12 +150,20 @@ public nonisolated enum DeviceStateStorage {
         try removeTree(doomed)
     }
 
-    /// Launch (under the app lock): finish deletes a crash interrupted.
+    /// Launch (under the app lock): finish deletes and erases a crash interrupted (Devices/.deleting-<uuid>,
+    /// Devices/<uuid>/.erasing-<overlay>).
     public static func sweepDeleting(state: URL) {
+        let fm = FileManager.default
         let devices = state.appendingPathComponent("Devices", isDirectory: true)
-        for name in (try? FileManager.default.contentsOfDirectory(atPath: devices.path)) ?? []
-        where name.hasPrefix(".deleting-") {
-            try? removeTree(devices.appendingPathComponent(name))
+        for name in (try? fm.contentsOfDirectory(atPath: devices.path)) ?? [] {
+            let device = devices.appendingPathComponent(name)
+            if name.hasPrefix(".deleting-") {
+                try? removeTree(device)
+                continue
+            }
+            for inner in (try? fm.contentsOfDirectory(atPath: device.path)) ?? [] where inner.hasPrefix(".erasing-") {
+                try? removeTree(device.appendingPathComponent(inner))
+            }
         }
     }
 
