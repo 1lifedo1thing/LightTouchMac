@@ -102,8 +102,9 @@ public enum VFDecrypt {
     static func readFully(_ fd: Int32, _ buf: inout [UInt8], _ at: Int, _ count: Int) -> Int {
         var got = 0
         buf.withUnsafeMutableBytes { p in
+            guard let start = p.baseAddress else { return }  // an empty buffer holds nothing
             while got < count {
-                let r = read(fd, p.baseAddress! + at + got, count - got)
+                let r = read(fd, start + at + got, count - got)
                 if r > 0 { got += r } else if r < 0, errno == EINTR { continue } else { break }
             }
         }

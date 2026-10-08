@@ -340,7 +340,7 @@ public enum SystemEdits {
             } catch let e as ActivationFailure {
                 guard let r = Activation.dataArkRoute(lockdownd: try Data(contentsOf: at(lockdownd))) else { throw e }
                 log(
-                    "lockdownd: no binary strategy; activation by the data ark (\(r.dataArk!.keys.sorted().joined(separator: ", ")))"
+                    "lockdownd: no binary strategy; activation by the data ark (\((r.dataArk?.keys.sorted() ?? []).joined(separator: ", ")))"
                 )
                 result.activation = r
             }

@@ -17,7 +17,7 @@ public enum K48IBoot {
     /// The UID the emulated S5L8930 (iPad 1) reports: cdma_uid_key in hw/arm/s5l8930_cdma.c, an AES-256 key.
     static let uidKey = Data("K48AP-UID-S5L8930-iPad1-7B500-01".utf8)
     /// The 16 bytes iBoot runs through the UID key to get the SHSH wrapping key (build_nor.SHSH_KDF_CONST).
-    static let kdfConst = Data(hex: "db1f5b33606c5f1c1934aa66589c0661")!
+    static let kdfConst = Data(hexLiteral: "db1f5b33606c5f1c1934aa66589c0661")
     static let img3Header = 0x14, nvramOff = 0xFC000, norSize = 0x100000
 
     // MARK: GID blobs (AES-256 catalog keys)

@@ -6,7 +6,19 @@ import SwiftUI
 final class CaptureStatusView: NSView {
     enum Appearance { case neutral, recording, success, warning }
     private let state = CaptureBannerState()
-    private var hosting: NSHostingView<CaptureBanner>!
+    private lazy var hosting = NSHostingView(
+        rootView: CaptureBanner(
+            state: state,
+            primary: { [weak self] in self?.onPrimary?() },
+            link: { [weak self] in self?.performLink() },
+            secondary: { [weak self] in self?.onSecondary?() },
+            dismiss: { [weak self] in self?.dismissBanner() },
+            hovering: { [weak self] hovered in
+                self?.dismissal?.cancel()
+                if !hovered { self?.scheduleDismissal() }
+            }
+        )
+    )
     private var dismissal: Task<Void, Never>?
     private var dismissalAnimation: Task<Void, Never>?
     private var fileMonitor: CaptureFileMonitor?
@@ -41,19 +53,6 @@ final class CaptureStatusView: NSView {
 
     init() {
         super.init(frame: .zero)
-        hosting = NSHostingView(
-            rootView: CaptureBanner(
-                state: state,
-                primary: { [weak self] in self?.onPrimary?() },
-                link: { [weak self] in self?.performLink() },
-                secondary: { [weak self] in self?.onSecondary?() },
-                dismiss: { [weak self] in self?.dismissBanner() },
-                hovering: { [weak self] hovered in
-                    self?.dismissal?.cancel()
-                    if !hovered { self?.scheduleDismissal() }
-                }
-            )
-        )
         hosting.sizingOptions = []
         hosting.translatesAutoresizingMaskIntoConstraints = false
         addSubview(hosting)

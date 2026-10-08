@@ -158,7 +158,10 @@ extension DeviceServices {
                 throw DeviceToolsError.failed("The device did not answer the lockdown helper in time.")
             }
             defer { group.cancelAll() }
-            return try await group.next()!
+            guard let first = try await group.next() else {
+                throw DeviceToolsError.failed("The lockdown helper did not run.")
+            }
+            return first
         }
         try Task.checkCancellation()
         return (result.0, result.1, result.2)

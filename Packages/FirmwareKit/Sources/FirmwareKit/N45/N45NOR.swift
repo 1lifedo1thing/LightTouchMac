@@ -22,7 +22,7 @@ public enum N45NOR {
     /// generate_nor.c's nvram boot-args (the kernel's serial console, root on the NAND's first partition).
     public static let bootArgs = "debug=0x8 kextlog=0xfff cpus=1 rd=disk0s1 serial=1 io=0xffff8fff"
     static let hashPadding = [UInt8](
-        Data(hex: "ad2ee38d2d9be43599044433653df07498d8563b4ff96a5545ce82f29a5ac2bc47616d654f766572a6a09913")!
+        Data(hexLiteral: "ad2ee38d2d9be43599044433653df07498d8563b4ff96a5545ce82f29a5ac2bc47616d654f766572a6a09913")
     )
 
     /// `images`: IMG2 bodies by type (every `order` type must be there).
@@ -89,9 +89,9 @@ public enum N45NOR {
 
 /// The emulated S5L8900 UID engine's convention (see N45NOR), for the IMG2 verify key only.
 enum S5L8900UID {
-    static let uid = [UInt8](Data(hex: "0123456789ABCDEF0123456789ABCDEF")!)
-    static let verifySeed = [UInt8](Data(hex: "CDF345B312E748858BBE2147F0E58088")!)
-    static let verifyIV = [UInt8](Data(hex: "115D7041824B986FBB996C9C6978F1A5")!)
+    static let uid = [UInt8](Data(hexLiteral: "0123456789ABCDEF0123456789ABCDEF"))
+    static let verifySeed = [UInt8](Data(hexLiteral: "CDF345B312E748858BBE2147F0E58088"))
+    static let verifyIV = [UInt8](Data(hexLiteral: "115D7041824B986FBB996C9C6978F1A5"))
 
     /// aes_setup: the verify key is the seed run through the UID (CBC, verifyIV), each word byte-swapped.
     static let verifyKey: [UInt8] = {

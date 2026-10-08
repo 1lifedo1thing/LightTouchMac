@@ -88,9 +88,14 @@ case .machines:
         let dylibPath: String
         let machines: [DeviceInfo]
     }
-    FileHandle.standardOutput.write(
-        try! JSONEncoder().encode(Listing(dylibPath: qemu.path, machines: qemu.machines)) + Data("\n".utf8)
-    )
+    do {
+        FileHandle.standardOutput.write(
+            try JSONEncoder().encode(Listing(dylibPath: qemu.path, machines: qemu.machines)) + Data("\n".utf8)
+        )
+    } catch {
+        FileHandle.standardError.write(Data("LightTouchDevice: \(error)\n".utf8))
+        exit(1)
+    }
     exit(0)
 }
 
@@ -115,7 +120,7 @@ case .machines:
 
     let linkQueue = DispatchQueue(label: "LightTouch.link")
     // nonisolated(unsafe): assigned once, below, before the channel reads its first message; only read after.
-    nonisolated(unsafe) var channel: LinkChannel<AppMessage, HelperMessage>!
+    nonisolated(unsafe) var channel: LinkChannel<AppMessage, HelperMessage>?
     func shutdown(_ reason: String) {
         guard let host else { exit(0) }
         host.halt(reason: reason)
@@ -129,28 +134,28 @@ case .machines:
                 host?.perform(command)
             case .request(let id, .hello(let version, let board)):
                 guard version == DeviceLinkWire.protocolVersion else {
-                    channel.send(
+                    channel?.send(
                         .reply(id: id, .failure("protocol \(version) is not \(DeviceLinkWire.protocolVersion)"))
                     )
                     return
                 }
                 guard let host else {
-                    channel.send(.reply(id: id, .failure("The device helper could not load libqemu-arm.dylib.")))
-                    channel.drain()
+                    channel?.send(.reply(id: id, .failure("The device helper could not load libqemu-arm.dylib.")))
+                    channel?.drain()
                     exit(70)
                 }
                 guard takeLease(launch.lease) else {
-                    channel.send(.reply(id: id, .failure(DeviceLinkWire.leaseRefusal)))
-                    channel.drain()
+                    channel?.send(.reply(id: id, .failure(DeviceLinkWire.leaseRefusal)))
+                    channel?.drain()
                     exit(75)
                 }
-                channel.send(.reply(id: id, .hello(host.info(board: board))))
+                channel?.send(.reply(id: id, .hello(host.info(board: board))))
             case .request(let id, let request):
                 guard let host else {
-                    channel.send(.reply(id: id, .failure("no emulator")))
+                    channel?.send(.reply(id: id, .failure("no emulator")))
                     return
                 }
-                host.handle(request) { channel.send(.reply(id: id, $0)) }
+                host.handle(request) { channel?.send(.reply(id: id, $0)) }
             }
         },
         onClose: { error in
@@ -168,10 +173,10 @@ case .machines:
         )
         if kr != 0 { helperLog("ring hello failed: \(kr)") }
     }
-    host?.onEvent = { channel.send(.event($0)) }
+    host?.onEvent = { channel?.send(.event($0)) }
     host?.onExit = { rc in
-        channel.send(.event(.qemuExited(rc)))
-        channel.drain()
+        channel?.send(.event(.qemuExited(rc)))
+        channel?.drain()
         exit(rc)
     }
     host?.startPump()

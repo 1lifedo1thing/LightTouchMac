@@ -40,8 +40,8 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
     nonisolated(unsafe) private var spaceMonitor: Any?
     /// Drag-out promises run one after another (AFC transfers are serial anyway).
     private var promiseChain: Task<Void, Never>?
-    private var idleStatusWidth: NSLayoutConstraint!
-    private var activeStatusWidth: NSLayoutConstraint!
+    private var idleStatusWidth: NSLayoutConstraint?
+    private var activeStatusWidth: NSLayoutConstraint?
 
     init(profile: Board) {
         self.profile = profile
@@ -90,7 +90,7 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
         progress.maxValue = 1
         progress.style = .bar
         let options = NSButton(
-            image: NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: "File options")!,
+            image: NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: "File options") ?? NSImage(),
             target: self,
             action: #selector(showOptions(_:))
         )

@@ -74,7 +74,9 @@ public nonisolated enum BootRecipe {
             guard let writableNOR, !writableNOR.isEmpty, let gidBlobs, !gidBlobs.isEmpty else {
                 throw CocoaError(
                     .fileNoSuchFile,
-                    userInfo: [NSLocalizedDescriptionKey: "The \(strategy!) boot needs writable NOR and GID key data."]
+                    userInfo: [
+                        NSLocalizedDescriptionKey: "The \(strategy ?? "none") boot needs writable NOR and GID key data."
+                    ]
                 )
             }
             if strategy == "iboot" { return .iBoot(image: image, writableNOR: writableNOR, gidBlobs: gidBlobs) }
@@ -82,7 +84,7 @@ public nonisolated enum BootRecipe {
         default:
             throw CocoaError(
                 .fileReadCorruptFile,
-                userInfo: [NSLocalizedDescriptionKey: "Unknown iPad boot strategy: \(strategy!)"]
+                userInfo: [NSLocalizedDescriptionKey: "Unknown iPad boot strategy: \(strategy ?? "none")"]
             )
         }
     }

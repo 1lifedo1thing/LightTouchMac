@@ -43,10 +43,10 @@ final class InlineLiveTextView: NSView, ImageAnalysisOverlayViewDelegate {
         statusLabel.layer?.zPosition = 200
         addSubview(statusLabel)
         analysisTask = Task { [weak self] in
-            guard let self else { return }
+            guard let self, let image = imageView.image else { return }
             do {
                 let analysis = try await analyzer.analyze(
-                    imageView.image!,
+                    image,
                     orientation: .up,
                     configuration: ImageAnalyzer.Configuration([.text])
                 )

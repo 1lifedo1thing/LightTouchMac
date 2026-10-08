@@ -183,7 +183,7 @@ public enum Board: String, Sendable, CaseIterable, Codable {
         func unknown() -> CocoaError {
             CocoaError(
                 .fileReadCorruptFile,
-                userInfo: [NSLocalizedDescriptionKey: "Unknown boot strategy: \(strategy!)"]
+                userInfo: [NSLocalizedDescriptionKey: "Unknown boot strategy: \(strategy ?? "none")"]
             )
         }
         switch (soc, strategy) {

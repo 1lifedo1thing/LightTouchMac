@@ -71,7 +71,8 @@ public enum MergeNative {
         for line in try output(["otool", "-l", copy.path]).split(separator: "\n") {
             let line = line.trimmingCharacters(in: .whitespaces)
             guard line.hasPrefix("name ") || line.hasPrefix("path ") else { continue }
-            let old = String(line.dropFirst(5)).components(separatedBy: " (offset").first!
+            let rest = String(line.dropFirst(5))
+            let old = rest.components(separatedBy: " (offset").first ?? rest
             let new = relocated(old, pairs)
             if new != old { edits += line.hasPrefix("path ") ? ["-rpath", old, new] : ["-change", old, new] }
         }
@@ -121,15 +122,20 @@ public enum MergeNative {
             )
         }
         for name in names.sorted() {
-            let inputs = trees.map { ($0.pairs, $0.tree[name]!) }
+            let inputs = try trees.map {
+                guard let file = $0.tree[name] else { throw ToolError("\(part.part)/\(name): missing from a slice") }
+                return ($0.pairs, file)
+            }
             let target = name.isEmpty ? targetRoot : targetRoot.appendingPathComponent(name)
             try files.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
             let first = inputs[0].1
             let mode = (try files.attributesOfItem(atPath: first.path)[.posixPermissions] as? Int) ?? 0o644
             if (try? files.destinationOfSymbolicLink(atPath: first.path)) != nil {
                 let links = Set(inputs.map { (try? files.destinationOfSymbolicLink(atPath: $0.1.path)) ?? "" })
-                guard links.count == 1 else { throw ToolError("\(part.part)/\(name): symlink targets differ") }
-                try files.createSymbolicLink(atPath: target.path, withDestinationPath: links.first!)
+                guard links.count == 1, let link = links.first else {
+                    throw ToolError("\(part.part)/\(name): symlink targets differ")
+                }
+                try files.createSymbolicLink(atPath: target.path, withDestinationPath: link)
             } else if isMachO(first) {
                 let thin = try inputs.map { try relink($0.1, $0.0, scratch: scratch) }
                 try run(["/usr/bin/lipo", "-create"] + thin.map(\.path) + ["-output", target.path])
@@ -142,10 +148,10 @@ public enum MergeNative {
                 }
             } else {
                 let contents = Set(try inputs.map { relocated(try Data(contentsOf: $0.1), $0.0) })
-                guard contents.count == 1 else {
+                guard contents.count == 1, let content = contents.first else {
                     throw ToolError("\(part.part)/\(name): differs between architectures and is not a Mach-O")
                 }
-                try contents.first!.write(to: target)
+                try content.write(to: target)
                 try files.setAttributes([.posixPermissions: mode], ofItemAtPath: target.path)
             }
         }
@@ -168,7 +174,7 @@ public enum MergeNative {
         let scratch = files.temporaryDirectory.appendingPathComponent("merge-native-\(UUID().uuidString)")
         try files.createDirectory(at: scratch, withIntermediateDirectories: true)
         defer { remove(scratch) }
-        let ordered = slices.keys.sorted().map { slices[$0]! }
+        let ordered = slices.sorted { $0.key < $1.key }.map(\.value)
         do {
             for part in parts { try merge(output: out, part: part, slices: ordered, scratch: scratch) }
         } catch {

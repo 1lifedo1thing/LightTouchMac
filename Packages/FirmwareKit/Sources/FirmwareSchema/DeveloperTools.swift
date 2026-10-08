@@ -150,11 +150,14 @@ nonisolated public enum DeveloperTools {
         ]
         let jobData = try PropertyListSerialization.data(fromPropertyList: job, format: .xml, options: 0)
         // Prepare everything before changing the offer; loader verifies each hash.
+        guard let bash = binaries.first(where: { $0.0 == "bin/bash" })?.1 else {
+            throw fail("developer payload has no bin/bash")
+        }
         var extra: [(String, Data, String, String?)] = binaries.map {
             ("developer/" + $0.0.replacingOccurrences(of: "/", with: "_"), $0.1, "0755", "/" + $0.0)
         }
         extra += [
-            ("developer/sh", binaries.first(where: { $0.0 == "bin/bash" })!.1, "0755", "/bin/sh"),
+            ("developer/sh", bash, "0755", "/bin/sh"),
             ("developer/ssh_host_ecdsa_key", privateKey, "0600", nil),
             (
                 "developer/authorized_keys", Data((loginKey + "\n").utf8), "0600",

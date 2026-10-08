@@ -118,7 +118,9 @@ extension DeviceServices {
                     !chunk.isEmpty
                 else { throw DeviceError.preflight("The file changed during upload.") }
                 try chunk.withUnsafeBytes { raw in
-                    let base = raw.bindMemory(to: CChar.self).baseAddress!
+                    guard let base = raw.bindMemory(to: CChar.self).baseAddress else {
+                        throw DeviceError.preflight("The file changed during upload.")
+                    }
                     var offset = 0
                     while offset < raw.count {
                         try Task.checkCancellation()

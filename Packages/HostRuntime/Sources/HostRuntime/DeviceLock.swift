@@ -57,7 +57,10 @@ public enum JSONValue: Codable, Sendable, Equatable {
         case let v as [Any]: self = .array(try v.map(JSONValue.init))
         case let v as [String: Any]: self = .object(try v.mapValues(JSONValue.init))
         default:
-            throw CocoaError(.coderInvalidValue, userInfo: [NSLocalizedDescriptionKey: "not JSON: \(type(of: any!))"])
+            throw CocoaError(
+                .coderInvalidValue,
+                userInfo: [NSLocalizedDescriptionKey: "not JSON: \(any.map { "\(type(of: $0))" } ?? "nil")"]
+            )
         }
     }
 

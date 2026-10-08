@@ -58,12 +58,12 @@ public enum Recipe {
         let emit: (PrepareEvent) -> Void
         let work: URL, nand: URL
         var ipsw: IPSWArchive { IPSWArchive(o.ipsw) }
-        var sha1 = "", restore: RestoreInfo!, dec: URL!, seed = "", ident: UnitIdentity!
+        /// Filled by the verify, decrypt and identity steps.
+        var sha1 = "", restore: RestoreInfo?, dec: URL?, seed = "", ident: UnitIdentity?
         /// Filled by `volumes`.
         var activation: Activation.Result?, guestPackage: GuestPackage.Record?, engine: String?
         /// Filled by the store and lock steps.
         var built = "", nandHashes: [String: String] = [:], listing = ""
-        var progress: StepProgress!
         /// Every fit check the steps ran (the lock's "fit"); an optional piece that does not fit is a warning event.
         lazy var fit = FitCheck.Log { [unowned self] in self.warn($0) }
 
@@ -76,7 +76,9 @@ public enum Recipe {
             nand = o.out.appendingPathComponent("nand")
         }
         func file(_ n: String) -> URL { o.out.appendingPathComponent(n) }
-        func decFile(_ n: String) -> URL { dec.appendingPathComponent(n) }
+        /// `dec`, once the decrypt step has filled it.
+        func decrypted() throws -> URL { try dec.filled("the decrypted firmware") }
+        func decFile(_ n: String) throws -> URL { try decrypted().appendingPathComponent(n) }
         /// stderr; a "warning: " line is also a warning event.
         /// Every warning event this prepare emitted.
         var warnings: [String] = []
@@ -115,7 +117,6 @@ public enum Recipe {
         let major = Int(e.version.split(separator: ".").first ?? "") ?? 0
         emit(.begin(steps: steps.count, seconds: steps.map { StepPlan.plan($0, major: major).seconds }))
         let progress = StepProgress(work: c.work, major: major, emit: emit)
-        c.progress = progress
         defer { progress.stop() }
         var index = 0
         func step() {
@@ -131,8 +132,9 @@ public enum Recipe {
         guard c.sha1 == sha1.lowercased() else {
             throw FirmwareError(.shaMismatch, "\(o.ipsw.lastPathComponent): sha1 \(c.sha1), \(e.id) pins \(sha1)")
         }
-        c.restore = try RestoreInfo(c.ipsw)
-        try c.restore.verify(against: e)
+        let restore = try RestoreInfo(c.ipsw)
+        c.restore = restore
+        try restore.verify(against: e)
         try board.inspect(c)
 
         step()  // decrypt, once per IPSW
@@ -140,7 +142,7 @@ public enum Recipe {
         let cacheRoot = o.cache ?? c.work.appendingPathComponent("cache")
         let cacheLease = try FirmwareCache.consume(root: cacheRoot)
         defer { withExtendedLifetime(cacheLease) {} }
-        c.dec = try DecryptionCache.resolve(
+        let dec = try DecryptionCache.resolve(
             root: cacheRoot,
             identity: .init(ipsw: sha1, entry: e),
             produce: { tmp in
@@ -150,11 +152,13 @@ public enum Recipe {
                 c.log("reusing verified decrypt-cache manifest for \(e.id)")
             }
         )
+        c.dec = dec
 
         step()  // identity.json + the board's boot files
         c.seed = o.seed ?? "\(board.seedPrefix)-\(e.build)-default"
-        c.ident = try board.identity(seed: c.seed)
-        try c.ident.write(to: c.file("identity.json"))
+        let ident = try board.identity(seed: c.seed)
+        c.ident = ident
+        try ident.write(to: c.file("identity.json"))
         try board.bootFiles(c)
 
         step()  // volumes (+ the shared bake, activation, guest package)
@@ -203,7 +207,7 @@ public enum Recipe {
                 "id": e.id, "sha256": Preparer.sha256(try entryJSON.encode(e)),
                 "content": try JSONSerialization.jsonObject(with: entryJSON.encode(e)),
             ],
-            "build": e.build, "product_version": c.restore.productVersion, "product_type": e.productType,
+            "build": e.build, "product_version": restore.productVersion, "product_type": e.productType,
             "board": e.board,
             "storage": recipe.storage,
             "tool": [
@@ -217,12 +221,12 @@ public enum Recipe {
                 ],
             ],
             "inputs": [
-                "ipsw": ["path": o.ipsw.path, "sha1": c.sha1], "decrypted": c.dec.path, "identity": "identity.json",
+                "ipsw": ["path": o.ipsw.path, "sha1": c.sha1], "decrypted": dec.path, "identity": "identity.json",
                 "activation": opt(c.activation.map { $0.record }),
                 "rootfs": "rootfs.dmg", "guest_tools": o.guestTools.path, "lockdown": NSNull(),
             ],
             "identity": [
-                "seed": c.seed, "udid": c.ident.udid ?? "",
+                "seed": c.seed, "udid": ident.udid ?? "",
                 "sha256": try Preparer.digest(c.file("identity.json"), SHA256()),
             ],
             "outputs": ["nand": ["path": "nand", "listing_sha256": c.listing, "built_listing_sha256": c.built]],
@@ -232,7 +236,7 @@ public enum Recipe {
         let lock = merged(shared, try board.lock(c))
         try fm.removeItem(at: c.work)
         try DeviceLock(json: lock).data().write(to: c.file(DeviceLock.fileName))
-        c.log("\(o.out.path): UDID \(c.ident.udid ?? "-")")
+        c.log("\(o.out.path): UDID \(ident.udid ?? "-")")
         progress.finish()
         emit(.done(lock: "device.lock.json"))
     }
@@ -282,7 +286,7 @@ public enum Recipe {
                 ?? comp["UpdateRamDisk"] ?? comp["RestoreRamDisk"]
         else { throw FirmwareError(.unsupported, "\(c.e.id): no ramdisk") }
         let name = String(update.dropLast(4)) + "-ramdisk.dmg"
-        guard let from = c.recipe.keybagRamdiskFrom else { return (c.decFile(name), name) }
+        guard let from = c.recipe.keybagRamdiskFrom else { return (try c.decFile(name), name) }
         guard let sib = c.o.sibling, sib.entry.id == from else {
             throw FirmwareError(
                 .unsupported,
@@ -297,5 +301,13 @@ public enum Recipe {
     /// The path a lock's sha256 record names: {"path": n, "sha256": ...}.
     static func fileRecord(_ c: Context, _ n: String) throws -> [String: String] {
         ["path": n, "sha256": try Preparer.digest(c.file(n), SHA256())]
+    }
+}
+
+extension Optional {
+    /// A value an earlier recipe step fills in (`what` names it); nil means a board ran its steps out of order.
+    func filled(_ what: String) throws -> Wrapped {
+        guard let self else { throw FirmwareError(.internal, "\(what) is not set: a recipe step ran out of order") }
+        return self
     }
 }

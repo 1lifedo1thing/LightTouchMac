@@ -14,7 +14,13 @@ final class ConsoleSplitView: NSView {
     private(set) var layout: ConsoleSplitLayout
     private let autosaveName: String
     private let defaults: UserDefaults
-    private var consoleHeight: NSLayoutConstraint!
+    // The chosen height gives way to the device's minimum when the window is
+    // short, and comes back when it grows (IDEEditorArea _resizeSubviewsForHeight…).
+    private lazy var consoleHeight: NSLayoutConstraint = {
+        let constraint = log.heightAnchor.constraint(equalToConstant: 0)
+        constraint.priority = .defaultHigh
+        return constraint
+    }()
     private var dragStart: (layout: ConsoleSplitLayout, height: CGFloat, y: CGFloat)?
 
     init(top: NSView, autosaveName: String, defaults: UserDefaults = .standard) {
@@ -27,10 +33,6 @@ final class ConsoleSplitView: NSView {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
-        // The chosen height gives way to the device's minimum when the window is
-        // short, and comes back when it grows (IDEEditorArea _resizeSubviewsForHeight…).
-        consoleHeight = log.heightAnchor.constraint(equalToConstant: 0)
-        consoleHeight.priority = .defaultHigh
         let topMinimum = top.heightAnchor.constraint(greaterThanOrEqualToConstant: ConsoleSplitLayout.topMinimum)
         topMinimum.priority = .init(999)
         NSLayoutConstraint.activate([
@@ -290,7 +292,10 @@ final class ConsoleBar: NSView {
 final class ConsoleSplitViewController: NSViewController {
     private let top: NSViewController
     private let autosaveName: String
-    var split: ConsoleSplitView { view as! ConsoleSplitView }
+    var split: ConsoleSplitView {
+        guard let split = view as? ConsoleSplitView else { preconditionFailure("loadView installs a ConsoleSplitView") }
+        return split
+    }
 
     init(top: NSViewController, autosaveName: String) {
         self.top = top

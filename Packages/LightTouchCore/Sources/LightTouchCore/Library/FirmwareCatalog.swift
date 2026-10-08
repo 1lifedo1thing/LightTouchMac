@@ -43,7 +43,7 @@ public nonisolated struct FirmwareCatalog: Codable, Sendable {
         public init(from decoder: Decoder) throws {
             wire = try FirmwareWire.Entry(from: decoder)
             guard Status(rawValue: wire.status) != nil, ["ipsw", "rar"].contains(wire.source.kind),
-                wire.prerelease == nil || Prerelease(rawValue: wire.prerelease!) != nil
+                wire.prerelease == nil || wire.prerelease.flatMap(Prerelease.init(rawValue:)) != nil
             else {
                 throw DecodingError.dataCorrupted(
                     .init(
@@ -56,7 +56,12 @@ public nonisolated struct FirmwareCatalog: Codable, Sendable {
         public func encode(to encoder: Encoder) throws { try wire.encode(to: encoder) }
 
         public var status: Status {
-            get { Status(rawValue: wire.status)! }
+            get {
+                guard let status = Status(rawValue: wire.status) else {
+                    preconditionFailure("init(from:) accepts only known statuses")
+                }
+                return status
+            }
             set { wire.status = newValue.rawValue }
         }
         public var prerelease: Prerelease? {
@@ -148,7 +153,7 @@ public nonisolated struct FirmwareCatalog: Codable, Sendable {
     public func sortedByVersion() -> FirmwareCatalog {
         var boards: [String] = []
         for entry in entries where !boards.contains(entry.board) { boards.append(entry.board) }
-        func board(_ e: Entry) -> Int { boards.firstIndex(of: e.board)! }
+        func board(_ e: Entry) -> Int { boards.firstIndex(of: e.board) ?? boards.count }
         func version(_ e: Entry) -> [Int] { e.version.split(separator: ".").map { Int($0) ?? 0 } }
         func within(_ e: Entry) -> (Int, String, Int, Int) {
             (e.prerelease == nil ? 1 : 0, e.released ?? "", e.prerelease == .gm ? 1 : 0, e.prereleaseNumber ?? 1)

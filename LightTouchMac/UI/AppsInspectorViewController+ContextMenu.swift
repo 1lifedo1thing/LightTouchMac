@@ -51,7 +51,7 @@ extension AppsInspectorViewController: NSMenuDelegate {
             case .uninstall(let apps): (#selector(uninstallClicked(_:)), apps.count == 1 ? apps[0] : apps)
             case .showInLegacyStore(let app): (#selector(showInLegacyStoreClicked(_:)), app)
             case .installOn(let file, let device):
-                (#selector(installOnClicked(_:)), (file: file, emulator: device as! EmulatorController))
+                (#selector(installOnClicked(_:)), (file: file, device: device))
             case .none, .separator: (nil, nil)
             }
         let result = NSMenuItem(title: item.title, action: action, keyEquivalent: item.keyEquivalent)
@@ -64,8 +64,9 @@ extension AppsInspectorViewController: NSMenuDelegate {
         result.representedObject = object
         result.isEnabled = item.isEnabled
         if let submenu = item.submenu {
-            result.submenu = NSMenu()
-            for entry in submenu { result.submenu!.addItem(menuItem(entry)) }
+            let menu = NSMenu()
+            for entry in submenu { menu.addItem(menuItem(entry)) }
+            result.submenu = menu
         }
         return result
     }

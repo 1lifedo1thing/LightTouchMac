@@ -290,8 +290,8 @@ extension FitCheck {
         }
         if let job = ["com.apple.mobile.installd.plist", "com.apple.installd.plist"].map({
             SystemEdits.daemons + "/" + $0
-        }).first(where: { fw.resolve($0) != nil }) {
-            guard let host = program(NSDictionary(contentsOf: fw.resolve(job)!)) else {
+        }).first(where: { fw.resolve($0) != nil }), let plist = fw.resolve(job) {
+            guard let host = program(NSDictionary(contentsOf: plist)) else {
                 try log.check(Fit(SystemEdits.Helpers.appsync, fits: false, "\(job) names no program"), required: true)
                 return
             }

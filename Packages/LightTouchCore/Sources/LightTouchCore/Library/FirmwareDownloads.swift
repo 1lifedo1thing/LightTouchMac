@@ -34,7 +34,8 @@ public nonisolated final class FirmwareDownloads: NSObject, URLSessionDownloadDe
     private let onEvent: @Sendable (String, Event) -> Void
     private let lock = NSLock()
     private var cancelling: Set<String> = []
-    private var session: URLSession!
+    /// Made in init, once self can be its delegate.
+    private var session: URLSession?
 
     /// `expectedBytes` gives the catalog's size for a sha1, also for a task
     /// a previous launch started; `sources` its URLs in the order to try them. `install` turns a finished
@@ -62,7 +63,7 @@ public nonisolated final class FirmwareDownloads: NSObject, URLSessionDownloadDe
 
     /// The sha1s of downloads in flight, including ones a previous launch started.
     public func active(_ completion: @escaping @Sendable ([String]) -> Void) {
-        session.getAllTasks { tasks in
+        session?.getAllTasks { tasks in
             completion(tasks.filter { $0.state == .running || $0.state == .suspended }.compactMap(\.taskDescription))
         }
     }
@@ -70,6 +71,7 @@ public nonisolated final class FirmwareDownloads: NSObject, URLSessionDownloadDe
     /// Starts or resumes the download of `url`, which must hash to `sha1`.
     public func start(sha1: String, url: URL) throws {
         try StorageLocations.privateDirectory(store.downloads)
+        guard let session else { throw FirmwareError.failed("The download couldn’t start.") }
         lock.withLock { _ = cancelling.remove(sha1) }
         let saved = store.resumeData(sha1)
         let task: URLSessionDownloadTask
@@ -86,7 +88,7 @@ public nonisolated final class FirmwareDownloads: NSObject, URLSessionDownloadDe
     /// Stops the download and deletes its resume data; `.cancelled` follows.
     public func cancel(sha1: String) {
         lock.withLock { _ = cancelling.insert(sha1) }
-        session.getAllTasks { [self] tasks in
+        session?.getAllTasks { [self] tasks in
             for task in tasks where task.taskDescription == sha1 { task.cancel() }
             try? FileManager.default.removeItem(at: store.resumeData(sha1))
             onEvent(sha1, .cancelled)
@@ -96,7 +98,8 @@ public nonisolated final class FirmwareDownloads: NSObject, URLSessionDownloadDe
     /// The source after the one `task` fetched from, started as `sha1`'s download; false when there is none.
     private func next(after task: URLSessionTask, sha1: String) -> Bool {
         let urls = sources(sha1)
-        guard let failed = task.originalRequest?.url, let index = urls.firstIndex(of: failed), index + 1 < urls.count,
+        guard let session, let failed = task.originalRequest?.url, let index = urls.firstIndex(of: failed),
+            index + 1 < urls.count,
             !lock.withLock({ cancelling.contains(sha1) })
         else { return false }
         let url = urls[index + 1]
@@ -112,7 +115,7 @@ public nonisolated final class FirmwareDownloads: NSObject, URLSessionDownloadDe
     }
 
     /// Tests: stop the session without touching the tasks' saved state.
-    public func invalidate() { session.invalidateAndCancel() }
+    public func invalidate() { session?.invalidateAndCancel() }
 
     private func saveResumeData(_ data: Data, sha1: String) {
         try? StorageLocations.privateDirectory(store.downloads)

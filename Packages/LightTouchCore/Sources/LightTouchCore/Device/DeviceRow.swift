@@ -319,7 +319,7 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
             return nil
         }
         return "Released "
-            + date.formatted(Date.FormatStyle(date: .long, time: .omitted, timeZone: TimeZone(identifier: "UTC")!))
+            + date.formatted(Date.FormatStyle(date: .long, time: .omitted, timeZone: .gmt))
     }
 
     /// Before a download or preparation, when `available` bytes can't hold it: the copy's words; nil when there is room.

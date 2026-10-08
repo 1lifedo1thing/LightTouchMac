@@ -18,7 +18,7 @@ public enum N72NAND {
     static let blankSpare: [UInt8] = [0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0, 0xFF, 0] + [UInt8](repeating: 0, count: 52)
     static let vflSpare: [UInt8] = [1] + [UInt8](repeating: 0, count: 8) + [0x80] + [UInt8](repeating: 0, count: 54)
     static let metaSpare: [UInt8] = [UInt8](repeating: 0, count: 9) + [0x43] + [UInt8](repeating: 0, count: 54)
-    static let hfsType = [UInt8](Data(hex: "005346480000aa11aa1100306543ecac")!)
+    static let hfsType = [UInt8](Data(hexLiteral: "005346480000aa11aa1100306543ecac"))
     static let ftlLog = Array("Writing FTL Meta to physical page 255 @ cs 3\nto physical page 130 @ cs 2\n".utf8)
 
     public struct Page: Hashable, Sendable { public let cs: Int, page: Int }
@@ -191,7 +191,12 @@ public enum N72NAND {
     // MARK: - Recipe 1 -> 2 in place
 
     /// The recipe whose GPT ends at the HFS extent (0b43f26), as FirmwareWire.admissionRecipeSteps declares it.
-    public static let exactGPTRecipe = FirmwareWire.admissionRecipeSteps["n72ap"]![1]!
+    public static let exactGPTRecipe: Int = {
+        guard let step = FirmwareWire.admissionRecipeSteps["n72ap"]?[1] else {
+            preconditionFailure("FirmwareWire.admissionRecipeSteps has no n72ap 1 -> 2 step")
+        }
+        return step
+    }()
     static let legacyGPTSlack = 11
 
     /// A stopped device whose base still has recipe 1's overlong GPT gets recipe 2's two GPT pages (header, entry;

@@ -153,7 +153,12 @@ public nonisolated enum CatalogError: LocalizedError {
 @MainActor
 public enum CatalogClient {
     /// Tests may inject a local service; production always uses Legacy Store.
-    public static var baseURL = URL(string: "https://legacystore.app")!
+    public static var baseURL: URL = {
+        guard let url = URL(string: "https://legacystore.app") else {
+            preconditionFailure("Legacy Store's address is a constant, valid URL")
+        }
+        return url
+    }()
     /// Where downloads are staged; nil is Bundled.workDirectory. Tests point it at a temporary directory.
     public static var scratchDirectory: URL?
     /// Where the client's diagnostics go (HTTP statuses, undecodable responses): app.log, or a test's own record.
@@ -180,6 +185,17 @@ public enum CatalogClient {
         return [URLQueryItem(name: "device", value: device), URLQueryItem(name: "os", value: os)]
     }
 
+    /// The emulator apps endpoint with `queryItems`.
+    private static func appsURL(_ queryItems: [URLQueryItem]) throws -> URL {
+        var components = URLComponents(
+            url: baseURL.appendingPathComponent("api/emulator/apps"),
+            resolvingAgainstBaseURL: false
+        )
+        components?.queryItems = queryItems
+        guard let url = components?.url else { throw URLError(.badURL) }
+        return url
+    }
+
     /// Apps matching `query` for this device, best copy each, server-ranked.
     /// An empty query is the storefront's default view: the server's
     /// suggested (most-archived compatible) list, compatible apps only. A
@@ -187,38 +203,31 @@ public enum CatalogClient {
     /// the reason, so searching for one says why instead of nothing.
     public static func search(_ query: String, device: String? = nil, os: String = "3.1.3") async throws -> [CatalogApp]
     {
-        var components = URLComponents(
-            url: baseURL.appendingPathComponent("api/emulator/apps"),
-            resolvingAgainstBaseURL: false
-        )!
-        components.queryItems =
+        let url = try appsURL(
             [URLQueryItem(name: "limit", value: "50")]
-            + (query.isEmpty
-                ? []
-                : [
-                    URLQueryItem(name: "q", value: query),
-                    URLQueryItem(name: "incompatible", value: "include"),
-                ])
-            + target(device: device, os: os)
-        let (data, response) = try await URLSession.shared.data(for: request(components.url!))
+                + (query.isEmpty
+                    ? []
+                    : [
+                        URLQueryItem(name: "q", value: query),
+                        URLQueryItem(name: "incompatible", value: "include"),
+                    ])
+                + target(device: device, os: os)
+        )
+        let (data, response) = try await URLSession.shared.data(for: request(url))
         if let code = (response as? HTTPURLResponse)?.statusCode, code != 200 {
-            log("Legacy Store: HTTP \(code) for \(components.url!.path)?\(components.url!.query ?? "")")
+            log("Legacy Store: HTTP \(code) for \(url.path)?\(url.query ?? "")")
             throw CatalogError.status(code, body: data)
         }
         struct Envelope: Decodable { let apps: [CatalogApp] }
-        return try decode(Envelope.self, data, from: components.url!).apps
+        return try decode(Envelope.self, data, from: url).apps
     }
 
     /// The copy, if it runs on this device (a 2.1 server 404s it otherwise).
     public static func compatibleCopy(_ id: Int, device: String? = nil, os: String = "3.1.3") async throws -> CatalogApp
     {
-        var url = URLComponents(
-            url: baseURL.appendingPathComponent("api/emulator/apps"),
-            resolvingAgainstBaseURL: false
-        )!
-        url.queryItems = [URLQueryItem(name: "ipa_id", value: String(id))] + target(device: device, os: os)
+        let url = try appsURL([URLQueryItem(name: "ipa_id", value: String(id))] + target(device: device, os: os))
         struct Envelope: Decodable { let apps: [CatalogApp] }
-        let result: Envelope = try await get(url.url!)
+        let result: Envelope = try await get(url)
         guard result.apps.count == 1, let app = result.apps.first, app.ipaID == id,
             app.compat?.compatible != false
         else {

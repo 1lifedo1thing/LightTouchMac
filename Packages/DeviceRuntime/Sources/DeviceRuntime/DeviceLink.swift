@@ -52,8 +52,12 @@ nonisolated public enum DeviceTermination: Sendable, Equatable {
 nonisolated public final class DeviceLink: @unchecked Sendable {
     public struct Configuration: Sendable {
         /// Contents/MacOS/LightTouchDevice beside the running executable.
-        public static let bundledHelper = Bundle.main.executableURL!.deletingLastPathComponent()
-            .appendingPathComponent("LightTouchDevice")
+        public static let bundledHelper: URL = {
+            guard let executable = Bundle.main.executableURL else {
+                preconditionFailure("A running process has an executable")
+            }
+            return executable.deletingLastPathComponent().appendingPathComponent("LightTouchDevice")
+        }()
         public var helper: URL = bundledHelper
         public var instance: UUID
         /// The helper's stdout + stderr, e.g. ProcessLogCapture.writeDescriptor
@@ -379,5 +383,8 @@ nonisolated private func withCStrings<R>(
     var pointers = strings.map { strdup($0) }
     pointers.append(nil)
     defer { for p in pointers { free(p) } }
-    return pointers.withUnsafeBufferPointer { body($0.baseAddress!) }
+    return pointers.withUnsafeBufferPointer {
+        guard let base = $0.baseAddress else { preconditionFailure("The array holds at least its nil terminator") }
+        return body(base)
+    }
 }

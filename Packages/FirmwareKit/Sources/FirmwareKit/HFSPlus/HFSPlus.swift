@@ -139,7 +139,7 @@ public final class HFSPlusVolume {
     func read(_ fork: Fork, fileID: UInt32, resource: Bool = false, offset: Int, count: Int) throws -> [UInt8] {
         var out = [UInt8](repeating: 0, count: count)
         try io(fork, fileID: fileID, resource: resource, offset: offset, count: count) { disk, at, n in
-            let got = out.withUnsafeMutableBytes { pread(fd, $0.baseAddress! + at, n, off_t(disk)) }
+            let got = out.withUnsafeMutableBytes { p in p.baseAddress.map { pread(fd, $0 + at, n, off_t(disk)) } ?? 0 }
             // past the end of a sparse or short image reads as zeros, as build_nand.FlatVolume does
             if got < 0 { throw FirmwareError(.internal, "pread \(url.path): \(String(cString: strerror(errno)))") }
         }
@@ -149,7 +149,7 @@ public final class HFSPlusVolume {
     func write(_ fork: Fork, fileID: UInt32, offset: Int, bytes: [UInt8]) throws {
         guard writable else { throw FirmwareError(.internal, "\(url.lastPathComponent) is open read-only") }
         try io(fork, fileID: fileID, offset: offset, count: bytes.count) { disk, at, n in
-            let put = bytes.withUnsafeBytes { pwrite(fd, $0.baseAddress! + at, n, off_t(disk)) }
+            let put = bytes.withUnsafeBytes { p in p.baseAddress.map { pwrite(fd, $0 + at, n, off_t(disk)) } ?? 0 }
             if put != n { throw FirmwareError(.internal, "pwrite \(url.path): \(String(cString: strerror(errno)))") }
         }
     }

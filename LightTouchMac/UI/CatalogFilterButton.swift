@@ -19,14 +19,16 @@ final class CatalogFilterButton: NSPopUpButton {
         setAccessibilityLabel("Filter")
         toolTip = "Filter"
         (cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
-        menu!.addItem(withTitle: "", action: nil, keyEquivalent: "")  // a pull-down's first item is its face
+        let menu = NSMenu()
+        menu.addItem(withTitle: "", action: nil, keyEquivalent: "")  // a pull-down's first item is its face
         for (title, tag) in [("iPhone and iPad Apps", 0), ("iPad Apps Only", 1)] {
-            menu!.addItem(withTitle: title, action: #selector(familyChosen(_:)), keyEquivalent: "").tag = tag
+            menu.addItem(withTitle: title, action: #selector(familyChosen(_:)), keyEquivalent: "").tag = tag
         }
-        menu!.addItem(.separator())
-        menu!.addItem(withTitle: "Show Unavailable Apps", action: #selector(unavailableToggled(_:)), keyEquivalent: "")
-        for item in menu!.items { item.target = self }
-        menu!.autoenablesItems = false
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Show Unavailable Apps", action: #selector(unavailableToggled(_:)), keyEquivalent: "")
+        for item in menu.items { item.target = self }
+        menu.autoenablesItems = false
+        self.menu = menu
         update()
     }
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -34,7 +36,7 @@ final class CatalogFilterButton: NSPopUpButton {
     func apply(_ apps: [CatalogApp]) -> [CatalogApp] { filter.apply(apps, iPad: isIPad) }
 
     private func update() {
-        let items = menu!.items
+        let items = itemArray
         let symbol =
             filter.isActive(iPad: isIPad)
             ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"

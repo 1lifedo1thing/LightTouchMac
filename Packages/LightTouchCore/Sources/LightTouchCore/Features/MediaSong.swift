@@ -107,7 +107,8 @@ public struct MediaSong: Sendable {
             }
             properties["filename"] = audio.lastPathComponent
             properties["duration_ms"] = duration * 1000
-            if properties["title"] == nil { properties["title"] = source.deletingPathExtension().lastPathComponent }
+            let title = properties["title"] as? String ?? source.deletingPathExtension().lastPathComponent
+            properties["title"] = title
             var artwork: URL?
             if let cover, cover.count <= 16 << 20, let image = CGImageSourceCreateWithData(cover as CFData, nil),
                 CGImageSourceGetCount(image) > 0,
@@ -133,7 +134,7 @@ public struct MediaSong: Sendable {
                 directory: directory,
                 audio: audio,
                 metadata: metadata,
-                title: properties["title"] as! String,
+                title: title,
                 artwork: artwork
             )
             complete = true

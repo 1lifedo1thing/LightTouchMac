@@ -229,12 +229,15 @@ nonisolated enum DER {
     static let null = Data([0x05, 0x00])
     static func integer(_ bytes: Data) -> Data {
         var value = bytes.drop { $0 == 0 }
-        if value.isEmpty || value.first! & 0x80 != 0 { value.insert(0, at: value.startIndex) }
+        if value.first.map({ $0 & 0x80 != 0 }) ?? true { value.insert(0, at: value.startIndex) }
         return tlv(0x02, Data(value))
     }
     static func bitString(_ bytes: Data) -> Data { tlv(0x03, Data([0]) + bytes) }
     static func oid(_ dotted: String) -> Data {
-        let arcs = dotted.split(separator: ".").map { UInt($0)! }
+        let arcs = dotted.split(separator: ".").map { arc in
+            guard let value = UInt(arc) else { preconditionFailure("OIDs here are constants: \(dotted)") }
+            return value
+        }
         var out = Data([UInt8(arcs[0] * 40 + arcs[1])])
         for var arc in arcs.dropFirst(2) {
             var chunk = [UInt8(arc & 0x7f)]
@@ -261,7 +264,7 @@ nonisolated enum DER {
         formatter.timeZone = TimeZone(identifier: "UTC")
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.dateFormat = "yyyy"
-        let generalized = Int(formatter.string(from: date))! >= 2050
+        let generalized = Int(formatter.string(from: date)) ?? 0 >= 2050
         formatter.dateFormat = generalized ? "yyyyMMddHHmmss'Z'" : "yyMMddHHmmss'Z'"
         return tlv(generalized ? 0x18 : 0x17, Data(formatter.string(from: date).utf8))
     }

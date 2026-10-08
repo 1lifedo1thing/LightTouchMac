@@ -134,6 +134,12 @@ public struct PreparedDeviceBoot {
         return (try? String(contentsOf: stamp, encoding: .utf8)) == identity
     }
 
+    /// The writable NOR's path; prepare requires one for every board but the iPads.
+    private func writableNORPath() throws -> String {
+        guard let writableNOR else { throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: "writable NOR"]) }
+        return writableNOR.path
+    }
+
     /// `hardware`: the emulator's facts about the board (its hello's DeviceInfo; else Machines'): the -M machine,
     /// the modem, the USB host.
     public func configuration(
@@ -164,7 +170,7 @@ public struct PreparedDeviceBoot {
                     bootrom: bootrom,
                     iBoot: boot.path,
                     nand: nand.path,
-                    writableNOR: writableNOR!.path,
+                    writableNOR: try writableNORPath(),
                     overlay: overlay.path,
                     usbAddress: usbAddress,
                     wifi: wifi,
@@ -184,7 +190,7 @@ public struct PreparedDeviceBoot {
                     bootrom: bootrom,
                     nand: nand.path,
                     nor: baseNOR.path,
-                    writableNOR: writableNOR!.path,
+                    writableNOR: try writableNORPath(),
                     overlay: overlay.path,
                     usbAddress: usbAddress,
                     wifi: wifi,

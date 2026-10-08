@@ -117,10 +117,13 @@ public actor ScreenMovieWriter {
         guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess,
             let buffer
         else { throw CaptureError.failed("Couldn’t record the screen.") }
+        guard let sRGB = CGColorSpace(name: CGColorSpace.sRGB) else {
+            throw CaptureError.failed("Couldn’t record the screen.")
+        }
         CVBufferSetAttachment(
             buffer,
             kCVImageBufferCGColorSpaceKey,
-            CGColorSpace(name: CGColorSpace.sRGB)!,
+            sRGB,
             .shouldPropagate
         )
         CVBufferSetAttachment(
@@ -150,7 +153,7 @@ public actor ScreenMovieWriter {
                 height: Int(outputSize.height),
                 bitsPerComponent: 8,
                 bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
-                space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                space: sRGB,
                 bitmapInfo: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.noneSkipFirst.rawValue
             )
         else {
@@ -298,8 +301,9 @@ public actor ScreenMovieWriter {
             let block
         else { throw CaptureError.failed("Couldn’t allocate an audio packet.") }
         let copied = data.withUnsafeBytes {
-            CMBlockBufferReplaceDataBytes(
-                with: $0.baseAddress!,
+            guard let bytes = $0.baseAddress else { return kCMBlockBufferBadPointerParameterErr }
+            return CMBlockBufferReplaceDataBytes(
+                with: bytes,
                 blockBuffer: block,
                 offsetIntoDestination: 0,
                 dataLength: frames * 4

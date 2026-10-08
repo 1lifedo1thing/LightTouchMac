@@ -414,7 +414,8 @@ public enum KBoot {
         let page = { (n: Int) in (n + 0xFFF) & ~0xFFF }
         let m = try MachO(kernel)
         let segs = m.segments.filter { $0.name != "__PAGEZERO" }
-        guard let lowest = segs.map(\.vmaddr).min() else {
+        guard let lowest = segs.map(\.vmaddr).min(), let end = segs.map({ Int($0.vmaddr) + Int($0.vmsize) }).max()
+        else {
             throw FirmwareError(.unsupported, "kernelcache has no segments")
         }
         let vbase = Int(lowest & 0xF000_0000)
@@ -425,7 +426,7 @@ public enum KBoot {
         // Host nubs (EHCI, OHCI0) up at arbitrator start, next to device mode (qemu-ios docs/ipad1/usb-keyboard.md).
         if dt.contains("arm-io/usb-complex") { try dt.add("arm-io/usb-complex", "hsic-enabled") }
         let dtLen = dt.data.count
-        var top = page(segs.map { Int($0.vmaddr) + Int($0.vmsize) }.max()!)
+        var top = page(end)
         let rdVA = top
         var args = bootArgs
         if let rd = ramdisk {

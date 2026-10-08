@@ -20,7 +20,8 @@ extension AppsInspectorViewController {
         panel.allowsMultipleSelection = true
         panel.message = "Choose decrypted .ipa files to install."
         panel.prompt = "Install"
-        panel.beginSheetModal(for: view.window!) { [weak self] response in
+        guard let window = view.window else { return }
+        panel.beginSheetModal(for: window) { [weak self] response in
             guard let self, response == .OK else { return }
             for url in panel.urls {
                 AppInstaller.start(url, with: self.emulator, presenting: self.view.window)
@@ -42,7 +43,8 @@ extension AppsInspectorViewController {
         alert.addButton(withTitle: "Uninstall")
         alert.addButton(withTitle: "Cancel")
         alert.buttons.first?.hasDestructiveAction = true
-        alert.beginSheetModal(for: view.window!) { [weak self] response in
+        guard let window = view.window else { return }
+        alert.beginSheetModal(for: window) { [weak self] response in
             guard let self, response == .alertFirstButtonReturn else { return }
             // An install can finish while this confirmation is open, leaving
             // reachability temporarily unknown until the next probe. The
@@ -96,8 +98,10 @@ extension AppsInspectorViewController {
 
     /// Install on ▸ <device>: this device's retained copy, queued on the other one.
     @objc func installOnClicked(_ sender: NSMenuItem) {
-        guard let target = sender.representedObject as? (file: URL, emulator: EmulatorController) else { return }
-        AppInstaller.start(target.file, with: target.emulator, presenting: view.window)
+        guard let target = sender.representedObject as? (file: URL, device: AnyObject),
+            let emulator = target.device as? EmulatorController
+        else { return }
+        AppInstaller.start(target.file, with: emulator, presenting: view.window)
     }
 
     @objc func showInLegacyStoreClicked(_ sender: NSMenuItem) {

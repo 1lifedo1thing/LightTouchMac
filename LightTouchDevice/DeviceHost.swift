@@ -351,16 +351,11 @@ final class DeviceHost: @unchecked Sendable {
                         phase.withUnsafeBufferPointer { p in
                             x.withUnsafeBufferPointer { xx in
                                 y.withUnsafeBufferPointer { yy in
-                                    submit(
-                                        id,
-                                        UInt(events.count),
-                                        a.baseAddress!,
-                                        k.baseAddress!,
-                                        v.baseAddress!,
-                                        p.baseAddress!,
-                                        xx.baseAddress!,
-                                        yy.baseAddress!
-                                    )
+                                    // valid(_:) refuses an empty sequence, so every column has storage.
+                                    guard let a = a.baseAddress, let k = k.baseAddress, let v = v.baseAddress,
+                                        let p = p.baseAddress, let xx = xx.baseAddress, let yy = yy.baseAddress
+                                    else { return false }
+                                    return submit(id, UInt(events.count), a, k, v, p, xx, yy)
                                 }
                             }
                         }

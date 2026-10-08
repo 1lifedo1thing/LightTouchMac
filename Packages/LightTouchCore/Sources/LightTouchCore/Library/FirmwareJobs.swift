@@ -23,7 +23,8 @@ import Foundation
 
     private let catalog: FirmwareCatalog
     private let store: IPSWStore
-    private var downloads: FirmwareDownloads!
+    /// Made in init, once self can be captured by its event handler.
+    private var downloads: FirmwareDownloads?
     private var preparations: [String: PreparationJob] = [:]
     /// When each job's current phase started and how far along it was, for time remaining.
     private var starts: [String: (date: Date, fraction: Double)] = [:]
@@ -103,7 +104,7 @@ import Foundation
             guard entry.source.isArchive else { return try store.install(file, sha1: sha1, bytes: entry.source.bytes) }
             return try store.installArchive(file, entry: entry, preparer: preparer)
         }
-        downloads = FirmwareDownloads(
+        let downloads = FirmwareDownloads(
             store: store,
             configuration: configuration,
             expectedBytes: { bytes[$0] },
@@ -112,6 +113,7 @@ import Foundation
         ) { [weak self] sha1, event in
             Task { @MainActor in self?.download(sha1, event) }
         }
+        self.downloads = downloads
         downloads.active { [weak self] sha1s in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -188,7 +190,7 @@ import Foundation
             jobs[entry.id] = .downloading(fraction: downloadFraction(entry.id), files: wanted.count)
             for (sha1, url) in wanted where inFlight[sha1] == nil {
                 inFlight[sha1] = 0
-                try downloads.start(sha1: sha1, url: url)
+                try downloads?.start(sha1: sha1, url: url)
             }
         } catch {
             waiting[entry.id] = nil
@@ -265,7 +267,7 @@ import Foundation
             // A download another job still waits for goes on.
             for sha1 in sha1s where inFlight[sha1] != nil && !waiting.values.contains(where: { $0.contains(sha1) }) {
                 inFlight[sha1] = nil
-                downloads.cancel(sha1: sha1)
+                downloads?.cancel(sha1: sha1)
             }
         }
         jobs[entry.id] = nil

@@ -74,9 +74,10 @@ public enum Activation {
         guard out >= 0 else { throw ActivationFailure("Cannot open activation target") }
         defer { close(out) }
         try after.withUnsafeBytes { bytes in
+            guard let start = bytes.baseAddress else { return }  // empty: nothing to write
             var offset = 0
             while offset < bytes.count {
-                let count = write(out, bytes.baseAddress!.advanced(by: offset), bytes.count - offset)
+                let count = write(out, start.advanced(by: offset), bytes.count - offset)
                 if count < 0 && errno == EINTR { continue }
                 guard count > 0 else { throw ActivationFailure("Cannot write activation target") }
                 offset += count

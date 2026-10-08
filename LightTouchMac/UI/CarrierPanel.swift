@@ -71,7 +71,7 @@ struct CarrierPanel: View {
                 LabeledContent("State", value: model.callState.capitalized)
                 LabeledContent(
                     "Last Dialed",
-                    value: model.status?.lastDialed.isEmpty == false ? model.status!.lastDialed : "—"
+                    value: (model.status?.lastDialed).flatMap { $0.isEmpty ? nil : $0 } ?? "—"
                 )
             }
             Section("SMS") {

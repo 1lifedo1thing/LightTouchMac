@@ -100,7 +100,7 @@ public struct DeviceTree: Sendable {
             throw FirmwareError(.unsupported, "DeviceTree: no \(path):\(old)")
         }
         data.replaceSubrange(s.offset..<s.offset + 32, with: Self.name32(new))
-        props[path]![new] = s
+        props[path, default: [:]][new] = s
     }
 
     static func name32(_ s: String) -> Data { Data(Array(s.utf8).prefix(32)) + Data(count: max(0, 32 - s.utf8.count)) }

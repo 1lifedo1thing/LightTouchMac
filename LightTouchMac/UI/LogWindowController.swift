@@ -119,7 +119,8 @@ final class LogWindowController: NSWindowController, NSWindowDelegate {
         log.borderType = .bezelBorder
         let controls = NSStackView(views: [picker, pause])
         controls.spacing = 12
-        let content = window.contentView!
+        let content = NSView()
+        window.contentView = content
         for view in [controls, log] {
             view.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(view)
@@ -169,7 +170,7 @@ final class DeviceNoticeViewController: NSTitlebarAccessoryViewController {
             image: NSImage(
                 systemSymbolName: "exclamationmark.triangle",
                 accessibilityDescription: "Device needs attention"
-            )!
+            ) ?? NSImage()
         )
         icon.contentTintColor = .labelColor
         message.maximumNumberOfLines = 2

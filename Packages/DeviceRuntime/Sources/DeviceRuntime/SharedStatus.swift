@@ -188,11 +188,13 @@ nonisolated public struct StatusBlock: @unchecked Sendable {
 /// Tagged sRGB, as screenshots and movies are: untagged, Core Animation shows the guest's pixels in the
 /// display's own space, so a P3 screen drew pure red (255, 0, 0) as P3 red, more saturated than the device.
 nonisolated public func makeSurface(width: Int, height: Int, bytesPerElement: Int = 4) -> IOSurface {
-    let surface = IOSurface(properties: [
-        .width: width, .height: height, .bytesPerElement: bytesPerElement,
-        // pixelFormat is 'BGRA'.
-        .pixelFormat: 0x4247_5241,
-    ])!
+    guard
+        let surface = IOSurface(properties: [
+            .width: width, .height: height, .bytesPerElement: bytesPerElement,
+            // pixelFormat is 'BGRA'.
+            .pixelFormat: 0x4247_5241,
+        ])
+    else { preconditionFailure("IOSurface refused a \(width)x\(height) BGRA surface") }
     if let srgb = CGColorSpace(name: CGColorSpace.sRGB)?.copyICCData() {
         IOSurfaceSetValue(unsafeBitCast(surface, to: IOSurfaceRef.self), kIOSurfaceColorSpace, srgb)
     }

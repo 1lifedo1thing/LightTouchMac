@@ -11,7 +11,7 @@ import Foundation
 public enum Apple8900 {
     static let magic = Data("8900".utf8), headerSize = 0x800
     /// The S5L8900's key 0x837, what the bootrom's 8900 engine decrypts format-3 containers with.
-    static let key837 = Data(hex: "188458A6D15034DFE386F23B61D43774")!
+    static let key837 = Data(hexLiteral: "188458A6D15034DFE386F23B61D43774")
 
     public static func isContainer(_ d: Data) -> Bool { d.prefix(4) == magic }
 

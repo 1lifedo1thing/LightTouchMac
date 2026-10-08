@@ -66,12 +66,13 @@ public final class AppMetadataCache {
                 "Payload/Super Monkey Ball [SEGA].app/Settings.bundle/Nested.app/Info.plist",
                 "Payload/Super Monkey Ball [SEGA].app/Frameworks/Foo.framework/Icon.png",
             ]
-            let root = IPAMembers.appRoot(members)
-            assert(root == "Payload/Super Monkey Ball [SEGA].app/", "nested .app won: \(root ?? "nil")")
-            assert(IPAMembers.iconMember(members, root: root!, info: [:]) == "\(root!)Icon@2x.png")
+            let found = IPAMembers.appRoot(members)
+            assert(found == "Payload/Super Monkey Ball [SEGA].app/", "nested .app won: \(found ?? "nil")")
+            let root = found ?? ""
+            assert(IPAMembers.iconMember(members, root: root, info: [:]) == "\(root)Icon@2x.png")
             assert(
-                IPAMembers.iconMember(members, root: root!, info: ["CFBundleIconFile": "Icon.png"])
-                    == "\(root!)Icon@2x.png"
+                IPAMembers.iconMember(members, root: root, info: ["CFBundleIconFile": "Icon.png"])
+                    == "\(root)Icon@2x.png"
             )
         }
     #endif

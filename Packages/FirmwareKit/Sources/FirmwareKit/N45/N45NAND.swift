@@ -147,7 +147,7 @@ public enum N45NAND {
         mbr[0x1FF] = 0xAA
         var ent = [UInt8](repeating: 0, count: page)
         ent.replaceSubrange(0..<16, with: N72NAND.hfsType)
-        ent.replaceSubrange(16..<32, with: [UInt8](Data(hex: "3c1f8e52067d4b0a9b612f0e8814c35d")!))
+        ent.replaceSubrange(16..<32, with: [UInt8](Data(hexLiteral: "3c1f8e52067d4b0a9b612f0e8814c35d")))
         put(&ent, 0x20, UInt64(firstLBA), 8)
         put(&ent, 0x28, UInt64(firstLBA + fsPages - 1), 8)
         for (i, c) in "System".utf16.enumerated() { put(&ent, 0x38 + 2 * i, UInt64(c), 2) }
@@ -158,7 +158,7 @@ public enum N45NAND {
         put(&hdr, 0x18, 1, 8)
         put(&hdr, 0x28, UInt64(firstLBA), 8)
         put(&hdr, 0x30, UInt64(firstLBA + fsPages - 1), 8)
-        hdr.replaceSubrange(0x38..<0x48, with: [UInt8](Data(hex: "6a2e5c109f3b4e418d271c44a510e701")!))
+        hdr.replaceSubrange(0x38..<0x48, with: [UInt8](Data(hexLiteral: "6a2e5c109f3b4e418d271c44a510e701")))
         put(&hdr, 0x48, 2, 8)
         put(&hdr, 0x50, 1, 4)
         put(&hdr, 0x54, 0x80, 4)

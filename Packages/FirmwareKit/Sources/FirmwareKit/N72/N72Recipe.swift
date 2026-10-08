@@ -56,7 +56,7 @@ final class N72Board: Board {
         keybagStep = "Booting the restore ramdisk"
     let needsSeal = false
     let recipe: FirmwareEntry.Recipe, model: String, blocks: Int, dataProtection: Bool
-    var helper: URL?, bootrom: URL?, ident: UnitIdentity!
+    var helper: URL?, bootrom: URL?, ident: UnitIdentity?
     var epoch = 0, major = 0, kcPath = "", kcMember = "", prefix = ""
     var derived: [String: Any] = [:]
     var shipped: [String] { ["nor.bin", "gid-blobs.bin"] + (major >= 3 ? ["iBoot.bin"] : []) }
@@ -104,7 +104,8 @@ final class N72Board: Board {
             let rp = try PropertyListSerialization.propertyList(from: try c.ipsw.read("Restore.plist"), format: nil)
                 as? [String: Any],
             let epoch = ((rp["DeviceMap"] as? [[String: Any]])?.first?["SCEP"] as? NSNumber)?.intValue,
-            let major = Int(c.restore.productVersion.prefix { $0 != "." })
+            let restore = c.restore,
+            let major = Int(restore.productVersion.prefix { $0 != "." })
         else {
             throw FirmwareError(.unsupported, "Restore.plist has no DeviceMap SCEP (NAND epoch)")
         }
@@ -113,12 +114,18 @@ final class N72Board: Board {
     }
 
     func identity(seed: String) throws -> UnitIdentity {
-        ident = try UnitIdentity.synthesizeIPod(seed: seed, modelNumber: model, regionInfo: UnitIdentity.iPadRegion)
+        let ident = try UnitIdentity.synthesizeIPod(
+            seed: seed,
+            modelNumber: model,
+            regionInfo: UnitIdentity.iPadRegion
+        )
+        self.ident = ident
         return ident
     }
 
     /// nor.bin, gid-blobs.bin, iBoot.bin (3.x+), and the derived facts the lock records.
     func bootFiles(_ c: Recipe.Context) throws {
+        let ident = try self.ident.filled("the identity")
         let e = c.e
         let ipsw = c.ipsw
         let iboot = try Data(contentsOf: c.decFile("iBoot.bin"))
@@ -177,11 +184,12 @@ final class N72Board: Board {
         if major >= 3 { try iboot.write(to: c.file("iBoot.bin")) }
     }
 
-    var volume: URL!
+    var volume: URL?
 
     /// The system volume: IPSW rootfs grown to the recipe, fstab, kernelcache, the bake; owners and dates patched.
     nonisolated(nonsending) func volumes(_ c: Recipe.Context) async throws {
-        volume = c.work.appendingPathComponent("volume.img")
+        let volume = c.work.appendingPathComponent("volume.img")
+        self.volume = volume
         try await UDIF.extractRootfs(dmg: c.decFile("rootfs.dmg"), to: volume)
         try await VolumeMount.grow(volume, toBytes: blocks * 4096)
         let newest: UInt32  // the IPSW's newest file: everything the recipe writes gets dated as of it
@@ -219,6 +227,7 @@ final class N72Board: Board {
     }
 
     nonisolated(nonsending) func store(_ c: Recipe.Context) async throws {
+        let volume = try self.volume.filled("the system volume")
         let (written, meta) = try N72NAND.write(volume: volume, blocks: blocks, epoch: epoch, out: c.nand)
         c.log("\(written) filesystem pages, \(meta) metadata pages generated (epoch \(epoch))")
         try FileManager.default.removeItem(at: volume)
@@ -230,11 +239,11 @@ final class N72Board: Board {
         let (source, name) = try await Recipe.keybagRamdisk(c)
         _ = try await N72Keybag.run(
             out: c.o.out,
-            dec: c.dec,
+            dec: c.decrypted(),
             ramdisk: source,
             itKeybag: c.o.guestTools.appendingPathComponent(itKeybag),
-            bootrom: bootrom!,
-            helper: helper!,
+            bootrom: bootrom.filled("the iPod bootrom"),
+            helper: helper.filled("the helper"),
             work: c.work,
             log: c.log
         )
@@ -242,7 +251,11 @@ final class N72Board: Board {
     }
 
     func lock(_ c: Recipe.Context) throws -> [String: Any] {
-        [
+        let ident = try self.ident.filled("the identity")
+        guard let mac = ident["wifi-mac"], let bt = ident["bt-mac"], let ecid = ident["unique-chip-id"] else {
+            throw FirmwareError(.internal, "\(c.e.id): the identity has no Wi-Fi MAC, Bluetooth MAC or ECID")
+        }
+        return [
             "inputs": ["kernelcache": kcMember, "iboot": "iBoot.bin", "all_flash": prefix],
             "outputs": [
                 "nand": ["pages": c.nandHashes.count],
@@ -257,7 +270,7 @@ final class N72Board: Board {
             // The BCM4325 CIS and NOR wifiaddr belong to the same unit. Older drivers
             // obtain the card's address before downloading its firmware.
             "machine": Self.machine.merging([
-                "wifi-mac": ident["wifi-mac"]!, "bt-mac": ident["bt-mac"]!, "ecid": ident["unique-chip-id"]!,
+                "wifi-mac": mac, "bt-mac": bt, "ecid": ecid,
             ]) { _, card in card },
         ]
     }
@@ -290,13 +303,13 @@ final class N72Board: Board {
             if j > r.upperBound { hits.insert(String(decoding: b[r.lowerBound + 1..<j], as: UTF8.self)) }
             i = r.upperBound
         }
-        guard hits.count == 1 else {
+        guard hits.count == 1, let path = hits.first else {
             throw FirmwareError(
                 .unsupported,
                 "iBoot names \(hits.count) kernelcache paths (\(hits.sorted())); expected exactly one"
             )
         }
-        return hits.first!
+        return path
     }
 
     /// KBAG || IV-key for NOR, normal boot and stock restore (the emulated AES engine's GID table).

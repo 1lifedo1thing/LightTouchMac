@@ -391,8 +391,8 @@ public enum K48NAND {
 
         func indexPages() throws {
             nextBlock()
-            for t in toc.keys.sorted() {
-                try toc[t]!.withUnsafeBytes { _ = try put(UInt32(t), $0, tIndex) }
+            for (t, entries) in toc.sorted(by: { $0.key < $1.key }) {
+                try entries.withUnsafeBytes { _ = try put(UInt32(t), $0, tIndex) }
             }
             nextBlock()
         }
@@ -522,7 +522,7 @@ public enum K48NAND {
             try buf.withUnsafeMutableBytes { b in
                 let got = pread(fd, b.baseAddress, page, off_t(n * page))
                 guard got >= 0 else { throw FirmwareError(.internal, "read: \(String(cString: strerror(errno)))") }
-                if got < page { memset(b.baseAddress! + got, 0, page - got) }
+                if got < page, let start = b.baseAddress { memset(start + got, 0, page - got) }
                 for (o, new) in patch[n] ?? [] { for (k, v) in new.enumerated() { b[o + k] = v } }
             }
             return try buf.withUnsafeBytes(body)
@@ -626,9 +626,10 @@ public enum K48NAND {
         case .none: break
         case .image(let u): dataPages = try FilePages(u, page: ps)
         case .size(let n):
-            work = fm.temporaryDirectory.appendingPathComponent("k48nand.\(UUID().uuidString)")
-            try fm.createDirectory(at: work!, withIntermediateDirectories: true)
-            let u = work!.appendingPathComponent("data.dmg")
+            let w = fm.temporaryDirectory.appendingPathComponent("k48nand.\(UUID().uuidString)")
+            work = w
+            try fm.createDirectory(at: w, withIntermediateDirectories: true)
+            let u = w.appendingPathComponent("data.dmg")
             log("creating \(n)-byte HFS+ data volume")
             try await makeHFSImage(at: u, size: n)
             dataPages = try FilePages(u, page: ps)

@@ -170,7 +170,7 @@ extension K48NAND {
                     break
                 }
             }
-            ok(found != nil && found!.bbt.count == geo.bbtLen, "cs\(cs) DEVICEINFOBBT at block \(hex(found?.blk ?? 0))")
+            ok(found?.bbt.count == geo.bbtLen, "cs\(cs) DEVICEINFOBBT at block \(hex(found?.blk ?? 0))")
             guard let (_, c, bbt) = found else { continue }
             ok(
                 !bit(bbt, 0) && geo.cand[cs].allSatisfy { !bit(bbt, $0) },

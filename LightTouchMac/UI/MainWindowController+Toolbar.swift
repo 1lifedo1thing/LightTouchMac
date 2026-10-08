@@ -172,7 +172,7 @@ extension MainWindowController {
         item.action = action
         item.isBordered = true
         if id == .liveText || id == .fingerDots {
-            let control = NSButton(image: item.image!, target: self, action: action)
+            let control = NSButton(image: item.image ?? NSImage(), target: self, action: action)
             control.setButtonType(.pushOnPushOff)
             control.bezelStyle = .texturedRounded
             control.toolTip = help

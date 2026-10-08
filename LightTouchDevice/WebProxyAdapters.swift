@@ -252,7 +252,7 @@ enum WebProxyAdapters {
                     "forecast_days": "6",
                 ]
             )
-            guard let forecasts = result is [String: Any] ? [result!] : result as? [Any],
+            guard let forecasts = result.flatMap({ $0 is [String: Any] ? [$0] : $0 as? [Any] }),
                 forecasts.count == places.count
             else { return (502, Data()) }
             for (index, place) in places.enumerated() {
@@ -289,10 +289,13 @@ enum WebProxyAdapters {
         return Place(latitude: lat, longitude: lon, name: name)
     }
     static func identifier(_ place: Place) -> String {
-        let json = try! JSONSerialization.data(
-            withJSONObject: ["latitude": place.latitude, "longitude": place.longitude, "name": place.name],
-            options: .sortedKeys
-        )
+        // Two finite numbers (Place's are range-checked) and a string always serialize.
+        guard
+            let json = try? JSONSerialization.data(
+                withJSONObject: ["latitude": place.latitude, "longitude": place.longitude, "name": place.name],
+                options: .sortedKeys
+            )
+        else { preconditionFailure("a Place always serializes") }
         return "ltm:" + json.base64EncodedString()
     }
     static func decode(_ id: String) -> Place? {
@@ -335,7 +338,8 @@ enum WebProxyAdapters {
         return value
     }
     static func clockTime(_ value: Any?) -> String? {
-        date(value, "yyyy-MM-dd'T'HH:mm") != nil ? String((value as! String).dropFirst(11)) : nil
+        guard let text = value as? String, date(text, "yyyy-MM-dd'T'HH:mm") != nil else { return nil }
+        return String(text.dropFirst(11))
     }
     /// NASA's 2000-01-06 18:15 UTC new moon; USNO mean synodic month 29.53059 days.
     static func moon(_ timestamp: TimeInterval) -> [String: String] {
@@ -354,14 +358,12 @@ enum WebProxyAdapters {
             let time = clockTime(current["time"]), let now = date(current["time"], "yyyy-MM-dd'T'HH:mm"),
             let icon = icon(current["weather_code"], daylight: isDay == 1)
         else { return nil }
-        var columns: [String: [Any]] = [:]
-        for key in ["time", "temperature_2m_max", "temperature_2m_min", "weather_code", "sunrise", "sunset"] {
-            guard let column = daily[key] as? [Any], column.count == 6 else { return nil }
-            columns[key] = column
-        }
-        guard let sunrise = clockTime(columns["sunrise"]![0]), let sunset = clockTime(columns["sunset"]![0]) else {
-            return nil
-        }
+        func column(_ key: String) -> [Any]? { (daily[key] as? [Any]).flatMap { $0.count == 6 ? $0 : nil } }
+        guard let times = column("time"), let highs = column("temperature_2m_max"),
+            let lows = column("temperature_2m_min"), let codes = column("weather_code"),
+            let sunrises = column("sunrise"), let sunsets = column("sunset"),
+            let sunrise = clockTime(sunrises[0]), let sunset = clockTime(sunsets[0])
+        else { return nil }
         let item = XMLElement(name: "item")
         attributes(child(item, "location"), ["id": id, "city": place.name])
         attributes(child(item, "units"), ["temperature": celsius ? "C" : "F"])
@@ -372,12 +374,12 @@ enum WebProxyAdapters {
         )
         attributes(child(item, "condition"), ["time": time, "temp": String(format: "%.0f", temperature), "code": icon])
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        calendar.timeZone = .gmt
         for day in 0..<6 {
-            guard let when = date(columns["time"]![day], "yyyy-MM-dd"),
-                let condition = self.icon(columns["weather_code"]![day], daylight: true),
-                let high = number(columns["temperature_2m_max"]![day], -200, 200),
-                let low = number(columns["temperature_2m_min"]![day], -200, 200),
+            guard let when = date(times[day], "yyyy-MM-dd"),
+                let condition = self.icon(codes[day], daylight: true),
+                let high = number(highs[day], -200, 200),
+                let low = number(lows[day], -200, 200),
                 high >= low
             else { return nil }
             attributes(
@@ -399,7 +401,8 @@ enum WebProxyAdapters {
     }
     private static func attributes(_ node: XMLElement, _ values: [String: String]) {
         for (key, value) in values.sorted(by: { $0.key < $1.key }) {
-            node.addAttribute(XMLNode.attribute(withName: key, stringValue: value) as! XMLNode)
+            guard let attribute = XMLNode.attribute(withName: key, stringValue: value) as? XMLNode else { continue }
+            node.addAttribute(attribute)
         }
     }
 }

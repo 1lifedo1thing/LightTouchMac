@@ -24,7 +24,7 @@ public enum IPhoneIdentity {
     /// The Luhn check digit of a digit string (an IMEI's fifteenth).
     public static func luhn(_ digits: String) -> Int {
         let sum = digits.reversed().enumerated().reduce(0) { s, e in
-            let d = Int(String(e.element))!
+            let d = e.element.wholeNumberValue ?? 0
             return s + (e.offset % 2 == 0 ? (d * 2 > 9 ? d * 2 - 9 : d * 2) : d)
         }
         return (10 - sum % 10) % 10

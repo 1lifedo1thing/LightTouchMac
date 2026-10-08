@@ -37,7 +37,7 @@ public struct N45FTL {
         for vb in 0..<Self.virtualBlocks {
             guard let (_, spare) = read(vb * sb), (0x43...0x4F).contains(spare[9]) else { continue }
             let usn = le32(spare, 0)
-            if newest == nil || usn < newest!.usn { newest = (usn, vb) }
+            if newest.map({ usn < $0.usn }) ?? true { newest = (usn, vb) }
         }
         guard let vb = newest?.vb else { throw FirmwareError(.unsupported, "\(base.path): no FTL context") }
         guard let last = (1..<sb).reversed().lazy.compactMap({ read(vb * sb + $0) }).first, last.spare[9] == 0x43 else {

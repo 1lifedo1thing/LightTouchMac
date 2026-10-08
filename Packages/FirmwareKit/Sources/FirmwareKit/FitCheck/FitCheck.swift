@@ -303,7 +303,8 @@ public enum FitCheck {
             )
         }
         if !why.isEmpty { return Fit(piece, fits: false, why.joined(separator: "; ")) }
-        let cmds = Set(required).sorted().map { "\(hex($0)) as \(fw.precedent[$0]!)" }
+        // every one has a precedent: an unknown command returned above
+        let cmds = Set(required).sorted().compactMap { c in fw.precedent[c].map { "\(hex(c)) as \($0)" } }
         return Fit(
             piece,
             fits: true,

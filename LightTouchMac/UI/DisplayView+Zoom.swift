@@ -45,9 +45,8 @@ extension DisplayView {
 
     /// The shell's scale for the current zoom, given its on-screen bounding box in display pixels.
     func zoomScale(fitting shellOnScreenPixels: CGSize) -> CGFloat {
+        if let dragScale { return dragScale }  // an edge drag keeps its scale, so the edge stays under the pointer
         switch zoom {
-        case _ where dragScale != nil:
-            return dragScale!  // an edge drag keeps its scale, so the edge stays under the pointer
         case .pixels(let points) where freeFormActive:
             return CGFloat(points)  // free-form Nx: a guest pixel is N points (Sam's "at 1x a point is a pixel")
         case .physical where freeFormActive:

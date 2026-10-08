@@ -38,10 +38,17 @@ public enum PrepareEvent: Equatable, Sendable {
             case .error(let code, let m, let piece):
                 ["event": "error", "code": code, "message": m].merging(piece.map { ["piece": $0] } ?? [:]) { a, _ in a }
             }
-        return String(
-            decoding: try! JSONSerialization.data(withJSONObject: o, options: [.sortedKeys, .withoutEscapingSlashes]),
-            as: UTF8.self
-        )
+        do {
+            return String(
+                decoding: try JSONSerialization.data(
+                    withJSONObject: o,
+                    options: [.sortedKeys, .withoutEscapingSlashes]
+                ),
+                as: UTF8.self
+            )
+        } catch {
+            preconditionFailure("an event of strings and numbers is always JSON: \(error)")
+        }
     }
 }
 
@@ -222,9 +229,10 @@ public enum Preparer {
         guard let ivHex = k.iv, let iv = Data(hex: ivHex), let key = Data(hex: k.key) else {
             throw FirmwareError(.keyMissing, "\(sib.id): no IV/key for \(k.file)")
         }
-        let out = work.appendingPathComponent(
-            "sibling-" + String(path.split(separator: "/").last!.dropLast(4)) + "-ramdisk.dmg"
-        )
+        guard let name = path.split(separator: "/").last else {
+            throw FirmwareError(.unsupported, "\(sib.id): ramdisk path \(path) names no file")
+        }
+        let out = work.appendingPathComponent("sibling-" + String(name.dropLast(4)) + "-ramdisk.dmg")
         try IMG3.decrypt(try ipsw.read(path), iv: iv, key: key).write(to: out)
         return out
     }
@@ -353,7 +361,10 @@ public enum Preparer {
         }
         if let error = hashes.error { throw error }
         var listing = SHA256()
-        for n in files { listing.update(data: Data("\(n) \(hashes.sha[n]!)\n".utf8)) }
+        for n in files {
+            guard let h = hashes.sha[n] else { throw FirmwareError(.internal, "\(n) was not hashed") }
+            listing.update(data: Data("\(n) \(h)\n".utf8))
+        }
         return (hashes.sha, listing.finalize().hexString)
     }
 

@@ -87,7 +87,8 @@ extension MainWindowController {
     func validateZoomItem(_ menuItem: NSMenuItem, screen: DisplayView) -> Bool {
         switch menuItem.action {
         case #selector(zoomIn(_:)):
-            return zoom.percent.map { $0 / 100 } ?? 0 < ZoomMode.steps.last!
+            guard let largest = ZoomMode.steps.last else { return false }
+            return zoom.percent.map { $0 / 100 } ?? 0 < largest
         case #selector(zoomOut(_:)):
             return zoom != .pixels(ZoomMode.steps[0])
         case #selector(zoomPhysicalSize(_:)):

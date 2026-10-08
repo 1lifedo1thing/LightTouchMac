@@ -182,7 +182,9 @@ nonisolated final class DeviceRendezvousServer: @unchecked Sendable {
         guard hello.nports >= 1 else { return "malformed hello" }
         let status = DeviceRendezvous.check(audit: hello.audit, requirement: registration.requirement)
         guard status == errSecSuccess else { return "code signing requirement failed (\(status))" }
-        let token = withUnsafeBytes(of: hello.token) { String(cString: $0.bindMemory(to: CChar.self).baseAddress!) }
+        let token = withUnsafeBytes(of: hello.token) {
+            $0.bindMemory(to: CChar.self).baseAddress.map { String(cString: $0) } ?? ""
+        }
         guard token == registration.token else { return "wrong token" }
         guard hello.protocol_version == UInt32(DeviceLinkWire.protocolVersion) else {
             return "protocol \(hello.protocol_version), expected \(DeviceLinkWire.protocolVersion)"

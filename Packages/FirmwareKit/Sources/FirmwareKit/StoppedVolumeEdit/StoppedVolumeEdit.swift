@@ -64,7 +64,9 @@ public enum StoppedVolumeEdit {
                 try fm.removeItem(at: oldNAND)
                 try fm.createDirectory(at: transaction.overlay, withIntermediateDirectories: false)
             }
-            let storage = record["storage"] as! [String: Any]
+            guard let storage = record["storage"] as? [String: Any] else {
+                throw FirmwareError(.unsupported, "invalid device metadata")
+            }
             if let path = storage["writableNOR"] as? String {
                 let nor = StorageRecordPaths.resolve(path, relativeRoot: paths.relativeRoot)
                 let original = fm.fileExists(atPath: nor.path) ? nor : originalBase.appendingPathComponent("nor.bin")

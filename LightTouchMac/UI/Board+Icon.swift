@@ -18,6 +18,7 @@ extension Board {
     }
 
     static func icon(modelCode: String, fallbackSymbol: String) -> NSImage {
-        AppleDeviceType(modelCode)?.icon ?? NSImage(systemSymbolName: fallbackSymbol, accessibilityDescription: nil)!
+        AppleDeviceType(modelCode)?.icon ?? NSImage(systemSymbolName: fallbackSymbol, accessibilityDescription: nil)
+            ?? NSImage()
     }
 }

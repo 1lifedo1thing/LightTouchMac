@@ -53,8 +53,9 @@ public enum DependencySources {
         try files.createDirectory(at: destination, withIntermediateDirectories: true)
         var records: [[String: Any]] = []
         for package in packages {
-            let archive = package["archive"] as! String
-            let sha = package["sha256"] as! String
+            guard let archive = package["archive"] as? String, let sha = package["sha256"] as? String,
+                let source = package["url"] as? String
+            else { throw ToolError("invalid source entry: \(package["name"] ?? "?")") }
             let out = destination.appendingPathComponent(archive)
             var origin = out.path
             if files.fileExists(atPath: out.path) {
@@ -75,8 +76,8 @@ public enum DependencySources {
                     origin = MergeNative.real(cached.path)
                 } else {
                     print("Fetching \(archive)")
-                    try download(package["url"] as! String, temporary)
-                    origin = package["url"] as! String
+                    try download(source, temporary)
+                    origin = source
                 }
                 try verify(temporary, sha)
                 try files.moveItem(at: temporary, to: out)

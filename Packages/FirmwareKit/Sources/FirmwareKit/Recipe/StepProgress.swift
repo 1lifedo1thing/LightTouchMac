@@ -100,9 +100,9 @@ struct StepPlan: Sendable {
     func fraction(elapsed: Double, seen: [Double?]) -> Double {
         let reached = seen.lastIndex { $0 != nil }
         let from = reached.map { milestones[$0].at } ?? 0
-        let since = reached.map { seen[$0]! } ?? 0
+        let since = reached.flatMap { seen[$0] } ?? 0
         let to =
-            reached.map { $0 + 1 < milestones.count ? milestones.last!.at : seconds }
+            reached.map { $0 + 1 < milestones.count ? (milestones.last?.at ?? seconds) : seconds }
             ?? (milestones.last?.at ?? seconds)
         let t = from + min(max(elapsed - since, 0), 0.95 * max(to - from, 0))
         return min(0.99, t / seconds)
@@ -141,11 +141,12 @@ final class StepProgress: @unchecked Sendable {
         lock.withLock {
             end()
             emit(.step(index: index, name: name))
-            plan = StepPlan.plan(name, major: major)
-            text = plan!.text
+            let plan = StepPlan.plan(name, major: major)
+            self.plan = plan
+            text = plan.text
             started = Date()
             last = 0
-            seen = Array(repeating: nil, count: plan!.milestones.count)
+            seen = Array(repeating: nil, count: plan.milestones.count)
             measured = nil
             tick()
         }

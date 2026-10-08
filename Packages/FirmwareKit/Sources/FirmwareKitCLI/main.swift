@@ -106,7 +106,10 @@ default:  // the root alone, or help
     var options: Preparer.Options
     do {
         // The app's packed guest tools (Resources/Guest/guest.aar), unpacked; --guest-tools names another directory.
-        let directory = Bundle.main.executableURL!.resolvingSymlinksInPath().deletingLastPathComponent()
+        guard let executable = Bundle.main.executableURL else {
+            throw FirmwareError(.internal, "cannot locate the firmwarekit executable")
+        }
+        let directory = executable.resolvingSymlinksInPath().deletingLastPathComponent()
         let resources = directory.appendingPathComponent("../Resources").standardizedFileURL
         // The helper beside this executable (the app bundle's MacOS/, a build's products) unless --helper names one.
         let sibling = directory.appendingPathComponent("LightTouchDevice")

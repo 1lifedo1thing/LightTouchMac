@@ -37,7 +37,7 @@ public nonisolated enum DeviceRecord {
         guard var object = try JSONSerialization.jsonObject(with: Data(contentsOf: json)) as? [String: Any] else {
             throw CocoaError(.propertyListReadCorrupt)
         }
-        object = withoutNulls(object) as! [String: Any]
+        object = object.compactMapValues(withoutNulls)
         if let created = object["created"] as? String, let date = ISO8601DateFormatter().date(from: created) {
             object["created"] = date
         }

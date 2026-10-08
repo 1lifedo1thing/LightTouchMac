@@ -201,12 +201,13 @@ final class AppsInspectorViewController: NSViewController {
         footer.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(footer)
         footer.addSubview(addRemove)
-        footerHeight = footer.heightAnchor.constraint(equalToConstant: 0)
+        let footerHeight = footer.heightAnchor.constraint(equalToConstant: 0)
+        self.footerHeight = footerHeight
         constraints += [
             scroll.bottomAnchor.constraint(equalTo: footer.topAnchor),
             footer.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             footer.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            footer.bottomAnchor.constraint(equalTo: container.bottomAnchor), footerHeight!,
+            footer.bottomAnchor.constraint(equalTo: container.bottomAnchor), footerHeight,
             addRemove.leadingAnchor.constraint(equalTo: footer.leadingAnchor, constant: 10),
             addRemove.centerYAnchor.constraint(equalTo: footer.centerYAnchor),
         ]

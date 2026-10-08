@@ -28,13 +28,13 @@ final class K48Board: Board {
     /// The S5L8920 family (-M n18, n88): the IPSW's NAND epoch.
     var s5l8920: Bool { a4.isS5L8920 }
     /// The emulator's facts about the board (its -M machine, modem, USB host), from the helper (check()).
-    var hardware: DeviceInfo!
+    var hardware: DeviceInfo?
     let volumesStep = "Building the system and data volumes", keybagStep = "Creating the data-protection keybag"
     var bootStep: String { iboot ? "Writing the identity and boot chain" : "Writing the identity and boot image" }
     /// The seal boot halts through it_seal, a guest helper: none without them (guest_tools off).
     var needsSeal: Bool { SystemEdits.Options(recipe: recipe).guestTools }
     let recipe: FirmwareEntry.Recipe, strategy: String, iboot: Bool, dataProtection: Bool
-    var helper: URL!, patcher: URL!, mbr: URL!, vols: SystemEdits.Result!
+    var helper: URL?, patcher: URL?, mbr: URL?, vols: SystemEdits.Result?
     var gidComponents: [String] = [], ramdisk: String?
     var shipped: [String] {
         iboot ? ["iBoot.bin", "nor.bin", "gid-blobs.bin"] : ["kboot.bin"] + (kbootNOR ? ["nor.bin"] : [])
@@ -42,7 +42,7 @@ final class K48Board: Board {
     /// A kboot device ships a writable NOR for 4.x data protection, and always on the N88, whose DT keeps its own
     /// NOR (blank on 3.x: NVRAM only).
     var kbootNOR: Bool { dataProtection || s5l8920 }
-    var dieID: String { (ident.dieID ?? []).joined(separator: ":") }
+    var dieID: String { (ident?.dieID ?? []).joined(separator: ":") }
     /// What every boot of the device carries (the lock's "machine", which BootRecipe passes): the modem's IMEI (the
     /// identity's, which lockdownd/MobileGestalt hash into the UDID; a phone's lockdownd decides activation from
     /// CommCenter, and what the seal boot decides is what the store keeps), the recipe's pinned clock (a beta's
@@ -50,12 +50,12 @@ final class K48Board: Board {
     /// unit address KBoot/K48IBoot write to the device tree and NOR; the N81/N90 machines take theirs from /chosen).
     var machineOptions: [String: String] {
         var options: [String: String] = [:]
-        options["imei"] = ident["imei"]
+        options["imei"] = ident?["imei"]
         options["rtc-epoch"] = recipe.rtcEpoch.map(String.init)
-        if board == "k48ap" { options["wifi-mac"] = ident["wifi-mac"] }
+        if board == "k48ap" { options["wifi-mac"] = ident?["wifi-mac"] }
         return options
     }
-    var ident: UnitIdentity!
+    var ident: UnitIdentity?
     /// The keybag and seal one-shots' limit. 7.x's launchd starts our RunAtLoad daemons (it_seal among them) about
     /// 170 s into the boot, and it_seal halts 40 s later: modem-on 7.0-7.0.6 seals took 118-229 s, 7.1.2's about
     /// 300 s, longer under host load. Earlier releases seal well inside 300 s.
@@ -65,7 +65,8 @@ final class K48Board: Board {
     }
 
     init(_ o: Preparer.Options) throws {
-        recipe = o.entry.recipe!
+        guard let recipe = o.entry.recipe else { throw FirmwareError(.unsupported, "\(o.entry.id): no recipe") }
+        self.recipe = recipe
         oneshotTimeout = Self.oneshotTimeout(productVersion: o.entry.version)
         board = o.entry.board
         let kbootOnly = o.entry.board != "k48ap"
@@ -119,18 +120,20 @@ final class K48Board: Board {
     }
 
     func identity(seed: String) throws -> UnitIdentity {
-        ident = try UnitIdentity.synthesize(
+        var ident = try UnitIdentity.synthesize(
             seed: seed,
             storage: recipe.storage,
             modelNumber: kbootBoard ? a4.modelNumber : nil
         )
         // The radio boards: the modem reports the IMEI, and lockdownd/MobileGestalt hash it into the UDID.
         if HostRuntime.Board(rawValue: board)?.kbootPhone == true { ident = ident.addingIMEI(seed: seed) }
+        self.ident = ident
         return ident
     }
 
     /// iboot: iBoot.bin, nor.bin, gid-blobs.bin; kboot: kboot.bin.
     func bootFiles(_ c: Recipe.Context) throws {
+        let ident = try self.ident.filled("the identity")
         let e = c.e
         let ipsw = c.ipsw
         let bootArgs = KBoot.defaultBootArgs
@@ -170,7 +173,7 @@ final class K48Board: Board {
             let order = try manifest.map { try N72NOR.type(of: ipsw.read(prefix + String($0))) }
             let patched = try K48IBoot.patchIBoot(
                 try Data(contentsOf: c.decFile("iBoot.bin")),
-                patcher: patcher,
+                patcher: patcher.filled("iBoot32Patcher"),
                 bootArgs: bootArgs,
                 log: c.log
             )
@@ -179,7 +182,7 @@ final class K48Board: Board {
                 to: c.file("nor.bin")
             )
         } else {
-            try KBoot.write(decrypted: c.dec, to: c.file("kboot.bin"), identity: ident, bootArgs: bootArgs)
+            try KBoot.write(decrypted: c.decrypted(), to: c.file("kboot.bin"), identity: ident, bootArgs: bootArgs)
             if kbootNOR && !dataProtection { try Data(repeating: 0xFF, count: 1 << 20).write(to: c.file("nor.bin")) }
         }
     }
@@ -189,7 +192,8 @@ final class K48Board: Board {
     var geometry: K48NAND.Geometry { recipe.nandVendorType == 0x10001 ? .k48_16g_v1 : .k48_16g }
 
     nonisolated(nonsending) func volumes(_ c: Recipe.Context) async throws {
-        mbr = c.work.appendingPathComponent("mbr.bin")
+        let mbr = c.work.appendingPathComponent("mbr.bin")
+        self.mbr = mbr
         // At least what a restore gives this unit (MinimumSystemPartition + padding). The catalog's 1280 MiB left an
         // iPhone 4 6.1.3 (a 1212 MiB rootfs) 5.0 % free on its writable root, at HFS's root very-low-disk limit
         // (5 %): a fresh unit showed "Storage Almost Full". The restore's 1372 MiB leaves 11.4 %.
@@ -205,7 +209,7 @@ final class K48Board: Board {
             }
             kernelcacheImg3 = try c.ipsw.read(kc)
         }
-        vols = try await SystemEdits.buildK48(
+        let vols = try await SystemEdits.buildK48(
             rootfs: c.decFile("rootfs.dmg"),
             work: c.work,
             systemBytes: parts[0].count * 4096,
@@ -218,6 +222,7 @@ final class K48Board: Board {
             fit: c.fit,
             log: c.log
         )
+        self.vols = vols
         for n in vols.notes { c.emit(.warning(n)) }
         c.activation = vols.activation
         c.guestPackage = vols.guestPackage
@@ -225,6 +230,8 @@ final class K48Board: Board {
     }
 
     nonisolated(nonsending) func store(_ c: Recipe.Context) async throws {
+        let mbr = try self.mbr.filled("the MBR")
+        let vols = try self.vols.filled("the volumes")
         var epoch = try K48NAND.signatureEpoch(kernelcache: c.decFile("kernelcache.mach"))
         // WMR refuses a whitened store on a board whose DT does not ask for one ("Metadata whitening not supported").
         let whitening = try DeviceTree(Data(contentsOf: c.decFile("DeviceTree.bin"))).props.values.contains {
@@ -260,7 +267,8 @@ final class K48Board: Board {
     /// taken before the first) when it panics or does not halt.
     nonisolated(nonsending) func keybag(_ c: Recipe.Context) async throws {
         let fm = FileManager.default
-        let nor = norURL(c)!
+        // keybag runs only with dataProtection, which ships a NOR on either chain
+        let nor = try norURL(c).filled("the NOR")
         if !iboot { try Data(repeating: 0xFF, count: 1 << 20).write(to: nor) }  // iboot already built the packed NOR
         let (source, name) = try await Recipe.keybagRamdisk(c)
         ramdisk = name
@@ -272,7 +280,7 @@ final class K48Board: Board {
             work: work
         )
         let kboot = work.appendingPathComponent("kboot-restore.bin")
-        try KBoot.write(decrypted: c.dec, to: kboot, identity: ident, ramdisk: rd)
+        try KBoot.write(decrypted: c.decrypted(), to: kboot, identity: ident.filled("the identity"), ramdisk: rd)
         let norBefore = try Data(contentsOf: nor)
         let pre = work.appendingPathComponent("store.pre")
         try fm.copyItem(at: store, to: pre)
@@ -291,8 +299,9 @@ final class K48Board: Board {
             for line in text.split(separator: "\n") where line.contains("it_keybag:") { c.log(String(line)) }
             if r.exited, text.contains(Preparer.keybagDone) { break }
             let why =
-                text.split(separator: "\n").first { $0.contains("panic(") }
-                .map { String($0[$0.range(of: "panic(")!.lowerBound...].prefix(160)) }
+                text.split(separator: "\n").lazy.compactMap { line in
+                    line.range(of: "panic(").map { String(line[$0.lowerBound...].prefix(160)) }
+                }.first
                 ?? (r.exited ? "halted without the keybag" : "no halt")
             guard attempt < attempts else { throw FirmwareError(.oneshotFailed, "keybag boot: \(why)") }
             c.emit(
@@ -320,7 +329,11 @@ final class K48Board: Board {
         // effaceable/NVRAM writes land (no base nor=). die-id must be non-zero or iBoot rejects it.
         let boot: BootRecipe.IPadBoot =
             iboot
-            ? .iBoot(image: c.file("iBoot.bin").path, writableNOR: nor!.path, gidBlobs: c.file("gid-blobs.bin").path)
+            ? .iBoot(
+                image: c.file("iBoot.bin").path,
+                writableNOR: c.file("nor.bin").path,
+                gidBlobs: c.file("gid-blobs.bin").path
+            )
             : .kernel(image: c.file("kboot.bin").path, writableNOR: nor?.path)
         let serial = work.appendingPathComponent("seal.log")
         let (r, text) = try oneshot(
@@ -384,16 +397,16 @@ final class K48Board: Board {
             machineOptions: machineOptions,
             oneShot: true
         )
-        let config = BootRecipe.iPad(
+        let config = try BootRecipe.iPad(
             ipad,
-            hardware: hardware,
+            hardware: hardware.filled("the board's hardware"),
             serial: "file:\(serial.path)",
             audio: ["-audio", "driver=none"],
             netdev: nil,
             restore: []
         )
         return try Preparer.oneshot(
-            helper,
+            helper.filled("the helper"),
             argv: config.argv,
             machine: config.machine,
             serial: serial,
@@ -406,6 +419,10 @@ final class K48Board: Board {
     }
 
     func lock(_ c: Recipe.Context) throws -> [String: Any] {
+        let helper = try self.helper.filled("the helper")
+        let patcher = try self.patcher.filled("iBoot32Patcher")
+        let mbr = try self.mbr.filled("the MBR")
+        let vols = try self.vols.filled("the volumes")
         func opt(_ v: Any?) -> Any { v ?? NSNull() }
         var outputs: [String: Any] = ["nand": ["files": c.nandHashes]]
         if iboot {

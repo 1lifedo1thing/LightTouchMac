@@ -109,11 +109,12 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
 
     /// What the row says for an error event. The detail stays in the preparer's log.
     public static func message(code: String, detail: String, piece: String? = nil, beta: Bool = false) -> String {
-        switch code {
+        if code == "unsupported", let piece {
+            return "Light Touch can’t prepare this \(beta ? "beta" : "version") yet: \(unsupportedReason(piece))."
+        }
+        return switch code {
         case "key_missing": "Light Touch doesn’t have the keys for this firmware."
         case "sha_mismatch": "This IPSW doesn’t match the one Light Touch knows."
-        case "unsupported" where piece != nil:
-            "Light Touch can’t prepare this \(beta ? "beta" : "version") yet: \(unsupportedReason(piece!))."
         case "unsupported": "This IPSW isn’t supported."
         case "activation_failed", "hook_failed": "Couldn’t activate this device."
         case "oneshot_failed": "The device’s first boot didn’t finish."

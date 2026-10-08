@@ -191,7 +191,9 @@ struct CaptureOptionsView: View {
     }
 
     static func icon(_ url: URL) -> NSImage {
-        let icon = NSWorkspace.shared.icon(forFile: url.path).copy() as! NSImage
+        let shared = NSWorkspace.shared.icon(forFile: url.path)
+        // A copy, so the 16-point size doesn't resize the workspace's shared icon.
+        guard let icon = shared.copy() as? NSImage else { return shared }
         icon.size = NSSize(width: 16, height: 16)
         return icon
     }

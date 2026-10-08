@@ -316,7 +316,8 @@ final class WebProxy: @unchecked Sendable {
                 )
                 return
             }
-            var request = URLRequest(url: components.url!)
+            guard let requestURL = components.url else { throw Reply(400, "Bad request") }
+            var request = URLRequest(url: requestURL)
             request.httpMethod = method
             request.httpShouldHandleCookies = false
             for (name, value) in forwarded { request.addValue(value, forHTTPHeaderField: name) }
@@ -452,7 +453,8 @@ final class WebProxy: @unchecked Sendable {
         url.host = host
         url.path = path
         url.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
-        var request = URLRequest(url: url.url!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
+        guard let requestURL = url.url else { return nil }
+        var request = URLRequest(url: requestURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
         request.setValue("LightTouch/1.0 (Weather)", forHTTPHeaderField: "User-Agent")
         guard let (response, body) = fetch(request, limit: 1 << 20), response.statusCode == 200 else { return nil }
         return try? JSONSerialization.jsonObject(with: body)
@@ -463,7 +465,10 @@ final class WebProxy: @unchecked Sendable {
     /// The capture closest to `date` of `target`, over verified host TLS: the archive's own and the original site's
     /// redirects followed here (an http-to-https one stays in dated browsing), no guest header sent.
     private func archived(_ target: String, date: String, head: Bool) throws -> Data {
-        let key = URLRequest(url: URL(string: "\(archiveOrigin)/web/\(date)id_/\(target)")!)
+        guard let archiveURL = URL(string: "\(archiveOrigin)/web/\(date)id_/\(target)") else {
+            throw Reply(400, "Bad archive address")
+        }
+        let key = URLRequest(url: archiveURL)
         if !head, let cached = session.configuration.urlCache?.cachedResponse(for: key),
             let stored = cached.userInfo?["stored"] as? Date, Date().timeIntervalSince(stored) < 86400
         {
@@ -471,7 +476,7 @@ final class WebProxy: @unchecked Sendable {
         }
         archiveGate.lock()
         defer { archiveGate.unlock() }
-        var url = key.url!.absoluteString
+        var url = archiveURL.absoluteString
         for _ in 0..<8 {
             let wait = cooldownUntil.timeIntervalSinceNow
             if wait > 0 { return Self.archiveLimited(Int(wait.rounded(.up))) }
@@ -773,7 +778,10 @@ final class Guest {
     func write(_ text: String) -> Bool { write(Data(text.utf8)) }
     func write(_ data: Data) -> Bool {
         guard let tls else { return Self.writeAll(fd, data) }
-        return data.withUnsafeBytes { guest_tls_write(tls, $0.baseAddress!, $0.count) }
+        return data.withUnsafeBytes { bytes in
+            guard let base = bytes.baseAddress else { return true }  // nothing to write
+            return guest_tls_write(tls, base, bytes.count)
+        }
     }
 
     func finish() {

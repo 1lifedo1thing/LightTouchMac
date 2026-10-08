@@ -21,8 +21,8 @@ nonisolated public enum ZoomMode: Equatable, Sendable {
     public static func step(from pixelMultiple: CGFloat, direction: Int) -> ZoomMode {
         .pixels(
             direction > 0
-                ? steps.first { CGFloat($0) > pixelMultiple + 0.001 } ?? steps.last!
-                : steps.last { CGFloat($0) < pixelMultiple - 0.001 } ?? steps.first!
+                ? steps.first { CGFloat($0) > pixelMultiple + 0.001 } ?? steps[steps.count - 1]
+                : steps.last { CGFloat($0) < pixelMultiple - 0.001 } ?? steps[0]
         )
     }
 

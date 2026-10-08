@@ -42,6 +42,12 @@ public struct UnitIdentity: Equatable, Sendable {
 
     public var udid: String? { self["udid"] }
 
+    /// A field every synthesized identity has; its absence is a programmer error.
+    private func synthesized(_ key: String) -> String {
+        guard let value = self[key] else { preconditionFailure("synthesized identity has no \(key)") }
+        return value
+    }
+
     static let serialChars = Array("0123456789ABCDEFGHJKLMNPQRSTUVWXYZ")  // no I or O, as Apple serials
     /// Wi-Fi iPad 1 model numbers by storage (the only NAND geometry modeled is 16 GB).
     public static let iPadModels = ["16g": "MB292"]
@@ -81,7 +87,16 @@ public struct UnitIdentity: Equatable, Sendable {
             ("model-number", .string(model)), ("region-info", .string(iPadRegion)), ("seed", .string(seed)),
         ])
         id.fields.append(
-            ("udid", .string(udid(serial: id["serial-number"]!, wifiMAC: id["wifi-mac"]!, btMAC: id["bt-mac"]!)))
+            (
+                "udid",
+                .string(
+                    udid(
+                        serial: id.synthesized("serial-number"),
+                        wifiMAC: id.synthesized("wifi-mac"),
+                        btMAC: id.synthesized("bt-mac")
+                    )
+                )
+            )
         )
         return id
     }
@@ -95,20 +110,28 @@ public struct UnitIdentity: Equatable, Sendable {
         let base = try synthesize(seed: seed)
         let h = Array(SHA256.hash(data: Data(("battery:" + seed).utf8)))
         var id = UnitIdentity(
-            fields: [("serial-number", .string(base["serial-number"]!)), ("wifi-mac", .string(base["wifi-mac"]!))]
-                + (bluetooth ? [("bt-mac", .string(base["bt-mac"]!))] : []) + [
+            fields: [
+                ("serial-number", .string(base.synthesized("serial-number"))),
+                ("wifi-mac", .string(base.synthesized("wifi-mac"))),
+            ]
+                + (bluetooth ? [("bt-mac", .string(base.synthesized("bt-mac")))] : []) + [
                     ("battery-serial", .string(h[0..<12].map { String($0 % 10) }.joined())),
                     ("model-number", .string(modelNumber)), ("region-info", .string(regionInfo)),
                     ("seed", .string(seed)),
                 ]
         )
-        if bluetooth { id.fields.append(("unique-chip-id", .string(base["unique-chip-id"]!))) }
+        if bluetooth { id.fields.append(("unique-chip-id", .string(base.synthesized("unique-chip-id")))) }
         id.fields.append(
             (
                 "udid",
                 .string(
                     bluetooth
-                        ? base["udid"]! : udid(serial: base["serial-number"]!, wifiMAC: base["wifi-mac"]!, btMAC: "")
+                        ? base.synthesized("udid")
+                        : udid(
+                            serial: base.synthesized("serial-number"),
+                            wifiMAC: base.synthesized("wifi-mac"),
+                            btMAC: ""
+                        )
                 )
             )
         )
@@ -135,10 +158,10 @@ public struct UnitIdentity: Equatable, Sendable {
                 "udid",
                 .string(
                     IPhoneIdentity.udid(
-                        serial: id["serial-number"]!,
+                        serial: id.synthesized("serial-number"),
                         imei: imei,
-                        wifiMAC: id["wifi-mac"]!,
-                        btMAC: id["bt-mac"]!
+                        wifiMAC: id.synthesized("wifi-mac"),
+                        btMAC: id.synthesized("bt-mac")
                     )
                 )
             )
@@ -167,7 +190,7 @@ public struct UnitIdentity: Equatable, Sendable {
                 case 0x09: o += "\\t"
                 case 0x08: o += "\\b"
                 case 0x0C: o += "\\f"
-                case 0x20...0x7E: o.unicodeScalars.append(Unicode.Scalar(u)!)
+                case 0x20...0x7E: o.unicodeScalars.append(Unicode.Scalar(UInt8(u)))
                 default: o += String(format: "\\u%04x", u)
                 }
             }

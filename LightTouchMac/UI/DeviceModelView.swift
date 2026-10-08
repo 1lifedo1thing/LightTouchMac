@@ -447,12 +447,8 @@ final class DeviceModelView: NSView {
         guard points.count == 4 else { return nil }
         let xs = points.map(\.x)
         let ys = points.map(\.y)
-        return CGRect(
-            x: xs.min()!,
-            y: ys.min()!,
-            width: xs.max()! - xs.min()!,
-            height: ys.max()! - ys.min()!
-        )
+        guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else { return nil }
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
     /// The front outline as a rounded rectangle (N72's: 46 x 94 mm inside an 8 mm radius).
     private var cornerRadius: Float { min(shellBounds.extents.x, shellBounds.extents.y) * 0.13 }

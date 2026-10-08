@@ -160,8 +160,9 @@ public actor StorageGeneration {
         }
         let data = try Data(contentsOf: root.appendingPathComponent("original-\(DeviceRecord.name)"))
         var record = try Self.object(data)
-        var base = record["base"] as! [String: Any]
-        var storage = record["storage"] as! [String: Any]
+        guard var base = record["base"] as? [String: Any], var storage = record["storage"] as? [String: Any] else {
+            throw FirmwareError(.unsupported, "storage transactions require a valid device record")
+        }
         base["path"] = try recordPath(self.base)
         storage["overlay"] = try recordPath(overlay)
         storage["key"] = id.uuidString
@@ -432,9 +433,10 @@ public actor StorageGeneration {
             unlink(temporary.path)
         }
         try data.withUnsafeBytes { bytes in
+            guard let start = bytes.baseAddress else { return }  // empty: nothing to write
             var offset = 0
             while offset < bytes.count {
-                let count = Darwin.write(fd, bytes.baseAddress!.advanced(by: offset), bytes.count - offset)
+                let count = Darwin.write(fd, start.advanced(by: offset), bytes.count - offset)
                 if count < 0 && errno == EINTR { continue }
                 guard count > 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
                 offset += count

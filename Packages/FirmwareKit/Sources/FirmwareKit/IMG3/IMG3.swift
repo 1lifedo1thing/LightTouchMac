@@ -115,6 +115,13 @@ extension Data {
         }
         self.init(out)
     }
+
+    /// Bytes from a hex literal written in the source (a key, an IV, a magic value); a malformed literal is a
+    /// programmer error.
+    init(hexLiteral hex: StaticString) {
+        guard let data = Data(hex: "\(hex)") else { preconditionFailure("not a hex literal: \(hex)") }
+        self = data
+    }
 }
 
 extension [UInt8] {

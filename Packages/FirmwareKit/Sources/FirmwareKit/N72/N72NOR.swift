@@ -15,9 +15,9 @@ public enum N72NOR {
     /// The image types the stock 5F138 NOR carries, in its order (build_nor.DEFAULT_ORDER).
     public static let order = ["illb", "ibot", "dtre", "logo", "nsrv", "bat0", "bat1", "recm", "glyC", "glyP"]
     /// What iBoot runs through the UID key to get the SHSH wrapping key.
-    static let kdfConst = Data(hex: "db1f5b33606c5f1c1934aa66589c0661")!
+    static let kdfConst = Data(hexLiteral: "db1f5b33606c5f1c1934aa66589c0661")
     /// The emulated S5L8720's UID (key_uid in hw/arm/ipod_touch_aes.h).
-    static let uidKey = Data(hex: "0123456789ABCDEF0123456789ABCDEF")!
+    static let uidKey = Data(hexLiteral: "0123456789ABCDEF0123456789ABCDEF")
 
     /// An img3's type tag ("illb", ...), as the header stores it reversed at 0x10.
     public static func type(of img3: Data) throws -> String {

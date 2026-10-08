@@ -42,6 +42,9 @@ enum MainMenuBuilder {
 
     // MARK: - Menus
 
+    /// A function key's key equivalent (the arrows' private-use characters, NSUpArrowFunctionKey and the like).
+    private static func functionKey(_ key: Int) -> String { String(utf16CodeUnits: [unichar(key)], count: 1) }
+
     private static func appMenu(_ appName: String) -> NSMenu {
         let menu = NSMenu(title: appName)
         menu.addItem(item("About \(appName)", #selector(AppDelegate.showAbout(_:))))
@@ -200,14 +203,14 @@ enum MainMenuBuilder {
             item(
                 "Rotate Left",
                 #selector(MainWindowController.deviceRotateLeft(_:)),
-                String(UnicodeScalar(NSLeftArrowFunctionKey)!)
+                functionKey(NSLeftArrowFunctionKey)
             )
         )
         menu.addItem(
             item(
                 "Rotate Right",
                 #selector(MainWindowController.deviceRotateRight(_:)),
-                String(UnicodeScalar(NSRightArrowFunctionKey)!)
+                functionKey(NSRightArrowFunctionKey)
             )
         )
         menu.addItem(item("Rotate Automatically", #selector(AppDelegate.toggleAutomaticRotation(_:))))
@@ -226,7 +229,7 @@ enum MainMenuBuilder {
             item(
                 "Volume Up",
                 #selector(MainWindowController.deviceVolumeUp(_:)),
-                String(UnicodeScalar(NSUpArrowFunctionKey)!),
+                functionKey(NSUpArrowFunctionKey),
                 [.option, .command]
             )
         )
@@ -234,7 +237,7 @@ enum MainMenuBuilder {
             item(
                 "Volume Down",
                 #selector(MainWindowController.deviceVolumeDown(_:)),
-                String(UnicodeScalar(NSDownArrowFunctionKey)!),
+                functionKey(NSDownArrowFunctionKey),
                 [.option, .command]
             )
         )

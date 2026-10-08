@@ -33,7 +33,7 @@ final class DevicePlaceholderViewController: NSViewController {
     private let space = NSTextField(wrappingLabelWithString: "")
     /// The build's catalog note (untested, experimental, where a beta came from), in a popover.
     private let info = NSButton(
-        image: NSImage(systemSymbolName: "info.circle", accessibilityDescription: "About This Build")!,
+        image: NSImage(systemSymbolName: "info.circle", accessibilityDescription: "About This Build") ?? NSImage(),
         target: nil,
         action: nil
     )
@@ -137,8 +137,7 @@ final class DevicePlaceholderViewController: NSViewController {
         let entry = row.entry
         let profile = entry.profile
         // The sidebar's thumbnail (Finder's artwork for the model), at the size of the lockup.
-        art.image = profile.map { profile in
-            let image = profile.icon.copy() as! NSImage
+        art.image = profile.flatMap { $0.icon.copy() as? NSImage }.map { image in
             image.size = NSSize(width: 256, height: 256)
             return image
         }

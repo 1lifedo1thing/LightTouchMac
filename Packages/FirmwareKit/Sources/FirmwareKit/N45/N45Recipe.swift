@@ -138,7 +138,7 @@ final class N45Board: Board {
         if known["AllowEnable"] == nil { known["AllowEnable"] = wifiKnownNetwork["AllowEnable"] }
         let list = known["List of known networks"] as? [[String: Any]] ?? []
         if !list.contains(where: { $0["SSID_STR"] as? String == "qemu-ios" }) {
-            known["List of known networks"] = list + (wifiKnownNetwork["List of known networks"] as! [[String: Any]])
+            known["List of known networks"] = list + [qemuNetwork]
         }
         try SystemEdits.put(
             try PropertyListSerialization.data(fromPropertyList: known, format: .xml, options: 0),
@@ -150,16 +150,13 @@ final class N45Board: Board {
 
     /// A device that has joined the emulator's access point before (the 88W8686 model's open "qemu-ios", channel 6):
     /// Wi-Fi on, and the network remembered as the join left it, so configd auto-joins at boot.
-    static var wifiKnownNetwork: [String: Any] {
+    static var wifiKnownNetwork: [String: Any] { ["AllowEnable": true, "List of known networks": [qemuNetwork]] }
+
+    /// The emulator's access point as a known-networks entry.
+    static var qemuNetwork: [String: Any] {
         [
-            "AllowEnable": true,
-            "List of known networks": [
-                [
-                    "SSID_STR": "qemu-ios", "SSID": Data("qemu-ios".utf8), "AP_MODE": 2, "CAPABILITIES": 1,
-                    "CHANNEL": 6,
-                    "CHANNEL_FLAGS": 8, "BEACON_INT": 10, "HIDDEN_NETWORK": false,
-                ] as [String: Any]
-            ],
+            "SSID_STR": "qemu-ios", "SSID": Data("qemu-ios".utf8), "AP_MODE": 2, "CAPABILITIES": 1, "CHANNEL": 6,
+            "CHANNEL_FLAGS": 8, "BEACON_INT": 10, "HIDDEN_NETWORK": false,
         ]
     }
 
@@ -173,7 +170,7 @@ final class N45Board: Board {
     /// The original iPhone (m68ap): its identity, its NAND's chip enables.
     let iPhone: Bool
     var banks: Int { iPhone ? 4 : N45NAND.banks }
-    var ident: UnitIdentity!, volume: URL!
+    var ident: UnitIdentity?, volume: URL?
     var kcPath = "", kcMember = "", prefix = ""
     var derived: [String: Any] = [:]
 
@@ -206,7 +203,7 @@ final class N45Board: Board {
     }
 
     func identity(seed: String) throws -> UnitIdentity {
-        ident =
+        let ident =
             iPhone
             ? try UnitIdentity.synthesizeIPhone(seed: seed, modelNumber: model, regionInfo: UnitIdentity.iPadRegion)
             : try UnitIdentity.synthesizeIPod(
@@ -215,6 +212,7 @@ final class N45Board: Board {
                 regionInfo: UnitIdentity.iPadRegion,
                 bluetooth: false
             )
+        self.ident = ident
         return ident
     }
 
@@ -232,7 +230,7 @@ final class N45Board: Board {
             let body = try Apple8900.body(ipsw.read(n))
             images[try IMG2.Header(body).type] = body
         }
-        try N45NOR.build(identity: ident, images: images).write(to: c.file("nor.bin"))
+        try N45NOR.build(identity: ident.filled("the identity"), images: images).write(to: c.file("nor.bin"))
         try iboot.write(to: c.file("iBoot.bin"))
         derived = [
             "kernelcache_path": kcPath, "kernelcache_member": kcMember, "nor_images": N45NOR.order,
@@ -246,7 +244,8 @@ final class N45Board: Board {
     }
 
     nonisolated(nonsending) func volumes(_ c: Recipe.Context) async throws {
-        volume = c.work.appendingPathComponent("volume.img")
+        let volume = c.work.appendingPathComponent("volume.img")
+        self.volume = volume
         try await UDIF.extractRootfs(dmg: c.decFile("rootfs.dmg"), to: volume)
         try await VolumeMount.grow(volume, toBytes: bytes)
         // Modern HFS checks reject the stock 1.x catalog's legacy folder counts.
@@ -414,6 +413,7 @@ final class N45Board: Board {
     }
 
     nonisolated(nonsending) func store(_ c: Recipe.Context) async throws {
+        let volume = try self.volume.filled("the system volume")
         let fil = try N45NAND.filID(iBoot: Data(contentsOf: c.file("iBoot.bin")))
         let (written, meta) = try N45NAND.write(volume: volume, out: c.nand, filID: fil, banks: banks, bbtMap: iPhone)
         c.log(
@@ -423,7 +423,8 @@ final class N45Board: Board {
     }
 
     func lock(_ c: Recipe.Context) throws -> [String: Any] {
-        [
+        let ident = try self.ident.filled("the identity")
+        return [
             "inputs": [
                 "kernelcache": kcMember, "iboot": prefix + "iBoot.\(c.e.board).RELEASE.img2", "all_flash": prefix,
             ],

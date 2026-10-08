@@ -70,7 +70,12 @@ public enum AboutCredits {
     ]
 
     /// The credits' last link: the app opens its Licenses window for it.
-    public static let licensesLink = URL(string: "x-lighttouch-about:licenses")!
+    public static let licensesLink: URL = {
+        guard let url = URL(string: "x-lighttouch-about:licenses") else {
+            preconditionFailure("The licenses link is a constant, valid URL")
+        }
+        return url
+    }()
 
     /// `licenses`: the bundle has its licenses/ (a release does; a development build may not), for Show Licenses.
     public static func runs(buildInputs: Data?, licenses: Bool) -> [Run] {
@@ -86,7 +91,12 @@ public enum AboutCredits {
                     $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
                 }
             out.append(Run(text: "Components\n", isHeading: true))
-            out.append(Run(text: names.map { "\($0) \(components[$0]!)" }.joined(separator: "\n") + "\n\n"))
+            out.append(
+                Run(
+                    text: names.compactMap { name in components[name].map { "\(name) \($0)" } }.joined(separator: "\n")
+                        + "\n\n"
+                )
+            )
         }
         out.append(Run(text: "Open-Source Software\n", isHeading: true))
         for project in projects {
@@ -147,6 +157,7 @@ public enum AboutCredits {
 
 extension AboutCredits.Project {
     fileprivate init(_ name: String, _ site: String, _ license: String, _ directory: String) {
-        self.init(name: name, site: URL(string: site)!, license: license, directory: directory)
+        guard let url = URL(string: site) else { preconditionFailure("\(name)'s site is a constant, valid URL") }
+        self.init(name: name, site: url, license: license, directory: directory)
     }
 }
