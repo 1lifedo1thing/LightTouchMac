@@ -20,6 +20,8 @@ public protocol BootWatchHost: AnyObject {
     var readiness: ReadinessWatch { get }
     var notices: DeviceNotices { get }
     func retireBoot()
+    /// The device's install queue goes with its helper (AppInstaller.discard): nothing queued can land any more.
+    func discardInstalls()
     /// The helper is gone: the file watch, status poll, recording audio, usbmuxd and serial capture end with it.
     func releaseBootResources()
 }
@@ -111,6 +113,7 @@ public protocol BootWatchHost: AnyObject {
     public func helperDied(_ reason: String) {
         guard !host.state.isDead else { return }
         host.retireBoot()
+        host.discardInstalls()
         if !host.halting, deathReason == nil { deathReason = reason }  // an aborted boot keeps its own reason
         host.releaseBootResources()
         host.state = host.halting ? .poweredOff : .dead(exitCode: nil)

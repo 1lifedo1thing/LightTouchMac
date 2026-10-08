@@ -31,7 +31,7 @@ struct BootWatchTests {
             #expect(late.state == .dead(exitCode: nil) && late.bootWatch.deathReason == BootWatch.deadlineReason(.n72))
             #expect(late.bootWatch.deathReason!.hasPrefix("The iPod didn’t start within"))
             #expect(
-                late.steps == ["retire", "release"] && late.timeZoneStops == 1,
+                late.steps == ["retire", "discard", "release"] && late.timeZoneStops == 1,
                 "the helper's death retires the boot's work"
             )
         }
@@ -118,7 +118,11 @@ struct BootWatchTests {
             c.bootWatch.helperDied("The iPod stopped unexpectedly.")
             #expect(c.state == .dead(exitCode: nil) && c.bootWatch.deathReason == "The iPod stopped unexpectedly.")
             c.bootWatch.helperDied("again")
-            #expect(c.steps == ["retire", "release"] && c.bootWatch.deathReason == "The iPod stopped unexpectedly.")
+            #expect(
+                c.steps == ["retire", "discard", "release"],
+                "once, and the install queue goes with the helper (a restart or a crash leaves no jobs behind)"
+            )
+            #expect(c.bootWatch.deathReason == "The iPod stopped unexpectedly.")
         }
     }
 

@@ -13,8 +13,8 @@ public protocol ForegroundHost: AnyObject {
     var canReachDevice: Bool { get }
     var isSleeping: Bool { get }
     var isInstalling: Bool { get }
-    /// AppInstaller has queued work for this device.
-    var hasPendingInstallWork: Bool { get }
+    /// An install, import or removal holds this device (AppInstaller); a download or a queued job doesn't.
+    var installerUsesDevice: Bool { get }
     var guestAgentAlive: Bool { get }
     /// The device's overlay: where the Setup-done mark goes.
     var overlay: URL { get }
@@ -56,7 +56,7 @@ public protocol ForegroundHost: AnyObject {
             var appliedProxyRevision: Int?
             while !Task.isCancelled {
                 guard let self else { return }
-                if host.canReachDevice, !host.isSleeping, !host.isInstalling, !host.hasPendingInstallWork {
+                if host.canReachDevice, !host.isSleeping, !host.isInstalling, !host.installerUsesDevice {
                     do {
                         appliedProxyRevision = try await host.applyWebProxy(
                             since: appliedProxyRevision,

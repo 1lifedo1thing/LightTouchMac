@@ -5,7 +5,8 @@ import Testing
 
 @testable import LightTouchCore
 
-/// The guest's front app while the device answers (and nothing while it sleeps, installs or has queued work),
+/// The guest's front app while the device answers (and nothing while it sleeps or an install holds it; a download
+/// doesn't),
 /// the web proxy applied on each pass, and Setup's end lifting the boot's network restriction once.
 struct ForegroundWatchTests {
     struct NoAgent: Error {}
@@ -14,7 +15,9 @@ struct ForegroundWatchTests {
         let bootScope = BootSessionScope()
         let link = RecordingLink()
         var helperLink: HelperLink? { link }
-        var canReachDevice = true, isSleeping = false, isInstalling = false, hasPendingInstallWork = false
+        var canReachDevice = true, isSleeping = false, isInstalling = false, installerUsesDevice = false
+        /// AppInstaller has a job for the device (a Legacy Store download, or one waiting for the device).
+        var hasPendingInstallWork = false
         var guestAgentAlive = true
         let overlay: URL
         var fronts: [(bundleID: String, name: String?)?] = []
@@ -60,6 +63,23 @@ struct ForegroundWatchTests {
             host.settled = nil
             await eventually("the failed poll") { watch.appName == nil }
             #expect(host.proxyPasses >= 2, "the proxy is applied on every pass")
+            watch.stop()
+        }
+    }
+
+    @Test func aDownloadDoesNotHoldTheWatchAnInstallDoes() async throws {
+        try await withScratchDirectory { overlay in
+            let host = Host(overlay: overlay)
+            host.hasPendingInstallWork = true  // a Legacy Store download, not on the device yet
+            host.settled = ("com.apple.springboard", "Home")
+            let watch = watch(host)
+            watch.start()
+            await eventually("polled during the download") { watch.appName == "Home" }
+            host.installerUsesDevice = true
+            try await Task.sleep(for: .milliseconds(20))
+            let passes = host.proxyPasses
+            try await Task.sleep(for: .milliseconds(40))
+            #expect(host.proxyPasses == passes, "an install on the device: no polls")
             watch.stop()
         }
     }

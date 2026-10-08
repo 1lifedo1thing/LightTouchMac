@@ -76,7 +76,6 @@ extension EmulatorController {
     }
 
     func startForegroundWatch() { foreground.start() }
-    var hasPendingInstallWork: Bool { AppInstaller.hasPendingWork(for: instance.id) }
     var overlay: URL { overlayURL }
     func foregroundApp() async throws -> (bundleID: String, name: String?) { try await guest.foreground() }
     func applyWebProxy(since applied: Int?, generation: Int) async throws -> Int? {
