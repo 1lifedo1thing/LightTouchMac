@@ -21,7 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// The selected device when it isn't running: its settings for its next start.
     private var stoppedSelection: DeviceInstance? { emulator == nil ? windowController?.selectedInstance : nil }
     private var helpController: HelpWindowController?
-    private let quitting = QuitCoordinator(budget: EmulatorController.stopBudget) {
+    private let quitting = QuitCoordinator(budget: EmulatorController.stopBudget, retry: AppDelegate.requestTermination)
+    {
         NSApp.reply(toApplicationShouldTerminate: true)
     }
 
@@ -303,7 +304,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// (EmulatorController.halt: storage flushed, no guest shutdown).
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let answer = quitting.shouldTerminate(
-            erasing: emulators.contains(where: \.isErasing) || host?.storageWork.isErasing == true,
+            busy: { [weak self] in
+                if self?.emulators.contains(where: \.isErasing) == true || self?.host?.storageWork.isErasing == true {
+                    return "Erasing a device…"
+                }
+                return DeviceFilesystemEdits.shared.activity.values.sorted().first
+            },
+            confirmWait: { work in
+                let alert = NSAlert()
+                alert.messageText = work
+                alert.informativeText = "Quitting now would interrupt it. Light Touch can quit once it’s done."
+                alert.addButton(withTitle: "Quit When Done")
+                alert.addButton(withTitle: "Cancel")
+                return alert.runModal() == .alertFirstButtonReturn
+            },
             finishRecording: { windowController?.finishRecordingBeforeQuit() == true },
             preparing: FirmwareJobs.shared.preparing,
             confirmPreparation: { preparing in
