@@ -1,5 +1,6 @@
 import CoreServices
 import Foundation
+import HostRuntime
 import Testing
 
 @testable import LightTouchCore
@@ -29,6 +30,25 @@ struct DeviceLibraryWatchTests {
     }
 
     func ids(_ library: DeviceLibrary) -> Set<UUID> { Set(library.instances.map(\.id)) }
+
+    /// A record a newer build wrote (a higher format, fields this build doesn't know) is read, but saving it is
+    /// refused rather than dropping those fields.
+    @Test func aNewerBuildsRecordIsNotRewritten() async throws {
+        try await LibraryFixtures.withScratch { state in
+            let instance = try record("Newer", state: state)
+            let url = DeviceInstance.directory(instance.id, state: state).appendingPathComponent(DeviceRecord.name)
+            var object = try DeviceRecord.object(Data(contentsOf: url))
+            object["format"] = 2
+            object["futureField"] = "kept"
+            try DeviceRecord.data(object).write(to: url)
+            let library = DeviceLibrary(state: state)
+            var read = try #require(library.instance(id: instance.id))
+            read.name = "Renamed"
+            #expect(throws: DeviceInstance.NewerFormat.self) { try library.save(read) }
+            let after = try DeviceRecord.object(Data(contentsOf: url))
+            #expect(after["futureField"] as? String == "kept" && after["name"] as? String == "Newer")
+        }
+    }
 
     @Test func aFolderMovedToTheTrashOrRemovedLeavesTheLibraryAndOnePutBackReturns() async throws {
         _ = LibraryFixtures.isolatedAppState

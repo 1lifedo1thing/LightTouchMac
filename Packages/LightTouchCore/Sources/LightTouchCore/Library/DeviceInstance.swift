@@ -9,7 +9,7 @@ import HostRuntime
 
 public nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Sendable {
     public init(
-        format: Int = 1,
+        format: Int = currentFormat,
         id: UUID,
         name: String,
         board: String,
@@ -114,7 +114,7 @@ public nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Send
         }
     }
 
-    public var format = 1
+    public var format = currentFormat
     public let id: UUID
     public var name: String
     public var board: String
@@ -209,8 +209,16 @@ public nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Send
 
     public static let decoder = PropertyListDecoder()
 
-    /// Atomic: a crash leaves the old record or the new one, never half.
+    /// The record format this build reads and writes.
+    public static let currentFormat = 1
+    public struct NewerFormat: LocalizedError {
+        public var errorDescription: String? { "This device was made by a newer version of Light Touch." }
+    }
+
+    /// Atomic: a crash leaves the old record or the new one, never half. A record of a newer format is not
+    /// rewritten, which would drop the fields this build doesn't know.
     public func write(state: URL) throws {
+        guard format <= Self.currentFormat else { throw NewerFormat() }
         let directory = Self.directory(id, state: state)
         try StorageLocations.privateDirectory(directory)
         try Self.encoder.encode(self).write(to: directory.appendingPathComponent(Self.recordName), options: .atomic)
