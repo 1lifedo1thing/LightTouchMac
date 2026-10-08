@@ -2,6 +2,8 @@ import CryptoKit
 import FirmwareSchema
 import Foundation
 import HostRuntime
+import Subprocess
+import System
 
 // One IPSW → device preparation: runs `firmwarekit create` into
 // State/Preparing/<id>/, reads its JSON Lines, and publishes the result as
@@ -133,7 +135,7 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
     public let id = UUID()
     public let request: Request
     private let onEvent: @Sendable (Event) -> Void
-    private let process = Process()
+    private var task: Task<Void, Never>?
     private let lock = NSLock()
     private var steps = 0
     private var outcome: Line?
@@ -159,12 +161,12 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
             try JSONEncoder().encode(request.entry).write(to: entryFile)
             try StorageLocations.privateDirectory(request.log.deletingLastPathComponent())
             FileManager.default.createFile(atPath: request.log.path, contents: nil)
-            process.executableURL = request.preparer
+            let arguments: [String]
             if let blob = request.blob {
-                process.arguments = FirmwareCommand.UnpackBase(blob: blob, out: staging, seed: id.uuidString).arguments
+                arguments = FirmwareCommand.UnpackBase(blob: blob, out: staging, seed: id.uuidString).arguments
             } else {
                 if let sibling = request.sibling { try JSONEncoder().encode(sibling.entry).write(to: siblingFile) }
-                process.arguments =
+                arguments =
                     FirmwareCommand.Create(
                         entry: entryFile,
                         ipsw: request.ipsw,
@@ -175,13 +177,10 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
                         sibling: request.sibling.map { (siblingFile, $0.ipsw) }
                     ).arguments
             }
-            let stdout = Pipe()
-            process.standardOutput = stdout
-            process.standardError = try FileHandle(forWritingTo: request.log)
-            process.standardInput = FileHandle.nullDevice
-            try process.run()
-            if lock.withLock({ cancelled }) { cancel() }
-            Thread.detachNewThread { [self] in read(stdout.fileHandleForReading) }
+            let log = try FileDescriptor.open(request.log.path, .writeOnly)
+            let task = Task.detached { [self] in await run(arguments, log: log) }
+            lock.withLock { self.task = task }
+            if lock.withLock({ cancelled }) { task.cancel() }
         } catch {
             finish(.failed("Couldn’t start preparing the device: \(error.localizedDescription)"))
         }
@@ -191,26 +190,34 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
     /// contract gives it 2). The staging directory goes when it exits.
     public func cancel() {
         lock.withLock { cancelled = true }
-        guard process.isRunning else { return }
-        let pid = process.processIdentifier
-        process.terminate()
-        DispatchQueue.global().asyncAfter(deadline: .now() + 5) { [process] in
-            if process.isRunning { kill(pid, SIGKILL) }
-        }
+        lock.withLock { task }?.cancel()
     }
 
-    private func read(_ handle: FileHandle) {
-        var buffer = Data()
-        while case let chunk = handle.availableData, !chunk.isEmpty {
-            buffer.append(chunk)
-            while let newline = buffer.firstIndex(of: 0x0A) {
-                let text = String(decoding: buffer[..<newline], as: UTF8.self)
-                buffer.removeSubrange(...newline)
-                receive(Line(text))
+    /// The preparer, its JSON Lines read as they come, its stderr into the log.
+    private func run(_ arguments: [String], log: FileDescriptor) async {
+        var options = PlatformOptions()
+        options.teardownSequence = [.send(signal: .terminate, allowedDurationToNextStep: .seconds(5))]
+        let status: Int32
+        do {
+            let result = try await Subprocess.run(
+                .path(FilePath(request.preparer.path)),
+                arguments: Arguments(arguments),
+                platformOptions: options,
+                input: .none,
+                output: .sequence,
+                error: .fileDescriptor(log, closeAfterSpawningProcess: true)
+            ) { execution in
+                for try await line in execution.standardOutput.strings() { receive(Line(line)) }
             }
+            status =
+                switch result.terminationStatus {
+                case .exited(let code): code
+                case .signaled(let signal): 128 + signal
+                }
+        } catch {
+            if lock.withLock({ cancelled }) { return finish(.cancelled) }
+            return finish(.failed("Couldn’t start preparing the device: \(error.localizedDescription)"))
         }
-        process.waitUntilExit()
-        let status = process.terminationStatus
         if lock.withLock({ cancelled }) { return finish(.cancelled) }
         switch lock.withLock({ outcome }) {
         case .done(let lockName)? where status == 0:

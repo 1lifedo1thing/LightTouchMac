@@ -22,11 +22,15 @@ let package = Package(
         .package(path: "../../Packages/DeviceRuntime"),
         .package(path: "../../Packages/DeviceServices"),
         .package(path: "../../Packages/FirmwareKit"),
+        .package(path: "../../Packages/ReleaseChecks"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", exact: "1.8.2"),
     ],
     targets: [
         .target(name: "SessionKit"),
-        .executableTarget(name: "sessions", dependencies: ["SessionKit", parser]),
+        .executableTarget(
+            name: "sessions",
+            dependencies: ["SessionKit", parser, .product(name: "ReleaseChecks", package: "ReleaseChecks")]
+        ),
         .executableTarget(
             name: "session-driver",
             dependencies: [

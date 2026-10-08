@@ -1,4 +1,5 @@
 import Foundation
+import ReleaseChecks
 import SessionKit
 
 /// The repository this was built from.
@@ -152,18 +153,9 @@ func run(_ tool: String, _ arguments: [String], log: URL? = nil, environment: [S
     return p.terminationStatus
 }
 
-/// A tool's standard output.
+/// A tool's standard output (empty if it could not run).
 func output(_ tool: String, _ arguments: [String]) -> String {
-    let p = Process()
-    let pipe = Pipe()
-    p.executableURL = URL(fileURLWithPath: tool)
-    p.arguments = arguments
-    p.standardOutput = pipe
-    p.standardError = FileHandle.nullDevice
-    guard (try? p.run()) != nil else { return "" }
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    p.waitUntilExit()
-    return String(decoding: data, as: UTF8.self)
+    (try? Shell.run([tool] + arguments))?.output ?? ""
 }
 
 /// A prepared base: its lock and what the driver calls its board.

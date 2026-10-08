@@ -55,8 +55,8 @@ public enum Shell {
         try? errHandle.close()
         return CommandResult(
             status: process.terminationStatus,
-            output: (try? String(contentsOf: out, encoding: .utf8)) ?? "",
-            error: (try? String(contentsOf: err, encoding: .utf8)) ?? ""
+            output: String(decoding: (try? Data(contentsOf: out)) ?? Data(), as: UTF8.self),
+            error: String(decoding: (try? Data(contentsOf: err)) ?? Data(), as: UTF8.self)
         )
     }
 

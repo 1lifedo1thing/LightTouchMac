@@ -105,23 +105,10 @@ public enum DependencySources {
         guard !files.fileExists(atPath: destination.path) else {
             throw ToolError("use a fresh source destination: \(destination.path)")
         }
-        func git(_ arguments: String...) throws -> Data {
-            let process = Process()
-            let pipe = Pipe()
-            process.executableURL = url("/usr/bin/git")
-            process.arguments = ["-C", source.path] + arguments
-            process.standardOutput = pipe
-            try process.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else {
-                throw ToolError("git \(arguments.joined(separator: " ")) failed in \(source.path)")
-            }
-            return data
+        func git(_ arguments: String...) throws -> String {
+            try output(["/usr/bin/git", "-C", source.path] + arguments)
         }
-        func list(_ data: Data) -> [String] {
-            String(decoding: data, as: UTF8.self).split(separator: "\0").map(String.init)
-        }
+        func list(_ text: String) -> [String] { text.split(separator: "\0").map(String.init) }
         let untracked = list(try git("ls-files", "--others", "--exclude-standard", "-z")).filter {
             ($0 as NSString).lastPathComponent != ".DS_Store"
         }
@@ -152,10 +139,8 @@ public enum DependencySources {
         try writeJSON(
             [
                 "schema_version": 1, "source": source.path, "staged_source": destination.path,
-                "commit": String(decoding: try git("rev-parse", "HEAD"), as: UTF8.self).trimmingCharacters(
-                    in: .whitespacesAndNewlines
-                ),
-                "tracked_diff_sha256": sha256(diff), "modified": !diff.isEmpty, "files": records,
+                "commit": try git("rev-parse", "HEAD"),
+                "tracked_diff_sha256": sha256(Data(diff.utf8)), "modified": !diff.isEmpty, "files": records,
             ],
             to: record
         )

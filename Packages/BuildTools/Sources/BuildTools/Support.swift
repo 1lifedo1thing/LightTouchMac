@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import ReleaseChecks
 
 /// A failure the tools report as one line on stderr and exit 1.
 public struct ToolError: Error, CustomStringConvertible {
@@ -77,20 +78,11 @@ func run(_ arguments: [String], log: URL? = nil, environment: [String: String]? 
 
 /// A command's standard output, trimmed; throws on a nonzero status.
 func output(_ arguments: [String], environment: [String: String]? = nil) throws -> String {
-    let process = Process()
-    let pipe = Pipe()
-    process.executableURL = url("/usr/bin/env")
-    process.arguments = arguments
-    if let environment { process.environment = environment }
-    process.standardOutput = pipe
-    process.standardInput = FileHandle.nullDevice
-    try process.run()
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    process.waitUntilExit()
-    guard process.terminationStatus == 0 else {
-        throw ToolError("\(arguments.joined(separator: " ")) failed (\(process.terminationStatus))")
+    let result = try Shell.run(arguments, environment: environment)
+    guard result.succeeded else {
+        throw ToolError("\(arguments.joined(separator: " ")) failed (\(result.status)): \(result.error)")
     }
-    return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    return result.output.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
 /// Every regular file and symlink under `root` (not descending into linked directories), relative paths, sorted.

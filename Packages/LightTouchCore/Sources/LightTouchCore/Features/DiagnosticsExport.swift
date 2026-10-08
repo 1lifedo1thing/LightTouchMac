@@ -1,7 +1,9 @@
 // Help > Export Diagnostics: the logs, device records and a summary zipped atomically into a scratch
-// directory. Foundation only; tests/offline/check-storage-lifecycle.py compiles it whole.
+// directory.
 
 import Foundation
+import Subprocess
+import System
 
 // MARK: - Diagnostics storage
 
@@ -112,34 +114,18 @@ public nonisolated enum DiagnosticsExport {
     }
 
     private static func runArchiver(_ executable: URL, staging: URL, archive: URL) async throws {
-        let process = Process()
-        process.executableURL = executable
-        process.arguments = ["-c", "-k", "--sequesterRsrc", "--keepParent", staging.path, archive.path]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        let status: Int32 = try await withTaskCancellationHandler {
-            try Task.checkCancellation()
-            return try await withCheckedThrowingContinuation { continuation in
-                process.terminationHandler = { child in
-                    continuation.resume(returning: child.terminationStatus)
-                }
-                do {
-                    try process.run()
-                    // Cancellation may have arrived before the process was live.
-                    if Task.isCancelled, process.isRunning { process.terminate() }
-                } catch {
-                    process.terminationHandler = nil
-                    continuation.resume(throwing: error)
-                }
-            }
-        } onCancel: {
-            if process.isRunning { process.terminate() }
-        }
+        // Cancelling the task stops ditto (Subprocess's teardown).
+        let result = try await Subprocess.run(
+            .path(FilePath(executable.path)),
+            arguments: ["-c", "-k", "--sequesterRsrc", "--keepParent", staging.path, archive.path],
+            output: .discarded,
+            error: .discarded
+        )
         try Task.checkCancellation()
-        guard status == 0 else {
+        guard result.terminationStatus.isSuccess else {
             throw NSError(
                 domain: "LightTouch.Diagnostics",
-                code: Int(status),
+                code: 1,
                 userInfo: [
                     NSLocalizedDescriptionKey: "Couldn’t create the diagnostics file."
                 ]
