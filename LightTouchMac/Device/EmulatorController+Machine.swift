@@ -1,0 +1,155 @@
+import Cocoa
+import DeviceRuntime
+import FirmwareSchema
+import HostRuntime
+import HostServiceClient
+import HostServiceWire
+import LightTouchCore
+import Observation
+
+extension EmulatorController {
+    // MARK: - Options
+    var localNetworkEnabled: Bool { options.localNetworkEnabled }
+    func toggleLocalNetwork() { options.toggleLocalNetwork() }
+    var debugPortEnabled: Bool { options.debugPortEnabled }
+    func toggleDebugPort() { options.toggleDebugPort() }
+    var debugPort: Int? { options.debugPort }
+    var lldbAttachCommand: String? { options.lldbAttachCommand }
+
+    // MARK: - Guest package
+    var guestOffer: GuestPackage.Offer? { guestPackage.offer }
+    var guestToolsStatus: GuestPackage.Status { guestPackage.status }
+    func startGuestPackageWatch() { guestPackage.start() }
+    private var recordURL: URL { guestPackage.recordURL }
+    var lock: DeviceLock? { guestPackage.lock }
+
+    /// View ▸ Free-Form Screen (issue #21): the record's `panel`, read fresh and written back ("WxH" as the panel
+    /// scans; nil, the shipped panel). With `restart`, a running device stops (Stop's hard halt) and a fresh helper
+    /// boots on it, since the guest takes its screen size at boot. Returns whether that restart is under way.
+    func setPanel(_ panel: String?, restart: Bool) -> Bool {
+        guard var record = try? DeviceInstance.read(recordURL) else { return false }
+        if record.panel != panel {
+            record.panel = panel
+            do {
+                try record.write(state: stateDir)
+                DeviceLibrary.shared.reload()
+            } catch {
+                logEvent("display: could not record panel \(panel ?? "native"): \(error.localizedDescription)")
+                return false
+            }
+        }
+        instance.panel = panel
+        guard restart, canStop else { return false }
+        logEvent("display: restarting \(instance.name) at panel \(panel ?? "native")")
+        halt { [weak self] _ in self?.onRestartRequested?() }
+        return true
+    }
+
+    // MARK: - Machine control
+    //
+    // pause() and resume() are MachineHost's; Restart and Power On are BootCycle's.
+    var poweringOn: Bool { cycle.poweringOn }
+    /// Restart the guest, its filesystem synced first.
+    func reset() { cycle.reset() }
+    /// Retain the QEMU main loop at guest power-off; a reset can cold boot it
+    /// again without reinitializing QEMU or opening a second NAND writer.
+    func powerOff(completion: @escaping (Bool) -> Void) { ladder.forceStop(completion: completion) }
+    func powerOn() { cycle.powerOn() }
+
+    var isReleased: Bool { stopped || releasing }
+    func syncGuest() async throws { try await guestAgent.sync() }
+    func forgetConnectionWork() {
+        didSweepStaging = false
+        recovery.isReconnecting = false
+    }
+    func forgetGuestFacts() {
+        foreground.forget()
+        isSleeping = false
+    }
+    func forgetReachability() {
+        deviceReachable = nil
+        reachableSince = nil
+    }
+
+    func startForegroundWatch() { foreground.start() }
+    var hasPendingInstallWork: Bool { AppInstaller.hasPendingWork(for: instance.id) }
+    var overlay: URL { overlayURL }
+    func foregroundApp() async throws -> (bundleID: String, name: String?) { try await guest.foreground() }
+    func applyWebProxy(since applied: Int?, generation: Int) async throws -> Int? {
+        try await proxy.apply(since: applied, isCurrent: { generation == self.bootGeneration }) { enabled in
+            try await WebProxySetup(
+                services: self.services,
+                guest: self.guest,
+                proxyDirectory: self.proxyDirectory,
+                stoppedTrust: self.trustsStopped ? (self.instance.paths.directory, self.instance.storage.key) : nil
+            )
+            .configure(enabled: enabled)
+        }
+    }
+    func setupFinished(generation: Int) { timeZone.schedule(generation: generation) }
+
+    /// Guest audio for a recording (ScreenMovieWriter). Its clock is the
+    /// dylib's: monotonic seconds since the capture started.
+    func startAudioCapture() async throws -> GuestAudioCapture {
+        guard let link, !isDead else { throw CaptureError.failed("The device is not ready to record audio.") }
+        let origin = ProcessInfo.processInfo.systemUptime
+        let capture = GuestAudioCapture(
+            clock: { ProcessInfo.processInfo.systemUptime - origin },
+            stop: { generation in link.send(.audioStop(generation: generation)) }
+        )
+        audioSink = { [weak capture] event in capture?.receive(event) }
+        guard case .audio(let generation) = try await link.request(.audioStart) else {
+            throw CaptureError.failed("The device is not ready to record audio.")
+        }
+        capture.begin(generation: generation)
+        return capture
+    }
+
+    // MARK: - Device storage paths
+
+    /// Saved-state files older builds wrote beside the overlay; Erase removes them.
+    private var snapshotURL: URL { instance.paths.snapshot }
+    private var snapshotTmpURL: URL { snapshotURL.appendingPathExtension("tmp") }
+    private var snapshotBadURL: URL { snapshotURL.appendingPathExtension("bad") }
+    var overlayURL: URL { instance.paths.overlay }
+    /// The device's private NOR copy, which pairs with its overlay: Erase removes it too, and the
+    /// next boot clones base/nor.bin again.
+    private var preparedNORURL: URL? { instance.paths.writableNOR }
+
+    static let haltBudget: TimeInterval = ShutdownLadder.Budgets().halt
+    /// The quit backstop: the halt, then the kill, then the services worker.
+    static let stopBudget: TimeInterval = ShutdownLadder.Budgets().stop
+    var shuttingDown: Bool { ladder.shuttingDown }
+    var halting: Bool { ladder.halting }
+    /// A live helper whose VM can be stopped, including mid-boot.
+    var canStop: Bool { ladder.canStop }
+    /// Force Stop: Stop's hard halt, also while a Shut Down is under way (one the guest never finishes).
+    var canForceStop: Bool { ladder.canForceStop }
+    var canShutDown: Bool { ladder.canShutDown }
+    var isShuttingDownCleanly: Bool { ladder.isShuttingDownCleanly }
+    /// The guest powers itself off, as the slider does; the helper stays, powered off.
+    func shutDown(completion: @escaping (Bool) -> Void) { ladder.shutDown(completion: completion) }
+    /// `completion(true)` iff the helper is gone.
+    func halt(completion: @escaping (Bool) -> Void) { ladder.halt(completion: completion) }
+    func willStop() {
+        AppInstaller.discard(for: instance.id)
+        stopTimeZoneSync()
+    }
+
+    func requestFactoryReset() { eraser.request() }
+    var eraseTargets: DeviceErase.Targets {
+        DeviceErase.Targets(
+            overlay: overlayURL,
+            snapshots: [snapshotURL, snapshotTmpURL, snapshotBadURL],
+            preparedNOR: preparedNORURL,
+            state: stateDir,
+            owner: instance.id
+        )
+    }
+    func discardInstalls() { AppInstaller.discard(for: instance.id) }
+    func stopGuestWatches() {
+        foreground.stop()
+        rotation.stopWatching()
+    }
+    func restart() { onRestartRequested?() }
+}

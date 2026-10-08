@@ -1,0 +1,309 @@
+import Cocoa
+import FirmwareSchema
+import HostRuntime
+import HostServiceWire
+import LightTouchCore
+import SwiftUI
+import UniformTypeIdentifiers
+
+extension MainWindowController {
+    // MARK: - Device menu actions (routed via the responder chain)
+
+    @objc func deviceHome(_ sender: Any?) { emulator?.pressHome() }
+    @objc func deviceLock(_ sender: Any?) {
+        guard let emulator else { return }
+        if emulator.isPoweredOff { emulator.powerOn() } else { emulator.pressLock() }
+    }
+    @objc func deviceVolumeUp(_ sender: Any?) { emulator?.pressVolumeUp() }
+    @objc func deviceVolumeDown(_ sender: Any?) { emulator?.pressVolumeDown() }
+    @objc func deviceRotate(_ sender: Any?) {
+        guard let emulator else { return }
+        let action = RotationControlAction(
+            rotationDegrees: emulator.rotationDegrees,
+            optionPressed: NSEvent.modifierFlags.contains(.option)
+        )
+        emulator.rotate(clockwise: action.clockwise)
+    }
+
+    @objc func refreshRotationModifiers() {
+        syncRotationControls(optionPressed: NSEvent.modifierFlags.contains(.option))
+    }
+
+    func syncRotationControls(optionPressed: Bool) {
+        let action = RotationControlAction(
+            rotationDegrees: emulator?.rotationDegrees ?? 0,
+            optionPressed: optionPressed
+        )
+        window?.toolbar?.items.first(where: { $0.itemIdentifier == .rotate })?
+            .show(label: action.title, toolTip: action.help, symbol: action.symbol)
+    }
+
+    @objc func configureWebProxy(_ sender: Any?) {
+        guard let window, window.attachedSheet == nil, let emulator else { return }
+        let editor = ProxySettingsView(
+            configuration: emulator.webProxy,
+            status: emulator.webProxyStatus,
+            profile: emulator.profile
+        )
+        proxySettingsEditor = editor
+        weak var presented: NSWindow?
+        let sheet = ProxySettingsView.sheet(editor) { apply in
+            presented.map { window.endSheet($0, returnCode: apply ? .OK : .cancel) }
+        }
+        presented = sheet
+        window.beginSheet(sheet) { [weak self] response in
+            self?.proxySettingsEditor = nil
+            guard response == .OK else { return }
+            do { try emulator.configureWebProxy(editor.configuration) } catch {
+                NSAlert(error: error).beginSheetModal(for: window)
+            }
+        }
+    }
+
+    @objc func toggleKeyboardInput(_ sender: Any?) { emulator?.toggleKeyboardInput() }
+    @objc func toggleHardwareKeyboard(_ sender: Any?) { emulator?.toggleHardwareKeyboard() }
+
+    @objc func toggleFiles(_ sender: Any?) {
+        if filesWindow == nil {
+            let files = DeviceFilesWindowController(profile: currentProfile)
+            filesWindow = files
+            files.browser.services = emulator.flatMap { $0.canReachDevice ? $0.usbmuxSession : nil }.map {
+                DeviceServices(clientSocket: $0)
+            }
+            files.browser.onActivityChange = { [weak self] in self?.refreshFileStatus() }
+            files.browser.reload()
+            titleFilesWindow()
+        }
+        filesWindow?.showWindow(sender)
+    }
+
+    private func refreshFileStatus() {
+        emulator?.hasFileTransfer = hasFileTransfer
+        guard let filesVC, filesVC.hasTransfer else {
+            fileStatus.isHidden = true
+            deviceVC?.updateStatusVisibility()
+            return
+        }
+        fileStatus.update(title: filesVC.transferStatus, primary: "Files", secondary: "Cancel")
+        deviceVC?.updateStatusVisibility()
+    }
+
+    @objc func focusDeviceScreen(_ sender: Any?) {
+        showWindow(sender)
+        window?.makeKeyAndOrderFront(sender)
+        deviceVC?.screen.endLiveText()
+        window?.makeFirstResponder(deviceVC?.screen)
+    }
+
+    @objc func toggleVerboseBoot(_ sender: Any?) {
+        UserDefaults.standard.set(
+            !EmulatorController.verboseBoot,
+            forKey: EmulatorController.verboseBootDefaultsKey
+        )
+    }
+
+    @objc func toggleKernelConsole(_ sender: Any?) {
+        UserDefaults.standard.set(
+            !EmulatorController.kernelConsole,
+            forKey: EmulatorController.kernelConsoleDefaultsKey
+        )
+    }
+
+    @objc func deviceRotateLeft(_ sender: Any?) {
+        emulator?.rotate(clockwise: false)
+    }
+
+    @objc func deviceRotateRight(_ sender: Any?) {
+        emulator?.rotate(clockwise: true)
+    }
+
+    @objc func selectMotionPose(_ sender: NSMenuItem) {
+        guard let pose = EmulatorController.MotionPose(rawValue: sender.tag) else { return }
+        emulator?.setMotionPose(pose)
+        deviceVC?.screen.resetMotion()
+    }
+    @objc func resetMotion(_ sender: Any?) { deviceVC?.screen.resetMotion() }
+
+    @objc func deviceShake(_ sender: Any?) { emulator?.shake() }
+    @objc func setBatteryLevel(_ sender: NSMenuItem) { emulator?.setBattery(level: sender.tag) }
+    @objc func toggleBatteryCharging(_ sender: Any?) { emulator.map { $0.setCharging(!$0.batteryCharging) } }
+    @objc func setCompassHeading(_ sender: NSMenuItem) { emulator?.setCompassHeading(sender.tag) }
+
+    @objc func showCarrier(_ sender: Any?) {
+        guard let emulator, emulator.hasCellular else { return }
+        let id = emulator.instance.id
+        if carrierWindows[id] == nil || carrierWindows[id]?.window == nil {
+            carrierWindows[id] = CarrierWindowController(emulator: emulator)
+        }
+        carrierWindows[id]?.showWindow(sender)
+    }
+    @objc func specialTrick(_ sender: Any?) {
+        guard let screen = deviceVC?.screen, screen.canPerformSpecialTrick else { return }
+        screen.specialTrick()
+        // The chime lands on the pop, a beat after the crouch starts.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { NSSound(named: "special_trick")?.play() }
+    }
+    @objc func toggleDevicePause(_ sender: Any?) {
+        guard let emulator else { return }
+        if emulator.isPaused { emulator.resume() } else if emulator.isRunning { emulator.pause() }
+    }
+    @objc func devicePause(_ sender: Any?) { emulator?.pause() }
+    @objc func deviceResume(_ sender: Any?) { emulator?.resume() }
+    @objc func deviceReset(_ sender: Any?) {
+        guard let emulator else { return }
+        // Confirmed, because a restart cuts the guest off mid-write much the way
+        // a force quit does, and it sits one row above Erase in the same menu.
+        let alert = NSAlert()
+        alert.messageText = "Restart the \(emulator.profile.shortName)?"
+        alert.informativeText = "Anything it hasn’t finished saving may be lost."
+        alert.addButton(withTitle: "Restart")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons.first?.hasDestructiveAction = true
+        guard let window else {
+            if alert.runModal() == .alertFirstButtonReturn { emulator.reset() }
+            return
+        }
+        alert.beginSheetModal(for: window) { response in
+            guard response == .alertFirstButtonReturn else { return }
+            emulator.reset()
+        }
+    }
+    /// Shut Down… (⌘.): the guest powers itself off, after asking.
+    @objc func deviceShutDown(_ sender: Any?) { emulator.map(confirmShutDown) }
+    func confirmShutDown(_ emulator: EmulatorController) {
+        guard let window else { return }
+        let alert = NSAlert()
+        alert.messageText = "Shut down this \(emulator.profile.shortName)?"
+        alert.informativeText = "It turns off the way it does when you slide to power off."
+        alert.addButton(withTitle: "Shut Down")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { [weak self, weak emulator] response in
+            guard response == .alertFirstButtonReturn, let self, let emulator else { return }
+            shutDown(emulator)
+        }
+    }
+
+    /// Force Stop…: the hard halt, after asking.
+    @objc func deviceForceStop(_ sender: Any?) { emulator.map(confirmForceStop) }
+    func confirmForceStop(_ emulator: EmulatorController) {
+        guard let window else { return }
+        let alert = NSAlert()
+        alert.messageText = "Force stop this \(emulator.profile.shortName)?"
+        alert.informativeText =
+            "It stops at once, as if its battery were removed. Anything an app hasn’t saved is lost."
+        alert.addButton(withTitle: "Force Stop")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons.first?.hasDestructiveAction = true
+        alert.beginSheetModal(for: window) { [weak self, weak emulator] response in
+            guard response == .alertFirstButtonReturn, let self, let emulator else { return }
+            powerOff(emulator)
+        }
+    }
+
+    func shutDown(_ emulator: EmulatorController, then: (() -> Void)? = nil) {
+        emulator.shutDown { [weak emulator] off in
+            guard let emulator else { return }
+            if off {
+                emulator.resolveDeviceNotice(for: .powerOff)
+                then?()
+                return
+            }
+            emulator.reportDeviceNotice(
+                "The \(emulator.profile.shortName) didn’t shut down. Force Stop stops it at once.",
+                for: .powerOff
+            )
+        }
+    }
+
+    private func powerOff(_ emulator: EmulatorController) {
+        emulator.powerOff { [weak emulator] confirmed in
+            if confirmed {
+                emulator?.resolveDeviceNotice(for: .powerOff)
+                return
+            }
+            emulator?.reportDeviceNotice(
+                "The \(emulator?.profile.shortName ?? "device") didn’t stop. Quit Light Touch to stop it.",
+                for: .powerOff
+            )
+        }
+    }
+
+    /// Factory-reset the device — the "nuke everything" button. Wipes the NAND
+    /// overlay (all installed apps + settings), back to the base image; a
+    /// running device then restarts. The base image is never touched.
+    @objc func eraseDevice(_ sender: Any?) { selectedEntry.map { perform(.erase, for: $0) } }
+
+    /// For a device that isn't running, a controller that never starts does
+    /// the same erase.
+    func erase(_ entry: FirmwareCatalog.Entry) {
+        guard let window, let emulator = host.session(for: entry)?.emulator ?? host.stoppedController(for: entry) else {
+            return
+        }
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = "Erase all content and settings?"
+        alert.informativeText =
+            "This permanently removes all apps, settings, and saved state from this \(emulator.profile.shortName)."
+            + (AppInstaller.hasPendingWork(for: emulator.instance.id) ? " Installs in progress are cancelled." : "")
+        alert.addButton(withTitle: "Erase")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons.first?.hasDestructiveAction = true
+        alert.beginSheetModal(for: window) { response in
+            guard response == .alertFirstButtonReturn else { return }
+            emulator.requestFactoryReset()
+        }
+    }
+
+    @objc func installApp(_ sender: Any?) {
+        guard let window, let emulator else { return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "ipa")].compactMap { $0 }
+        panel.allowsMultipleSelection = true
+        panel.message = "Choose decrypted .ipa files to install."
+        panel.prompt = "Install"
+        panel.beginSheetModal(for: window) { [weak window] response in
+            guard response == .OK else { return }
+            for url in panel.urls {
+                AppInstaller.start(url, with: emulator, presenting: window)
+            }
+        }
+    }
+
+    @objc func syncMedia(_ sender: Any?) {
+        guard let window, let emulator else { return }
+        let panel = NSOpenPanel()
+        let firmware = emulator.mediaFirmware
+        panel.allowedContentTypes = PreparedMedia.extensions.sorted()
+            .filter { MediaSupport.supports(PreparedMedia.destination(forExtension: $0), on: firmware) }
+            .compactMap { UTType(filenameExtension: $0) }
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Import"
+        panel.beginSheetModal(for: window) { [weak window] response in
+            guard response == .OK else { return }
+            for url in panel.urls {
+                AppInstaller.startMedia(url, with: emulator, presenting: window)
+            }
+        }
+    }
+
+    /// Respring — the quick fix for a freshly sideloaded app that crashes on
+    /// launch until the device is restarted.
+    @objc func restartSpringBoard(_ sender: Any?) {
+        guard let emulator else { return }
+        Task {
+            do {
+                try await emulator.restartSpringBoard()
+            } catch {
+                AppInstaller.presentError(error, window)
+            }
+        }
+    }
+
+    // MARK: - View menu (inspector), synced with the toolbar
+
+    @objc func toggleAppInspector(_ sender: Any?) {
+        inspectorItem.animator().isCollapsed.toggle()
+    }
+
+    @objc func toggleConsole(_ sender: Any?) { console.split.toggle() }
+}
