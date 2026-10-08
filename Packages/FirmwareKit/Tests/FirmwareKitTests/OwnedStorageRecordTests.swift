@@ -4,7 +4,7 @@ import Testing
 
 @testable import FirmwareKit
 
-struct OwnedStorageRecordTests {
+@Suite(.detachesItsImages) struct OwnedStorageRecordTests {
     private func fixture() throws -> URL {
         let state = try Fixtures.tempDir("owned-record")
         let dir = state.appendingPathComponent("Devices/\(UUID().uuidString)")

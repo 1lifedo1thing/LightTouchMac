@@ -5,7 +5,7 @@ import Testing
 
 /// The n45 (iPod touch 1G) pieces against devos50's public n45ap_v1 set, which is built from the 3A101a IPSW
 /// (~/Developer/qemu-ios-files/ipod1g: nor_n45ap.bin, iboot_204_n45ap.bin, the IPSW). Skips when absent.
-@Suite struct N45Tests {
+@Suite(.detachesItsImages) struct N45Tests {
     static let files = Oracle.path("Developer/qemu-ios-files/ipod1g")
     static let ipsw = files.appendingPathComponent("iPod1,1_1.1_3A101a_Restore.ipsw")
     static var available: Bool { Oracle.exists(ipsw) && Oracle.exists(files.appendingPathComponent("nor_n45ap.bin")) }

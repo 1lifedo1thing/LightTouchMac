@@ -104,7 +104,7 @@ enum FitFixture {
     }
 }
 
-@Suite(.serialized) struct FitCheckTests {
+@Suite(.serialized, .detachesItsImages) struct FitCheckTests {
     /// FitCheck.loads on real firmware: the iPod agent (linked for 3.1's dyld, LC_DYLD_INFO_ONLY) fits 3.1.3 and 4.2.1,
     /// and does not fit 3.0 or 2.1.1, whose own executables carry no such command (the dyld that refused it with
     /// "unknown required load command 0x80000022"); the legacy-linked loader fits all four.

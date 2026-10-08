@@ -4,7 +4,7 @@ import Testing
 
 @testable import FirmwareKit
 
-struct N45FTLTests {
+@Suite(.detachesItsImages) struct N45FTLTests {
     static let banks = 4  // the M68's; the N45's 8 take the same paths
     static let sb = N45NAND.superblock(banks), pp = N45NAND.page
 

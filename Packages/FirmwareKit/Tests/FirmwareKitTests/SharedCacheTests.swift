@@ -40,6 +40,7 @@ enum Fixtures {
     static func tempDir(_ tag: String) throws -> URL {
         let u = FileManager.default.temporaryDirectory.appendingPathComponent("fk-\(tag)-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: u, withIntermediateDirectories: true)
+        TestDirectories.current?.add(u)
         return u
     }
 
@@ -130,7 +131,7 @@ enum Fixtures {
     }
 }
 
-struct SharedCacheTests {
+@Suite(.detachesItsImages) struct SharedCacheTests {
     @Test func thumbEntryCheck() {
         #expect(AppSyncCachePatch.looksLikeThumbEntry([0x80, 0xb5, 0x00, 0xaf]))  // push {r7,lr}  (3.x/4.x/5.0b)
         #expect(AppSyncCachePatch.looksLikeThumbEntry([0x2d, 0xe9, 0xf0, 0x4f]))  // push.w with lr

@@ -366,7 +366,15 @@ import Testing
                     ["attach", "-imagekey", "diskimage-class=CRawDiskImage", "-nomount", "-nobrowse", image.path]
                 )
                 .split(whereSeparator: \.isWhitespace).first { $0.hasPrefix("/dev/") }.map(String.init) ?? ""
-            defer { _ = try? run("/usr/bin/hdiutil", ["detach", dev, "-force"]) }
+            defer {
+                // a just-unmounted device can stay busy for a moment on a loaded host: retry, and fail if it stays
+                var detached = false
+                for _ in 0..<20 where !detached {
+                    detached = (try? run("/usr/bin/hdiutil", ["detach", dev, "-force"])) != nil
+                    if !detached { usleep(500_000) }
+                }
+                #expect(detached, "\(image.path) left attached as \(dev)")
+            }
             _ = try run("/sbin/newfs_hfs", ["-v", "probe", dev])
             let mountPoint = FileManager.default.temporaryDirectory.appendingPathComponent(
                 "LightTouch-edit-test-\(UUID().uuidString)/probe"

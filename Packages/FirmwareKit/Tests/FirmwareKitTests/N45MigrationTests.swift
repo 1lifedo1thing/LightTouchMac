@@ -6,7 +6,7 @@ import Testing
 @testable import FirmwareKit
 
 /// Boot admission moves a recipe-1 M68 (and a recipe-2 N45) to the SystemConfiguration path 1.x reads.
-struct N45MigrationTests {
+@Suite(.detachesItsImages) struct N45MigrationTests {
     static func record(_ device: URL) throws -> [String: Any] {
         try DeviceRecord.object(Data(contentsOf: device.appendingPathComponent(DeviceRecord.name)))
     }

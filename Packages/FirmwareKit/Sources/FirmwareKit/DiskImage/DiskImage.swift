@@ -102,7 +102,12 @@ public enum DiskImage {
         backend: Backend = backend,
         execute: @Sendable ([String]) async throws -> String
     ) async throws -> Attached {
-        let prior = Set(try await checkedAttachedImages().map(\.device))
+        let path = image.resolvingSymlinksInPath().path
+        let isImage: @Sendable ((image: String, device: String)) -> Bool = { item in
+            URL(fileURLWithPath: item.image).resolvingSymlinksInPath().path == path
+        }
+        // This image's devices only: a device node another image held before can be this attach's by now.
+        let prior = Set(try await checkedAttachedImages().filter(isImage).map(\.device))
         do {
             let out = try await execute(attachCommand(image, readOnly: readOnly, mount: mount, backend: backend))
             guard let attached = parseAttach(out) else {
@@ -115,11 +120,7 @@ public enum DiskImage {
             // plist. Only detach newly observed devices for this exact image.
             do {
                 try await Task.detached {
-                    let path = image.resolvingSymlinksInPath().path
-                    for item in try await checkedAttachedImages()
-                    where !prior.contains(item.device)
-                        && URL(fileURLWithPath: item.image).resolvingSymlinksInPath().path == path
-                    {
+                    for item in try await checkedAttachedImages() where isImage(item) && !prior.contains(item.device) {
                         try await detach(item.device, force: true, backend: backend)
                     }
                 }.value

@@ -108,7 +108,7 @@ enum HFSOracle {
     static let ipads = ["k48ap-7B500", "k48ap-8C148"].map(Oracle.firmware)
 }
 
-@Suite(.serialized) struct HFSPlusTests {
+@Suite(.serialized, .detachesItsImages) struct HFSPlusTests {
     /// Every catalog path, owner, mode, flags, size, content sha256 and symlink target against a listing of
     /// the same image through hdiutil mounts, and the (parent, name) -> CNID index against setowner.py.
     @Test(
@@ -194,7 +194,7 @@ enum HFSOracle {
     }
 }
 
-struct HFSPlusNameTests {
+@Suite(.detachesItsImages) struct HFSPlusNameTests {
     /// A name holding ":" on the host is stored with "/" in the catalog (1.0's zoneinfo/Etc/GMT-0:15): paths
     /// and lookups use the host's form, so the stopped edit can restore its metadata.
     @Test func slashInCatalogName() async throws {

@@ -177,6 +177,7 @@ enum Oracle {
     static func withTemp<T>(_ body: (URL) throws -> T) throws -> T {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("FirmwareKitTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        TestDirectories.current?.add(dir)
         defer { try? FileManager.default.removeItem(at: dir) }
         return try body(dir)
     }
@@ -184,6 +185,7 @@ enum Oracle {
     nonisolated(nonsending) static func withTemp<T>(_ body: (URL) async throws -> T) async throws -> T {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("FirmwareKitTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        TestDirectories.current?.add(dir)
         defer { try? FileManager.default.removeItem(at: dir) }
         return try await body(dir)
     }
@@ -207,5 +209,53 @@ enum Oracle {
         let t0 = ContinuousClock.now
         defer { print("timing: \(label) \(ContinuousClock.now - t0)") }
         return try await body()
+    }
+}
+
+/// The directories a test made (Oracle.withTemp, Fixtures.tempDir), for `.detachesItsImages`.
+final class TestDirectories: @unchecked Sendable {
+    @TaskLocal static var current: TestDirectories?
+    private let lock = NSLock()
+    private var dirs: [URL] = []
+    func add(_ dir: URL) { lock.withLock { dirs.append(dir) } }
+    var all: [URL] { lock.withLock { dirs } }
+}
+
+extension Trait where Self == AttachedImageGuard {
+    /// Every test of a suite that attaches disk images: an image under a directory the test made that is still
+    /// attached when it ends (on any path: a pass, a failure, a cancellation) fails the test, and is force-detached
+    /// so it does not outlive the run.
+    static var detachesItsImages: Self { Self() }
+}
+
+struct AttachedImageGuard: SuiteTrait, TestTrait, TestScoping {
+    var isRecursive: Bool { true }
+
+    func scopeProvider(for test: Test, testCase: Test.Case?) -> Self? { testCase == nil ? nil : self }
+
+    func provideScope(
+        for test: Test,
+        testCase: Test.Case?,
+        performing function: @Sendable () async throws -> Void
+    ) async throws {
+        let dirs = TestDirectories()
+        let outcome: Error?
+        do {
+            try await TestDirectories.$current.withValue(dirs) { try await function() }
+            outcome = nil
+        } catch { outcome = error }
+        // /var and /private/var name the same temporary directory; the directory itself may be gone already
+        let plain = { (p: String) in p.hasPrefix("/private/") ? String(p.dropFirst("/private".count)) : p }
+        let prefixes = dirs.all.map { plain($0.path) + "/" }
+        if !prefixes.isEmpty {
+            let left = try await DiskImage.checkedAttachedImages().filter { item in
+                prefixes.contains { plain(item.image).hasPrefix($0) }
+            }
+            if !left.isEmpty {
+                Issue.record("left attached at the end of the test: \(left.map(\.image))")
+                for item in left { try await DiskImage.detach(item.device, force: true) }
+            }
+        }
+        if let outcome { throw outcome }
     }
 }

@@ -6,7 +6,7 @@ import Testing
 
 @testable import FirmwareKit
 
-struct StoppedVolumeEditTests {
+@Suite(.detachesItsImages) struct StoppedVolumeEditTests {
     /// Real macOS HFS driver, ordinary atomic editor save, resource fork,
     /// symlink and case-sensitive names, then exact NAND logical roundtrip.
     @Test func nativeMetadataAndPublication() async throws {

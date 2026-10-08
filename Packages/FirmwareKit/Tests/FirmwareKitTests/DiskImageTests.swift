@@ -6,7 +6,7 @@ import Testing
 /// DiskImage: the argv of both backends on every host; the real operations on each backend this host has
 /// (hdiutil everywhere; `diskutil image` on macOS 27+), and that both produce the same grown volume and raw disk.
 /// (Editing through a diskutil attach lays files out differently, the solid-state allocation policy: DiskImage.backend.)
-@Suite(.serialized) struct DiskImageTests {
+@Suite(.serialized, .detachesItsImages) struct DiskImageTests {
     static func backends() async throws -> [DiskImage.Backend] {
         let hasDiskutilImage = try await DiskImage.exec(["/usr/sbin/diskutil", "image"]).0 == 0
         return [.hdiutil] + (hasDiskutilImage ? [.diskutil] : [])

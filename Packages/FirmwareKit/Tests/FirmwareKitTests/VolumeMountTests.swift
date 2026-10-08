@@ -3,7 +3,7 @@ import Testing
 
 @testable import FirmwareKit
 
-@Suite(.serialized) struct VolumeMountTests {
+@Suite(.serialized, .detachesItsImages) struct VolumeMountTests {
     static func attached(_ image: URL) async throws -> Bool {
         try await VolumeMount.exec("/usr/bin/hdiutil", ["info"]).1.contains(image.resolvingSymlinksInPath().path)
     }

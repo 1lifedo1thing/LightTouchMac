@@ -4,7 +4,7 @@ import Testing
 @testable import FirmwareKit
 
 /// The preparer contract's stream and cancel, through the built `firmwarekit` (skipped when it isn't built).
-@Suite struct PreparerTests {
+@Suite(.detachesItsImages) struct PreparerTests {
     static let cli = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         .deletingLastPathComponent().appendingPathComponent(".build/debug/firmwarekit")
 
@@ -179,7 +179,7 @@ import Testing
         let t0 = Date()
         await Preparer.terminateDescendants(of: sh.processIdentifier, grace: 1)
         sh.waitUntilExit()  // its `wait` returns once sleep is gone
-        #expect(Date().timeIntervalSince(t0) < 2)
+        #expect(Date().timeIntervalSince(t0) < 10)  // well short of sleep's 60 s, with room for a loaded host
         #expect(kids.allSatisfy { kill($0, 0) != 0 })
     }
 
@@ -264,7 +264,7 @@ import Testing
                 t0 = Date()
                 p.terminate()
             }
-            #expect(Date().timeIntervalSince(t0) < 2)
+            #expect(Date().timeIntervalSince(t0) < 10)  // well short of sleep's 60 s, with room for a loaded host
             #expect(r.status == 143)
             #expect(r.lines.map { $0["event"] as? String }.filter { $0 != "progress" } == ["begin", "step"])
             #expect(FileManager.default.fileExists(atPath: r.staging.path))

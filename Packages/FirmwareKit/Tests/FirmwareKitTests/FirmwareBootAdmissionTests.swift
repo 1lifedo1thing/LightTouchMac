@@ -5,7 +5,7 @@ import Testing
 
 @testable import FirmwareKit
 
-struct FirmwareBootAdmissionTests {
+@Suite(.detachesItsImages) struct FirmwareBootAdmissionTests {
     /// n90/n88 recipe 1 -> 2: admission records the IMEI and UDID the base's identity makes, once; a recipe 2 base
     /// (its identity has the IMEI) and other boards are left alone.
     @Test func iPhoneIMEIStep() throws {

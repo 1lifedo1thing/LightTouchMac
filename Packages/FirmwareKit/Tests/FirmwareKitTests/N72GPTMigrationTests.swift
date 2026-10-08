@@ -6,7 +6,7 @@ import Testing
 @testable import FirmwareKit
 
 /// Boot admission moves a recipe-1 N72 device (every base up to RC7) to recipe 2's GPT in its overlay.
-struct N72GPTMigrationTests {
+@Suite(.detachesItsImages) struct N72GPTMigrationTests {
     static let blocks = 1_835_008, epoch = 4
     static let gpt = [1, 2].map { N72NAND.Page(cs: $0, page: 256) }
 

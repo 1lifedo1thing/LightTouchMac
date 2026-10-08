@@ -4,7 +4,7 @@ import Testing
 
 @testable import FirmwareKit
 
-struct VolumeRebuildTests {
+@Suite(.detachesItsImages) struct VolumeRebuildTests {
     // MARK: synthetic
 
     /// iPad: a small selfcheck-geometry store round-trips its system/data images; then an overlay block with a
@@ -154,6 +154,7 @@ struct VolumeRebuildTests {
             try FixtureRequirements.missing(#"VolumeRebuildTests.swift: Fixtures.exists(base)"#)
         }
         let out = FileManager.default.temporaryDirectory.appendingPathComponent("fk-mount-\(UUID().uuidString)")
+        TestDirectories.current?.add(out)
 
         let vols = try await VolumeExport.mount(.init(base: base, overlay: nil), out: out)
         do {

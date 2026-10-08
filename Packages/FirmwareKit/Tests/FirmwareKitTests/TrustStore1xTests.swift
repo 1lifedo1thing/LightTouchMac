@@ -6,7 +6,7 @@ import Testing
 
 @testable import FirmwareKit
 
-struct TrustStore1xTests {
+@Suite(.detachesItsImages) struct TrustStore1xTests {
     static func tlv(_ tag: UInt8, _ body: [UInt8]) -> [UInt8] { [tag, UInt8(body.count)] + body }
     /// A certificate skeleton: version, serial, signature, issuer, validity, subject (C=us PrintableString,
     /// CN=Light Touch UTF8String); nothing after the subject matters to the normalization.
