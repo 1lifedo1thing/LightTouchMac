@@ -1,11 +1,14 @@
 /// What the Device menu's device items show for the selected device: a snapshot the window controller takes when
 /// AppKit validates an item, and each item's enabled state, title and check mark from it.
 public struct DeviceMenuState {
+    /// The machine's state, one value (paused, powered off and dead can't all be claimed at once).
+    public var machine = VMState.notStarted
+    /// Running and ready for the user (EmulatorController.isRunning): booted, prepared, not stopping or erasing.
     public var isRunning = false
-    public var isPaused = false
     public var isSleeping = false
-    public var isPoweredOff = false
-    public var isDead = false
+    var isPaused: Bool { machine == .paused }
+    var isPoweredOff: Bool { machine == .poweredOff }
+    var isDead: Bool { machine.isDead }
     public var shuttingDown = false
     public var storageFailed = false
     /// An install executing now, or one queued behind it (AppInstaller).
@@ -82,8 +85,10 @@ public struct DeviceMenuState {
 
 /// Which captures the Capture menu and toolbar offer now.
 public struct CaptureAvailability {
+    public var machine = VMState.notStarted
+    /// Running and ready for the user (EmulatorController.isRunning).
     public var isRunning = false
-    public var isPaused = false
+    var isPaused: Bool { machine == .paused }
     public var isSleeping = false
     /// A screenshot is still being taken.
     public var screenshotBusy = false

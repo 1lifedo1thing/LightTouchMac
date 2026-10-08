@@ -16,7 +16,7 @@ struct DeviceMenuStateTests {
         var state = running()
         #expect(state.validate(.pause) == .init(isEnabled: true, title: "Pause"))
         state.isRunning = false
-        state.isPaused = true
+        state.machine = .paused
         state.acceptsInput = false
         #expect(state.validate(.pause) == .init(isEnabled: true, title: "Resume"))
         state = running()
@@ -35,17 +35,36 @@ struct DeviceMenuStateTests {
         var state = running()
         #expect(state.validate(.restart).isEnabled)
         state.isRunning = false
-        state.isPaused = true
+        state.machine = .paused
         #expect(state.validate(.restart).isEnabled)
         state = DeviceMenuState()
-        state.isPoweredOff = true
+        state.machine = .poweredOff
         #expect(state.validate(.restart).isEnabled)
         for change: (inout DeviceMenuState) -> Void in [
-            { $0.isDead = true }, { $0.shuttingDown = true }, { $0.storageFailed = true },
+            { $0.machine = .dead(exitCode: nil) }, { $0.shuttingDown = true }, { $0.storageFailed = true },
         ] {
             var stopped = running()
             change(&stopped)
             #expect(!stopped.validate(.restart).isEnabled)
+        }
+    }
+
+    /// The machine-state rows of the table, every VMState: what Pause, Restart, Start and Carrier offer when the
+    /// device isn't ready for the user (isRunning false).
+    @Test func eachMachineStateValidates() {
+        let states: [VMState] = [.notStarted, .booting, .running, .paused, .poweredOff, .dead(exitCode: 1)]
+        for machine in states {
+            var state = DeviceMenuState()
+            state.machine = machine
+            state.hasCellular = true
+            #expect(state.validate(.pause).isEnabled == (machine == .paused), "\(machine)")
+            #expect(state.validate(.pause).title == (machine == .paused ? "Resume" : "Pause"))
+            #expect(state.validate(.restart).isEnabled == !machine.isDead, "\(machine)")
+            #expect(state.validate(.lock).isEnabled == (machine == .poweredOff), "\(machine)")
+            #expect(state.validate(.carrier).isEnabled == (machine == .paused), "\(machine)")
+            var capture = CaptureAvailability()
+            capture.machine = machine
+            #expect(capture.canTakeScreenshot == (machine == .paused) && !capture.canStartRecording)
         }
     }
 
@@ -91,9 +110,9 @@ struct DeviceMenuStateTests {
         state.hasCellular = true
         #expect(state.validate(.carrier).isEnabled)
         state.isRunning = false
-        state.isPaused = true
+        state.machine = .paused
         #expect(state.validate(.carrier).isEnabled)
-        state.isPaused = false
+        state.machine = .running
         #expect(!state.validate(.carrier).isEnabled)
     }
 
@@ -103,7 +122,7 @@ struct DeviceMenuStateTests {
         state.isSleeping = true
         #expect(state.validate(.lock).title == "Wake")
         state = DeviceMenuState()
-        state.isPoweredOff = true
+        state.machine = .poweredOff
         #expect(state.validate(.lock) == .init(isEnabled: true, title: "Start"))
         state.shuttingDown = true
         #expect(!state.validate(.lock).isEnabled)
@@ -114,7 +133,7 @@ struct DeviceMenuStateTests {
         c.isRunning = true
         #expect(c.canTakeScreenshot && c.canStartRecording && c.canToggleRecording)
         c.isRunning = false
-        c.isPaused = true
+        c.machine = .paused
         #expect(
             c.canTakeScreenshot && !c.canStartRecording && !c.canToggleRecording,
             "a paused screen can be shot, not recorded"

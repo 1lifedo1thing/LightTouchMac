@@ -39,7 +39,7 @@ import UniformTypeIdentifiers
         var availability = CaptureAvailability()
         if let emulator {
             availability.isRunning = emulator.isRunning
-            availability.isPaused = emulator.isPaused
+            availability.machine = emulator.state
             availability.isSleeping = emulator.isSleeping
         }
         availability.screenshotBusy = screenshotBusy

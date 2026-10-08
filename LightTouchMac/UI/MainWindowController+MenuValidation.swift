@@ -14,10 +14,8 @@ extension MainWindowController: NSMenuItemValidation {
         var state = DeviceMenuState()
         guard let emulator else { return state }
         state.isRunning = emulator.isRunning
-        state.isPaused = emulator.isPaused
+        state.machine = emulator.state
         state.isSleeping = emulator.isSleeping
-        state.isPoweredOff = emulator.isPoweredOff
-        state.isDead = emulator.isDead
         state.shuttingDown = emulator.shuttingDown
         state.storageFailed = emulator.storageFailed
         state.isInstalling = emulator.isInstalling
