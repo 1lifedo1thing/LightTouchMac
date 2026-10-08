@@ -1,5 +1,6 @@
 import FirmwareSchema
 import Foundation
+import HostRuntime
 import Testing
 
 @testable import LightTouchCore
@@ -184,6 +185,34 @@ struct StaleBaseTests {
                 !DeviceRow(entry: entry, instanceID: nil, session: nil, job: nil, baseRecipe: 1).preparedByOlderRecipe,
                 "flagged with no device"
             )
+        }
+    }
+
+    /// The row's lock facts are read once per base, not once per device (state audit A-18): a new storage generation
+    /// (another base path) says what its own lock says, and `forget` (a boot that admitted another generation) reads
+    /// the lock again. Activation used to be cached by device id for the life of the app.
+    @Test @MainActor func lockFactsFollowTheBase() throws {
+        try withTemporaryDirectory { tmp in
+            let device = tmp.appendingPathComponent("device")
+            let old = tmp.appendingPathComponent("base-1")
+            let new = tmp.appendingPathComponent("base-2")
+            for base in [old, new] {
+                try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+            }
+            func write(_ base: URL, activated: Bool) throws {
+                let activation = activated ? #"{"input_sha256": "a", "output_sha256": "b"}"# : "null"
+                try Data(#"{"inputs": {"ipsw": {}, "activation": \#(activation)}}"#.utf8)
+                    .write(to: base.appendingPathComponent(DeviceLock.fileName))
+            }
+            try write(old, activated: false)
+            try write(new, activated: true)
+            let facts = BaseLockFacts()
+            #expect(facts.facts(base: old, device: device).lacksActivation)
+            #expect(!facts.facts(base: new, device: device).lacksActivation, "the new generation's own lock")
+            try write(old, activated: true)
+            #expect(facts.facts(base: old, device: device).lacksActivation, "read once per base")
+            facts.forget()
+            #expect(!facts.facts(base: old, device: device).lacksActivation, "read again after forget")
         }
     }
 }

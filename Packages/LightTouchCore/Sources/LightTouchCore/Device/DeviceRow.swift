@@ -469,3 +469,29 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
         }
     }
 }
+
+/// What a device's base lock tells its row (DeviceRow's preparedWithoutActivation and baseRecipe), read once per base:
+/// a published base doesn't change, a new storage generation is another base path, and `forget` (a boot that admitted
+/// another generation or migrated it) reads every lock again.
+@MainActor public final class BaseLockFacts {
+    public struct Facts: Equatable, Sendable {
+        public let lacksActivation: Bool
+        public let recipe: Int?
+    }
+    private var known: [String: Facts] = [:]
+    public init() {}
+
+    /// `device`: the device's directory, for its migrated recipe (DeviceRow.baseRecipeVersion).
+    public func facts(base: URL, device: URL) -> Facts {
+        if let facts = known[base.path] { return facts }
+        let lock = base.appendingPathComponent(DeviceLock.fileName)
+        let facts = Facts(
+            lacksActivation: DeviceInstance.lockLacksActivation(lock),
+            recipe: DeviceRow.baseRecipeVersion(lock, device: device)
+        )
+        known[base.path] = facts
+        return facts
+    }
+
+    public func forget() { known.removeAll() }
+}

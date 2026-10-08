@@ -105,38 +105,21 @@ extension DeviceSession: LibrarySession {
 
     func row(for entry: FirmwareCatalog.Entry) -> DeviceRow {
         let instance = instance(for: entry)
+        let lock = instance.map { lockFacts.facts(base: $0.paths.base, device: $0.paths.directory) }
         return DeviceRow(
             entry: entry,
             instanceID: instance?.id,
             session: session(for: entry)?.phase,
             job: FirmwareJobs.shared.jobs[entry.id],
             downloaded: entry.source.sha1.map { IPSWStore.shared.existing($0) != nil } ?? false,
-            preparedWithoutActivation: instance.map(lacksActivation) ?? false,
-            baseRecipe: instance.flatMap(baseRecipe),
+            preparedWithoutActivation: lock?.lacksActivation ?? false,
+            baseRecipe: lock?.recipe,
             busy: storageWork.busy[entry.id]
         )
     }
 
-    /// Read once per device, like lacksActivation.
-    private var baseRecipes: [UUID: Int?] = [:]
-    private func baseRecipe(_ instance: DeviceInstance) -> Int? {
-        if let known = baseRecipes[instance.id] { return known }
-        let version = DeviceRow.baseRecipeVersion(
-            instance.paths.base.appendingPathComponent(DeviceLock.fileName),
-            device: instance.paths.directory
-        )
-        baseRecipes[instance.id] = version
-        return version
-    }
-
-    /// Read once per device: the lock doesn't change while the app runs.
-    private var activationless: [UUID: Bool] = [:]
-    private func lacksActivation(_ instance: DeviceInstance) -> Bool {
-        if let known = activationless[instance.id] { return known }
-        let lacks = DeviceInstance.lockLacksActivation(instance.paths.base.appendingPathComponent(DeviceLock.fileName))
-        activationless[instance.id] = lacks
-        return lacks
-    }
+    /// The base locks' facts the rows show, read once per base.
+    private let lockFacts = BaseLockFacts()
 
     // MARK: Launch
 
@@ -165,7 +148,7 @@ extension DeviceSession: LibrarySession {
         )
         sessions.append(session)
         session.emulator.onStorageGenerationChanged = { [weak self] in
-            self?.baseRecipes.removeAll()
+            self?.lockFacts.forget()
             self?.library.reload()
         }
         session.emulator.onRestartRequested = { [weak self, weak session] in
