@@ -276,7 +276,8 @@ func helperBoot(_ args: Arguments) -> Never {
                 (d.events.one("watching").int("count") ?? 0) >= 2,
                 "meddle: the watch covers the overlay and its files"
             )
-            try? FileManager.default.removeItem(at: overlay.appendingPathComponent("nor.bin"))  // the writable NOR QEMU has open
+            // the writable NOR QEMU has open
+            try? FileManager.default.removeItem(at: overlay.appendingPathComponent("nor.bin"))
             let m = d.driver.waitFor("meddled", 5)
             r.check(
                 (m?.string("path") ?? "").hasSuffix("nor.bin")

@@ -115,6 +115,5 @@ extension SharedState {
                 "pure red on a P3 screen: (\(r0), \(g0), \(b0)); (255, 0, 0) is oversaturated"
             )
         }
-
     }
 }

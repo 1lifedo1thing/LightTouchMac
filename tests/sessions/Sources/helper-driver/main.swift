@@ -21,7 +21,7 @@ import LightTouchCore
 // occlusion (LinkCommand.screenVisible): how long until the pump has ticked 3 times (back at speed) and, if one was
 // pending, the next frame.
 
-var opts = [String: String]()
+var opts: [String: String] = [:]
 do {
     var it = CommandLine.arguments.dropFirst().makeIterator()
     while let a = it.next() { opts[a] = it.next() ?? "" }

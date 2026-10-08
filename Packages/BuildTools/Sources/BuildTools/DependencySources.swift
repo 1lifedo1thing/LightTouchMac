@@ -135,7 +135,8 @@ public enum DependencySources {
         for name in list(try git("ls-files", "-z")).sorted() where (name as NSString).lastPathComponent != ".DS_Store" {
             let original = source.appendingPathComponent(name)
             let target = destination.appendingPathComponent(name)
-            guard let attributes = try? files.attributesOfItem(atPath: original.path) else { continue }  // a tracked deletion
+            // a tracked deletion
+            guard let attributes = try? files.attributesOfItem(atPath: original.path) else { continue }
             guard original.resolvingSymlinksInPath().path.hasPrefix(source.path + "/") else {
                 throw ToolError("tracked source escapes repository: \(original.path)")
             }

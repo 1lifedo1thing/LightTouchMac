@@ -373,7 +373,8 @@ public struct Vendor {
             }
             let rpaths = try MachOClosure.rpaths(path, arch: Self.archs[0])
             for old in rpaths where old.hasPrefix("/") { edits += ["-delete_rpath", old] }
-            if !edits.isEmpty, !rpaths.contains(rpath) { edits += ["-add_rpath", rpath] }  // only what loads from Frameworks
+            // only what loads from Frameworks
+            if !edits.isEmpty, !rpaths.contains(rpath) { edits += ["-add_rpath", rpath] }
             return edits
         }
         func embed(_ source: URL, as name: String? = nil) throws -> String {
@@ -396,7 +397,8 @@ public struct Vendor {
             try files.createDirectory(at: directory, withIntermediateDirectories: true)
         }
         let prefix = universal.appendingPathComponent("prefix")
-        _ = try embed(prefix.appendingPathComponent("lib/libimobiledevice-1.0.dylib"), as: "libimobiledevice-1.0.dylib")  // the names the app links
+        // the names the app links
+        _ = try embed(prefix.appendingPathComponent("lib/libimobiledevice-1.0.dylib"), as: "libimobiledevice-1.0.dylib")
         _ = try embed(prefix.appendingPathComponent("lib/libplist-2.0.dylib"), as: "libplist-2.0.dylib")
         _ = try embed(universal.appendingPathComponent("qemu-build/libqemu-arm.dylib"), as: "libqemu-arm.dylib")
         let helper = work.appendingPathComponent("ipod-helper")
@@ -560,7 +562,8 @@ public struct Vendor {
             ) && Records.isFile(text) {
                 try copy(text, target.appendingPathComponent(text.lastPathComponent))
             }
-            let unrar = package.appendingPathComponent("Sources/Cunrar/license.txt")  // RARLAB's UnRAR license travels with its source
+            // RARLAB's UnRAR license travels with its source
+            let unrar = package.appendingPathComponent("Sources/Cunrar/license.txt")
             if files.fileExists(atPath: unrar.path) {
                 try copy(unrar, target.appendingPathComponent("UnRAR-license.txt"))
             }

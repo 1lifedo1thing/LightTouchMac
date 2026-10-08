@@ -157,6 +157,5 @@ extension SharedState {
             ])
             return pane
         }
-
     }
 }

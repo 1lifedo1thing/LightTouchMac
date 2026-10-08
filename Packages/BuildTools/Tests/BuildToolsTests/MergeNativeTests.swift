@@ -74,7 +74,8 @@ struct MergeNativeTests {
         let gdb = prefix.appendingPathComponent("share/gdb/auto-load").appendingPathComponent(
             MergeNative.real(prefix.path)
         ).appendingPathComponent("lib/libvalue-gdb.py")
-        try files.createDirectory(at: gdb.deletingLastPathComponent(), withIntermediateDirectories: true)  // as glib installs it
+        // as glib installs it
+        try files.createDirectory(at: gdb.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "# gdb helper\n".write(to: gdb, atomically: true, encoding: .utf8)
         var record: [String: Any] = [
             "schema_version": 1, "architecture": arch, "deps_prefix": root.appendingPathComponent("prefix").path,
