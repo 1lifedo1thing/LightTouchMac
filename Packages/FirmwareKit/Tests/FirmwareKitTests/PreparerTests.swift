@@ -165,21 +165,33 @@ import Testing
 
     /// Cancel's process sweep: a grandchild is found and stopped.
     @Test func terminatesDescendants() async throws {
-        let sh = Process()
-        sh.executableURL = URL(fileURLWithPath: "/bin/sh")
-        sh.arguments = ["-c", "sleep 60 & wait"]
-        try sh.run()
-        defer { if sh.isRunning { sh.terminate() } }
+        // Spawned and reaped here rather than through Process, whose waitUntilExit once missed the exit under load and hung the plan.
+        var sh: pid_t = 0
+        let argv: [UnsafeMutablePointer<CChar>?] =
+            ["/bin/sh", "-c", "sleep 60 & wait"].map { (s: String) in strdup(s) } + [nil]
+        defer { argv.forEach { free($0) } }
+        try #require(posix_spawn(&sh, "/bin/sh", nil, nil, argv, environ) == 0)
+        var reaped = false
+        defer {
+            if !reaped {
+                kill(sh, SIGKILL)
+                waitpid(sh, nil, 0)
+            }
+        }
         var kids: [pid_t] = []
         for _ in 0..<100 where kids.isEmpty {
             usleep(20_000)
-            kids = Preparer.descendants(of: sh.processIdentifier)
+            kids = Preparer.descendants(of: sh)
         }
         #expect(kids.count == 1)
         let t0 = Date()
-        await Preparer.terminateDescendants(of: sh.processIdentifier, grace: 1)
-        sh.waitUntilExit()  // its `wait` returns once sleep is gone
-        #expect(Date().timeIntervalSince(t0) < 10)  // well short of sleep's 60 s, with room for a loaded host
+        await Preparer.terminateDescendants(of: sh, grace: 1)
+        // Its `wait` returns once sleep is gone; well short of sleep's 60 s, with room for a loaded host.
+        while !reaped, Date().timeIntervalSince(t0) < 10 {
+            reaped = waitpid(sh, nil, WNOHANG) == sh
+            if !reaped { usleep(20_000) }
+        }
+        #expect(reaped)
         #expect(kids.allSatisfy { kill($0, 0) != 0 })
     }
 
