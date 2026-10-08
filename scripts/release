@@ -6,11 +6,18 @@
 # 1. export the app for Developer ID (Configuration/ExportOptions.plist)   2. zip it   3. notarize the zip
 # (notarytool, keychain profile ltm-notary; on Invalid, print the log)   4. staple the app and validate the ticket
 # 5. zip the stapled app: LightTouchMac-universal.zip and SHA256SUMS naming it, beside the exported app
-# 6. the Release plan's static checks on the stapled app (as an export: Gatekeeper and the ticket too).
-# --dry-run skips 3 and 4 (and the export-only checks). Run from a shell that sees the ltm-notary profile.
+# 6. the Release plan's static checks on the stapled app (as an export: Gatekeeper and the ticket too)
+# 7. the Release plan's boots: the built-in iPod, and a fresh `firmwarekit create` of one firmware per preparation
+#    route, each booted (ReleaseBootTests; its IPSWs from the app's cache, a missing one fails the release).
+# --dry-run skips 3 and 4 (and the export-only checks); LTM_RELEASE_SKIP_PREPARE=1 with --dry-run also skips 7's
+# prepare matrix. Run from a shell that sees the ltm-notary profile.
 set -euo pipefail
 ARCHIVE="${1:?usage: scripts/release path/to/X.xcarchive [--dry-run]}"
 DRY=0; [[ "${2:-}" == "--dry-run" ]] && DRY=1
+SKIP_PREPARE="${LTM_RELEASE_SKIP_PREPARE:-0}"
+if [[ "$SKIP_PREPARE" == 1 ]] && (( ! DRY )); then
+    echo "FAILED: LTM_RELEASE_SKIP_PREPARE=1 is for --dry-run only; a release runs the prepare matrix" >&2; exit 1
+fi
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ARCHIVE="$(cd "$(dirname "$ARCHIVE")" && pwd)/$(basename "$ARCHIVE")"
 OUT="$(dirname "$ARCHIVE")/$(basename "$ARCHIVE" .xcarchive)-export"
@@ -54,19 +61,28 @@ rm -f "$ZIP"
 ditto -c -k --keepParent "$APP" "$ZIP"
 (cd "$OUT" && shasum -a 256 "$(basename "$ZIP")" > SHA256SUMS)
 
-step "static checks"
 EXPORTED=1; (( DRY )) && EXPORTED=0
-TEST_RUNNER_LTM_RELEASE_APP="$APP" TEST_RUNNER_LTM_RELEASE_EXPORTED=$EXPORTED \
-    xcodebuild -quiet -workspace "$ROOT/LightTouchMac.xcworkspace" -scheme LightTouchMac -testPlan Release \
-    -only-testing:ReleaseChecksTests/ReleaseAppStaticTests -derivedDataPath "$WORK/dd" \
-    -resultBundlePath "$WORK/static.xcresult" test > "$WORK/test.log" 2>&1 \
-    || {
-        # The failures from the result bundle; without one (the build failed), the log's errors.
-        xcrun xcresulttool get test-results summary --path "$WORK/static.xcresult" 2>/dev/null \
-            | plutil -extract testFailures json -r -o - - >&2 \
-            || grep -E "recorded an issue|error:" "$WORK/test.log" | head -20 >&2
-        fail "Release static checks"
-    }
+# release_tests NAME TEST: the Release plan's TEST on the app; on failure, the failures from the result bundle
+# (without one, the build failed: the log's errors).
+release_tests() {
+    TEST_RUNNER_LTM_RELEASE_APP="$APP" TEST_RUNNER_LTM_RELEASE_EXPORTED=$EXPORTED \
+        TEST_RUNNER_LTM_RELEASE_SKIP_PREPARE="$SKIP_PREPARE" \
+        xcodebuild -quiet -workspace "$ROOT/LightTouchMac.xcworkspace" -scheme LightTouchMac -testPlan Release \
+        -only-testing:"ReleaseChecksTests/$2" -derivedDataPath "$WORK/dd" \
+        -resultBundlePath "$WORK/$1.xcresult" test > "$WORK/$1.log" 2>&1 \
+        || {
+            xcrun xcresulttool get test-results summary --path "$WORK/$1.xcresult" 2>/dev/null \
+                | plutil -extract testFailures json -r -o - - >&2 \
+                || grep -E "recorded an issue|error:" "$WORK/$1.log" | head -20 >&2
+            fail "Release $1 checks"
+        }
+}
+step "static checks"
+release_tests static ReleaseAppStaticTests
+step "boots: the built-in iPod and the prepare matrix"
+[[ "$SKIP_PREPARE" == 1 ]] && echo "== prepare matrix: SKIPPED (LTM_RELEASE_SKIP_PREPARE=1, dry run)"
+release_tests boot ReleaseBootTests
+grep -E "prepared in .* booted in" "$WORK/boot.log" || true
 if (( ! DRY )); then
     spctl -a -vv -t exec "$APP" 2>&1 | grep -q 'source=Notarized Developer ID' || fail "Gatekeeper: $(spctl -a -vv -t exec "$APP" 2>&1)"
 fi

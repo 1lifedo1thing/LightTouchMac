@@ -85,15 +85,20 @@ A release is an Xcode archive; nothing edits the bundle after Xcode.
    emulator; bundle hygiene (licenses, sources, Help, no local paths, the built-in iPod's placeholder identity,
    stripped, no duplicates, nothing loose under `Resources`, the guest archive included); the identity scan; and the
    bundled `firmwarekit` unpacks the built-in iPod, which `sessions single` (tests/sessions) boots through
-   the bundled helper, dylib, services worker and usbmuxd. `TEST_RUNNER_LTM_RELEASE_FULL=1` also prepares and boots
-   every release entry (minutes each).
+   the bundled helper, dylib, services worker and usbmuxd; and the prepare matrix: the bundled `firmwarekit create`,
+   with its default helper and guest tools, prepares one firmware per preparation route (n45ap-4A102, n72ap-7E18,
+   k48ap-7B500, n90ap-8A293, n88ap-10B500; two at a time) and each is booted the same way. Their IPSWs come from the
+   app's IPSW cache (the catalog's sha1); a missing one fails the plan. `TEST_RUNNER_LTM_RELEASE_SKIP_PREPARE=1`
+   skips the matrix, for development runs only.
 4. **Notarize and make the download**, either way; both write `LightTouchMac-universal.zip` (`ditto -c -k
    --keepParent` of the stapled app) and `SHA256SUMS` naming it beside the exported app, since Xcode has no hook
    after notarization:
    - **`scripts/release path/to/X.xcarchive`** (from a shell that sees the `ltm-notary` notarytool keychain
      profile): exports for Developer ID (`Configuration/ExportOptions.plist`), notarizes a zip of the app
      (`notarytool submit --wait`; on Invalid it prints the log), staples and validates the ticket, writes the
-     download, then runs the Release plan's static checks on the stapled app as an export and `spctl -a -vv`.
+     download, then runs the Release plan's static checks on the stapled app as an export, its boots (the
+     built-in iPod and the prepare matrix; `LTM_RELEASE_SKIP_PREPARE=1` skips the matrix with `--dry-run` and is
+     refused without it) and `spctl -a -vv`.
      It prints the steps, the zip's path and its SHA-256, or the failure. `--dry-run` skips notarizing and stapling.
    - **Organizer ▸ Distribute App ▸ Direct Distribution**, then **`scripts/check-export "path/to/Light Touch.app"`**:
      it writes the download and runs the Release plan on the zip's unzipped copy as an export (the stapled ticket

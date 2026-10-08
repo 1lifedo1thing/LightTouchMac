@@ -5,42 +5,80 @@ import Testing
 
 /// Devices prepared by the bundled firmwarekit and booted through the bundled helper, dylib, services worker and
 /// usbmuxd (`sessions single` in tests/sessions: lit, lockdown, time zone, the Home screen, AFC, an IPA install, a
-/// clean shutdown). The built-in iPod always; every release entry with LTM_RELEASE_FULL=1. One emulator at a time.
+/// clean shutdown): the built-in iPod, and a fresh `firmwarekit create` of one firmware per preparation route.
 @Suite(.serialized, .enabled(if: appGiven, "no app: LTM_RELEASE_APP / LTM_RELEASE_ARCHIVE (the Release plan)"))
 struct ReleaseBootTests {
     static let builtIn = "n72ap-7E18"
-    /// entry: (id, IPSW; nil: the app's IPSW cache by the catalog's sha1).
-    static let releaseEntries: [(id: String, ipsw: String?)] = [
-        ("k48ap-7B500", "Downloads/ipad1-ios32-feasibility/iPad1,1_3.2.2_7B500_Restore.ipsw"),
-        ("k48ap-8C148", "Downloads/ipad1-ios32-feasibility/iPad1,1_4.2.1_8C148_Restore.ipsw"),
-        ("k48ap-7B367", "Downloads/ipad1-ios32-feasibility/iPad1,1_3.2_7B367_Restore.ipsw"),
-        ("n72ap-7E18", "Developer/ipod2g-re/OldSDK/iPod2,1_3.1.3_7E18_Restore.ipsw"),
-        ("n72ap-8C148", "Downloads/ios4/iPod2,1_4.2.1_8C148_Restore.ipsw"),
-    ]
+    /// One entry per distinct preparation path (Preparer.prepare's boards, K48Board's strategies): N45Board (1.x),
+    /// N72Board, K48Board by iBoot (iPad), by kboot on the A4 with 4.x data protection (iPhone 4) and by kboot on the
+    /// S5L8920 with its own NOR (iPhone 3GS). Every IPSW from the app's cache (the catalog's sha1); a missing one fails.
+    static let routes = ["n45ap-4A102", "n72ap-7E18", "k48ap-7B500", "n90ap-8A293", "n88ap-10B500"]
+    /// Emulators at once (host load).
+    static let lanes = 2
 
     @Test func theBuiltInIPodUnpacksWithItsOwnIdentityAndBoots() throws {
-        try boot(entry: Self.builtIn, ipsw: nil, builtIn: true)
+        try boot(entry: Self.builtIn, builtIn: true, sessions: try buildSessions())
     }
 
-    @Test(
-        .tags(.fullRelease),
-        .enabled(if: ReleaseApp.full, "LTM_RELEASE_FULL=1 prepares and boots every release entry"),
-        arguments: releaseEntries.map(\.id)
-    )
-    func everyReleaseEntryPreparesAndBoots(_ id: String) throws {
-        let entry = Self.releaseEntries.first { $0.id == id }!
-        try boot(entry: id, ipsw: entry.ipsw, builtIn: false)
+    @Test(.enabled(if: !ReleaseApp.skipPrepare, "LTM_RELEASE_SKIP_PREPARE=1 (development dry runs only)"))
+    func everyPreparationRouteCreatesADeviceThatBoots() async throws {
+        let ipsws = try Self.routes.map { try ipsw(for: $0) }
+        let missing = ipsws.filter { !FileManager.default.fileExists(atPath: $0.path) }
+        try #require(missing.isEmpty, "no IPSW in the app's cache (download them in the app): \(missing.map(\.path))")
+        let sessions = try buildSessions()
+        await withTaskGroup(of: Void.self) { group in
+            for lane in 0..<Self.lanes {
+                group.addTask {
+                    for id in stride(from: lane, to: Self.routes.count, by: Self.lanes).map({ Self.routes[$0] }) {
+                        do { try boot(entry: id, builtIn: false, sessions: sessions) } catch is ExpectationFailedError {
+                            // #require recorded it; the lane goes on to its next route
+                        } catch {
+                            Issue.record(error, "\(id)")
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    func boot(entry id: String, ipsw relative: String?, builtIn: Bool) throws {
+    func catalogEntry(_ id: String) throws -> [String: Any] {
+        let catalog =
+            try JSONSerialization.jsonObject(
+                with: Data(
+                    contentsOf: try ReleaseApp.app().appendingPathComponent("Contents/Resources/firmware-catalog.json")
+                )
+            ) as! [String: Any]
+        return try #require((catalog["entries"] as! [[String: Any]]).first { $0["id"] as? String == id }, "\(id)")
+    }
+
+    func ipsw(for id: String) throws -> URL {
+        let sha1 = (try catalogEntry(id)["source"] as? [String: Any])?["sha1"] as? String ?? "none"
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Caches/gold.samhenri.LightTouchMac/IPSW/\(sha1).ipsw")
+    }
+
+    /// tests/sessions' command, built once here; it boots a device through the bundle's helper, dylib, services
+    /// worker, usbmuxd, SecureROMs and guest package.
+    func buildSessions() throws -> URL {
+        let sessions = repository.appendingPathComponent("tests/sessions")
+        let built = try Shell.run(
+            ["swift", "build", "--package-path", sessions.path, "--product", "sessions"],
+            timeout: 900
+        )
+        try #require(built.succeeded, "building tests/sessions: \(built.output.suffix(1500))")
+        _ = try Shell.run(["swift", "build", "--package-path", sessions.path], timeout: 900)
+        return sessions.appendingPathComponent(".build/debug/sessions")
+    }
+
+    func boot(entry id: String, builtIn: Bool, sessions: URL) throws {
         let app = try ReleaseApp.app()
         let contents = app.appendingPathComponent("Contents")
-        let home = FileManager.default.homeDirectoryForCurrentUser
         let catalog =
             try JSONSerialization.jsonObject(
                 with: Data(contentsOf: contents.appendingPathComponent("Resources/firmware-catalog.json"))
             ) as! [String: Any]
-        let entry = try #require((catalog["entries"] as! [[String: Any]]).first { $0["id"] as? String == id })
+        let entry = try catalogEntry(id)
+        let started = Date()
         try withScratch { work in
             let out = work.appendingPathComponent("out")
             let frames = work.appendingPathComponent("frames")
@@ -60,21 +98,23 @@ struct ReleaseBootTests {
                     "--out", out.path, "--seed", seed,
                 ]
             } else {
-                var ipsw = relative.map { home.appendingPathComponent($0) }
-                if ipsw.map({ !FileManager.default.fileExists(atPath: $0.path) }) ?? true {
-                    let sha1 = (entry["source"] as? [String: Any])?["sha1"] as? String ?? ""
-                    ipsw = home.appendingPathComponent("Library/Caches/gold.samhenri.LightTouchMac/IPSW/\(sha1).ipsw")
-                }
-                try #require(FileManager.default.fileExists(atPath: ipsw!.path), "\(id): no IPSW (\(ipsw!.path))")
+                let ipsw = try ipsw(for: id)
+                try #require(FileManager.default.fileExists(atPath: ipsw.path), "\(id): no IPSW (\(ipsw.path))")
                 let entryFile = work.appendingPathComponent("entry.json")
                 try JSONSerialization.data(withJSONObject: entry).write(to: entryFile)
+                // as the app prepares: the helper beside firmwarekit and the bundle's guest tools by default
                 command = [
-                    firmwarekit, "create", "--entry", entryFile.path, "--ipsw", ipsw!.path, "--out", out.path,
-                    "--cache", work.appendingPathComponent("cache").path, "--helper",
-                    contents.appendingPathComponent("MacOS/LightTouchDevice").path,
+                    firmwarekit, "create", "--entry", entryFile.path, "--ipsw", ipsw.path, "--out", out.path,
+                    "--cache", work.appendingPathComponent("cache").path, "--seed", seed,
                 ]
             }
-            let prepared = try Shell.run(command, environment: ReleaseApp.cleanEnvironment, timeout: 480)
+            let prepared = try Shell.run(
+                command,
+                environment: ReleaseApp.cleanEnvironment,
+                directory: work,
+                timeout: 1500
+            )
+            let preparedAt = Date()
             let events = prepared.output.split(separator: "\n").compactMap {
                 try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any]
             }
@@ -94,20 +134,17 @@ struct ReleaseBootTests {
             }
             // as the app locks a base
             _ = try Shell.run(["find", out.path, "-type", "d", "-exec", "chflags", "uchg", "{}", "+"])
-            // tests/sessions' command, built here, boots it through the bundle's helper, dylib, services worker,
-            // usbmuxd, SecureROMs and guest package.
-            let sessions = repository.appendingPathComponent("tests/sessions")
-            let built = try Shell.run(
-                ["swift", "build", "--package-path", sessions.path, "--product", "sessions"],
+            let arguments = [sessions.path, "single", out.path, "--app", app.path, "--work", frames.path]
+            let booted = try Shell.run(
+                arguments,
+                environment: ReleaseApp.cleanEnvironment,
+                directory: work,
                 timeout: 900
             )
-            try #require(built.succeeded, "building tests/sessions: \(built.output.suffix(1500))")
-            _ = try Shell.run(["swift", "build", "--package-path", sessions.path], timeout: 900)
-            let arguments = [
-                sessions.appendingPathComponent(".build/debug/sessions").path, "single", out.path,
-                "--app", app.path, "--work", frames.path,
-            ]
-            let booted = try Shell.run(arguments, environment: ReleaseApp.cleanEnvironment, timeout: 590)
+            print(
+                "\(id): prepared in \(Int(preparedAt.timeIntervalSince(started))) s, booted in "
+                    + "\(Int(Date().timeIntervalSince(preparedAt))) s: \(booted.succeeded ? "PASS" : "FAIL")"
+            )
             let summary =
                 booted.output.split(separator: "\n").first { $0.contains(" passed; logs in ") }.map(String.init) ?? ""
             #expect(

@@ -10,15 +10,18 @@ public struct CommandResult: Sendable {
 
 public enum Shell {
     /// Runs `arguments` (the first is the executable: an absolute path, or a name found on PATH, /usr/bin first) to its
-    /// exit. Output goes through files, so a chatty tool never blocks on a full pipe.
+    /// exit. Output goes through files, so a chatty tool never blocks on a full pipe. `directory`: its working
+    /// directory (a bundle's tool run from inside the bundle can write into it, e.g. a coverage default.profraw).
     @discardableResult
     public static func run(
         _ arguments: [String],
         input: String? = nil,
         environment: [String: String]? = nil,
+        directory: URL? = nil,
         timeout: TimeInterval = 600
     ) throws -> CommandResult {
         let process = Process()
+        process.currentDirectoryURL = directory
         process.executableURL = URL(fileURLWithPath: try resolve(arguments[0], path: environment?["PATH"]))
         process.arguments = Array(arguments.dropFirst())
         if let environment { process.environment = environment }
