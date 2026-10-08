@@ -82,7 +82,6 @@ release_tests static ReleaseAppStaticTests
 step "boots: the built-in iPod and the prepare matrix"
 [[ "$SKIP_PREPARE" == 1 ]] && echo "== prepare matrix: SKIPPED (LTM_RELEASE_SKIP_PREPARE=1, dry run)"
 release_tests boot ReleaseBootTests
-grep -E "prepared in .* booted in" "$WORK/boot.log" || true
 if (( ! DRY )); then
     spctl -a -vv -t exec "$APP" 2>&1 | grep -q 'source=Notarized Developer ID' || fail "Gatekeeper: $(spctl -a -vv -t exec "$APP" 2>&1)"
 fi
