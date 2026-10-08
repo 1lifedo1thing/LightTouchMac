@@ -36,12 +36,7 @@ extension EmulatorController {
         bootScope.control(request, on: link, done)
     }
 
-    // MARK: - Battery, charger and compass
-    var batteryLevel: Int { battery.level }
-    var batteryCharging: Bool { battery.charging }
-    func setBattery(level: Int) { battery.setLevel(level) }
-    func setCharging(_ on: Bool) { battery.setCharging(on) }
-
+    // MARK: - Compass
     var hasCompass: Bool { profile.hasCompass }
     func setCompassHeading(_ degrees: Int) {
         control(.compass(degrees)) { [weak self] applied in if applied { self?.compassHeading = degrees } }

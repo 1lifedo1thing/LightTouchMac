@@ -325,7 +325,6 @@ final class DeviceHost: @unchecked Sendable {
         case .usbConnection(let attached): reply(.ok(qemu.usbConnection(attached)))
         case .hardwareKeyboard(let attached): reply(.ok(qemu.hardwareKeyboard?(attached) ?? false))
         case .compass(let heading): reply(.ok(qemu.compass(Int32(heading))))
-        case .usbCharger(let high): reply(.ok(qemu.usbCharger(high)))
         case .orientation(let value): reply(.ok(qemu.orientation(Int32(value))))
         case .modemSet(let property, let value):
             reply(

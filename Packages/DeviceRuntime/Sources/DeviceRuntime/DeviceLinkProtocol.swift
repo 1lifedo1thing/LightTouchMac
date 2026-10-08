@@ -89,7 +89,6 @@ nonisolated public enum LinkRequest: Codable, Sendable, Equatable {
     case battery(level: Int, charging: Int)
     case usbConnection(Bool)
     case compass(Int)
-    case usbCharger(Bool)
     case orientation(Int)
     /// Generic automation in guest virtual milliseconds; optional dylib ABI.
     case inputSequence(id: UInt64, events: [VirtualInputEvent])

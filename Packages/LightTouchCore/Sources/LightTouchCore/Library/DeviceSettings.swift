@@ -28,10 +28,6 @@ public nonisolated struct DeviceSettings: Codable, Equatable {
     public var hardwareKeyboard: Bool?
     /// Attach to Local Network; nil is off.
     public var localNetwork: Bool?
-    /// The Battery menu's level (percent); nil is 100.
-    public var batteryLevel: Int?
-    /// The Battery menu's Charging; nil is on.
-    public var batteryCharging: Bool?
 
     public static func url(_ device: URL) -> URL { device.appendingPathComponent("settings.plist") }
 

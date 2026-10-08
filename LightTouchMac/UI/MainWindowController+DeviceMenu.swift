@@ -124,8 +124,6 @@ extension MainWindowController {
     @objc func resetMotion(_ sender: Any?) { deviceVC?.screen.resetMotion() }
 
     @objc func deviceShake(_ sender: Any?) { emulator?.shake() }
-    @objc func setBatteryLevel(_ sender: NSMenuItem) { emulator?.setBattery(level: sender.tag) }
-    @objc func toggleBatteryCharging(_ sender: Any?) { emulator.map { $0.setCharging(!$0.batteryCharging) } }
     @objc func setCompassHeading(_ sender: NSMenuItem) { emulator?.setCompassHeading(sender.tag) }
 
     @objc func showCarrier(_ sender: Any?) {

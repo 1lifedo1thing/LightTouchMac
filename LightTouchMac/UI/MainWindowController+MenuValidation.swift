@@ -23,8 +23,6 @@ extension MainWindowController: NSMenuItemValidation {
         state.acceptsInput = emulator.acceptsInput
         state.hasCompass = emulator.hasCompass
         state.hasCellular = emulator.hasCellular
-        state.batteryLevel = emulator.batteryLevel
-        state.batteryCharging = emulator.batteryCharging
         state.compassHeading = emulator.compassHeading
         state.editingText = window?.firstResponder is NSTextView
         return state
@@ -135,9 +133,6 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(deviceLock(_:)): return apply(deviceMenu.validate(.lock), to: menuItem)
         case #selector(deviceRotate(_:)), #selector(deviceRotateLeft(_:)), #selector(deviceRotateRight(_:)):
             return apply(deviceMenu.validate(.rotate), to: menuItem)
-        case #selector(setBatteryLevel(_:)):
-            return apply(deviceMenu.validate(.batteryLevel(menuItem.tag)), to: menuItem)
-        case #selector(toggleBatteryCharging(_:)): return apply(deviceMenu.validate(.charging), to: menuItem)
         case #selector(setCompassHeading(_:)):
             return apply(deviceMenu.validate(.compassHeading(menuItem.tag)), to: menuItem)
         case #selector(showCarrier(_:)): return apply(deviceMenu.validate(.carrier), to: menuItem)

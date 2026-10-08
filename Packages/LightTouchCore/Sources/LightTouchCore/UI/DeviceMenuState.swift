@@ -17,8 +17,6 @@ public struct DeviceMenuState {
     public var acceptsInput = false
     public var hasCompass = false
     public var hasCellular = false
-    public var batteryLevel = 100
-    public var batteryCharging = false
     public var compassHeading: Int?
     /// Text is being edited in the window (an NSTextView is first responder): its arrow keys aren't rotation.
     public var editingText = false
@@ -28,8 +26,6 @@ public struct DeviceMenuState {
     public enum Item: Equatable {
         case lock
         case rotate
-        case batteryLevel(Int)
-        case charging
         case compassHeading(Int)
         case carrier
         /// Home, Shake, Volume Up and Down: plain input.
@@ -62,10 +58,6 @@ public struct DeviceMenuState {
             )
         case .rotate:
             Validation(isEnabled: acceptsInput && !editingText)
-        case .batteryLevel(let level):
-            Validation(isEnabled: acceptsInput, isOn: level == batteryLevel)
-        case .charging:
-            Validation(isEnabled: acceptsInput, isOn: batteryCharging)
         case .compassHeading(let heading):
             Validation(isEnabled: acceptsInput && hasCompass, isOn: heading == compassHeading)
         case .carrier:

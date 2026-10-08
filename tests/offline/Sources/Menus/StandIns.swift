@@ -53,7 +53,6 @@ import LightTouchCore
     @objc func saveScreenshotAs(_ sender: Any?) {}
     @objc func selectDeviceBezel(_ sender: Any?) {}
     @objc func selectMotionPose(_ sender: Any?) {}
-    @objc func setBatteryLevel(_ sender: Any?) {}
     @objc func setCompassHeading(_ sender: Any?) {}
     @objc func showCarrier(_ sender: Any?) {}
     @objc func showDeviceInFinder(_ sender: Any?) {}
@@ -64,7 +63,6 @@ import LightTouchCore
     @objc func specialTrick(_ sender: Any?) {}
     @objc func syncMedia(_ sender: Any?) {}
     @objc func toggleAppInspector(_ sender: Any?) {}
-    @objc func toggleBatteryCharging(_ sender: Any?) {}
     @objc func toggleCaptureScreenOnly(_ sender: Any?) {}
     @objc func toggleConsole(_ sender: Any?) {}
     @objc func toggleDevicePause(_ sender: Any?) {}

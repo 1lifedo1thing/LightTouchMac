@@ -36,8 +36,6 @@ nonisolated extension Board {
     public var canToggleHardwareKeyboard: Bool { hardware?.hasUSBHost ?? false }
     /// A cellular modem (the Carrier panel).
     public var hasCellular: Bool { hardware?.hasCellular ?? false }
-    /// Charging is the USB port's current (the machine's usb-charger), not the PMU's charger.
-    public var canChooseUSBCharger: Bool { hardware?.hasUSBCharger ?? false }
 
     public enum OrientationSource {
         /// The guest agent's orientation op reports it; the host steps the

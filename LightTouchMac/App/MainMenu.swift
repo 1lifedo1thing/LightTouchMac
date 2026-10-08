@@ -261,13 +261,6 @@ enum MainMenuBuilder {
         network.addItem(item("Proxy…", #selector(MainWindowController.configureWebProxy(_:))))
         menu.addItem(submenu(network, title: "Network"))
         menu.addItem(item("Carrier…", #selector(MainWindowController.showCarrier(_:))))
-        let battery = NSMenu(title: "Battery")
-        for level in [100, 80, 50, 20, 5] {
-            battery.addItem(item("\(level)%", #selector(MainWindowController.setBatteryLevel(_:)), tag: level))
-        }
-        battery.addItem(.separator())
-        battery.addItem(item("Charging", #selector(MainWindowController.toggleBatteryCharging(_:))))
-        menu.addItem(submenu(battery, title: "Battery"))
         let debug = NSMenu(title: "Debugging")
         debug.addItem(item("Debug Port…", #selector(AppDelegate.showDebugPort(_:))))
         debug.addItem(item("Copy lldb Command", #selector(AppDelegate.copyLLDBCommand(_:))))

@@ -6,7 +6,7 @@ import Testing
 
 @testable import LightTouchCore
 
-/// The keyboard and battery settings as they reach the machine, and the control requests they ride on.
+/// The keyboard settings as they reach the machine, and the control requests they ride on.
 struct DeviceControlsTests {
     final class Machine {
         var requests: [LinkRequest] = []
@@ -85,96 +85,6 @@ struct DeviceControlsTests {
             )
             without.applyHardware()
             #expect(other.requests.isEmpty, "a board without the toggle is never asked")
-        }
-    }
-
-    @Test func batteryReappliedAtBootIPadReplugsIPodSetsChargerMode() async throws {
-        try await withScratchDirectory { directory in try await batteryReapplied(directory) }
-    }
-    func batteryReapplied(_ directory: URL) async throws {
-        for name in ["pad", "pod"] {
-            try FileManager.default.createDirectory(
-                at: directory.appendingPathComponent(name),
-                withIntermediateDirectories: true
-            )
-        }
-        let scope = BootSessionScope()
-        let pad = Machine()
-        let iPad = BatteryControls(
-            canChooseUSBCharger: true,
-            settings: DeviceSettingsFile(directory: directory.appendingPathComponent("pad")),
-            scope: scope,
-            control: pad.control
-        )
-        iPad.replugDelay = .milliseconds(10)
-        iPad.apply()
-        #expect(pad.requests == [.battery(level: 100, charging: 0), .usbCharger(true)])
-        pad.requests = []
-        iPad.setLevel(50)
-        #expect(pad.requests == [.battery(level: 50, charging: 0)])
-        pad.requests = []
-        iPad.apply()
-        #expect(
-            pad.requests == [.battery(level: 50, charging: 0), .usbCharger(true)],
-            "a restart keeps the chosen level"
-        )
-        pad.requests = []
-        iPad.setCharging(false)
-        #expect(
-            !iPad.charging && pad.requests == [.usbCharger(false), .usbConnection(false)],
-            "the port, then unplugged"
-        )
-        await scope[.usbReconnect]?.value
-        #expect(pad.requests == [.usbCharger(false), .usbConnection(false), .usbConnection(true)], "and plugged back")
-        pad.requests = []
-        iPad.apply()
-        #expect(pad.requests == [.battery(level: 50, charging: 2), .usbCharger(false)], "a restart keeps Charging off")
-        // A refused port change doesn't replug.
-        pad.requests = []
-        pad.answer = false
-        iPad.setCharging(true)
-        #expect(pad.requests == [.usbCharger(true)])
-
-        let pod = Machine()
-        let iPod = BatteryControls(
-            canChooseUSBCharger: false,
-            settings: DeviceSettingsFile(directory: directory.appendingPathComponent("pod")),
-            scope: scope,
-            control: pod.control
-        )
-        iPod.apply()
-        #expect(pod.requests == [.battery(level: 100, charging: 0)])
-        pod.requests = []
-        iPod.setCharging(false)
-        #expect(pod.requests == [.battery(level: 100, charging: 2)], "iPod: the charger mode, no replug")
-        pod.requests = []
-        iPod.apply()
-        #expect(pod.requests == [.battery(level: 100, charging: 2)])
-    }
-
-    /// The choice is the device's, not the controller's: a fresh helper (a new controller over the same device)
-    /// starts from it as an in-place restart does.
-    @Test func aFreshHelperStartsFromTheBatteryChoice() async throws {
-        try await withScratchDirectory { directory in
-            let first = Machine()
-            let before = BatteryControls(
-                canChooseUSBCharger: false,
-                settings: DeviceSettingsFile(directory: directory),
-                scope: BootSessionScope(),
-                control: first.control
-            )
-            before.setLevel(20)
-            before.setCharging(false)
-            let fresh = Machine()
-            let after = BatteryControls(
-                canChooseUSBCharger: false,
-                settings: DeviceSettingsFile(directory: directory),
-                scope: BootSessionScope(),
-                control: fresh.control
-            )
-            #expect(after.level == 20 && !after.charging, "the menu shows the choice")
-            after.apply()
-            #expect(fresh.requests == [.battery(level: 20, charging: 2)], "and the new boot starts from it")
         }
     }
 

@@ -11,6 +11,7 @@ struct QemuDeviceInfoC {
     var machine: UnsafePointer<CChar>?
     var board: UnsafePointer<CChar>?
     var screenWidth, screenHeight, screenScale, defaultOrientation: Int32
+    // hasUSBCharger: the C layout's, unused (the app no longer chooses the port's charge current).
     var hasCellular, hasUSBHost, hasCompass, hasUSBCharger: Bool
     var panelMin, panelMaxWidth, panelMaxHeight, panelWidthStep, panelMaxPixels: Int32
 }
@@ -131,7 +132,6 @@ final class Qemu: @unchecked Sendable {
     lazy var battery = sym("qemu_ios_ui_battery", (@convention(c) (Int32, Int32) -> Bool).self)
     lazy var usbConnection = sym("qemu_ios_ui_usb_connection", (@convention(c) (Bool) -> Bool).self)
     lazy var compass = sym("qemu_ios_ui_compass", (@convention(c) (Int32) -> Bool).self)
-    lazy var usbCharger = sym("qemu_ios_ui_usb_charger", (@convention(c) (Bool) -> Bool).self)
     /// Optional: dylibs before the Carrier panel lack them.
     lazy var modemSet = optionalSym(
         "qemu_ios_ui_modem_set",
@@ -210,7 +210,6 @@ final class Qemu: @unchecked Sendable {
                     hasCellular: c.hasCellular,
                     hasUSBHost: c.hasUSBHost,
                     hasCompass: c.hasCompass,
-                    hasUSBCharger: c.hasUSBCharger,
                     panelMin: Int(c.panelMin),
                     panelMaxWidth: Int(c.panelMaxWidth),
                     panelMaxHeight: Int(c.panelMaxHeight),

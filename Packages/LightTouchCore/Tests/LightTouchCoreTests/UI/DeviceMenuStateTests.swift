@@ -80,21 +80,13 @@ struct DeviceMenuStateTests {
 
     @Test func inputNeedsADeviceTakingInput() {
         var state = running()
-        #expect(state.validate(.input).isEnabled && state.validate(.charging).isEnabled)
+        #expect(state.validate(.input).isEnabled)
         state.acceptsInput = false
-        #expect(
-            !state.validate(.input).isEnabled && !state.validate(.batteryLevel(100)).isEnabled
-                && !state.validate(.charging).isEnabled
-        )
+        #expect(!state.validate(.input).isEnabled)
     }
 
-    @Test func batteryAndCompassCheckTheirCurrentValue() {
+    @Test func compassChecksItsCurrentValue() {
         var state = running()
-        state.batteryLevel = 50
-        state.batteryCharging = true
-        #expect(state.validate(.batteryLevel(50)) == .init(isEnabled: true, isOn: true))
-        #expect(state.validate(.batteryLevel(100)).isOn == false)
-        #expect(state.validate(.charging).isOn == true)
         #expect(!state.validate(.compassHeading(0)).isEnabled, "no compass, dimmed (never left out)")
         state.hasCompass = true
         state.compassHeading = 90

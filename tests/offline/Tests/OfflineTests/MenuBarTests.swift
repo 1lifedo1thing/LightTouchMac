@@ -115,14 +115,6 @@ extension SharedState {
             Device/Network/-
             Device/Network/Proxy…
             Device/Carrier…
-            Device/Battery ▸
-            Device/Battery/100%
-            Device/Battery/80%
-            Device/Battery/50%
-            Device/Battery/20%
-            Device/Battery/5%
-            Device/Battery/-
-            Device/Battery/Charging
             Device/Debugging ▸
             Device/Debugging/Debug Port…
             Device/Debugging/Copy lldb Command

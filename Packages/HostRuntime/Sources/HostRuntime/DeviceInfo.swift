@@ -19,8 +19,6 @@ public struct DeviceInfo: Codable, Sendable, Equatable {
     /// usb-bus.0: the USB keyboard, which can be unplugged and plugged back while running.
     public var hasUSBHost: Bool
     public var hasCompass: Bool
-    /// Charging is the USB port's current (the machine's usb-charger), not the PMU's charger.
-    public var hasUSBCharger: Bool
     /// What panel=WxH accepts, as the panel scans: sides >= panelMin, the width a multiple of panelWidthStep, at most
     /// panelMaxPixels pixels (0: no bound beyond the sides).
     public var panelMin: Int
@@ -39,7 +37,6 @@ public struct DeviceInfo: Codable, Sendable, Equatable {
         hasCellular: Bool,
         hasUSBHost: Bool,
         hasCompass: Bool,
-        hasUSBCharger: Bool,
         panelMin: Int,
         panelMaxWidth: Int,
         panelMaxHeight: Int,
@@ -55,7 +52,6 @@ public struct DeviceInfo: Codable, Sendable, Equatable {
         self.hasCellular = hasCellular
         self.hasUSBHost = hasUSBHost
         self.hasCompass = hasCompass
-        self.hasUSBCharger = hasUSBCharger
         self.panelMin = panelMin
         self.panelMaxWidth = panelMaxWidth
         self.panelMaxHeight = panelMaxHeight
