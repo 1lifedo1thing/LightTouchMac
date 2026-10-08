@@ -394,6 +394,26 @@ extension String {
         )
     }
 
+    /// Waits (at most `timeout` s) until the screen's rows from `top` to `bottom` (fractions of its height) hold still
+    /// for half a second: a sheet still sliding in under a tap would take it somewhere else.
+    func settled(top: Double, bottom: Double, timeout: Double = 10) async {
+        func band() -> Data? {
+            guard let s = process.link.frontSurface()?.surface else { return nil }
+            s.lock(options: .readOnly, seed: nil)
+            defer { s.unlock(options: .readOnly, seed: nil) }
+            let rows = Int(Double(s.height) * top)..<Int(Double(s.height) * bottom)
+            return Data(bytes: s.baseAddress + rows.lowerBound * s.bytesPerRow, count: rows.count * s.bytesPerRow)
+        }
+        var last = band()
+        let t0 = Date()
+        while Date().timeIntervalSince(t0) < timeout {
+            try? await Task.sleep(for: .milliseconds(500))
+            let now = band()
+            if now != nil, now == last { return }
+            last = now
+        }
+    }
+
     func drag(_ x0: Double, _ y0: Double, _ x1: Double, _ y1: Double) async {
         let link = process.link
         link.send(.touch(slot: 0, phase: 0, x: x0, y: y0))

@@ -4,7 +4,8 @@
 // create's stdout is JSON Lines only; diagnostics go to stderr. Exit 0 after done, 1 after an error event, 64 for a
 // command line it doesn't take; SIGTERM, or the parent (the app) exiting, cancels (children stopped, images under
 // --out detached, exit 143) and leaves --out to the caller. Closed command pipes cannot interrupt owned cleanup.
-// --guest-tools defaults to ../Resources/guest-tools next to this executable (the app bundle's).
+// --guest-tools defaults to ../Resources/guest-tools next to this executable (the app bundle's), --helper to the
+// LightTouchDevice beside it.
 //
 // mount/export rebuild the device's HFS+ volumes from base + overlay into sparse images in --out (default: a new
 // temp dir) and print one JSON line per volume: {volume, image, clean, repaired, seconds, and for mount device +
@@ -105,8 +106,13 @@ default:  // the root alone, or help
     var options: Preparer.Options
     do {
         // The app's packed guest tools (Resources/Guest/guest.aar), unpacked; --guest-tools names another directory.
-        let resources = Bundle.main.executableURL!.resolvingSymlinksInPath().deletingLastPathComponent()
-            .appendingPathComponent("../Resources").standardizedFileURL
+        let directory = Bundle.main.executableURL!.resolvingSymlinksInPath().deletingLastPathComponent()
+        let resources = directory.appendingPathComponent("../Resources").standardizedFileURL
+        // The helper beside this executable (the app bundle's MacOS/, a build's products) unless --helper names one.
+        let sibling = directory.appendingPathComponent("LightTouchDevice")
+        let helper =
+            command.helper.map(fileURL)
+            ?? (FileManager.default.isExecutableFile(atPath: sibling.path) ? sibling : nil)
         let bundled =
             try command.guestTools == nil
             ? GuestArchive.unpacked(resources: resources)?.appendingPathComponent("guest-tools") : nil
@@ -122,7 +128,7 @@ default:  // the root alone, or help
             ipsw: fileURL(command.ipsw),
             out: staging,
             seed: command.seed,
-            helper: command.helper.map(fileURL),
+            helper: helper,
             guestTools: command.guestTools.map(fileURL) ?? bundled ?? resources.appendingPathComponent("guest-tools"),
             cache: command.cache.map(fileURL),
             sibling: try command.siblingEntry.map {

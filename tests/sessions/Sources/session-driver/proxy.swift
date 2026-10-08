@@ -270,7 +270,9 @@ nonisolated enum ProxyProbe {
             // bookmark Safari opens on, which www.apple.com redirects to HTTPS, so the page loads only through the
             // trusted proxy CA. iOS 3 shows the bookmarks as a sheet over the page, iOS 4 full screen.
             let major = (await d.lockdownValue("ProductVersion") ?? "3").prefix(1)
-            await d.drag(0.5, major == "4" ? 0.27 : 0.645, 0.5, major == "4" ? 0.27 : 0.645)
+            let row = major == "4" ? 0.27 : 0.645
+            await d.settled(top: row - 0.05, bottom: row + 0.05)
+            await d.drag(0.5, row, 0.5, row)
             emit("typed", ["device": d.name, "status": 0, "bookmark": "Apple", "major": String(major)])
         }
         try? await Task.sleep(for: .seconds(12))

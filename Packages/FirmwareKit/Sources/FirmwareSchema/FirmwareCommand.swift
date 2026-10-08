@@ -33,7 +33,8 @@ public enum FirmwareCommand {
         @Option public var ipsw: String
         @Option(help: "The staging directory.") public var out: String
         @Option public var seed: String? = nil
-        @Option(help: "LightTouchDevice, for the one-shot boots.") public var helper: String? = nil
+        @Option(help: "LightTouchDevice, for the one-shot boots (default: the one beside firmwarekit).")
+        public var helper: String? = nil
         @Option(help: "The decrypt cache.") public var cache: String? = nil
         @Option(help: "Default: the app bundle's packed guest tools.") public var guestTools: String? = nil
         @Option(help: "recipe.keybag_ramdisk_from's entry.") public var siblingEntry: String? = nil
