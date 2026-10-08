@@ -117,9 +117,11 @@ final class EmulatorController {
     /// `.dead` is the one that used to be invisible — QEMU would exit and the
     /// app kept a frozen frame with every control live.
     typealias VMState = LightTouchCore.VMState
-    var state: VMState = .notStarted {
+    private(set) var state: VMState = .notStarted {
         didSet { trackStartup(was: isErasing || oldValue == .booting || preparingDevice) }
     }
+    /// The one way `state` changes (VMState.transition(to:): its table, and why erasing and stopping aren't states).
+    func transition(to next: VMState) { state.transition(to: next) }
 
     /// Set by the inspector's poll: nil = never checked, true/false = last read.
     var deviceReachable: Bool? {

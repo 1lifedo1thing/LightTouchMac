@@ -11,7 +11,7 @@ extension EmulatorController {
     private func noteFrameAdvanced() {
         lastFrameAdvance = Date()
         if state.runsAfterFrame(poweringOn: poweringOn) {
-            state = .running
+            transition(to: .running)
             // A full battery, charging as it would on USB (auto): the machines start at their own levels (the
             // iPad at 80%, the S5L8920 boards at their PMU's), set before configd reads the gauge.
             control(.battery(level: 100, charging: 0))

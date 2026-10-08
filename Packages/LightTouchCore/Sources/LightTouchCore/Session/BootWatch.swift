@@ -10,7 +10,8 @@ import Observation
 public protocol BootWatchHost: AnyObject {
     var bootScope: BootSessionScope { get }
     var profile: Board { get }
-    var state: VMState { get set }
+    var state: VMState { get }
+    func transition(to next: VMState)
     var shuttingDown: Bool { get }
     /// Stop asked the helper to halt: its exit is Stopped, not a crash.
     var halting: Bool { get }
@@ -91,12 +92,13 @@ public enum BootEnd: Equatable {
     /// that couldn't be built used to stop at `.dead`, keeping its status poll, loops and usbmuxd (state audit A-1);
     /// a dead device kept drawing as asleep (A-12).
     public func endBoot(_ end: BootEnd) {
-        host.state =
+        let next: VMState =
             switch end {
             case .unbuildable: .dead(exitCode: 1)
             case .guestPoweredOff: .poweredOff
             case .helperGone: host.halting ? .poweredOff : .dead(exitCode: nil)
             }
+        host.transition(to: next)
         host.retireBoot()
         host.discardInstalls()
         host.forgetBootFacts()

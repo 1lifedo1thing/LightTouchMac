@@ -10,7 +10,8 @@ import HostServiceWire
 /// What a reset and a power-on read and do on the session, each step as the session names it.
 public protocol BootCycleHost: AnyObject {
     var bootScope: BootSessionScope { get }
-    var state: VMState { get set }
+    var state: VMState { get }
+    func transition(to next: VMState)
     var storageFailed: Bool { get }
     var shuttingDown: Bool { get }
     /// stop() or release() ran: this controller's boots are over.
@@ -121,7 +122,7 @@ public final class BootCycle {
         if host.state == .paused {
             // A paused guest can't sync: resume it first (state audit A-14).
             host.helperLink?.send(.machine(.resume))
-            host.state = .running
+            host.transition(to: .running)
         }
         let preparation = host.readiness.current
         preparation?.cancel()
@@ -169,7 +170,7 @@ public final class BootCycle {
             else { return }
             host.beginBoot()
             host.helperLink?.send(.machine(.reset))
-            host.state = .booting
+            host.transition(to: .booting)
             host.startBootWatches()
         }
     }
@@ -196,7 +197,7 @@ public final class BootCycle {
         poweringOn = true
         powerOns += 1
         let run = powerOns
-        host.state = .booting
+        host.transition(to: .booting)
         host.helperLink?.send(.machine(.reset))
         let generation = host.bootScope.generation
         let latchWait = latchWait

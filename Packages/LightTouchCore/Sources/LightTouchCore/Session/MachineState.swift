@@ -16,11 +16,47 @@ public enum VMState: Equatable {
     /// A new frame ends the boot's `booting` (the signal behind booting → running), except while a power-on still
     /// waits to resume the machine.
     public func runsAfterFrame(poweringOn: Bool) -> Bool { self == .booting && !poweringOn }
+
+    /// Whether the machine may go from `self` to `next`. Dead is final: a restart is a fresh controller.
+    ///
+    /// Erasing and stopping are not states here but overlays the session holds beside this one (DeviceErase's
+    /// `isErasing`, ShutdownLadder.step), because the machine keeps moving under them and they end wherever it went
+    /// (state audit A-19). An erase halts the helper, whose exit leaves the device powered off mid-erase, and a
+    /// boot's frame can make it running; a failed erase leaves it at that. A Shut Down that times out leaves it
+    /// running, the guest's own power-off lands while the ladder still waits, a halt whose kill fails leaves it as
+    /// it was, and a powered-off helper is halted on purpose (Start with changed settings, Erase).
+    public nonisolated func allows(_ next: VMState) -> Bool {
+        switch (self, next) {
+        case (.notStarted, .booting), (.notStarted, .dead): true
+        case (.booting, .booting), (.booting, .running): true
+        case (.running, .paused), (.running, .booting): true
+        // A reset's resume, or a reset whose sync the user paused under it.
+        case (.paused, .running), (.paused, .booting): true
+        case (.poweredOff, .booting), (.poweredOff, .poweredOff): true
+        // Any live boot ends powered off (the guest's, or a halt's) or dead.
+        case (.booting, .poweredOff), (.running, .poweredOff), (.paused, .poweredOff): true
+        case (.booting, .dead), (.running, .dead), (.paused, .dead), (.poweredOff, .dead): true
+        default: false
+        }
+    }
+
+    /// The one way the session's state changes. A transition the table refuses leaves the state as it was: it
+    /// asserts in debug builds and is logged in release.
+    public nonisolated mutating func transition(to next: VMState) {
+        guard allows(next) else {
+            logEvent("lifecycle: refused \(self) → \(next)")
+            assertionFailure("illegal lifecycle transition \(self) → \(next)")
+            return
+        }
+        self = next
+    }
 }
 
 /// What pause, resume and the Mac's sleep need of the session.
 public protocol MachineHost: AnyObject {
-    var state: VMState { get set }
+    var state: VMState { get }
+    /// VMState.transition(to:) on the session's state.
+    func transition(to next: VMState)
     var storageFailed: Bool { get }
     var shuttingDown: Bool { get }
     var helperLink: HelperLink? { get }
@@ -31,13 +67,13 @@ public protocol MachineHost: AnyObject {
 extension MachineHost {
     public func pause() {
         helperLink?.send(.machine(.pause))
-        if state == .running { state = .paused }
+        if state == .running { transition(to: .paused) }
     }
 
     public func resume() {
         guard !storageFailed else { return }
         helperLink?.send(.machine(.resume))
-        if state == .paused { state = .running }
+        if state == .paused { transition(to: .running) }
     }
 }
 

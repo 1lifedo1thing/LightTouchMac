@@ -151,6 +151,7 @@ final class FakeSession: MachineHost, ConnectionHost, ActivationServices, Readin
 
     // MARK: State
     var state = VMState.booting
+    func transition(to next: VMState) { state.transition(to: next) }
     var storageFailed = false
     var shuttingDown: Bool { ladder.shuttingDown }
     var halting: Bool { ladder.halting }

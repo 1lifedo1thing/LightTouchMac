@@ -30,7 +30,7 @@ extension EmulatorController {
             return
         }
         started = true
-        state = .booting
+        transition(to: .booting)
         notices.helperStarted()  // the last boot's notices end; a fresh helper opens the files as they are now
         let process = DeviceProcess(
             instance: instance.id,
