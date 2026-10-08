@@ -1060,6 +1060,9 @@ enum DockBand {
                 case .tap(let x, let y, let log):
                     await d.tap(x, y)
                     if let log { pages.append(log) }
+                    if log?.hasPrefix("(") == true, ProcessInfo.processInfo.environment["LTM_SETUP_BURST"] == "1" {
+                        await burst(d, "setup\(generation)-\(n)-burst")
+                    }
                 case .pause(let seconds):
                     try? await Task.sleep(for: .seconds(seconds))
                 case .slideIfLockScreen:
@@ -1077,5 +1080,30 @@ enum DockBand {
             }
         }
         return (false, "Setup still up after 80 pages: " + pages.joined(separator: ", "))
+    }
+
+    /// Every new frame for 8 s after an alert's button (LTM_SETUP_BURST=1, issue 46): a PNG each and the status bar's
+    /// mean level (its top 20/480 rows). `flips` counts frames whose level jumps against the step before it (both steps
+    /// over 1): a status bar alternating between a stale and a current display buffer.
+    static func burst(_ d: Device, _ label: String) async {
+        var last: UInt64 = 0
+        var levels: [Double] = []
+        let t0 = Date()
+        while Date().timeIntervalSince(t0) < 8 {
+            if let f = d.process.link.frontSurface(), f.serial != last {
+                last = f.serial
+                let s = f.surface
+                s.lock(options: .readOnly, seed: nil)
+                let rows = s.height * 20 / 480
+                let bytes = UnsafeRawBufferPointer(start: s.baseAddress, count: s.bytesPerRow * rows)
+                levels.append(Double(bytes.reduce(0) { $0 + Int($1) }) / Double(bytes.count))
+                s.unlock(options: .readOnly, seed: nil)
+                d.screenshot("\(label)-\(levels.count)")
+            }
+            try? await Task.sleep(for: .milliseconds(4))
+        }
+        let steps = zip(levels.dropFirst(), levels).map { $0 - $1 }
+        let flips = zip(steps.dropFirst(), steps).filter { abs($0) > 1 && abs($1) > 1 && $0 * $1 < 0 }.count
+        emit("burst", ["device": d.name, "label": label, "frames": levels.count, "flips": flips, "levels": levels])
     }
 }
