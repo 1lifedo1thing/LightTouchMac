@@ -46,7 +46,13 @@ struct ReleaseAppStaticTests {
                 dump.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? NSDictionary()
                 : try PropertyListSerialization.propertyList(from: Data(dump.utf8), format: nil) as! NSDictionary
-            let want = binary.lastPathComponent == "LightTouchDevice" ? qemu : NSDictionary()
+            // The app asks Core Location only for the Carrier panel's "This Mac's Location"; nothing else is entitled.
+            let want: NSDictionary =
+                switch binary.lastPathComponent {
+                case "LightTouchDevice": qemu
+                case "LightTouch": ["com.apple.security.personal-information.location": true]
+                default: NSDictionary()
+                }
             #expect(granted == want, "\(name): entitlements \(granted), want \(want)")
         }
     }
