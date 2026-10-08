@@ -127,9 +127,9 @@ struct ShutdownLadderTests {
                 gaveUp == .timedOut && !stubborn.shuttingDown && stubborn.state == .running
                     && stubborn.ladder.canShutDown
             )
-            // Not running, storage failed, or the helper gone: no Shut Down.
+            // Storage failed, or the helper gone: no Shut Down.
             for change: (FakeSession) -> Void in [
-                { $0.state = .booting }, { $0.storageFailed = true }, { $0.fakeHelper!.isDead = true },
+                { $0.storageFailed = true }, { $0.fakeHelper!.isDead = true },
                 { $0.isErasing = true },
             ] {
                 let s = session(directory, state: .running)
@@ -137,6 +137,37 @@ struct ShutdownLadderTests {
                 let refused = s.ladder.shutDown()
                 #expect(s.link.commands.isEmpty)
                 #expect(await refused.value == .timedOut)
+            }
+        }
+    }
+
+    /// Sam's 1321 log: a Shut Down chosen mid-boot asked a guest that couldn't answer yet; the boot went on under
+    /// "Stopping…" (its toast still "Connecting over USB") until the shutdown budget force stopped it ~50 s later.
+    @Test func shutDownBeforeReadyHaltsAtOnceAndEndsTheBoot() async throws {
+        try await withScratchDirectory { directory in
+            for state in [VMState.booting, .running] {
+                let c = session(directory, state: state)
+                c.ladder.budgets.shutdown = 30
+                c.usbAnswers = false
+                c.readiness.start()
+                c.bootWatch.start()
+                let readiness = c.readiness.current
+                let watchdog = c.bootWatch.current
+                #expect(c.preparingDevice && c.ladder.canShutDown && c.ladder.shutDownHalts)
+                let started = Date()
+                let shutdown = c.ladder.shutDown()
+                #expect(c.halting && c.shuttingDown && !c.ladder.isShuttingDownCleanly, "the window says Stopping…")
+                #expect(readiness?.isCancelled == true && watchdog?.isCancelled == true, "the boot's watches end")
+                #expect(c.link.commands.isEmpty, "no guest shutdown asked")
+                #expect(await shutdown.value == .forced)
+                #expect(Date().timeIntervalSince(started) < 2, "a halt, not the shutdown budget")
+                #expect(c.fakeHelper!.terms == 1 && c.steps.prefix(2) == ["willStop", "retire"])
+                await eventually("the startup banner went") { !c.preparingDevice }
+                // USB answering now moves no boot stage: the boot is over.
+                let stage = c.bootStage
+                c.usbAnswers = true
+                try await Task.sleep(for: .milliseconds(400))
+                #expect(c.bootStage == stage && c.springBoardChecks == 0)
             }
         }
     }

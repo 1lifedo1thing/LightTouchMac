@@ -182,7 +182,10 @@ extension MainWindowController {
         guard let window else { return }
         let alert = NSAlert()
         alert.messageText = "Shut down this \(emulator.profile.shortName)?"
-        alert.informativeText = "It turns off the way it does when you slide to power off."
+        alert.informativeText =
+            emulator.ladder.shutDownHalts
+            ? "It hasn’t finished starting, so it stops at once."
+            : "It turns off the way it does when you slide to power off."
         alert.addButton(withTitle: "Shut Down")
         alert.addButton(withTitle: "Cancel")
         alert.beginSheetModal(for: window) { [weak self, weak emulator] response in

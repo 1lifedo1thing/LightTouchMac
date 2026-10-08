@@ -36,7 +36,8 @@ final class EmulatorController {
     var isErasing = false { didSet { trackStartup(was: oldValue || state == .booting || preparingDevice) } }
     /// When the current startup (erase, boot, readiness) began: the toast's counter, per device, not per window.
     private(set) var startupBegan = Date()
-    var isStartingUp: Bool { isErasing || state == .booting || preparingDevice }
+    /// A boot being stopped (Stop, or Shut Down before it is up) is no longer starting up: its toast goes at once.
+    var isStartingUp: Bool { isErasing || (state == .booting && !shuttingDown) || preparingDevice }
     private func trackStartup(was: Bool) { if isStartingUp, !was { startupBegan = Date() } }
 
     var isSleeping = false

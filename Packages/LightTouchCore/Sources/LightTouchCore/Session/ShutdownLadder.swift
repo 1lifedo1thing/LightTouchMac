@@ -6,7 +6,9 @@
 // journals on the next boot. The helper's exit is Stopped (BootWatch.helperDied).
 //
 // Shut Down: the guest powers itself off, as the slider does (qemu_ios_ui_shutdown: the guest agent's halt, or
-// 1.x's power-off gesture), so its storage is left clean; the helper stays, powered off, as after the slider.
+// 1.x's power-off gesture), so its storage is left clean; the helper stays, powered off, as after the slider. A
+// guest still starting up can't power itself off (no SpringBoard, no agent yet): Shut Down then is Stop, and the boot
+// ends at once instead of carrying on under "Stopping…" until the shutdown budget forced it.
 
 import DeviceRuntime
 import Foundation
@@ -22,6 +24,8 @@ public protocol ShutdownHost: AnyObject {
     var filesMeddled: Bool { get }
     var helper: DeviceHelper? { get }
     var helperLink: HelperLink? { get }
+    /// The boot hasn't reached the Home screen yet (ReadinessWatch.preparingDevice).
+    var preparingDevice: Bool { get }
     var workers: WorkerRetirement { get }
     func retireBoot()
     /// Before the guest goes: queued installs are dropped and the clock sync ends.
@@ -85,15 +89,23 @@ public enum ShutdownOutcome: Equatable {
     /// Force Stop: Stop's hard halt, also while a Shut Down is under way (one the guest never finishes).
     public var canForceStop: Bool { canStop || (isShuttingDownCleanly && !isPoweredOff && !isDead) }
     public var canShutDown: Bool {
-        host.state == .running && !shuttingDown && !host.isErasing && !host.storageFailed
+        (host.state == .running || host.state == .booting) && !shuttingDown && !host.isErasing && !host.storageFailed
             && host.helper?.isDead == false
     }
     public var isShuttingDownCleanly: Bool { if case .shuttingDown = step { true } else { false } }
+    /// The guest can't take a shutdown request yet (still starting up): Shut Down halts it, as Stop does.
+    public var shutDownHalts: Bool { host.state == .booting || host.preparingDevice }
 
-    /// Asks the guest to power off, now. The task's value: how it ended.
+    /// Asks the guest to power off, now; one still starting up is halted instead (`.forced`). The task's value: how
+    /// it ended.
     @discardableResult public func shutDown() -> Task<ShutdownOutcome, Never> {
         guard canShutDown else { return Task { .timedOut } }
         host.willStop()
+        if shutDownHalts {
+            logEvent("shut down: the guest is still starting; stopping it")
+            let halt = halt()
+            return Task { await halt.value ? .forced : .timedOut }
+        }
         logEvent("shut down: asking the guest")
         host.helperLink?.send(.machine(.shutdown))
         let budget = budgets.shutdown
