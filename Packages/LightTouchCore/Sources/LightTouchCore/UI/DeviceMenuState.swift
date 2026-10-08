@@ -88,15 +88,11 @@ public struct CaptureAvailability {
     public var recordingSaving = false
     /// A recording is starting or running.
     public var recordingCanStop = false
-    /// An interrupted recording waits to be saved.
-    public var recordingNeedsRecovery = false
 
     public init() {}
 
     public var canTakeScreenshot: Bool { (isRunning || isPaused) && !isSleeping && !screenshotBusy }
     public var canStartRecording: Bool { isRunning && !isSleeping && !screenshotBusy }
-    /// Stopping stays available when the guest stops, and saving a recovered recording needs no device.
-    public var canToggleRecording: Bool {
-        !recordingSaving && (recordingCanStop || recordingNeedsRecovery || canStartRecording)
-    }
+    /// Stopping stays available when the guest stops.
+    public var canToggleRecording: Bool { !recordingSaving && (recordingCanStop || canStartRecording) }
 }

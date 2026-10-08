@@ -143,8 +143,6 @@ extension SharedState {
             Capture/Discard Recording…  ⎋
             Capture/-
             Capture/Capture Screen Only
-            Capture/-
-            Capture/Show Unfinished Recordings
             Window/Minimize  ⌘m
             Window/Zoom
             Window/-
@@ -270,7 +268,7 @@ extension SharedState {
             for name in ["Open SSH", "Restart SpringBoard", "Verbose Boot", "Kernel Console"] {
                 #expect(find(name, in: root) == nil, "Developer command leaked into the regular menus")
             }
-            #expect(find("Show Unfinished Recordings", in: help) == nil && find("Device Logs", in: help) == nil)
+            #expect(find("Device Logs", in: help) == nil)
             let file = root.item(withTitle: "File")!.submenu!
             for name in ["Copy to iPod…", "Save to Mac…", "Cancel Transfer", "Refresh Files", "Close"] {
                 #expect(find(name, in: file) != nil, "\(name)")
@@ -288,7 +286,7 @@ extension SharedState {
                 capture.items.filter { !$0.isSeparatorItem }.map(\.title) == [
                     "Save Screenshot", "Save Screenshot As…", "Copy Screenshot", "Open Screenshot in Preview",
                     "Start Recording", "Discard Recording…",
-                    "Capture Screen Only", "Show Unfinished Recordings",
+                    "Capture Screen Only",
                 ]
             )
             #expect(

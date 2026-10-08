@@ -249,39 +249,4 @@ struct ScreenMovieWriterTests {
             }
         }
     }
-
-    /// A recording whose app dies mid-take is still a playable movie: the writer writes movie fragments. The file is
-    /// copied as it stands 8 s in, before any finish, the way a crash leaves it.
-    @Test func aTakeCutOffByACrashPlays() async throws {
-        let directory = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        do {
-            let url = directory.appendingPathComponent("take.mov")
-            let crashed = directory.appendingPathComponent("crashed.mov")
-            let context = CGContext(
-                data: nil,
-                width: 64,
-                height: 96,
-                bitsPerComponent: 8,
-                bytesPerRow: 256,
-                space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
-            )!
-            let writer = ScreenMovieWriter()
-            try await writer.start(url: url, canvasSize: CGSize(width: 64, height: 96))
-            for i in 0..<240 {  // 8 s at 30 fps, each frame different
-                context.setFillColor(CGColor(red: Double(i % 30) / 30, green: 0.5, blue: 0.2, alpha: 1))
-                context.fill(CGRect(x: 0, y: 0, width: 64, height: 96))
-                try await writer.append(context.makeImage()!, seconds: Double(i) / 30)
-                try await Task.sleep(for: .milliseconds(5))
-            }
-            try await Task.sleep(for: .seconds(1))
-            try FileManager.default.copyItem(at: url, to: crashed)
-            await writer.cancel()
-            let asset = AVURLAsset(url: crashed)
-            let playable = try await asset.load(.isPlayable)
-            let seconds = try await asset.load(.duration).seconds
-            #expect(playable && seconds >= 4, "a crashed take: playable \(playable), \(seconds) s")
-        }
-    }
 }

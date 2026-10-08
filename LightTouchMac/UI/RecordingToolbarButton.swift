@@ -2,7 +2,7 @@ import Cocoa
 
 /// One recording button: record, elapsed time and stop, then progress.
 final class RecordingToolbarButton: NSButton {
-    enum Phase { case idle, recording, saving, recovery }
+    enum Phase { case idle, recording, saving }
     private let progress = NSProgressIndicator()
     /// What the button last showed: an update that changes none of it touches nothing (it ran on every
     /// toolbar validation, re-making the image and re-laying the toolbar out).
@@ -45,9 +45,6 @@ final class RecordingToolbarButton: NSButton {
         case .saving:
             label = "Saving Recording…"
             symbol = "record.circle"
-        case .recovery:
-            label = "Save Recording As…"
-            symbol = "exclamationmark.circle"
         }
         title = phase == .recording ? elapsed : ""
         image =

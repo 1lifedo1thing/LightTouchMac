@@ -6,7 +6,7 @@ import UserNotifications
 @testable import LightTouchCore
 
 /// Capture preferences: defaults written nowhere until chosen, the save location and its three recent folders, the
-/// "Open in" app with its fallback, refused out-of-range values; the notifications' identity payloads.
+/// "Open in" app with its fallback, and the device-ready notification's identity payload.
 struct CapturePreferencesTests {
     func withDefaults(_ body: (UserDefaults) throws -> Void) throws {
         let domain = "ltm-capture-preferences-test-" + UUID().uuidString
@@ -20,8 +20,7 @@ struct CapturePreferencesTests {
             let preferences = CapturePreferences(defaults: defaults)
             #expect(preferences.saveLocation == CapturePreferences.desktopDirectory)
             #expect(preferences.openFinderAfterCapture && preferences.soundEffectsEnabled)
-            #expect(!preferences.copyOnCapture && !preferences.notifyOnRecordingRecovery)
-            #expect(preferences.reminderAfterDuration == 0)
+            #expect(!preferences.copyOnCapture)
             _ = preferences.saveLocations
             _ = preferences.openInApplicationURL
             #expect(
@@ -29,7 +28,7 @@ struct CapturePreferencesTests {
                     $0.hasPrefix("capture")
                         || [
                             "copyOnCapture",
-                            "openFinderAfterCapture", "soundEffectsEnabled", "reminderAfterDuration",
+                            "openFinderAfterCapture", "soundEffectsEnabled",
                             "openInApplicationPath",
                         ].contains($0)
                 }.isEmpty,
@@ -97,36 +96,23 @@ struct CapturePreferencesTests {
         }
     }
 
-    @Test func outOfRangeValuesReadAsDefaults() throws {
+    @Test func choicesPersist() throws {
         try withDefaults { defaults in
             let preferences = CapturePreferences(defaults: defaults)
-            defaults.set(-60, forKey: "reminderAfterDuration")
-            #expect(preferences.reminderAfterDuration == 0)
-            preferences.reminderAfterDuration = 301
-            #expect(preferences.reminderAfterDuration == 0, "only the listed durations")
-            preferences.reminderAfterDuration = 300
             preferences.copyOnCapture = true
             preferences.openFinderAfterCapture = false
             preferences.soundEffectsEnabled = false
             let restored = CapturePreferences(defaults: defaults)
             #expect(restored.copyOnCapture && !restored.openFinderAfterCapture && !restored.soundEffectsEnabled)
-            #expect(restored.reminderAfterDuration == 300)
         }
     }
 
     @Test func notificationPayloadsCarryTheirIdentity() {
-        let id = UUID()
-        let reminder = CaptureNotificationContent.reminder(recordingID: id, profile: .n72)
-        #expect(
-            reminder.userInfo["recordingID"] as? String == id.uuidString && reminder.title == "iPod is still recording"
-        )
         let ready = CaptureNotificationContent.ready("iPod touch (2nd generation) iOS 3.1.3", entryID: "n72ap-7E18")
         #expect(
             ready.title == "iPod touch (2nd generation) iOS 3.1.3 is ready to use"
                 && ready.userInfo["entry"] as? String == "n72ap-7E18"
         )
-        let recovery = CaptureNotificationContent.recovery(filename: "Recovered.mov", bookmark: Data([1, 2, 3]))
-        #expect(recovery.body == "Recovered.mov" && recovery.userInfo["recordingBookmark"] as? Data == Data([1, 2, 3]))
-        #expect(Set([reminder, ready, recovery].map(\.categoryIdentifier)).count == 3)
+        #expect(ready.categoryIdentifier == CaptureNotificationContent.readyCategory)
     }
 }

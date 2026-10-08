@@ -58,7 +58,6 @@ import LightTouchCore
     @objc func showDeviceInFinder(_ sender: Any?) {}
     @objc func showDeviceLogs(_ sender: Any?) {}
     @objc func showLiveText(_ sender: Any?) {}
-    @objc func showRecordingRecovery(_ sender: Any?) {}
     @objc func showSettings(_ sender: Any?) {}
     @objc func specialTrick(_ sender: Any?) {}
     @objc func syncMedia(_ sender: Any?) {}

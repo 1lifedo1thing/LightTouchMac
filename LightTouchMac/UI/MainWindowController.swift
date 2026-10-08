@@ -162,7 +162,6 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         )
         capture.window = window
         capture.session = { [weak self] in self?.session }
-        capture.profile = { [weak self] in self?.currentProfile ?? profile }
         capture.onChange = { [weak self] in self?.validateCaptureToolbar() }
         capture.terminate = { AppDelegate.requestTermination() }
         DeviceFilesystemEdits.shared.onUncleanShutdown = { [weak self] entry in self?.offerShutDownFirst(entry) }

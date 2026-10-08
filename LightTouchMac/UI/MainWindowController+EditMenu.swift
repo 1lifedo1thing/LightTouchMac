@@ -96,7 +96,6 @@ extension MainWindowController {
 
     @objc func toggleRecording(_ sender: Any?) { capture.toggleRecording() }
     @objc func discardRecording(_ sender: Any?) { capture.discardRecording() }
-    @objc func showRecordingRecovery(_ sender: Any?) { capture.showRecordingRecovery() }
     func windowShouldClose(_ sender: NSWindow) -> Bool { capture.windowShouldClose() }
     func finishRecordingBeforeQuit() -> Bool { capture.finishRecordingBeforeQuit() }
 

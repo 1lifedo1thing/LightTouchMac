@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Transient feedback shares Device Hub's thumbnail/title/subtitle/accessory banner layout.
 final class CaptureStatusView: NSView {
-    enum Appearance { case neutral, recording, success, warning }
+    enum Appearance { case neutral, recording, success }
     private let state = CaptureBannerState()
     private lazy var hosting = NSHostingView(
         rootView: CaptureBanner(
@@ -85,7 +85,6 @@ final class CaptureStatusView: NSView {
         state.primary = primary
         state.secondary = secondary
         state.dismissible = dismissible
-        state.warning = appearance == .warning
         state.image = nil
         state.fileURL = nil
         state.link = nil
@@ -156,7 +155,6 @@ private final class CaptureBannerState {
     var title = ""
     var detail = ""
     var busy = false
-    var warning = false
     var primary: String?
     var secondary: String?
     var dismissible = false
@@ -196,9 +194,6 @@ private struct CaptureBanner: View {
                 CaptureBannerThumbnail(image: image, fileURL: state.fileURL)
             } else if state.busy {
                 ProgressView().controlSize(.small).frame(width: 28)
-            } else if state.warning {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange).frame(width: 28)
             }
             VStack(alignment: .leading, spacing: 0) {
                 Text(state.title).fontWeight(.medium).monospacedDigit().lineLimit(1)

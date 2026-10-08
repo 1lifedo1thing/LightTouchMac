@@ -81,7 +81,7 @@ struct HelpTopicTests {
     }
 
     @Test(arguments: [
-        "File → Add Device (⌘N)", "Window → Device Logs", "Capture → Show Unfinished Recordings",
+        "File → Add Device (⌘N)", "Window → Device Logs",
         "Light Touch → Settings → Capture", "Device → Motion",
     ])
     func currentMenuPaths(_ path: String) {

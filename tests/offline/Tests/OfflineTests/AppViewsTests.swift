@@ -119,7 +119,7 @@ extension SharedState {
         }
 
         /// The toolbar's record button: the action, the elapsed time sized in, saving progress inside it, the phase labels,
-        /// recovery and the idle reset; an unchanged update touches nothing (it runs on every validation).
+        /// and the idle reset; an unchanged update touches nothing (it runs on every validation).
         @Test func recordingToolbarButton() {
             final class Target: NSObject, NSToolbarDelegate {
                 let button = RecordingToolbarButton(target: nil, action: #selector(record(_:)))
@@ -177,8 +177,6 @@ extension SharedState {
                 "Saving progress must fit"
             )
             #expect(button.accessibilityValue() == nil)
-            button.update(.recovery, elapsed: "1:23:45", enabled: true)
-            #expect(button.accessibilityLabel() == "Save Recording As…" && button.isEnabled)
             button.update(.idle, elapsed: "0:00", enabled: false)
             #expect(button.intrinsicContentSize.width == idleWidth && button.title.isEmpty && !button.isEnabled)
             let image = button.image

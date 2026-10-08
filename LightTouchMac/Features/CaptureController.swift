@@ -1,6 +1,6 @@
 // A device window's screenshots and screen recordings: the screenshot
 // pipeline (copy, save, save as, open), the recording session with its status
-// banner, reminder notifications and recovery, and where captures are saved.
+// banner, and where captures are saved.
 // The window controller owns the menus and toolbar and
 // asks this for what they enable; the device (its screen and canvas capture)
 // comes from the selected session.
@@ -18,8 +18,6 @@ import UniformTypeIdentifiers
     weak var window: NSWindow?
     /// The selected device, nil when none runs.
     var session: () -> DeviceSession? = { nil }
-    /// The window's device profile (the reminder names it).
-    var profile: () -> Board = { .n72 }
     /// Capture state changed: the toolbar and menus revalidate.
     var onChange: () -> Void = {}
     /// Quit was waiting for the recording to save.
@@ -45,7 +43,6 @@ import UniformTypeIdentifiers
         availability.screenshotBusy = screenshotBusy
         availability.recordingSaving = recording.phase == .saving
         availability.recordingCanStop = recording.canStop
-        availability.recordingNeedsRecovery = recording.needsRecovery
         return availability
     }
     var canTakeScreenshot: Bool { availability.canTakeScreenshot }
@@ -56,8 +53,6 @@ import UniformTypeIdentifiers
         capturePreferences = preferences
         super.init()
         installCaptureStatus()
-        installCaptureNotifications()
-        recoverUnfinishedRecordings()
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(stopHiddenRecording),
@@ -66,10 +61,7 @@ import UniformTypeIdentifiers
         )
         recording.onChange = { [weak self] in self?.refreshRecording() }
         recording.onBeganRecording = { CaptureSound.recordingStarted.play() }
-        recording.onStoppedRecording = {
-            CaptureSound.recordingStopped.play()
-            CaptureNotifications.shared.cancelReminder()
-        }
+        recording.onStoppedRecording = { CaptureSound.recordingStopped.play() }
         recording.chooseSaveDestination = { [weak self] _ in
             guard let self, let window = self.window else { return nil }
             let panel = NSSavePanel()
@@ -80,12 +72,12 @@ import UniformTypeIdentifiers
         }
         recording.onCompleted = { [weak self] result in
             guard let self else { return }
-            CaptureNotifications.shared.cancelReminder()
             switch result {
             case .saved(let url):
                 if capturePreferences.openFinderAfterCapture { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-            case .recovery(let url):
-                NSWorkspace.shared.activateFileViewerSelecting([url])
+            case .failed(let kept?):
+                // The unsaved take, beside the alert saying why.
+                NSWorkspace.shared.activateFileViewerSelecting([kept])
             case .discarded, .failed: break
             }
         }
@@ -245,73 +237,8 @@ import UniformTypeIdentifiers
 
     // MARK: - Recording
 
-    private func installCaptureNotifications() {
-        CaptureNotifications.shared.onRecordingAction = { [weak self] id, action in
-            guard let self, recording.id == id, recording.canStop else { return }
-            switch action {
-            case .stopAndSave: recording.stop()
-            case .stopAndDelete: recording.stop(discard: true)
-            }
-        }
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(recordingAppDidResignActive),
-            name: NSApplication.didResignActiveNotification,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(recordingAppDidBecomeActive),
-            name: NSApplication.didBecomeActiveNotification,
-            object: nil
-        )
-    }
-
-    @objc func recordingAppDidResignActive() {
-        guard recording.canStop else { return }
-        let id = recording.id
-        let seconds = capturePreferences.reminderAfterDuration
-        Task { [weak self] in
-            guard let self, recording.id == id, recording.canStop, !NSApp.isActive else { return }
-            await CaptureNotifications.shared.scheduleReminder(
-                after: TimeInterval(seconds),
-                recordingID: id,
-                profile: profile()
-            )
-        }
-    }
-
-    @objc func recordingAppDidBecomeActive() { CaptureNotifications.shared.cancelReminder() }
-
-    private func recoverUnfinishedRecordings() {
-        let cutoff = Date()
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                let report = try await ScreenRecordingSession.recoverRecordings(createdBefore: cutoff) { _ in
-                    try self.captureDestination("Recording", extension: "mov")
-                }
-                for url in report.saved {
-                    if capturePreferences.notifyOnRecordingRecovery,
-                        await CaptureNotifications.shared.notifyRecoveredRecording(url)
-                    {
-                        continue
-                    }
-                    if capturePreferences.openFinderAfterCapture || capturePreferences.notifyOnRecordingRecovery {
-                        NSWorkspace.shared.activateFileViewerSelecting([url])
-                    }
-                }
-                for url in report.deleted {
-                    logEvent("recording recovery: deleted \(url.lastPathComponent): it can't be played")
-                }
-                if !report.remaining.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(report.remaining) }
-            } catch { logEvent("recording recovery: \(error.localizedDescription)") }
-        }
-    }
-
     private func installCaptureStatus() {
         captureStatus.isHidden = true
-        captureStatus.onPrimary = { [weak self] in self?.saveRecordingAs() }
         captureStatus.onLink = { [weak self] in
             guard let self, captureMode == 0 else { return }
             toggleCaptureScreenOnly()
@@ -321,11 +248,7 @@ import UniformTypeIdentifiers
             guard let self else { return }
             // Resolve the file from the displayed banner. A prior recording's
             // saved state must not hijack a newer screenshot's Reveal action.
-            if let url = captureStatus.fileURL {
-                NSWorkspace.shared.activateFileViewerSelecting([url])
-            } else if case .recovery(let url) = recording.phase {
-                NSWorkspace.shared.activateFileViewerSelecting([url])
-            }
+            if let url = captureStatus.fileURL { NSWorkspace.shared.activateFileViewerSelecting([url]) }
         }
         captureStatus.onDismiss = { [weak self] in
             self?.recording.dismiss()
@@ -336,7 +259,6 @@ import UniformTypeIdentifiers
 
     private func refreshRecording() {
         defer { deviceVC?.updateStatusVisibility() }
-        if !recording.canStop { CaptureNotifications.shared.cancelReminder() }
         onChange()
         switch recording.phase {
         case .idle: captureStatus.isHidden = true
@@ -349,25 +271,12 @@ import UniformTypeIdentifiers
                 recording.previewImage.map { NSImage(cgImage: $0, size: .zero) }
                 ?? NSWorkspace.shared.icon(forFile: url.path)
             captureStatus.showCapture(title: "Recording saved", image: thumbnail, fileURL: url)
-        case .recovery:
-            captureStatus.update(
-                title: "Recording needs attention",
-                detail: recording.failure?.localizedDescription ?? "Save to another folder.",
-                primary: "Save As…",
-                secondary: "Show in Finder",
-                dismissible: true,
-                appearance: .warning
-            )
         }
     }
 
     func toggleRecording() {
         if recording.canStop {
             recording.stop()
-            return
-        }
-        if case .recovery = recording.phase {
-            saveRecordingAs()
             return
         }
         guard !recording.isActive, canStartRecording, let workspace = session()?.workspace else { return }
@@ -424,27 +333,6 @@ import UniformTypeIdentifiers
             guard let self, recording.id == recordingID, response == .alertFirstButtonReturn else { return }
             recording.stop(discard: true)
         }
-    }
-
-    private func saveRecordingAs() {
-        guard let window, case .recovery(let source) = recording.phase else { return }
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.quickTimeMovie]
-        panel.nameFieldStringValue = captureName("Recording") + ".mov"
-        panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let url = panel.url, self?.recording.phase == .recovery(source) else { return }
-            self?.recording.retrySave(to: url)
-        }
-    }
-
-    func showRecordingRecovery() {
-        do {
-            try FileManager.default.createDirectory(
-                at: ScreenRecordingSession.recoveryDirectory,
-                withIntermediateDirectories: true
-            )
-            NSWorkspace.shared.open(ScreenRecordingSession.recoveryDirectory)
-        } catch { if let window { NSAlert(error: error).beginSheetModal(for: window) } }
     }
 
     /// The window may close now; otherwise it closes once the recording has saved.

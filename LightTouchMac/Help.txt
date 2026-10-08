@@ -30,9 +30,9 @@ Capture → Save Screenshot (⌘S) saves immediately. Save Screenshot As (⇧⌘
 
 Captures include the device, its motion, and the gradient. Turn on Capture → Capture Screen Only to capture just the screen. View → Show/Hide Finger Dots controls touch indicators on the device and in captures.
 
-Recordings include device audio. Start/Stop Recording is ⌘R; Escape discards a recording (it asks first). The toolbar shows elapsed time while recording and progress while saving. If saving fails, choose another location. On launch, Light Touch recovers playable unfinished recordings; Capture → Show Unfinished Recordings opens retained files. Hiding or minimizing the app stops recording.
+Recordings include device audio. Start/Stop Recording is ⌘R; Escape discards a recording (it asks first). The toolbar shows elapsed time while recording and progress while saving. If saving fails, choose another location; a recording that still can't be saved is shown in the Finder. Hiding or minimizing the app stops recording.
 
-Captures save directly to the Desktop by default. Light Touch → Settings → Capture changes the save folder, screenshot app, automatic copying, Finder reveal, and sounds. You can also choose a Space shortcut, recording reminders, and recovery notifications. Space goes to the device unless you choose a capture action. Drag a saved capture’s thumbnail into another app or the Finder. Click its arrow to reveal the file.
+Captures save directly to the Desktop by default. Light Touch → Settings → Capture changes the save folder, screenshot app, automatic copying, Finder reveal, and sounds. You can also choose a Space shortcut. Space goes to the device unless you choose a capture action. Drag a saved capture’s thumbnail into another app or the Finder. Click its arrow to reveal the file.
 
 # Selecting and pasting text
 Edit → Select Text on Screen uses Live Text to select text on the device screen. Use the ordinary Copy command (⌘C) for selected text. Done Selecting Text or Escape returns to the device. Paste Text to [Device] (⌃⌘V) sends Clipboard text to the device; ordinary Paste (⌘V) remains available to Mac text fields.

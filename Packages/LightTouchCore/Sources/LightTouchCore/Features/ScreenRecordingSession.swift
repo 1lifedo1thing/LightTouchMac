@@ -1,4 +1,3 @@
-import AVFoundation
 import CoreGraphics
 import Foundation
 
@@ -13,26 +12,20 @@ nonisolated public protocol ScreenMovieRecording: AnyObject, Sendable {
 
 extension ScreenMovieWriter: ScreenMovieRecording {}
 
-/// Owns one recording from its first frame through a durable save. A failed
-/// destination leaves the completed movie available for another save attempt.
+/// Owns one recording from its first frame through a durable save. A take that can't be saved (the destination
+/// failed and the save panel was cancelled, or the writer failed) stays in recordingsDirectory, and the completion
+/// names it.
 @MainActor
 public final class ScreenRecordingSession {
     public enum Phase: Equatable {
         case idle, starting, recording, saving
         case saved(URL)
-        case recovery(URL)
     }
     public enum Completion: Equatable {
         case saved(URL)
         case discarded
-        case recovery(URL)
-        case failed
-    }
-    public struct RecoveryReport {
-        public var saved: [URL] = []
-        public var remaining: [URL] = []
-        /// Unplayable takes: deleted, since nothing can recover them.
-        public var deleted: [URL] = []
+        /// `kept`: the unsaved take, left where it was written.
+        case failed(kept: URL?)
     }
 
     public private(set) var phase: Phase = .idle {
@@ -55,13 +48,13 @@ public final class ScreenRecordingSession {
     public var onStoppedRecording: (() -> Void)?
     private var didBeginRecording = false
     private let writer: any ScreenMovieRecording
-    /// Where takes are written until they're saved (recoveryDirectory).
+    /// Where takes are written until they're saved (recordingsDirectory).
     private let folder: URL
 
-    /// `folder`: recoveryDirectory unless given.
+    /// `folder`: recordingsDirectory unless given.
     public init(writer: any ScreenMovieRecording = ScreenMovieWriter(), folder: URL? = nil) {
         self.writer = writer
-        self.folder = folder ?? Self.recoveryDirectory
+        self.folder = folder ?? Self.recordingsDirectory
     }
     private var producer: Task<Void, Never>?
     private var output: URL?
@@ -73,7 +66,6 @@ public final class ScreenRecordingSession {
     private var destination: (() throws -> URL)?
 
     public var isActive: Bool { phase == .starting || phase == .recording || phase == .saving }
-    public var needsRecovery: Bool { if case .recovery = phase { true } else { false } }
     public var canStop: Bool { phase == .starting || phase == .recording }
     public var elapsed: String {
         let seconds = elapsedSeconds % 60
@@ -84,7 +76,7 @@ public final class ScreenRecordingSession {
             ? "\(hours):\(minutes < 10 ? "0" : "")\(minutes):\(tail)"
             : "\(minutes):\(tail)"
     }
-    public static var recoveryDirectory: URL {
+    public static var recordingsDirectory: URL {
         Bundled.stateDirectory.appendingPathComponent("Recordings", isDirectory: true)
     }
 
@@ -108,7 +100,6 @@ public final class ScreenRecordingSession {
         destination: @escaping () throws -> URL
     ) {
         guard !isActive else { return }
-        if case .recovery = phase { return }
         begin(
             frame: frame,
             audio: audio,
@@ -217,7 +208,7 @@ public final class ScreenRecordingSession {
         do {
             if let failure {
                 // An audio-source error can leave valid video in a healthy
-                // writer. Finalize that partial take before offering recovery.
+                // writer. Finalize that partial take before keeping it.
                 if writerStarted {
                     try? await writer.finish(seconds: max(ProcessInfo.processInfo.systemUptime - startedAt, 0.034))
                 }
@@ -244,39 +235,16 @@ public final class ScreenRecordingSession {
             completed(.saved(saved))
         } catch {
             failure = error
-            if let output, FileManager.default.fileExists(atPath: output.path) {
-                phase = .recovery(output)
-                completed(.recovery(output))
-            } else {
-                phase = .idle
-                completed(.failed)
-            }
+            keepOutput()
         }
     }
 
-    public func retrySave(to url: URL) {
-        guard case .recovery(let source) = phase else { return }
-        phase = .saving
-        Task {
-            do {
-                try await Self.save(source, to: url, replaceExisting: true)
-                output = nil
-                failure = nil
-                phase = .saved(url)
-                completed(.saved(url))
-            } catch {
-                failure = error
-                phase = .recovery(source)
-                completed(.recovery(source))
-            }
-        }
-    }
-
-    /// Called only after the user confirms discarding an unsaved take.
-    public func discardRecovery() {
-        guard case .recovery(let source) = phase else { return }
-        output = source
-        discardOutput()
+    /// Ends a take that couldn't be saved or deleted: the file, if any, stays where it was written.
+    private func keepOutput() {
+        let kept = output.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+        output = nil
+        phase = .idle
+        completed(.failed(kept: kept))
     }
 
     private func discardOutput() {
@@ -291,13 +259,7 @@ public final class ScreenRecordingSession {
             completed(.discarded)
         } catch {
             failure = error
-            if let output {
-                phase = .recovery(output)
-                completed(.recovery(output))
-            } else {
-                phase = .idle
-                completed(.failed)
-            }
+            keepOutput()
         }
     }
 
@@ -306,58 +268,12 @@ public final class ScreenRecordingSession {
         onCompleted?(result)
         switch result {
         case .saved, .discarded: onFinished?(true)
-        case .recovery, .failed: onFinished?(false)
+        case .failed: onFinished?(false)
         }
-    }
-
-    /// Recover only older, playable recordings. An unplayable one is deleted
-    /// (report.deleted, for the log); new takes and unrelated files are never swept up.
-    public static func recoverRecordings(
-        in folder: URL? = nil,
-        createdBefore cutoff: Date,
-        destination: (URL) throws -> URL
-    ) async throws -> RecoveryReport {
-        let folder = folder ?? recoveryDirectory
-        guard FileManager.default.fileExists(atPath: folder.path) else { return RecoveryReport() }
-        let keys: Set<URLResourceKey> = [.creationDateKey, .isRegularFileKey, .isSymbolicLinkKey]
-        let files = try FileManager.default.contentsOfDirectory(
-            at: folder,
-            includingPropertiesForKeys: Array(keys),
-            options: .skipsHiddenFiles
-        )
-        var report = RecoveryReport()
-        for source in files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
-        where source.pathExtension.lowercased() == "mov" {
-            let values = try? source.resourceValues(forKeys: keys)
-            guard values?.isRegularFile == true, values?.isSymbolicLink != true,
-                let created = values?.creationDate, created < cutoff
-            else { continue }
-            let asset = AVURLAsset(url: source)
-            guard let duration = try? await asset.load(.duration), duration.isNumeric, duration.seconds > 0,
-                let tracks = try? await asset.loadTracks(withMediaType: .video), !tracks.isEmpty,
-                (try? await asset.load(.isPlayable)) == true
-            else {
-                if (try? FileManager.default.removeItem(at: source)) != nil {
-                    report.deleted.append(source)
-                } else {
-                    report.remaining.append(source)
-                }
-                continue
-            }
-            do {
-                let saved = try destination(source)
-                try await save(source, to: saved)
-                report.saved.append(saved)
-            } catch {
-                report.remaining.append(source)
-            }
-        }
-        return report
     }
 
     public func dismiss() {
         guard !isActive else { return }
-        // Recovery files remain on disk, including across application launches.
         output = nil
         failure = nil
         phase = .idle
@@ -366,7 +282,7 @@ public final class ScreenRecordingSession {
     @concurrent
     private static func save(_ source: URL, to destination: URL, replaceExisting: Bool = false) async throws {
         // Saving in place is already durable. Do not remove the destination
-        // when the user chooses the recovery file itself in Save As.
+        // when the user chooses the take itself in the save panel.
         if source.resolvingSymlinksInPath().standardizedFileURL
             == destination.resolvingSymlinksInPath().standardizedFileURL
         {

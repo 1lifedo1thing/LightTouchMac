@@ -271,7 +271,7 @@ extension MainWindowController: NSToolbarItemValidation {
             if item.itemIdentifier == .lock { item.show(label: "Lock", toolTip: "Lock (⌘L)", symbol: "lock") }
             if item.itemIdentifier == .recording {
                 (item.view as? RecordingToolbarButton)?.update(
-                    recording.needsRecovery ? .recovery : .idle,
+                    .idle,
                     elapsed: recording.elapsed,
                     enabled: canToggleRecording
                 )
@@ -298,7 +298,7 @@ extension MainWindowController: NSToolbarItemValidation {
             let phase: RecordingToolbarButton.Phase =
                 recording.phase == .saving
                 ? .saving
-                : recording.needsRecovery ? .recovery : recording.canStop ? .recording : .idle
+                : recording.canStop ? .recording : .idle
             (item.view as? RecordingToolbarButton)?.update(
                 phase,
                 elapsed: recording.elapsed,

@@ -1,4 +1,3 @@
-import AVFoundation
 import CoreGraphics
 import Foundation
 import Testing
@@ -58,8 +57,8 @@ private func wait(_ check: () -> Bool) async throws {
     #expect(check(), "timed out")
 }
 
-/// A recording's lifecycle (sounds, atomic saves, the fallback picker, typed outcomes, explicit discard) and launch
-/// recovery of earlier takes.
+/// A recording's lifecycle (sounds, atomic saves, the fallback picker, typed outcomes, explicit discard); a take that
+/// can't be saved is kept where it was written.
 struct ScreenRecordingSessionTests {
     let thumbnail = CGContext(
         data: nil,
@@ -71,7 +70,7 @@ struct ScreenRecordingSessionTests {
         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
     )!.makeImage()!
 
-    @Test func lifecycleSoundsSavesAndRecovery() async throws {
+    @Test func lifecycleSoundsSavesAndKeptTakes() async throws {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
         let writer = FakeWriter()
@@ -79,6 +78,8 @@ struct ScreenRecordingSessionTests {
         let session = ScreenRecordingSession(writer: writer, folder: folder)
         var cues: [String] = []
         var completions: [Bool] = []
+        var outcomes: [ScreenRecordingSession.Completion] = []
+        session.onCompleted = { outcomes.append($0) }
         session.onBeganRecording = { cues.append("start") }
         session.onStoppedRecording = { cues.append("stop") }
         session.onFinished = { completions.append($0) }
@@ -121,55 +122,25 @@ struct ScreenRecordingSessionTests {
         session.stop()
         #expect(cues == ["start", "stop"], "stop must play once, including repeated stop requests")
         try await wait { !session.isActive }
-        guard case .recovery(let recovery) = session.phase else {
-            Issue.record("no recovery: \(session.phase)")
+        guard case .failed(let kept?) = outcomes.last else {
+            Issue.record("the unsaved take wasn't kept: \(outcomes)")
             return
         }
-        #expect(FileManager.default.fileExists(atPath: recovery.path))
-        let starts = await writer.starts
-        session.start(frame: { nil }, destination: { output })
-        #expect(await writer.starts == starts, "no new take while one waits to be saved")
+        #expect(session.phase == .idle && completions.last == false)
+        #expect(try Data(contentsOf: kept) == Data("movie".utf8), "the take stays where it was written")
+        #expect(try Data(contentsOf: output) == Data("movie".utf8), "and the existing file is untouched")
 
-        // A failed retry retains the same movie and reports completion (quit cannot hang).
-        session.retrySave(to: root.appendingPathComponent("missing/output.mov"))
-        try await wait { !session.isActive }
-        #expect(session.phase == .recovery(recovery) && completions.last == false)
-        let retry = root.appendingPathComponent("retry.mov")
-        try Data("old".utf8).write(to: retry)
-        session.retrySave(to: retry)
-        try await wait { !session.isActive }
-        #expect(session.phase == .saved(retry) && completions.last == true)
-        #expect(cues == ["start", "stop"], "retrying a save must not play recording cues")
-        #expect(!FileManager.default.fileExists(atPath: recovery.path))
-        #expect(try Data(contentsOf: retry) == Data("movie".utf8))
-
-        // Dismiss leaves recovery files durable and permits another capture.
-        session.start(frame: { nil }, destination: { output })
-        session.stop()
-        try await wait { !session.isActive }
-        guard case .recovery(let retained) = session.phase else {
-            Issue.record("no recovery")
-            return
-        }
-        session.dismiss()
-        #expect(FileManager.default.fileExists(atPath: retained.path))
-
+        // A writer failure keeps the partial take too, and the next take still starts.
         await writer.configure(failFrame: 3)
         session.start(frame: { nil }, destination: { output })
         try await wait { !session.isActive }
-        guard case .recovery(let partial) = session.phase else {
+        guard case .failed(let partial?) = outcomes.last else {
             Issue.record("lost partial movie")
             return
         }
-        #expect(FileManager.default.fileExists(atPath: partial.path))
+        #expect(partial != kept && FileManager.default.fileExists(atPath: partial.path))
         #expect(session.failure?.localizedDescription == "Audio buffer overflow")
         #expect(cues == ["start", "stop", "start", "stop"], "an interrupted take must finish its sound pair")
-        session.retrySave(to: partial)
-        try await wait { !session.isActive }
-        #expect(
-            session.phase == .saved(partial) && FileManager.default.fileExists(atPath: partial.path),
-            "saving in place keeps the file"
-        )
         session.dismiss()
 
         await writer.configure(failStartup: true, failFrame: 0)
@@ -214,15 +185,11 @@ struct ScreenRecordingSessionTests {
         fallback.start(frame: { thumbnail }, destination: { throw CaptureError.failed("Folder unavailable") })
         fallback.stop()
         try await wait { !fallback.isActive }
-        guard case .recovery(let cancelledSave) = fallback.phase else {
-            Issue.record("panel cancellation lost recovery")
+        guard case .failed(let cancelledSave?) = outcomes.last else {
+            Issue.record("panel cancellation lost the take: \(outcomes)")
             return
         }
-        #expect(outcomes.last == .recovery(cancelledSave) && panels == 2)
-        #expect(FileManager.default.fileExists(atPath: cancelledSave.path))
-        fallback.discardRecovery()
-        #expect(outcomes.last == .discarded && fallback.phase == .idle && fallback.failure == nil)
-        #expect(!FileManager.default.fileExists(atPath: cancelledSave.path))
+        #expect(panels == 2 && fallback.phase == .idle && FileManager.default.fileExists(atPath: cancelledSave.path))
 
         fallback.chooseSaveDestination = { _ in
             panels += 1
@@ -231,105 +198,10 @@ struct ScreenRecordingSessionTests {
         fallback.start(frame: { thumbnail }, destination: { output })
         fallback.stop()
         try await wait { !fallback.isActive }
-        guard case .recovery(let failedSave) = fallback.phase else {
-            Issue.record("failed fallback lost recovery")
+        guard case .failed(let failedSave?) = outcomes.last else {
+            Issue.record("failed fallback lost the take")
             return
         }
-        #expect(panels == 3 && outcomes.last == .recovery(failedSave))
-        fallback.retrySave(to: root.appendingPathComponent("fixed.mov"))
-        try await wait { !fallback.isActive }
-        #expect(outcomes.last == .saved(root.appendingPathComponent("fixed.mov")) && panels == 3)
-    }
-
-    /// Launch recovery saves older playable takes, keeps what it can't save, deletes unplayable ones, and never touches
-    /// the current take, links, folders or other files.
-    @Test func launchRecovery() async throws {
-        let root = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let directory = root.appendingPathComponent("Recordings", isDirectory: true)
-        let recovered = root.appendingPathComponent("Saved", isDirectory: true)
-        let missing = try await ScreenRecordingSession.recoverRecordings(in: directory, createdBefore: Date()) { _ in
-            Issue.record("no files yet")
-            return recovered
-        }
-        #expect(missing.saved.isEmpty && missing.remaining.isEmpty)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: recovered, withIntermediateDirectories: true)
-        let context = CGContext(
-            data: nil,
-            width: 32,
-            height: 48,
-            bitsPerComponent: 8,
-            bytesPerRow: 128,
-            space: CGColorSpace(name: CGColorSpace.sRGB)!,
-            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
-        )!
-        context.setFillColor(CGColor(red: 1, green: 0.2, blue: 0.1, alpha: 1))
-        context.fill(CGRect(x: 0, y: 0, width: 32, height: 48))
-        let image = context.makeImage()!
-        let valid = directory.appendingPathComponent("valid.mov")
-        let writer = ScreenMovieWriter()
-        try await writer.start(url: valid, canvasSize: CGSize(width: 32, height: 48))
-        try await writer.append(image, seconds: 0)
-        try await Task.sleep(for: .milliseconds(30))
-        try await writer.append(image, seconds: 0.1)
-        try await writer.finish(seconds: 0.2)
-        let collision = directory.appendingPathComponent("collision.mov")
-        let blocked = directory.appendingPathComponent("blocked.mov")
-        try FileManager.default.copyItem(at: valid, to: collision)
-        try FileManager.default.copyItem(at: valid, to: blocked)
-        let corrupt = directory.appendingPathComponent("incomplete.mov")
-        try Data("incomplete recording".utf8).write(to: corrupt)
-        let untouched = directory.appendingPathComponent("notes.txt")
-        try Data("keep".utf8).write(to: untouched)
-        let nested = directory.appendingPathComponent("folder.mov", isDirectory: true)
-        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
-        try FileManager.default.createSymbolicLink(
-            at: directory.appendingPathComponent("linked.mov"),
-            withDestinationURL: valid
-        )
-        let existing = recovered.appendingPathComponent("collision.mov")
-        try Data("existing capture".utf8).write(to: existing)
-        let launchDate = Date()
-        try await Task.sleep(for: .milliseconds(100))
-        let current = directory.appendingPathComponent("current.mov")
-        try Data("currently being written".utf8).write(to: current)
-
-        var requested: [String] = []
-        let report = try await ScreenRecordingSession.recoverRecordings(in: directory, createdBefore: launchDate) {
-            source in
-            requested.append(source.lastPathComponent)
-            if source.lastPathComponent == blocked.lastPathComponent {
-                throw CaptureError.failed("Preferred location unavailable")
-            }
-            return recovered.appendingPathComponent(source.lastPathComponent)
-        }
-        #expect(Set(requested) == ["valid.mov", "collision.mov", "blocked.mov"])
-        #expect(
-            report.saved == [recovered.appendingPathComponent("valid.mov")],
-            "saved=\(report.saved) remaining=\(report.remaining)"
-        )
-        #expect(Set(report.remaining.map(\.lastPathComponent)) == Set([collision, blocked].map(\.lastPathComponent)))
-        #expect(
-            report.deleted.map(\.lastPathComponent) == [corrupt.lastPathComponent]
-                && !FileManager.default.fileExists(atPath: corrupt.path)
-        )
-        #expect(!FileManager.default.fileExists(atPath: valid.path))
-        for retained in [collision, blocked, current, untouched, nested] {
-            #expect(
-                FileManager.default.fileExists(atPath: retained.path),
-                "recovery discarded \(retained.lastPathComponent)"
-            )
-        }
-        #expect(try Data(contentsOf: existing) == Data("existing capture".utf8))
-        #expect(try await AVURLAsset(url: report.saved[0]).load(.isPlayable))
-        // A second pass can recover a previously blocked destination without overwriting the collision or touching the current take.
-        let retry = try await ScreenRecordingSession.recoverRecordings(in: directory, createdBefore: launchDate) {
-            source in
-            recovered.appendingPathComponent("retry-" + source.lastPathComponent)
-        }
-        #expect(Set(retry.saved.map(\.lastPathComponent)) == ["retry-blocked.mov", "retry-collision.mov"])
-        #expect(retry.remaining.isEmpty && retry.deleted.isEmpty)
-        #expect(FileManager.default.fileExists(atPath: current.path))
+        #expect(panels == 3 && failedSave != cancelledSave && FileManager.default.fileExists(atPath: failedSave.path))
     }
 }

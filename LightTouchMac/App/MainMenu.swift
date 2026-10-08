@@ -77,8 +77,6 @@ enum MainMenuBuilder {
         menu.addItem(item("Discard Recording…", #selector(MainWindowController.discardRecording(_:)), "\u{1b}", []))
         menu.addItem(.separator())
         menu.addItem(item("Capture Screen Only", #selector(MainWindowController.toggleCaptureScreenOnly(_:))))
-        menu.addItem(.separator())
-        menu.addItem(item("Show Unfinished Recordings", #selector(MainWindowController.showRecordingRecovery(_:))))
         return menu
     }
 

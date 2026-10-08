@@ -136,10 +136,6 @@ struct DeviceMenuStateTests {
         #expect(c.canToggleRecording, "stopping must remain available when the guest stops")
         c.recordingSaving = true
         #expect(!c.canToggleRecording)
-        c.recordingSaving = false
-        c.recordingCanStop = false
-        c.recordingNeedsRecovery = true
-        #expect(c.canToggleRecording, "recovery must remain available offline")
         c = CaptureAvailability()
         c.isRunning = true
         c.screenshotBusy = true

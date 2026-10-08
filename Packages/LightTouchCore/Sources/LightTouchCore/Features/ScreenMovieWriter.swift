@@ -43,8 +43,6 @@ public actor ScreenMovieWriter {
         let height = Int(outputSize.height)
         guard width > 0, height > 0 else { throw CaptureError.failed("Invalid recording size.") }
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
-        // Fragments: a crash or power cut keeps the take up to the last few seconds (launch recovery saves it).
-        writer.movieFragmentInterval = CMTime(seconds: 2, preferredTimescale: 600)
         let transfer: String
         if #available(macOS 15.0, *) {
             transfer = AVVideoTransferFunction_IEC_sRGB

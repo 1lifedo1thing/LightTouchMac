@@ -98,16 +98,6 @@ public struct CapturePreferences {
         get { bool("soundEffectsEnabled", default: true) }
         nonmutating set { defaults.set(newValue, forKey: "soundEffectsEnabled") }
     }
-    public var notifyOnRecordingRecovery: Bool {
-        get { bool("notifyOnRecordingRecovery", default: false) }
-        nonmutating set { defaults.set(newValue, forKey: "notifyOnRecordingRecovery") }
-    }
-    public var reminderAfterDuration: Int {
-        get { CaptureReminderDuration(rawValue: defaults.integer(forKey: "reminderAfterDuration"))?.rawValue ?? 0 }
-        nonmutating set {
-            defaults.set(CaptureReminderDuration(rawValue: newValue)?.rawValue ?? 0, forKey: "reminderAfterDuration")
-        }
-    }
 
     /// A new capture's file in the save location (created if need be): named for now, " 2" and on when that's taken.
     public func captureDestination(_ kind: String, extension suffix: String, at date: Date = Date()) throws -> URL {
@@ -126,21 +116,5 @@ public struct CapturePreferences {
 
     private func bool(_ key: String, default fallback: Bool) -> Bool {
         (defaults.object(forKey: key) as? NSNumber)?.boolValue ?? fallback
-    }
-}
-
-public enum CaptureReminderDuration: Int, CaseIterable {
-    case never = 0
-    #if DEBUG
-        case tenSeconds = 10
-    #endif
-    case oneMinute = 60
-    case fiveMinutes = 300
-    case tenMinutes = 600
-    case thirtyMinutes = 1800
-    case oneHour = 3600
-    public var title: String {
-        if self == .never { return "Never" }
-        return Duration.seconds(rawValue).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide))
     }
 }

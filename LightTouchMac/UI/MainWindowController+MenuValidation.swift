@@ -96,9 +96,7 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(discardRecording(_:)):
             return recording.canStop
         case #selector(toggleRecording(_:)):
-            menuItem.title =
-                recording.needsRecovery
-                ? "Save Recording As…" : recording.canStop ? "Stop Recording" : "Start Recording"
+            menuItem.title = recording.canStop ? "Stop Recording" : "Start Recording"
             return canToggleRecording
         case #selector(toggleAppInspector(_:)):
             menuItem.title = inspectorItem.isCollapsed ? "Show Inspector" : "Hide Inspector"
@@ -106,7 +104,7 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(toggleConsole(_:)):
             menuItem.title = console.split.layout.isCollapsed ? "Show Console" : "Hide Console"
             return true
-        case #selector(showDeviceLogs(_:)), #selector(exportDiagnostics(_:)), #selector(showRecordingRecovery(_:)),
+        case #selector(showDeviceLogs(_:)), #selector(exportDiagnostics(_:)),
             #selector(showSettings(_:)), #selector(focusDeviceScreen(_:)):
             return true
         default: break

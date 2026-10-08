@@ -7,7 +7,6 @@ import UniformTypeIdentifiers
 /// Settings ▸ Capture: capture-specific choices, shared with the toolbar's Save/Open actions.
 struct CaptureOptionsView: View {
     let preferences: CapturePreferences
-    var authorizeNotifications: () async -> Bool = { await CaptureNotifications.shared.requestAuthorization() }
     /// After any change (the toolbar's Open Screenshot names the app).
     var onChange: () -> Void = {}
 
@@ -17,8 +16,6 @@ struct CaptureOptionsView: View {
     /// Other… asks for this; `isChoosing` while the open panel is up.
     @State private var choice = Choice.folder
     @State private var isChoosing = false
-    @State private var authorizing = false
-    @State private var notificationsDenied = false
 
     private enum Choice { case folder, application }
     /// The pop-ups' last item, which asks for a folder or an app.
@@ -56,23 +53,6 @@ struct CaptureOptionsView: View {
                 Toggle("Copy screenshots to the clipboard", isOn: binding(\.copyOnCapture))
                 Toggle("Play sound effects", isOn: binding(\.soundEffectsEnabled))
             }
-            Section {
-                Toggle("Notify when a recording is recovered", isOn: notifying(\.notifyOnRecordingRecovery) { !$0 })
-                Picker("Remind me if away for", selection: notifying(\.reminderAfterDuration) { $0 == 0 }) {
-                    ForEach(CaptureReminderDuration.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
-                }
-            } footer: {
-                if notificationsDenied {
-                    Button("Turn On Notifications in System Settings…") {
-                        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")
-                        {
-                            NSWorkspace.shared.open(url)
-                        }
-                    }
-                    .buttonStyle(.link)
-                }
-            }
-            .disabled(authorizing)
         }
         .fileImporter(
             isPresented: $isChoosing,
@@ -134,29 +114,6 @@ struct CaptureOptionsView: View {
                     isChoosing = true
                 } else {
                     plain.wrappedValue = $0
-                }
-            }
-        )
-    }
-
-    /// A notification choice: turning it on asks for permission first, and it stays off without it.
-    private func notifying<T>(_ key: WritableKeyPath<CapturePreferences, T>, isOff: @escaping (T) -> Bool) -> Binding<T>
-    {
-        let plain = binding(key)
-        return Binding(
-            get: { plain.wrappedValue },
-            set: { value in
-                guard !isOff(value) else {
-                    plain.wrappedValue = value
-                    return
-                }
-                guard !authorizing else { return }
-                authorizing = true
-                Task {
-                    let allowed = await authorizeNotifications()
-                    notificationsDenied = !allowed
-                    if allowed { plain.wrappedValue = value } else { changed() }
-                    authorizing = false
                 }
             }
         )
