@@ -132,7 +132,8 @@ final class EmulatorController {
             }
         }
     }
-    var hasFileTransfer = false
+    /// The Files window is copying files to or from this device (FilesConnection).
+    var hasFileTransfer: Bool { FilesConnection.shared.isTransferring(instance.id) }
     var connectionIssue: DeviceConnectionIssue? { recovery.issue }
 
     /// The standing issue from failed service reads, and the recovery of an unresponsive management service.

@@ -75,6 +75,16 @@ public protocol AppsHost: AnyObject {
         }
     }
 
+    /// What the Files window binds to (FilesConnection): this boot's endpoint, the device's UDID and the boot's id,
+    /// so the boot's retirement stops the worker it used.
+    public var filesEndpoint: HostServiceEndpoint? { try? services.endpoint }
+
+    /// Whether the Files window can reach the device: nil while our own work holds back the reads that would say.
+    public var filesReachable: Bool? {
+        if canReachDevice { return true }
+        return host.deviceReachable == nil && host.usbConnected && canManageApps && host.isRunning ? nil : false
+    }
+
     /// The install pipeline for this device (AppInstaller runs it, and raises
     /// a catalog download's placeholder through it).
     public var installPipeline: AppInstallPipeline {

@@ -7,24 +7,41 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension MainWindowController {
-    /// The Files window follows the selected device; its title says which.
+    /// The Files window follows the selected device, or the device a copy is on; its title says which.
     func titleFilesWindow() {
         guard let window = filesWindow?.window else { return }
-        let label = selectedEntry.map { library.label(for: $0) }
+        let bound = FilesConnection.shared.binding.flatMap { binding in
+            host.sessions.first { $0.instance.id == binding.device }
+        }
+        let entry = bound.flatMap { host.catalog.entry(id: $0.instance.firmware) } ?? selectedEntry
+        let label = entry.map { library.label(for: $0) }
         window.title = "\(label?.title ?? currentProfile.shortName) Files"
         window.subtitle = label?.subtitle ?? ""
     }
 
+    /// The Files window browses the selected device's boot through its endpoint (FilesConnection); a copy keeps it on
+    /// the device it is copying with until it ends.
+    func bindFilesWindow(reload force: Bool = false) {
+        guard let filesVC else { return }
+        let files = FilesConnection.shared
+        files.follow(
+            device: emulator?.instance.id,
+            endpoint: emulator?.apps.filesEndpoint,
+            reachable: emulator?.apps.filesReachable
+        )
+        let endpoint = files.binding?.endpoint
+        if force || filesVC.services?.endpoint != endpoint {
+            filesVC.services = endpoint.map {
+                DeviceServices(clientSocket: $0.socket, udid: $0.udid, session: $0.session)
+            }
+            filesVC.reload()
+        }
+        titleFilesWindow()
+    }
+
     func refreshForState() {
         proxySettingsEditor?.updateStatus(emulator?.webProxyStatus ?? .waiting)
-        titleFilesWindow()
-        if let filesVC {
-            let socket = emulator.flatMap { $0.canReachDevice ? $0.usbmuxSession : nil }
-            if filesVC.services?.clientSocket != socket {
-                filesVC.services = socket.map { DeviceServices(clientSocket: $0) }
-                filesVC.reload()
-            }
-        }
+        bindFilesWindow()
         updateDeviceNotice()
         updateStartupStatus()
         validateCaptureToolbar()  // validates the toolbar once, the lock item included

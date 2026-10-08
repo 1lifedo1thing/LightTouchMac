@@ -67,18 +67,16 @@ extension MainWindowController {
         if filesWindow == nil {
             let files = DeviceFilesWindowController(profile: currentProfile)
             filesWindow = files
-            files.browser.services = emulator.flatMap { $0.canReachDevice ? $0.usbmuxSession : nil }.map {
-                DeviceServices(clientSocket: $0)
-            }
             files.browser.onActivityChange = { [weak self] in self?.refreshFileStatus() }
-            files.browser.reload()
-            titleFilesWindow()
+            bindFilesWindow(reload: true)
         }
         filesWindow?.showWindow(sender)
     }
 
     private func refreshFileStatus() {
-        emulator?.hasFileTransfer = hasFileTransfer
+        // A copy pins the window to its device; its end lets the window follow the selection again.
+        FilesConnection.shared.setTransferring(hasFileTransfer)
+        bindFilesWindow()
         guard let filesVC, filesVC.hasTransfer else {
             fileStatus.isHidden = true
             deviceVC?.updateStatusVisibility()
