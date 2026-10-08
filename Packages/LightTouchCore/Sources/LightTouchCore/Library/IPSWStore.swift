@@ -58,7 +58,8 @@ public nonisolated struct IPSWStore: Sendable {
 
     // MARK: - Checks
 
-    /// SHA1 of a file read in 4 MiB chunks, never whole. `progress` gets the fraction read.
+    /// SHA1 of a file read in 4 MiB chunks, never whole. `progress` gets the fraction read. Throws CancellationError
+    /// between chunks once the task it runs in is cancelled.
     public static func sha1(of url: URL, progress: ((Double) -> Void)? = nil) throws -> String {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
@@ -66,6 +67,7 @@ public nonisolated struct IPSWStore: Sendable {
         var hash = Insecure.SHA1()
         var read: Int64 = 0
         while let chunk = try handle.read(upToCount: 4 << 20), !chunk.isEmpty {
+            try Task.checkCancellation()
             hash.update(data: chunk)
             read += Int64(chunk.count)
             progress?(Double(read) / Double(size))
@@ -186,7 +188,8 @@ public nonisolated struct IPSWStore: Sendable {
 
     /// Hashes a user's IPSW, matches it to the catalog and clones it into
     /// State/IPSW (APFS clonefile on the same volume, a copy otherwise).
-    /// Offline: nothing here touches the network.
+    /// Offline: nothing here touches the network. Cancelling its task stops it,
+    /// and nothing it copied is kept.
     public func importIPSW(
         _ url: URL,
         catalog: FirmwareCatalog,
@@ -208,6 +211,10 @@ public nonisolated struct IPSWStore: Sendable {
         let temporary = imports.appendingPathComponent(".\(sha1).importing")
         try? FileManager.default.removeItem(at: temporary)
         try FileManager.default.copyItem(at: url, to: temporary)
+        if Task.isCancelled {
+            try? FileManager.default.removeItem(at: temporary)
+            throw CancellationError()
+        }
         try FileManager.default.moveItem(at: temporary, to: destination)
         return (entry, destination)
     }

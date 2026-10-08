@@ -320,6 +320,7 @@ import HostRuntime
                     logEvent("firmware: imported \(matched.id)'s IPSW; not preparing (cancelled, or a job under way)")
                 }
             case .failure(let error):
+                guard !(error is CancellationError) else { return logEvent("firmware: import cancelled") }
                 logEvent("firmware: import: \(error.localizedDescription)")
                 if let id {
                     _ = table.importFailed(token, onto: id, error.localizedDescription)

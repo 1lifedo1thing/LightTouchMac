@@ -305,7 +305,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let answer = quitting.shouldTerminate(
             erasing: emulators.contains(where: \.isErasing),
             finishRecording: { windowController?.finishRecordingBeforeQuit() == true },
-            preparing: FirmwareJobs.shared.jobs.values.filter { if case .preparing = $0 { true } else { false } }.count,
+            preparing: FirmwareJobs.shared.preparing,
             confirmPreparation: { preparing in
                 let alert = NSAlert()
                 alert.messageText = preparing == 1 ? "A device is being prepared" : "Devices are being prepared"

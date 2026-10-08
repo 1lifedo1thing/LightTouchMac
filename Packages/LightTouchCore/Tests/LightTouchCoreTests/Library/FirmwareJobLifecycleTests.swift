@@ -5,8 +5,8 @@ import Testing
 
 @testable import LightTouchCore
 
-/// FirmwareJobs' bookkeeping across the commands a user can mix (the state audit's B-1, B-2): Try Again right after
-/// Cancel, and an IPSW dropped on a job under way. Each runs the real FirmwareJobs over its own state with a scripted preparer.
+/// FirmwareJobs' bookkeeping across the commands a user can mix (the state audit's B-1, B-2, B-12): Try Again right
+/// after Cancel, an IPSW dropped on a job under way, and Cancel while an import is checking its IPSW. Each runs the real FirmwareJobs over its own state with a scripted preparer.
 @Suite struct FirmwareJobLifecycleTests {
     typealias Harness = FirmwareJobsTests.Harness
     init() { _ = LibraryFixtures.isolatedAppState }
@@ -133,6 +133,38 @@ import Testing
             #expect(Self.isDownloading(h.jobs.jobs[e.id]), "still the download job: \(h.seen)")
             #expect(Self.runs(runs) == 0 && h.devices(e.id).isEmpty, "no preparation beside the download")
             h.jobs.cancel(e)
+        }
+    }
+
+    // MARK: - B-12: Cancel while an import checks its IPSW
+
+    /// 64 MiB of zeros: long enough to hash (a few seconds) that a Cancel lands while it does.
+    static let zerosSHA1 = "44fac4bedde4df04b9572ac665d3ac2c5cd00c7d"
+    static let zerosBytes: Int64 = 64 << 20
+
+    @Test func cancellingAnImportStopsIt() async throws {
+        try await LibraryFixtures.withScratch { tmp in
+            var entry = FirmwareJobsTests.entry("k48ap-7B367")
+            entry["estimates"] = FirmwareJobsTests.smallEstimates
+            entry["source"] = [
+                "kind": "ipsw", "url": "http://127.0.0.1:9/none.ipsw", "sha1": Self.zerosSHA1, "bytes": Self.zerosBytes,
+            ]
+            let catalog = try FirmwareJobsTests.catalog([entry], in: tmp)
+            let e = catalog.entries[0]
+            let h = try Harness(tmp, catalog: catalog, preparer: try LibraryFixtures.fakePreparer(in: tmp))
+            let big = tmp.appendingPathComponent("zeros.ipsw")
+            FileManager.default.createFile(atPath: big.path, contents: nil)
+            let handle = try FileHandle(forWritingTo: big)
+            try handle.truncate(atOffset: UInt64(Self.zerosBytes))  // sparse
+            try handle.close()
+            h.jobs.importIPSW(big, for: e)
+            #expect(Self.isPreparing(h.jobs.jobs[e.id]), "the row says Checking the IPSW")
+            #expect(h.jobs.preparing == 0, "Quit has no preparation to ask about")
+            h.jobs.cancel(e)
+            #expect(h.jobs.jobs[e.id] == nil)
+            await Self.until(8) { h.store.existing(Self.zerosSHA1) != nil }
+            #expect(h.store.existing(Self.zerosSHA1) == nil, "the cancelled import didn't land in the store")
+            #expect(h.jobs.jobs[e.id] == nil && h.devices(e.id).isEmpty, "\(h.seen)")
         }
     }
 }
