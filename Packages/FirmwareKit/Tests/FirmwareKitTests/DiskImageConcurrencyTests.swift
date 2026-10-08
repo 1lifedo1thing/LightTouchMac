@@ -19,7 +19,7 @@ struct DiskImageConcurrencyTests {
                     return status == 0 && output == expected
                 }
             }
-            var results = [Bool]()
+            var results: [Bool] = []
             for try await result in group { results.append(result) }
             return results
         }

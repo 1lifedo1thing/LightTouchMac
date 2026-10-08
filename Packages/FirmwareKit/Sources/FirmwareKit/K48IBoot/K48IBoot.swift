@@ -156,7 +156,8 @@ public enum K48IBoot {
             nor.replaceSubrange(off..<off + padded, with: img)
             off += padded
         }
-        put32(&nor, 0x10, UInt32((off + gran - 1) / gran))  // build_nor keeps the stock convention (over-counts by image_start)
+        // build_nor keeps the stock convention (over-counts by image_start)
+        put32(&nor, 0x10, UInt32((off + gran - 1) / gran))
         put32(&nor, 0x30, crc(nor[0..<0x30]))
         return Data(nor)
     }

@@ -92,7 +92,8 @@ struct ReleaseBootTests {
                     "the unpacked iPod did not take its own identity"
                 )
             }
-            _ = try Shell.run(["find", out.path, "-type", "d", "-exec", "chflags", "uchg", "{}", "+"])  // as the app locks a base
+            // as the app locks a base
+            _ = try Shell.run(["find", out.path, "-type", "d", "-exec", "chflags", "uchg", "{}", "+"])
             var arguments = [
                 "python3", repository.appendingPathComponent("tests/sessions/check-sessions.py").path,
                 "--single", out.path, "--board", board,

@@ -45,7 +45,8 @@ struct CapturePreferencesTests {
                 "Capture options " + UUID().uuidString
             )
             let oldFolder = base.appendingPathComponent("Existing save location")
-            defaults.set(oldFolder.path, forKey: "captureFolder")  // an earlier build's key: upgrading never moves saves
+            // an earlier build's key: upgrading never moves saves
+            defaults.set(oldFolder.path, forKey: "captureFolder")
             #expect(preferences.saveLocation.path == oldFolder.standardizedFileURL.path)
             #expect(preferences.saveLocations.contains { $0.path == oldFolder.standardizedFileURL.path })
             for name in ["One", "Two", "Three", "Four", "Two"] {

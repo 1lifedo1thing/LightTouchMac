@@ -1,5 +1,3 @@
-// Created by Sam on 2026-08-05.
-//
 // Programmatic rebuild of the app-template MainMenu.xib.
 
 import Cocoa

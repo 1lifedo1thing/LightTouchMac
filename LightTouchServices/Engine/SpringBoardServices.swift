@@ -1,5 +1,3 @@
-// Created by Sam on 2026-08-05.
-//
 // The home screen's icon order, read and written over com.apple.springboardservices.
 //
 // libimobiledevice implements sbservices_get_icon_state/set_icon_state but

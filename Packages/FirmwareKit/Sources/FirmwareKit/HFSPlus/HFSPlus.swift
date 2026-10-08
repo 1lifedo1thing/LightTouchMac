@@ -529,7 +529,8 @@ public final class HFSPlusVolume {
                 throw FirmwareError(.internal, "\(url.lastPathComponent): no folder \(cnid)")
             }
             let body = r.node * t.nodeSize + r.bodyOffset
-            guard try read(catalogFork, fileID: Self.catalogID, offset: body + 3, count: 1)[0] & 0x10 != 0 else {  // kHFSHasFolderCountMask
+            // kHFSHasFolderCountMask
+            guard try read(catalogFork, fileID: Self.catalogID, offset: body + 3, count: 1)[0] & 0x10 != 0 else {
                 throw FirmwareError(.internal, "\(url.lastPathComponent): folder \(cnid) keeps no folder count")
             }
             return (body + 84, n)  // HFSPlusCatalogFolder.folderCount
@@ -566,7 +567,8 @@ public final class HFSPlusVolume {
             for (i, d) in r.dates.prefix(4).enumerated() { put32(&patch, 4 * i, d > after ? to : d) }
             let body = r.node * t.nodeSize + r.bodyOffset
             try write(catalogFork, fileID: Self.catalogID, offset: body + 12, bytes: patch)
-            try write(catalogFork, fileID: Self.catalogID, offset: body + 68, bytes: [0, 0, 0, 0])  // finderInfo.date_added
+            // finderInfo.date_added
+            try write(catalogFork, fileID: Self.catalogID, offset: body + 68, bytes: [0, 0, 0, 0])
             changed += 1
         }
         catalogCache = nil
@@ -626,9 +628,11 @@ public final class HFSPlusVolume {
     /// `needsInit` while the kernel has yet to write its header (newfs_hfs leaves a volume so).
     public func journal() throws -> (offset: Int, size: Int, needsInit: Bool)? {
         var vh = [UInt8](repeating: 0, count: 512)
-        guard pread(fd, &vh, 512, 1024) == 512, be32(vh, 4) & (1 << 13) != 0, be32(vh, 12) != 0 else { return nil }  // kHFSVolumeJournaledBit, journalInfoBlock
+        // kHFSVolumeJournaledBit, journalInfoBlock
+        guard pread(fd, &vh, 512, 1024) == 512, be32(vh, 4) & (1 << 13) != 0, be32(vh, 12) != 0 else { return nil }
         var jib = [UInt8](repeating: 0, count: 52)  // flags, device_signature[8], offset, size
-        guard pread(fd, &jib, 52, off_t(Int(be32(vh, 12)) * blockSize)) == 52, be32(jib, 0) & 3 == 1 else { return nil }  // in the volume
+        // in the volume
+        guard pread(fd, &jib, 52, off_t(Int(be32(vh, 12)) * blockSize)) == 52, be32(jib, 0) & 3 == 1 else { return nil }
         let offset = Int(be64(jib, 36))
         let size = Int(be64(jib, 44))
         return size > 0 ? (offset, size, be32(jib, 0) & 4 != 0) : nil

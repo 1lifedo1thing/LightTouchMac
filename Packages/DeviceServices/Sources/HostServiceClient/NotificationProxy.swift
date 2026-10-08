@@ -1,5 +1,3 @@
-// Created by Sam on 2026-08-06.
-//
 // Push instead of poll. iOS 3.1.3 already has notification_proxy, and it
 // publishes application_installed / application_uninstalled — so the sidebar
 // can be told the moment something changes on the device instead of asking

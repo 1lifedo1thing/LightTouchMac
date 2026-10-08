@@ -254,7 +254,8 @@ extension SharedState {
                         log.all.contains { $0.hasPrefix("Legacy Store: HTTP 404 for /api/emulator/apps?") },
                         "the HTTP status is logged"
                     )
-                    _ = try await CatalogClient.search("", device: "iPod2,1", os: "3.1.3")  // the suggested list: compatible only
+                    // the suggested list: compatible only
+                    _ = try await CatalogClient.search("", device: "iPod2,1", os: "3.1.3")
 
                     // iPad: the same copy runs; the search record's md5 is in the library: no copy record, no transfer.
                     let ipad = try await CatalogClient.search("enigmo", device: "iPad1,1", os: "3.2")

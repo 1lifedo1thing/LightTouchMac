@@ -141,7 +141,8 @@ import Testing
                     !(try await DiskImage.attachedImages()).contains { $0.image == img.path },
                     "\(b): gone after detach"
                 )
-                try await VolumeMount.grow(img, toBytes: 64 << 20, backend: b)  // resize, then the pad + alternate header move
+                // resize, then the pad + alternate header move
+                try await VolumeMount.grow(img, toBytes: 64 << 20, backend: b)
                 let v = try HFSPlusVolume(img)
                 #expect(
                     v.blockSize == blockSize && v.totalBlocks == ((64 << 20) - slack % blockSize) / blockSize,

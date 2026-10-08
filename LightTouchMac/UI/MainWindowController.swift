@@ -1,5 +1,3 @@
-// Created by Sam on 2026-08-05.
-//
 // The device window: device centered in the main column, an app-management
 // inspector on the trailing edge, and a toolbar whose items mirror the menu bar
 // (same selectors, same validation). Menu actions route here through the

@@ -346,7 +346,6 @@ extension DeviceServices {
     /// Does installation_proxy answer right now? A fresh boot brings lockdownd
     /// up ~40s before its services, so "lockdown replies" ≠ "installd is ready".
     func installProxyReady() async -> Bool {
-
         (try? await run(Timeouts.serviceProbe, "installd probe") { device in
             let client = try IMobileDevice.startInstallationProxy(device: device)
             _ = instproxy_client_free(client)

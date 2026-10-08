@@ -147,7 +147,8 @@ nonisolated public struct WebProxyCA: @unchecked Sendable {
             else { throw Failure.signing }
             extensions = [
                 DER.extension("2.5.29.19", critical: true, DER.seq()),  // CA:FALSE
-                DER.extension("2.5.29.15", critical: true, Data([0x03, 0x02, 0x05, 0xa0])),  // digitalSignature, keyEncipherment
+                // digitalSignature, keyEncipherment
+                DER.extension("2.5.29.15", critical: true, Data([0x03, 0x02, 0x05, 0xa0])),
                 DER.extension(
                     "2.5.29.17",
                     critical: false,

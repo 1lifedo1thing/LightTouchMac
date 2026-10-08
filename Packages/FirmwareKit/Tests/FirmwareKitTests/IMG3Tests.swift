@@ -11,7 +11,8 @@ struct IMG3Tests {
         let plain = Data(0..<37)
         func img3(_ payload: Data) -> Data {
             let le = { (v: Int) in DeviceTree.Value.le([UInt32(v)]) }
-            let tag = Data("ATAD".utf8) + le(12 + payload.count) + le(plain.count) + payload  // magics are byte-reversed
+            // magics are byte-reversed
+            let tag = Data("ATAD".utf8) + le(12 + payload.count) + le(plain.count) + payload
             return Data("3gmI".utf8) + le(0x14 + tag.count) + Data(count: 12) + tag
         }
         // 3.x+: the tail block is encrypted into the tag's padding.

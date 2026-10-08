@@ -1,5 +1,3 @@
-// Created by Sam on 2026-08-06.
-//
 // The Legacy Store catalog (legacystore.app): search for apps the emulator can
 // run and download an archived copy to install. The server owns the
 // compatibility policy: every request names the device (`device`/`os`, API

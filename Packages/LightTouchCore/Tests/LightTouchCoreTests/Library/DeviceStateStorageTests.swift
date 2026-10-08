@@ -61,7 +61,8 @@ struct DeviceStateStorageTests {
                     && !fm.fileExists(atPath: snapshot.appendingPathExtension("meta").path)
             )
             #expect(try String(contentsOf: base, encoding: .utf8) == "base")
-            try DeviceStateStorage.erase(overlay: overlay, snapshots: [snapshot], state: root, owner: nil)  // idempotent
+            // idempotent
+            try DeviceStateStorage.erase(overlay: overlay, snapshots: [snapshot], state: root, owner: nil)
         }
     }
 

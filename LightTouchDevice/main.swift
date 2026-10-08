@@ -21,7 +21,7 @@ setvbuf(stdout, nil, _IOLBF, 0)
 
 /// The command line, parsed once; read from the link, boot and main threads.
 let arguments: [String: String] = {
-    var parsed = [String: String]()
+    var parsed: [String: String] = [:]
     var it = CommandLine.arguments.dropFirst().makeIterator()
     while let a = it.next() {
         guard a.hasPrefix("--"), let v = a == "--machines" ? "" : it.next() else {

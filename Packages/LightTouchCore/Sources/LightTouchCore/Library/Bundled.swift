@@ -1,5 +1,3 @@
-// Created by Sam on 2026-08-05.
-//
 // Where the things the app ships actually live.
 //
 // A packaged LightTouchMac is meant to be self-contained: someone who has never

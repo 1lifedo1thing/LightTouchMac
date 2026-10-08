@@ -42,6 +42,7 @@ struct LZSSTests {
         let rows = [UInt8](segs[1].data!)
         // turned a quarter counter-clockwise: the logo's top row becomes its left column, its left end the bottom
         #expect(Array(rows[x0 * 4..<x0 * 4 + 4]) == [0x00, 0x00, 0x00, 0xFF])  // row 0 <- logo x 1 (clear)
-        #expect(Array(rows[4096 + x0 * 4..<4096 + x0 * 4 + 4]) == [0xFF, 0xFF, 0xFF, 0xFF])  // row 1 <- logo x 0 (white)
+        // row 1 <- logo x 0 (white)
+        #expect(Array(rows[4096 + x0 * 4..<4096 + x0 * 4 + 4]) == [0xFF, 0xFF, 0xFF, 0xFF])
     }
 }

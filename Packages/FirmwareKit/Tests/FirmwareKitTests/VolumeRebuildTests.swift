@@ -264,7 +264,8 @@ struct VolumeRebuildTests {
             print(
                 "U1: \(ipa.app): \(n - mismatched.count)/\(n) Payload files identical; differ: \(mismatched.prefix(8))"
             )
-            #expect(n > 0 && mismatched.count <= 2, "\(ipa.app): \(mismatched)")  // installd may rewrite Info.plist / sign
+            // installd may rewrite Info.plist / sign
+            #expect(n > 0 && mismatched.count <= 2, "\(ipa.app): \(mismatched)")
         }
         #expect(try digest(base).merging(try digest(overlay)) { a, _ in a } == before, "base or overlay changed")
     }

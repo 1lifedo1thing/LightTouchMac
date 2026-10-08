@@ -1,5 +1,3 @@
-// Created by Sam on 2026-08-05.
-//
 // Hosts the device screen in the window's main column. The DisplayView is the
 // main content; it centers its content and becomes first responder so
 // keyboard passthrough works whenever the device area has focus.

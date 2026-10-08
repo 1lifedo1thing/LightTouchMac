@@ -1,5 +1,3 @@
-// Created by Sam on 2026-08-06.
-//
 // Every .ipa this app has installed, kept once: a content-addressed store
 // (State/Library/IPAs/<sha256>.ipa + index.plist) and, per device that has
 // the app, a clone of the blob at Devices/<uuid>/IPAs/<bundle-id>.ipa (APFS:

@@ -1,5 +1,3 @@
-// Created by Sam on 2026-08-05.
-//
 // Manages the forked usbmuxd that carries USB between the guest and the host's
 // libimobiledevice tools. QEMU dials OUT to usbmuxd when the guest USB core
 // comes up, so usbmuxd must be listening BEFORE the VM boots — hence this is
