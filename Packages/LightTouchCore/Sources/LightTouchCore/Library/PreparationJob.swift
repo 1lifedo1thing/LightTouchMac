@@ -258,6 +258,7 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
     private func finish(_ event: Event) {
         if case .published = event {} else { try? DeviceStateStorage.removeTree(staging) }
         try? FileManager.default.removeItem(at: entryFile)
+        try? FileManager.default.removeItem(at: siblingFile)
         // Retain verified results for reuse. Cleanup is coordinated by the
         // preparer's cache-prune command, which holds the same root lease as
         // every reader; a completed job cannot delete another job's inputs.

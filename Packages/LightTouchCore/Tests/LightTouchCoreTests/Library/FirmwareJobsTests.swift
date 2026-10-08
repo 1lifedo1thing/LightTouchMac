@@ -329,6 +329,10 @@ import os
                 "the preparer boots 4.3's ramdisk"
             )
             #expect(a.contains("--sibling-entry"))
+            #expect(
+                (try? FileManager.default.contentsOfDirectory(atPath: PreparationJob.preparing(h.state).path)) == [],
+                "nothing of the job is left in Preparing/, its sibling's entry file included"
+            )
         }
     }
 
