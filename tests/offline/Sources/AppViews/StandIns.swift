@@ -31,6 +31,7 @@ nonisolated(unsafe) var replies = 0
 nonisolated(unsafe) var uploads: [(String, String)] = []
 
 struct DeviceServices: Sendable {
+    var wholeFileSystem = false
     func files(in path: String) async throws -> [DeviceFile] {
         try? await Task.sleep(for: .milliseconds(30))  // deliberately delivered after a cancellation
         defer { replies += 1 }

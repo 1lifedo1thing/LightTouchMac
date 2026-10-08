@@ -6,7 +6,7 @@ import LightTouchCore
 import Quartz
 import UniformTypeIdentifiers
 
-/// AFC's media folder, presented in its own retained Mac window. Files drag in (onto a folder, or the
+/// AFC's media folder (a jailbroken device's whole file system: DeviceServices.wholeFileSystem), presented in its own retained Mac window. Files drag in (onto a folder, or the
 /// column's folder) and out (file promises), several at a time, and Space shows them in Quick Look.
 final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMenuItemValidation,
     NSFilePromiseProviderDelegate, QLPreviewPanelDataSource
@@ -294,7 +294,8 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
 
     @objc private func selectionChanged() {
         let path = selected?.path ?? directory(for: max(0, browser.selectedColumn)) ?? ""
-        pathLabel.stringValue = path.isEmpty ? "Media" : "Media / " + path.replacingOccurrences(of: "/", with: " / ")
+        let root = services?.wholeFileSystem == true ? "File System" : "Media"
+        pathLabel.stringValue = path.isEmpty ? root : root + " / " + path.replacingOccurrences(of: "/", with: " / ")
         updateControls()
     }
     private func updateControls() {

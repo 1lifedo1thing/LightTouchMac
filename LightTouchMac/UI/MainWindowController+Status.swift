@@ -31,8 +31,12 @@ extension MainWindowController {
         )
         let endpoint = files.binding?.endpoint
         if force || filesVC.services?.endpoint != endpoint {
+            // A jailbroken device's Files shows its whole file system (afc2).
+            let wholeFileSystem = files.binding?.device == emulator?.instance.id && emulator?.lock?.jailbroken == true
             filesVC.services = endpoint.map {
-                DeviceServices(clientSocket: $0.socket, udid: $0.udid, session: $0.session)
+                var services = DeviceServices(clientSocket: $0.socket, udid: $0.udid, session: $0.session)
+                services.wholeFileSystem = wholeFileSystem
+                return services
             }
             filesVC.reload()
         }

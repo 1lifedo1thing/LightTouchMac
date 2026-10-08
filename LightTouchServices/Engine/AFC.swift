@@ -6,10 +6,11 @@ import Foundation
 import HostServiceWire
 
 extension IMobileDevice {
-    /// AFC through lockdown's StartService, each step's error kept (IMobileDevice.startService).
-    nonisolated static func startAFC(device: OpaquePointer) throws -> OpaquePointer {
+    /// AFC through lockdown's StartService, each step's error kept (IMobileDevice.startService). `root`: afc2, the
+    /// whole file system a jailbroken device serves.
+    nonisolated static func startAFC(device: OpaquePointer, root: Bool = false) throws -> OpaquePointer {
         try startService(
-            "com.apple.afc",
+            root ? "com.apple.afc2" : "com.apple.afc",
             device: device,
             newClient: { afc_client_new($0, $1, $2) },
             freeClient: { afc_client_free($0) }
@@ -48,6 +49,7 @@ extension DeviceServices {
         remote: String,
         reuseIdentical: Bool = false,
         allowEmpty: Bool = false,
+        root: Bool = false,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> String {
         try await run(Timeouts.stage, "upload") { device in
@@ -57,7 +59,7 @@ extension DeviceServices {
             let total = try input.seekToEnd()
             try input.seek(toOffset: 0)
             guard total > 0 || allowEmpty else { throw DeviceError.preflight("The file is empty.") }
-            let client = try IMobileDevice.startAFC(device: device)
+            let client = try IMobileDevice.startAFC(device: device, root: root)
             defer { _ = afc_client_free(client) }
             if reuseIdentical {
                 var existing: UInt64 = 0
@@ -194,10 +196,10 @@ extension DeviceServices {
 }
 
 extension DeviceServices {
-    func files(in path: String) async throws -> [DeviceFile] {
+    func files(in path: String, root: Bool = false) async throws -> [DeviceFile] {
         try Self.validateFilePath(path)
         return try await run(Timeouts.browse, "browse files") { device in
-            let client = try IMobileDevice.startAFC(device: device)
+            let client = try IMobileDevice.startAFC(device: device, root: root)
             defer { _ = afc_client_free(client) }
             var names: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
             let result = afc_read_directory(client, path.isEmpty ? "/" : path, &names)
@@ -248,6 +250,7 @@ extension DeviceServices {
     func download(
         _ file: DeviceFile,
         to destination: URL,
+        root: Bool = false,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws {
         try Self.validateFilePath(file.path)
@@ -255,7 +258,7 @@ extension DeviceServices {
             throw DeviceError.preflight("Select a regular file to export.")
         }
         return try await run(Timeouts.stage, "export file") { device in
-            let client = try IMobileDevice.startAFC(device: device)
+            let client = try IMobileDevice.startAFC(device: device, root: root)
             defer { _ = afc_client_free(client) }
             var handle: UInt64 = 0
             let opened = afc_file_open(client, file.path, AFC_FOPEN_RDONLY, &handle)

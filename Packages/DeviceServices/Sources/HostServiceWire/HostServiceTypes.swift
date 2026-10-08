@@ -45,11 +45,12 @@ public nonisolated enum HostServiceOperation: Codable, Sendable {
     case lockdownValue(String)
     case uninstall(String)
     case install(ipa: String, staged: String, bundleID: String)
-    case upload(source: String, remote: String, reuse: Bool, allowEmpty: Bool)
+    /// `root`: afc2 (DeviceServices.wholeFileSystem), here and in files and download.
+    case upload(source: String, remote: String, reuse: Bool, allowEmpty: Bool, root: Bool)
     case sweep
     case remove(String)
-    case files(String)
-    case download(DeviceFile, destination: String)
+    case files(String, root: Bool)
+    case download(DeviceFile, destination: String, root: Bool)
     case move(bundle: String, before: String?, deviceName: String)
     case observe
 }

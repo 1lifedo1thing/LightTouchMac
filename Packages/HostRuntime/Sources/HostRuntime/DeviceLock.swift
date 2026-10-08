@@ -226,6 +226,8 @@ public struct DeviceLock: Codable, Sendable, Equatable {
     public var entryID: String? { entry?["id"]?.string }
     /// The recipe version the base was prepared by.
     public var recipeVersion: Int? { entry?["content"]?["recipe"]?["version"]?.int }
+    /// Prepared jailbroken (firmwarekit create --jailbreak): afc2 serves the whole file system.
+    public var jailbroken: Bool { entry?["content"]?["recipe"]?["options"]?["jailbreak"]?.bool == true }
     /// The entry content's board (the recipe's board, for admission steps).
     public var entryBoard: String? { entry?["content"]?["board"]?.string }
     /// Whether the preparer activated the volume (inputs.activation is a record).

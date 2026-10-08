@@ -187,7 +187,12 @@ final class N45Board: Board {
         bytes = recipe.systemMiB << 20
     }
 
-    func check(_ c: Recipe.Context) throws {}
+    func check(_ c: Recipe.Context) throws {
+        // 1.0's lockdownd starts an afc2 entry but its afcd answers no path (AFC object not found): no jailbreak on 1.x.
+        guard recipe.options["jailbreak"] != true else {
+            throw FirmwareError(.unsupported, "\(c.e.id): the jailbreak option needs iPhone OS 2.0 or later")
+        }
+    }
 
     /// An IPSW kernelcache that is the restore environment's, not the system's.
     static func restoreOnly(_ member: String) -> Bool { (member as NSString).lastPathComponent.contains(".restore.") }

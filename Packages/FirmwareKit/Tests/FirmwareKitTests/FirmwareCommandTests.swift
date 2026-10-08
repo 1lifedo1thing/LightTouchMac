@@ -69,6 +69,13 @@ struct FirmwareCommandTests {
         #expect(!FirmwareCommand.Create(entry: url, ipsw: url, out: url).arguments.contains("--skip-setup"))
     }
 
+    /// The app's Jailbreak choice reaches the preparer as --jailbreak, and only when chosen.
+    @Test func createPassesJailbreakOnlyWhenChosen() {
+        let url = URL(fileURLWithPath: "/tmp/x")
+        #expect(FirmwareCommand.Create(entry: url, ipsw: url, out: url, jailbreak: true).arguments.last == "--jailbreak")
+        #expect(!FirmwareCommand.Create(entry: url, ipsw: url, out: url).arguments.contains("--jailbreak"))
+    }
+
     @Test func createTakesAnEntryOrACatalogWithAnID() {
         #expect(throws: (any Error).self) { try FirmwareCommand.Create.parse(["--ipsw", "i", "--out", "o"]) }
         #expect(throws: (any Error).self) {

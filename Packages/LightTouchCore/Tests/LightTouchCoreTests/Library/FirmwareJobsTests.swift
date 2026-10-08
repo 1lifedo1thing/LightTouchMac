@@ -266,8 +266,9 @@ import os
     // MARK: - Skip Setup Assistant
 
     /// The preparation screen's Skip Setup Assistant choice reaches firmwarekit create as --skip-setup: for an iOS 5
-    /// entry chosen, not for one left off, and not for a 4.x entry (no Setup Assistant) even when chosen.
-    @Test func theSkipSetupChoiceReachesThePreparer() async throws {
+    /// entry chosen, not for one left off, and not for a 4.x entry (no Setup Assistant) even when chosen. Its Jailbreak
+    /// choice reaches it as --jailbreak, on a 2.0 or later build chosen.
+    @Test func theSkipSetupAndJailbreakChoicesReachThePreparer() async throws {
         try await LibraryFixtures.withScratch { tmp in
             var entries: [[String: Any]] = []
             for id in ["k48ap-9B206", "k48ap-8C148"] {
@@ -291,7 +292,10 @@ import os
                     catalog: catalog,
                     preparer: try LibraryFixtures.fakePreparer(in: tmp, argv: argvURL)
                 )
-                if chosen { h.jobs.skipsSetup = [id] }
+                if chosen {
+                    h.jobs.skipsSetup = [id]
+                    h.jobs.jailbreaks = [id]
+                }
                 h.jobs.downloadAndPrepare(try #require(catalog.entry(id: id)))
                 await h.settle(id)
                 #expect(h.devices(id).count == 1, "\(id) prepared: \(h.seen)")
@@ -300,6 +304,19 @@ import os
             #expect(seen["k48ap-9B206 true"]?.contains("--skip-setup") == true, "5.1.1, chosen")
             #expect(seen["k48ap-9B206 false"]?.contains("--skip-setup") == false, "5.1.1, not chosen")
             #expect(seen["k48ap-8C148 true"]?.contains("--skip-setup") == false, "4.2.1 has no Setup Assistant")
+            #expect(seen["k48ap-9B206 true"]?.contains("--jailbreak") == true, "5.1.1, chosen")
+            #expect(seen["k48ap-8C148 true"]?.contains("--jailbreak") == true, "4.2.1, chosen")
+            #expect(seen["k48ap-9B206 false"]?.contains("--jailbreak") == false, "not chosen")
+        }
+    }
+
+    /// Jailbreak is offered from iPhone OS 2.0 on: 1.0's afcd serves no path through afc2.
+    @Test func jailbreakIsOfferedFromIPhoneOS2() throws {
+        let catalog = try FirmwareCatalog.load(from: LibraryFixtures.shippedCatalog)
+        for (id, offered) in [
+            ("m68ap-1A543a", false), ("n45ap-4B1", false), ("n72ap-5F138", true), ("n90ap-8C148", true),
+        ] {
+            #expect(FirmwareJobs.offersJailbreak(try #require(catalog.entry(id: id))) == offered, "\(id)")
         }
     }
 

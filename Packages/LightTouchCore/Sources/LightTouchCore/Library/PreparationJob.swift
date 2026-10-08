@@ -28,7 +28,8 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
             cache: URL,
             log: URL,
             blob: URL? = nil,
-            skipSetup: Bool = false
+            skipSetup: Bool = false,
+            jailbreak: Bool = false
         ) {
             self.entry = entry
             self.ipsw = ipsw
@@ -41,6 +42,7 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
             self.log = log
             self.blob = blob
             self.skipSetup = skipSetup
+            self.jailbreak = jailbreak
         }
         public var entry: FirmwareCatalog.Entry
         public var ipsw: URL
@@ -58,6 +60,8 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
         public var blob: URL? = nil
         /// Prepare the device past Setup Assistant (firmwarekit create --skip-setup).
         public var skipSetup = false
+        /// Prepare the device jailbroken (firmwarekit create --jailbreak).
+        public var jailbreak = false
     }
 
     public enum Event: Sendable, Equatable {
@@ -181,7 +185,8 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
                         helper: request.helper,
                         cache: request.cache,
                         sibling: request.sibling.map { (siblingFile, $0.ipsw) },
-                        skipSetup: request.skipSetup
+                        skipSetup: request.skipSetup,
+                        jailbreak: request.jailbreak
                     ).arguments
             }
             let log = try FileDescriptor.open(request.log.path, .writeOnly)

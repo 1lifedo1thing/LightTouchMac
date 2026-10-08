@@ -26,6 +26,7 @@ public nonisolated enum BugReportInfo {
         public var emulatorBuild: String?
         public var recipeVersion: Int?
         public var skipSetup: Bool?
+        public var jailbreak: Bool?
         public var carrier: CarrierSettings?
         /// The installed list, when the device has answered.
         public var apps: [InstalledApp]?
@@ -75,7 +76,10 @@ public nonisolated enum BugReportInfo {
             if let tools = d.guestTools { facts.append("Guest tools: \(tools)") }
             if let build = d.emulatorBuild { facts.append("Emulator build: \(build)") }
             if let recipe = d.recipeVersion {
-                facts.append("Prepared base: recipe \(recipe)" + (d.skipSetup == true ? ", Skip Setup" : ""))
+                facts.append(
+                    "Prepared base: recipe \(recipe)" + (d.skipSetup == true ? ", Skip Setup" : "")
+                        + (d.jailbreak == true ? ", Jailbreak" : "")
+                )
             }
             if let c = d.carrier {
                 facts.append(

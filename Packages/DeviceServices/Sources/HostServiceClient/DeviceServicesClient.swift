@@ -99,7 +99,14 @@ extension DeviceServices {
         let path = directory.isEmpty ? source.lastPathComponent : directory + "/" + source.lastPathComponent
         try Self.validateFilePath(path)
         guard !path.isEmpty else { throw DeviceError.preflight("Select a file to import.") }
-        _ = try await stageFile(source, remote: path, reuseIdentical: true, allowEmpty: true, progress: progress)
+        _ = try await stageFile(
+            source,
+            remote: path,
+            reuseIdentical: true,
+            allowEmpty: true,
+            root: wholeFileSystem,
+            progress: progress
+        )
     }
 
     /// Callers supply a validated relative destination. The same chunked AFC
@@ -109,11 +116,12 @@ extension DeviceServices {
         remote: String,
         reuseIdentical: Bool = false,
         allowEmpty: Bool = false,
+        root: Bool = false,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> String {
         guard
             case .string(let path) = try await self.remote(
-                .upload(source: ipa.path, remote: remote, reuse: reuseIdentical, allowEmpty: allowEmpty),
+                .upload(source: ipa.path, remote: remote, reuse: reuseIdentical, allowEmpty: allowEmpty, root: root),
                 seconds: Timeouts.stage,
                 progress: {
                     if case .fraction(let value) = $0 { progress(value) }
@@ -134,7 +142,8 @@ extension DeviceServices {
     }
 
     public func files(in path: String) async throws -> [DeviceFile] {
-        guard case .files(let files) = try await remote(.files(path), seconds: Timeouts.browse) else {
+        let result = try await remote(.files(path, root: wholeFileSystem), seconds: Timeouts.browse)
+        guard case .files(let files) = result else {
             throw DeviceError.unavailable
         }
         return files
@@ -159,7 +168,10 @@ extension DeviceServices {
         )
         defer { try? FileManager.default.removeItem(at: staging) }
         let candidate = staging.appendingPathComponent("file")
-        _ = try await remote(.download(file, destination: candidate.path), seconds: Timeouts.stage) {
+        _ = try await remote(
+            .download(file, destination: candidate.path, root: wholeFileSystem),
+            seconds: Timeouts.stage
+        ) {
             if case .fraction(let value) = $0 { progress(value) }
         }
         try Task.checkCancellation()

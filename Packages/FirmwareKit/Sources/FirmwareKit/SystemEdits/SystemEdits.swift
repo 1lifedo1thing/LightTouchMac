@@ -49,6 +49,9 @@ public enum SystemEdits {
         /// skip_setup (firmwarekit create --skip-setup, never set in the catalog): the data volume says Setup Assistant
         /// is finished (seedFinishedSetup), so an iOS 5 or later device starts at the Home screen.
         public var skipSetup = false
+        /// jailbreak (firmwarekit create --jailbreak, never set in the catalog): what a jailbreak of the time leaves on
+        /// the device, starting with afc2 (installAFC2), lockdown's AFC over the whole file system.
+        public var jailbreak = false
         public init() {}
         public init(recipe: FirmwareEntry.Recipe) {
             let o = recipe.options
@@ -61,6 +64,7 @@ public enum SystemEdits {
             guestTools = o["guest_tools"] ?? true
             dated = recipe.rtcEpoch != nil
             skipSetup = o["skip_setup"] ?? false
+            jailbreak = o["jailbreak"] ?? false
         }
     }
 
@@ -309,6 +313,7 @@ public enum SystemEdits {
                 d["StandardOutPath"] = "/dev/console"
                 d["StandardErrorPath"] = "/dev/console"
             }
+            if o.jailbreak { log(try installAFC2(m)) }
             if o.appsync {
                 _ = try installAppSync(
                     m,
@@ -491,6 +496,23 @@ public enum SystemEdits {
             service["ProgramArguments"] = ["/" + appsyncLauncherPath] + arguments
         }
         return (line, "Services.plist:com.apple.mobile.installation_proxy")
+    }
+
+    static let lockdownServices = "System/Library/Lockdown/Services.plist"
+    /// afc2, as the jailbreaks of the time added it: a com.apple.afc2 lockdown service running the stock afcd at "/"
+    /// (old-style lockdown, which afcd keeps beside its XPC mode through 7.x), so the Mac can browse the whole file
+    /// system over USB. Returns the log line.
+    static func installAFC2(_ m: URL) throws -> String {
+        try rewritePlist(m.appendingPathComponent(lockdownServices)) { services in
+            guard services["com.apple.afc"] != nil else {
+                throw FirmwareError(.unsupported, "\(lockdownServices) has no com.apple.afc service")
+            }
+            services["com.apple.afc2"] = [
+                "AllowUnactivatedService": true, "Label": "com.apple.afc2",
+                "ProgramArguments": ["/usr/libexec/afcd", "--lockdown", "-d", "/"],
+            ]
+        }
+        return "afc2: com.apple.afc2 runs afcd at / (Lockdown/Services.plist)"
     }
 
     /// The program of the stock job `job` (volume-relative), checked by label.

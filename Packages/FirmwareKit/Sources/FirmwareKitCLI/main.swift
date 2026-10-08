@@ -127,6 +127,7 @@ default:  // the root alone, or help
             }
         if command.glTest { entry.recipe?.options["gl_test"] = true }
         if command.skipSetup { entry.recipe?.options["skip_setup"] = true }
+        if command.jailbreak { entry.recipe?.options["jailbreak"] = true }
         options = .init(
             entry: entry,
             ipsw: fileURL(command.ipsw),

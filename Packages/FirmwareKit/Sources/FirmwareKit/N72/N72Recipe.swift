@@ -441,6 +441,7 @@ final class N72Board: Board {
             }
         }
 
+        if opt["jailbreak"] == true { report["afc2"] = try SystemEdits.installAFC2(m) }
         if opt["appsync"] == true {  // patch-appsync-dylib.sh
             let (line, job) = try SystemEdits.installAppSync(
                 m,

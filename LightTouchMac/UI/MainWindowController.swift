@@ -129,6 +129,12 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
                 if on { FirmwareJobs.shared.skipsSetup.insert(id) } else { FirmwareJobs.shared.skipsSetup.remove(id) }
             }
         )
+        placeholder.jailbreaks = (
+            { FirmwareJobs.shared.jailbreaks.contains($0) },
+            { id, on in
+                if on { FirmwareJobs.shared.jailbreaks.insert(id) } else { FirmwareJobs.shared.jailbreaks.remove(id) }
+            }
+        )
         placeholder.onDropIPSW = { [weak self] url in self?.handOffIPSW(url, for: self?.selectedEntry) }
         showDetail(placeholder)
         noInspector.shortName = profile.shortName

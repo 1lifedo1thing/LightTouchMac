@@ -70,6 +70,9 @@ struct SingleConfig: Decodable {
     /// The base was prepared with firmwarekit create --skip-setup: what is frontmost when the agent first answers, and
     /// at Home what Setup's preferences say (`setupSeed`).
     var skipSetup: Bool?
+    /// The base was prepared with firmwarekit create --jailbreak: Files through afc2 lists "/" and reads the build's
+    /// SystemVersion.plist (`afc2`).
+    var jailbreak: Bool?
     /// contrib/it-proxy/httpget (armv6): at the first Home the guest fetches `WiFiProbe.url`, which only wifi0's
     /// guestfwd answers, so the board's Wi-Fi joined (`wifi`).
     var httpget: String?
@@ -411,7 +414,8 @@ nonisolated enum WiFiProbe {
                 }
                 return (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any] ?? [:]
             }
-            let buddy = await plist("com.apple.purplebuddy"), global = await plist(".GlobalPreferences")
+            let buddy = await plist("com.apple.purplebuddy")
+            let global = await plist(".GlobalPreferences")
             let location = await plist("com.apple.locationd")
             values["setupDone"] = buddy["SetupDone"] as? Bool ?? false
             values["locale"] = global["AppleLocale"] as? String ?? ""
@@ -592,6 +596,26 @@ nonisolated enum WiFiProbe {
         try? FileManager.default.removeItem(at: back)
     }
 
+    if s.jailbreak == true {  // the Files browser's own calls, as the app makes them for a jailbroken device
+        var root = d.services
+        root.wholeFileSystem = true
+        let back = d.dir.appendingPathComponent("afc2-SystemVersion.plist")
+        var top: [String] = []
+        do {
+            top = try await root.files(in: "").map(\.name)
+            let dir = "System/Library/CoreServices"
+            guard let file = try await root.files(in: dir).first(where: { $0.name == "SystemVersion.plist" }) else {
+                throw DeviceError.preflight("\(dir)/SystemVersion.plist not listed")
+            }
+            try await root.download(file, to: back) { _ in }
+            let version =
+                (try PropertyListSerialization.propertyList(from: Data(contentsOf: back), format: nil)
+                as? [String: Any])?["ProductVersion"] as? String
+            emit("afc2", ["device": d.name, "top": top, "version": version ?? ""])
+        } catch {
+            emit("afc2", ["device": d.name, "top": top, "error": "\(error)"])
+        }
+    }
     if s.install != false { await install(d) }
     if let upgrade = s.upgradeIPA { await upgradeInPlace(d, upgrade) }
     try? await Task.sleep(for: .seconds(3))

@@ -67,6 +67,8 @@ struct SingleCheck: ParsableCommand {
     @Option(help: "The guest agent reads PATH back at Home.") var readFile: String?
     @Flag(help: "The base was prepared with --skip-setup: no Setup page, Setup's answers from the Mac.")
     var skipSetup = false
+    @Flag(help: "The base was prepared with --jailbreak: Files reads the whole file system through afc2.")
+    var jailbreak = false
     @Option(help: "Install a newer build of the same app over it; its data must stay.", transform: path)
     var upgradeIPA: URL?
     @Option(help: "With --reboot: boot 2 asks for TZ.") var secondZone: String?
@@ -155,7 +157,8 @@ struct HelperBootCheck: ParsableCommand {
 struct PhoneCheck: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "phone",
-        abstract: "An iPhone base: carrier (SMS tone, ringtone, vibration), emergency, location (GPS), rotate, shutdown, keyboard."
+        abstract:
+            "An iPhone base: carrier (SMS tone, ringtone, vibration), emergency, location (GPS), rotate, shutdown, keyboard."
     )
     @Argument var base: String
     @Option(help: "The cases, comma-separated.") var only = "carrier,emergency,location,rotate,shutdown,keyboard"
@@ -169,7 +172,8 @@ struct PhoneCheck: ParsableCommand {
 struct RotationCheck: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "rotation",
-        abstract: "Rotate Right and Left with Safari in front: the picture as the window shows it is upright, a tap lands."
+        abstract:
+            "Rotate Right and Left with Safari in front: the picture as the window shows it is upright, a tap lands."
     )
     @Argument var base: String
     @Option(help: "The overlay of a boot that walked Setup (5.x-7.x), cloned.", transform: path) var overlay: URL?

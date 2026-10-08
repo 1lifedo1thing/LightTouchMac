@@ -8,6 +8,9 @@ public nonisolated struct DeviceServices: Sendable {
     public static let session = UUID()
     public let clientSocket: String
     public let endpoint: HostServiceEndpoint
+    /// The Files browser's listing, export and copy go through afc2 (a jailbroken device's AFC at "/") instead of
+    /// AFC's media folder. Installs and media staging always use the media folder.
+    public var wholeFileSystem = false
     public init(clientSocket: String, udid: String? = nil, session: UUID = Self.session) {
         self.clientSocket = clientSocket
         self.endpoint = HostServiceEndpoint(socket: clientSocket, udid: udid, session: session)

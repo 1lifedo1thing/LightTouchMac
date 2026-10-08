@@ -24,6 +24,7 @@ func single(_ args: SingleCheck) -> Never {
     if let zone = args.secondZone { single["secondZone"] = zone }
     if let file = args.readFile { single["readFile"] = file }
     if args.skipSetup { single["skipSetup"] = true }
+    if args.jailbreak { single["jailbreak"] = true }
     if let panel = args.panel { single["panel"] = panel }
     if let upgrade = args.upgradeIPA { single["upgradeIPA"] = upgrade.path }
     if let wav = args.audioWAV { single["audioWAV"] = wav.path }
@@ -218,6 +219,16 @@ func single(_ args: SingleCheck) -> Never {
             events.find("home", ["device": d]).count == boots && activation.count == boots
                 && (d != "ipod" || ids.count == boots),
             "\(d): both boots reached Home, activation and identity"
+        )
+    }
+    if args.jailbreak {
+        let afc2 = events.one("afc2", ["device": d])
+        let top = Set(afc2["top"] as? [String] ?? [])
+        r.check(
+            top.isSuperset(of: ["Applications", "System", "private"])
+                && afc2.string("version") == base.version,
+            "\(d): afc2 lists / (\(top.sorted().joined(separator: ", "))) and reads iOS \(afc2.string("version") ?? "none")"
+                + (afc2.string("error").map { ": \($0)" } ?? "")
         )
     }
     if args.skipSetup {
