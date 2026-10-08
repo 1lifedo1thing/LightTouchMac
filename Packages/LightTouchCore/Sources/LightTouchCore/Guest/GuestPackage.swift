@@ -35,7 +35,12 @@ public nonisolated enum GuestPackage {
 
     /// it_boot's R_* report codes.
     public enum ReportCode: Int32, Sendable {
-        case unchanged = 0, installed, switched, revertedBad, revertedTries, refused
+        case unchanged = 0
+        case installed
+        case switched
+        case revertedBad
+        case revertedTries
+        case refused
     }
 
     /// The bundled itpack for an arch: the app's guest-tools (Bundled.guestRoot, which

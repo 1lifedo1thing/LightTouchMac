@@ -33,7 +33,7 @@
     "NoPlaygroundLiterals": true,
     "NoVoidReturnOnFunctionSignature": true,
     "OmitExplicitReturns": true,
-    "OneCasePerLine": false,
+    "OneCasePerLine": true,
     "OneVariableDeclarationPerLine": true,
     "OnlyOneTrailingClosureArgument": false,
     "OrderedImports": true,

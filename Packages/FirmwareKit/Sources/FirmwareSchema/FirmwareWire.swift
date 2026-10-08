@@ -52,8 +52,15 @@ nonisolated public enum FirmwareWire {
             public var archiveBytes: Int64?
             public var member: String?
             enum CodingKeys: String, CodingKey {
-                case kind, url, sha1, bytes, resource, mirrors, member
-                case archiveSHA1 = "archive_sha1", archiveBytes = "archive_bytes"
+                case kind
+                case url
+                case sha1
+                case bytes
+                case resource
+                case mirrors
+                case member
+                case archiveSHA1 = "archive_sha1"
+                case archiveBytes = "archive_bytes"
             }
 
             /// Another copy of the same IPSW (sha1/bytes are the IPSW's). `kind` "rar": `url` is an archive holding it as
@@ -67,8 +74,13 @@ nonisolated public enum FirmwareWire {
                 public var archiveBytes: Int64?
                 public var member: String?
                 enum CodingKeys: String, CodingKey {
-                    case url, sha1, bytes, kind, member
-                    case archiveSHA1 = "archive_sha1", archiveBytes = "archive_bytes"
+                    case url
+                    case sha1
+                    case bytes
+                    case kind
+                    case member
+                    case archiveSHA1 = "archive_sha1"
+                    case archiveBytes = "archive_bytes"
                 }
             }
 
@@ -115,7 +127,10 @@ nonisolated public enum FirmwareWire {
             public struct Guest: Codable, Sendable, Equatable {
                 public var arch: String
                 public var glEngine: String?
-                enum CodingKeys: String, CodingKey { case arch, glEngine = "gl_engine" }
+                enum CodingKeys: String, CodingKey {
+                    case arch
+                    case glEngine = "gl_engine"
+                }
             }
             public var name: String
             public var version: Int
@@ -141,9 +156,18 @@ nonisolated public enum FirmwareWire {
             /// checks its expiry date against it (6.0 beta 1's lockdownd: 2012-07-18).
             public var rtcEpoch: Int?
             enum CodingKeys: String, CodingKey {
-                case name, version, storage, options, guest, boot
-                case systemMiB = "system_mib", dataSize = "data_size", keybagRamdiskFrom = "keybag_ramdisk_from"
-                case nandSigFlags = "nand_sig_flags", nandVendorType = "nand_vendor_type", rtcEpoch = "rtc_epoch"
+                case name
+                case version
+                case storage
+                case options
+                case guest
+                case boot
+                case systemMiB = "system_mib"
+                case dataSize = "data_size"
+                case keybagRamdiskFrom = "keybag_ramdisk_from"
+                case nandSigFlags = "nand_sig_flags"
+                case nandVendorType = "nand_vendor_type"
+                case rtcEpoch = "rtc_epoch"
             }
         }
 
@@ -157,7 +181,9 @@ nonisolated public enum FirmwareWire {
             public var peakBytes: Int64
             public var seconds: Int
             enum CodingKeys: String, CodingKey {
-                case seconds, preparedBytes = "prepared_bytes", peakBytes = "peak_bytes"
+                case seconds
+                case preparedBytes = "prepared_bytes"
+                case peakBytes = "peak_bytes"
             }
         }
 
@@ -181,9 +207,23 @@ nonisolated public enum FirmwareWire {
         public var estimates: Estimates
 
         enum CodingKeys: String, CodingKey {
-            case id, board, version, build, released, prerelease, status, media, source, keys, recipe, emulator,
+            case id
+            case board
+            case version
+            case build
+            case released
+            case prerelease
+            case status
+            case media
+            case source
+            case keys
+            case recipe
+            case emulator
+            case
                 estimates
-            case productType = "product_type", statusNote = "status_note", prereleaseNumber = "prerelease_number"
+            case productType = "product_type"
+            case statusNote = "status_note"
+            case prereleaseNumber = "prerelease_number"
         }
     }
 }

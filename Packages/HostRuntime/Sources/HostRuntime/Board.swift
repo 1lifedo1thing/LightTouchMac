@@ -21,7 +21,11 @@ public enum Board: String, Sendable, CaseIterable, Codable {
     /// The SoC family, which decides the prepared base's boot: the S5L8900's iBoot + NOR (iPhone OS 1), the
     /// S5L8720's direct iBoot or SecureROM chain, the S5L8920/S5L8930's direct-kernel kboot (iBoot too on K48).
     public enum SoC: Sendable { case s5l8900, s5l8720, s5l8920, s5l8930 }
-    public enum Kind: String, Sendable { case iPod = "iPod touch", iPhone, iPad }
+    public enum Kind: String, Sendable {
+        case iPod = "iPod touch"
+        case iPhone
+        case iPad
+    }
 
     /// The device art, in shell-native pixels with a top-left origin. The flat art is the prepare screen's
     /// picture and the fallback while the 3D model loads: the 2G's shell.png (a product photo), the 1G's and 4G's

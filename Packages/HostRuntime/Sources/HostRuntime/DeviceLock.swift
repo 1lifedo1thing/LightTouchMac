@@ -107,11 +107,15 @@ public struct DeviceLock: Codable, Sendable, Equatable {
     public var other: [String: JSONValue] = [:]
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case board, build
+        case board
+        case build
         case productType = "product_type"
         case productVersion = "product_version"
         case bootStrategy = "boot_strategy"
-        case machine, identity, entry, inputs
+        case machine
+        case identity
+        case entry
+        case inputs
         case guestPackage = "guest_package"
         case derived
     }

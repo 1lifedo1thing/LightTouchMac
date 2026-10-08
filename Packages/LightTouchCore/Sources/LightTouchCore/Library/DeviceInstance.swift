@@ -75,7 +75,8 @@ public nonisolated struct DeviceInstance: Codable, Equatable, Identifiable, Send
         public var udid: String?
         public var dieID: String?
         public enum CodingKeys: String, CodingKey {
-            case seed, udid
+            case seed
+            case udid
             case dieID = "die_id"
         }
     }

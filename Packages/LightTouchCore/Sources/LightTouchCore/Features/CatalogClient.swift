@@ -69,21 +69,25 @@ public nonisolated struct CatalogApp: Codable, Sendable {
         public var deviceFamily: [String]? = nil
 
         public enum CodingKeys: String, CodingKey {
-            case compatible, reasons
+            case compatible
+            case reasons
             case deviceFamily = "device_family"
         }
     }
 
     public enum CodingKeys: String, CodingKey {
         case bundleID = "bundle_id"
-        case name, developer, version
+        case name
+        case developer
+        case version
         case minOS = "min_os"
         case size
         case ipaID = "ipa_id"
         case iconURL = "icon_url"
         case downloadURL = "download_url"
         case appURL = "app_url"
-        case md5, compat
+        case md5
+        case compat
     }
 
     /// Why the server excluded this app for the device, in user words; nil

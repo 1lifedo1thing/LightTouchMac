@@ -14,7 +14,8 @@ public enum ReleaseApp {
     public static var given: Bool { environment["LTM_RELEASE_APP"] != nil || environment["LTM_RELEASE_ARCHIVE"] != nil }
 
     public enum Failure: Error, CustomStringConvertible {
-        case missing, notAnAppArchive([String])
+        case missing
+        case notAnAppArchive([String])
         public var description: String {
             switch self {
             case .missing: "no app: set LTM_RELEASE_APP or LTM_RELEASE_ARCHIVE (TEST_RUNNER_… through xcodebuild)"

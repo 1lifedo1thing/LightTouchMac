@@ -70,7 +70,11 @@ public enum SetupPlan {
     public static let alertYes = ["OK", "Skip", "Agree", "Continue", "Don't Use", "Don't Add"]
     public static let nextArrow = (x: 587.0 / 640, y: 84.0 / 960)
 
-    public enum Step: Equatable, Sendable { case tap(Double, Double, String?), pause(Double), slideIfLockScreen }
+    public enum Step: Equatable, Sendable {
+        case tap(Double, Double, String?)
+        case pause(Double)
+        case slideIfLockScreen
+    }
 
     /// One Setup page's taps, from the labels read on it (`pages`: what the walk has tapped so far).
     public static func plan(_ found: [String: (x: Double, y: Double)], pages: [String]) -> [Step] {

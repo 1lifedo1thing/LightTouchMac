@@ -14,7 +14,9 @@ public nonisolated struct FirmwareCatalog: Codable, Sendable {
     /// Entries the app ships prepared: entry id -> its packed base under the app's Resources (firmwarekit pack-base).
     public var bundled: [String: String]?
     public enum CodingKeys: String, CodingKey {
-        case format, entries, bundled
+        case format
+        case entries
+        case bundled
         case firstRun = "first_run"
     }
 
