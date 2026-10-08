@@ -63,7 +63,7 @@ import Testing
         #expect(p.count == 50 && p.values.allSatisfy { $0.count == 4096 + 64 })
         let hdr = try #require(p[.init(cs: 1, page: 256)])
         #expect(
-            N72NAND.crc(hdr[0..<0x10] + [0, 0, 0, 0] + hdr[0x14..<0x5C]) == UInt32(hdr[0x10]) | UInt32(hdr[0x11]) << 8
+            crc(hdr[0..<0x10] + [0, 0, 0, 0] + hdr[0x14..<0x5C]) == UInt32(hdr[0x10]) | UInt32(hdr[0x11]) << 8
                 | UInt32(hdr[0x12]) << 16 | UInt32(hdr[0x13]) << 24
         )
         #expect(p[.init(cs: 2, page: 256)]![0x28..<0x30].reversed().reduce(0) { $0 << 8 | Int($1) } == 128002)
@@ -83,10 +83,10 @@ import Testing
         // the device-end alternate away from the filesystem's actual header.
         #expect(last - first + 1 == UInt64(blocks))
         #expect((last - first + 1) * 4096 - 1024 == UInt64(blocks) * 4096 - 1024)
-        #expect(UInt64(N72NAND.crc(pages[2][0..<0x80])) == le(pages[1], 0x58, 4))
+        #expect(UInt64(crc(pages[2][0..<0x80])) == le(pages[1], 0x58, 4))
         var header = pages[1]
         header.replaceSubrange(0x10..<0x14, with: [0, 0, 0, 0])
-        #expect(UInt64(N72NAND.crc(header[0..<0x5C])) == le(pages[1], 0x10, 4))
+        #expect(UInt64(crc(header[0..<0x5C])) == le(pages[1], 0x10, 4))
         // Protective MBR geometry is deliberately outside this correction.
         #expect(le(pages[0], 0x1BE + 8, 4) == 3)
         #expect(le(pages[0], 0x1BE + 12, 4) == UInt64(blocks + 10))

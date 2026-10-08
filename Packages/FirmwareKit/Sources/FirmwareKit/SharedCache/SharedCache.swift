@@ -4,10 +4,6 @@
 import Foundation
 
 extension UnsafeRawBufferPointer {
-    func u16le(_ o: Int) -> UInt16 { UInt16(littleEndian: loadUnaligned(fromByteOffset: o, as: UInt16.self)) }
-    func u32le(_ o: Int) -> UInt32 { UInt32(littleEndian: loadUnaligned(fromByteOffset: o, as: UInt32.self)) }
-    func u64le(_ o: Int) -> UInt64 { UInt64(littleEndian: loadUnaligned(fromByteOffset: o, as: UInt64.self)) }
-    func u32be(_ o: Int) -> UInt32 { UInt32(bigEndian: loadUnaligned(fromByteOffset: o, as: UInt32.self)) }
     /// Offset of the first NUL at or after `o` (the end if there is none).
     func nulIndex(from o: Int) -> Int {
         var i = o
@@ -197,7 +193,7 @@ public enum AppSyncCachePatch {
         }
         let cur = [UInt8](cache.data[foff..<foff + 4])
         guard cur == patch || (thumb && looksLikeThumbEntry(cur)) else {
-            let curHex = cur.map { String(format: "%02x", $0) }.joined()
+            let curHex = cur.hexString
             throw FirmwareError(
                 .unsupported,
                 "\(target) prologue \(curHex) at \(hex(foff)) is not a Thumb function entry — refusing to patch"
@@ -209,7 +205,7 @@ public enum AppSyncCachePatch {
     @discardableResult
     public static func patchCache(at url: URL, apply: Bool = true) throws -> String {
         let (va, foff, cur) = try locate(DyldSharedCache(contentsOf: url))
-        let curHex = cur.map { String(format: "%02x", $0) }.joined()
+        let curHex = cur.hexString
         let patchHex = "00207047"
         if cur == patch { return "\(target) already patched (VA \(hex(va)) off \(hex(foff)))" }
         if !apply { return "would patch \(target) \(curHex) -> \(patchHex) at \(hex(foff))" }

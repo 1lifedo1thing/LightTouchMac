@@ -18,6 +18,9 @@ let package = Package(
             name: "ltm-build",
             dependencies: ["BuildTools", .product(name: "ArgumentParser", package: "swift-argument-parser")]
         ),
-        .testTarget(name: "BuildToolsTests", dependencies: ["BuildTools"]),
+        .testTarget(
+            name: "BuildToolsTests",
+            dependencies: ["BuildTools", .product(name: "ReleaseChecks", package: "ReleaseChecks")]
+        ),
     ]
 )

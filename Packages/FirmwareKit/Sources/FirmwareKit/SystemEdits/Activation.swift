@@ -25,8 +25,8 @@ public enum Activation {
             if let patch {
                 result["patch"] = [
                     "strategy": patch.strategy, "isa": patch.isa, "offset": patch.offset,
-                    "original": patch.original.map { String(format: "%02x", $0) }.joined(),
-                    "replacement": patch.replacement.map { String(format: "%02x", $0) }.joined(),
+                    "original": patch.original.hexString,
+                    "replacement": patch.replacement.hexString,
                 ]
             }
             return result
@@ -89,7 +89,7 @@ public enum Activation {
             original: withUnsafeBytes(of: report.original) { Data($0.prefix(Int(report.width))) },
             replacement: withUnsafeBytes(of: report.replacement) { Data($0.prefix(Int(report.width))) }
         )
-        return Result(inputSHA256: hash(before), outputSHA256: hash(after), patch: patch)
+        return Result(inputSHA256: Preparer.sha256(before), outputSHA256: Preparer.sha256(after), patch: patch)
     }
 
     /// iOS 6 lockdownd, which no binary strategy matches, takes its activation state from its data ark: the
@@ -99,16 +99,12 @@ public enum Activation {
         guard lockdownd.range(of: Data("com.apple.mobile.lockdown_cache\0".utf8)) != nil,
             lockdownd.range(of: Data("FactoryActivated\0".utf8)) != nil
         else { return nil }
-        let h = hash(lockdownd)
+        let h = Preparer.sha256(lockdownd)
         return Result(
             inputSHA256: h,
             outputSHA256: h,
             dataArk: ["com.apple.mobile.lockdown_cache-ActivationState": "FactoryActivated"]
         )
-    }
-
-    private static func hash(_ data: Data) -> String {
-        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     /// Rebuild the existing code-page hashes as an ad-hoc signature, retaining entitlements and
@@ -250,11 +246,4 @@ enum MachOSignature {
             return (Int(cs.dataoff), Int(cs.datasize))
         }
     }
-}
-
-private func be32(_ b: [UInt8], _ o: Int) -> UInt32 {
-    UInt32(b[o]) << 24 | UInt32(b[o + 1]) << 16 | UInt32(b[o + 2]) << 8 | UInt32(b[o + 3])
-}
-private func le32(_ b: [UInt8], _ o: Int) -> UInt32 {
-    UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24
 }

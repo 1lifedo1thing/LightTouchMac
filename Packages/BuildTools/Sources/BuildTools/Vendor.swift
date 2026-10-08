@@ -108,7 +108,7 @@ public struct Vendor {
                 text += "\(path)\0\(try sha256(root.appendingPathComponent(path)))\0"
             }
         }
-        return sha256(Data(text.utf8))
+        return sha256Hex(Data(text.utf8))
     }
 
     func pinKey() throws -> String {

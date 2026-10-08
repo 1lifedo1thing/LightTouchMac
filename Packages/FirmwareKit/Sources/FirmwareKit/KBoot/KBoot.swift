@@ -636,7 +636,5 @@ public struct MachO: Sendable {
         throw FirmwareError(.unsupported, "no LC_UNIXTHREAD")
     }
 
-    static func u32(_ d: Data, _ at: Int) -> UInt32 {
-        d.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: at, as: UInt32.self)) }
-    }
+    static func u32(_ d: Data, _ at: Int) -> UInt32 { d.withUnsafeBytes { $0.u32le(at) } }
 }

@@ -87,10 +87,6 @@ public enum N72NAND {
         return d
     }
 
-    static func crc(_ b: ArraySlice<UInt8>) -> UInt32 {
-        UInt32(b.withUnsafeBufferPointer { zlib.crc32(0, $0.baseAddress, uInt($0.count)) })
-    }
-
     static func put(_ b: inout [UInt8], _ o: Int, _ v: UInt64, _ n: Int) {
         for k in 0..<n { b[o + k] = UInt8(truncatingIfNeeded: v >> (8 * k)) }
     }

@@ -1,4 +1,5 @@
 import Foundation
+import ReleaseChecks
 
 /// The provenance records build-static-deps.sh and build-package-native.sh leave in their roots.
 public enum Records {
@@ -41,7 +42,7 @@ public enum Records {
         record["usbmuxd_commit"] = usb["commit"]
         record["iboot32patcher"] = try readJSON(root.appendingPathComponent("build/iBoot32Patcher/build.json"))
         record["qemu_commit"] = try output(["git", "-C", qemu.path, "rev-parse", "HEAD"])
-        record["qemu_tracked_diff_sha256"] = sha256(
+        record["qemu_tracked_diff_sha256"] = sha256Hex(
             Data(try output(["git", "-C", qemu.path, "diff", "--binary", "HEAD"]).utf8)
         )
         var recipes: [String: String] = [:]

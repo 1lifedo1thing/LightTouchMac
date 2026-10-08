@@ -198,8 +198,8 @@ public enum VolumeRebuild {
                 guard let m = st.meta(cs, pp) else { break }  // pages of a vblock are programmed in order
                 let typ = m[9]
                 guard typ & K48NAND.tUser != 0, typ & (K48NAND.tIndex | K48NAND.tClosed) == 0 else { continue }
-                let lpn = Int(K48NAND.le32(m, 0))
-                let usn = K48NAND.le32(m, 4)
+                let lpn = Int(le32(m, 0))
+                let usn = le32(m, 4)
                 guard lpn < geo.totalPages else { continue }
                 // equal USN: the later vpn (a later page of the same block) wins
                 if vpnOf[lpn] == 0 || usn > usnOf[lpn] || (usn == usnOf[lpn] && UInt32(vpn + 1) > vpnOf[lpn]) {
@@ -234,9 +234,5 @@ public enum VolumeRebuild {
                 "\(u.path): \(String(cString: strerror(errno)))"
             )
         }
-    }
-
-    static func be32(_ b: [UInt8], _ o: Int) -> UInt32 {
-        UInt32(b[o]) << 24 | UInt32(b[o + 1]) << 16 | UInt32(b[o + 2]) << 8 | UInt32(b[o + 3])
     }
 }

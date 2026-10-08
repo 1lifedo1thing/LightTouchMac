@@ -265,7 +265,7 @@ nonisolated public final class LinkChannel<
             let failed = writeFailed
             lock.unlock()
             guard !failed else { return }
-            if !Self.writeAll(fd, frame) {
+            if (try? FileHandle(fileDescriptor: fd).write(contentsOf: frame)) == nil {
                 lock.lock()
                 writeFailed = true
                 lock.unlock()
@@ -300,19 +300,6 @@ nonisolated public final class LinkChannel<
         let body = buffer.subdata(in: start + 4..<start + 4 + length)
         buffer.removeSubrange(start..<start + 4 + length)
         return body
-    }
-
-    private static func writeAll(_ fd: Int32, _ data: Data) -> Bool {
-        data.withUnsafeBytes { raw in
-            var offset = 0
-            while offset < raw.count {
-                let n = write(fd, raw.baseAddress! + offset, raw.count - offset)
-                if n < 0, errno == EINTR { continue }
-                if n <= 0 { return false }
-                offset += n
-            }
-            return true
-        }
     }
 }
 

@@ -20,8 +20,8 @@ struct VolumeRebuildTests {
         for (i, (typ, lba, cnt)) in [(0xAF, 63, 700), (0xAF, 800, 400)].enumerated() {
             let o = 0x1be + 16 * i
             mbr[o + 4] = UInt8(typ)
-            K48NAND.put32(&mbr, o + 8, UInt32(lba))
-            K48NAND.put32(&mbr, o + 12, UInt32(cnt))
+            put32(&mbr, o + 8, UInt32(lba))
+            put32(&mbr, o + 12, UInt32(cnt))
         }
         var rng = SystemRandomNumberGenerator()
         var sys = (0..<ps * 700).map { _ in UInt8.random(in: 0...255, using: &rng) }
@@ -97,8 +97,8 @@ struct VolumeRebuildTests {
         var vh = [UInt8](repeating: 0, count: 4096)
         vh[1024] = UInt8(ascii: "H")
         vh[1025] = UInt8(ascii: "X")
-        K48NAND.put32(&vh, 1024 + 40, UInt32(4096).byteSwapped)  // big-endian
-        K48NAND.put32(&vh, 1024 + 44, UInt32(blocks).byteSwapped)
+        put32(&vh, 1024 + 40, UInt32(4096).byteSwapped)  // big-endian
+        put32(&vh, 1024 + 44, UInt32(blocks).byteSwapped)
         try page(base, 0, vh)
         for n in 1..<400 { try page(base, n, [UInt8](repeating: UInt8(n % 251 + 1), count: 4096)) }
         try page(ovl, 7, [UInt8](repeating: 0xEE, count: 4096))

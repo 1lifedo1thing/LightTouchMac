@@ -1,4 +1,5 @@
 import Foundation
+import ReleaseChecks
 
 /// Per-architecture native build roots (build-package-native.sh outputs, or a root whose prefix and static deps come
 /// from another, QEMU built elsewhere) merged into one universal root for scripts/vendor. Each part is read from where
@@ -19,13 +20,10 @@ public enum MergeNative {
         name.hasPrefix("lib/pkgconfig/") || name.hasPrefix("share/pkgconfig/") || name.hasSuffix(".la")
     }
 
+    /// A Mach-O, or a static archive (merged with lipo too).
     static func isMachO(_ file: URL) -> Bool {
-        guard let handle = try? FileHandle(forReadingFrom: file), let head = try? handle.read(upToCount: 8) else {
-            return false
-        }
-        try? handle.close()
-        return [Data([0xcf, 0xfa, 0xed, 0xfe]), Data([0xca, 0xfe, 0xba, 0xbe])].contains(head.prefix(4))
-            || head == Data("!<arch>\n".utf8)
+        BundleHygiene.isMachO(file)
+            || (try? FileHandle(forReadingFrom: file).read(upToCount: 8)) == Data("!<arch>\n".utf8)
     }
 
     typealias Pairs = [(old: String, new: String)]

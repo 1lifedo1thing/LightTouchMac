@@ -121,7 +121,7 @@ public enum TrustStore1x {
         policy: StorageRecordPolicy = .standalone,
         log: (String) -> Void = { _ in }
     ) async throws -> Bool {
-        let sha1 = Insecure.SHA1.hash(data: certificate).map { String(format: "%02x", $0) }.joined()
+        let sha1 = Insecure.SHA1.hash(data: certificate).hexString
         func storageKey() throws -> String? {
             let record = try DeviceRecord.object(Data(contentsOf: DeviceRecord.url(device)))
             guard HostRuntime.Board(rawValue: record["board"] as? String ?? "")?.soc == .s5l8900 else {

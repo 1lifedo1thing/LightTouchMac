@@ -1,4 +1,5 @@
 import Foundation
+import ReleaseChecks
 
 /// The pinned dependency archives (build-support/dependencies.json): fetched only through their SHA-256, tracked source
 /// staged without build outputs, and the SOURCE.txt a shipped build carries.
@@ -140,7 +141,7 @@ public enum DependencySources {
             [
                 "schema_version": 1, "source": source.path, "staged_source": destination.path,
                 "commit": try git("rev-parse", "HEAD"),
-                "tracked_diff_sha256": sha256(Data(diff.utf8)), "modified": !diff.isEmpty, "files": records,
+                "tracked_diff_sha256": sha256Hex(Data(diff.utf8)), "modified": !diff.isEmpty, "files": records,
             ],
             to: record
         )

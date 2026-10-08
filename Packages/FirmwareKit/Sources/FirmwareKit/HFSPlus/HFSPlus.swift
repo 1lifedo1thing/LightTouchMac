@@ -484,8 +484,8 @@ public final class HFSPlusVolume {
         var done = Set<UInt32>()
         for r in targets where done.insert(r.cnid).inserted {
             var patch = [UInt8](repeating: 0, count: 8)
-            put32(&patch, 0, uid)
-            put32(&patch, 4, gid)
+            putBE32(&patch, 0, uid)
+            putBE32(&patch, 4, gid)
             let at = r.node * t.nodeSize + r.bodyOffset + 32
             if let mode {
                 let m = r.mode & 0o170000 | mode & 0o7777
@@ -537,7 +537,7 @@ public final class HFSPlusVolume {
         }
         for (at, n) in targets {
             var b = [UInt8](repeating: 0, count: 4)
-            put32(&b, 0, n)
+            putBE32(&b, 0, n)
             try write(catalogFork, fileID: Self.catalogID, offset: at, bytes: b)
         }
         catalogCache = nil
@@ -564,7 +564,7 @@ public final class HFSPlusVolume {
         var changed = 0
         for r in try catalog() where r.dates.prefix(4).contains(where: { $0 > after }) {
             var patch = [UInt8](repeating: 0, count: 16)
-            for (i, d) in r.dates.prefix(4).enumerated() { put32(&patch, 4 * i, d > after ? to : d) }
+            for (i, d) in r.dates.prefix(4).enumerated() { putBE32(&patch, 4 * i, d > after ? to : d) }
             let body = r.node * t.nodeSize + r.bodyOffset
             try write(catalogFork, fileID: Self.catalogID, offset: body + 12, bytes: patch)
             // finderInfo.date_added
@@ -577,7 +577,7 @@ public final class HFSPlusVolume {
             guard pread(fd, &vh, 512, off_t(at)) == 512 else {
                 throw FirmwareError(.internal, "read volume header at \(at) of \(url.lastPathComponent)")
             }
-            for o in stride(from: 16, through: 28, by: 4) where be32(vh, o) > after { put32(&vh, o, to) }
+            for o in stride(from: 16, through: 28, by: 4) where be32(vh, o) > after { putBE32(&vh, o, to) }
             if let uuid, uuid.count == 8 { vh.replaceSubrange(104..<112, with: uuid) }
             guard pwrite(fd, vh, 512, off_t(at)) == 512 else {
                 throw FirmwareError(.internal, "write volume header at \(at) of \(url.lastPathComponent)")
@@ -673,7 +673,7 @@ public final class HFSPlusVolume {
         guard pread(fd, &jib, 4, off_t(at)) == 4 else {
             throw FirmwareError(.internal, "read the journal info block of \(url.lastPathComponent)")
         }
-        put32(&jib, 0, be32(jib, 0) | 4)
+        putBE32(&jib, 0, be32(jib, 0) | 4)
         try restore([(j.offset, Data(count: j.size)), (at, Data(jib))])
     }
 
@@ -686,7 +686,7 @@ public final class HFSPlusVolume {
             guard pread(fd, &a, 4, off_t(at + 4)) == 4 else {
                 throw FirmwareError(.internal, "read volume header at \(at) of \(url.lastPathComponent)")
             }
-            put32(&a, 0, be32(a, 0) | 0x4000_0000)
+            putBE32(&a, 0, be32(a, 0) | 0x4000_0000)
             guard pwrite(fd, a, 4, off_t(at + 4)) == 4 else {
                 throw FirmwareError(.internal, "write volume header at \(at) of \(url.lastPathComponent)")
             }
@@ -706,15 +706,10 @@ public final class HFSPlusVolume {
 }
 
 private func be16(_ b: [UInt8], _ o: Int) -> UInt16 { UInt16(b[o]) << 8 | UInt16(b[o + 1]) }
-private func be32(_ b: [UInt8], _ o: Int) -> UInt32 {
-    UInt32(b[o]) << 24 | UInt32(b[o + 1]) << 16 | UInt32(b[o + 2]) << 8 | UInt32(b[o + 3])
-}
-private func le32(_ b: [UInt8], _ o: Int) -> UInt32 {
-    UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24
-}
 private func le64(_ b: [UInt8], _ o: Int) -> UInt64 { UInt64(le32(b, o)) | UInt64(le32(b, o + 4)) << 32 }
 private func be64(_ b: [UInt8], _ o: Int) -> UInt64 { UInt64(be32(b, o)) << 32 | UInt64(be32(b, o + 4)) }
-private func put32(_ b: inout [UInt8], _ o: Int, _ v: UInt32) {
+/// `v`, big-endian (HFS+), at `o`.
+private func putBE32(_ b: inout [UInt8], _ o: Int, _ v: UInt32) {
     b[o] = UInt8(v >> 24)
     b[o + 1] = UInt8(v >> 16 & 0xFF)
     b[o + 2] = UInt8(v >> 8 & 0xFF)

@@ -209,7 +209,7 @@ public enum GuestPackage {
             let rel = "System/Library/LaunchDaemons/" + j
             if (try? fm.attributesOfItem(atPath: at(rel).path)) != nil { try fm.removeItem(at: at(rel)) }
         }
-        let sha = SHA256.hash(data: try Data(contentsOf: itpack)).map { String(format: "%02x", $0) }.joined()
+        let sha = SHA256.hash(data: try Data(contentsOf: itpack)).hexString
         return (
             written,
             Record(

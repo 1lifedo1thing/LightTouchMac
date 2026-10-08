@@ -22,7 +22,7 @@ enum DecryptionCache {
         }
         var digest: String {
             get throws {
-                SHA256.hash(data: try DecryptionCache.encode(self)).map { String(format: "%02x", $0) }.joined()
+                SHA256.hash(data: try DecryptionCache.encode(self)).hexString
             }
         }
     }

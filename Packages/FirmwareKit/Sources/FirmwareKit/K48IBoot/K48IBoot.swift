@@ -283,14 +283,5 @@ public enum K48IBoot {
 
     // MARK: bytes
 
-    static func le32(_ b: [UInt8], _ o: Int) -> UInt32 {
-        UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24
-    }
     static func le32Bytes(_ v: UInt32) -> [UInt8] { (0..<4).map { UInt8(truncatingIfNeeded: v >> (8 * $0)) } }
-    static func put32(_ b: inout [UInt8], _ o: Int, _ v: UInt32) {
-        for k in 0..<4 { b[o + k] = UInt8(truncatingIfNeeded: v >> (8 * k)) }
-    }
-    static func crc(_ b: ArraySlice<UInt8>) -> UInt32 {
-        UInt32(b.withUnsafeBufferPointer { zlib.crc32(0, $0.baseAddress, uInt($0.count)) })
-    }
 }

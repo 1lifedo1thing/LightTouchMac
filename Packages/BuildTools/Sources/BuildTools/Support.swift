@@ -21,8 +21,6 @@ func sha256(_ file: URL) throws -> String {
     return hash.finalize().map { String(format: "%02x", $0) }.joined()
 }
 
-func sha256(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
-
 func readJSON(_ file: URL) throws -> [String: Any] {
     guard let object = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any] else {
         throw ToolError("\(file.path): not a JSON object")

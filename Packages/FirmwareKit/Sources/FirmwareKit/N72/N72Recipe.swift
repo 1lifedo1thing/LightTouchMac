@@ -590,7 +590,3 @@ extension N72Board {
             .map { $0.name.hasPrefix("_") ? String($0.name.dropFirst()) : $0.name }.sorted()
     }
 }
-
-private func le32(_ b: [UInt8], _ o: Int) -> UInt32 {
-    UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24
-}

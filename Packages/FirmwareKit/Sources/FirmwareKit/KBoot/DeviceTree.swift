@@ -105,9 +105,7 @@ public struct DeviceTree: Sendable {
 
     static func name32(_ s: String) -> Data { Data(Array(s.utf8).prefix(32)) + Data(count: max(0, 32 - s.utf8.count)) }
 
-    private func u32(_ at: Int) -> UInt32 {
-        data.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: at, as: UInt32.self)) }
-    }
+    private func u32(_ at: Int) -> UInt32 { data.withUnsafeBytes { $0.u32le(at) } }
 
     private mutating func reparse() throws {
         props = [:]

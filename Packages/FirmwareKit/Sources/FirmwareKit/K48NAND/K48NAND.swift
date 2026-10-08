@@ -42,17 +42,6 @@ public enum K48NAND {
         return out
     }
 
-    static func le32(_ b: [UInt8], _ o: Int) -> UInt32 {
-        UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24
-    }
-    static func put16(_ b: inout [UInt8], _ o: Int, _ v: Int) {
-        b[o] = UInt8(v & 0xFF)
-        b[o + 1] = UInt8((v >> 8) & 0xFF)
-    }
-    static func put32(_ b: inout [UInt8], _ o: Int, _ v: UInt32) {
-        for k in 0..<4 { b[o + k] = UInt8(truncatingIfNeeded: v >> (8 * k)) }
-    }
-
     // MARK: geometry
 
     public struct Geometry: Sendable {

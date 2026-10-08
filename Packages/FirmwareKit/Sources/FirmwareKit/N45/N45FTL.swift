@@ -36,7 +36,7 @@ public struct N45FTL {
         var newest: (usn: UInt32, vb: Int)?
         for vb in 0..<Self.virtualBlocks {
             guard let (_, spare) = read(vb * sb), (0x43...0x4F).contains(spare[9]) else { continue }
-            let usn = Self.le32(spare, 0)
+            let usn = le32(spare, 0)
             if newest == nil || usn < newest!.usn { newest = (usn, vb) }
         }
         guard let vb = newest?.vb else { throw FirmwareError(.unsupported, "\(base.path): no FTL context") }
@@ -47,7 +47,7 @@ public struct N45FTL {
             )
         }
         let cxt = last.data
-        guard (0..<3).contains(where: { Int(Self.le16(cxt, 0x312 + 2 * $0)) == vb }) else {
+        guard (0..<3).contains(where: { Int(le16(cxt, 0x312 + 2 * $0)) == vb }) else {
             throw FirmwareError(
                 .unsupported,
                 "FTL context in virtual block \(vb) does not list itself as a context block"
@@ -55,15 +55,15 @@ public struct N45FTL {
         }
         var map: [UInt16] = []
         for i in 0..<N45NAND.mapTables {
-            guard let page = read(Int(Self.le32(cxt, 0x38 + 4 * i)))?.data else {
+            guard let page = read(Int(le32(cxt, 0x38 + 4 * i)))?.data else {
                 throw FirmwareError(.unsupported, "FTL map page \(i) is missing")
             }
-            map += stride(from: 0, to: N45NAND.page, by: 2).map { Self.le16(page, $0) }
+            map += stride(from: 0, to: N45NAND.page, by: 2).map { le16(page, $0) }
         }
         var table: [UInt16: (UInt16, Int)] = [:]
         for slot in 0..<Self.logs {
-            let vbn = Self.le16(cxt, 0x1A4 + 20 * slot + 4)
-            let lbn = Self.le16(cxt, 0x1A4 + 20 * slot + 6)
+            let vbn = le16(cxt, 0x1A4 + 20 * slot + 4)
+            let lbn = le16(cxt, 0x1A4 + 20 * slot + 6)
             if vbn != 0xFFFF { table[lbn] = (vbn, slot) }
         }
         var offsets: [UInt16] = []
@@ -71,12 +71,12 @@ public struct N45FTL {
             let pages = (Self.logs * sb * 2 + N45NAND.page - 1) / N45NAND.page
             var raw: [UInt8] = []
             for i in 0..<pages {
-                guard let page = read(Int(Self.le32(cxt, 0x110 + 4 * i)))?.data else {
+                guard let page = read(Int(le32(cxt, 0x110 + 4 * i)))?.data else {
                     throw FirmwareError(.unsupported, "FTL log-offset page \(i) is missing")
                 }
                 raw += page
             }
-            offsets = stride(from: 0, to: Self.logs * sb * 2, by: 2).map { Self.le16(raw, $0) }
+            offsets = stride(from: 0, to: Self.logs * sb * 2, by: 2).map { le16(raw, $0) }
         }
         self.map = map
         self.logTable = table
@@ -120,7 +120,4 @@ public struct N45FTL {
         }
         return (Array(b[0..<N45NAND.page]), Array(b[N45NAND.page..<N45NAND.page + N45NAND.spare]))
     }
-
-    static func le16(_ b: [UInt8], _ o: Int) -> UInt16 { UInt16(b[o]) | UInt16(b[o + 1]) << 8 }
-    static func le32(_ b: [UInt8], _ o: Int) -> UInt32 { UInt32(le16(b, o)) | UInt32(le16(b, o + 2)) << 16 }
 }

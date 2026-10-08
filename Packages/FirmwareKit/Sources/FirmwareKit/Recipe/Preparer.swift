@@ -317,10 +317,10 @@ public enum Preparer {
             h.update(data: chunk)
             count?(chunk.count)
         }
-        return h.finalize().map { String(format: "%02x", $0) }.joined()
+        return h.finalize().hexString
     }
 
-    static func sha256(_ d: Data) -> String { SHA256.hash(data: d).map { String(format: "%02x", $0) }.joined() }
+    static func sha256(_ d: Data) -> String { SHA256.hash(data: d).hexString }
 
     /// fit.json's bytes (DeviceLock writes device.lock.json's). A value JSONSerialization cannot write (a Swift box, an Optional) is an error
     /// event, not an NSException abort with no event.
@@ -354,7 +354,7 @@ public enum Preparer {
         if let error = hashes.error { throw error }
         var listing = SHA256()
         for n in files { listing.update(data: Data("\(n) \(hashes.sha[n]!)\n".utf8)) }
-        return (hashes.sha, listing.finalize().map { String(format: "%02x", $0) }.joined())
+        return (hashes.sha, listing.finalize().hexString)
     }
 
     /// chmod -R a-w: children first, so a directory is still writable while its entries change.

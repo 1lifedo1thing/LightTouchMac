@@ -214,7 +214,7 @@ public enum FitCheck {
             {
                 m.b.withUnsafeBytes { b in
                     out.formUnion(
-                        MachO32.trieReexports(b, at: Int(u32(m.b, info.off + 40)), size: Int(u32(m.b, info.off + 44)))
+                        MachO32.trieReexports(b, at: Int(le32(m.b, info.off + 40)), size: Int(le32(m.b, info.off + 44)))
                     )
                 }
             }
@@ -370,16 +370,16 @@ struct MachO32 {
     let commands: [(cmd: UInt32, off: Int)]
 
     init?(_ b: [UInt8]) {
-        guard b.count >= 28, u32(b, 0) == 0xFEED_FACE, u32(b, 4) == 12 else { return nil }
+        guard b.count >= 28, le32(b, 0) == 0xFEED_FACE, le32(b, 4) == 12 else { return nil }
         self.b = b
-        filetype = u32(b, 12)
-        flags = u32(b, 24)
+        filetype = le32(b, 12)
+        flags = le32(b, 24)
         var cmds: [(UInt32, Int)] = []
         var off = 28
-        for _ in 0..<u32(b, 16) {
+        for _ in 0..<le32(b, 16) {
             guard off + 8 <= b.count else { return nil }
-            cmds.append((u32(b, off), off))
-            let size = Int(u32(b, off + 4))
+            cmds.append((le32(b, off), off))
+            let size = Int(le32(b, off + 4))
             guard size >= 8 else { return nil }
             off += size
         }
@@ -400,8 +400,8 @@ struct MachO32 {
                 guard off + size <= b.count else { continue }
                 slices.append((Int32(bitPattern: be32(b, o + 4)), Array(b[off..<off + size])))
             }
-        } else if b.count >= 12, u32(b, 4) == 12 {
-            slices.append((Int32(bitPattern: u32(b, 8)), b))
+        } else if b.count >= 12, le32(b, 4) == 12 {
+            slices.append((Int32(bitPattern: le32(b, 8)), b))
         }
         let runnable = arch == "armv7" ? [want, 6, 0] : [want, 0]
         for s in runnable {
@@ -423,7 +423,7 @@ struct MachO32 {
     }
 
     func name(_ off: Int) -> String {
-        let start = off + Int(u32(b, off + 8))
+        let start = off + Int(le32(b, off + 8))
         guard start < b.count else { return "" }
         let end = b[start...].firstIndex(of: 0) ?? b.count
         return String(decoding: b[start..<end], as: UTF8.self)
@@ -454,14 +454,14 @@ struct MachO32 {
 
     func symbols() -> [(name: String, type: UInt8, desc: UInt16)] {
         guard let st = commands.first(where: { $0.cmd == 2 }) else { return [] }
-        let symoff = Int(u32(b, st.off + 8))
-        let nsyms = Int(u32(b, st.off + 12))
-        let stroff = Int(u32(b, st.off + 16))
+        let symoff = Int(le32(b, st.off + 8))
+        let nsyms = Int(le32(b, st.off + 12))
+        let stroff = Int(le32(b, st.off + 16))
         var out: [(String, UInt8, UInt16)] = []
         for i in 0..<nsyms {
             let e = symoff + 12 * i
             guard e + 12 <= b.count else { break }
-            let s = stroff + Int(u32(b, e))
+            let s = stroff + Int(le32(b, e))
             guard s < b.count else { continue }
             let end = b[s...].firstIndex(of: 0) ?? b.count
             out.append(
@@ -470,11 +470,4 @@ struct MachO32 {
         }
         return out
     }
-}
-
-private func u32(_ b: [UInt8], _ o: Int) -> UInt32 {
-    UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24
-}
-private func be32(_ b: [UInt8], _ o: Int) -> UInt32 {
-    UInt32(b[o]) << 24 | UInt32(b[o + 1]) << 16 | UInt32(b[o + 2]) << 8 | UInt32(b[o + 3])
 }

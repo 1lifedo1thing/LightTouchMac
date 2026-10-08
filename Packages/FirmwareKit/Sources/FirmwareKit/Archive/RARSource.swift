@@ -83,7 +83,7 @@ public enum RARSource {
         }
         try out.close()
         if let failure { throw failure }
-        let inner = hash.finalize().map { String(format: "%02x", $0) }.joined()
+        let inner = hash.finalize().hexString
         guard source.bytes.map({ $0 == written }) ?? true, inner == sha1 else {
             throw FirmwareError(
                 .shaMismatch,

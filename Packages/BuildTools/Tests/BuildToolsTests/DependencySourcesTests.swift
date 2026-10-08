@@ -1,4 +1,5 @@
 import Foundation
+import ReleaseChecks
 import Testing
 
 @testable import BuildTools
@@ -22,7 +23,7 @@ struct DependencySourcesTests {
                     [
                         "name": "example", "groups": ["native"], "archive": "example-1.tar.gz",
                         "cache_aliases": ["example.tar.gz"], "url": "https://example.invalid/source.tar.gz",
-                        "sha256": sha256(content),
+                        "sha256": sha256Hex(content),
                     ]
                 ],
             ],
@@ -151,7 +152,7 @@ struct DependencySourcesTests {
     @Test func noteNamesTheArchiveAndPatches() throws {
         try fixture { _, _, manifest in
             let note = try DependencySources.note(manifest: manifest, name: "example", patches: ["a.patch"])
-            #expect(note.hasPrefix("example : https://example.invalid/source.tar.gz\nSHA256: \(sha256(content))\n"))
+            #expect(note.hasPrefix("example : https://example.invalid/source.tar.gz\nSHA256: \(sha256Hex(content))\n"))
             #expect(note.hasSuffix("Patches: a.patch (in this directory), applied with patch -p1"))
         }
     }

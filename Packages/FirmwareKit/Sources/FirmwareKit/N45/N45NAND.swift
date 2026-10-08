@@ -83,10 +83,6 @@ public enum N45NAND {
         for k in 0..<n { b[o + k] = UInt8(truncatingIfNeeded: v >> (8 * k)) }
     }
 
-    static func crc(_ b: ArraySlice<UInt8>) -> UInt32 {
-        UInt32(b.withUnsafeBufferPointer { zlib.crc32(0, $0.baseAddress, uInt($0.count)) })
-    }
-
     /// VFLMeta (Whimory VFLTypes.h: VFLCxt, then the version and two checksums) as VFL_Format leaves bank `bank`:
     /// the FTL context blocks, the four info blocks (35-38, the context in the first, eight copies on pages 0-7,
     /// so the next store goes to page 8), the reserved pool after them up to the FTL (39-200), and the BBT's own

@@ -50,7 +50,7 @@ public enum BundleHygiene {
 
     static func matches(_ name: String, _ pattern: String) -> Bool { fnmatch(pattern, name, 0) == 0 }
 
-    static func isMachO(_ url: URL) -> Bool {
+    public static func isMachO(_ url: URL) -> Bool {
         guard let handle = try? FileHandle(forReadingFrom: url), let head = try? handle.read(upToCount: 4) else {
             return false
         }
@@ -150,7 +150,7 @@ public enum BundleHygiene {
             let owners = binaries.filter { matches(name, $0.pattern) }
             if owners.isEmpty { found.append("unattributed Mach-O (add it to binaries with its licenses): \(name)") }
             for owner in owners { needed.formUnion(owner.components) }
-            let digest = sha256(data)
+            let digest = sha256Hex(data)
             if let first = seen[digest] {
                 found.append("ships twice: \(first) and \(name)")
             } else {
@@ -274,10 +274,5 @@ public enum BundleHygiene {
             }
         }
         return status == Z_STREAM_END
-    }
-
-    static func sha256(_ data: Data) -> String {
-        // CryptoKit's SHA256 (a hex digest is all this needs).
-        _sha256Hex(data)
     }
 }

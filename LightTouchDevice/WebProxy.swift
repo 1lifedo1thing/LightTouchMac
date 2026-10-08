@@ -772,7 +772,7 @@ final class Guest {
 
     func write(_ text: String) -> Bool { write(Data(text.utf8)) }
     func write(_ data: Data) -> Bool {
-        guard let tls else { return data.withUnsafeBytes { Self.writeAll(fd, $0) } }
+        guard let tls else { return Self.writeAll(fd, data) }
         return data.withUnsafeBytes { guest_tls_write(tls, $0.baseAddress!, $0.count) }
     }
 
@@ -782,16 +782,8 @@ final class Guest {
         close(fd)
     }
 
-    static func writeAll<C: Collection>(_ fd: Int32, _ bytes: C) -> Bool where C.Element == UInt8 {
-        var array = Array(bytes)
-        var offset = 0
-        while offset < array.count {
-            let n = array.withUnsafeMutableBytes { Darwin.write(fd, $0.baseAddress! + offset, $0.count - offset) }
-            if n < 0, errno == EINTR { continue }
-            guard n > 0 else { return false }
-            offset += n
-        }
-        return true
+    static func writeAll(_ fd: Int32, _ bytes: some DataProtocol) -> Bool {
+        (try? FileHandle(fileDescriptor: fd).write(contentsOf: bytes)) != nil
     }
 }
 

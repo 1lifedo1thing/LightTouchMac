@@ -152,8 +152,8 @@ struct K48NANDTests {
         for (i, (typ, lba, cnt)) in [(0xAF, 63, 700), (0xAE, 800, 4000), (0xAF, 763, 8)].enumerated() {
             let o = 0x1be + 16 * i
             mbr[o + 4] = UInt8(typ)
-            K48NAND.put32(&mbr, o + 8, UInt32(lba))
-            K48NAND.put32(&mbr, o + 12, UInt32(cnt))
+            put32(&mbr, o + 8, UInt32(lba))
+            put32(&mbr, o + 12, UInt32(cnt))
         }
         var rng = SystemRandomNumberGenerator()
         var sys = (0..<ps * 700).map { _ in UInt8.random(in: 0...255, using: &rng) }

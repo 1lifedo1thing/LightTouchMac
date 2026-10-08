@@ -389,7 +389,7 @@ public actor StorageGeneration {
         }
         return object
     }
-    static func hash(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+    static func hash(_ data: Data) -> String { Preparer.sha256(data) }
     static func sync(_ url: URL) throws {
         let fd = open(url.path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
         guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }

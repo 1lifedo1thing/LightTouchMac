@@ -37,17 +37,7 @@ public nonisolated final class RotatingLog: @unchecked Sendable {
                 try Self.rotate(url)
                 try openFile()
             }
-            try bounded.withUnsafeBytes { buffer in
-                var offset = 0
-                while offset < buffer.count {
-                    let n = write(fd, buffer.baseAddress! + offset, buffer.count - offset)
-                    if n < 0 {
-                        if errno == EINTR { continue }
-                        throw StorageLocations.posixError()
-                    }
-                    offset += n
-                }
-            }
+            try FileHandle(fileDescriptor: fd).write(contentsOf: bounded)
             size += bounded.count
         } catch {
             closeFile()

@@ -85,10 +85,6 @@ public enum N45NOR {
         b.replaceSubrange(0x3E0..<0x400, with: S5L8900UID.img2VerifyEncrypt(headerHash))
         return b
     }
-
-    static func crc(_ b: ArraySlice<UInt8>) -> UInt32 {
-        UInt32(b.withUnsafeBufferPointer { zlib.crc32(0, $0.baseAddress, uInt($0.count)) })
-    }
 }
 
 /// The emulated S5L8900 UID engine's convention (see N45NOR), for the IMG2 verify key only.
@@ -199,12 +195,4 @@ struct AESCore {
         }
         return out
     }
-}
-
-private func put32(_ b: inout [UInt8], _ o: Int, _ v: UInt32) {
-    for k in 0..<4 { b[o + k] = UInt8(truncatingIfNeeded: v >> (8 * k)) }
-}
-
-private func le32(_ b: [UInt8], _ o: Int) -> UInt32 {
-    UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24
 }
