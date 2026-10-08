@@ -61,8 +61,7 @@ struct BundleHygieneTests {
             }
             try guest(["guest-tools/it_agent": stripped + Data("a".utf8)], into: app)
             for directory in [
-                "usbmuxd", "glib", "proxy-libintl", "pcre2", "libslirp", "libimobiledevice-glue", "libplist", "qemu",
-                "inetcat", "libusbmuxd",
+                "usbmuxd", "libimobiledevice-glue", "libplist", "qemu", "inetcat", "libusbmuxd",
             ] {
                 try write(Data("license text".utf8), "Contents/Resources/licenses/\(directory)/COPYING", in: app)
                 try write(
@@ -74,7 +73,7 @@ struct BundleHygieneTests {
             try write(Data("MIT".utf8), "Contents/Resources/licenses/swift/Example/LICENSE.txt", in: app)
             try write(
                 Data(
-                    "Licenses: usbmuxd, GLib, proxy-libintl, PCRE2, libslirp, libimobiledevice-glue, libplist, QEMU, inetcat, libusbmuxd"
+                    "Licenses: usbmuxd, libimobiledevice-glue, libplist, QEMU, inetcat, libusbmuxd"
                         .utf8
                 ),
                 "Contents/Resources/Help.txt",
@@ -134,14 +133,14 @@ struct BundleHygieneTests {
 
             var broken = try f.bundle("no-license")
             try FileManager.default.removeItem(
-                at: broken.appendingPathComponent("Contents/Resources/licenses/libslirp/COPYING")
+                at: broken.appendingPathComponent("Contents/Resources/licenses/libimobiledevice-glue/COPYING")
             )
-            try expect(broken, "no license text for libslirp")
+            try expect(broken, "no license text for libimobiledevice-glue")
             broken = try f.bundle("no-source")
             try FileManager.default.removeItem(
-                at: broken.appendingPathComponent("Contents/Resources/licenses/glib/SOURCE.txt")
+                at: broken.appendingPathComponent("Contents/Resources/licenses/usbmuxd/SOURCE.txt")
             )
-            try expect(broken, "no SOURCE.txt naming the source of glib")
+            try expect(broken, "no SOURCE.txt naming the source of usbmuxd")
             broken = try f.bundle("local-path")
             try f.write(
                 Data(#"{"path": "/Users/someone/Developer/qemu-ios"}"#.utf8),
@@ -196,7 +195,7 @@ struct BundleHygieneTests {
             try expect(broken, "no license text for the Swift package example")
             broken = try f.bundle("help")
             try f.write(Data("Licenses: usbmuxd".utf8), "Contents/Resources/Help.txt", in: broken)
-            try expect(broken, "Help.txt does not name GLib")
+            try expect(broken, "Help.txt does not name libimobiledevice-glue")
         }
     }
 }

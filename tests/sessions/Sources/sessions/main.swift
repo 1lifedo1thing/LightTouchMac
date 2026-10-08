@@ -94,12 +94,17 @@ struct ProxyTrustCheck: ParsableCommand {
 struct LocalNetworkCheck: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "local-network",
-        abstract: "Attach to Local Network off: internet yes, the Mac's LAN no, until turned on (an n72 base)."
+        abstract: """
+            Attach to Local Network off: internet yes, the Mac's LAN no, until turned on (an n72 or k48 base); usbmuxd \
+            opens no network socket.
+            """
     )
     @Argument var base: String
     @Option var internet = "http://example.com/"
     @Option var dns = "http://example/"
     @Option var domain = "com"
+    @Flag(help: "Boot wifi0 restricted (5.x Setup offline): no internet, DNS or LAN, even once turned on.")
+    var restricted = false
     @OptionGroup var inputs: Inputs
 
     func run() { localNetworkCheck(self) }

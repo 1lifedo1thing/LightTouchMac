@@ -291,7 +291,6 @@ final class FakeSession: MachineHost, ConnectionHost, ActivationServices, Readin
     func forgetConnectionWork() { steps.append("forgetConnectionWork") }
     func forgetGuestFacts() { steps.append("forgetGuestFacts") }
     func forgetReachability() { steps.append("forgetReachability") }
-    func forgetEthlink() { steps.append("forgetEthlink") }
     func resetRotation() { steps.append("resetRotation") }
     func startTimeZoneSync() { steps.append("timeZone") }
     func startForegroundWatch() { steps.append("foreground") }

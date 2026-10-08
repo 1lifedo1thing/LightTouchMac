@@ -112,7 +112,7 @@ struct BootCycleTests {
             #expect(
                 cold.steps == [
                     "publish", "reconnectUSB", "forgetConnectionWork", "forgetGuestFacts", "forgetReachability",
-                    "forgetEthlink", "resetRotation", "timeZone",
+                    "resetRotation", "timeZone",
                 ],
                 "\(cold.steps)"
             )

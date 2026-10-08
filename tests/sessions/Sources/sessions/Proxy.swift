@@ -226,15 +226,18 @@ final class LANProbe: @unchecked Sendable {
     func stop() { close(fd) }
 }
 
-/// `sessions local-network BASE` (an n72 base: its PAC sends private addresses DIRECT): Attach to Local Network is off
+/// `sessions local-network BASE [--restricted]` (an n72 or k48 base: its PAC sends private addresses DIRECT): Attach to Local Network is off
 /// by default. One iPod boots as the app does (the helper's web proxy on the wifi guestfwd, slirp's lan=off); a listener
 /// on this Mac's LAN address stands in for a LAN host. The guest's httpget reaches the internet (through the proxy) and
 /// its own DNS while off, but not the listener; once `.netLocalNetwork(true)` it does. A socket shim in the driver,
 /// usbmuxd, the services worker and a copy of the helper signed without the hardened runtime logs every destination:
-/// while off, none may be one macOS counts as the local network (that is what raises its Local Network prompt).
+/// while off, none may be one macOS counts as the local network (that is what raises its Local Network prompt), and
+/// usbmuxd may open none at all (the iPad's USB Ethernet bridge once gave the guest its own unfiltered slirp there).
+/// --restricted boots wifi0 restricted (5.x Setup offline): no internet, no DNS, and no LAN even once turned on.
 func localNetworkCheck(_ args: LocalNetworkCheck) -> Never {
     let base = Base(args.base)
-    guard base.board == "n72ap" else { die("local-network boots an n72ap base") }
+    guard ["n72ap", "k48ap"].contains(base.board) else { die("local-network boots an n72ap or k48ap base") }
+    let restricted = args.restricted
     guard
         let lanIP = ["en0", "en1"].lazy.map({
             output("/usr/sbin/ipconfig", ["getifaddr", $0]).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -285,8 +288,12 @@ func localNetworkCheck(_ args: LocalNetworkCheck) -> Never {
 
     var config = driverConfig(t, work: work)
     config["timeout"] = 600
+    if base.driverBoard == "ipad" {
+        config["ipadItpack"] = tools.guest.appendingPathComponent("guest-tools/armv7.itpack").path
+        config["ipadBase"] = base.url.path
+    }
     config["proxy"] = [
-        "board": "ipod", "base": base.url.path,
+        "board": base.driverBoard, "base": base.url.path, "restricted": restricted,
         "itpack": tools.guest.appendingPathComponent("guest-tools/armv6.itpack").path,
         "httpget": httpget(args.inputs).path, "url": "", "lan": lanURL, "internet": args.internet,
         "dns": args.dns, "domain": args.domain,
@@ -305,14 +312,18 @@ func localNetworkCheck(_ args: LocalNetworkCheck) -> Never {
     let r = Report()
     let off = got("lan-off")
     let on = got("lan-on")
-    r.check(got("internet").hasPrefix("HTTP 200"), "internet through the proxy: \(clip(got("internet"), 60))")
+    r.check(
+        got("internet").hasPrefix(restricted ? "ERROR" : "HTTP 200"),
+        "\(restricted ? "no internet while restricted" : "internet through the proxy"): \(clip(got("internet"), 60))"
+    )
     r.check(off.hasPrefix("ERROR"), "the LAN refused while off: \(clip(off, 60))")
     r.check(
-        on.hasPrefix("HTTP 200") && probe.hits == ["/lan-probe"],
-        "the LAN reached once turned on: \(clip(on, 60)), the listener saw \(probe.hits)"
+        restricted
+            ? on.hasPrefix("ERROR") && probe.hits.isEmpty : on.hasPrefix("HTTP 200") && probe.hits == ["/lan-probe"],
+        "the LAN \(restricted ? "still refused" : "reached") once turned on: \(clip(on, 60)), the listener saw \(probe.hits)"
     )
     r.check(
-        got("dns").hasPrefix("HTTP "),
+        got("dns").hasPrefix(restricted ? "ERROR" : "HTTP "),
         "the guest's own DNS while off (\(args.dns) DIRECT): \(clip(got("dns"), 60))"
     )
     let lines = ((try? String(contentsOf: sockets, encoding: .utf8)) ?? "").split(separator: "\n").map {
@@ -332,12 +343,19 @@ func localNetworkCheck(_ args: LocalNetworkCheck) -> Never {
         leaks.isEmpty,
         "nothing sent to the local network while off: \(leaks.isEmpty ? "none" : leaks.joined(separator: "; "))"
     )
+    let usbmuxd = Set(lines.filter { $0[1] == "usbmuxd" }.map { $0[1...].joined(separator: " ") }).sorted()
     r.check(
-        lines.contains {
-            flip != nil && (Double($0[0]) ?? 0) >= flip! && $0[3] == lanIP && $0[4] == String(probe.port)
-        },
-        "the helper connected to the LAN listener once turned on"
+        usbmuxd.isEmpty,
+        "usbmuxd opened no network socket: \(usbmuxd.isEmpty ? "none" : usbmuxd.joined(separator: "; "))"
     )
+    if !restricted {
+        r.check(
+            lines.contains {
+                flip != nil && (Double($0[0]) ?? 0) >= flip! && $0[3] == lanIP && $0[4] == String(probe.port)
+            },
+            "the helper connected to the LAN listener once turned on"
+        )
+    }
     r.check(e.any("done") && status == 0, "driver finished (exit \(status.map(String.init) ?? "timeout"))")
     finish(r, work: work)
 }

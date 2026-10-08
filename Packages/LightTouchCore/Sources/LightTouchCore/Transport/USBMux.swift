@@ -45,7 +45,7 @@ import System
 
     /// The fork ships in the bundle; a dev build falls back to the checkout
     /// (see qemu-ios' usbmuxd-qemu). LTM_USBMUXD names another build for a Debug
-    /// run, e.g. the ipad1 branch's for iPad USB Ethernet.
+    /// run.
     private static let root = "\(NSHomeDirectory())/Developer/usbmuxd-qemu"
     private static var binary: String {
         #if DEBUG

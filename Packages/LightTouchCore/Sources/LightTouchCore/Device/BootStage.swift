@@ -10,7 +10,7 @@ public nonisolated enum BootStage: Int, Comparable, Sendable {
     case loading
     /// The kernel printed its banner (serial, with the kernel console on).
     case kernel
-    /// iOS userland runs: launchd on serial, the guest tools' loader or agent, it_ethlink.
+    /// iOS userland runs: launchd on serial, the guest tools' loader or agent.
     case system
     /// The USB bridge sees the device; lockdown and the Home screen are next.
     case usb

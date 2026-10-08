@@ -27,7 +27,7 @@ public enum BundleHygiene {
         ("Contents/MacOS/LightTouchServices", []),
         ("Contents/MacOS/inetcat", ["inetcat", "libusbmuxd", "libimobiledevice-glue", "libplist"]),
         ("Contents/MacOS/firmwarekit", []), ("Contents/MacOS/ipod-helper", ["qemu"]),
-        ("Contents/MacOS/usbmuxd", ["usbmuxd", "glib", "proxy-libintl", "pcre2", "libslirp", "libimobiledevice-glue"]),
+        ("Contents/MacOS/usbmuxd", ["usbmuxd", "libimobiledevice-glue"]),
         ("Contents/MacOS/iBoot32Patcher", ["iBoot32Patcher"]),
         (
             "Contents/Frameworks/libqemu-arm.dylib",

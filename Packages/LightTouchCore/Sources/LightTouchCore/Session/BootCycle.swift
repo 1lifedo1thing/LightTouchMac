@@ -37,7 +37,6 @@ public protocol BootCycleHost: AnyObject {
     func forgetGuestFacts()
     /// Reachability unknown again, and since when.
     func forgetReachability()
-    func forgetEthlink()
     /// The guest cold-boots portrait, so the tracked orientation (and the iPad's accelerometer) follows it back.
     /// Leaving it at 90/270 left DisplayView posing the shell sideways while the guest published a portrait buffer.
     func resetRotation()
@@ -146,7 +145,6 @@ public final class BootCycle {
         host.forgetConnectionWork()
         host.forgetGuestFacts()
         host.forgetReachability()
-        host.forgetEthlink()
         host.resetRotation()
         host.state = .booting
         host.startTimeZoneSync()

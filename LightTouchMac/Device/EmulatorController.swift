@@ -410,14 +410,11 @@ final class EmulatorController {
         do {
             serialCapture = try SerialLogCapture(
                 url: instance.paths.logs.appendingPathComponent("serial.log"),
-                watch: [BootWatch.recoveryMarker, BootWatch.ethlinkMarker] + BootStage.serialMarkers.keys
+                watch: [BootWatch.recoveryMarker] + BootStage.serialMarkers.keys
             ) { [weak self] phrase in
                 Task { @MainActor in
                     guard let self else { return }
                     switch phrase {
-                    case BootWatch.ethlinkMarker:
-                        self.ethlinkUp = true
-                        self.noteBoot(.guestTools)
                     case BootWatch.recoveryMarker:
                         self.inRecovery = true
                         self.abortBoot(BootWatch.recoveryReason(self.profile))
@@ -712,26 +709,14 @@ final class EmulatorController {
     var guestToolsState: GuestPackage.Status {
         if inRecovery { return .recovery }
         if !bootFinished { return .notBooted }
-        let stale = agentStaleSince.map { Date().timeIntervalSince($0) > 60 } ?? false
-        let reachable = reachableSince.map { Date().timeIntervalSince($0) > 60 } ?? false
-        // The iPad has no agent: it_ethlink's serial line is its sign of life once a package carrying it runs.
-        let ethlinkMissing =
-            !hasGuestTools
-            && GuestPackage.ethlinkSilent(
-                offer: guestOffer,
-                reportedSerial: status?.guestPackage?.serial,
-                ethlinkUp: ethlinkUp,
-                reachableForAMinute: reachable
-            )
-        if hasGuestTools ? stale : ethlinkMissing { return .notResponding }
+        // The agent's heartbeat, on any board whose guest package runs it (the iPad's too).
+        if let since = agentStaleSince, Date().timeIntervalSince(since) > 60 { return .notResponding }
         return guestToolsStatus
     }
     /// Set by the status poll: when the agent last went stale (2), nil while it answers.
     @ObservationIgnored private var agentStaleSince: Date?
     /// When lockdown first answered this boot.
     @ObservationIgnored private var reachableSince: Date?
-    /// it_ethlink reported LinkStatus 0 -> 1 on serial (the iPad's guest package).
-    private(set) var ethlinkUp = false
     /// This boot ends in Setup, not the Home screen: iOS 5 or later on an overlay that hasn't finished it.
     private(set) var expectsSetup = false
     private var inRecovery = false
@@ -935,7 +920,6 @@ final class EmulatorController {
         deviceReachable = nil
         reachableSince = nil
     }
-    func forgetEthlink() { ethlinkUp = false }
 
     func startForegroundWatch() { foreground.start() }
     var hasPendingInstallWork: Bool { AppInstaller.hasPendingWork(for: instance.id) }

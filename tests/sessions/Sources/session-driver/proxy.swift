@@ -31,6 +31,8 @@ struct ProxyConfig: Decodable {
     /// with the netdev's `domainname` completing the name.
     var dns: String?
     var domain: String?
+    /// Boot with wifi0 restricted (`sessions local-network --restricted`).
+    var restricted: Bool?
 }
 
 /// The host the proof fetches ask for: one that cannot resolve (RFC 6761 `.invalid`), so only the proxy answers it, with
@@ -47,6 +49,7 @@ nonisolated enum ProxyProbe {
 @MainActor func runProxy(_ p: ProxyConfig) async {
     let ipad = p.board == "ipad"
     let d = Device(name: p.board, profile: ipad ? .k48 : .n72, base: URL(fileURLWithPath: p.base))
+    d.restricted = p.restricted ?? false
     // The proxy's files, as WebProxyConfiguration keeps them per device: routing (direct) and the CA.
     let proxyDir = work.appendingPathComponent("\(p.board)/proxy")
     var routing = WebProxyConfiguration()

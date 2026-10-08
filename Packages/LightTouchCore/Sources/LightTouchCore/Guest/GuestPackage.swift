@@ -28,9 +28,6 @@ public nonisolated enum GuestPackage {
         /// 0 when the offer asks for the built-in (seed) package.
         public var serial: Int64
         public var glHook: Bool
-        /// The package runs it_ethlink (the iPad's), whose serial line is the boot's sign of life. 1.x's
-        /// n45-ios1 and the iPod's packages run none, so nothing there can be "not responding".
-        public var ethlink = false
     }
 
     /// The GL wire range the host serves (QC_GLES_HELLO; 0 is no hello yet or no shim, 1 the name-keyed wire).
@@ -140,19 +137,8 @@ public nonisolated enum GuestPackage {
             bundled: manifest.serial,
             version: offeredVersion,
             serial: offeredSerial,
-            glHook: !builtIn && manifest.hooks.contains { Manifest.glTargets.contains($0.target) },
-            ethlink: manifest.jobs.contains { $0.hasSuffix("/com.qemu.it-ethlink.plist") }
+            glHook: !builtIn && manifest.hooks.contains { Manifest.glTargets.contains($0.target) }
         )
-    }
-
-    /// "Not responding" for a board without an agent: the offered package runs it_ethlink, the loader reported it
-    /// installed, lockdown has answered for a minute, and it_ethlink's link line never came. Never for a package
-    /// that carries no it_ethlink (1.x's n45-ios1), which has nothing to answer.
-    public static func ethlinkSilent(offer: Offer?, reportedSerial: Int64?, ethlinkUp: Bool, reachableForAMinute: Bool)
-        -> Bool
-    {
-        guard let offer, offer.serial > 0, offer.ethlink else { return false }
-        return (reportedSerial ?? 0) > 0 && !ethlinkUp && reachableForAMinute
     }
 
     /// The preparer's record (device.lock.json `guest_package`).
@@ -222,7 +208,7 @@ public nonisolated enum GuestPackage {
         case reverted(serial: Int64, why: ReportCode)
         /// Older than the bundled package, or a GL protocol the host doesn't serve.
         case outOfDate
-        /// The agent went stale for over a minute, or the iPad's it_ethlink never came up.
+        /// The agent went stale for over a minute.
         case notResponding
         /// iBoot entered recovery mode.
         case recovery

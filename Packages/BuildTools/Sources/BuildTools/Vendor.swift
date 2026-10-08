@@ -52,7 +52,7 @@ public struct Vendor {
     // What the app and firmwarekit look for in the guest export (qemu-ios contrib/export-guest-artifacts.sh).
     static let ipodTools = ["itmedia", "itphoto"]
     static let guestTools = [
-        "it_pbd", "it_ethlink", "it_prefs", "it_msmquiet.dylib", "it_seal", "it_keybag", "libappsync.dylib",
+        "it_pbd", "it_prefs", "it_msmquiet.dylib", "it_seal", "it_keybag", "libappsync.dylib",
         "OpenGLES", "gles-names.h", "OpenGLES-1x", "opengles-1x.exports", "armv6.itpack", "armv7.itpack",
         "sblaunch", "sbdlicon", "it_agent", "it_typein.dylib", "it_keybag-armv6",
     ]

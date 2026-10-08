@@ -12,7 +12,7 @@
   "usbmuxd": {
     "repository": "https://github.com/samhenrigold/usbmuxd",
     "branch": "idle-poll",
-    "commit": "332bf6c586a2f7d6ab2a92b2bfb7f99d5406d635",
+    "commit": "5cb90897479b9021a69db9698fea071ef7b2eceb",
     "path": "~/Developer/usbmuxd-qemu/usbmuxd",
     "provides": "the usbmuxd the bundle ships: real ZLPs after max-packet-multiple writes, 50 ms polling once idle for 1 s, complete EP0 control transfers across NAK pauses, per-transfer log lines only at -v -v, and both listeners on owner-only Unix sockets"
   },

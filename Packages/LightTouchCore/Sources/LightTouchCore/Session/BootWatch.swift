@@ -30,8 +30,6 @@ public protocol BootWatchHost: AnyObject {
 
     /// iBoot's last words before it waits for a restore.
     public static let recoveryMarker = "Entering recovery mode"
-    /// it_ethlink (the iPad's guest package) bringing the USB Ethernet link up.
-    public static let ethlinkMarker = "it_ethlink: LinkStatus 0 -> 1"
     public static func recoveryReason(_ profile: Board) -> String {
         "The \(profile.shortName) started in recovery mode. Delete it and prepare it again."
     }

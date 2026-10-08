@@ -158,6 +158,8 @@ extension String {
     var webProxy: WebProxyEndpoint?
     /// The device's Attach to Local Network, off as the app's default (BootRecipe.wifiNetdev's lan=off).
     var localNetwork = false
+    /// wifi0 under slirp's restrict from boot (5.x Setup offline): only the guestfwd answers.
+    var restricted = false
     init(name: String, profile: Board, base: URL) {
         self.name = name
         self.profile = profile
@@ -209,9 +211,13 @@ extension String {
             let netdev =
                 profile.isKBoot
                 ? netdevExtra.map {
-                    BootRecipe.wifiNetdev(guestForward: $0, restricted: false, localNetwork: localNetwork)
+                    BootRecipe.wifiNetdev(guestForward: $0, restricted: restricted, localNetwork: localNetwork)
                 }
-                : BootRecipe.wifiNetdev(guestForward: netdevExtra ?? "", restricted: false, localNetwork: localNetwork)
+                : BootRecipe.wifiNetdev(
+                    guestForward: netdevExtra ?? "",
+                    restricted: restricted,
+                    localNetwork: localNetwork
+                )
             return try prepared.configuration(
                 hardware: hardware,
                 bootArgs: "amfi_allow_any_signature=1 cs_enforcement_disable=1",

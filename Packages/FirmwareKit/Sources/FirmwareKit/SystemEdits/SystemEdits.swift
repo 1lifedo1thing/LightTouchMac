@@ -10,7 +10,7 @@
 //               it_msmquiet; BTServer Disabled (unless [bluetooth]); lockdownd activated (Activation); the guest-package loader and
 //               seed package from armv7.itpack (GuestPackage.seed), whose jobs it_boot loads.
 //   data.img    fresh journaled HFSX "Data" (sparse) seeded with the system volume's /private/var skeleton
-//               (+ [usb_net] the en1 DHCP service, [web_proxy] the en0 AirPort service with the PAC), owners
+//               (+ [web_proxy] the en0 AirPort service with the PAC), owners
 //               from the source catalog, else root / mobile by rule.
 //
 // Owners: the mount is noowners, so every file written lands as the host user; the catalog records are
@@ -28,7 +28,7 @@ import Foundation
 public enum SystemEdits {
     /// The recipe options SystemEdits reads (FirmwareEntry.Recipe.options), plus bake's switches.
     public struct Options: Sendable, Equatable {
-        public var caOGL = true, appsync = false, webProxy = true, usbNet = true
+        public var caOGL = true, appsync = false, webProxy = true
         /// data_journal false: an unjournaled data volume (the iPod touch 3G's 3.1.x mount_hfs refuses the journaled
         /// one the Mac makes with EINVAL).
         public var dataJournal = true
@@ -52,7 +52,6 @@ public enum SystemEdits {
             caOGL = o["ca_ogl"] ?? true
             appsync = o["appsync"] ?? false
             webProxy = o["web_proxy"] ?? true
-            usbNet = o["usb_net"] ?? true
             glTest = o["gl_test"] ?? false
             dataJournal = o["data_journal"] ?? true
             bluetooth = o["bluetooth"] ?? false
@@ -65,14 +64,13 @@ public enum SystemEdits {
     public enum Helpers {
         /// guest tool -> (install path, mode); ipad1_rootfs.TOOLS (+ SEAL_TOOL, GLTEST_TOOL).
         public static let tools: [(name: String, path: String, mode: mode_t)] = [
-            ("it_pbd", "usr/local/bin/it_pbd", 0o755), ("it_ethlink", "usr/local/bin/it_ethlink", 0o755),
-            ("it_prefs", "usr/local/bin/it_prefs", 0o755),
+            ("it_pbd", "usr/local/bin/it_pbd", 0o755), ("it_prefs", "usr/local/bin/it_prefs", 0o755),
             ("it_msmquiet.dylib", "usr/local/lib/it_msmquiet.dylib", 0o755),
         ]
         public static let seal = ("it_seal", "usr/local/bin/it_seal", mode_t(0o755))
         public static let glTest = ("it_gltest", "usr/local/bin/it_gltest", mode_t(0o755))
         /// launchd job file names baked into System/Library/LaunchDaemons (mode 0644). The helpers' own jobs
-        /// (it-pbd, it-ethlink, it-prefs) are the seed package's, loaded by it_boot.
+        /// (it-pbd, it-prefs) are the seed package's, loaded by it_boot.
         public static let jobs: [String] = []
         /// The guest packages and the loader (qemu-ios contrib/guest-package/build.sh), one per arch.
         public static let itpack = "armv7.itpack"
@@ -252,13 +250,6 @@ public enum SystemEdits {
             } else {
                 fit.notInstalled("guest helpers", "guest_tools off")
             }
-            if o.usbNet {
-                try fit.check(
-                    FitCheck.usbEthernet(fw, path: usbEthPath),
-                    required: false,
-                    outcome: "kept: the link stays down and en1 unpinned"
-                )
-            }
             for t in tools where t.name != msm.name {
                 try fit.check(
                     FitCheck.loads(pick(t.name), Data(contentsOf: try helper(pick(t.name))), on: fw),
@@ -382,12 +373,6 @@ public enum SystemEdits {
         log("data volume (\(dataBytes / 1_000_000) MB, sparse) seeded from /private/var")
         defer { try? fm.removeItem(at: skeleton) }
         let sc = skeleton.appendingPathComponent("preferences/SystemConfiguration")
-        // USB Ethernet first, then Wi-Fi: each moves its service to the head of the order, and the Wi-Fi
-        // service (carrying the PAC) must stay primary.
-        if o.usbNet {
-            try seedPlist(sc.appendingPathComponent("NetworkInterfaces.plist"), usbNetInterfaces)
-            try seedPlist(sc.appendingPathComponent("preferences.plist"), usbNetPrefs)
-        }
         if o.webProxy { try seedPlist(sc.appendingPathComponent("preferences.plist"), wifiProxyPrefs) }
         if o.dated {  // timed's own domain (it runs as mobile)
             try seedPlist(skeleton.appendingPathComponent("mobile/Library/Preferences/com.apple.timed.plist")) { d in
@@ -624,7 +609,7 @@ public enum SystemEdits {
         chmod(dir, st.st_mode & 0o7777)
     }
 
-    // MARK: plist edits (ipad1_rootfs.springboard_env, dyld_insert, usb_net_*, wifi_proxy_prefs)
+    // MARK: plist edits (ipad1_rootfs.springboard_env, dyld_insert, wifi_proxy_prefs)
 
     /// d[k] as a mutable dictionary, inserting `def` when absent (Python's setdefault).
     @discardableResult
@@ -650,29 +635,8 @@ public enum SystemEdits {
         env["DYLD_INSERT_LIBRARIES"] = libs.joined(separator: ":")
     }
 
-    static let usbEthService = "4C54E7A1-0B5E-4D6B-9A1C-5553424E4554", netSet = "4C54E7A1-0B5E-4D6B-9A1C-534554000001"
+    static let netSet = "4C54E7A1-0B5E-4D6B-9A1C-534554000001"
     static let wifiService = "4C54E7A1-0B5E-4D6B-9A1C-574946490000"
-    static let usbEthPath =
-        "IOService:/AppleARMPE/arm-io@BFC00000/AppleS5L8930XIO/usb-complex@3F108000/"
-        + "AppleS5L8930XUSBArbitrator/usb-device/AppleSynopsysOTGDevice/IOUSBDeviceInterface@5/AppleUSBEthernetDevice/IOEthernetInterface"
-
-    /// NetworkInterfaces.plist: the USB Ethernet interface pinned to en1.
-    static func usbNetInterfaces(_ d: NSMutableDictionary) {
-        let usb: NSDictionary = [
-            "Active": true, "BSD Name": "en1", "IOBuiltin": false, "IOInterfaceType": 6, "IOInterfaceUnit": 1,
-            "IOMACAddress": Data([0x0a, 0x0b, 0xad, 0x0b, 0xab, 0xe0]), "SCNetworkInterfaceType": "Ethernet",
-            "IOPathMatch": usbEthPath,
-        ]
-        let ifs =
-            ((d["Interfaces"] as? [Any]) ?? []).filter {
-                (($0 as? NSDictionary)?["IOPathMatch"] as? String) != usbEthPath
-            } + [usb]
-        let unit = { (i: Any) in ((i as? NSDictionary)?["IOInterfaceUnit"] as? NSNumber)?.intValue ?? 0 }
-        d["Interfaces"] = ifs.enumerated().sorted { (unit($0.element), $0.offset) < (unit($1.element), $1.offset) }.map(
-            \.element
-        )
-    }
-
     /// The current set's Network dict, creating CurrentSet / Sets / the set as Python's setdefault chain does.
     static func currentNetwork(_ d: NSMutableDictionary) -> NSMutableDictionary {
         if d["CurrentSet"] == nil { d["CurrentSet"] = "/Sets/" + netSet }
@@ -683,20 +647,6 @@ public enum SystemEdits {
             dict(dict(d, "Sets"), cur, NSMutableDictionary(dictionary: ["UserDefinedName": "Automatic"])),
             "Network"
         )
-    }
-
-    /// preferences.plist: a DHCP service on en1, first in the current set's service order.
-    static func usbNetPrefs(_ d: NSMutableDictionary) {
-        dict(d, "NetworkServices")[usbEthService] =
-            [
-                "Interface": [
-                    "DeviceName": "en1", "Hardware": "Ethernet", "Type": "Ethernet", "UserDefinedName": "USB Ethernet",
-                ],
-                "IPv4": ["ConfigMethod": "DHCP"], "DNS": [String: Any](), "UserDefinedName": "USB Ethernet",
-            ] as NSDictionary
-        let net = currentNetwork(d)
-        dict(net, "Service")[usbEthService] = ["__LINK__": "/NetworkServices/" + usbEthService]
-        moveFirst(dict(dict(net, "Global"), "IPv4"), "ServiceOrder", usbEthService)
     }
 
     /// preferences.plist: the AirPort service on en0 (the unit's own shape) carrying the proxy PAC, first.

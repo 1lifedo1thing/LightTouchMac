@@ -25,8 +25,8 @@ enum K48Oracle {
             m[t] = guest.appendingPathComponent(t)
         }
         for (j, d) in [
-            ("com.qemu.it-pbd.plist", "it-pasteboard"), ("com.qemu.it-ethlink.plist", "it-ethlink"),
-            ("com.qemu.it-prefs.plist", "it-prefs"), ("com.qemu.it-seal.plist", "it-seal"),
+            ("com.qemu.it-pbd.plist", "it-pasteboard"), ("com.qemu.it-prefs.plist", "it-prefs"),
+            ("com.qemu.it-seal.plist", "it-seal"),
             ("com.qemu.it-gltest.plist", "it-gltest"),
         ] {
             m[j] = contrib.appendingPathComponent("\(d)/\(j)")
@@ -105,17 +105,15 @@ enum K48Oracle {
                 options: .mutableContainersAndLeaves,
                 format: nil
             ) as! NSMutableDictionary
-        SystemEdits.usbNetPrefs(d)
-        SystemEdits.usbNetPrefs(d)
         SystemEdits.wifiProxyPrefs(d)
         SystemEdits.wifiProxyPrefs(d)
         let net = ((d["Sets"] as! NSDictionary)["S"] as! NSDictionary)["Network"] as! NSDictionary
         #expect(
             ((net["Global"] as! NSDictionary)["IPv4"] as! NSDictionary)["ServiceOrder"] as! [String]
-                == [SystemEdits.wifiService, SystemEdits.usbEthService, "W"]
+                == [SystemEdits.wifiService, "W"]
         )
         let fresh = NSMutableDictionary()
-        SystemEdits.usbNetPrefs(fresh)
+        SystemEdits.wifiProxyPrefs(fresh)
         #expect(
             ((fresh["Sets"] as! NSDictionary)[SystemEdits.netSet] as? NSDictionary)?["UserDefinedName"] as? String
                 == "Automatic"
@@ -128,11 +126,6 @@ enum K48Oracle {
         #expect(
             (env["EnvironmentVariables"] as! NSDictionary)["DYLD_INSERT_LIBRARIES"] as? String == "/a.dylib:/b.dylib"
         )
-        let ifs = NSMutableDictionary(dictionary: [
-            "Interfaces": [["BSD Name": "en2", "IOInterfaceUnit": 2], ["BSD Name": "en0", "IOInterfaceUnit": 0]]
-        ])
-        SystemEdits.usbNetInterfaces(ifs)
-        #expect((ifs["Interfaces"] as! [NSDictionary]).map { $0["BSD Name"] as! String } == ["en0", "en1", "en2"])
     }
 
     /// GuestPackage.seed against mkpkg.seed on a plain directory with the real armv7.itpack: the same tree
@@ -271,7 +264,7 @@ enum K48Oracle {
                     [
                         "python3", tool, "build", "--base", "pristine", "--rootfs", dmg.path, "--pristine", dmg.path,
                         "--mbr", dir.appendingPathComponent("mbr.bin").path, "--out", py.path, "--lockdown", "none",
-                        "--stash", "none", "--data-size", "partition",
+                        "--stash", "none", "--data-size", "partition", "--no-usb-net",
                     ] + (recipe.options["appsync"] == true ? ["--appsync"] : []),
                     cwd: K48Oracle.qemu
                 )
@@ -321,7 +314,8 @@ enum K48Oracle {
                 var diffs: [String] = []
                 var plists = 0
                 var unexpected: [String] = []
-                for p in Set(ma.keys).union(mb.keys).sorted() {
+                // The Python bake still installs it_ethlink; the USB Ethernet bridge is gone.
+                for p in Set(ma.keys).union(mb.keys).sorted() where p != "usr/local/bin/it_ethlink" {
                     guard var x = ma[p], var y = mb[p] else {
                         diffs.append("\(p): only in \(ma[p] == nil ? "python" : "swift")")
                         continue
@@ -352,7 +346,7 @@ enum K48Oracle {
                 }
                 print("\(fw.entryID) \(vol): \(la.count) paths, \(plists) plists equal parsed; \(unexpected)")
                 #expect(diffs.isEmpty, "\(vol): \(diffs.prefix(30))")
-                #expect(la.count == lb.count)
+                #expect(la.count == lb.count - (mb["usr/local/bin/it_ethlink"] == nil ? 0 : 1))
             }
             // the seeded network services really are there (on both sides, so the comparison above is not vacuous)
             let dv = try HFSPlusVolume(swift.appendingPathComponent("data.img"))
@@ -364,8 +358,7 @@ enum K48Oracle {
             let order =
                 (prefs.value(forKeyPath: "Sets.\(SystemEdits.netSet).Network.Global.IPv4.ServiceOrder") as? [String])
                 ?? []
-            #expect(order.prefix(2) == [SystemEdits.wifiService, SystemEdits.usbEthService][...])
-            #expect(try dv.record(at: "preferences/SystemConfiguration/NetworkInterfaces.plist").uid == 0)
+            #expect(order.first == SystemEdits.wifiService)
             // the seed is there: loader, current -> pkgs/<serial>, its offer record, a hook and its .baked copy, no baked helper job
             let sv = try HFSPlusVolume(swift.appendingPathComponent("system.img"))
             let seed = try #require(r.guestPackage)

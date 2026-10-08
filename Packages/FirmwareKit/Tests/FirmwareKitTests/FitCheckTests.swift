@@ -287,7 +287,7 @@ enum FitFixture {
         }
     }
 
-    /// The K48 bake proves every baked helper before it writes one: a helpers directory whose it_ethlink imports a
+    /// The K48 bake proves every baked helper before it writes one: a helpers directory whose it_prefs imports a
     /// name 3.2.2 does not export fails SystemEdits.buildK48 on 7B500 with that helper's misfit recorded.
     @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"))
     func k48BakeChecksItsHelpers() async throws {
@@ -301,12 +301,12 @@ enum FitFixture {
             guard
                 let helpers = try FitFixture.helpers(
                     in: dir,
-                    replacing: "it_ethlink",
+                    replacing: "it_prefs",
                     with: { FitFixture.renaming($0, "_dlopen", "_dlopex") }
                 )
             else {
                 try FixtureRequirements.missing(
-                    #"FitCheckTests.swift: let helpers = try FitFixture.helpers(in: dir, replacing: "it_ethlink", with: { FitFixture.renaming($0, "_dlopen", "_dlopex") })"#
+                    #"FitCheckTests.swift: let helpers = try FitFixture.helpers(in: dir, replacing: "it_prefs", with: { FitFixture.renaming($0, "_dlopen", "_dlopex") })"#
                 )
             }
             let recipe = try #require(try Oracle.entry(fw.entryID).recipe)
@@ -324,7 +324,7 @@ enum FitFixture {
                     fit: log
                 )
             }
-            let f = log.fits.first { $0.piece == "it_ethlink" }
+            let f = log.fits.first { $0.piece == "it_prefs" }
             #expect(f.map { !$0.fits && $0.proof.contains("_dlopex") } == true, "\(log.fits)")
             #expect(log.fits.contains { $0.piece == "it_pbd" && $0.fits })
         }
@@ -394,7 +394,6 @@ enum FitFixture {
                 kernel: kernel,
                 fit: log
             )
-            #expect(log.fits.contains { $0.piece.hasPrefix("USB Ethernet") && $0.fits }, "\(log.fits.map(\.piece))")
             #expect(log.fits.filter { $0.piece.hasPrefix("it_prefs ") && $0.fits }.count == 3)
             #expect(log.fits.contains { $0.piece.hasPrefix("SpringBoard environment") && $0.fits })
             #expect(log.fits.contains { $0.piece.hasPrefix("web proxy PAC") && $0.fits })
@@ -534,36 +533,6 @@ enum FitFixture {
             #expect(c.fit.fits.contains { $0.piece.hasPrefix("web proxy PAC") && $0.fits })
             #expect(c.fit.fits.contains { $0.piece == "libappsync.dylib (in installd)" && $0.fits }, "\(c.fit.fits)")
         }
-    }
-
-    /// USB Ethernet fits every iPad kernel at hand (3.2 to 5.1.1 have the pinned path's classes and LinkStatus); a
-    /// kernel copy with AppleSynopsysOTGDevice renamed, or no kernel at all, does not fit.
-    @Test func usbEthernetNeedsThePinnedClasses() throws {
-        let caches = [
-            "172e8297af74b91971a802e6ad137c891f553099", "68b613f78581d36eab96aa5a007001dff142baa3",
-            "8717b3bedc925b587566442ad375aa65d857e79a", "ad9b607439250f2337fe132890dadc4c487beca8",
-        ]
-        let root = FileManager.default.temporaryDirectory
-        for sha in caches {
-            let u = Oracle.ipadCache.appendingPathComponent(sha + "/kernelcache.mach")
-            guard Oracle.exists(u) else { continue }
-            let k = try Data(contentsOf: u, options: .alwaysMapped)
-            let f = FitCheck.usbEthernet(
-                FitCheck.Firmware(root: root, arch: "armv7", kernelcache: k),
-                path: SystemEdits.usbEthPath
-            )
-            #expect(f.fits && f.proof.contains("AppleUSBEthernetDevice"), "\(sha): \(f.proof)")
-            var b = [UInt8](k)
-            while let at = b.firstRange(of: Array("\0AppleSynopsysOTGDevice\0".utf8)) {
-                b.replaceSubrange(at, with: Array("\0AppleSynopsysOTGDevicX\0".utf8))
-            }
-            let broken = FitCheck.usbEthernet(
-                FitCheck.Firmware(root: root, arch: "armv7", kernelcache: Data(b)),
-                path: SystemEdits.usbEthPath
-            )
-            #expect(!broken.fits && broken.proof.contains("AppleSynopsysOTGDevice"), "\(broken.proof)")
-        }
-        #expect(!FitCheck.usbEthernet(FitCheck.Firmware(root: root, arch: "armv7"), path: SystemEdits.usbEthPath).fits)
     }
 
     /// it_prefs' keys are named by their readers on the iPad (3.2.2 to 5.1.1: all three) and the reorder tip on every
