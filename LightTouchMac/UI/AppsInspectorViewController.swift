@@ -82,7 +82,7 @@ final class AppsInspectorViewController: NSViewController {
         let emulator = emulator
         return AppChangeWatch(apps: emulator.apps) {
             await MainActor.run {
-                emulator.isRunning && !emulator.preparingDevice && emulator.usbConnected
+                emulator.isRunning && !emulator.preparingDevice
                     && !AppInstaller.isUsingDevice(emulator.instance.id)
                     && !emulator.isInstalling && !emulator.hasFileTransfer && !emulator.isReconnecting
             }

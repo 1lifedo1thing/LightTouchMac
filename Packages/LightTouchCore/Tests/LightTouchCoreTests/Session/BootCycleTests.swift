@@ -11,7 +11,7 @@ import Testing
 /// machine once the shutdown latch clears.
 struct BootCycleTests {
     static let freshBoot = [
-        "publish", "reconnectUSB", "forgetConnectionWork", "forgetReachability", "timeZone", "resetRotation",
+        "publish", "forgetConnectionWork", "forgetReachability", "timeZone", "resetRotation",
         "foreground", "orientation", "guestPackage", "bootWatch",
     ]
 
@@ -111,7 +111,7 @@ struct BootCycleTests {
             #expect(cold.bootScope.generation == 1 && cold.cycle.poweringOn && cold.state == .booting)
             #expect(
                 cold.steps == [
-                    "publish", "reconnectUSB", "forgetConnectionWork", "forgetGuestFacts", "forgetReachability",
+                    "publish", "forgetConnectionWork", "forgetGuestFacts", "forgetReachability",
                     "resetRotation", "timeZone",
                 ],
                 "\(cold.steps)"

@@ -16,7 +16,7 @@ struct DeviceAppsTests {
         var iosVersion = "3.1.3"
         var usbmuxSession: String? = "UNIX:/tmp/ltm-tests-none.sock"
         var guestUDID: String?
-        var storageFailed = false, usbConnected = true, isRunning = true, isPoweredOff = false, shuttingDown = false
+        var storageFailed = false, isRunning = true, isPoweredOff = false, shuttingDown = false
         var deviceReachable: Bool? = true
         var installerUsesDevice = false
         let guestAgent = GuestAgent(cache: GuestAgentCache())
@@ -40,12 +40,11 @@ struct DeviceAppsTests {
 
         host.deviceReachable = true
         for (name, change) in [
-            ("USB unplugged", { host.usbConnected = false }), ("not running", { host.isRunning = false }),
+            ("not running", { host.isRunning = false }),
             ("storage failed", { host.storageFailed = true }), ("no usbmuxd", { host.usbmuxSession = nil }),
         ] {
             change()
             #expect(!apps.canReachDevice && !apps.canQueueInstall, "\(name)")
-            host.usbConnected = true
             host.isRunning = true
             host.storageFailed = false
             host.usbmuxSession = "UNIX:/tmp/x.sock"
@@ -70,7 +69,8 @@ struct DeviceAppsTests {
     @Test func refusalsHappenBeforeTouchingTheDevice() async throws {
         let host = Host()
         let apps = DeviceApps(host: host)
-        host.usbConnected = false
+        host.isPoweredOff = true
+        host.isRunning = false
         await #expect(throws: DeviceError.self) { try await apps.checkDeviceConnection() }
         #expect(await !apps.deviceReady())
         await #expect(throws: DeviceToolsError.self) {

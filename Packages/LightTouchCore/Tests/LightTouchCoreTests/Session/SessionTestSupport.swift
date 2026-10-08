@@ -177,7 +177,6 @@ final class FakeSession: MachineHost, ConnectionHost, ActivationServices, Readin
     var preparingDevice: Bool { readiness.preparingDevice }
     var bootStage: BootStage { readiness.bootStage }
     var isInstalling = false, hasFileTransfer = false, installerUsesDevice = false
-    var usbConnected = true
     var liveAgentStatus = 1
     var guestAgentAlive = true
     var recoveries = 0
@@ -287,7 +286,6 @@ final class FakeSession: MachineHost, ConnectionHost, ActivationServices, Readin
         if syncFails { throw CocoaError(.fileReadUnknown) }
     }
     func publishDeveloperConnection() { steps.append("publish") }
-    func reconnectUSB() { steps.append("reconnectUSB") }
     func forgetConnectionWork() { steps.append("forgetConnectionWork") }
     func forgetGuestFacts() { steps.append("forgetGuestFacts") }
     func forgetReachability() { steps.append("forgetReachability") }

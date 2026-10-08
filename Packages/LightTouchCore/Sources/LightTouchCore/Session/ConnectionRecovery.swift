@@ -19,7 +19,6 @@ public protocol ConnectionHost: AnyObject {
     var hasFileTransfer: Bool { get }
     /// An install (AppInstaller) holds this device.
     var installerUsesDevice: Bool { get }
-    var usbConnected: Bool { get }
     /// The guest agent, live: 0 absent or not running, 1 alive, 2 stale.
     var liveAgentStatus: Int { get }
     var guestAgentAlive: Bool { get }
@@ -57,7 +56,7 @@ public protocol ConnectionHost: AnyObject {
         // An unactivated guest stays that way for the boot; a transient failure doesn't replace the message.
         if self.issue?.persistent == true, !issue.persistent { return }
         if self.issue != issue {
-            logEvent("device connection: \(issue.detail); USB=\(host.usbConnected), agent=\(host.liveAgentStatus)")
+            logEvent("device connection: \(issue.detail); agent=\(host.liveAgentStatus)")
         }
         self.issue = issue
         if issue.blocksCommands {

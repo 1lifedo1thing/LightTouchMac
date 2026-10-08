@@ -254,7 +254,6 @@ final class EmulatorController {
         [weak self] request, done in self?.control(request, done)
     }
     var compassHeading: Int?
-    var usbConnected = true
     /// The quarter turns and auto-rotation with the guest (DeviceRotation).
     @ObservationIgnored private(set) lazy var rotation = DeviceRotation(
         host: self,

@@ -72,7 +72,7 @@ struct ReadinessWatchTests {
             await eventually("one wait gave up") { c.springBoardChecks > 1 }
             #expect(!c.preparingDevice && c.readiness.readinessFailure == nil, "input enabled, no startup failure")
             #expect(c.notices.message == ReadinessWatch.springBoardNotice(shortName: "iPod"))
-            #expect(c.readiness.isWatching && c.deviceReachable == nil, "still asking")
+            #expect(c.readiness.current != nil && c.deviceReachable == nil, "still asking")
             c.springBoardReady = true
             await c.readiness.current?.value
             #expect(c.deviceReachable == true && c.notices.message == nil, "the late answer: ready, notice gone")
@@ -126,7 +126,7 @@ struct ReadinessWatchTests {
             c.state = .poweredOff
             c.retireBoot()
             await watch?.value
-            #expect(!c.preparingDevice && !c.readiness.isWatching, "no startup banner, nothing left counting")
+            #expect(!c.preparingDevice && c.readiness.current == nil, "no startup banner, nothing left counting")
             #expect(
                 c.readiness.readinessFailure == nil && c.notices.message == nil,
                 "an ended boot is not a failed one"

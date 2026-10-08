@@ -18,7 +18,6 @@ public protocol AppsHost: AnyObject {
     /// The UDID the guest reports (the record's, or an upgraded iPhone identity's).
     var guestUDID: String? { get }
     var storageFailed: Bool { get }
-    var usbConnected: Bool { get }
     var isRunning: Bool { get }
     var isPoweredOff: Bool { get }
     var shuttingDown: Bool { get }
@@ -48,13 +47,13 @@ public protocol AppsHost: AnyObject {
     /// and toolbar were the ones still guessing. `deviceReachable` is that round
     /// trip, set by the list poll, and nil until the first one lands.
     public var canReachDevice: Bool {
-        host.usbConnected && canManageApps && host.isRunning && host.deviceReachable == true
+        canManageApps && host.isRunning && host.deviceReachable == true
     }
 
     /// Adding to the ready queue opens no guest session. A probe suppressed by
     /// our own install must not disable File → Install App or drag-and-drop.
     public var canQueueInstall: Bool {
-        host.usbConnected && canManageApps && host.isRunning
+        canManageApps && host.isRunning
             && (host.deviceReachable == true || host.installerUsesDevice || isInstalling)
     }
 
@@ -82,7 +81,7 @@ public protocol AppsHost: AnyObject {
     /// Whether the Files window can reach the device: nil while our own work holds back the reads that would say.
     public var filesReachable: Bool? {
         if canReachDevice { return true }
-        return host.deviceReachable == nil && host.usbConnected && canManageApps && host.isRunning ? nil : false
+        return host.deviceReachable == nil && canManageApps && host.isRunning ? nil : false
     }
 
     /// The install pipeline for this device (AppInstaller runs it, and raises
@@ -100,7 +99,7 @@ public protocol AppsHost: AnyObject {
 
     public func checkDeviceConnection() async throws {
         try Task.checkCancellation()
-        guard host.usbConnected, !host.isPoweredOff, !host.shuttingDown, host.usbmuxSession != nil else {
+        guard !host.isPoweredOff, !host.shuttingDown, host.usbmuxSession != nil else {
             throw DeviceError.notAttached
         }
         try await services.checkAttachment()

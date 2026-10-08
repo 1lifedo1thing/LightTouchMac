@@ -73,7 +73,6 @@ public protocol ReadinessHost: AnyObject {
     }
     /// Bumped by each start(): a watch clears `preparingDevice` as it ends unless a later start() owns it.
     @ObservationIgnored private var run = 0
-    public var isWatching: Bool { task != nil }
     public func cancel() { task?.cancel() }
     /// Waits for this boot's watch (a restart lets it finish first).
     public var current: Task<Void, Never>? { task }

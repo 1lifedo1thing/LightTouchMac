@@ -156,8 +156,6 @@ extension MainWindowController {
         guard let emulator else { return }
         if emulator.isPaused { emulator.resume() } else if emulator.isRunning { emulator.pause() }
     }
-    @objc func devicePause(_ sender: Any?) { emulator?.pause() }
-    @objc func deviceResume(_ sender: Any?) { emulator?.resume() }
     @objc func deviceReset(_ sender: Any?) {
         guard let emulator else { return }
         // Confirmed, because a restart cuts the guest off mid-write much the way

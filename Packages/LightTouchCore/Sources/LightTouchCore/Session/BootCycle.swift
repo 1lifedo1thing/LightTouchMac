@@ -31,7 +31,6 @@ public protocol BootCycleHost: AnyObject {
     func retireBoot()
     // The per-boot steps, in the order a boot takes them.
     func publishDeveloperConnection()
-    func reconnectUSB()
     /// The staging sweep runs again, and no recovery is under way.
     func forgetConnectionWork()
     /// No app in front, the display awake (a power-on's guest starts from nothing).
@@ -117,7 +116,6 @@ public final class BootCycle {
             else { return }
             host.bootScope.renew()
             host.publishDeveloperConnection()
-            host.reconnectUSB()
             host.forgetConnectionWork()
             host.forgetReachability()
             host.startTimeZoneSync()
@@ -142,7 +140,6 @@ public final class BootCycle {
         }
         host.bootScope.renew()
         host.publishDeveloperConnection()
-        host.reconnectUSB()
         poweringOn = true
         host.forgetConnectionWork()
         host.forgetGuestFacts()

@@ -49,14 +49,6 @@ extension EmulatorController {
 
     // Location comes later (a4-iboot's location responder); it will sit here
     // beside the compass as another control request.
-    func reconnectUSB() {
-        guard !usbConnected else { return }
-        control(.usbConnection(true)) { [weak self] attached in
-            guard attached, let self else { return }
-            usbConnected = true
-            deviceReachable = nil
-        }
-    }
 
     // MARK: - Rotation
     var rotationDegrees: Int { rotation.degrees }
