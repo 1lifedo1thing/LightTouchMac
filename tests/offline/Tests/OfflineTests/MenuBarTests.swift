@@ -63,9 +63,9 @@ extension SharedState {
             View/Show Inspector  ⌥⌘i
             View/Show Console  ⇧⌘y
             View/-
-            View/Zoom to Fit  ⌘0
             View/Physical Size  ⌘8
             View/Pixel Accurate  ⌘9
+            View/Zoom to Fit  ⌘0
             View/Zoom In  ⌘+
             View/Zoom In  ⌘= hidden
             View/Zoom Out  ⌘-
@@ -190,7 +190,9 @@ extension SharedState {
         @Test func copyBugReportInfo() throws {
             _ = NSApplication.shared
             MainMenuBuilder.install(profile: .n72)
-            let item = try #require(NSApp.mainMenu!.item(withTitle: "Help")!.submenu!.item(withTitle: BugReportCopy.title))
+            let item = try #require(
+                NSApp.mainMenu!.item(withTitle: "Help")!.submenu!.item(withTitle: BugReportCopy.title)
+            )
             #expect(item.action == #selector(AppDelegate.copyBugReportInfo(_:)) && item.target == nil)
             let pasteboard = NSPasteboard(name: .init("LightTouch-tests-" + UUID().uuidString))
             defer { pasteboard.releaseGlobally() }
