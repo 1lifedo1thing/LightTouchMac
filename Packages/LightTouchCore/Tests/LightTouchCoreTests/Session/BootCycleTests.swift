@@ -240,6 +240,23 @@ struct BootCycleTests {
         }
     }
 
+    @Test func aPowerOnCancelledWhileWaitingForTheLatchEndsAtOnce() async throws {
+        try await withScratchDirectory { directory in
+            let c = session(directory)
+            c.state = .poweredOff
+            c.status = helperStatus(shutdownConfirmed: true)
+            c.cycle.latchWait = .seconds(5)
+            c.cycle.powerOn()
+            let task = c.bootScope[.powerOn]
+            try await Task.sleep(for: .milliseconds(200))  // past the workers, waiting on the latch
+            let cancelled = ContinuousClock.now
+            c.retireBoot()
+            await task?.value
+            #expect(ContinuousClock.now - cancelled < .seconds(1), "it ends at once, not when the latch wait runs out")
+            #expect(!c.cycle.poweringOn && c.link.commands == [.machine(.reset)], "and never resumes the machine")
+        }
+    }
+
     @Test func powerOnGivesUpWhenTheLatchStays() async throws {
         try await withScratchDirectory { directory in
             let c = session(directory)

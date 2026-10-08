@@ -214,7 +214,9 @@ public final class BootCycle {
             // shutdown latch (the helper republishes it at 20 Hz) before
             // resuming the stopped VM.
             while host.status?.shutdownConfirmed == true, SuspendingClock.now < deadline {
-                try? await Task.sleep(for: .milliseconds(50))
+                // Cancelled (a Restart or a halt retired the boot): end now. A swallowed cancellation spun here,
+                // holding the main actor and `poweringOn`, until the latch wait ran out.
+                do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
             }
             guard !Task.isCancelled, generation == host.bootScope.generation else { return }
             guard host.status?.shutdownConfirmed == false, !host.state.isDead else {
