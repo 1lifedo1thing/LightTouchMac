@@ -17,6 +17,7 @@ nonisolated extension afc_error_t: IMobileDeviceResult {}
 nonisolated extension instproxy_error_t: IMobileDeviceResult {}
 nonisolated extension np_error_t: IMobileDeviceResult {}
 nonisolated extension sbservices_error_t: IMobileDeviceResult {}
+nonisolated extension house_arrest_error_t: IMobileDeviceResult {}
 
 /// Nonisolated: the project defaults to MainActor isolation, and every one of these is called from the detached task
 /// that does the blocking device work.

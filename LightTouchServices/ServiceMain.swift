@@ -81,12 +81,13 @@ nonisolated final class EventWriter: @unchecked Sendable {
                 emit(.progress(.install($0, $1)))
             }
             return .none
-        case .upload(let source, let remote, let reuse, let allowEmpty, let root):
+        case .upload(let source, let remote, let reuse, let replace, let allowEmpty, let root):
             return .string(
                 try await service.stageFile(
                     URL(fileURLWithPath: source),
                     remote: remote,
                     reuseIdentical: reuse,
+                    replace: replace,
                     allowEmpty: allowEmpty,
                     root: root
                 ) { emit(.progress(.fraction($0))) }
@@ -102,6 +103,15 @@ nonisolated final class EventWriter: @unchecked Sendable {
             try await service.download(file, to: URL(fileURLWithPath: destination), root: root) {
                 emit(.progress(.fraction($0)))
             }
+            return .none
+        case .delete(let path, let root):
+            try await service.delete(path, root: root)
+            return .none
+        case .rename(let path, let name, let root):
+            try await service.rename(path, to: name, root: root)
+            return .none
+        case .makeFolder(let path, let root):
+            try await service.makeFolder(path, root: root)
             return .none
         case .move(let bundle, let before, let name):
             return .strings(try await service.moveOnHomeScreen(bundle, before: before, deviceName: name))

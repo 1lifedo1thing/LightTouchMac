@@ -45,14 +45,29 @@ public nonisolated enum HostServiceOperation: Codable, Sendable {
     case lockdownValue(String)
     case uninstall(String)
     case install(ipa: String, staged: String, bundleID: String)
-    /// `root`: afc2 (DeviceServices.wholeFileSystem), here and in files and download.
-    case upload(source: String, remote: String, reuse: Bool, allowEmpty: Bool, root: Bool)
+    /// `replace`: publish over an existing file at `remote` (as `reuse` does, through a private name and a rename).
+    case upload(source: String, remote: String, reuse: Bool, replace: Bool, allowEmpty: Bool, root: AFCRoot)
     case sweep
     case remove(String)
-    case files(String, root: Bool)
-    case download(DeviceFile, destination: String, root: Bool)
+    case files(String, root: AFCRoot)
+    case download(DeviceFile, destination: String, root: AFCRoot)
+    /// The Files browser's edits: a file or a folder with everything in it, a rename within its folder, a new folder.
+    case delete(String, root: AFCRoot)
+    case rename(String, to: String, root: AFCRoot)
+    case makeFolder(String, root: AFCRoot)
     case move(bundle: String, before: String?, deviceName: String)
     case observe
+}
+
+/// Which AFC a Files request goes through.
+public nonisolated enum AFCRoot: Hashable, Codable, Sendable {
+    /// com.apple.afc: the media folder.
+    case media
+    /// com.apple.afc2: a jailbroken device's whole file system (DeviceServices.wholeFileSystem).
+    case fileSystem
+    /// com.apple.mobile.house_arrest's VendContainer: the app's whole container (its .app, Documents, Library, tmp).
+    /// Every iOS the emulator runs, 2.0 to 7.1.2, vends it for any installed app (DeviceServices.app).
+    case app(String)
 }
 
 public nonisolated enum HostServiceValue: Codable, Sendable {

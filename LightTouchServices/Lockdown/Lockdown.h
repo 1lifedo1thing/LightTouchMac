@@ -5,6 +5,7 @@
 #pragma clang diagnostic ignored "-Wdocumentation-deprecated-sync"
 #pragma clang diagnostic ignored "-Wstrict-prototypes"
 #include <libimobiledevice/afc.h>
+#include <libimobiledevice/house_arrest.h>
 #include <libimobiledevice/installation_proxy.h>
 #include <libimobiledevice/libimobiledevice.h>
 #include <libimobiledevice/lockdown.h>

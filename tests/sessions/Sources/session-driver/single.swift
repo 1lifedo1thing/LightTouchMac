@@ -616,7 +616,10 @@ nonisolated enum WiFiProbe {
             emit("afc2", ["device": d.name, "top": top, "error": "\(error)"])
         }
     }
-    if s.install != false { await install(d) }
+    if s.install != false {
+        await install(d)
+        await appFiles(d, agent: agent || (a4 && offered) || lockAgent, jailbreak: s.jailbreak == true)
+    }
     if let upgrade = s.upgradeIPA { await upgradeInPlace(d, upgrade) }
     try? await Task.sleep(for: .seconds(3))
     await d.wakeForShot("installed")  // wake first: the panel may have slept during the install
@@ -1013,6 +1016,80 @@ enum DockBand {
         }
         return (true, "walked \(walked.joined(separator: ", "))")
     }
+}
+
+/// The Files window's Apps source, through its own calls (DeviceServices.app: house_arrest's VendContainer): the
+/// installed app's container listed, Documents made where installd made none, a file copied into Documents and back,
+/// read by the guest agent from inside the app's container, renamed, a folder made with a file in it, and both
+/// deleted. On a jailbroken device afc2 shows the same file at the container's path under "/". Emits `appFiles`.
+@MainActor func appFiles(_ d: Device, agent hasAgent: Bool, jailbreak: Bool) async {
+    var services = d.services
+    services.app = config.bundleID
+    let guest = GuestAgent(link: d.process.link, cache: GuestAgentCache())
+    let alive = hasAgent ? await guest.waitAlive(seconds: 30) : false
+    let home = alive ? await container(guest, config.bundleID) : nil
+    var event: [String: Any] = ["device": d.name, "agent": alive, "container": home ?? ""]
+    let bytes = Data((0..<70_001).map { UInt8(truncatingIfNeeded: $0 &* 2_654_435_761 >> 7) })
+    let local = d.dir.appendingPathComponent("ltm-app-file.bin")
+    let back = d.dir.appendingPathComponent("back-ltm-app-file.bin")
+    defer {
+        try? FileManager.default.removeItem(at: local)
+        try? FileManager.default.removeItem(at: back)
+    }
+    func names(_ path: String) async throws -> [String] { try await services.files(in: path).map(\.name) }
+    func read(_ path: String) async -> Data? {
+        guard let home else { return nil }
+        return try? await guest.get("\(home)/\(path)")
+    }
+    func absent(_ path: String) async -> Bool {
+        guard let home else { return false }
+        do { return try await guest.get("\(home)/\(path)") == nil } catch { return false }
+    }
+    do {
+        let top = try await names("")
+        event["top"] = top
+        if !top.contains("Documents") {
+            try await services.makeFolder("Documents")
+            event["madeDocuments"] = true
+        }
+        try bytes.write(to: local)
+        try await services.uploadFile(local, into: "Documents") { _ in }
+        guard let file = try await services.files(in: "Documents").first(where: { $0.name == local.lastPathComponent })
+        else { throw DeviceError.preflight("the copy isn't listed in Documents") }
+        try await services.download(file, to: back) { _ in }
+        event["listed"] = Int(file.size) == bytes.count
+        event["same"] = try Data(contentsOf: back) == bytes
+        if home != nil {
+            let read = await read("Documents/\(file.name)")
+            event["agentRead"] = read == bytes
+        }
+        if jailbreak, let home {
+            var root = d.services
+            root.wholeFileSystem = true
+            let path = String(home.drop { $0 == "/" }) + "/Documents"
+            event["afc2"] = (try? await root.files(in: path).map(\.name).contains(file.name)) ?? false
+        }
+        try await services.rename("Documents/\(file.name)", to: "ltm-renamed.bin")
+        let renamed = try await names("Documents")
+        event["renamed"] = renamed.contains("ltm-renamed.bin") && !renamed.contains(file.name)
+        if home != nil {
+            let read = await read("Documents/ltm-renamed.bin")
+            event["agentRenamed"] = read == bytes
+        }
+        try await services.makeFolder("Documents/LTM Folder")
+        try await services.uploadFile(local, into: "Documents/LTM Folder") { _ in }
+        event["folder"] = try await names("Documents/LTM Folder") == [file.name]
+        try await services.delete("Documents/ltm-renamed.bin")
+        try await services.delete("Documents/LTM Folder")
+        let left = try await names("Documents")
+        event["deleted"] = !left.contains("ltm-renamed.bin") && !left.contains("LTM Folder")
+        if home != nil {
+            let file = await absent("Documents/ltm-renamed.bin")
+            let folder = await absent("Documents/LTM Folder/\(local.lastPathComponent)")
+            event["agentDeleted"] = file && folder
+        }
+    } catch { event["error"] = "\(error)" }
+    emit("appFiles", event)
 }
 
 /// installd's own record of where each app lives (iOS 2-5): the container an upgrade must keep.

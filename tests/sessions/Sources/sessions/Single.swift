@@ -152,6 +152,21 @@ func single(_ args: SingleCheck) -> Never {
             inst.bool("has"),
             "\(d): IPA installed (\(format(inst.double("seconds"), 0)) s, attempt \(inst.int("attempt") ?? 0))"
         )
+        // Files' Apps source (house_arrest): the app's container listed, a file copied into Documents and back,
+        // renamed, a folder with a file in it, both deleted; read by the guest agent where it answers, and seen through
+        // afc2 at the container's path on a jailbroken base.
+        let files = events.one("appFiles", ["device": d])
+        let steps = ["listed", "same", "renamed", "folder", "deleted"]
+        let inside = files.bool("agent") ? ["agentRead", "agentRenamed", "agentDeleted"] : []
+        let failed = (steps + inside + (args.jailbreak ? ["afc2"] : [])).filter { !files.bool($0) }
+        r.check(
+            !files.has("error") && failed.isEmpty,
+            "\(d): Files edits the app's container (\((files["top"] as? [String] ?? []).joined(separator: ", ")))"
+                + (files.bool("agent") ? ", the app reads the changes" : ", no guest agent")
+                + (files.bool("madeDocuments") ? ", Documents made" : "")
+                + (failed.isEmpty ? "" : "; failed: \(failed.joined(separator: ", "))")
+                + (files.string("error").map { ": \($0)" } ?? "")
+        )
     }
     if args.upgradeIPA != nil {
         let up = events.one("upgraded", ["device": d])

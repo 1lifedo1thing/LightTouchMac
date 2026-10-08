@@ -205,6 +205,32 @@ extension SharedState {
             #expect(vc.numberOfPreviewItems(in: nil) == 2)
             #expect(controller.browser === vc && browser.selectedColumn == 1)
             #expect(!window.isExcludedFromWindowsMenu && window.styleMask.contains(.resizable))
+            // The source menu: Media, then the device's apps; an app's container is browsed from its top, and the
+            // context menu's edits follow the selection.
+            let picker = try #require(all.compactMap { $0 as? NSPopUpButton }.first)
+            try await until("the apps in the source menu") { picker.itemTitles.contains("Game") }
+            #expect(picker.titleOfSelectedItem == "Media" && picker.itemTitles.first == "Media")
+            func item(_ action: Selector) -> NSMenuItem { NSMenuItem(title: "", action: action, keyEquivalent: "") }
+            let rename = item(#selector(DeviceFilesViewController.renameItem(_:)))
+            let delete = item(#selector(DeviceFilesViewController.deleteItems(_:)))
+            let folder = item(#selector(DeviceFilesViewController.newFolder(_:)))
+            #expect(!vc.validateMenuItem(rename) && vc.validateMenuItem(delete), "two files: delete, not rename")
+            picker.selectItem(withTitle: "Game")
+            picker.sendAction(picker.action!, to: picker.target)
+            func first() -> String? { (browser.loadedCell(atRow: 0, column: 0) as? NSCell)?.stringValue }
+            try await until("the app's container") { rows(0) == 1 && first() == "com.example.Game" }
+            #expect(vc.services?.app == "com.example.Game" && picker.titleOfSelectedItem == "Game")
+            browser.selectRow(0, inColumn: 0)
+            browser.sendAction(browser.action!, to: browser.target)
+            #expect(vc.validateMenuItem(rename) && vc.validateMenuItem(delete) && vc.validateMenuItem(folder))
+            #expect(
+                all.contains { ($0 as? NSTextField)?.stringValue == "Game / com.example.Game" },
+                "the path names the app"
+            )
+            picker.selectItem(withTitle: "Media")
+            picker.sendAction(picker.action!, to: picker.target)
+            try await until("Media again") { rows(0) == 1 && first() == "Folder" }
+            #expect(vc.services?.app == nil)
             // A listing that answers after the device went away is dropped.
             let asked = replies
             vc.reload()

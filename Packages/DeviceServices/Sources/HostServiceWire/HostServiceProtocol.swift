@@ -27,7 +27,7 @@ public nonisolated enum HostServiceFailure: Codable, Sendable {
 }
 
 public nonisolated struct HostServiceRequest: Codable, Sendable {
-    public static let version = 3
+    public static let version = 4
     public var version = Self.version
     public let id: UUID
     public let session: UUID

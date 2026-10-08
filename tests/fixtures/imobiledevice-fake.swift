@@ -92,6 +92,23 @@ nonisolated enum IMDFake {
     nonisolated(unsafe) static var afcDictionaryFree:
         (UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?) -> afc_error_t = { _ in AFC_E_SUCCESS }
 
+    nonisolated(unsafe) static var houseArrestClientNew:
+        (idevice_t?, lockdownd_service_descriptor_t?, UnsafeMutablePointer<house_arrest_client_t?>?) ->
+            house_arrest_error_t = { _, _, _ in HOUSE_ARREST_E_UNKNOWN_ERROR }
+    nonisolated(unsafe) static var houseArrestClientFree: (house_arrest_client_t?) -> house_arrest_error_t = { _ in
+        HOUSE_ARREST_E_SUCCESS
+    }
+    nonisolated(unsafe) static var houseArrestSendCommand:
+        (house_arrest_client_t?, UnsafePointer<CChar>?, UnsafePointer<CChar>?) -> house_arrest_error_t = { _, _, _ in
+            HOUSE_ARREST_E_UNKNOWN_ERROR
+        }
+    nonisolated(unsafe) static var houseArrestGetResult:
+        (house_arrest_client_t?, UnsafeMutablePointer<plist_t?>?) -> house_arrest_error_t = { _, _ in
+            HOUSE_ARREST_E_UNKNOWN_ERROR
+        }
+    nonisolated(unsafe) static var afcClientFromHouseArrest:
+        (house_arrest_client_t?, UnsafeMutablePointer<afc_client_t?>?) -> afc_error_t = { _, _ in AFC_E_UNKNOWN_ERROR }
+
     nonisolated(unsafe) static var instproxyClientNew:
         (idevice_t?, lockdownd_service_descriptor_t?, UnsafeMutablePointer<instproxy_client_t?>?) -> instproxy_error_t =
             { _, _, _ in INSTPROXY_E_UNKNOWN_ERROR }
@@ -252,6 +269,27 @@ nonisolated enum IMDFake {
     _ d: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
 ) -> afc_error_t { IMDFake.afcDictionaryFree(d) }
 
+@_cdecl("house_arrest_client_new") nonisolated func fakeHouseArrestClientNew(
+    _ d: idevice_t?,
+    _ s: lockdownd_service_descriptor_t?,
+    _ c: UnsafeMutablePointer<house_arrest_client_t?>?
+) -> house_arrest_error_t { IMDFake.houseArrestClientNew(d, s, c) }
+@_cdecl("house_arrest_client_free") nonisolated func fakeHouseArrestClientFree(_ c: house_arrest_client_t?)
+    -> house_arrest_error_t
+{ IMDFake.houseArrestClientFree(c) }
+@_cdecl("house_arrest_send_command") nonisolated func fakeHouseArrestSendCommand(
+    _ c: house_arrest_client_t?,
+    _ command: UnsafePointer<CChar>?,
+    _ id: UnsafePointer<CChar>?
+) -> house_arrest_error_t { IMDFake.houseArrestSendCommand(c, command, id) }
+@_cdecl("house_arrest_get_result") nonisolated func fakeHouseArrestGetResult(
+    _ c: house_arrest_client_t?,
+    _ p: UnsafeMutablePointer<plist_t?>?
+) -> house_arrest_error_t { IMDFake.houseArrestGetResult(c, p) }
+@_cdecl("afc_client_new_from_house_arrest_client") nonisolated func fakeAfcFromHouseArrest(
+    _ c: house_arrest_client_t?,
+    _ a: UnsafeMutablePointer<afc_client_t?>?
+) -> afc_error_t { IMDFake.afcClientFromHouseArrest(c, a) }
 @_cdecl("instproxy_client_new") nonisolated func fakeInstproxyClientNew(
     _ d: idevice_t?,
     _ s: lockdownd_service_descriptor_t?,

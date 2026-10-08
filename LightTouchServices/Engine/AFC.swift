@@ -5,16 +5,56 @@
 import Foundation
 import HostServiceWire
 
+/// An AFC client and, for an app's container, the house_arrest client it rides on, which outlives it.
+nonisolated struct AFCConnection {
+    let client: OpaquePointer
+    var houseArrest: OpaquePointer?
+    func close() {
+        _ = afc_client_free(client)
+        if let houseArrest { _ = house_arrest_client_free(houseArrest) }
+    }
+}
+
 extension IMobileDevice {
-    /// AFC through lockdown's StartService, each step's error kept (IMobileDevice.startService). `root`: afc2, the
-    /// whole file system a jailbroken device serves.
-    nonisolated static func startAFC(device: OpaquePointer, root: Bool = false) throws -> OpaquePointer {
-        try startService(
-            root ? "com.apple.afc2" : "com.apple.afc",
+    /// AFC through lockdown's StartService, each step's error kept (IMobileDevice.startService): the media folder,
+    /// afc2 (the whole file system a jailbroken device serves) or an app's container. The caller closes it.
+    nonisolated static func startAFC(device: OpaquePointer, root: AFCRoot = .media) throws -> AFCConnection {
+        guard case .app(let bundleID) = root else {
+            return AFCConnection(
+                client: try startService(
+                    root == .fileSystem ? "com.apple.afc2" : "com.apple.afc",
+                    device: device,
+                    newClient: { afc_client_new($0, $1, $2) },
+                    freeClient: { afc_client_free($0) }
+                ) { DeviceError.afc(.init(code: $0)) }
+            )
+        }
+        // house_arrest's VendContainer: AFC rooted at the app's container. mobile_house_arrest has it on every 2.x to
+        // 7.x build (the only command through 3.1.3; 3.2 adds VendDocuments, Documents alone) and vends any installed
+        // app's, its signer unchecked; 8.3 later limits it to developer-signed apps. 1.x has no house_arrest.
+        let arrest = try startService(
+            "com.apple.mobile.house_arrest",
             device: device,
-            newClient: { afc_client_new($0, $1, $2) },
-            freeClient: { afc_client_free($0) }
-        ) { DeviceError.afc(.init(code: $0)) }
+            newClient: { house_arrest_client_new($0, $1, $2) },
+            freeClient: { house_arrest_client_free($0) }
+        ) { DeviceError.failed("The device's app file service refused the connection (error \($0)).") }
+        var handedOff = false
+        defer { if !handedOff { _ = house_arrest_client_free(arrest) } }
+        let sent = house_arrest_send_command(arrest, "VendContainer", bundleID)
+        var result: plist_t?
+        let answered = sent.ok ? house_arrest_get_result(arrest, &result) : sent
+        defer { if let result { plist_free(result) } }
+        guard answered.ok, let result, let reply = decode(result) as? [String: Any] else {
+            throw DeviceError.failed("The device's app file service didn't answer (error \(answered.code)).")
+        }
+        if let error = reply["Error"] as? String {
+            throw DeviceError.failed("The device couldn't open this app's folder (\(error)).")
+        }
+        var client: OpaquePointer?
+        let opened = afc_client_new_from_house_arrest_client(arrest, &client)
+        guard opened.ok, let client else { throw DeviceError.afc(.init(code: opened.ok ? 1 : opened.code)) }
+        handedOff = true
+        return AFCConnection(client: client, houseArrest: arrest)
     }
 }
 
@@ -25,8 +65,9 @@ extension DeviceServices {
     /// full device before installd fails opaquely with PackageExtractionFailed.
     func freeSpaceBytes() async throws -> Int64 {
         try await run(Timeouts.query, "free space") { device in
-            let client = try IMobileDevice.startAFC(device: device)
-            defer { _ = afc_client_free(client) }
+            let afc = try IMobileDevice.startAFC(device: device)
+            defer { afc.close() }
+            let client = afc.client
             var value: UnsafeMutablePointer<CChar>?
             let fr = afc_get_device_info_key(client, "FSFreeBytes", &value)
             guard fr.ok, let value else { throw DeviceError.afc(.init(code: fr.code)) }
@@ -48,8 +89,9 @@ extension DeviceServices {
         _ ipa: URL,
         remote: String,
         reuseIdentical: Bool = false,
+        replace: Bool = false,
         allowEmpty: Bool = false,
-        root: Bool = false,
+        root: AFCRoot = .media,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> String {
         try await run(Timeouts.stage, "upload") { device in
@@ -59,8 +101,9 @@ extension DeviceServices {
             let total = try input.seekToEnd()
             try input.seek(toOffset: 0)
             guard total > 0 || allowEmpty else { throw DeviceError.preflight("The file is empty.") }
-            let client = try IMobileDevice.startAFC(device: device, root: root)
-            defer { _ = afc_client_free(client) }
+            let afc = try IMobileDevice.startAFC(device: device, root: root)
+            defer { afc.close() }
+            let client = afc.client
             if reuseIdentical {
                 var existing: UInt64 = 0
                 let result = afc_file_open(client, remote, AFC_FOPEN_RDONLY, &existing)
@@ -96,9 +139,10 @@ extension DeviceServices {
                 guard result == AFC_E_OBJECT_NOT_FOUND else { throw DeviceError.afc(.init(code: result.code)) }
             }
             // Publish complete media only. Interrupted uploads never truncate a
-            // library file or leave a partial file at its content-derived path.
+            // library file or leave a partial file at its content-derived path, nor a replaced file.
+            let publish = reuseIdentical || replace
             let destination =
-                reuseIdentical ? remote + ".upload-" + Self.stagingSession + "-" + UUID().uuidString : remote
+                publish ? remote + ".upload-" + Self.stagingSession + "-" + UUID().uuidString : remote
             var parent = ""
             for component in remote.split(separator: "/").dropLast() {
                 parent = parent.isEmpty ? String(component) : parent + "/" + component
@@ -141,7 +185,7 @@ extension DeviceServices {
             closed = true
             guard result.ok else { throw DeviceError.upload(.init(code: result.code), written: written, total: total) }
             try Task.checkCancellation()
-            if reuseIdentical {
+            if publish {
                 let renamed = afc_rename_path(client, destination, remote)
                 guard renamed.ok else { throw DeviceError.afc(.init(code: renamed.code)) }
             }
@@ -153,8 +197,9 @@ extension DeviceServices {
 
     func sweepStaging() async {
         _ = try? await run(Timeouts.query, "staging sweep") { device in
-            guard let client = try? IMobileDevice.startAFC(device: device) else { return }
-            defer { _ = afc_client_free(client) }
+            guard let afc = try? IMobileDevice.startAFC(device: device) else { return }
+            defer { afc.close() }
+            let client = afc.client
 
             func entries(_ path: String) -> [String] {
                 var list: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
@@ -188,19 +233,21 @@ extension DeviceServices {
     /// Best-effort cleanup of a staged upload.
     func removeStaged(_ path: String) async {
         _ = try? await run(Timeouts.query, "cleanup") { device in
-            guard let client = try? IMobileDevice.startAFC(device: device) else { return }
-            defer { _ = afc_client_free(client) }
+            guard let afc = try? IMobileDevice.startAFC(device: device) else { return }
+            defer { afc.close() }
+            let client = afc.client
             _ = afc_remove_path(client, path)
         }
     }
 }
 
 extension DeviceServices {
-    func files(in path: String, root: Bool = false) async throws -> [DeviceFile] {
+    func files(in path: String, root: AFCRoot = .media) async throws -> [DeviceFile] {
         try Self.validateFilePath(path)
         return try await run(Timeouts.browse, "browse files") { device in
-            let client = try IMobileDevice.startAFC(device: device, root: root)
-            defer { _ = afc_client_free(client) }
+            let afc = try IMobileDevice.startAFC(device: device, root: root)
+            defer { afc.close() }
+            let client = afc.client
             var names: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
             let result = afc_read_directory(client, path.isEmpty ? "/" : path, &names)
             guard result.ok, let names else { throw DeviceError.afc(.init(code: result.code)) }
@@ -250,7 +297,7 @@ extension DeviceServices {
     func download(
         _ file: DeviceFile,
         to destination: URL,
-        root: Bool = false,
+        root: AFCRoot = .media,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws {
         try Self.validateFilePath(file.path)
@@ -258,8 +305,9 @@ extension DeviceServices {
             throw DeviceError.preflight("Select a regular file to export.")
         }
         return try await run(Timeouts.stage, "export file") { device in
-            let client = try IMobileDevice.startAFC(device: device, root: root)
-            defer { _ = afc_client_free(client) }
+            let afc = try IMobileDevice.startAFC(device: device, root: root)
+            defer { afc.close() }
+            let client = afc.client
             var handle: UInt64 = 0
             let opened = afc_file_open(client, file.path, AFC_FOPEN_RDONLY, &handle)
             guard opened.ok else { throw DeviceError.afc(.init(code: opened.code)) }
@@ -303,5 +351,76 @@ extension DeviceServices {
             guard result == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             progress(1)
         }
+    }
+}
+
+extension DeviceServices {
+    /// The Files browser's delete: a file, or a folder with everything in it (AFC removes only empty ones).
+    func delete(_ path: String, root: AFCRoot) async throws {
+        try Self.validateFilePath(path)
+        guard !path.isEmpty else { throw DeviceError.preflight("Select a file or folder to delete.") }
+        try await run(Timeouts.browse, "delete") { device in
+            let afc = try IMobileDevice.startAFC(device: device, root: root)
+            defer { afc.close() }
+            func remove(_ path: String) throws {
+                try Task.checkCancellation()
+                let removed = afc_remove_path(afc.client, path)
+                if removed.ok { return }
+                var names: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
+                guard afc_read_directory(afc.client, path, &names).ok, let names else {
+                    throw DeviceError.afc(.init(code: removed.code))
+                }
+                var children: [String] = []
+                var i = 0
+                while let raw = names[i] {
+                    i += 1
+                    let name = String(cString: raw)
+                    if name != "." && name != ".." && !name.isEmpty && !name.contains("/") { children.append(name) }
+                }
+                _ = afc_dictionary_free(names)
+                guard !children.isEmpty else { throw DeviceError.afc(.init(code: removed.code)) }
+                for child in children { try remove(path + "/" + child) }
+                let again = afc_remove_path(afc.client, path)
+                guard again.ok else { throw DeviceError.afc(.init(code: again.code)) }
+            }
+            try remove(path)
+        }
+    }
+
+    /// `path` renamed to `name` in the same folder; an item already called that is left alone.
+    func rename(_ path: String, to name: String, root: AFCRoot) async throws {
+        try Self.validateFilePath(path)
+        let parent = (path as NSString).deletingLastPathComponent
+        let target = parent.isEmpty ? name : parent + "/" + name
+        guard !path.isEmpty, !name.isEmpty, !name.contains("/") else {
+            throw DeviceError.preflight("Choose a name without a slash.")
+        }
+        try Self.validateFilePath(target)
+        try await run(Timeouts.query, "rename") { device in
+            let afc = try IMobileDevice.startAFC(device: device, root: root)
+            defer { afc.close() }
+            try Self.refuseExisting(afc.client, target, name)
+            let renamed = afc_rename_path(afc.client, path, target)
+            guard renamed.ok else { throw DeviceError.afc(.init(code: renamed.code)) }
+        }
+    }
+
+    func makeFolder(_ path: String, root: AFCRoot) async throws {
+        try Self.validateFilePath(path)
+        guard !path.isEmpty else { throw DeviceError.preflight("Choose a name for the folder.") }
+        try await run(Timeouts.query, "new folder") { device in
+            let afc = try IMobileDevice.startAFC(device: device, root: root)
+            defer { afc.close() }
+            try Self.refuseExisting(afc.client, path, (path as NSString).lastPathComponent)
+            let made = afc_make_directory(afc.client, path)
+            guard made.ok else { throw DeviceError.afc(.init(code: made.code)) }
+        }
+    }
+
+    nonisolated static func refuseExisting(_ client: OpaquePointer, _ path: String, _ name: String) throws {
+        var info: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
+        let found = afc_get_file_info(client, path, &info)
+        if let info { _ = afc_dictionary_free(info) }
+        if found.ok { throw DeviceError.preflight("An item named “\(name)” is already there.") }
     }
 }

@@ -90,9 +90,12 @@ extension DeviceServices {
         try await stageFile(ipa, remote: "PublicStaging/\(Self.stagingName(ipa))", progress: progress)
     }
 
+    /// The Files browser's copy into `directory` (of afcRoot). `replacing`: over a file already there, which is
+    /// replaced only once the new one is complete; otherwise an identical file there is kept and a different one refused.
     public func uploadFile(
         _ source: URL,
         into directory: String,
+        replacing: Bool = false,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws {
         try Self.validateFilePath(directory)
@@ -102,9 +105,10 @@ extension DeviceServices {
         _ = try await stageFile(
             source,
             remote: path,
-            reuseIdentical: true,
+            reuseIdentical: !replacing,
+            replace: replacing,
             allowEmpty: true,
-            root: wholeFileSystem,
+            root: afcRoot,
             progress: progress
         )
     }
@@ -115,13 +119,21 @@ extension DeviceServices {
         _ ipa: URL,
         remote: String,
         reuseIdentical: Bool = false,
+        replace: Bool = false,
         allowEmpty: Bool = false,
-        root: Bool = false,
+        root: AFCRoot = .media,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> String {
         guard
             case .string(let path) = try await self.remote(
-                .upload(source: ipa.path, remote: remote, reuse: reuseIdentical, allowEmpty: allowEmpty, root: root),
+                .upload(
+                    source: ipa.path,
+                    remote: remote,
+                    reuse: reuseIdentical,
+                    replace: replace,
+                    allowEmpty: allowEmpty,
+                    root: root
+                ),
                 seconds: Timeouts.stage,
                 progress: {
                     if case .fraction(let value) = $0 { progress(value) }
@@ -142,7 +154,7 @@ extension DeviceServices {
     }
 
     public func files(in path: String) async throws -> [DeviceFile] {
-        let result = try await remote(.files(path, root: wholeFileSystem), seconds: Timeouts.browse)
+        let result = try await remote(.files(path, root: afcRoot), seconds: Timeouts.browse)
         guard case .files(let files) = result else {
             throw DeviceError.unavailable
         }
@@ -169,7 +181,7 @@ extension DeviceServices {
         defer { try? FileManager.default.removeItem(at: staging) }
         let candidate = staging.appendingPathComponent("file")
         _ = try await remote(
-            .download(file, destination: candidate.path, root: wholeFileSystem),
+            .download(file, destination: candidate.path, root: afcRoot),
             seconds: Timeouts.stage
         ) {
             if case .fraction(let value) = $0 { progress(value) }
@@ -178,6 +190,20 @@ extension DeviceServices {
         guard Darwin.rename(candidate.path, destination.path) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
+    }
+
+    /// The Files browser's edits (of afcRoot): `path` and everything in it.
+    public func delete(_ path: String) async throws {
+        _ = try await remote(.delete(path, root: afcRoot), seconds: Timeouts.browse)
+    }
+
+    /// `path` renamed to `name` in its folder.
+    public func rename(_ path: String, to name: String) async throws {
+        _ = try await remote(.rename(path, to: name, root: afcRoot), seconds: Timeouts.query)
+    }
+
+    public func makeFolder(_ path: String) async throws {
+        _ = try await remote(.makeFolder(path, root: afcRoot), seconds: Timeouts.query)
     }
 
     // MARK: - springboardservices

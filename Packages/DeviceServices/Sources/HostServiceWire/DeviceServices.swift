@@ -11,6 +11,9 @@ public nonisolated struct DeviceServices: Sendable {
     /// The Files browser's listing, export and copy go through afc2 (a jailbroken device's AFC at "/") instead of
     /// AFC's media folder. Installs and media staging always use the media folder.
     public var wholeFileSystem = false
+    /// The Files browser's listing, export, copy and edits go into this app's container (house_arrest) instead.
+    public var app: String?
+    public var afcRoot: AFCRoot { app.map(AFCRoot.app) ?? (wholeFileSystem ? .fileSystem : .media) }
     public init(clientSocket: String, udid: String? = nil, session: UUID = Self.session) {
         self.clientSocket = clientSocket
         self.endpoint = HostServiceEndpoint(socket: clientSocket, udid: udid, session: session)

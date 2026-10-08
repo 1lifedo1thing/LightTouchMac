@@ -6,8 +6,10 @@ import LightTouchCore
 import Quartz
 import UniformTypeIdentifiers
 
-/// AFC's media folder (a jailbroken device's whole file system: DeviceServices.wholeFileSystem), presented in its own retained Mac window. Files drag in (onto a folder, or the
-/// column's folder) and out (file promises), several at a time, and Space shows them in Quick Look.
+/// AFC's media folder (a jailbroken device's whole file system: DeviceServices.wholeFileSystem) or an installed app's
+/// container (house_arrest: DeviceServices.app), chosen in the source menu, presented in its own retained Mac window.
+/// Files drag in (onto a folder, or the column's folder) and out (file promises), several at a time, Space shows them in
+/// Quick Look, and the context menu makes, renames and deletes them.
 final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMenuItemValidation,
     NSFilePromiseProviderDelegate, QLPreviewPanelDataSource
 {
@@ -16,6 +18,9 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
     var hasTransfer: Bool { transfer != nil }
     var transferStatus: String { status.stringValue }
     private let pathLabel = NSTextField(labelWithString: "Media")
+    /// The device's own root (Media, or File System), then its installed apps.
+    private let sourcePicker = NSPopUpButton(frame: .zero, pullsDown: false)
+    private var apps: [InstalledApp] = []
     private var showHidden = false
     private var transferMessage: String?
     private let browser = NSBrowser()
@@ -59,6 +64,13 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
         let look = hiddenMenu.addItem(withTitle: "Quick Look", action: #selector(quickLook(_:)), keyEquivalent: "")
         look.target = self
         hiddenMenu.addItem(.separator())
+        for (title, action) in [
+            ("New Folder…", #selector(newFolder(_:))), ("Rename…", #selector(renameItem(_:))),
+            ("Delete…", #selector(deleteItems(_:))),
+        ] {
+            hiddenMenu.addItem(withTitle: title, action: action, keyEquivalent: "").target = self
+        }
+        hiddenMenu.addItem(.separator())
         let hidden = hiddenMenu.addItem(
             withTitle: "Show Hidden Files",
             action: #selector(toggleHidden(_:)),
@@ -96,7 +108,12 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
         )
         options.isBordered = false
         options.toolTip = "File options"
-        let actions = NSStackView(views: [upload, download, refresh, options])
+        sourcePicker.target = self
+        sourcePicker.action = #selector(sourceChanged)
+        sourcePicker.controlSize = .small
+        sourcePicker.setAccessibilityLabel("Location")
+        sourcePicker.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let actions = NSStackView(views: [sourcePicker, upload, download, refresh, options])
         actions.spacing = 8
         for button in [upload, download, refresh] {
             button.bezelStyle = .rounded
@@ -118,6 +135,8 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
         NSLayoutConstraint.activate([
             actions.topAnchor.constraint(equalTo: box.safeAreaLayoutGuide.topAnchor, constant: 10),
             actions.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 12),
+            actions.trailingAnchor.constraint(lessThanOrEqualTo: box.trailingAnchor, constant: -12),
+            sourcePicker.widthAnchor.constraint(lessThanOrEqualToConstant: 200),
             actions.heightAnchor.constraint(equalToConstant: 26),
             browser.topAnchor.constraint(equalTo: actions.bottomAnchor, constant: 10),
             browser.leadingAnchor.constraint(equalTo: box.leadingAnchor),
@@ -188,6 +207,9 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
         case #selector(quickLook(_:)): return services != nil && !hasTransfer && !selectedFiles.isEmpty
         case #selector(cancelTransfer): return hasTransfer
         case #selector(refreshFiles(_:)): return !hasTransfer
+        case #selector(newFolder(_:)): return services != nil && !hasTransfer
+        case #selector(renameItem(_:)): return services != nil && !hasTransfer && selectedEntries.count == 1
+        case #selector(deleteItems(_:)): return services != nil && !hasTransfer && !selectedEntries.isEmpty
         case #selector(toggleHidden(_:)):
             item.title = showHidden ? "Hide Hidden Files" : "Show Hidden Files"
             return !hasTransfer
@@ -201,11 +223,28 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
         browser.loadColumnZero()
         updateControls()
         guard let services else {
+            apps = []
+            updateSourcePicker()
             status.stringValue = "The \(profile.shortName) is disconnected."
             onActivityChange?()
             return
         }
         let generation = revision
+        selectionChanged()
+        tasks.append(
+            Task { [weak self] in
+                // 1.x has no installation_proxy: no apps, so the menu offers the device's root alone.
+                guard let apps = try? await services.installedApps(), let self, generation == revision,
+                    !Task.isCancelled
+                else { return }
+                self.apps = apps
+                if let app = services.app, !apps.contains(where: { $0.id == app }) {  // uninstalled meanwhile
+                    self.services?.app = nil
+                    return reload()
+                }
+                updateSourcePicker()
+            }
+        )
         tasks.append(
             Task { [weak self] in
                 do {
@@ -221,6 +260,39 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
                 }
             }
         )
+    }
+
+    private var deviceRootName: String { services?.wholeFileSystem == true ? "File System" : "Media" }
+    private var rootName: String {
+        services?.app.map { id in apps.first { $0.id == id }?.name ?? id } ?? deviceRootName
+    }
+
+    private func updateSourcePicker() {
+        let menu = NSMenu()
+        menu.addItem(withTitle: deviceRootName, action: nil, keyEquivalent: "")
+        if !apps.isEmpty {
+            menu.addItem(.separator())
+            menu.addItem(.sectionHeader(title: "Apps"))
+            for app in apps {
+                let item = menu.addItem(withTitle: app.name, action: nil, keyEquivalent: "")
+                item.representedObject = app.id
+                item.image = NSImage(systemSymbolName: "app", accessibilityDescription: nil)
+            }
+        }
+        sourcePicker.menu = menu
+        let current = services?.app
+        sourcePicker.select(menu.items.first { $0.representedObject as? String == current && !$0.isSeparatorItem })
+        sourcePicker.isEnabled = services != nil && transfer == nil
+        selectionChanged()
+    }
+
+    /// The source menu picked the device's root or an app: browse it from its top.
+    @objc private func sourceChanged() {
+        guard services != nil, transfer == nil else { return }
+        let app = sourcePicker.selectedItem?.representedObject as? String
+        guard app != services?.app else { return }
+        services?.app = app
+        reload()
     }
 
     private func directory(for column: Int) -> String? {
@@ -287,6 +359,15 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
         return rows.filter { entries.indices.contains($0) }.map { entries[$0] }.filter(\.isRegular)
     }
 
+    /// Every selected row, folders included: what Delete and Rename act on.
+    private var selectedEntries: [DeviceFile] {
+        let column = browser.selectedColumn
+        guard column >= 0, let path = directory(for: column), let entries = directories[path],
+            let rows = browser.selectedRowIndexes(inColumn: column)
+        else { return [] }
+        return rows.filter { entries.indices.contains($0) }.map { entries[$0] }
+    }
+
     /// The folder a new file goes into: the selected folder, else the selected column's.
     private var targetDirectory: String {
         selected.flatMap { $0.isDirectory ? $0.path : nil } ?? directory(for: max(0, browser.selectedColumn)) ?? ""
@@ -294,7 +375,7 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
 
     @objc private func selectionChanged() {
         let path = selected?.path ?? directory(for: max(0, browser.selectedColumn)) ?? ""
-        let root = services?.wholeFileSystem == true ? "File System" : "Media"
+        let root = rootName
         pathLabel.stringValue = path.isEmpty ? root : root + " / " + path.replacingOccurrences(of: "/", with: " / ")
         updateControls()
     }
@@ -302,6 +383,7 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
         upload.isEnabled = services != nil && transfer == nil
         download.isEnabled = services != nil && transfer == nil && !selectedFiles.isEmpty
         refresh.isEnabled = transfer == nil
+        sourcePicker.isEnabled = services != nil && transfer == nil
         cancel.isHidden = transfer == nil
         idleStatusWidth?.isActive = false
         activeStatusWidth?.isActive = false
@@ -331,11 +413,108 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
         }
     }
 
+    /// Files already in `path` with these names are replaced once the user says so.
     private func upload(_ urls: [URL], into path: String) {
         guard let services, transfer == nil, !urls.isEmpty else { return }
-        beginTransfer { progress in
-            for (index, url) in urls.enumerated() {
-                try await services.uploadFile(url, into: path) { progress((Double(index) + $0) / Double(urls.count)) }
+        let names = Set((directories[path] ?? []).map(\.name))
+        let existing = urls.map(\.lastPathComponent).filter(names.contains)
+        let start = { [weak self] () -> Void in
+            self?.beginTransfer { progress in
+                for (index, url) in urls.enumerated() {
+                    try await services.uploadFile(url, into: path, replacing: names.contains(url.lastPathComponent)) {
+                        progress((Double(index) + $0) / Double(urls.count))
+                    }
+                }
+            }
+        }
+        guard !existing.isEmpty else {
+            start()
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText =
+            existing.count == 1
+            ? "Replace “\(existing[0])”?" : "Replace \(existing.count) items with the same names?"
+        alert.informativeText = "The copy on the \(profile.shortName) is replaced once the new one is copied."
+        alert.addButton(withTitle: "Replace")
+        alert.addButton(withTitle: "Cancel")
+        confirm(alert) { start() }
+    }
+
+    /// `alert` as a sheet; `then` on its first button.
+    private func confirm(_ alert: NSAlert, then: @escaping () -> Void) {
+        let generation = revision
+        let done: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self, generation == revision, transfer == nil else { return }
+            then()
+        }
+        guard let window = view.window else { return }
+        alert.beginSheetModal(for: window, completionHandler: done)
+    }
+
+    /// A name typed into `alert`'s field; `then` with it when the first button is chosen and it is a usable name.
+    private func askName(_ alert: NSAlert, initial: String, then: @escaping (String) -> Void) {
+        let field = NSTextField(string: initial)
+        field.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        confirm(alert) {
+            let name = field.stringValue.trimmingCharacters(in: .whitespaces)
+            if !name.isEmpty, name != initial { then(name) }
+        }
+    }
+
+    // MARK: - Edits
+
+    @objc func newFolder(_ sender: Any?) {
+        guard let services, transfer == nil else { return }
+        let parent = targetDirectory
+        let alert = NSAlert()
+        alert.messageText = "New Folder"
+        alert.informativeText = "In \(parent.isEmpty ? rootName : (parent as NSString).lastPathComponent)"
+        alert.addButton(withTitle: "Create")
+        alert.addButton(withTitle: "Cancel")
+        askName(alert, initial: "") { [weak self] name in
+            let path = parent.isEmpty ? name : parent + "/" + name
+            self?.beginTransfer(working: "Creating “\(name)”…", finished: "Folder created") { _ in
+                try await services.makeFolder(path)
+            }
+        }
+    }
+
+    @objc func renameItem(_ sender: Any?) {
+        guard let services, transfer == nil, selectedEntries.count == 1, let item = selectedEntries.first else {
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Rename “\(item.name)”"
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+        askName(alert, initial: item.name) { [weak self] name in
+            self?.beginTransfer(working: "Renaming…", finished: "Renamed") { _ in
+                try await services.rename(item.path, to: name)
+            }
+        }
+    }
+
+    @objc func deleteItems(_ sender: Any?) {
+        let items = selectedEntries
+        guard let services, transfer == nil, !items.isEmpty else { return }
+        let alert = NSAlert()
+        alert.messageText = items.count == 1 ? "Delete “\(items[0].name)”?" : "Delete \(items.count) items?"
+        alert.informativeText =
+            items.contains(where: \.isDirectory)
+            ? "Folders are deleted with everything in them. This can’t be undone."
+            : "This can’t be undone."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Delete").hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        confirm(alert) { [weak self] in
+            self?.beginTransfer(working: "Deleting…", finished: "Deleted") { progress in
+                for (index, item) in items.enumerated() {
+                    try await services.delete(item.path)
+                    progress(Double(index + 1) / Double(items.count))
+                }
             }
         }
     }
@@ -556,6 +735,8 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
 
     private func beginTransfer(
         reloadAfter: Bool = true,
+        working: String = "Copying…",
+        finished message: String = "File copied",
         _ work: @escaping @Sendable (@escaping @Sendable (Double) -> Void) async throws -> Void,
         done: ((Bool) -> Void)? = nil
     ) {
@@ -564,21 +745,21 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
         transferID = id
         progress.doubleValue = 0
         transferMessage = nil
-        status.stringValue = "Copying…"
+        status.stringValue = working
         transfer = Task { [weak self] in
             do {
                 try await work { [weak self] value in
                     Task { @MainActor [weak self] in
                         guard let self, generation == revision, transferID == id, transfer != nil else { return }
                         progress.doubleValue = value
-                        status.stringValue = "Copying \(Int(value * 100))%"
+                        status.stringValue = working == "Copying…" ? "Copying \(Int(value * 100))%" : working
                         onActivityChange?()
                     }
                 }
                 guard let self, generation == revision else { return }
                 transfer = nil
                 if reloadAfter {
-                    transferMessage = "File copied"
+                    transferMessage = message
                     reload()
                 } else {
                     status.stringValue = transferMessage ?? ""
@@ -588,7 +769,9 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
             } catch {
                 guard let self, generation == revision else { return }
                 transfer = nil
-                status.stringValue = error is CancellationError ? "Copy cancelled" : error.localizedDescription
+                status.stringValue =
+                    error is CancellationError
+                    ? (working == "Copying…" ? "Copy cancelled" : "Cancelled") : error.localizedDescription
                 transferMessage = status.stringValue
                 updateControls()
                 done?(false)
