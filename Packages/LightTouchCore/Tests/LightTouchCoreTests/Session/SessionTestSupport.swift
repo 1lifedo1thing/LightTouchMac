@@ -291,6 +291,7 @@ final class FakeSession: MachineHost, ConnectionHost, ActivationServices, Readin
         if syncFails { throw CocoaError(.fileReadUnknown) }
     }
     func publishDeveloperConnection() { steps.append("publish") }
+    func ensureUSBMux() { steps.append("ensureUSBMux") }
     /// As EmulatorController.forgetBootFacts, for the facts the fake holds.
     func forgetBootFacts() {
         steps.append("forgetBootFacts")

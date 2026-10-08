@@ -69,6 +69,8 @@ extension EmulatorController {
     /// App quit (after the clean shutdowns) and restarts. The helper gets
     /// SIGTERM: a guest that already powered off quits at once; one that
     /// didn't gets the helper's own bounded clean shutdown after we are gone.
+    func ensureUSBMux() { usbmux.ensureRunning() }
+
     func publishDeveloperConnection() {
         guard GuestDeveloperTools.supports(build: instance.firmware.split(separator: "-").last.map(String.init) ?? "")
         else { return }

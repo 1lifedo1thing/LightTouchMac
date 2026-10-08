@@ -11,7 +11,7 @@ import Testing
 /// machine once the shutdown latch clears.
 struct BootCycleTests {
     /// What every boot begins with (BootCycleHost.beginBoot), then every watch it starts (startBootWatches).
-    static let begin = ["forgetBootFacts", "publish", "resetRotation"]
+    static let begin = ["forgetBootFacts", "ensureUSBMux", "publish", "resetRotation"]
     static let watches = ["timeZone", "foreground", "orientation", "guestPackage", "bootWatch"]
     static let freshBoot = begin + watches
 

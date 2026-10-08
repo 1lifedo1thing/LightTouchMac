@@ -17,10 +17,13 @@ import System
 
 /// Observable: `session` is whether app management has a daemon (the controller's canManageApps).
 @MainActor @Observable public final class USBMux {
-    public init(session: Session? = nil, onUnexpectedExit: (() -> Void)? = nil) {
+    /// `binary`: another daemon (tests); nil, the bundled one.
+    public init(session: Session? = nil, binary: String? = nil, onUnexpectedExit: (() -> Void)? = nil) {
         self.session = session
+        self.binaryOverride = binary
         self.onUnexpectedExit = onUnexpectedExit
     }
+    private let binaryOverride: String?
 
     public struct Session: Sendable {
         public let clientSocket: String  // USBMUXD_SOCKET_ADDRESS for host tools: "UNIX:<path>"
@@ -42,6 +45,13 @@ import System
     /// the health signal that flips `canManageApps` off and tells the UI USB
     /// is gone. Empty catch used to swallow this entirely.
     public var onUnexpectedExit: (() -> Void)?
+
+    /// The daemon dies and is started again on the same sockets this many times per start() before app management
+    /// is given up (the emulator redials a lost bridge every few seconds); a boot's ensureRunning() starts over.
+    static let restartLimit = 3
+    private var restarts = 0
+    /// This start()'s sockets and device paths, kept for a restart.
+    private var launched: (session: Session, paths: DeviceInstance.Paths)?
 
     /// The fork ships in the bundle; a dev build falls back to the checkout
     /// (see qemu-ios' usbmuxd-qemu). LTM_USBMUXD names another build for a Debug
@@ -100,8 +110,9 @@ import System
     /// devices' daemons never collide.
     @discardableResult
     public func start(paths: DeviceInstance.Paths) -> Session? {
-        guard FileManager.default.isExecutableFile(atPath: Self.binary) else {
-            logEvent("usbmux: no binary at \(Self.binary); app management disabled")
+        let binary = binaryOverride ?? Self.binary
+        guard FileManager.default.isExecutableFile(atPath: binary) else {
+            logEvent("usbmux: no binary at \(binary); app management disabled")
             return nil
         }
 
@@ -124,11 +135,30 @@ import System
         // else's process.
         reapStaleDaemon(pidFile)
 
-        let (session, clientSocket) = Session.make()
-        let guestAddress = session.guestAddress
-        self.session = session
+        let session = Session.make().session
+        restarts = 0
+        launch(session, paths: paths)
+        return session
+    }
 
-        let binary = Self.binary
+    /// A boot begins (Restart, Power On): a daemon that was given up on starts again on the sockets the emulator
+    /// dials (state audit A-11).
+    public func ensureRunning() {
+        guard session == nil, let launched else { return }
+        logEvent("usbmux: starting the daemon again for the new boot")
+        restarts = 0
+        launch(launched.session, paths: launched.paths)
+    }
+
+    private func launch(_ session: Session, paths: DeviceInstance.Paths) {
+        let clientSocket = String(session.clientSocket.dropFirst("UNIX:".count))
+        let guestAddress = session.guestAddress
+        // A dead daemon leaves its socket files behind.
+        session.paths.forEach { unlink($0) }
+        self.session = session
+        launched = (session, paths)
+
+        let binary = binaryOverride ?? Self.binary
         let conf = Self.conf(paths.usbmuxConf)
         let logURL = paths.logs.appendingPathComponent("usbmuxd.log")
         daemonTask = Task.detached {
@@ -192,7 +222,7 @@ import System
                     // dead daemon look alive forever (the empty-catch bug).
                     while !Task.isCancelled {
                         try await Task.sleep(for: .seconds(1))
-                        if kill(pid, 0) != 0 { break }  // ESRCH: daemon gone
+                        if !Self.isRunning(pid) { break }
                     }
                 }
             } catch {
@@ -204,20 +234,35 @@ import System
                 await MainActor.run { [weak self] in self?.daemonDidDie() }
             }
         }
-        return session
     }
 
-    /// The daemon exited without stop() — app management is now dead. Clear the
-    /// session so canManageApps flips false and tell whoever is listening.
+    /// The daemon exited without stop(): started again on the same sockets, which the emulator redials, up to
+    /// `restartLimit` times (it used to leave app management off until Force Stop then Start: state audit A-11);
+    /// past that the session goes, so canManageApps flips false, and whoever is listening is told.
     private func daemonDidDie() {
-        guard session != nil else { return }  // already torn down by stop()
-        logEvent("usbmux: daemon exited unexpectedly; app management disabled")
-        session = nil
+        guard let session, let launched else { return }  // already torn down by stop()
         daemonPID = nil
+        if restarts < Self.restartLimit {
+            restarts += 1
+            logEvent("usbmux: daemon exited unexpectedly; starting it again (\(restarts) of \(Self.restartLimit))")
+            launch(session, paths: launched.paths)
+            return
+        }
+        logEvent("usbmux: daemon exited unexpectedly; app management disabled")
+        self.session = nil
         onUnexpectedExit?()
     }
 
     private var pidFile: String?
+
+    /// Whether the daemon still runs. Not kill(pid, 0): a daemon that exited stays a zombie until run() returns and
+    /// reaps it, and that succeeds on a zombie, so a death was never noticed.
+    private nonisolated static func isRunning(_ pid: pid_t) -> Bool {
+        var info = proc_bsdinfo()
+        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size else { return false }
+        return info.pbi_status != 5  // SZOMB
+    }
 
     private func reapStaleDaemon(_ pidFile: String?) {
         guard let pidFile,
@@ -244,5 +289,6 @@ import System
         daemonTask?.cancel()
         daemonTask = nil
         session = nil
+        launched = nil
     }
 }

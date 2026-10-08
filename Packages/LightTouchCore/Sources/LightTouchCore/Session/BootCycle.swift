@@ -35,6 +35,8 @@ public protocol BootCycleHost: AnyObject {
     // The per-boot steps, in the order a boot takes them.
     /// Everything the last boot learned about its guest, forgotten (BootWatchHost.forgetBootFacts).
     func forgetBootFacts()
+    /// usbmuxd runs again if it was given up on (USBMux.ensureRunning).
+    func ensureUSBMux()
     func publishDeveloperConnection()
     /// The guest cold-boots portrait, so the tracked orientation (and the iPad's accelerometer) follows it back.
     /// Leaving it at 90/270 left DisplayView posing the shell sideways while the guest published a portrait buffer.
@@ -52,6 +54,7 @@ extension BootCycleHost {
     public func beginBoot() {
         bootScope.renew()
         forgetBootFacts()
+        ensureUSBMux()
         publishDeveloperConnection()
         resetRotation()
     }
