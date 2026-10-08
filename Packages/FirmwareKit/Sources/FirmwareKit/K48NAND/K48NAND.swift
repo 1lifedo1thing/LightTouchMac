@@ -671,4 +671,51 @@ public enum K48NAND {
         )
         return BuildResult(records: st.records, vblocksUsed: ftl.vblock, tocPages: ftl.toc.count)
     }
+
+    /// A stopped edit's store: `system` and `data` laid out fresh into `out` as `build` lays out a prepared store,
+    /// with the MBR, the third partition and the signature (epoch, flags, kernel version, whitening) that `store`
+    /// plus `overlay` hold now. Whatever YaFTL state the guest left goes; the device restores its map on boot as it
+    /// does from a prepared store. `work` keeps the MBR and third partition read back.
+    nonisolated(nonsending) static func rebuild(
+        store: URL,
+        overlay: URL?,
+        system: URL,
+        data: URL?,
+        out: URL,
+        work: URL,
+        log: (String) -> Void = { _ in }
+    ) async throws {
+        let geo = try geometry(store: store)
+        let st = try StoreReader(store, geo: geo, overlay: overlay)
+        guard let sig = st.signature() else { throw FirmwareError(.unsupported, "\(store.path): no NAND signature") }
+        let map = VolumeRebuild.yaftlMap(st)
+        func page(_ lpn: Int) -> [UInt8] {
+            guard lpn < map.count, map[lpn] != 0, let d = st.readVPN(Int(map[lpn] - 1))?.data else {
+                return [UInt8](repeating: 0, count: geo.pageSize)
+            }
+            return d
+        }
+        let parts = partitions(mbr: page(0))
+        let mbr = work.appendingPathComponent("mbr.bin")
+        try Data((0..<parts[0].lba).flatMap(page)).write(to: mbr)
+        var s3: URL?
+        if parts[2].type != 0, parts[2].count > 0 {
+            let url = work.appendingPathComponent("s3.img")
+            try Data((parts[2].lba..<parts[2].lba + parts[2].count).flatMap(page)).write(to: url)
+            s3 = url
+        }
+        try await build(
+            geometry: geo,
+            mbr: mbr,
+            kernelVersion: sig.kernelVersion,
+            epoch: sig.epoch,
+            system: system,
+            s3: s3,
+            data: data.map { .image($0) } ?? .none,
+            out: out,
+            whitening: !st.plain,
+            sigFlags: sig.flags,
+            log: log
+        )
+    }
 }

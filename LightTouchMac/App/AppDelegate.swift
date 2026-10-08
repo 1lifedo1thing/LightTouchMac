@@ -316,7 +316,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // every preparation; the next launch's sweep removes its staging.
         if host != nil { FirmwareJobs.shared.cancelAll() }
         emulators.forEach { $0.stop() }
-        DeviceFilesystemEdits.shared.endAllBrowsing()
     }
 
     /// On quit: guard an in-flight install, then halt each device

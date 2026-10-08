@@ -8,7 +8,7 @@ extension K48NAND {
     final class StoreReader {
         let geo: Geometry, stride: Int
         let files: [Data], overlay: [Data], dirty: [Data]
-        /// From the signature's flags (plainSigFlags: an S5L8920 store); set once the check has read it.
+        /// From the signature's flags (plainSigFlags: an S5L8920 store).
         var plain = false
         init(_ dir: URL, geo: Geometry, overlay: URL? = nil) throws {
             guard try K48NAND.geometry(store: dir).json == geo.json else {
@@ -60,6 +60,18 @@ extension K48NAND {
                 try validate(self.overlay, bytes: pageFileBytes, at: o, kind: "overlay pages")
                 try validate(dirty, bytes: (geo.blocksPerCE * geo.pagesPerBlock + 7) / 8, at: o, kind: "dirty bitmap")
             }
+            plain = signature().map { $0.flags & 0x10000 == 0 } ?? false
+        }
+
+        /// NANDDRIVERSIGN's payload, as `writeMetadata` lays it out on cs0's signature block.
+        func signature() -> (epoch: UInt8, flags: UInt32, kernelVersion: [UInt8])? {
+            guard let (d, _) = read(0, geo.ppage(geo.cand[0][4], 0)), d.starts(with: "NANDDRIVERSIGN".utf8) else {
+                return nil
+            }
+            return (
+                UInt8(truncatingIfNeeded: le32(d, 0x38)) &- 0x30, le32(d, 0x3c),
+                Array(d[0x40..<0x140].prefix { $0 != 0 })
+            )
         }
 
         /// The file serving (cs, ppage).

@@ -13,7 +13,8 @@
 // legacy (n45/m68, base = bank<N>/<page>.page): iPhone OS 1.x's FTL as the guest left it (N45FTL: its context's
 // map and log blocks over base + overlay). One volume, "system". A device not shut down cleanly is refused.
 //
-// iPad (k48, base = geometry.json + bus<b>-ce<c>.pages): a YaFTL read-only restore over base + overlay
+// iPad (k48 and the other kboot boards, base = geometry.json + bus<b>-ce<c>.pages; the S5L8920 boards' meta unwhitened,
+// as their NANDDRIVERSIGN flags say): a YaFTL read-only restore over base + overlay
 // (the .dirty bitmap picks the source): every vblock is walked through the VFL until its first blank
 // page; each user page's copy with the highest (USN, vpn) wins; index pages, BTOCs and the control
 // vblocks (the CX01 context) are ignored. MBR partition 1 is "system", 2 is "data".

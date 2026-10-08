@@ -5,8 +5,8 @@ import Testing
 @testable import LightTouchCore
 
 /// Show File System and Start (DeviceFilesystemEdits) against a firmwarekit stand-in that answers like the real one:
-/// `edit --action begin` writes work/edit.json, commit and discard remove it; mount and unmount for the read-only
-/// view; a device marked unclean fails as a 1.x FTL not shut down cleanly. It logs every call, and holds one call
+/// `edit --action begin` writes work/edit.json, commit and discard remove it; a device marked unclean fails as a 1.x
+/// FTL not shut down cleanly. It logs every call, and holds one call
 /// until the test lets it go.
 @MainActor struct DeviceFilesystemEditsTests {
     let session = "6F8B1C8E-2D8E-4F0E-9C1A-3A3B0E7F5D11"
@@ -28,8 +28,6 @@ import Testing
                 edit:begin) mkdir -p "$device/work"; printf '{"id":"\(session)","phase":"editing"}' > "$device/work/edit.json"; printf '{"id":"\(session)"}' ;;
                 edit:mount) printf '{"id":"\(session)"}' ;;
                 edit:commit|edit:discard) rm "$device/work/edit.json"; echo '{}' ;;
-                mount:*) mkdir -p "$out"; echo '{"volume":"system"}' ;;
-                unmount:*) rm -rf "$out"; echo '{}' ;;
                 *) echo '{}' ;;
             esac
 
@@ -133,20 +131,13 @@ import Testing
             #expect(edits.blocksStart(ipod) && !edits.hasOpenEdit(ipod), "a half-committed edit lets Start through")
             try fm.removeItem(at: work(ipod).appendingPathComponent("edit.json"))
 
-            // A read-only view (the iPhone 4): never holds Start, and Start detaches it.
+            // A YaFTL board (the iPhone 4) edits as the N72 does.
             let phone = try device("n90ap", state: state)
             edits.perform(.openFilesystem, entry: entry, instance: phone, library: library, releaseStopped: { true })
-            let view = fm.temporaryDirectory.appendingPathComponent("LightTouch-files-\(phone.id.uuidString)")
-            await wait { edits.activity[phone.id] == nil && fm.fileExists(atPath: view.path) }
-            #expect(
-                fm.fileExists(atPath: view.path) && !edits.blocksStart(phone),
-                "no read-only view, or it holds Start"
-            )
-            try await edits.release(phone, library: library, commit: nil)
-            #expect(
-                !fm.fileExists(atPath: view.path) && calls().last?.hasPrefix("unmount") == true,
-                "Start left the view attached"
-            )
+            await wait { edits.activity[phone.id] == nil && edits.hasOpenEdit(phone) }
+            #expect(edits.hasOpenEdit(phone) && !edits.blocksStart(phone), "the iPhone 4 opened no edit")
+            try await edits.release(phone, library: library, commit: false)
+            #expect(calls().last?.contains("--action discard") == true && !edits.hasOpenEdit(phone))
 
             // A running device isn't opened.
             let before = calls().count
@@ -168,65 +159,12 @@ import Testing
                 offered == [oldEntry.id] && edits.activity.isEmpty && errors.count == 1,
                 "unclean 1.x: offered \(offered), errors \(errors)"
             )
-            // Each view opens one folder: the edit's mount point, the read-only view's one tree (system with data on it).
-            #expect(
-                Set(opened) == [
-                    edits.mountPoint(ipod),
-                    view.appendingPathComponent(phone.profile!.marketingName, isDirectory: true),
-                ],
-                "opened \(opened)"
-            )
+            // Each edit opens one folder, its mount point.
+            #expect(Set(opened) == [edits.mountPoint(ipod), edits.mountPoint(phone)], "opened \(opened)")
             #expect(
                 calls().contains {
-                    $0.contains("--action mount") && $0.contains("--mount-point \(edits.mountPoint(ipod).path)")
+                    $0.contains("--action mount") && $0.contains("--mount-point \(edits.mountPoint(phone).path)")
                 }
-            )
-            #expect(calls().contains { $0.hasPrefix("mount ") && $0.contains("--root ") })
-        }
-    }
-
-    /// Quit detaches the read-only views this run attached and touches nothing else: no listing of the temporary
-    /// directory (seconds on a $TMPDIR of 100,000 entries), no unmount of another run's folder, nothing at all with
-    /// no view open.
-    @Test func quitDetachesOnlyTheViewsThisRunAttached() async throws {
-        try await LibraryFixtures.withScratch { dir in
-            let state = dir.appendingPathComponent("state")
-            let fm = FileManager.default
-            let edits = DeviceFilesystemEdits(
-                preparer: try firmwarekit(dir),
-                state: state,
-                logs: dir.appendingPathComponent("logs"),
-                open: { _ in },
-                presentError: { _ in }
-            )
-            let library = DeviceLibrary(state: state)
-            let entry = try #require(
-                try FirmwareCatalog.load(from: LibraryFixtures.shippedCatalog).entry(id: "n72ap-7E18")
-            )
-            func calls() -> [String] {
-                ((try? String(contentsOf: dir.appendingPathComponent("calls"), encoding: .utf8)) ?? "").split(
-                    separator: "\n"
-                ).map(String.init)
-            }
-            let stray = fm.temporaryDirectory.appendingPathComponent("LightTouch-files-\(UUID().uuidString)")
-            try fm.createDirectory(at: stray, withIntermediateDirectories: true)
-            defer { try? fm.removeItem(at: stray) }
-
-            edits.endAllBrowsing()
-            #expect(calls().isEmpty, "quit with no view open ran \(calls())")
-
-            let phone = try device("n90ap", state: state)
-            edits.perform(.openFilesystem, entry: entry, instance: phone, library: library, releaseStopped: { true })
-            let view = fm.temporaryDirectory.appendingPathComponent("LightTouch-files-\(phone.id.uuidString)")
-            await wait { edits.activity[phone.id] == nil && fm.fileExists(atPath: view.path) }
-            edits.endAllBrowsing()
-            #expect(
-                calls().filter { $0.hasPrefix("unmount") } == ["unmount --out \(view.path)"],
-                "quit's unmounts: \(calls())"
-            )
-            #expect(
-                !fm.fileExists(atPath: view.path) && fm.fileExists(atPath: stray.path),
-                "the view stayed, or another run's folder went"
             )
         }
     }

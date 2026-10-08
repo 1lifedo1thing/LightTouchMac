@@ -125,3 +125,115 @@ import Testing
         #expect(fm.fileExists(atPath: base.appendingPathComponent("nand").path))
     }
 }
+
+@Suite(.detachesItsImages) struct StoppedYaFTLEditTests {
+    /// A YaFTL device (the selfcheck geometry; whitened as the A4 boards, plain as the S5L8920 boards): an overlay that
+    /// rewrote the whole store, as the guest's writes do, is what begin exports; a file written into an app's Documents
+    /// on the data volume is in the published store's data volume, owned by mobile, beside the guest's file, with the
+    /// store's signature kept and an empty overlay.
+    @Test(arguments: [true, false]) func dataVolumeEdit(whitening: Bool) async throws {
+        let fm = FileManager.default
+        let root = try Fixtures.tempDir("stopped-yaftl-edit")
+        defer { try? fm.removeItem(at: root) }
+        let geo = K48NAND.Geometry.selfcheck
+        let mbr = root.appendingPathComponent("mbr.bin")
+        try K48NAND.makeMBR(geometry: geo, systemMiB: 8).write(to: mbr)
+        let system = root.appendingPathComponent("system.img")
+        try await VolumeMount.makeHFS(system, size: 8 << 20, name: "System")
+        try await VolumeMount.withMounted(system, at: root.appendingPathComponent("mnt-system")) {
+            try fm.createDirectory(at: $0.appendingPathComponent("private/var"), withIntermediateDirectories: true)
+        }
+        let documents = "mobile/Applications/APP/Documents"
+        let data = root.appendingPathComponent("data.img")
+        try await VolumeMount.makeHFS(data, size: 8 << 20)
+        try await VolumeMount.withMounted(data, at: root.appendingPathComponent("mnt-data")) {
+            try fm.createDirectory(at: $0.appendingPathComponent(documents), withIntermediateDirectories: true)
+            // files with attributes the Mac can't read back (6.x's, with their protection class): a log left alone,
+            // an app's save replaced
+            for name in ["log.asl", "\(documents)/save.dat"] {
+                let file = $0.appendingPathComponent(name)
+                try Data("old".utf8).write(to: file)
+                #expect(setxattr(file.path, "com.apple.test", "x", 1, 0, 0) == 0)
+            }
+        }
+        let dataHFS = try HFSPlusVolume(data, writable: true)
+        try dataHFS.setOwner(
+            ["mobile", "mobile/Applications", "mobile/Applications/APP", documents],
+            uid: 501,
+            gid: 501
+        )
+        try dataHFS.setOwner(["log.asl", "\(documents)/save.dat"], uid: 0, gid: 0, mode: 0)
+        let kernel = Array("Darwin Kernel Version selfcheck".utf8)
+        func store(_ out: URL, data: URL) async throws {
+            try await K48NAND.build(
+                geometry: geo,
+                mbr: mbr,
+                kernelVersion: kernel,
+                epoch: 4,
+                system: system,
+                data: .image(data),
+                out: out,
+                whitening: whitening
+            )
+        }
+        let device = root.appendingPathComponent("device")
+        let base = device.appendingPathComponent("base")
+        try await store(base.appendingPathComponent("nand"), data: data)
+        // The guest's store: the data volume with its file, every page of it in the overlay.
+        let guest = root.appendingPathComponent("guest.img")
+        #expect(clonefile(data.path, guest.path, 0) == 0)
+        try await VolumeMount.withMounted(guest, at: root.appendingPathComponent("mnt-guest")) {
+            try Data("guest".utf8).write(to: $0.appendingPathComponent("\(documents)/guest.txt"))
+        }
+        let overlay = device.appendingPathComponent("overlay")
+        try await store(overlay, data: guest)
+        for b in 0..<geo.buses {
+            for c in 0..<geo.cePerBus {
+                try Data(repeating: 0xFF, count: geo.pagesPerCE / 8).write(
+                    to: overlay.appendingPathComponent("bus\(b)-ce\(c).dirty")
+                )
+            }
+        }
+        try fm.removeItem(at: overlay.appendingPathComponent("geometry.json"))
+        try JSONSerialization.data(withJSONObject: ["board": "n90ap"]).write(
+            to: base.appendingPathComponent("device.lock.json")
+        )
+        try Data(repeating: 0xff, count: 1 << 20).write(to: base.appendingPathComponent("nor.bin"))
+        let record: [String: Any] = [
+            "id": UUID().uuidString, "board": "n90ap", "firmware": "test",
+            "base": ["kind": "prepared", "path": base.path],
+            "storage": [
+                "key": "old", "overlay": overlay.path, "snapshot": "old-snapshot",
+                "writableNOR": device.appendingPathComponent("nor.bin").path, "usbmuxConf": "conf",
+            ],
+        ]
+        try DeviceRecord.data(record).write(to: device.appendingPathComponent(DeviceRecord.name))
+
+        let session = try await StoppedVolumeEdit.begin(device: device)
+        let edited = try #require(session.data)
+        try await VolumeMount.withMounted(edited, at: root.appendingPathComponent("edit")) {
+            #expect(try Data(contentsOf: $0.appendingPathComponent("\(documents)/guest.txt")) == Data("guest".utf8))
+            try Data("from the Mac".utf8).write(to: $0.appendingPathComponent("\(documents)/hello.txt"))
+            try fm.removeItem(at: $0.appendingPathComponent("\(documents)/save.dat"))
+            try Data("new save".utf8).write(to: $0.appendingPathComponent("\(documents)/save.dat"))
+        }
+        try await StoppedVolumeEdit.commit(device: device, id: session.id)
+
+        let published = try DeviceRecord.object(Data(contentsOf: device.appendingPathComponent(DeviceRecord.name)))
+        let generation = URL(fileURLWithPath: try #require((published["base"] as? [String: String])?["path"]))
+        let newOverlay = try #require((published["storage"] as? [String: Any])?["overlay"] as? String)
+        #expect(try fm.contentsOfDirectory(atPath: newOverlay).isEmpty)
+        let nand = generation.appendingPathComponent("nand")
+        let st = try K48NAND.StoreReader(nand, geo: geo)
+        #expect(st.signature()?.epoch == 4 && st.signature()?.kernelVersion == kernel && st.plain == !whitening)
+        let volumes = try VolumeRebuild.rebuild(base: nand, overlay: nil, into: root.appendingPathComponent("verify"))
+        #expect(volumes.map(\.name) == ["system", "data"])
+        _ = try HFSPlusVolume(volumes[0].image).record(at: "private/var")
+        let volume = try HFSPlusVolume(volumes[1].image)
+        let hello = try volume.record(at: "\(documents)/hello.txt")
+        #expect(try volume.contents(hello) == Data("from the Mac".utf8))
+        #expect(hello.uid == 501 && hello.gid == 501)
+        #expect(try volume.contents(volume.record(at: "\(documents)/guest.txt")) == Data("guest".utf8))
+        #expect(try volume.contents(volume.record(at: "\(documents)/save.dat")) == Data("new save".utf8))
+    }
+}

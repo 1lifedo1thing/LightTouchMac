@@ -169,10 +169,6 @@ public enum Board: String, Sendable, CaseIterable, Codable {
     public var bootrom: String { soc == .s5l8900 ? "bootrom_s5l8900" : "bootrom_240_4" }
     /// iPhone OS 1: no guest agent, so the web proxy's CA goes into the stopped device's trust store.
     public var trustsStopped: Bool { soc == .s5l8900 }
-    /// FirmwareKit edits the stored volume while stopped: the N72's generated store, and the 1.x legacy FTL.
-    public var editableStopped: Bool { soc == .s5l8900 || soc == .s5l8720 }
-    /// FirmwareKit rebuilds the store into volumes to browse: not the S5L8920 boards'.
-    public var browsableStopped: Bool { soc != .s5l8920 }
     /// iPhones prepared through the kboot pipeline (iPhone 3GS, iPhone 4): their identity carries the modem's IMEI
     /// (IPhoneIdentity); the original iPhone's recipe records its own.
     public var kbootPhone: Bool { isKBoot && isPhone }
