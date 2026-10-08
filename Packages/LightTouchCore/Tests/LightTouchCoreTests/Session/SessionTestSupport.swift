@@ -159,6 +159,7 @@ final class FakeSession: MachineHost, ConnectionHost, ActivationServices, Readin
     var started = true
     var isReleased = false
     var hasGuestTools = true
+    var nextStartChanged = false
     var filesMeddled = false
     var fakeHelper: FakeHelper? = FakeHelper()
     var helper: DeviceHelper? { fakeHelper }

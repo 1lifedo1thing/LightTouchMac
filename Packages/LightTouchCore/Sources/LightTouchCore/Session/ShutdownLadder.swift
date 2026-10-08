@@ -131,7 +131,7 @@ public enum ShutdownOutcome: Equatable {
 
     /// Starts the halt now, or joins the one under way. The task's value: true iff the helper is gone.
     @discardableResult public func halt() -> Task<Bool, Never> {
-        if isPoweredOff || host.helper?.isDead != false { return Task { true } }
+        if host.helper?.isDead != false { return Task { true } }
         if let haltTask { return haltTask }
         let process = host.helper
         let budgets = budgets
@@ -156,6 +156,9 @@ public enum ShutdownOutcome: Equatable {
             // The overlay or NOR the helper has open is gone from disk: a flush would
             // write into dead inodes, so quit QEMU outright (no pause first).
             logEvent("stop: files were changed under the device; quitting without a flush")
+            host.helperLink?.send(.machine(.quit))
+        } else if isPoweredOff {
+            // The guest powered itself off (its storage is clean) and the machine is stopped: quit QEMU.
             host.helperLink?.send(.machine(.quit))
         } else {
             process?.terminate()

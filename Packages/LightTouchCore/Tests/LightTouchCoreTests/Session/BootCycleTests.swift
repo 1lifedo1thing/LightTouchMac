@@ -196,6 +196,33 @@ struct BootCycleTests {
         }
     }
 
+    /// State audit A-4: Start after Shut Down powered the same helper on, so a free-form size, the Internet switch,
+    /// the debug port or the boot arguments chosen while it was off waited for some later Stop. A change quits the
+    /// powered-off helper and starts a fresh one; with none, Start stays in place.
+    @Test func startAfterShutDownTakesChangedSettingsWithAFreshHelper() async throws {
+        try await withScratchDirectory { directory in
+            let changed = session(directory)
+            changed.state = .poweredOff
+            changed.nextStartChanged = true
+            changed.fakeHelper!.onExit = { [unowned changed] in changed.bootWatch.helperDied("quit") }
+            changed.link.onCommand = { if case .machine(.quit) = $0 { changed.fakeHelper!.exit() } }
+            var restarted = false
+            changed.onRestart = { restarted = true }
+            changed.cycle.powerOn()
+            await eventually("a fresh helper") { restarted }
+            #expect(changed.link.commands == [.machine(.quit)] && changed.state == .poweredOff)
+            #expect(!changed.cycle.poweringOn && changed.fakeHelper!.kills == 0)
+
+            let same = session(directory)
+            same.state = .poweredOff
+            same.status = helperStatus(shutdownConfirmed: false)
+            same.cycle.powerOn()
+            await same.bootScope[.powerOn]?.value
+            #expect(same.link.commands == [.machine(.reset), .machine(.resume)] && !same.steps.contains("restart"))
+            same.readiness.cancel()
+        }
+    }
+
     /// State audit A-10: a power-on whose task was cancelled (a Restart or a halt retiring the boot) left
     /// `poweringOn` set, so frames never moved the next boot to running and a guest power-off went unnoticed.
     @Test func aCancelledPowerOnEndsItsPoweringOn() async throws {

@@ -16,6 +16,8 @@ public protocol BootCycleHost: AnyObject {
     /// stop() or release() ran: this controller's boots are over.
     var isReleased: Bool { get }
     var hasGuestTools: Bool { get }
+    /// A setting only a fresh helper takes (BootSettings) changed since this helper's boot was built.
+    var nextStartChanged: Bool { get }
     var helper: DeviceHelper? { get }
     var helperLink: HelperLink? { get }
     var workers: WorkerRetirement { get }
@@ -63,6 +65,22 @@ extension BootCycleHost {
         readiness.start()
         startGuestPackageWatch()
         startBootWatch()
+    }
+}
+
+/// What a helper's boot was built with that only a fresh helper changes: the free-form panel, the Internet, the debug
+/// port and the boot arguments. Chosen while the device was shut down, they used to wait for a Stop, since Start
+/// powered the same helper on (state audit A-4).
+public struct BootSettings: Equatable {
+    public var panel: String?
+    public var network: Bool
+    public var debugPort: Bool
+    public var bootArgs: String
+    public init(panel: String?, network: Bool, debugPort: Bool, bootArgs: String) {
+        self.panel = panel
+        self.network = network
+        self.debugPort = debugPort
+        self.bootArgs = bootArgs
     }
 }
 
@@ -154,11 +172,21 @@ public final class BootCycle {
     }
 
     /// The machine was kept at guest power-off (-no-shutdown): reset and resume it, without reinitializing QEMU or
-    /// opening a second NAND writer. Stopped by a halt, the helper is gone: a fresh one starts.
+    /// opening a second NAND writer. Stopped by a halt, the helper is gone: a fresh one starts; so does one when a
+    /// next-start setting changed while it was off, once this helper has quit.
     public func powerOn() {
         guard isPoweredOff, !host.storageFailed, !host.shuttingDown else { return }
         if host.helper?.isDead != false {
             host.restart()
+            return
+        }
+        if host.nextStartChanged {
+            logEvent("power on: settings for the next start changed; starting a fresh helper")
+            let halt = host.halt()
+            let host = host
+            Task {
+                if await halt.value { host.restart() }
+            }
             return
         }
         host.beginBoot()

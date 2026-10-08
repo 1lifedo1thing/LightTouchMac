@@ -212,6 +212,8 @@ final class EmulatorController {
     @ObservationIgnored var lastFrameSerial: UInt64 = 0
     @ObservationIgnored var releasing = false
     @ObservationIgnored var admittedStorage: StorageBootProof?
+    /// What this helper's boot was built with (BootSettings); Start after Shut Down compares it with the next.
+    @ObservationIgnored var bootSettings: BootSettings?
 
     // MARK: - Boot
     @ObservationIgnored var fileWatch: DeviceFileWatch?

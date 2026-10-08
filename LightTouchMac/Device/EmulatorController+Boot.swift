@@ -108,6 +108,7 @@ extension EmulatorController {
             logEvent("debug port: QEMU gdbstub on 127.0.0.1:\(port)")
         }
         if config != nil {
+            bootSettings = nextBootSettings
             // Stopped migration time is separate from the guest boot budget.
             cycle.begin()
             logEmulatorBuild()
@@ -199,6 +200,18 @@ extension EmulatorController {
             return nil
         }
     }
+
+    /// What the next fresh helper's boot would be built with (BootSettings): the record's panel, the saved
+    /// Internet choice (this device's when none is saved), the debug port and the boot arguments.
+    var nextBootSettings: BootSettings {
+        BootSettings(
+            panel: instance.panel,
+            network: NetworkAccessPreference.decided() ?? network,
+            debugPort: debugPortEnabled,
+            bootArgs: DeviceOptions.bootArgs()
+        )
+    }
+    var nextStartChanged: Bool { bootSettings.map { $0 != nextBootSettings } ?? false }
 
     /// Whether this boot ends in Setup: iOS 5 or later on an overlay that hasn't finished it (its mark), read at every
     /// boot, so a Restart after Setup waits for the Home screen. Setup's end is watched on every boot that shows it

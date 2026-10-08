@@ -48,8 +48,11 @@ struct ShutdownLadderTests {
             let goneHalt = gone.ladder.halt()
             #expect(gone.fakeHelper!.terms == 0 && !gone.shuttingDown)
             #expect(await goneHalt.value)
+            // Powered off by its guest, the helper is quit: nothing is left to flush.
             let off = session(directory, state: .poweredOff)
-            #expect(await off.ladder.halt().value && off.fakeHelper!.terms == 0)
+            off.link.onCommand = { if case .machine(.quit) = $0 { off.fakeHelper!.exit() } }
+            #expect(await off.ladder.halt().value && off.fakeHelper!.terms == 0 && off.fakeHelper!.kills == 0)
+            #expect(off.link.commands == [.machine(.quit)])
         }
     }
 
