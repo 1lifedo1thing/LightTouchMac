@@ -237,7 +237,7 @@
       "url": "https://github.com/p-x9/MachOKit/archive/refs/tags/0.53.0.tar.gz",
       "sha256": "f99e68647cd65664740780e6777441c3cd55ff434bbf5bfdde5dfc33132f9aed",
       "license": "MIT",
-      "checksum_source": "SHA-256 calculated from this GitHub archive on 2026-09-28. Pinned exact in Packages/FirmwareKit/Package.swift. FirmwareKit's guest-helper checks (MachOSignature: thin/fat headers, load commands, LC_CODE_SIGNATURE) go through it; the dyld_v1 shared-cache reader stays FirmwareKit's own (MachOKitProbeTests says why)."
+      "checksum_source": "SHA-256 calculated from this GitHub archive on 2026-09-28. Pinned exact in Packages/FirmwareKit/Package.swift. FirmwareKit's guest-helper checks (MachOSignature: thin/fat headers, load commands, LC_CODE_SIGNATURE) go through it; the dyld_v1 shared-cache reader stays FirmwareKit's own (MachOKitProbeTests says why), and so do the in-memory readers (FitCheck's MachO32, KBoot's MachO): MachOKit 0.53 reads only a file by URL, with try! on unchecked ranges."
     },
     {
       "name": "swift-subprocess",

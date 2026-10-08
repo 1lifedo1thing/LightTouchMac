@@ -580,46 +580,14 @@ extension N72Board {
         return (true, "GL front end replaces OpenGLES (\(got.count) exports, the firmware's own)")
     }
 
-    /// gles2x_exports.scan: the defined external symbols of a thin (or the first ARM slice of a fat) 32-bit
-    /// Mach-O, from its classic symbol table (the dysymtab's extdef range when present), without the leading _.
+    /// gles2x_exports.scan: the defined external symbols of a thin (or the ARM slice of a fat) 32-bit Mach-O,
+    /// without the leading _.
     static func exportedSymbols(_ data: Data) throws -> [String] {
-        var b = [UInt8](data)
-        func be32(_ o: Int) -> Int { Int(b[o]) << 24 | Int(b[o + 1]) << 16 | Int(b[o + 2]) << 8 | Int(b[o + 3]) }
-        func u32(_ o: Int) -> Int { Int(le32(b, o)) }
-        if b.count >= 8, be32(0) == 0xCAFE_BABE {
-            for i in 0..<be32(4) where be32(8 + 20 * i) == 12 {
-                let off = be32(16 + 20 * i)
-                let size = be32(20 + 20 * i)
-                b = Array(b[off..<off + size])
-                break
-            }
-        }
-        guard b.count >= 28, u32(0) == 0xFEED_FACE else {
+        guard let m = (MachO32.slice(data, arch: "armv6") ?? MachO32.slice(data, arch: "armv7"))?.image else {
             throw FirmwareError(.unsupported, "OpenGLES: not a 32-bit Mach-O")
         }
-        var off = 28
-        var symtab: (Int, Int, Int)?
-        var extdef: (Int, Int)?
-        for _ in 0..<u32(16) {
-            switch u32(off) {
-            case 2: symtab = (u32(off + 8), u32(off + 12), u32(off + 16))
-            case 0xB: extdef = (u32(off + 16), u32(off + 20))
-            default: break
-            }
-            off += u32(off + 4)
-        }
-        guard let (symoff, nsyms, stroff) = symtab else {
-            throw FirmwareError(.unsupported, "OpenGLES: no symbol table")
-        }
-        let (first, count) = extdef ?? (0, nsyms)
-        return (first..<first + count).compactMap { k in
-            let e = symoff + 12 * k
-            let type = b[e + 4]
-            let start = stroff + u32(e)
-            guard type & 0x01 != 0, type & 0x0E != 0, let end = b[start...].firstIndex(of: 0) else { return nil }
-            let n = String(decoding: b[start..<end], as: UTF8.self)
-            return n.hasPrefix("_") ? String(n.dropFirst()) : n
-        }.sorted()
+        return m.symbols().filter { MachO32.isExport($0.type) }
+            .map { $0.name.hasPrefix("_") ? String($0.name.dropFirst()) : $0.name }.sorted()
     }
 }
 
