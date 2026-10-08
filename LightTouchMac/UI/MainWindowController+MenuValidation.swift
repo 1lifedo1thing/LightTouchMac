@@ -61,6 +61,8 @@ extension MainWindowController: NSMenuItemValidation {
             let profile = deviceVC?.emulator.profile
             menuItem.toolTip = profile?.supportsFreeForm == false ? profile?.freeFormUnavailableReason : nil
             return deviceVC?.screen.canToggleFreeForm ?? false
+        case #selector(freeFormNativeSize(_:)):
+            return deviceVC?.screen.canShowNativeSize ?? false
         case #selector(toggleDeviceRunning(_:)):
             let running = selectedEntry.map { [.running, .stopping].contains(host.row(for: $0).state) } ?? false
             menuItem.title = running ? "Shut Down…" : "Start"

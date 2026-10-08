@@ -48,6 +48,10 @@ extension DisplayView {
         // The helper forces the alpha byte opaque (FrameRingWriter.copy): iBoot
         // and the iPod's framebuffer leave it 0, which a layer would honor.
         contentLayer.contents = frame.surface
+        if showsHandoff {
+            showsHandoff = false
+            needsLayout = true
+        }
         if let model = modelView ?? pendingModelView, let image = Self.image(frame.surface, colorSpace: colorSpace) {
             model.updateFrame(image)
         }

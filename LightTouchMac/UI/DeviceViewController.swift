@@ -24,16 +24,15 @@ final class DeviceViewController: NSViewController {
         displayView.onPanelChange = { [weak emulator] upright, restart in
             emulator?.setPanel(upright.map(profile.panelOption(upright:)), restart: restart) ?? false
         }
-        // The free-form resize's status is a notice like the others: same stack, same glass, never under one.
+        // A free-form size waiting for Apply, or the restart at it, is a notice like the others: same stack, same
+        // glass, never under one. The window's subtitle reads the size.
         panelStatus.isHidden = true
-        displayView.onPanelStatus = { [weak self] text in
+        panelStatus.onPrimary = { [weak self] in self?.displayView.applyPanel() }
+        panelStatus.onSecondary = { [weak self] in self?.displayView.revertPanel() }
+        displayView.onFreeFormChange = { [weak self] in
             guard let self else { return }
-            if let text {
-                panelStatus.update(title: text, busy: text.hasSuffix("…"))
-            } else {
-                panelStatus.isHidden = true
-            }
-            updateStatusVisibility()
+            updatePanelStatus()
+            onFreeFormChange?()
         }
         displayView.onDropIPA = { [weak self] url in self?.installDropped(url) }
         displayView.onDropIPSW = { FirmwareJobs.shared.importIPSW($0, for: nil) }  // matched by its SHA1
@@ -88,6 +87,24 @@ final class DeviceViewController: NSViewController {
     }
 
     var screen: DisplayView { displayView }
+    /// The free-form readout changed (the window's subtitle shows it).
+    var onFreeFormChange: (() -> Void)?
+
+    private func updatePanelStatus() {
+        if let restarting = displayView.panelRestartText {
+            panelStatus.update(title: restarting, busy: true)
+        } else if displayView.hasPendingPanel, displayView.panelDrag == nil, let size = displayView.freeFormSize {
+            panelStatus.update(
+                title: size,
+                detail: displayView.freeFormLimit ?? "Apply restarts the \(emulator.profile.shortName) at this size.",
+                primary: "Apply",
+                secondary: "Revert"
+            )
+        } else {
+            panelStatus.isHidden = true
+        }
+        updateStatusVisibility()
+    }
 
     /// The same preconditions the menu and toolbar enforce for Install App…
     /// A drop used to bypass all of them, so an .ipa dropped during the ~40s

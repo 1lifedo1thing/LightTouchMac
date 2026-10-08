@@ -29,20 +29,26 @@ extension MainWindowController {
         updateStartupStatus()
         validateCaptureToolbar()  // validates the toolbar once, the lock item included
         updateDeadOverlay()
-        guard let emulator, let deviceVC else {
-            window?.subtitle = selectedEntry.map { library.label(for: $0).subtitle } ?? ""
-            return
-        }
-        // The window subtitle is where AppKit puts secondary window state, and
-        // it styles and truncates itself to match the title. A custom titlebar
-        // accessory was carrying this before — more code, its own constraints,
-        // and it competed with the toolbar for space.
-        window?.subtitle =
-            emulator.isRunning && !emulator.shuttingDown && !emulator.isSleeping
-            ? (emulator.foregroundAppName ?? emulator.statusLine) : emulator.statusLine
+        updateSubtitle()
+        guard let emulator, let deviceVC else { return }
         if emulator.isPoweredOff || emulator.isDead { deviceVC.screen.endLiveText() }
         deviceVC.screen.updatePowerPresentation()
         if emulator.isDead || emulator.isPoweredOff { recording.stop() }
+    }
+
+    /// The window subtitle is where AppKit puts secondary window state, and
+    /// it styles and truncates itself to match the title. A custom titlebar
+    /// accessory was carrying this before — more code, its own constraints,
+    /// and it competed with the toolbar for space. A free-form screen adds its size.
+    func updateSubtitle() {
+        guard let emulator else {
+            window?.subtitle = selectedEntry.map { library.label(for: $0).subtitle } ?? ""
+            return
+        }
+        let status =
+            emulator.isRunning && !emulator.shuttingDown && !emulator.isSleeping
+            ? (emulator.foregroundAppName ?? emulator.statusLine) : emulator.statusLine
+        window?.subtitle = ([status] + [deviceVC?.screen.freeFormReadout].compactMap { $0 }).joined(separator: " · ")
     }
 
     private func updateStartupStatus() {

@@ -69,6 +69,7 @@ import LightTouchCore
     @objc func toggleDevicePause(_ sender: Any?) {}
     @objc func toggleDeviceRunning(_ sender: Any?) {}
     @objc func toggleFreeFormScreen(_ sender: Any?) {}
+    @objc func freeFormNativeSize(_ sender: Any?) {}
     @objc func toggleHardwareKeyboard(_ sender: Any?) {}
     @objc func toggleKeyboardInput(_ sender: Any?) {}
     @objc func toggleRecording(_ sender: Any?) {}

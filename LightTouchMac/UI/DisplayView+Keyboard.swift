@@ -71,6 +71,7 @@ extension DisplayView {
             return
         }
         if moveFocusOut(event) { return }
+        if panelKey(event) { return }
         // Command combinations belong to the menu bar; let them pass.
         if !event.modifierFlags.intersection([.command, .control]).isEmpty {
             super.keyDown(with: event)

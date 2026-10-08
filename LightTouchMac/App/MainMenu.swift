@@ -183,6 +183,7 @@ enum MainMenuBuilder {
         }
         menu.addItem(submenu(bezel, title: "Device Bezels"))
         menu.addItem(item("Free-Form Screen", #selector(MainWindowController.toggleFreeFormScreen(_:))))
+        menu.addItem(item("Native Size", #selector(MainWindowController.freeFormNativeSize(_:))))
         menu.addItem(item("Show Finger Dots", #selector(MainWindowController.toggleTouchOverlay(_:))))
         menu.addItem(item("Show Hidden Files", #selector(DeviceFilesViewController.toggleHidden(_:))))
         menu.addItem(.separator())

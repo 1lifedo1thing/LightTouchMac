@@ -82,7 +82,8 @@ extension SharedState {
             try await settle()
             func all(_ l: CALayer) -> [CALayer] { [l] + (l.sublayers ?? []).flatMap(all) }
             let lcd = all(display.layer!).first {
-                $0.backgroundColor == NSColor.black.cgColor && $0.contentsGravity == .resize
+                $0.backgroundColor == NSColor.black.cgColor
+                    && ($0.contentsGravity == .resize || $0.contentsGravity == .center)
             }!
             let shell = lcd.superlayer!
             func models() -> [NSView] { display.subviews.filter { $0 is DeviceModelView } }
@@ -259,7 +260,8 @@ extension SharedState {
             pad.layoutSubtreeIfNeeded()
             try await Task.sleep(for: .milliseconds(300))
             let padLCD = all(pad.layer!).first {
-                $0.backgroundColor == NSColor.black.cgColor && $0.contentsGravity == .resize
+                $0.backgroundColor == NSColor.black.cgColor
+                    && ($0.contentsGravity == .resize || $0.contentsGravity == .center)
             }!
             let padBox = padLCD.convert(padLCD.bounds, to: pad.layer!)
             let side = 800 - 2 * DisplayView.zoomInset
@@ -301,7 +303,8 @@ extension SharedState {
             for _ in 0..<5 { try await tick() }
             func all(_ l: CALayer) -> [CALayer] { [l] + (l.sublayers ?? []).flatMap(all) }
             let lcd = all(display.layer!).first {
-                $0.backgroundColor == NSColor.black.cgColor && $0.contentsGravity == .resize
+                $0.backgroundColor == NSColor.black.cgColor
+                    && ($0.contentsGravity == .resize || $0.contentsGravity == .center)
             }!
             func box() -> CGRect { lcd.convert(lcd.bounds, to: display.layer!) }
             #expect(box().height > box().width, "not portrait at rest: \(box())")
@@ -334,29 +337,9 @@ extension SharedState {
             func check(_ ok: Bool, _ what: String, line: Int = #line) { #expect(ok, "line \(line): \(what)") }
             func size(_ w: CGFloat, _ h: CGFloat) -> CGSize { CGSize(width: w, height: h) }
 
-            // Sizes the boards accept.
+            // The panel= each size records (the sizes the boards take are FreeFormResizeTests').
             let pod = Board.n72
             let pad = Board.k48
-            check(pod.snappedPanel(upright: size(321, 600)) == size(320, 511), "iPod: even width, 511 rows")
-            check(pod.snappedPanel(upright: size(10, 10)) == size(64, 64), "iPod minimum")
-            check(pod.snappedPanel(upright: size(1100, 600)) == size(510, 511), "iPod: never wider than tall upright")
-            check(
-                pad.snappedPanel(upright: size(1100, 1024)) == size(1024, 1024),
-                "iPad: never wider than tall upright"
-            )
-            check(pad.snappedPanel(upright: size(1024, 1024)) == size(1024, 1024), "iPad square")
-            check(pod.snappedPanel(upright: size(320, 480)) == size(320, 480), "iPod native")
-            check(
-                pad.snappedPanel(upright: size(768, 1290)) == size(768, 1280),
-                "iPad: landscape width (portrait height) in 16s"
-            )
-            check(pad.snappedPanel(upright: size(768, 1024)) == size(768, 1024), "iPad native")
-            let big = pad.snappedPanel(upright: size(2000, 2000))
-            check(
-                big.width * big.height <= CGFloat(Board.k48.hardware!.panelMaxPixels) && Int(big.height) % 16 == 0
-                    && big.width >= 1500,
-                "iPad display region: \(big)"
-            )
             check(
                 pad.panelOption(upright: size(768, 1280)) == "1280x768"
                     && pad.uprightPanel("1280x768") == size(768, 1280),
@@ -373,36 +356,14 @@ extension SharedState {
                     && boards.allSatisfy { ($0.freeFormUnavailableReason == nil) == $0.supportsFreeForm },
                 "boards"
             )
-            // The A4 phones scan portrait: width (scan width) in 16s, 64…2047, never wider than tall, within the display region.
             let four = Board.n90
-            check(four.snappedPanel(upright: size(640, 960)) == size(640, 960), "iPhone 4 native")
-            check(four.snappedPanel(upright: size(650, 1137)) == size(640, 1137), "iPhone 4: width in 16s")
-            check(
-                four.snappedPanel(upright: size(1000, 700)) == size(688, 700),
-                "iPhone 4: never wider than tall upright"
-            )
-            check(
-                Board.n81.snappedPanel(upright: size(3000, 3000)).width <= 2047
-                    && four.snappedPanel(upright: size(1500, 2047)).width
-                        * four.snappedPanel(upright: size(1500, 2047)).height
-                        <= CGFloat(Board.k48.hardware!.panelMaxPixels),
-                "A4 limits"
-            )
             check(
                 four.panelOption(upright: size(640, 1136)) == "640x1136"
                     && four.uprightPanel("640x1136") == size(640, 1136),
                 "iPhone 4 panel="
             )
-            // The 3G and 3GS: the 2G's CLCD limits.
-            check(
-                Board.n88.snappedPanel(upright: size(321, 600)) == size(320, 511)
-                    && Board.n18.snappedPanel(upright: size(1100, 600)) == size(510, 511),
-                "3G/3GS: the 2G's limits"
-            )
-
-            DisplayView.panelCommitDelay = .milliseconds(50)
             var requests: [(CGSize?, Bool)] = []
-            var statuses: [String?] = []  // what the owner's notice stack is given
+            var statuses: [String] = []  // the readouts and restart notices, as the owner shows them
             var restarts = true
 
             func make(
@@ -417,7 +378,9 @@ extension SharedState {
                 display.emulator = e
                 e.rotationDegrees = rotation
                 display.configureFreeForm(scan: scan ?? panel.map { profile.scan(upright: $0) }, key: key)
-                display.onPanelStatus = { statuses.append($0) }
+                display.onFreeFormChange = { [unowned display] in
+                    statuses.append(display.panelRestartText ?? display.freeFormReadout ?? "none")
+                }
                 display.onPanelChange = { upright, restart in
                     requests.append((upright, restart))
                     return restart && restarts
@@ -443,24 +406,40 @@ extension SharedState {
                 try await Task.sleep(for: .milliseconds(300))
             }
             func all(_ l: CALayer) -> [CALayer] { [l] + (l.sublayers ?? []).flatMap(all) }
-            func box(_ d: DisplayView) -> CGRect {
-                let lcd = all(d.layer!).first {
-                    $0.backgroundColor == NSColor.black.cgColor && $0.contentsGravity == .resize
-                }!
-                return lcd.convert(lcd.bounds, to: d.layer!)
-            }
+            func lcdLayer(_ d: DisplayView) -> CALayer { d.contentLayer }
+            func box(_ d: DisplayView) -> CGRect { d.contentLayer.convert(d.contentLayer.bounds, to: d.layer!) }
             func near(_ a: CGRect, _ w: CGFloat, _ h: CGFloat) -> Bool { abs(a.width - w) < 1 && abs(a.height - h) < 1 }
-            func event(_ type: NSEvent.EventType, _ d: DisplayView, _ p: CGPoint) -> NSEvent {
+            func event(
+                _ type: NSEvent.EventType,
+                _ d: DisplayView,
+                _ p: CGPoint,
+                clicks: Int = 1,
+                option: Bool = false
+            ) -> NSEvent {
                 NSEvent.mouseEvent(
                     with: type,
                     location: d.convert(p, to: nil),
-                    modifierFlags: [],
+                    modifierFlags: option ? .option : [],
                     timestamp: 0,
                     windowNumber: d.window!.windowNumber,
                     context: nil,
                     eventNumber: 0,
-                    clickCount: 1,
+                    clickCount: clicks,
                     pressure: 1
+                )!
+            }
+            func key(_ code: UInt16) -> NSEvent {
+                NSEvent.keyEvent(
+                    with: .keyDown,
+                    location: .zero,
+                    modifierFlags: [],
+                    timestamp: 0,
+                    windowNumber: 0,
+                    context: nil,
+                    characters: "",
+                    charactersIgnoringModifiers: "",
+                    isARepeat: false,
+                    keyCode: code
                 )!
             }
             /// A click at fraction `f` of the LCD as seen is a touch at that point of the panel as it scans: the iPod's
@@ -478,13 +457,13 @@ extension SharedState {
                 )
             }
             /// Grab just outside the LCD at `from` (view points), drag by `by`, release.
-            func drag(_ d: DisplayView, from: CGPoint, by: CGVector, release: Bool = true) {
+            func drag(_ d: DisplayView, from: CGPoint, by: CGVector, release: Bool = true, option: Bool = false) {
                 touches.removeAll()
-                d.mouseDown(with: event(.leftMouseDown, d, from))
+                d.mouseDown(with: event(.leftMouseDown, d, from, option: option))
                 let to = CGPoint(x: from.x + by.dx, y: from.y + by.dy)
-                d.mouseDragged(with: event(.leftMouseDragged, d, to))
+                d.mouseDragged(with: event(.leftMouseDragged, d, to, option: option))
                 d.layoutSubtreeIfNeeded()
-                if release { d.mouseUp(with: event(.leftMouseUp, d, to)) }
+                if release { d.mouseUp(with: event(.leftMouseUp, d, to, option: option)) }
                 check(touches.isEmpty, "a resize drag touched the guest: \(touches)")
             }
 
@@ -516,9 +495,9 @@ extension SharedState {
             }
             func untouched(_ what: String, line: Int = #line) {
                 check(
-                    requests.isEmpty && !d.restartingAtPanel && d.panelReadoutText == nil
+                    requests.isEmpty && !d.restartingAtPanel && d.freeFormTarget == nil
                         && d.freeFormPanel == size(320, 504),
-                    "\(what) changed the panel: \(requests) \(d.panelReadoutText ?? "none") \(String(describing: d.freeFormPanel))",
+                    "\(what) changed the panel: \(requests) \(String(describing: d.freeFormPanel))",
                     line: line
                 )
             }
@@ -544,32 +523,89 @@ extension SharedState {
             try await pane(CGRect(x: 0, y: 0, width: 1400, height: 1400), live: true)
             untouched("a window resize back")
 
-            // Drag the right edge 40 points: 40 more on each side of the centered screen.
+            // Drag the right edge 40 points: 40 more columns, the left edge where it was, the readout following.
             var b = box(d)
             drag(d, from: CGPoint(x: b.maxX + 4, y: b.midY), by: CGVector(dx: 40, dy: 0), release: false)
-            check(d.panelReadoutText == "400 × 504", "readout \(d.panelReadoutText ?? "none")")
-            check(near(box(d), 400, 504), "stretched LCD \(box(d))")
-            // On down past 511 rows: clamped. The corner takes both.
+            check(d.freeFormReadout == "360 × 504", "readout \(d.freeFormReadout ?? "none")")
+            check(near(box(d), 360, 504) && abs(box(d).minX - b.minX) < 0.5, "one-sided: \(box(d)) from \(b)")
+            check(lcdLayer(d).contentsGravity == .center, "the old frame is stretched during the drag")
+            // On down past 511 rows from the corner: the bottom edge stops, the readout says why; the top stays.
+            d.mouseUp(with: event(.leftMouseUp, d, CGPoint(x: b.maxX + 44, y: b.midY)))
             b = box(d)
-            d.mouseUp(with: event(.leftMouseUp, d, CGPoint(x: b.maxX + 4, y: b.midY)))
             drag(d, from: CGPoint(x: b.maxX + 4, y: b.maxY + 4), by: CGVector(dx: 10.3, dy: 400))
-            check(d.panelReadoutText == "420 × 511", "clamped readout \(d.panelReadoutText ?? "none")")
-            check(near(box(d), 420, 511) && requests.isEmpty, "clamped LCD \(box(d)); asked early \(requests)")
-            try await Task.sleep(for: .milliseconds(300))
-            check(requests.count == 1 && requests[0].0 == size(420, 511) && requests[0].1, "release asked \(requests)")
             check(
-                d.restartingAtPanel && d.panelReadoutText == "Restarting at 420 × 511…" && near(box(d), 420, 511),
-                "restart: \(d.panelReadoutText ?? "none") \(box(d))"
+                d.freeFormReadout?.hasPrefix("370 × 511 · ") == true && d.freeFormLimit?.contains("511") == true,
+                "clamped readout \(d.freeFormReadout ?? "none")"
             )
-            check(statuses.last == "Restarting at 420 × 511…" && statuses.contains("400 × 504"), "notices \(statuses)")
+            check(
+                near(box(d), 370, 511) && abs(box(d).minY - b.minY) < 0.5 && abs(box(d).minX - b.minX) < 0.5,
+                "clamped LCD \(box(d)) from \(b)"
+            )
+            // Released, nothing restarts until Apply.
+            try await Task.sleep(for: .milliseconds(100))
+            check(requests.isEmpty && d.hasPendingPanel, "a release asked \(requests)")
+            // Escape reverts; the screen is back where and what it was.
+            check(d.panelKey(key(53)), "Escape wasn't the resize's")
+            try await settle(d)
+            check(!d.hasPendingPanel && near(box(d), 320, 504) && abs(box(d).midX - 700) < 1, "revert: \(box(d))")
+            check(lcdLayer(d).contentsGravity == .resize, "reverted, the frame isn't stretched to the screen again")
+            // ⌥ moves both edges: the center stays.
+            b = box(d)
+            drag(d, from: CGPoint(x: b.maxX + 4, y: b.midY), by: CGVector(dx: 20, dy: 0), option: true)
+            check(near(box(d), 360, 504) && abs(box(d).midX - b.midX) < 0.5, "⌥: \(box(d)) from \(b)")
+            // Return applies: the record and a restart at it, the last frame up unscaled meanwhile.
+            check(d.panelKey(key(36)), "Return wasn't the resize's")
+            check(requests.count == 1 && requests[0].0 == size(360, 504) && requests[0].1, "Apply asked \(requests)")
+            check(
+                d.restartingAtPanel && d.panelRestartText == "Restarting at 360 × 504…" && near(box(d), 360, 504),
+                "restart: \(d.panelRestartText ?? "none") \(box(d))"
+            )
+            check(statuses.last == "Restarting at 360 × 504…" && statuses.contains("360 × 504"), "notices \(statuses)")
             b = box(d)
             d.mouseDown(with: event(.leftMouseDown, d, CGPoint(x: b.maxX + 4, y: b.midY)))
-            check(d.panelReadoutText == "Restarting at 420 × 511…", "a drag during the restart")
+            check(d.panelDrag == nil && d.panelRestartText == "Restarting at 360 × 504…", "a drag during the restart")
+            w.contentView = nil
+
+            // The zoom holds through a drag and after it: Fit becomes the points it showed, no jump on release.
+            requests.removeAll()
+            restarts = false
+            (d, e, w) = try await make(pod, panel: size(320, 504))
+            d.zoom = .fit
+            try await settle(d)
+            let fitPoints = d.zoomPoints
+            b = box(d)
+            drag(d, from: CGPoint(x: b.midX, y: b.minY - 4), by: CGVector(dx: 0, dy: -3 * fitPoints))
+            try await settle(d)
+            let rows: CGFloat = 507
+            check(
+                d.zoom == .points(fitPoints) && abs(box(d).height - rows * fitPoints) < 1
+                    && abs(box(d).maxY - b.maxY) < 0.5,
+                "held: \(d.zoom) \(box(d)) from \(b), \(rows) rows"
+            )
+            // Wider than tall is allowed; with the device stopped Apply simply takes it, shown as it was dragged.
+            b = box(d)
+            drag(d, from: CGPoint(x: b.maxX + 4, y: b.midY), by: CGVector(dx: 300 * fitPoints, dy: 0))
+            let wide = size(620, rows)
+            check(d.freeFormTarget == wide, "wide: \(String(describing: d.freeFormTarget))")
+            d.applyPanel()
+            try await settle(d)
+            check(
+                requests.count == 1 && requests[0].0 == wide && d.freeFormPanel == wide && !d.hasPendingPanel
+                    && near(box(d), 620 * fitPoints, rows * fitPoints),
+                "wide taken: \(requests) \(box(d))"
+            )
+            // View ▸ Native Size and a double-click on a handle: the shipped size, waiting for Apply.
+            d.showNativeSize()
+            check(d.freeFormTarget == size(320, 480) && d.hasPendingPanel, "Native Size")
+            d.revertPanel()
+            b = box(d)
+            d.mouseDown(with: event(.leftMouseDown, d, CGPoint(x: b.minX - 4, y: b.minY - 4), clicks: 2))
+            d.mouseUp(with: event(.leftMouseUp, d, CGPoint(x: b.minX - 4, y: b.minY - 4), clicks: 2))
+            check(d.freeFormTarget == size(320, 480) && touches.isEmpty, "double-click: \(touches)")
             w.contentView = nil
 
             // Landscape: the screen's sides swap, so its on-screen width is the panel's rows.
             requests.removeAll()
-            restarts = false
             (d, e, w) = try await make(pod, panel: size(320, 504))
             e.rotationDegrees = 90
             frameWidth = 504
@@ -579,29 +615,30 @@ extension SharedState {
             touchLands(d, CGPoint(x: 0.25, y: 0.75))
             b = box(d)
             drag(d, from: CGPoint(x: b.minX - 4, y: b.midY), by: CGVector(dx: -3, dy: 0))
-            check(d.panelReadoutText == "510 × 320", "landscape readout \(d.panelReadoutText ?? "none")")
-            try await Task.sleep(for: .milliseconds(300))
+            check(d.freeFormReadout == "507 × 320", "landscape readout \(d.freeFormReadout ?? "none")")
+            d.applyPanel()
             // No restart (a stopped device): the size is simply taken.
-            check(requests.count == 1 && requests[0].0 == size(320, 510), "landscape asked \(requests)")
-            check(!d.restartingAtPanel && d.panelReadoutText == nil && d.isFreeForm, "taken without a restart")
+            check(requests.count == 1 && requests[0].0 == size(320, 507), "landscape asked \(requests)")
+            check(!d.restartingAtPanel && !d.hasPendingPanel && d.isFreeForm, "taken without a restart")
             try await settle(d)
-            check(near(box(d), 510, 320), "landscape after \(box(d))")
+            check(near(box(d), 507, 320), "landscape after \(box(d))")
             e.rotationDegrees = 0
             frameWidth = 320
-            frameHeight = 510
+            frameHeight = 507
             // Off at a non-native size: back to the shipped panel by a restart.
             requests.removeAll()
             restarts = true
             d.setFreeForm(false)
             check(
                 requests.count == 1 && requests[0].0 == nil && requests[0].1
-                    && d.panelReadoutText == "Restarting at 320 × 480…",
-                "off asked \(requests) \(d.panelReadoutText ?? "none")"
+                    && d.panelRestartText == "Restarting at 320 × 480…",
+                "off asked \(requests) \(d.panelRestartText ?? "none")"
             )
             w.contentView = nil
 
-            // iPad at 1280x768: portrait 768x1280, touches land; its height snaps to 16s.
+            // iPad at 1280x768: portrait 768x1280, touches land; its height (the scan's width) snaps to 16s.
             requests.removeAll()
+            restarts = false
             frameWidth = 1280
             frameHeight = 768
             (d, e, w) = try await make(pad, panel: size(768, 1280))
@@ -609,14 +646,14 @@ extension SharedState {
             for f in [CGPoint(x: 0.1, y: 0.2), CGPoint(x: 0.9, y: 0.6)] { touchLands(d, f, ipad: true) }
             b = box(d)
             drag(d, from: CGPoint(x: b.midX, y: b.minY - 4), by: CGVector(dx: 0, dy: 20), release: false)
-            check(d.panelReadoutText == "768 × 1232", "iPad shrink \(d.panelReadoutText ?? "none")")
-            d.mouseDragged(with: event(.leftMouseDragged, d, CGPoint(x: b.midX, y: b.minY - 4 + 4)))
-            check(d.panelReadoutText == "768 × 1264", "iPad snap \(d.panelReadoutText ?? "none")")
-            d.mouseUp(with: event(.leftMouseUp, d, CGPoint(x: b.midX, y: b.minY)))
-            try await Task.sleep(for: .milliseconds(300))
+            check(d.freeFormReadout == "768 × 1264", "iPad shrink \(d.freeFormReadout ?? "none")")
+            d.mouseDragged(with: event(.leftMouseDragged, d, CGPoint(x: b.midX, y: b.minY - 4 + 30)))
+            check(d.freeFormReadout == "768 × 1248", "iPad snap \(d.freeFormReadout ?? "none")")
+            d.mouseUp(with: event(.leftMouseUp, d, CGPoint(x: b.midX, y: b.minY + 26)))
+            d.applyPanel()
             check(
-                requests.count == 1 && requests[0].0 == size(768, 1264)
-                    && pad.panelOption(upright: requests[0].0!) == "1264x768",
+                requests.count == 1 && requests[0].0 == size(768, 1248)
+                    && pad.panelOption(upright: size(768, 1248)) == "1248x768",
                 "iPad asked \(requests)"
             )
             w.contentView = nil
@@ -631,7 +668,7 @@ extension SharedState {
             d.mouseUp(with: event(.leftMouseUp, d, CGPoint(x: b.maxX + 4, y: b.midY)))
             // No grab band: the press just off the edge is an edge touch (DisplayView.screenEdgeMargin), not a resize.
             check(
-                !d.isFreeForm && d.panelReadoutText == nil && touches.first.map { abs($0.0 - 1) < 0.01 } == true,
+                !d.isFreeForm && d.freeFormReadout == nil && touches.first.map { abs($0.0 - 1) < 0.01 } == true,
                 "a shipped device grabbed: \(touches)"
             )
             d.setFreeForm(true)
@@ -641,6 +678,7 @@ extension SharedState {
                     && near(box(d), 320, 480),
                 "on: \(requests) \(box(d))"
             )
+            check(!d.canShowNativeSize, "Native Size offered at the native size")
             w.contentView = nil
 
             // Zoom only draws the screen bigger or smaller. At 1x, 2x and Fit, portrait and landscape, a 320x448 iPod's
@@ -672,28 +710,31 @@ extension SharedState {
                         "\(what): LCD \(box(d)), want \(seen) x \(k)"
                     )
                     check(
-                        requests.isEmpty && d.freeFormPanel == upright && d.panelReadoutText == nil,
+                        requests.isEmpty && d.freeFormPanel == upright && d.freeFormTarget == nil,
                         "\(what): zooming changed the panel \(requests)"
                     )
-                    // The right edge 12 points out: the seen width grows by 24 points, 24 / k guest pixels.
+                    // The right edge 12 points out: the seen width grows by 12 / k guest pixels.
                     let b = box(d)
                     drag(d, from: CGPoint(x: b.maxX + 4, y: b.midY), by: CGVector(dx: 12, dy: 0), release: false)
-                    let grown = CGSize(width: seen.width + 24 / k, height: seen.height)
-                    let want = pod.snappedPanel(upright: sideways ? size(grown.height, grown.width) : grown)
+                    let grown = CGSize(width: seen.width + 12 / k, height: seen.height)
+                    let want = FreeFormResize(board: pod).snap(
+                        upright: sideways ? size(grown.height, grown.width) : grown
+                    )
+                    .size
                     let wantSeen = sideways ? size(want.height, want.width) : want
                     check(
-                        d.panelReadoutText == "\(Int(wantSeen.width)) × \(Int(wantSeen.height))"
+                        d.freeFormReadout == "\(Int(wantSeen.width)) × \(Int(wantSeen.height))"
                             && near(box(d), wantSeen.width * k, wantSeen.height * k),
-                        "\(what): drag gave \(d.panelReadoutText ?? "none") \(box(d)), want \(wantSeen)"
+                        "\(what): drag gave \(d.freeFormReadout ?? "none") \(box(d)), want \(wantSeen)"
                     )
                     w.contentView = nil
                 }
             }
 
-            // Orientation comes from the guest's rule, not the board: UIKit turns its portrait UI a quarter only into a
-            // panel that scans wider than tall. Square, wider and taller scans on both boards, in all four rotations: the
-            // LCD and a capture are the upright screen turned with the device, and a click at a point of it touches the
-            // point of the scan the guest drew there.
+            // A free-form scan is mounted as the board's shipped panel is (Board.freeFormTurn): the iPod's as it scans,
+            // the iPad's a quarter turn, a square one neither; so a screen dragged wider than tall stays so. Square,
+            // wider and taller scans on both boards, in all four rotations: the LCD and a capture are the upright screen
+            // turned with the device, and a click at a point of it touches the point of the scan shown there.
             func rotCCW(_ p: CGPoint, _ quarters: Int) -> CGPoint {
                 var q = p
                 for _ in 0..<((quarters % 4 + 4) % 4) { q = CGPoint(x: q.y, y: 1 - q.x) }
@@ -705,8 +746,8 @@ extension SharedState {
                 (pad, [size(1024, 1024), size(1104, 1024), size(1024, 1104)]),
             ] {
                 for scan in scans {
-                    let turned = scan.width > scan.height
-                    let upright = turned ? size(scan.height, scan.width) : scan
+                    let turned = profile.freeFormTurn(scan: scan) != 0
+                    let upright = profile.uprightPanel(scan: scan)
                     for rotation in [0, 90, 180, 270] {
                         let quarters = rotation / 90
                         let sideways = quarters % 2 == 1
@@ -760,7 +801,8 @@ extension SharedState {
             check(requests.last.map { $0.0 == nil && $0.1 } == true, "off at 768x1104 asked \(requests)")
             func shellShown(_ v: DisplayView) -> Bool {
                 let lcd = all(v.layer!).first {
-                    $0.backgroundColor == NSColor.black.cgColor && $0.contentsGravity == .resize
+                    $0.backgroundColor == NSColor.black.cgColor
+                        && ($0.contentsGravity == .resize || $0.contentsGravity == .center)
                 }!
                 return lcd.superlayer!.contents != nil && lcd.superlayer!.shadowOpacity > 0
             }

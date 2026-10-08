@@ -89,50 +89,23 @@ nonisolated extension Board {
         supportsFreeForm ? nil : "iPhone OS 1 keeps its Home screen at 320 × 480, whatever size the screen is."
     }
 
-    /// The nearest size the board's panel= accepts (the emulator's limits, DeviceInfo, in the panel's scan
-    /// orientation) to an upright screen size, in guest pixels: both sides at least panelMin, the width a multiple
-    /// of panelWidthStep, and no more than panelMaxPixels (shrunk keeping the aspect). Upright it is never wider than
-    /// tall: the guest's portrait is the panel's longer side (guestTurn), so a wider one would come back turned.
-    public func snappedPanel(upright size: CGSize) -> CGSize {
-        let turned = panelRotation != 0
-        let s = turned ? CGSize(width: size.height, height: size.width) : size
-        let lo = CGFloat(hardware?.panelMin ?? 64)
-        let step = CGFloat(max(hardware?.panelWidthStep ?? 2, 1))
-        let maxPixels = CGFloat(hardware?.panelMaxPixels ?? 0)
-        func fit(_ v: CGFloat, _ hi: Int?) -> CGFloat {
-            min(max(v.isFinite ? v.rounded() : lo, lo), CGFloat(hi ?? 1024))
-        }
-        var w = fit(s.width, hardware?.panelMaxWidth)
-        var h = fit(s.height, hardware?.panelMaxHeight)
-        if maxPixels > 0, w * h > maxPixels {
-            let k = (maxPixels / (w * h)).squareRoot()
-            w = max(lo, w * k)
-            h = max(lo, h * k)
-        }
-        w = max(lo, (w / step).rounded(.down) * step)
-        h = h.rounded(.down)
-        if maxPixels > 0 { h = min(h, (maxPixels / w).rounded(.down)) }
-        // Portrait no wider than tall: a landscape-mounted panel's upright width is its scan height, a portrait
-        // one's its scan width (in the board's steps).
-        if turned { h = min(h, w) } else { w = min(w, max(lo, (h / step).rounded(.down) * step)) }
-        return turned ? CGSize(width: h, height: w) : CGSize(width: w, height: h)
-    }
-
-    /// The scan of an upright size by the board's convention (the iPad's panel is mounted landscape), and the
-    /// upright screen the guest makes of a scan (guestTurn: turned only when wider than tall).
+    /// The scan of an upright size by the board's convention (the iPad's panel is mounted landscape), and back.
     public func scan(upright size: CGSize) -> CGSize {
         panelRotation != 0 ? CGSize(width: size.height, height: size.width) : size
     }
-    public static func upright(scan: CGSize) -> CGSize {
-        guestTurn(scan: scan) != 0 ? CGSize(width: scan.height, height: scan.width) : scan
-    }
+    public func uprightPanel(scan: CGSize) -> CGSize { self.scan(upright: scan) }
+
+    /// The quarter-turn a free-form scan is shown at: mounted as the shipped panel is, so the screen is the shape
+    /// it was dragged to, even wider than tall (the guest lays its UI out by the scan's shape, Board.guestTurn,
+    /// so a wide screen's Home screen comes out sideways). A square scan turns nothing on any board.
+    public func freeFormTurn(scan: CGSize) -> CGFloat { scan.width == scan.height ? 0 : panelRotation }
 
     /// device.plist `panel` ("WxH" as the panel scans) for an upright guest size, and back.
     public func panelOption(upright size: CGSize) -> String {
         let scan = scan(upright: size)
         return "\(Int(scan.width))x\(Int(scan.height))"
     }
-    public func uprightPanel(_ option: String?) -> CGSize? { Self.panelScan(option).map(Self.upright(scan:)) }
+    public func uprightPanel(_ option: String?) -> CGSize? { Self.panelScan(option).map(uprightPanel(scan:)) }
     public static func panelScan(_ option: String?) -> CGSize? {
         guard let parts = option?.split(separator: "x"), parts.count == 2,
             let w = Int(parts[0]), let h = Int(parts[1])

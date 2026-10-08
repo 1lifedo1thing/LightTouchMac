@@ -38,7 +38,9 @@ extension DisplayView {
         // device up under it. The gradient still fills the whole pane, which is
         // the point — only the device is inset.
         let usable = deviceLayoutRect
-        let viewCenter = CGPoint(x: usable.midX, y: usable.midY)
+        // A one-sided free-form resize keeps the opposite edge where it was.
+        let offset = freeFormActive ? freeFormOffset : .zero
+        let viewCenter = CGPoint(x: usable.midX + offset.dx, y: usable.midY + offset.dy)
         let shellCenter = CGPoint(x: shellPixels.width / 2, y: shellPixels.height / 2)
         let rest = Self.layerAngle(rotation)
         let angle = (motionRestAngle ?? rest) + tiltAngle
@@ -88,6 +90,9 @@ extension DisplayView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         contentLayer.bounds = CGRect(origin: .zero, size: cutoutSize)
+        // A frame of the size before a resize shows unscaled on black, not stretched to the new one.
+        contentLayer.contentsGravity = holdsOldFrame ? .center : .resize
+        contentLayer.masksToBounds = holdsOldFrame
         // Counter only the guest's quarter-turn, never the temporary tilt.
         // A layout during a gesture must not leave the panel crooked after release.
         if !profile.surfaceFollowsRotation {

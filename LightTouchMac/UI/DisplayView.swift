@@ -45,8 +45,6 @@ final class DisplayView: NSView {
     var zoom: ZoomMode = .fit {
         didSet {
             guard oldValue != zoom else { return }
-            // A finished edge drag waiting to be recorded keeps no scale of its own: the new zoom draws it.
-            if panelDrag == nil, !restartingAtPanel { dragScale = nil }
             pendingAnimatedLayout = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
             needsLayout = true
         }
@@ -377,25 +375,24 @@ final class DisplayView: NSView {
     // MARK: - Free-form screen (issue #21)
     /// The upright guest panel the running boot has, when free-form is on; nil: the device as shipped.
     var freeFormPanel: CGSize?
-    /// The upright size on screen while a resize is in progress or waiting to restart (the frame stretched to it).
+    /// The upright size a resize gives, waiting for Apply or restarting at; nil, none.
     var freeFormTarget: CGSize?
+    /// How far a one-sided resize moved the screen's center, in points, so the opposite edge stayed put.
+    var freeFormOffset = CGVector.zero
+    /// Why the resize's edge stopped (FreeFormResize), for the readout.
+    var freeFormLimit: String?
     /// The free-form panel as it scans (the record's `panel`); nil, the shipped one.
     var runningScan: CGSize?
     /// Records an upright panel (nil: the shipped one); with `restart` true the owner restarts the device on it.
     /// Returns whether a restart is under way.
     var onPanelChange: ((_ upright: CGSize?, _ restart: Bool) -> Bool)?
+    /// The free-form size, its readout, a waiting size or a restart changed.
+    var onFreeFormChange: (() -> Void)?
     var deviceKey: UUID?
     var restartingAtPanel = false
-    var panelCommitTask: Task<Void, Never>?
-    /// Points per guest pixel, fixed for the length of a resize.
-    var dragScale: CGFloat?
-    var panelDrag: (origin: CGPoint, edges: CGVector, size: CGSize)?
-    /// The resize's status for the window's notice stack (the owner shows it there, one surface with the others):
-    /// "W × H" while dragging, "Restarting at W × H…" while this device restarts; nil, none.
-    var onPanelStatus: ((String?) -> Void)?
-    var panelReadoutText: String? {
-        didSet { if oldValue != panelReadoutText { onPanelStatus?(panelReadoutText) } }
-    }
+    /// Showing the last frame of the session that restarted this device at a new size, until its first new frame.
+    var showsHandoff = false
+    var panelDrag: (origin: CGPoint, edges: CGVector, size: CGSize, offset: CGVector)?
     /// "Restarting at W × H…" for the startup notice of a boot this view's device restarted at a new panel.
     var restartTitle: String?
 

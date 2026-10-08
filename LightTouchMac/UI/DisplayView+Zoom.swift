@@ -68,8 +68,7 @@ extension DisplayView {
 
     /// The shell's scale for the current zoom.
     func zoomScale() -> CGFloat {
-        if let dragScale { return dragScale }  // an edge drag keeps its scale, so the edge stays under the pointer
-        return zoomContext.points(for: zoom) / shellPerGuestPixel
+        zoomContext.points(for: zoom) / shellPerGuestPixel
     }
 
     /// Crisp or smoothed by the one rule (ZoomContext.drawsNearest), the flat screen and the 3D model alike.

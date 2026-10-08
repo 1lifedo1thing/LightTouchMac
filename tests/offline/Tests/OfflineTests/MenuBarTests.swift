@@ -75,6 +75,7 @@ extension SharedState {
             View/Device Bezels/2D
             View/Device Bezels/Off
             View/Free-Form Screen
+            View/Native Size
             View/Show Finger Dots
             View/Show Hidden Files
             View/-

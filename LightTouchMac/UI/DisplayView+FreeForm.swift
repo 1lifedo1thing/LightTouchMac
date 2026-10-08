@@ -4,22 +4,40 @@ import HostRuntime
 import LightTouchCore
 
 extension DisplayView {
-    // View ▸ Free-Form Screen: no bezel, and the screen itself is resizable. Dragging the screen's own edge or
-    // corner (nothing else: not the window, the sidebar or the inspector) stretches the current frame to the new
-    // size live, with a W × H status snapped to what the board's panel= accepts. Zoom only draws it bigger or
-    // smaller: Nx is N points per guest pixel, Fit scales the panel into the pane, Physical gives a guest pixel the
-    // shipped panel's physical pitch. Like the shipped screen's, a screen bigger than the pane is clipped, centered. A second after the drag ends the size is recorded and, if it changed, the
-    // device restarts at it (Stop's hard halt, then a fresh helper): UIKit takes the panel's size at boot only.
-    // The squished frame stays up, through the next session's view (`handoffs`), until the new boot's first frame.
+    // View ▸ Free-Form Screen: no bezel, and the screen itself is resizable. Its edges and corners are handles (a
+    // band just outside it, with resize cursors); a drag moves the grabbed edge and keeps the opposite one where it
+    // was (⌥ moves both), snapped only to what the board's panel= takes (FreeFormResize), at the zoom it had: Fit
+    // is held as its points per guest pixel, so the screen doesn't jump. While a new size waits, the last frame
+    // shows unscaled in it, the window's subtitle reads the size (and why an edge stopped), and the owner offers
+    // Apply (Return) and Revert (Escape). Apply records the size and, if the device runs, restarts it there (Stop's
+    // hard halt, then a fresh helper): UIKit takes the panel's size at boot only. The last frame stays up, through
+    // the next session's view (`handoffs`), until the new boot's first frame. View ▸ Native Size and a double-click
+    // on a handle make the shipped size the new one.
 
     var freeFormActive: Bool { freeFormPanel != nil || freeFormTarget != nil }
-    /// The running scan's scan-to-upright turn (Board.guestTurn): the shipped panel's, or the free-form one's.
-    var guestTurn: CGFloat { runningScan.map(Board.guestTurn(scan:)) ?? profile.panelRotation }
+    /// The running scan's scan-to-upright turn: the shipped panel's, or the free-form one's (Board.freeFormTurn).
+    var guestTurn: CGFloat { runningScan.map(profile.freeFormTurn(scan:)) ?? profile.panelRotation }
 
     var isFreeForm: Bool { freeFormPanel != nil }
     var canToggleFreeForm: Bool { profile.supportsFreeForm && !restartingAtPanel }
 
-    static var panelCommitDelay: Duration = .seconds(1)
+    /// A new size waits for Apply.
+    var hasPendingPanel: Bool {
+        isFreeForm && !restartingAtPanel && freeFormTarget.map { $0 != freeFormPanel } == true
+    }
+    var canShowNativeSize: Bool {
+        isFreeForm && !restartingAtPanel && (freeFormTarget ?? freeFormPanel) != profile.uprightScreenPixels
+    }
+
+    /// The screen's size as seen ("640 × 1136"); nil when not free-form.
+    var freeFormSize: String? { (freeFormTarget ?? freeFormPanel).map { FreeFormResize.text(onScreen($0)) } }
+    /// The size, and why an edge stopped.
+    var freeFormReadout: String? {
+        freeFormSize.map { ([$0] + [freeFormLimit].compactMap { $0 }).joined(separator: " · ") }
+    }
+
+    /// The width of the handles, just outside the screen's edges.
+    static let handleBand: CGFloat = 10
     /// The last frame of a device restarting at a new panel, for that device's next view.
     private static var handoffs: [UUID: CGImage] = [:]
 
@@ -28,14 +46,16 @@ extension DisplayView {
         deviceKey = key
         if profile.supportsFreeForm, let scan {
             runningScan = scan
-            freeFormPanel = Board.upright(scan: scan)
+            freeFormPanel = profile.uprightPanel(scan: scan)
             applyFreeFormGeometry()
             applyBezel(.off)
             needsLayout = true
         }
         if let image = Self.handoffs.removeValue(forKey: key) {
             contentLayer.contents = image
-            restartTitle = "Restarting at \(Self.text(onScreen(freeFormPanel ?? profile.uprightScreenPixels)))…"
+            showsHandoff = true
+            restartTitle =
+                "Restarting at \(FreeFormResize.text(onScreen(freeFormPanel ?? profile.uprightScreenPixels)))…"
         }
     }
 
@@ -43,7 +63,6 @@ extension DisplayView {
     /// shipped panel and the bezel, restarting if the guest runs at another size.
     func setFreeForm(_ on: Bool) {
         guard canToggleFreeForm, on != isFreeForm else { return }
-        panelCommitTask?.cancel()
         let native = profile.uprightScreenPixels
         if on {
             runningScan = nil
@@ -52,20 +71,65 @@ extension DisplayView {
             applyFreeFormGeometry()
             applyBezel(.off)
             needsLayout = true
+            freeFormChanged()
             return
         }
         let running = freeFormPanel
         freeFormPanel = nil
         freeFormTarget = running == native ? nil : native
-        dragScale = nil
+        freeFormOffset = .zero
+        freeFormLimit = nil
         if freeFormTarget == nil || !requestPanel(nil) {
             if freeFormTarget == nil { _ = onPanelChange?(nil, false) }
             freeFormTarget = nil
-            panelReadoutText = nil
             applyFreeFormGeometry()
             applyBezel(Self.bezel)
         }
         needsLayout = true
+        freeFormChanged()
+    }
+
+    /// Apply (or Return): restart at the new size, or with the device stopped simply take it.
+    func applyPanel() {
+        guard hasPendingPanel, let target = freeFormTarget else { return }
+        if !requestPanel(target) {
+            runningScan = profile.scan(upright: target)  // recorded for the next start
+            freeFormPanel = target
+            clearPendingPanel()
+        }
+        freeFormChanged()
+    }
+
+    /// Revert (or Escape): back to the running size.
+    func revertPanel() {
+        guard hasPendingPanel else { return }
+        clearPendingPanel()
+        freeFormChanged()
+    }
+
+    /// View ▸ Native Size, or a double-click on a handle: the shipped size, waiting for Apply like a drag's.
+    func showNativeSize() {
+        guard canShowNativeSize else { return }
+        freeFormTarget = profile.uprightScreenPixels
+        freeFormOffset = .zero
+        freeFormLimit = nil
+        if freeFormTarget == freeFormPanel { freeFormTarget = nil }
+        applyFreeFormGeometry()
+        needsLayout = true
+        freeFormChanged()
+    }
+
+    private func clearPendingPanel() {
+        freeFormTarget = nil
+        freeFormOffset = .zero
+        freeFormLimit = nil
+        applyFreeFormGeometry()
+        needsLayout = true
+    }
+
+    private func freeFormChanged() {
+        window?.invalidateCursorRects(for: self)
+        onFreeFormChange?()
     }
 
     /// The screen's box in the shell follows the size shown; the caller lays out (or is layout).
@@ -75,7 +139,7 @@ extension DisplayView {
             screenCutout = profile.screenCutout
             return
         }
-        // One shell unit per guest pixel, centered where the shipped screen sits.
+        // One shell unit per guest pixel, centered where the shipped screen sits (layout adds freeFormOffset).
         nativeScreenPixels = size
         let center = CGPoint(x: profile.screenCutout.midX, y: profile.screenCutout.midY)
         screenCutout = CGRect(
@@ -88,111 +152,115 @@ extension DisplayView {
 
     /// Upright ⇄ as seen: the device's quarter-turns swap the sides.
     private func onScreen(_ size: CGSize) -> CGSize {
-        (emulator?.rotationDegrees ?? 0) % 180 != 0 ? CGSize(width: size.height, height: size.width) : size
+        quarterTurned ? CGSize(width: size.height, height: size.width) : size
+    }
+    private var quarterTurned: Bool { (emulator?.rotationDegrees ?? 0) % 180 != 0 }
+
+    private var screenRect: CGRect? {
+        guard let root = layer else { return nil }
+        return contentLayer.convert(contentLayer.bounds, to: root)
     }
 
-    static func text(_ size: CGSize) -> String { "\(Int(size.width)) × \(Int(size.height))" }
-
-    private func showReadout(_ text: String) { panelReadoutText = text }
-
-    private func beginPanelResize() {
-        panelCommitTask?.cancel()
-        if dragScale == nil { dragScale = appliedScale }
-        if freeFormTarget == nil { freeFormTarget = freeFormPanel }
-        showReadout(Self.text(onScreen(freeFormTarget ?? profile.uprightScreenPixels)))
-    }
-
-    /// The edges a press just outside the screen grabs (-1 left/top, +1 right/bottom, 0 neither); nil off the band.
+    /// The edges a press on a handle grabs; nil off the handles, or when the screen can't be resized now.
     private func panelEdges(at p: CGPoint) -> CGVector? {
-        guard isFreeForm, !restartingAtPanel, let root = layer else { return nil }
-        let r = contentLayer.convert(contentLayer.bounds, to: root)
-        let band: CGFloat = 10
-        guard r.insetBy(dx: -band, dy: -band).contains(p), !r.contains(p) else { return nil }
-        return CGVector(dx: p.x < r.minX ? -1 : p.x > r.maxX ? 1 : 0, dy: p.y < r.minY ? -1 : p.y > r.maxY ? 1 : 0)
+        guard isFreeForm, !restartingAtPanel, let r = screenRect else { return nil }
+        return FreeFormResize.edges(at: p, screen: r, band: Self.handleBand)
     }
 
-    /// The mouse on the free-form screen's edge: a press there grabs it, a drag resizes, the release ends it.
+    /// The mouse on a handle: a press grabs it, a drag resizes, the release leaves the size waiting for Apply.
     /// True when the event was the resize's (not a touch).
     func panelResize(_ event: NSEvent) -> Bool {
         let p = convert(event.locationInWindow, from: nil)
         switch event.type {
         case .leftMouseDown:
             guard let edges = panelEdges(at: p) else { return false }
-            beginPanelResize()
-            panelDrag = (p, edges, onScreen(freeFormTarget ?? profile.uprightScreenPixels))
+            if event.clickCount == 2 {
+                showNativeSize()
+                return true
+            }
+            // Fit would refit the new size; the drag holds the size it shows, in points per guest pixel.
+            if zoom == .fit { zoom = .points(zoomPoints) }
+            let start = freeFormTarget ?? freeFormPanel ?? profile.uprightScreenPixels
+            panelDrag = (p, edges, onScreen(start), freeFormOffset)
         case .leftMouseDragged:
-            guard let drag = panelDrag, let scale = dragScale else { return false }
-            // The screen stays centered: an edge moves half the size change, so the size changes twice the pointer's.
-            updatePanelTarget(
-                onScreen: CGSize(
-                    width: drag.size.width + 2 * (p.x - drag.origin.x) * drag.edges.dx / scale,
-                    height: drag.size.height + 2 * (p.y - drag.origin.y) * drag.edges.dy / scale
-                )
+            guard let drag = panelDrag else { return false }
+            let result = FreeFormResize(board: profile).drag(
+                from: drag.size,
+                edges: drag.edges,
+                by: CGVector(dx: p.x - drag.origin.x, dy: p.y - drag.origin.y),
+                points: zoomPoints,
+                symmetric: event.modifierFlags.contains(.option),
+                quarterTurned: quarterTurned
             )
+            freeFormTarget = onScreen(result.size)
+            freeFormOffset = CGVector(dx: drag.offset.dx + result.shift.dx, dy: drag.offset.dy + result.shift.dy)
+            freeFormLimit = result.limit
+            applyFreeFormGeometry()
             needsLayout = true
+            freeFormChanged()
         default:
             guard panelDrag != nil else { return false }
             panelDrag = nil
-            endPanelResize()
+            if freeFormTarget == freeFormPanel { clearPendingPanel() }
+            freeFormChanged()
         }
         return true
     }
 
-    /// A resize's size as seen, in guest pixels: snapped to the board's panel, shown stretched, read out.
-    private func updatePanelTarget(onScreen size: CGSize) {
-        let snapped = profile.snappedPanel(upright: onScreen(size))
-        freeFormTarget = snapped
-        showReadout(Self.text(onScreen(snapped)))
-        applyFreeFormGeometry()
-    }
-
-    private func endPanelResize() {
-        panelCommitTask?.cancel()
-        panelCommitTask = Task { [weak self] in
-            do { try await Task.sleep(for: Self.panelCommitDelay) } catch { return }
-            self?.commitPanel()
+    /// Return applies a waiting size and Escape reverts it, before the keys would reach the guest.
+    func panelKey(_ event: NSEvent) -> Bool {
+        guard hasPendingPanel, event.modifierFlags.intersection([.command, .control, .option]).isEmpty else {
+            return false
         }
-    }
-
-    private func commitPanel() {
-        guard let target = freeFormTarget, isFreeForm, !restartingAtPanel else { return }
-        if target == freeFormPanel || !requestPanel(target) {
-            if target != freeFormPanel { runningScan = profile.scan(upright: target) }  // recorded for the next start
-            freeFormPanel = target
-            freeFormTarget = nil
-            dragScale = nil
-            panelReadoutText = nil
-            applyFreeFormGeometry()
-            needsLayout = true
+        switch event.keyCode {
+        case 36, 76: applyPanel()
+        case 53: revertPanel()
+        default: return false
         }
+        return true
     }
 
-    /// Record the panel and have the owner restart on it. While it restarts the screen keeps the squished frame
-    /// and reads "Restarting at…", and the frame waits for the next view. False: nothing restarts.
+    /// Record the panel and have the owner restart on it. While it restarts the screen keeps the last frame
+    /// (unscaled) and reads "Restarting at…", and the frame waits for the next view. False: nothing restarts.
     private func requestPanel(_ upright: CGSize?) -> Bool {
         let image = currentFrame().flatMap { Self.image($0, colorSpace: colorSpace) }
         guard onPanelChange?(upright, true) == true else { return false }
         restartingAtPanel = true
         if let deviceKey, let image { Self.handoffs[deviceKey] = image }
-        showReadout("Restarting at \(Self.text(onScreen(upright ?? profile.uprightScreenPixels)))…")
         updatePowerPresentation()
-        window?.invalidateCursorRects(for: self)
         return true
     }
 
+    /// "Restarting at W × H…" while this device restarts at a new size.
+    var panelRestartText: String? {
+        guard restartingAtPanel else { return nil }
+        return "Restarting at \(FreeFormResize.text(onScreen(freeFormTarget ?? profile.uprightScreenPixels)))…"
+    }
+
+    /// A frame of another size than the screen's (the last one before a resize or restart) shows unscaled.
+    var holdsOldFrame: Bool { freeFormTarget != nil || restartingAtPanel || showsHandoff }
+
     override func resetCursorRects() {
         super.resetCursorRects()
-        guard isFreeForm, !restartingAtPanel, let root = layer else { return }
-        let r = contentLayer.convert(contentLayer.bounds, to: root)
-        let band: CGFloat = 10
-        addCursorRect(CGRect(x: r.minX - band, y: r.minY, width: band, height: r.height), cursor: .resizeLeftRight)
-        addCursorRect(CGRect(x: r.maxX, y: r.minY, width: band, height: r.height), cursor: .resizeLeftRight)
-        addCursorRect(CGRect(x: r.minX, y: r.minY - band, width: r.width, height: band), cursor: .resizeUpDown)
-        addCursorRect(CGRect(x: r.minX, y: r.maxY, width: r.width, height: band), cursor: .resizeUpDown)
-        for x in [r.minX - band, r.maxX] {
-            for y in [r.minY - band, r.maxY] {
-                addCursorRect(CGRect(x: x, y: y, width: band, height: band), cursor: .crosshair)
-            }
+        guard isFreeForm, !restartingAtPanel, let r = screenRect else { return }
+        let b = Self.handleBand
+        addCursorRect(CGRect(x: r.minX - b, y: r.minY, width: b, height: r.height), cursor: .resizeLeftRight)
+        addCursorRect(CGRect(x: r.maxX, y: r.minY, width: b, height: r.height), cursor: .resizeLeftRight)
+        addCursorRect(CGRect(x: r.minX, y: r.minY - b, width: r.width, height: b), cursor: .resizeUpDown)
+        addCursorRect(CGRect(x: r.minX, y: r.maxY, width: r.width, height: b), cursor: .resizeUpDown)
+        for (x, y) in [(r.minX - b, r.minY - b), (r.maxX, r.minY - b), (r.minX - b, r.maxY), (r.maxX, r.maxY)] {
+            addCursorRect(
+                CGRect(x: x, y: y, width: b, height: b),
+                cursor: Self.cornerCursor(left: x < r.minX, top: y < r.minY)
+            )
         }
+    }
+
+    /// A diagonal resize cursor (macOS 15); before it, the crosshair.
+    static func cornerCursor(left: Bool, top: Bool) -> NSCursor {
+        guard #available(macOS 15, *) else { return .crosshair }
+        let position: NSCursor.FrameResizePosition =
+            top ? (left ? .topLeft : .topRight) : (left ? .bottomLeft : .bottomRight)
+        return .frameResize(position: position, directions: .all)
     }
 }

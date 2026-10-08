@@ -80,6 +80,9 @@ extension MainWindowController {
         screen.setFreeForm(!screen.isFreeForm)
     }
 
+    /// View ▸ Native Size: the free-form screen back to the shipped size, waiting for Apply like a drag's.
+    @objc func freeFormNativeSize(_ sender: Any?) { deviceVC?.screen.showNativeSize() }
+
     @objc func toggleTouchOverlay(_ sender: Any?) {
         deviceVC?.screen.showsTouches.toggle()
         validateCaptureToolbar()
