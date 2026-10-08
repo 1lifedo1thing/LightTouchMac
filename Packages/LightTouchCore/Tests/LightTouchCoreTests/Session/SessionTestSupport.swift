@@ -146,6 +146,8 @@ final class FakeSession: MachineHost, ConnectionHost, ActivationServices, Readin
     lazy var bootWatch = BootWatch(host: self)
     lazy var eraser = DeviceErase(host: self)
     lazy var cycle = BootCycle(host: self)
+    lazy var hostPower = HostPower(host: self) {}
+    var countsBootTime: Bool { hostPower.countsBootTime }
 
     // MARK: State
     var state = VMState.booting

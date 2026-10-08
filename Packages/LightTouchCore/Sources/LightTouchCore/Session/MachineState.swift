@@ -41,6 +41,23 @@ extension MachineHost {
     }
 }
 
+/// Boot time spent against a deadline: measured on the suspending clock, so the Mac's sleep never counts, and only
+/// while `counting` (HostPower.countsBootTime). Closing the lid past the boot budget used to kill the device on wake
+/// (state audit A-2).
+struct BootBudget {
+    private(set) var remaining: Duration
+    private var last = SuspendingClock.now
+    init(_ budget: Duration) { remaining = budget }
+
+    /// Spends the time since the last tick if `counting`; true once the budget is gone.
+    mutating func tick(counting: Bool) -> Bool {
+        let now = SuspendingClock.now
+        if counting { remaining -= last.duration(to: now) }
+        last = now
+        return remaining <= .zero
+    }
+}
+
 /// The Mac's side of power: its sleep pauses the VM, and a hidden screen slows the helper and the status poll.
 public final class HostPower {
     private unowned let host: MachineHost
@@ -65,10 +82,16 @@ public final class HostPower {
     }
 
     private(set) var pausedForHostSleep = false
+    /// From the Mac's will-sleep to its wake.
+    public private(set) var hostAsleep = false
+    /// Whether boot time counts toward the boot's deadlines now (BootBudget): not while the device is paused (by
+    /// the user, or for the Mac's sleep) or the Mac sleeps (state audit A-2).
+    public var countsBootTime: Bool { !hostAsleep && host.state != .paused }
 
     /// The Mac is going to sleep: pause the VM, so the guest's timers don't all come due at once on wake
     /// (QEMU's clock counts the sleep). A device the user paused stays paused through it.
     public func hostWillSleep() {
+        hostAsleep = true
         guard host.state == .running, !host.shuttingDown else { return }
         host.pause()
         pausedForHostSleep = true
@@ -77,6 +100,7 @@ public final class HostPower {
 
     /// Awake: resume, then set the guest's clock again.
     public func hostDidWake() {
+        hostAsleep = false
         guard pausedForHostSleep else { return }
         pausedForHostSleep = false
         host.resume()

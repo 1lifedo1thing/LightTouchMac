@@ -172,6 +172,23 @@ struct ReadinessWatchTests {
         }
     }
 
+    /// State audit A-2: the readiness deadline kept counting through the Mac's sleep, so waking from a long sleep
+    /// mid-boot said "Startup failed".
+    @Test func theMacsSleepDoesntCountAgainstStartup() async throws {
+        try await withScratchDirectory { directory in
+            let c = session(directory)
+            c.readiness.budget = .milliseconds(100)
+            c.usbAnswers = false
+            c.hostPower.hostWillSleep()
+            c.readiness.start()
+            try await Task.sleep(for: .milliseconds(400))
+            #expect(c.readiness.readinessFailure == nil && c.preparingDevice, "the Mac slept through the budget")
+            c.hostPower.hostDidWake()
+            await c.readiness.current?.value
+            #expect(c.readiness.readinessFailure != nil, "awake, it runs out as before")
+        }
+    }
+
     @Test func aDeadDeviceFailsItsStartup() async throws {
         try await withScratchDirectory { directory in
             let c = session(directory)

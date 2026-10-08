@@ -37,6 +37,29 @@ struct BootWatchTests {
         }
     }
 
+    /// State audit A-2: with the lid closed past the boot budget, the deadline fired the moment the Mac woke and the
+    /// device died with "didn't start within 240 seconds". The Mac's sleep and a paused device don't count.
+    @Test func neitherTheMacsSleepNorAPauseCountsAgainstTheBoot() async throws {
+        try await withScratchDirectory { directory in
+            let asleep = session(directory)
+            asleep.hostPower.hostWillSleep()
+            asleep.bootWatch.start()
+            try await Task.sleep(for: .milliseconds(600))
+            #expect(asleep.fakeHelper!.terms == 0 && !asleep.isDead, "the Mac slept through the budget")
+            asleep.hostPower.hostDidWake()
+            await halted(asleep)
+            #expect(asleep.bootWatch.deathReason == BootWatch.deadlineReason(.n72), "awake, the boot's time runs again")
+
+            let paused = session(directory)
+            paused.state = .paused
+            paused.bootWatch.start()
+            try await Task.sleep(for: .milliseconds(600))
+            #expect(paused.fakeHelper!.terms == 0 && !paused.isDead, "a paused device isn't judged")
+            paused.state = .booting
+            await halted(paused)
+        }
+    }
+
     @Test func aFinishedOrVisibleBootIsLeftAlone() async throws {
         try await withScratchDirectory { directory in
             let lit = session(directory, .k48)

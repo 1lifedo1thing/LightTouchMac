@@ -16,6 +16,8 @@ public protocol ReadinessHost: AnyObject {
     var storageFailed: Bool { get }
     /// The display has painted frames this boot (state == .running).
     var isPainting: Bool { get }
+    /// Whether boot time counts toward the deadline now (HostPower.countsBootTime).
+    var countsBootTime: Bool { get }
     /// The helper's status block, read now.
     var status: SharedStatus? { get }
     /// This boot ends in Setup (iOS 5+, not yet set up), not the Home screen.
@@ -98,14 +100,14 @@ public protocol ReadinessHost: AnyObject {
             // ends this watch: the startup banner goes with it, not only when this boot's generation is still current.
             defer { if run == self.run { self.preparingDevice = false } }
             do {
-                var deadline: ContinuousClock.Instant? = ContinuousClock.now + budget
+                var deadline: BootBudget? = BootBudget(budget)
                 while true {
                     try Task.checkCancellation()
                     guard generation == host.bootScope.generation else { return }
                     guard !host.isDead, !host.storageFailed else {
                         throw DeviceToolsError.failed("The \(host.profile.shortName) didn’t become ready in time.")
                     }
-                    if let due = deadline, ContinuousClock.now >= due {
+                    if deadline?.tick(counting: host.countsBootTime) == true {
                         guard deadlineVerdict == .keepRunning else {
                             throw DeviceToolsError.failed("The \(host.profile.shortName) didn’t become ready in time.")
                         }

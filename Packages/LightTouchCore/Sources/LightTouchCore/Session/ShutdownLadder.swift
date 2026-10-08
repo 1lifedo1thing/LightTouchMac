@@ -98,8 +98,9 @@ public enum ShutdownOutcome: Equatable {
         host.helperLink?.send(.machine(.shutdown))
         let budget = budgets.shutdown
         let task = Task { [weak self] () -> ShutdownOutcome in
-            let deadline = ContinuousClock.now + .seconds(budget)
-            while let self, ContinuousClock.now < deadline, !self.isPoweredOff, !self.isDead, self.haltTask == nil {
+            // The Mac's sleep doesn't count against the guest.
+            let deadline = SuspendingClock.now + .seconds(budget)
+            while let self, SuspendingClock.now < deadline, !self.isPoweredOff, !self.isDead, self.haltTask == nil {
                 try? await Task.sleep(for: .milliseconds(200))
             }
             guard let self else { return .timedOut }

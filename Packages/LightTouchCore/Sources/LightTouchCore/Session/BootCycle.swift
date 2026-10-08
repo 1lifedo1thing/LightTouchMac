@@ -177,11 +177,11 @@ public final class BootCycle {
             let host = host
             await host.workers.task?.value
             guard !Task.isCancelled, generation == host.bootScope.generation else { return }
-            let deadline = ContinuousClock.now + latchWait
+            let deadline = SuspendingClock.now + latchWait
             // system_reset is queued. Wait until the PMU reset clears its
             // shutdown latch (the helper republishes it at 20 Hz) before
             // resuming the stopped VM.
-            while host.status?.shutdownConfirmed == true, ContinuousClock.now < deadline {
+            while host.status?.shutdownConfirmed == true, SuspendingClock.now < deadline {
                 try? await Task.sleep(for: .milliseconds(50))
             }
             guard !Task.isCancelled, generation == host.bootScope.generation else { return }

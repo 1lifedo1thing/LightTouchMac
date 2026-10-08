@@ -188,6 +188,7 @@ final class EmulatorController {
         startStatusPoll()
     }
     func hostWillSleep() { hostPower.hostWillSleep() }
+    var countsBootTime: Bool { hostPower.countsBootTime }
     func hostDidWake() { hostPower.hostDidWake() }
     func resyncTimeZone() { timeZone.resync() }
 

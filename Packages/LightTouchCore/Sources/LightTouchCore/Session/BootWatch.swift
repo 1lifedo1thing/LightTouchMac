@@ -17,6 +17,8 @@ public protocol BootWatchHost: AnyObject {
     var helper: DeviceHelper? { get }
     /// iOS is up: lockdown answered (or, without a USB bridge, the display paints).
     var bootFinished: Bool { get }
+    /// Whether boot time counts toward the deadline now (HostPower.countsBootTime).
+    var countsBootTime: Bool { get }
     var readiness: ReadinessWatch { get }
     var notices: DeviceNotices { get }
     func retireBoot()
@@ -103,16 +105,19 @@ public enum BootEnd: Equatable {
 
     /// No answer within the board's budget ends the boot as a named error, with the helper halted, unless iOS is
     /// up and showing a picture (the readiness watch then says USB isn't there yet). Per boot (also after Power On
-    /// and Restart).
+    /// and Restart). Only boot time counts: not the Mac's sleep, nor a paused device (BootBudget).
     public func start() {
         task?.cancel()
         let generation = host.bootScope.generation
         let budget = budget
         task = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(Int(budget * 1000)))
-            guard let self, !Task.isCancelled, generation == host.bootScope.generation, !host.bootFinished else {
-                return
+            var spent = BootBudget(.milliseconds(Int(budget * 1000)))
+            while true {
+                do { try await Task.sleep(for: .milliseconds(100), clock: .suspending) } catch { return }
+                guard let self, generation == host.bootScope.generation, !host.bootFinished else { return }
+                if spent.tick(counting: host.countsBootTime) { break }
             }
+            guard let self else { return }
             guard host.readiness.deadlineVerdict == .stop else {
                 logEvent(
                     "boot: iOS is up (\(host.readiness.bootStage.text)) but USB didn’t answer in \(Int(host.profile.bootBudget)) s; keeping it running"
