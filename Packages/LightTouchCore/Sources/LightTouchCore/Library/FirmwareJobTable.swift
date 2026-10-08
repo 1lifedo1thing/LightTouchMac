@@ -8,6 +8,9 @@
 //                                                                     ─▶ none once the preparer exits, or a new
 //                                                                        preparation if Prepare was asked meanwhile
 //
+// Downloads outlive the app (a background URLSession); the downloading jobs (`intents`) are saved, and a relaunch
+// rebuilds exactly those: never a job for an entry nobody asked for.
+//
 // Events carry the job they belong to (a sha1, an import token, a PreparationJob id); one for a job the entry no
 // longer runs is dropped.
 
@@ -45,6 +48,7 @@ public nonisolated struct FirmwareJobTable: Equatable, Sendable {
 
     /// What the table asks FirmwareJobs to do.
     public enum Effect: Equatable, Sendable {
+        case startDownload(String)
         case cancelDownload(String)
         case cancelImport(UUID)
         case cancelPreparation(UUID)
@@ -62,6 +66,9 @@ public nonisolated struct FirmwareJobTable: Equatable, Sendable {
         public var fraction = 0.0
         public var mirror: String?
     }
+
+    /// IPSWs a relaunch restored whose download task the session hasn't vouched for yet.
+    var unconfirmed: Set<String> = []
 
     /// Catalog facts: each IPSW's size and first host by sha1, each entry's estimated preparation seconds.
     let bytes: [String: Int64]
@@ -85,6 +92,10 @@ public nonisolated struct FirmwareJobTable: Equatable, Sendable {
         case nil, .failed?: true
         default: false
         }
+    }
+    /// The downloading jobs and the IPSWs each waits for, to rebuild them after a relaunch.
+    public var intents: [String: [String]] {
+        jobs.compactMapValues { if case .downloading(let sha1s) = $0.phase { sha1s } else { nil } }
     }
     /// Preparers at work (Quit asks before stopping them).
     public var preparing: Int { jobs.values.count { if case .preparing = $0.phase { true } else { false } } }
@@ -246,6 +257,38 @@ public nonisolated struct FirmwareJobTable: Equatable, Sendable {
             return nil
         }
         return estimatedRemaining(elapsed: now.timeIntervalSince(start.date), from: start.value, to: fraction)
+    }
+
+    // MARK: - Relaunch
+
+    /// Launch: the last launch's downloading jobs (`intents`) as jobs again; `stored`: the IPSWs already here.
+    public mutating func restore(_ intents: [String: [String]], stored: Set<String>) {
+        for (id, sha1s) in intents where jobs[id] == nil {
+            for sha1 in sha1s where !stored.contains(sha1) && downloads[sha1] == nil {
+                downloads[sha1] = Download()
+                unconfirmed.insert(sha1)
+            }
+            jobs[id] = Job(
+                phase: .downloading(sha1s),
+                shown: .downloading(fraction: fraction(sha1s), files: sha1s.count)
+            )
+        }
+    }
+
+    /// The session's download tasks (by sha1), once it has said: a restored download with no task starts again, and a
+    /// restored job whose IPSWs all landed while the app was closed prepares. A task no job waits for finishes into the
+    /// store and nothing else.
+    public mutating func resume(tasks: Set<String>) -> [Effect] {
+        let restart = unconfirmed.filter { !tasks.contains($0) && downloads[$0] != nil }.sorted()
+        unconfirmed = []
+        let ready = jobs.filter {
+            if case .downloading(let sha1s) = $0.value.phase {
+                sha1s.allSatisfy { downloads[$0] == nil }
+            } else {
+                false
+            }
+        }.keys.sorted()
+        return restart.map(Effect.startDownload) + ready.map(Effect.prepare)
     }
 
     // MARK: - Preparations

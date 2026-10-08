@@ -61,11 +61,10 @@ public nonisolated final class FirmwareDownloads: NSObject, URLSessionDownloadDe
         session = URLSession(configuration: configuration, delegate: self, delegateQueue: queue)
     }
 
-    /// The sha1s of downloads in flight, including ones a previous launch started.
+    /// The sha1s of the session's tasks, including ones a previous launch started and any whose end hasn't been
+    /// delivered yet (so a relaunch doesn't start them again).
     public func active(_ completion: @escaping @Sendable ([String]) -> Void) {
-        session?.getAllTasks { tasks in
-            completion(tasks.filter { $0.state == .running || $0.state == .suspended }.compactMap(\.taskDescription))
-        }
+        session?.getAllTasks { tasks in completion(tasks.compactMap(\.taskDescription)) }
     }
 
     /// Starts or resumes the download of `url`, which must hash to `sha1`.

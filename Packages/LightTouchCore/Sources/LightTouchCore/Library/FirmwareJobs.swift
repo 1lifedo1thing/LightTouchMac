@@ -29,6 +29,7 @@ import HostRuntime
     private var table: FirmwareJobTable {
         didSet {
             guard table != oldValue else { return }
+            if table.intents != oldValue.intents { saveIntents() }
             NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
         }
     }
@@ -36,6 +37,8 @@ import HostRuntime
     /// What reaches the table from elsewhere, in the order it happened.
     nonisolated enum Input: Sendable {
         case download(String, FirmwareDownloads.Event)
+        /// The session's download tasks at launch, by sha1.
+        case tasks([String])
         case preparation(String, UUID, PreparationJob.Event)
         case imported(UUID, String?, Result<(entry: FirmwareCatalog.Entry, ipsw: URL), any Error>)
     }
@@ -48,6 +51,8 @@ import HostRuntime
     /// The preparers and import checks running, by the id their events carry.
     private var preparations: [UUID: PreparationJob] = [:]
     private var imports: [UUID: Task<Void, Never>] = [:]
+    /// The downloading jobs (FirmwareJobTable.intents), for the next launch.
+    private let intentsFile: URL
     /// Each IPSW's first URL by sha1.
     private let urls: [String: URL]
     /// The state root (Preparing/ and Devices/), the log root, and ~/Library/Caches/<bundle> (the preparer's Decrypted/).
@@ -126,6 +131,13 @@ import HostRuntime
             hosts: urls.compactMapValues { $0.first?.host },
             seconds: Dictionary(catalog.entries.map { ($0.id, $0.estimates.seconds) }, uniquingKeysWith: { a, _ in a })
         )
+        // The downloads the last launch's jobs were waiting for; their tasks are checked once the session answers.
+        intentsFile = state.appendingPathComponent("FirmwareJobs.json")
+        let intents =
+            ((try? Data(contentsOf: intentsFile)).flatMap {
+                try? JSONDecoder().decode([String: [String]].self, from: $0)
+            } ?? [:]).filter { catalog.entry(id: $0.key) != nil }
+        table.restore(intents, stored: Set(intents.values.joined().filter { store.existing($0) != nil }))
         let (stream, inputs) = AsyncStream.makeStream(of: Input.self)
         self.inputs = inputs
         // Made at launch so a download the last launch started reports here.
@@ -147,16 +159,7 @@ import HostRuntime
         Task { [weak self] in
             for await input in stream { self?.receive(input) }
         }
-        downloads.active { [weak self] sha1s in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                for sha1 in sha1s {
-                    if let entry = entry(sha1: sha1), table.isIdle(entry.id) {
-                        _ = table.download(entry.id, [sha1])
-                    }
-                }
-            }
-        }
+        downloads.active { inputs.yield(.tasks($0)) }
     }
 
     deinit { inputs.finish() }
@@ -292,6 +295,7 @@ import HostRuntime
             case .progress, .mirror, .resumed: break
             }
             run(table.download(sha1, event, now: now))
+        case .tasks(let sha1s): run(table.resume(tasks: Set(sha1s)))
         case .preparation(let id, let job, let event):
             let effects = table.preparation(id, job, event, now: now)
             switch event {
@@ -334,6 +338,7 @@ import HostRuntime
     private func run(_ effects: [FirmwareJobTable.Effect]) {
         for effect in effects {
             switch effect {
+            case .startDownload(let sha1): startDownload(sha1)
             case .cancelDownload(let sha1): downloads?.cancel(sha1: sha1)
             case .cancelImport(let token): imports.removeValue(forKey: token)?.cancel()
             case .cancelPreparation(let job): preparations[job]?.cancel()
@@ -410,6 +415,23 @@ import HostRuntime
         table.preparing(entry.id, id, afterDownload: afterDownload, now: Date())
         logEvent("firmware: \(bundled ? "unpacking the built-in" : "preparing") \(entry.id) as \(job.id.uuidString)")
         job.start()
+    }
+
+    private func saveIntents() {
+        let intents = table.intents
+        do {
+            if intents.isEmpty {
+                if FileManager.default.fileExists(atPath: intentsFile.path) {
+                    try FileManager.default.removeItem(at: intentsFile)
+                }
+            } else {
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = .sortedKeys
+                try encoder.encode(intents).write(to: intentsFile, options: .atomic)
+            }
+        } catch {
+            logEvent("firmware: couldn’t save the downloads under way: \(error.localizedDescription)")
+        }
     }
 
     private func fail(_ entry: FirmwareCatalog.Entry, _ error: any Error) {

@@ -115,4 +115,32 @@ import Testing
         _ = t.download("q", .failed(.corrupted), now: now)
         #expect(t.phase("x") == .failed(FirmwareError.corrupted.localizedDescription) && t.downloads["q"] == nil)
     }
+
+    @Test func aRelaunchRebuildsOnlyTheSavedJobs() {
+        var t = FirmwareJobTable()
+        _ = t.download("point", ["p", "s"])
+        let intents = t.intents
+        #expect(intents == ["point": ["p", "s"]])
+        // Relaunched while 4.3's IPSW ("s") downloads: its task reports to 4.3.1's job, and 4.3 gets none.
+        var r = FirmwareJobTable()
+        r.restore(intents, stored: ["p"])
+        let r1 = r.resume(tasks: ["s"])
+        #expect(r1 == [] && r.phase("point") == .downloading(["p", "s"]) && r.phase("s") == nil)
+        let r2 = r.download("s", .finished(URL(fileURLWithPath: "/s")), now: now)
+        #expect(r2 == [.prepare("point")])
+        // Its task is gone (it failed while the app was closed): it starts again.
+        var gone = FirmwareJobTable()
+        gone.restore(intents, stored: ["p"])
+        let r3 = gone.resume(tasks: [])
+        #expect(r3 == [.startDownload("s")])
+        // Both IPSWs landed while the app was closed: it prepares.
+        var landed = FirmwareJobTable()
+        landed.restore(intents, stored: ["p", "s"])
+        let r4 = landed.resume(tasks: [])
+        #expect(r4 == [.prepare("point")])
+        // A task no saved job waits for makes no job.
+        var none = FirmwareJobTable()
+        let r5 = none.resume(tasks: ["s"])
+        #expect(r5 == [] && none.jobs.isEmpty)
+    }
 }

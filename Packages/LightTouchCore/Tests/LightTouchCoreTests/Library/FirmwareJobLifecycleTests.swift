@@ -5,8 +5,9 @@ import Testing
 
 @testable import LightTouchCore
 
-/// FirmwareJobs' bookkeeping across the commands a user can mix (the state audit's B-1, B-2, B-12): Try Again right
-/// after Cancel, an IPSW dropped on a job under way, and Cancel while an import is checking its IPSW. Each runs the real FirmwareJobs over its own state with a scripted preparer.
+/// FirmwareJobs' bookkeeping across the commands a user can mix (the state audit's B-1, B-2, B-3, B-12): Try Again
+/// right after Cancel, an IPSW dropped on a job under way, Cancel while an import is checking its IPSW, and a relaunch
+/// with a two-IPSW download half done. Each runs the real FirmwareJobs over its own state with a scripted preparer.
 @Suite struct FirmwareJobLifecycleTests {
     typealias Harness = FirmwareJobsTests.Harness
     init() { _ = LibraryFixtures.isolatedAppState }
@@ -165,6 +166,45 @@ import Testing
             await Self.until(8) { h.store.existing(Self.zerosSHA1) != nil }
             #expect(h.store.existing(Self.zerosSHA1) == nil, "the cancelled import didn't land in the store")
             #expect(h.jobs.jobs[e.id] == nil && h.devices(e.id).isEmpty, "\(h.seen)")
+        }
+    }
+
+    // MARK: - B-3: a relaunch resumes what was asked
+
+    /// Download and Prepare iPad 4.3.1 (its own IPSW and 4.3's), quit while 4.3's is still downloading, and that
+    /// download finishes while the app is closed: the next launch prepares 4.3.1, and 4.3 gets no job.
+    @Test func aRelaunchPreparesTheTwoIPSWJobItWasAskedFor() async throws {
+        try await LibraryFixtures.withScratch { tmp in
+            let server = try await TestHTTPServer([:], hanging: ["/base.ipsw"])
+            defer { server.stop() }
+            let (h, point, base, _, _) = try FirmwareJobsTests().siblings(tmp, baseURL: server.base + "/base.ipsw")
+            h.jobs.downloadAndPrepare(point)
+            await Self.until { h.store.existing(point.source.sha1!) != nil }
+            #expect(Self.isDownloading(h.jobs.jobs[point.id]), "waiting for 4.3's IPSW")
+            // While the app is closed, 4.3's download lands.
+            try FileManager.default.copyItem(
+                at: tmp.appendingPathComponent("ipsws/k48ap-8F190.ipsw"),
+                to: h.store.download(base.source.sha1!)
+            )
+            #expect(
+                (try? Data(contentsOf: h.state.appendingPathComponent("FirmwareJobs.json"))).flatMap {
+                    try? JSONDecoder().decode([String: [String]].self, from: $0)
+                } == [point.id: [point.source.sha1!, base.source.sha1!]],
+                "the job's intent is saved"
+            )
+            let relaunched = try Harness(tmp, catalog: h.catalog, preparer: h.jobs.preparer)
+            await Self.until { !relaunched.devices(point.id).isEmpty && relaunched.jobs.jobs[point.id] == nil }
+            #expect(relaunched.devices(point.id).count == 1, "4.3.1 prepared after the relaunch: \(relaunched.seen)")
+            #expect(relaunched.changes[base.id] == nil && relaunched.devices(base.id).isEmpty, "4.3 got no job")
+        }
+    }
+
+    /// A download task the session still has that no saved job waits for (here 4.3's IPSW) gives its entry no job.
+    @Test func aLeftoverDownloadTaskStartsNoJob() async throws {
+        try await LibraryFixtures.withScratch { tmp in
+            let (h, point, base, _, _) = try FirmwareJobsTests().siblings(tmp)
+            h.jobs.receive(.tasks([base.source.sha1!, point.source.sha1!]))
+            #expect(h.jobs.jobs.isEmpty && h.changes.isEmpty, "\(h.jobs.jobs)")
         }
     }
 }
