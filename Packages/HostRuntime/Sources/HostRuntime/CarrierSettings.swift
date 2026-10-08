@@ -12,6 +12,9 @@ public struct CarrierSettings: Codable, Equatable, Sendable {
     public var simPresent = true
     /// Status-bar bars, 0...5 (signalDBM maps them onto the modem's dBm).
     public var bars = 5
+    /// Where the GPS receiver is. The 3GS's is part of its modem (qemu-ios ios_baseband_gps.c); every modem takes
+    /// the position, and only one with a receiver (ModemStatus.hasGPS) reports it to the phone.
+    public var location = GPSLocation.applePark
 
     public init() {}
 
@@ -29,6 +32,7 @@ public struct CarrierSettings: Codable, Equatable, Sendable {
         [
             ("carrier", carrier), ("mcc-mnc", mccMNC), ("registered", registered ? "on" : "off"),
             ("sim-present", simPresent ? "on" : "off"), ("signal-dbm", String(signalDBM)),
+            ("gps-fix", location.fix()),
         ]
     }
 
@@ -39,7 +43,9 @@ public struct CarrierSettings: Codable, Equatable, Sendable {
         properties.flatMap { ["-global", "ios-baseband.\($0.name)=\($0.value)"] }
     }
 
-    public var isValid: Bool { Self.carrierOK(carrier) && Self.plmnOK(mccMNC) && (0...5).contains(bars) }
+    public var isValid: Bool {
+        Self.carrierOK(carrier) && Self.plmnOK(mccMNC) && (0...5).contains(bars) && location.isValid
+    }
 
     // MARK: The modem's rules (ios_bb_carrier_ok, ios_bb_plmn_ok, ios_bb_sms_sender_ok)
 
@@ -76,6 +82,37 @@ extension CarrierSettings {
         registered = try c.decode(Bool.self, forKey: .registered)
         simPresent = try c.decode(Bool.self, forKey: .simPresent)
         bars = try c.decode(Int.self, forKey: .bars)
+        location = try c.decodeIfPresent(GPSLocation.self, forKey: .location) ?? Self().location
+    }
+}
+
+/// A position for the GPS receiver, in degrees (WGS84).
+public struct GPSLocation: Codable, Equatable, Sendable {
+    public var latitude: Double
+    public var longitude: Double
+
+    public init(latitude: Double, longitude: Double) {
+        self.latitude = latitude
+        self.longitude = longitude
+    }
+
+    public static let applePark = GPSLocation(latitude: 37.3349, longitude: -122.0090)
+
+    public var isValid: Bool { abs(latitude) <= 90 && abs(longitude) <= 180 }
+
+    /// The modem's gps-fix: "lat,lon,altitude,speed,course,accuracy" (meters, m/s, degrees or -1 for none, meters).
+    public func fix(speed: Double = 0, course: Double = -1) -> String {
+        String(format: "%.6f,%.6f,0,%.2f,%.1f,5", latitude, longitude, speed, course)
+    }
+
+    /// `meters` along `course` (degrees from north): flat-earth, fine for a walk of a few hundred meters.
+    public func moved(meters: Double, course: Double) -> GPSLocation {
+        let radians = course * .pi / 180
+        let metersPerDegree = 111_320.0
+        return GPSLocation(
+            latitude: latitude + meters * cos(radians) / metersPerDegree,
+            longitude: longitude + meters * sin(radians) / (metersPerDegree * cos(latitude * .pi / 180))
+        )
     }
 }
 
@@ -86,6 +123,8 @@ public struct ModemStatus: Equatable, Sendable {
     /// The call `callState` describes is to an emergency number.
     public var emergencyCall = false
     public var signalDBM = -113, moSMSCount = 0
+    /// The modem has a GPS receiver (the 3GS's), and the position it reports ("" for none).
+    public var hasGPS = false, gpsFix = ""
     /// The last outgoing SMS: destination and text.
     public var lastMOSMS: (number: String, text: String)? = nil
     /// The modem's refusal of the last write, if it refused it.
@@ -105,6 +144,8 @@ public struct ModemStatus: Equatable, Sendable {
         signalDBM = o["signal-dbm"] as? Int ?? -113
         moSMSCount = o["mo-sms-count"] as? Int ?? 0
         error = o["error"] as? String
+        hasGPS = o["gps"] as? Bool ?? false
+        gpsFix = o["gps-fix"] as? String ?? ""
         if let mo = o["last-mo-sms"] as? String, let bar = mo.firstIndex(of: "|"), mo.count > 1 {
             lastMOSMS = (String(mo[..<bar]), String(mo[mo.index(after: bar)...]))
         }
@@ -114,7 +155,7 @@ public struct ModemStatus: Equatable, Sendable {
         a.carrier == b.carrier && a.mccMNC == b.mccMNC && a.callState == b.callState && a.lastDialed == b.lastDialed
             && a.registered == b.registered && a.simPresent == b.simPresent && a.emergencyCall == b.emergencyCall
             && a.signalDBM == b.signalDBM
-            && a.moSMSCount == b.moSMSCount && a.error == b.error
+            && a.moSMSCount == b.moSMSCount && a.error == b.error && a.hasGPS == b.hasGPS && a.gpsFix == b.gpsFix
             && a.lastMOSMS?.number == b.lastMOSMS?.number && a.lastMOSMS?.text == b.lastMOSMS?.text
     }
 }

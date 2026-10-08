@@ -1,6 +1,7 @@
 // The Carrier panel's model (CarrierPanel is its view): the network settings as typed and applied, calls and SMS,
 // and the modem's state polled while the panel is visible.
 
+import Foundation
 import HostRuntime
 import Observation
 
@@ -33,6 +34,13 @@ import Observation
     /// The last thing the panel or the modem refused.
     public private(set) var message: String?
     @ObservationIgnored private var lastMOCount: Int?
+    /// The GPS position as typed, applied with Set.
+    public var latitude: String
+    public var longitude: String
+    /// Walking: the receiver moves at walkSpeed around a walkRadius circle through the set location, a step per poll.
+    public private(set) var walking = false
+    @ObservationIgnored private var walkAngle = 0.0
+    public static let walkSpeed = 1.4, walkRadius = 50.0
 
     public init(backend: CarrierBackend) {
         self.backend = backend
@@ -40,6 +48,8 @@ import Observation
         carrierName = backend.carrierSettings.carrier
         mcc = String(backend.carrierSettings.mccMNC.prefix(3))
         mnc = String(backend.carrierSettings.mccMNC.dropFirst(3))
+        latitude = Self.degrees(backend.carrierSettings.location.latitude)
+        longitude = Self.degrees(backend.carrierSettings.location.longitude)
     }
 
     /// The device's session was replaced (Restart, Erase, a free-form size): the panel drives the new session's modem
@@ -51,10 +61,15 @@ import Observation
         carrierName = settings.carrier
         mcc = String(settings.mccMNC.prefix(3))
         mnc = String(settings.mccMNC.dropFirst(3))
+        latitude = Self.degrees(settings.location.latitude)
+        longitude = Self.degrees(settings.location.longitude)
+        walking = false
         status = nil
         message = nil
         lastMOCount = nil
     }
+
+    private static func degrees(_ value: Double) -> String { String(format: "%.6f", value) }
 
     public var typedPLMN: String { mcc + mnc }
     public var networkValid: Bool {
@@ -131,8 +146,67 @@ import Observation
         }
     }
 
+    /// Where the receiver says the phone is (a walk's latest step), else the set location.
+    public var reportedLocation: GPSLocation {
+        let parts = (status?.gpsFix ?? "").split(separator: ",").compactMap { Double($0) }
+        return parts.count >= 2 ? GPSLocation(latitude: parts[0], longitude: parts[1]) : settings.location
+    }
+
+    /// Something to tell the user that the panel itself didn't decide (the Mac's location being unavailable).
+    public func notice(_ text: String) { message = text }
+
+    public var typedLocation: GPSLocation? {
+        guard let lat = Double(latitude), let lon = Double(longitude) else { return nil }
+        let location = GPSLocation(latitude: lat, longitude: lon)
+        return location.isValid ? location : nil
+    }
+
+    public func applyLocation() {
+        guard let location = typedLocation else {
+            message = "Latitude is −90 to 90 and longitude −180 to 180, in degrees."
+            return
+        }
+        set(location: location)
+    }
+
+    /// A new position for the receiver (a preset, a click on the map, the Mac's own); it stops a walk.
+    public func set(location: GPSLocation) {
+        let walked = walking
+        walking = false
+        latitude = Self.degrees(location.latitude)
+        longitude = Self.degrees(location.longitude)
+        var s = settings
+        s.location = location
+        save(s)
+        // The saved settings only write what changed: a walk's moving fix ends here even at the same spot.
+        if walked { backend.modem("gps-fix", location.fix()) { _ in } }
+    }
+
+    public func toggleWalk() {
+        if walking {
+            set(location: walkPosition)  // stays where the walk got to, standing still
+        } else {
+            walkAngle = 0
+            walking = true
+        }
+    }
+
+    /// Where the walk is: on the circle that starts at the set location and runs clockwise (east first).
+    var walkPosition: GPSLocation {
+        let r = Self.walkRadius
+        return settings.location.moved(meters: r, course: 180).moved(meters: r, course: walkAngle * 180 / .pi)
+    }
+
+    /// One step of the walk, a second's worth: the next point and the course to it, as a moving fix.
+    func walkStep() {
+        walkAngle += Self.walkSpeed / Self.walkRadius
+        let course = (walkAngle * 180 / .pi + 90).truncatingRemainder(dividingBy: 360)
+        backend.modem("gps-fix", walkPosition.fix(speed: Self.walkSpeed, course: course)) { _ in }
+    }
+
     /// One poll: the modem's state, its refusal of the last write, and any SMS the phone sent since the last poll.
     public func poll() {
+        if walking { walkStep() }
         backend.modemStatus { [weak self] status in
             guard let self, let status else { return }
             self.status = status

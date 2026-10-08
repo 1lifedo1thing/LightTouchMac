@@ -401,6 +401,25 @@ Thread.detachNewThread {
                 output = String(decoding: Data(base64Encoded: String(body)) ?? Data(), as: UTF8.self)
             }
             emit("agent", ["output": output])
+        case "agentput", "spawn":
+            // agentput LOCAL REMOTE: the file onto the guest (0755); spawn ARGV…: run it, no shell (the agent's ops)
+            let body =
+                p[0] == "spawn"
+                ? Data(p.dropFirst().map { $0 + "\0" }.joined().utf8)
+                : (try? Data(contentsOf: URL(fileURLWithPath: p[1]))) ?? Data()
+            let op = p[0] == "spawn" ? "spawn" : "put \(p[2]) 755"
+            let r = request(
+                .agent(request: "\(UUID().uuidString) \(op)\n\(body.base64EncodedString())", deadline: 50),
+                timeout: 55
+            )
+            var output = "\(r)"
+            if case .success(.agent(let wire?)) = r {
+                let parts = wire.split(separator: "\n", maxSplits: 1)
+                let status = parts.first.map { String($0.split(separator: " ").last ?? "") } ?? ""
+                let text = Data(base64Encoded: String(parts.last ?? "")) ?? Data()
+                output = "status \(status)\n" + String(decoding: text, as: UTF8.self)
+            }
+            emit("agent", ["output": output, "op": p[0]])
         case "audio":
             guard case .success(.audio(let g)) = request(.audioStart) else {
                 emit("audio", ["error": "no capture"])

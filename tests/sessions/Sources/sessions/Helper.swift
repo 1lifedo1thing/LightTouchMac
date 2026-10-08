@@ -508,6 +508,9 @@ func phone(_ args: PhoneCheck) -> Never {
     if only.contains("emergency") {
         emergencyCall(base, tools: tools, work: work, r)
     }
+    if only.contains("location") {
+        location(base, tools: tools, work: work, r)
+    }
     if only.contains("rotate") {
         print("rotate")
         let d = HelperDriver(
@@ -663,4 +666,92 @@ func emergencyCall(_ base: Base, tools: Tools, work: URL, _ r: Report) {
             "emergency: hung up (\(st[2].string("call-state") ?? ""))"
         )
     }
+}
+
+/// The 3GS's GPS (issue 40): the modem's receiver (gps-fix through the link, as the Carrier panel's Location sets it)
+/// answers locationd's +XLSR session, and CoreLocation in the guest reports that position: contrib/it-location's probe,
+/// run from /usr/local/bin through the agent (locationd lets executables under /usr/ in without a prompt). Then the
+/// fix moves (walking, a course) and the probe sees the new one.
+func location(_ base: Base, tools: Tools, work: URL, _ r: Report) {
+    print("location")
+    guard base.board == "n88ap" else { return noReceiver(base, tools: tools, work: work, r) }
+    let probe = checkout("qemu-ios").appendingPathComponent("contrib/it-location/it_location")
+    guard FileManager.default.fileExists(atPath: probe.path) else {
+        die("no it_location at \(probe.path) (contrib/it-location/build.sh)")
+    }
+    let fixes = [(37.3349, -122.0090, 0.0, -1.0), (37.33182, -122.03118, 1.4, 45.0)]
+    let d = HelperDriver(
+        "location",
+        tools: tools,
+        work: work,
+        scenario: preparedScenario(
+            base,
+            tools: tools,
+            work: work,
+            name: "location",
+            steps: [
+                "boot", "lit 0.5 400", "wait 30", "modem gps-fix \(fixes[0].0),\(fixes[0].1),30,0,-1,5", "modemStatus",
+                "agentput \(probe.path) /usr/local/bin/it_location", "spawn /usr/local/bin/it_location 15",
+                "modem gps-fix \(fixes[1].0),\(fixes[1].1),20,\(fixes[1].2),\(fixes[1].3),10",
+                "spawn /usr/local/bin/it_location 15", "quit", "expectExit 60",
+            ]
+        ),
+        environment: ["IOS_BB_TRACE": "2"]
+    )
+    r.check(d.finish(900) == 0, "location: scenario completed")
+    let status = d.events.find("modemStatus").first.flatMap {
+        $0.string("json").flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) } as? Event
+    }
+    let fix = status?.string("gps-fix") ?? "-"
+    r.check(status?.bool("gps") == true, "location: the modem reports its GPS receiver (\(fix))")
+    let log = d.nativeLog
+    r.check(
+        log.contains("> at+xlsr=2,") && log.contains("+XLSR: 2,"),
+        "location: locationd started a +XLSR session and the receiver reported fixes"
+    )
+    // "<+37.33490000, -122.00900000> +/- 4.87m (speed 1.40 mps / course 90.00) @ …", CLLocation's description (no
+    // space after the comma from 6.x on).
+    let pattern = /<([-+0-9.]+), ?([-+0-9.]+)> \+\/- ([0-9.]+)m \(speed ([-0-9.]+) mps \/ course ([-0-9.]+)\)/
+    let runs = d.events.find("agent").filter { $0.string("op") == "spawn" }.map { $0.string("output") ?? "" }
+    guard r.check(runs.count == 2, "location: the probe ran twice (\(runs.count))") else { return }
+    for (run, fix) in zip(runs, fixes) {
+        let seen = run.matches(of: pattern).compactMap { m -> [Double]? in
+            let v = [m.1, m.2, m.3, m.4, m.5].compactMap { Double($0) }
+            return v.count == 5 ? v : nil
+        }
+        let near = seen.last.map { abs($0[0] - fix.0) < 1e-5 && abs($0[1] - fix.1) < 1e-5 } ?? false
+        r.check(near, "location: CoreLocation reports \(fix.0), \(fix.1) (last of \(seen.count): \(seen.last ?? []))")
+        if fix.2 > 0, let last = seen.last {
+            r.check(
+                abs(last[3] - fix.2) < 0.05 && abs(last[4] - fix.3) < 0.5,
+                "location: speed \(fix.2) m/s, course \(fix.3) (\(last[3]), \(last[4]))"
+            )
+        }
+    }
+}
+
+/// The iPhone 4's and the M68's modems have no receiver: they take the app's gps-fix (sent with the carrier at every
+/// boot) and report `gps` false, so the panel shows no Location section.
+private func noReceiver(_ base: Base, tools: Tools, work: URL, _ r: Report) {
+    let d = HelperDriver(
+        "location",
+        tools: tools,
+        work: work,
+        scenario: preparedScenario(
+            base,
+            tools: tools,
+            work: work,
+            name: "location",
+            steps: ["boot", "lit 0.1 400", "modem gps-fix 37.3349,-122.009", "modemStatus", "quit", "expectExit 60"]
+        )
+    )
+    r.check(d.finish(600) == 0, "location: scenario completed")
+    let status = d.events.find("modemStatus").first.flatMap {
+        $0.string("json").flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) } as? Event
+    }
+    r.check(
+        status?.bool("gps") == false && status?.has("error") == false
+            && status?.string("gps-fix")?.hasPrefix("37.3349") == true,
+        "location: no GPS receiver on \(base.board), the position taken without one (\(status ?? [:]))"
+    )
 }

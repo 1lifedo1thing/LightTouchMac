@@ -1,3 +1,4 @@
+import Foundation
 import HostRuntime
 import Testing
 
@@ -46,12 +47,15 @@ struct CarrierPanelModelTests {
         let old = Modem()
         let model = CarrierPanelModel(backend: old)
         model.poll()
+        model.toggleWalk()
         let new = Modem()
         new.carrierSettings.carrier = "Restarted"
+        new.carrierSettings.location = GPSLocation(latitude: 51.5, longitude: -0.12)
         new.reported = try #require(ModemStatus(json: #"{"call-state": "incoming", "mo-sms-count": 4}"#))
         model.rebind(to: new)
         #expect(model.settings == new.carrierSettings && model.carrierName == "Restarted", "the new session's network")
         #expect(model.status == nil, "no state from the old modem")
+        #expect(model.latitude == "51.500000" && model.longitude == "-0.120000" && !model.walking, "its GPS position")
         model.poll()
         #expect(model.callState == "incoming")
         model.set(bars: 2)
@@ -98,5 +102,47 @@ struct CarrierPanelModelTests {
         modem.reported = try #require(ModemStatus(json: #"{"mo-sms-count": 3, "last-mo-sms": "556|second"}"#))
         model.poll()
         #expect(model.sent.map(\.text) == ["second", "first"] && model.sent.first?.number == "556")
+    }
+
+    /// Set writes the receiver's position through the settings (saved, and the modem's gps-fix); a typo is refused
+    /// before anything is sent; a walk moves the fix around the circle at walking speed with the course it heads,
+    /// one step per poll, and stopping leaves the receiver standing where the walk got to.
+    @Test func locationAndWalk() throws {
+        let modem = Modem()
+        let model = CarrierPanelModel(backend: modem)
+        #expect(model.latitude == "37.334900" && model.longitude == "-122.009000")
+        model.latitude = "north"
+        model.applyLocation()
+        #expect(modem.carrierSettings.location == .applePark && model.message != nil)
+        model.latitude = "51.500729"
+        model.longitude = "-0.124625"
+        model.applyLocation()
+        let start = GPSLocation(latitude: 51.500729, longitude: -0.124625)
+        #expect(modem.carrierSettings.location == start)
+
+        model.toggleWalk()
+        #expect(model.walking)
+        var fixes: [[Double]] = []
+        for _ in 0..<3 {
+            model.poll()
+            let fix = try #require(modem.actions.last?.split(separator: "=").last)
+            fixes.append(fix.split(separator: ",").compactMap { Double($0) })
+        }
+        let speed = CarrierPanelModel.walkSpeed
+        for (i, f) in fixes.enumerated() {
+            let step = Double(i + 1) * speed  // meters walked along the circle
+            #expect(f[3] == speed)
+            #expect(abs(f[4] - (90 + step / CarrierPanelModel.walkRadius * 180 / .pi)) < 0.1, "course \(f[4])")
+            // East of the start by about the arc walked (a chord, close for a few steps).
+            let east = (f[1] - start.longitude) * 111_320 * cos(start.latitude * .pi / 180)
+            #expect(abs(east - step) < 0.2, "\(east) m east after \(step) m")
+        }
+        model.toggleWalk()
+        #expect(!model.walking)
+        let stopped = modem.carrierSettings.location
+        #expect(abs(stopped.longitude - fixes[2][1]) < 1e-6 && abs(stopped.latitude - fixes[2][0]) < 1e-6)
+        let sent = modem.actions.count
+        model.poll()
+        #expect(modem.actions.count == sent, "no more steps once stopped")
     }
 }

@@ -60,8 +60,32 @@ struct CarrierSettingsTests {
                 "-global", "ios-baseband.carrier=A, B", "-global", "ios-baseband.mcc-mnc=00101",
                 "-global", "ios-baseband.registered=off", "-global", "ios-baseband.sim-present=on",
                 "-global", "ios-baseband.signal-dbm=-97",
+                "-global", "ios-baseband.gps-fix=37.334900,-122.009000,0,0.00,-1.0,5",
             ]
         )
+    }
+
+    /// A device saved before the GPS (no location key) starts at Apple Park; a saved location comes back; the modem's
+    /// gps-fix carries speed and course; a position off the globe isn't valid.
+    @Test func gpsLocation() throws {
+        var old = try JSONSerialization.jsonObject(with: JSONEncoder().encode(CarrierSettings())) as! [String: Any]
+        old.removeValue(forKey: "location")
+        let migrated = try JSONDecoder().decode(
+            CarrierSettings.self,
+            from: JSONSerialization.data(withJSONObject: old)
+        )
+        #expect(migrated.location == .applePark && migrated.isValid)
+        var s = CarrierSettings()
+        s.location = GPSLocation(latitude: -33.8568, longitude: 151.2153)
+        #expect(try JSONDecoder().decode(CarrierSettings.self, from: JSONEncoder().encode(s)) == s)
+        #expect(s.location.fix(speed: 1.4, course: 45) == "-33.856800,151.215300,0,1.40,45.0,5")
+        s.location.latitude = 91
+        #expect(!s.isValid)
+        #expect(!GPSLocation(latitude: 0, longitude: -180.5).isValid)
+        #expect(!GPSLocation(latitude: .nan, longitude: 0).isValid)
+        // 100 m north, then 100 m east: about 0.0009 degrees each way at the equator.
+        let moved = GPSLocation(latitude: 0, longitude: 0).moved(meters: 100, course: 0).moved(meters: 100, course: 90)
+        #expect(abs(moved.latitude - 0.000898) < 1e-5 && abs(moved.longitude - 0.000898) < 1e-5)
     }
 
     @Test func statusParsesTheDylibsJSON() throws {
@@ -74,7 +98,9 @@ struct CarrierSettingsTests {
             s.carrier == "Test Network" && s.callState == "incoming" && s.lastDialed == "911" && s.registered
                 && !s.simPresent && s.emergencyCall
         )
-        #expect(ModemStatus(json: "{}")?.emergencyCall == false)
+        #expect(ModemStatus(json: "{}")?.emergencyCall == false && ModemStatus(json: "{}")?.hasGPS == false)
+        let gps = try #require(ModemStatus(json: #"{"gps": true, "gps-fix": "37.3349000,-122.0090000,0,0,-1,5"}"#))
+        #expect(gps.hasGPS && gps.gpsFix.hasPrefix("37.3349"))
         #expect(s.signalDBM == -63 && s.moSMSCount == 2 && s.error?.hasPrefix("the modem") == true)
         #expect(s.lastMOSMS?.number == "14155550100" && s.lastMOSMS?.text == "Hi | there")
         #expect(ModemStatus(json: #"{"last-mo-sms": "|"}"#)?.lastMOSMS == nil)
