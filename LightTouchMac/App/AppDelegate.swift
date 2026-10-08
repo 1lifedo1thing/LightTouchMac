@@ -333,7 +333,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 windowController?.cancelFileTransfer()
             },
             running: emulators.filter { !$0.isDead && !$0.isPoweredOff }.map { emulator in
-                { done in emulator.halt { _ in done() } }
+                { done in
+                    let halt = emulator.halt()
+                    Task {
+                        _ = await halt.value
+                        done()
+                    }
+                }
             }
         )
         switch answer {

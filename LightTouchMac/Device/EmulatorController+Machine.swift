@@ -41,7 +41,11 @@ extension EmulatorController {
         instance.panel = panel
         guard restart, canStop else { return false }
         logEvent("display: restarting \(instance.name) at panel \(panel ?? "native")")
-        halt { [weak self] _ in self?.onRestartRequested?() }
+        let halt = halt()
+        Task { [weak self] in
+            _ = await halt.value
+            self?.onRestartRequested?()
+        }
         return true
     }
 
@@ -53,7 +57,7 @@ extension EmulatorController {
     func reset() { cycle.reset() }
     /// Retain the QEMU main loop at guest power-off; a reset can cold boot it
     /// again without reinitializing QEMU or opening a second NAND writer.
-    func powerOff(completion: @escaping (Bool) -> Void) { ladder.forceStop(completion: completion) }
+    @discardableResult func powerOff() -> Task<Bool, Never> { ladder.forceStop() }
     func powerOn() { cycle.powerOn() }
 
     var isReleased: Bool { stopped || releasing }
@@ -128,9 +132,9 @@ extension EmulatorController {
     var canShutDown: Bool { ladder.canShutDown }
     var isShuttingDownCleanly: Bool { ladder.isShuttingDownCleanly }
     /// The guest powers itself off, as the slider does; the helper stays, powered off.
-    func shutDown(completion: @escaping (Bool) -> Void) { ladder.shutDown(completion: completion) }
+    @discardableResult func shutDown() -> Task<Bool, Never> { ladder.shutDown() }
     /// `completion(true)` iff the helper is gone.
-    func halt(completion: @escaping (Bool) -> Void) { ladder.halt(completion: completion) }
+    @discardableResult func halt() -> Task<Bool, Never> { ladder.halt() }
     func willStop() {
         AppInstaller.discard(for: instance.id)
         stopTimeZoneSync()

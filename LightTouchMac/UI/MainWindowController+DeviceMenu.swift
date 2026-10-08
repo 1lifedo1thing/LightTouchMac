@@ -201,7 +201,9 @@ extension MainWindowController {
     }
 
     func shutDown(_ emulator: EmulatorController, then: (() -> Void)? = nil) {
-        emulator.shutDown { [weak emulator] off in
+        let shutdown = emulator.shutDown()
+        Task { [weak emulator] in
+            let off = await shutdown.value
             guard let emulator else { return }
             if off {
                 emulator.resolveDeviceNotice(for: .powerOff)
@@ -216,7 +218,9 @@ extension MainWindowController {
     }
 
     private func powerOff(_ emulator: EmulatorController) {
-        emulator.powerOff { [weak emulator] confirmed in
+        let stop = emulator.powerOff()
+        Task { [weak emulator] in
+            let confirmed = await stop.value
             if confirmed {
                 emulator?.resolveDeviceNotice(for: .powerOff)
                 return

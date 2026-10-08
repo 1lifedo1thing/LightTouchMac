@@ -52,9 +52,8 @@ public protocol ShutdownHost: AnyObject {
     public private(set) var shuttingDown = false
     /// Stop asked the helper to halt: its exit is Stopped, not a crash.
     public private(set) var halting = false
-    private var haltTask: Task<Void, Never>?
-    private var haltCompletions: [(Bool) -> Void] = []
-    private var cleanShutdown: Task<Void, Never>?
+    private var haltTask: Task<Bool, Never>?
+    private var cleanShutdown: Task<Bool, Never>?
 
     private var isPoweredOff: Bool { host.state == .poweredOff }
     private var isDead: Bool { host.state.isDead }
@@ -71,21 +70,21 @@ public protocol ShutdownHost: AnyObject {
     }
     public var isShuttingDownCleanly: Bool { cleanShutdown != nil && haltTask == nil }
 
-    /// `completion(true)` once the guest is off (or a Force Stop took over), false when it didn't get there in
-    /// the shutdown budget (the device keeps running).
-    public func shutDown(completion: @escaping (Bool) -> Void) {
-        guard canShutDown else { return completion(false) }
+    /// Asks the guest to power off, now. The task's value: true once the guest is off (or a Force Stop took over),
+    /// false when it didn't get there in the shutdown budget (the device keeps running).
+    @discardableResult public func shutDown() -> Task<Bool, Never> {
+        guard canShutDown else { return Task { false } }
         host.willStop()
         shuttingDown = true
         logEvent("shut down: asking the guest")
         host.helperLink?.send(.machine(.shutdown))
         let budget = budgets.shutdown
-        cleanShutdown = Task { [weak self] in
+        let task = Task { [weak self] in
             let deadline = ContinuousClock.now + .seconds(budget)
             while let self, ContinuousClock.now < deadline, !self.isPoweredOff, !self.isDead, self.haltTask == nil {
                 try? await Task.sleep(for: .milliseconds(200))
             }
-            guard let self else { return }
+            guard let self else { return false }
             // A Force Stop that took over owns the flag until its halt ends, and counts as stopped.
             let forced = haltTask != nil
             let off = isPoweredOff || isDead
@@ -96,34 +95,27 @@ public protocol ShutdownHost: AnyObject {
                     ? "shut down: the guest powered off"
                     : forced ? "shut down: force stopped" : "shut down: the guest didn't power off"
             )
-            completion(off || forced)
+            return off || forced
         }
+        cleanShutdown = task
+        return task
     }
 
-    /// Force Stop (and the guest's power-off from the menu): the halt, once queued installs are dropped.
-    public func forceStop(completion: @escaping (Bool) -> Void) {
-        guard canForceStop else {
-            completion(false)
-            return
-        }
+    /// Force Stop (and the guest's power-off from the menu): the halt, once queued installs are dropped. The task's
+    /// value is the halt's; false when there is nothing to stop.
+    @discardableResult public func forceStop() -> Task<Bool, Never> {
+        guard canForceStop else { return Task { false } }
         host.willStop()
-        halt(completion: completion)
+        return halt()
     }
 
-    /// `completion(true)` iff the helper is gone. Multiple requests join one halt.
-    public func halt(completion: @escaping (Bool) -> Void) {
-        if isPoweredOff || host.helper?.isDead != false {
-            completion(true)
-            return
-        }
-        if haltTask != nil {
-            haltCompletions.append(completion)
-            return
-        }
+    /// Starts the halt now, or joins the one under way. The task's value: true iff the helper is gone.
+    @discardableResult public func halt() -> Task<Bool, Never> {
+        if isPoweredOff || host.helper?.isDead != false { return Task { true } }
+        if let haltTask { return haltTask }
         shuttingDown = true
         halting = true
         host.retireBoot()
-        haltCompletions = [completion]
         let process = host.helper
         if host.filesMeddled {
             // The overlay or NOR the helper has open is gone from disk: a flush would
@@ -134,22 +126,22 @@ public protocol ShutdownHost: AnyObject {
             process?.terminate()
         }
         let budgets = budgets
-        haltTask = Task { [weak self] in
+        let task = Task { [weak self] in
             var exited = await process?.waitForExit(timeout: budgets.halt) ?? true
             if !exited {
                 logEvent("stop: the device helper did not exit in \(Int(budgets.halt)) s; killing it")
                 process?.kill()
                 exited = await process?.waitForExit(timeout: budgets.kill) ?? true
             }
-            guard let self else { return }
+            guard let self else { return exited }
             let host = host
             await host.workers.awaitTeardown(budget: budgets.serviceTeardown)
             if exited { logEvent("stop: device halted") }
             haltTask = nil
             shuttingDown = false
-            let completions = haltCompletions
-            haltCompletions = []
-            for completion in completions { completion(exited) }
+            return exited
         }
+        haltTask = task
+        return task
     }
 }

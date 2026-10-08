@@ -101,13 +101,13 @@ struct ReadinessWatchTests {
             #expect(cancelled.homes == 0 && !cancelled.preparingDevice && cancelled.readiness.readinessFailure == nil)
 
             let quitting = session(directory, sleeping: true)
-            quitting.onDeviceReady = { quitting.ladder.halt { _ in } }
+            quitting.onDeviceReady = { quitting.ladder.halt() }
             quitting.readiness.start()
             await quitting.readiness.current?.value
             #expect(quitting.homes == 0)
 
             let stopping = session(directory)
-            stopping.ladder.halt { _ in }
+            stopping.ladder.halt()
             stopping.readiness.start()
             #expect(stopping.readiness.current == nil && !stopping.preparingDevice, "a stopping device starts no watch")
         }

@@ -270,7 +270,7 @@ final class FakeSession: MachineHost, ConnectionHost, ActivationServices, Readin
     }
     func discardInstalls() { steps.append("discard") }
     func stopGuestWatches() { steps.append("stopWatches") }
-    func halt(completion: @escaping (Bool) -> Void) { ladder.halt(completion: completion) }
+    @discardableResult func halt() -> Task<Bool, Never> { ladder.halt() }
     var onRestart: (() -> Void)?
     func restart() {
         steps.append("restart")

@@ -25,7 +25,8 @@ public protocol BootCycleHost: AnyObject {
     var status: SharedStatus? { get }
     /// The guest agent's sync: the guest's filesystems flushed.
     func syncGuest() async throws
-    func halt(completion: @escaping (Bool) -> Void)
+    /// Stop's halt, started now (ShutdownLadder.halt).
+    @discardableResult func halt() -> Task<Bool, Never>
     func restart()
     func retireBoot()
     // The per-boot steps, in the order a boot takes them.
@@ -82,7 +83,8 @@ public final class BootCycle {
             if !host.hasGuestTools {
                 // No guest to sync through: a hard halt (storage flushed, the
                 // journal replays), then a fresh helper, as Stop then Start.
-                host.halt { [weak host] _ in host?.restart() }
+                _ = await host.halt().value
+                host.restart()
                 return
             }
             let synced = await withSoftDeadline(syncBudget) { @MainActor in

@@ -100,7 +100,7 @@ struct BootWatchTests {
             #expect(stuck.fakeHelper!.terms == 1)
 
             let stopping = session(directory)
-            stopping.ladder.halt { _ in }
+            stopping.ladder.halt()
             let terms = stopping.fakeHelper!.terms
             stopping.bootWatch.abort("late")
             #expect(stopping.fakeHelper!.terms == terms && stopping.bootWatch.deathReason == nil)

@@ -22,7 +22,8 @@ public protocol EraseHost: AnyObject {
     func discardInstalls()
     /// The foreground and orientation watches stop asking the guest.
     func stopGuestWatches()
-    func halt(completion: @escaping (Bool) -> Void)
+    /// Stop's halt, started now (ShutdownLadder.halt).
+    @discardableResult func halt() -> Task<Bool, Never>
     /// A fresh helper boots the erased device (DeviceSessionHost.restart).
     func restart()
 }
@@ -61,9 +62,7 @@ public final class DeviceErase {
         let host = host  // the session stays until its erase ends
         Task {
             if !host.state.isDead, host.state != .notStarted {
-                _ = await withCheckedContinuation { continuation in
-                    host.halt { continuation.resume(returning: $0) }
-                }
+                _ = await host.halt().value
                 // The helper must release every NAND/NOR writer (exit) before removal;
                 // one whose guest powered itself off is still alive.
                 host.helperLink?.send(.machine(.quit))

@@ -17,9 +17,7 @@ struct ShutdownLadderTests {
         s.ladder.budgets.shutdown = 0.5
         return s
     }
-    func halt(_ s: FakeSession) async -> Bool {
-        await withCheckedContinuation { done in s.ladder.halt { done.resume(returning: $0) } }
-    }
+    func halt(_ s: FakeSession) async -> Bool { await s.ladder.halt().value }
 
     @Test func stopMidBootHaltsAtOnceAndJoinsRequests() async throws {
         try await withScratchDirectory { directory in
@@ -27,20 +25,12 @@ struct ShutdownLadderTests {
             c.bootScope[.readiness] = Task { try? await Task.sleep(for: .seconds(60)) }
             let readiness = c.bootScope[.readiness]
             #expect(c.ladder.canStop)
-            var results: [Bool] = []
             let started = Date()
-            await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
-                c.ladder.halt {
-                    results.append($0)
-                    if results.count == 2 { done.resume() }
-                }
-                c.ladder.halt {
-                    results.append($0)
-                    if results.count == 2 { done.resume() }
-                }
-                #expect(c.shuttingDown && c.halting && !c.ladder.canStop && readiness?.isCancelled == true)
-                #expect(c.steps == ["retire"])
-            }
+            let first = c.ladder.halt()
+            let second = c.ladder.halt()
+            #expect(c.shuttingDown && c.halting && !c.ladder.canStop && readiness?.isCancelled == true)
+            #expect(c.steps == ["retire"])
+            let results = [await first.value, await second.value]
             #expect(results == [true, true] && c.fakeHelper!.terms == 1 && c.fakeHelper!.kills == 0 && !c.shuttingDown)
             #expect(Date().timeIntervalSince(started) < 1, "a halt never waits on the guest")
             #expect(c.link.commands.isEmpty, "no guest shutdown asked")
@@ -55,12 +45,11 @@ struct ShutdownLadderTests {
 
             let gone = session(directory)
             gone.fakeHelper!.isDead = true
-            var result: Bool?
-            gone.ladder.halt { result = $0 }
-            #expect(result == true && gone.fakeHelper!.terms == 0 && !gone.shuttingDown)
+            let goneHalt = gone.ladder.halt()
+            #expect(gone.fakeHelper!.terms == 0 && !gone.shuttingDown)
+            #expect(await goneHalt.value)
             let off = session(directory, state: .poweredOff)
-            off.ladder.halt { result = $0 }
-            #expect(off.fakeHelper!.terms == 0)
+            #expect(await off.ladder.halt().value && off.fakeHelper!.terms == 0)
         }
     }
 
@@ -92,11 +81,13 @@ struct ShutdownLadderTests {
         try await withScratchDirectory { directory in
             let clean = session(directory, state: .running)
             #expect(clean.ladder.canShutDown)
-            var result: Bool?
+            var shutdown: Task<Bool, Never>?
             #expect(
-                observes({ _ = clean.ladder.shuttingDown }) { clean.ladder.shutDown { result = $0 } },
+                observes({ _ = clean.ladder.shuttingDown }) { shutdown = clean.ladder.shutDown() },
                 "the window's Shutting down… follows"
             )
+            var result: Bool?
+            Task { result = await shutdown?.value }
             #expect(clean.link.commands == [.machine(.shutdown)] && clean.steps == ["willStop"])
             #expect(
                 clean.shuttingDown && clean.ladder.isShuttingDownCleanly && !clean.ladder.canShutDown
@@ -113,8 +104,7 @@ struct ShutdownLadderTests {
     @Test func aGuestThatNeverPowersOffIsLeftRunning() async throws {
         try await withScratchDirectory { directory in
             let stubborn = session(directory, state: .running)
-            let gaveUp = await withCheckedContinuation { done in stubborn.ladder.shutDown { done.resume(returning: $0) }
-            }
+            let gaveUp = await stubborn.ladder.shutDown().value
             #expect(!gaveUp && !stubborn.shuttingDown && stubborn.state == .running && stubborn.ladder.canShutDown)
             // Not running, storage failed, or the helper gone: no Shut Down.
             for change: (FakeSession) -> Void in [
@@ -123,9 +113,9 @@ struct ShutdownLadderTests {
             ] {
                 let s = session(directory, state: .running)
                 change(s)
-                var result: Bool?
-                s.ladder.shutDown { result = $0 }
-                #expect(result == false && s.link.commands.isEmpty)
+                let refused = s.ladder.shutDown()
+                #expect(s.link.commands.isEmpty)
+                #expect(await !refused.value)
             }
         }
     }
@@ -133,19 +123,17 @@ struct ShutdownLadderTests {
     @Test func forceStopTakesOverAShutDown() async throws {
         try await withScratchDirectory { directory in
             let forced = session(directory, state: .running)
-            var shutDown: Bool?
-            forced.ladder.shutDown { shutDown = $0 }
+            let shutDown = forced.ladder.shutDown()
             #expect(!forced.ladder.canStop && forced.ladder.canForceStop)
-            let halted = await withCheckedContinuation { done in forced.ladder.forceStop { done.resume(returning: $0) }
-            }
-            await eventually("shut down ended") { shutDown != nil }
-            #expect(halted && forced.fakeHelper!.terms == 1 && shutDown == true && !forced.shuttingDown)
+            let halted = await forced.ladder.forceStop().value
+            #expect(await shutDown.value, "the shut down ends, stopped")
+            #expect(halted && forced.fakeHelper!.terms == 1 && !forced.shuttingDown)
             #expect(forced.steps.filter { $0 == "willStop" }.count == 2)
 
             let idle = session(directory, state: .notStarted)
-            var refused: Bool?
-            idle.ladder.forceStop { refused = $0 }
-            #expect(refused == false && idle.fakeHelper!.terms == 0, "nothing started, nothing to stop")
+            let refused = idle.ladder.forceStop()
+            #expect(idle.fakeHelper!.terms == 0, "nothing started, nothing to stop")
+            #expect(await !refused.value)
         }
     }
 

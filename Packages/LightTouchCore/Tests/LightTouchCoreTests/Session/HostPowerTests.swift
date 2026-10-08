@@ -57,7 +57,7 @@ struct HostPowerTests {
             #expect(off.link.commands.isEmpty && off.steps.isEmpty, "a device not running is left alone")
             let stopping = FakeSession(directory: directory)
             stopping.state = .running
-            stopping.ladder.halt { _ in }
+            stopping.ladder.halt()
             let stoppingPower = HostPower(host: stopping) {}
             stoppingPower.hostWillSleep()
             #expect(
