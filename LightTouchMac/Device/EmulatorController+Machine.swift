@@ -127,7 +127,7 @@ extension EmulatorController {
     var canShutDown: Bool { ladder.canShutDown }
     var isShuttingDownCleanly: Bool { ladder.isShuttingDownCleanly }
     /// The guest powers itself off, as the slider does; the helper stays, powered off.
-    @discardableResult func shutDown() -> Task<Bool, Never> { ladder.shutDown() }
+    @discardableResult func shutDown() -> Task<ShutdownOutcome, Never> { ladder.shutDown() }
     /// `completion(true)` iff the helper is gone.
     @discardableResult func halt() -> Task<Bool, Never> { ladder.halt() }
     func willStop() {

@@ -28,6 +28,17 @@ public protocol ShutdownHost: AnyObject {
     func willStop()
 }
 
+/// How a Shut Down ended. Only `poweredOff` left the guest's storage clean: what waits for a shut-down device (Show
+/// File System's Shut Down First) goes on from that alone (state audit A-15).
+public enum ShutdownOutcome: Equatable {
+    /// The guest powered itself off.
+    case poweredOff
+    /// It was stopped instead: a Force Stop took over, or the helper died.
+    case forced
+    /// The guest didn't power off within the budget (or Shut Down couldn't be asked); it keeps running.
+    case timedOut
+}
+
 @Observable public final class ShutdownLadder {
     public struct Budgets {
         public init() {}
@@ -54,7 +65,7 @@ public protocol ShutdownHost: AnyObject {
     /// it ends, so a helper that outlived it can still be stopped, aborted and seen to crash (state audit A-10).
     public enum Step {
         case idle
-        case shuttingDown(Task<Bool, Never>)
+        case shuttingDown(Task<ShutdownOutcome, Never>)
         case halting(Task<Bool, Never>)
     }
     public private(set) var step = Step.idle
@@ -79,30 +90,31 @@ public protocol ShutdownHost: AnyObject {
     }
     public var isShuttingDownCleanly: Bool { if case .shuttingDown = step { true } else { false } }
 
-    /// Asks the guest to power off, now. The task's value: true once the guest is off (or a Force Stop took over),
-    /// false when it didn't get there in the shutdown budget (the device keeps running).
-    @discardableResult public func shutDown() -> Task<Bool, Never> {
-        guard canShutDown else { return Task { false } }
+    /// Asks the guest to power off, now. The task's value: how it ended.
+    @discardableResult public func shutDown() -> Task<ShutdownOutcome, Never> {
+        guard canShutDown else { return Task { .timedOut } }
         host.willStop()
         logEvent("shut down: asking the guest")
         host.helperLink?.send(.machine(.shutdown))
         let budget = budgets.shutdown
-        let task = Task { [weak self] in
+        let task = Task { [weak self] () -> ShutdownOutcome in
             let deadline = ContinuousClock.now + .seconds(budget)
             while let self, ContinuousClock.now < deadline, !self.isPoweredOff, !self.isDead, self.haltTask == nil {
                 try? await Task.sleep(for: .milliseconds(200))
             }
-            guard let self else { return false }
-            // A Force Stop that took over owns the flag until its halt ends, and counts as stopped.
-            let forced = haltTask != nil
-            let off = isPoweredOff || isDead
-            if !forced { step = .idle }
-            logEvent(
-                off
-                    ? "shut down: the guest powered off"
-                    : forced ? "shut down: force stopped" : "shut down: the guest didn't power off"
-            )
-            return off || forced
+            guard let self else { return .timedOut }
+            // A Force Stop that took over owns the step until its halt ends.
+            let outcome: ShutdownOutcome =
+                haltTask != nil || isDead ? .forced : isPoweredOff ? .poweredOff : .timedOut
+            if haltTask == nil { step = .idle }
+            let said =
+                switch outcome {
+                case .poweredOff: "the guest powered off"
+                case .forced: "force stopped"
+                case .timedOut: "the guest didn't power off"
+                }
+            logEvent("shut down: \(said)")
+            return outcome
         }
         step = .shuttingDown(task)
         return task

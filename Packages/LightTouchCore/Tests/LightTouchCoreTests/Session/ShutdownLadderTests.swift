@@ -96,12 +96,12 @@ struct ShutdownLadderTests {
         try await withScratchDirectory { directory in
             let clean = session(directory, state: .running)
             #expect(clean.ladder.canShutDown)
-            var shutdown: Task<Bool, Never>?
+            var shutdown: Task<ShutdownOutcome, Never>?
             #expect(
                 observes({ _ = clean.ladder.shuttingDown }) { shutdown = clean.ladder.shutDown() },
                 "the window's Shutting down… follows"
             )
-            var result: Bool?
+            var result: ShutdownOutcome?
             Task { result = await shutdown?.value }
             #expect(clean.link.commands == [.machine(.shutdown)] && clean.steps == ["willStop"])
             #expect(
@@ -112,7 +112,7 @@ struct ShutdownLadderTests {
             #expect(result == nil, "finished before the guest powered off")
             clean.state = .poweredOff
             await eventually("shut down finished") { result != nil }
-            #expect(result == true && !clean.shuttingDown && clean.fakeHelper!.terms == 0, "the helper stays")
+            #expect(result == .poweredOff && !clean.shuttingDown && clean.fakeHelper!.terms == 0, "the helper stays")
         }
     }
 
@@ -120,7 +120,10 @@ struct ShutdownLadderTests {
         try await withScratchDirectory { directory in
             let stubborn = session(directory, state: .running)
             let gaveUp = await stubborn.ladder.shutDown().value
-            #expect(!gaveUp && !stubborn.shuttingDown && stubborn.state == .running && stubborn.ladder.canShutDown)
+            #expect(
+                gaveUp == .timedOut && !stubborn.shuttingDown && stubborn.state == .running
+                    && stubborn.ladder.canShutDown
+            )
             // Not running, storage failed, or the helper gone: no Shut Down.
             for change: (FakeSession) -> Void in [
                 { $0.state = .booting }, { $0.storageFailed = true }, { $0.fakeHelper!.isDead = true },
@@ -130,7 +133,7 @@ struct ShutdownLadderTests {
                 change(s)
                 let refused = s.ladder.shutDown()
                 #expect(s.link.commands.isEmpty)
-                #expect(await !refused.value)
+                #expect(await refused.value == .timedOut)
             }
         }
     }
@@ -141,7 +144,9 @@ struct ShutdownLadderTests {
             let shutDown = forced.ladder.shutDown()
             #expect(!forced.ladder.canStop && forced.ladder.canForceStop)
             let halted = await forced.ladder.forceStop().value
-            #expect(await shutDown.value, "the shut down ends, stopped")
+            // State audit A-15: this used to read as powered off, so Shut Down First opened the file system of a
+            // device that had been cut off mid-write.
+            #expect(await shutDown.value == .forced, "the shut down ends, stopped, not powered off")
             #expect(halted && forced.fakeHelper!.terms == 1 && !forced.shuttingDown)
             #expect(forced.steps.filter { $0 == "willStop" }.count == 2)
 

@@ -207,20 +207,24 @@ extension MainWindowController {
         }
     }
 
+    /// `then` runs once the guest has powered itself off, not after a Force Stop took over.
     func shutDown(_ emulator: EmulatorController, then: (() -> Void)? = nil) {
         let shutdown = emulator.shutDown()
         Task { [weak emulator] in
-            let off = await shutdown.value
+            let outcome = await shutdown.value
             guard let emulator else { return }
-            if off {
+            switch outcome {
+            case .poweredOff:
                 emulator.resolveDeviceNotice(for: .powerOff)
                 then?()
-                return
+            case .forced:
+                emulator.resolveDeviceNotice(for: .powerOff)
+            case .timedOut:
+                emulator.reportDeviceNotice(
+                    "The \(emulator.profile.shortName) didn’t shut down. Force Stop stops it at once.",
+                    for: .powerOff
+                )
             }
-            emulator.reportDeviceNotice(
-                "The \(emulator.profile.shortName) didn’t shut down. Force Stop stops it at once.",
-                for: .powerOff
-            )
         }
     }
 
