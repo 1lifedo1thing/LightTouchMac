@@ -331,6 +331,7 @@ func describe(_ s: SharedStatus) -> [String: Any] {
         "iconGeneration": s.iconGeneration, "qemuState": s.qemuState.rawValue, "exitCode": s.exitCode,
         "guestPackage": s.guestPackage.map { ["serial": $0.serial, "result": $0.result] } ?? NSNull(),
         "glesProtocol": s.glesProtocol, "glesSerial": s.glesSerial, "backlightLevel": s.backlightLevel,
+        "vibrating": s.vibrating, "vibratorPulses": s.vibratorPulses,
     ]
 }
 

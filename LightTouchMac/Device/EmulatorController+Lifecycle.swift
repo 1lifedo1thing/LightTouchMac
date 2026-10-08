@@ -101,6 +101,7 @@ extension EmulatorController {
         retireBoot()  // cancels every task of this boot (BootSessionScope)
         statusTimer?.invalidate()
         statusTimer = nil
+        updateVibration(nil)
         process?.terminate()
         fileWatch = nil
         // Unlink the owned FIFO paths now, keeping readers alive until the
@@ -131,6 +132,7 @@ extension EmulatorController {
         fileWatch = nil
         statusTimer?.invalidate()
         statusTimer = nil
+        updateVibration(nil)
         audioSink?(.audioEnded(generation: 0, failed: true))
         usbmux.stop()
         serialCapture?.finish()

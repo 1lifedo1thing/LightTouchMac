@@ -37,6 +37,7 @@ extension EmulatorController {
     }
 
     func pollStorageFailure() {
+        updateVibration(status)
         guard let status else { return }
         if status.frameSerial != lastFrameSerial {
             lastFrameSerial = status.frameSerial

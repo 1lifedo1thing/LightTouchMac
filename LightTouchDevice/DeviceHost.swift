@@ -144,6 +144,12 @@ final class DeviceHost: @unchecked Sendable {
         status.bumpHeartbeat()
         guard booted else { return }
         if !live || ticks % 3 == 0 { refreshStatus() }
+        // Every tick, not at the status rate: a buzz's start and end are worth a frame's latency.
+        if let vibrator = qemu.vibrator {
+            var pulses: UInt64 = 0
+            status[.vibrating] = vibrator(&pulses) ? 1 : 0
+            status[.vibratorPulses] = pulses
+        }
         let on = !qemu.displaySleeping()
         if on != displayOn || (live && !on) {
             displayOn = on

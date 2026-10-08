@@ -18,10 +18,27 @@ extension DisplayView {
         }
         updateTouchOverlay()
         updateKeyboardPointer()
+        updateTremble()
         _ = currentFrame()
         // The guest's orientation can change after its turned picture arrived (the A4 boards' SpringBoard query
         // answers later): with a static screen no new frame would lay it out.
         if emulator?.rotationDegrees != lastRotation { needsLayout = true }
+    }
+
+    /// While the guest runs its vibration motor the whole device trembles a point either way (not with Reduce Motion).
+    private func updateTremble() {
+        guard let layer else { return }
+        let trembling =
+            emulator?.vibrating == true && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        guard trembling != (layer.animation(forKey: "tremble") != nil) else { return }
+        guard trembling else { return layer.removeAnimation(forKey: "tremble") }
+        let tremble = CABasicAnimation(keyPath: "sublayerTransform.translation.x")
+        tremble.fromValue = -1
+        tremble.toValue = 1
+        tremble.duration = 0.03
+        tremble.autoreverses = true
+        tremble.repeatCount = .infinity
+        layer.add(tremble, forKey: "tremble")
     }
 
     /// The newest ring surface, shown if it is new. The ring reader belongs to

@@ -26,7 +26,8 @@ nonisolated public enum StatusSlot: Int, CaseIterable {
         guestPackageReported, guestPackage, guestPackageState,  // serial, it_boot R_* (Int64 bit patterns)
         glesProtocol, glesSerial,
         guestPackageSupported,  // the dylib has the guest-package= property (set before boot)
-        backlightLevel  // qemu_ios_ui_backlight_level (Int64 bit pattern)
+        backlightLevel,  // qemu_ios_ui_backlight_level (Int64 bit pattern)
+        vibrating, vibratorPulses  // qemu_ios_ui_vibrator: the motor runs; its starts so far
 }
 
 nonisolated public enum QemuState: UInt64, Sendable {
@@ -65,6 +66,11 @@ nonisolated public struct SharedStatus: Sendable, Equatable {
     public var guestPackageSupported = false
     /// The level the guest last programmed into the backlight driver (its raw code; 0 off), -1 where not decoded.
     public var backlightLevel = -1
+    /// The vibration motor runs (an iPhone's; the iPods and the iPad have none).
+    public var vibrating = false
+    /// How many times the motor has started since the helper loaded the emulator: a buzz shorter than a poll
+    /// still shows here.
+    public var vibratorPulses: UInt64 = 0
     public init(
         heartbeat: UInt64,
         frameSerial: UInt64,
@@ -85,7 +91,9 @@ nonisolated public struct SharedStatus: Sendable, Equatable {
         glesProtocol: Int32 = 0,
         glesSerial: Int64 = 0,
         guestPackageSupported: Bool = false,
-        backlightLevel: Int = -1
+        backlightLevel: Int = -1,
+        vibrating: Bool = false,
+        vibratorPulses: UInt64 = 0
     ) {
         self.heartbeat = heartbeat
         self.frameSerial = frameSerial
@@ -107,6 +115,8 @@ nonisolated public struct SharedStatus: Sendable, Equatable {
         self.glesSerial = glesSerial
         self.guestPackageSupported = guestPackageSupported
         self.backlightLevel = backlightLevel
+        self.vibrating = vibrating
+        self.vibratorPulses = vibratorPulses
     }
 }
 
@@ -180,7 +190,9 @@ nonisolated public struct StatusBlock: @unchecked Sendable {
             glesProtocol: Int32(truncatingIfNeeded: Int64(bitPattern: self[.glesProtocol])),
             glesSerial: Int64(bitPattern: self[.glesSerial]),
             guestPackageSupported: self[.guestPackageSupported] != 0,
-            backlightLevel: Int(Int64(bitPattern: self[.backlightLevel]))
+            backlightLevel: Int(Int64(bitPattern: self[.backlightLevel])),
+            vibrating: self[.vibrating] != 0,
+            vibratorPulses: self[.vibratorPulses]
         )
     }
 }

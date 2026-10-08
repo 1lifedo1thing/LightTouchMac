@@ -166,17 +166,24 @@ func statusFields() -> [String: Any] {
         "heartbeat": s.heartbeat, "frameSerial": s.frameSerial, "width": s.width, "height": s.height,
         "uiReady": s.uiReady, "storageFailed": s.storageFailed, "shutdownConfirmed": s.shutdownConfirmed,
         "displaySleeping": s.displaySleeping, "agentStatus": s.agentStatus, "glesContexts": s.glesContexts,
-        "iconGeneration": s.iconGeneration, "qemuState": s.qemuState.rawValue,
+        "iconGeneration": s.iconGeneration, "qemuState": s.qemuState.rawValue, "vibrating": s.vibrating,
+        "vibratorPulses": s.vibratorPulses,
     ]
 }
 
 // The display link: sample the ring at 60 Hz, like DisplayView will.
 var lastSurface: IOSurface?
+// The vibration motor as the app reads it (the status block), sampled with the frames: one event per change.
+var lastVibrator = (false, UInt64(0))
 var framesSeen = 0
 let frameLock = NSLock()
 let display = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "driver.display"))
 display.schedule(deadline: .now(), repeating: 1.0 / 60)
 display.setEventHandler {
+    if let s = link.status, (s.vibrating, s.vibratorPulses) != lastVibrator {
+        lastVibrator = (s.vibrating, s.vibratorPulses)
+        emit("vibrator", ["on": s.vibrating, "pulses": s.vibratorPulses])
+    }
     if let f = link.frontSurface(), f.isNew {
         frameLock.withLock {
             lastSurface = f.surface

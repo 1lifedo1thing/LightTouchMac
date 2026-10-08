@@ -40,6 +40,16 @@ final class EmulatorController {
     private func trackStartup(was: Bool) { if isStartingUp, !was { startupBegan = Date() } }
 
     var isSleeping = false
+    /// The guest runs its vibration motor (an iPhone's), as of the last status poll; the display trembles with it.
+    @ObservationIgnored private(set) var vibrating = false
+    @ObservationIgnored private let vibrationSound = VibrationSound()
+    /// The status poll's motor state: the buzz and the tremble follow it, and a paused or stopped device is still.
+    func updateVibration(_ status: SharedStatus?) {
+        let running = state == .running && status?.vibrating == true
+        vibrating = running
+        guard let status, !stopped else { return vibrationSound.stop() }
+        vibrationSound.update(running: running, pulses: status.vibratorPulses)
+    }
     /// The guest's front app, the web proxy reaching the guest, the end of Setup (ForegroundWatch).
     @ObservationIgnored private(set) lazy var foreground = ForegroundWatch(host: self)
     var foregroundAppName: String? { foreground.appName }

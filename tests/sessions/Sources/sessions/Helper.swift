@@ -363,10 +363,37 @@ func helperBoot(_ args: HelperBootCheck) -> Never {
     finish(r, work: work)
 }
 
+/// helper-driver's vibrator events as buzzes: when each started and, unless the poll missed its end, how long it ran.
+private func vibratorBuzzes(_ events: Events) -> [(start: Double, seconds: Double?)] {
+    var buzzes: [(start: Double, seconds: Double?)] = []
+    var pulses = 0
+    var open = false
+    for x in events.find("vibrator") {
+        let t = x.double("t") ?? 0
+        let next = x.int("pulses") ?? 0
+        if open, !x.bool("on") || next > pulses {
+            buzzes[buzzes.count - 1].seconds = t - buzzes[buzzes.count - 1].start
+            open = false
+        }
+        // Each start since the last sample; all but a running last one ended unseen (shorter than a frame).
+        if next > pulses {
+            buzzes += (pulses..<next).map { _ in (start: t, seconds: nil) }
+            open = x.bool("on")
+        }
+        pulses = max(pulses, next)
+    }
+    return buzzes
+}
+
+private func describe(_ buzzes: [(start: Double, seconds: Double?)]) -> String {
+    "\(buzzes.count) buzz(es): " + buzzes.map { $0.seconds.map { format($0, 2) + " s" } ?? "?" }.joined(separator: ", ")
+}
+
 /// `sessions phone BASE [--overlay DIR]` (an n90, n88 or m68 base): the Carrier panel's path (app -> link ->
 /// qemu_ios_ui_modem_set/_status -> the modem): booted registered with saved settings, renamed, a bad MCC/MNC refused,
 /// signal moved, an incoming SMS delivered and its tone heard, a call rung (its ringtone heard, through the app's audio
-/// capture) and hung up, an unknown property refused. `rotate`: a new frame within 1 s of the app's rotation request,
+/// capture) and hung up, an unknown property refused, and the vibration motor buzzing for the SMS and while ringing, as
+/// the status block reports it (issue 38). `rotate`: a new frame within 1 s of the app's rotation request,
 /// different from portrait. `shutdown`: the guest confirms its own power-off. `keyboard` (A4): Connect Hardware Keyboard
 /// off and on. 6.x/7.x's first boot sits in Setup, which rejects calls: the carrier case then needs --overlay, the overlay
 /// of a boot that walked Setup (`sessions single` leaves one in its work directory), cloned, never changed.
@@ -455,6 +482,19 @@ func phone(_ args: PhoneCheck) -> Never {
         r.check(
             (replies["no-such-property"] ?? "").contains("ok(false)"),
             "carrier: an unknown property is refused at the link"
+        )
+        // The vibration motor as the app reads it (the status block; helper-driver's vibrator events), issue 38.
+        let step = { (prefix: String) in
+            e.find("step").first { $0.string("step")?.hasPrefix(prefix) == true }?.double("t") ?? .infinity
+        }
+        let (sms, call, hangup) = (step("modem incoming-sms"), step("modem incoming-call"), step("modem remote-hangup"))
+        let buzzes = vibratorBuzzes(e)
+        let smsBuzzes = buzzes.filter { $0.start >= sms && $0.start < call }
+        let ringBuzzes = buzzes.filter { $0.start >= call && $0.start < hangup }
+        r.check(!smsBuzzes.isEmpty, "carrier: the SMS buzzes the vibrator (\(describe(smsBuzzes)))")
+        r.check(
+            ringBuzzes.count >= 3 && e.find("vibrator").last?.bool("on") == false,
+            "carrier: the vibrator buzzes while ringing and stops (\(describe(ringBuzzes)))"
         )
     }
     if only.contains("emergency") {

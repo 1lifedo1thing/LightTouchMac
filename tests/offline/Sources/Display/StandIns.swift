@@ -69,6 +69,7 @@ extension NSPasteboard.PasteboardType { static let ltmCatalogApp = Self("test.ca
         shuttingDown = false
     var preparingDevice = false
     var shakeGeneration: UInt64 = 0, homeCount = 0, lockCount = 0, volume = 0
+    var vibrating = false
     let link: FakeLink? = FakeLink()
     /// Keys ("<code>v" down, "<code>^" up) and text ("type:<text>[+shift]") as they reached the guest.
     var log: [String] = []
