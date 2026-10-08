@@ -76,8 +76,20 @@ final class AppsInspectorViewController: NSViewController {
     var isLoading = false
     /// A refresh arrived while one was running; run once more when it finishes.
     var needsReload = false
-    var notifications: NotificationProxy?
-    var notificationEndpoint: HostServiceEndpoint?
+    /// The guest's install and uninstall notifications for the current boot, re-armed when a reboot renews it.
+    lazy var appChanges = makeAppChanges()
+    private func makeAppChanges() -> AppChangeWatch {
+        let emulator = emulator
+        return AppChangeWatch(apps: emulator.apps) {
+            await MainActor.run {
+                emulator.isRunning && !emulator.preparingDevice && emulator.usbConnected
+                    && !AppInstaller.isUsingDevice(emulator.instance.id)
+                    && !emulator.isInstalling && !emulator.hasFileTransfer && !emulator.isReconnecting
+            }
+        } onChange: {
+            NotificationCenter.default.post(name: .ltmAppsChanged, object: emulator.instance.id)
+        }
+    }
 
     init(emulator: EmulatorController) {
         self.emulator = emulator

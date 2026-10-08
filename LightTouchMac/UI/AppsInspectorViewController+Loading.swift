@@ -21,7 +21,7 @@ extension AppsInspectorViewController {
         }
         // Push, so an install or uninstall shows up at once instead of on the
         // next tick. The poll below stays as the backstop.
-        startGuestNotifications()
+        appChanges.start()
         loadTask?.cancel()
         loadTask = Task { [weak self] in
             while let self, !Task.isCancelled {
@@ -312,36 +312,6 @@ extension AppsInspectorViewController {
     /// True when the HOST side is gone rather than the guest — worth saying,
     /// because "device not responding" points the user at the wrong thing.
     private var usbUnavailable: Bool { !emulator.canManageApps }
-
-    /// Subscribe to the guest's own install/uninstall notifications.
-    private func startGuestNotifications() {
-        guard let services = try? emulator.services else {
-            notifications?.stop()
-            notifications = nil
-            notificationEndpoint = nil
-            return
-        }
-        let endpoint = services.endpoint
-        guard notificationEndpoint != endpoint else { return }
-        notifications?.stop()
-        notificationEndpoint = endpoint
-        let watcher = NotificationProxy(clientSocket: endpoint.socket, udid: endpoint.udid, session: endpoint.session)
-        notifications = watcher
-        let emulator = self.emulator
-        watcher.start(attachAllowed: {
-            await MainActor.run {
-                emulator.isRunning && !emulator.preparingDevice && emulator.usbConnected
-                    && !AppInstaller.isUsingDevice(emulator.instance.id)
-                    && !emulator.isInstalling && !emulator.hasFileTransfer && !emulator.isReconnecting
-            }
-        }) {
-            // Off the library's callback thread and onto ours.
-            Task { @MainActor in
-                guard (try? emulator.services.endpoint) == endpoint else { return }
-                NotificationCenter.default.post(name: .ltmAppsChanged, object: emulator.instance.id)
-            }
-        }
-    }
 
     private func showStaleBanner() {
         let when = AppsInspector.freshnessText(since: lastLoaded)
