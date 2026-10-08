@@ -105,9 +105,6 @@ enum FitFixture {
 }
 
 @Suite(.serialized, .detachesItsImages) struct FitCheckTests {
-    /// FitCheck.loads on real firmware: the iPod agent (linked for 3.1's dyld, LC_DYLD_INFO_ONLY) fits 3.1.3 and 4.2.1,
-    /// and does not fit 3.0 or 2.1.1, whose own executables carry no such command (the dyld that refused it with
-    /// "unknown required load command 0x80000022"); the legacy-linked loader fits all four.
     /// An export trie's one-by-one re-export (iOS 6 CoreFoundation's _OBJC_CLASS_$_NSObject) counts as an export;
     /// a plain export, which the nlist already lists, does not come from here.
     @Test func trieReexports() {
@@ -120,17 +117,33 @@ enum FitFixture {
         #expect(b.withUnsafeBytes { MachO32.trieReexports($0, at: 1, size: 3) } == [])  // truncated: nothing, no crash
     }
 
+    /// FitCheck.loads on real firmware: the iPod agent and the loader (both legacy-linked, guest serial 13 on) fit
+    /// 2.1.1, 3.0, 3.1.3 and 4.2.1; a modern-linked tool (itmedia, LC_DYLD_INFO_ONLY, n72-ios3 only) fits 3.1.3 and
+    /// does not fit 3.0 or 2.1.1, whose own executables carry no such command (the dyld that refused it with
+    /// "unknown required load command 0x80000022").
     @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"))
-    func iPodAgentNeedsTheShippingCacheDyld() async throws {
+    func iPodAgentLoadsOnEveryDyld() async throws {
         guard let agent = try FitFixture.payload("armv6", "n72-ios3/bin/it_agent"),
-            let loader = try FitFixture.payload("armv6", "loader/it_boot")
+            let loader = try FitFixture.payload("armv6", "loader/it_boot"),
+            let modern = try FitFixture.payload("armv6", "n72-ios3/bin/itmedia")
         else {
             try FixtureRequirements.missing(
-                #"FitCheckTests.swift: let agent = try FitFixture.payload("armv6", "n72-ios3/bin/it_agent"), let loader = try FitFixture.payload("armv6", "loader/it_boot")"#
+                #"FitCheckTests.swift: let agent = try FitFixture.payload("armv6", "n72-ios3/bin/it_agent"), let loader = try FitFixture.payload("armv6", "loader/it_boot"), let modern = try FitFixture.payload("armv6", "n72-ios3/bin/itmedia")"#
             )
         }
-        for (id, fits) in [("n72ap-7E18", true), ("n72ap-8C148", true), ("n72ap-7A341", false), ("n72ap-5F138", false)]
-        {
+        for (id, modernFits) in [("n72ap-7E18", true), ("n72ap-7A341", false), ("n72ap-5F138", false)] {
+            try await Oracle.withTemp { dir in
+                guard let v = try await FitFixture.volume(id, FitFixture.stock(id), in: dir) else {
+                    try FixtureRequirements.missing(
+                        #"FitCheckTests.swift: let v = try await FitFixture.volume(id, FitFixture.stock(id), in: dir)"#
+                    )
+                }
+                let m = FitCheck.loads("itmedia", modern, on: FitCheck.Firmware(root: v, arch: "armv6"))
+                #expect(m.fits == modernFits, "\(id): \(m.proof)")
+                if !modernFits { #expect(m.proof.contains("0x80000022"), "\(id): \(m.proof)") }
+            }
+        }
+        for id in ["n72ap-7E18", "n72ap-8C148", "n72ap-7A341", "n72ap-5F138"] {
             try await Oracle.withTemp { dir in
                 guard let v = try await FitFixture.volume(id, FitFixture.stock(id), in: dir) else {
                     try FixtureRequirements.missing(
@@ -139,12 +152,7 @@ enum FitFixture {
                 }
                 let fw = FitCheck.Firmware(root: v, arch: "armv6")
                 let f = FitCheck.loads("it_agent", agent, on: fw)
-                #expect(f.fits == fits, "\(id): \(f.proof)")
-                if !fits {
-                    #expect(f.proof.contains("0x80000022"))
-                } else {
-                    #expect(f.proof.contains("imports resolved"))
-                }
+                #expect(f.fits && f.proof.contains("imports resolved"), "\(id): \(f.proof)")
                 let l = FitCheck.loads("it_boot", loader, on: fw)
                 #expect(l.fits, "\(id): \(l.proof)")
             }
@@ -244,9 +252,9 @@ enum FitFixture {
         }
     }
 
-    /// The seed refuses a loader that does not load here: armv6.itpack with its legacy-linked it_boot swapped for the
-    /// modern-linked iPod agent, seeded onto 2.1.1, throws and records the misfit; the real itpack seeds and records
-    /// the loader's proof.
+    /// The seed refuses a loader that does not load here: armv6.itpack with its legacy-linked it_boot swapped for a
+    /// modern-linked iPod tool (itmedia; the agent itself is legacy-linked now), seeded onto 2.1.1, throws at the
+    /// loader and records its misfit; the real itpack seeds and records the loader's proof.
     @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"))
     func seedChecksTheLoader() async throws {
         let itpack = Oracle.guestPackages.appendingPathComponent("armv6.itpack")
@@ -272,7 +280,7 @@ enum FitFixture {
                     """
                     import sys; sys.path.insert(0, sys.argv[1]); import mkpkg
                     e = mkpkg.read_pack(sys.argv[2]); d = dict(e)
-                    e = [(n, d["n72-ios3/bin/it_agent"] if n == "loader/it_boot" else b) for n, b in e]
+                    e = [(n, d["n72-ios3/bin/itmedia"] if n == "loader/it_boot" else b) for n, b in e]
                     mkpkg.pack(e, sys.argv[3])
                     """, Oracle.qemuIOS.appendingPathComponent("contrib/guest-package").path, itpack.path, bad.path,
                 ],
@@ -280,10 +288,15 @@ enum FitFixture {
             )
             let log = FitCheck.Log()
             #expect(throws: FirmwareError.self) { try GuestPackage.seed(volume: v, itpack: bad, gles: true, fit: log) }
-            #expect(log.fits.first.map { !$0.fits && $0.piece.hasPrefix("it_boot") } == true)
+            // the seed stops at the loader (before it, n72-ios2's it_typein hook is dropped: its target is not here)
+            #expect(
+                log.fits.last.map { !$0.fits && $0.piece.hasPrefix("it_boot") && $0.proof.contains("0x80000022") }
+                    == true,
+                "\(log.fits)"
+            )
             let good = FitCheck.Log()
             _ = try GuestPackage.seed(volume: v, itpack: itpack, gles: true, fit: good)
-            #expect(good.fits.first.map { $0.fits && $0.piece.hasPrefix("it_boot") } == true, "\(good.fits)")
+            #expect(good.fits.first { $0.piece.hasPrefix("it_boot") }?.fits == true, "\(good.fits)")
         }
     }
 
@@ -403,13 +416,13 @@ enum FitFixture {
                     as? [String: Any])?["EnvironmentVariables"]
                     as? [String: Any])?["DYLD_INSERT_LIBRARIES"] as? String
             }
-            #expect((try? sv.record(at: SystemEdits.Helpers.tools[3].path)) != nil)
+            #expect((try? sv.record(at: SystemEdits.Helpers.msmQuiet.path)) != nil)
             #expect(try env(SystemEdits.msmJob) == nil)
             #expect(
                 try env(SystemEdits.daemons + "/com.apple.mobile.usb_device_arbitrator.plist") == "/"
-                    + SystemEdits.Helpers.tools[3].path
+                    + SystemEdits.Helpers.msmQuiet.path
             )
-            #expect(r.guestPackage.map { $0.hooks.contains("/" + SystemEdits.Helpers.tools[3].path) } == true)
+            #expect(r.guestPackage.map { $0.hooks.contains("/" + SystemEdits.Helpers.msmQuiet.path) } == true)
             #expect(log.fits.contains { $0.piece.hasPrefix("it_msmquiet (MobileStorageMounter") && !$0.fits })
             #expect(log.fits.contains { $0.piece.hasPrefix("it_msmquiet (USBDeviceArbitrator") && $0.fits })
             #expect(
@@ -458,25 +471,38 @@ enum FitFixture {
         }
     }
 
-    /// The iPod's guest tools go in only where they load: they fit 3.1.3 and 4.2.1, not 3.0 or 2.1.1 (no firmware
-    /// executable there carries LC_DYLD_INFO_ONLY); and the bake follows the proof, not the shared cache: 7E18 baked
+    /// The iPod's guest tools go in only where they load: the exported set (legacy-linked) fits 2.1.1, 3.0, 3.1.3 and
+    /// 4.2.1; a set whose it_agent is modern-linked (itmedia's bytes in its place) fits 3.1.3, not 3.0 or 2.1.1 (no
+    /// firmware executable there carries LC_DYLD_INFO_ONLY); and the bake follows the proof, not the shared cache: 7E18 baked
     /// with an it_agent that imports a name 3.1.3 lacks leaves every tool out with a warning, the cache notwithstanding.
     @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"))
     func iPodToolsOnlyWhereTheyLoad() async throws {
         guard let helpers = K48Oracle.guestTools else {
             try FixtureRequirements.missing(#"FitCheckTests.swift: let helpers = K48Oracle.guestTools"#)
         }
-        for (id, fits) in [("n72ap-7E18", true), ("n72ap-8C148", true), ("n72ap-7A341", false), ("n72ap-5F138", false)]
-        {
+        guard let modern = try FitFixture.payload("armv6", "n72-ios3/bin/itmedia") else {
+            try FixtureRequirements.missing(
+                #"FitCheckTests.swift: let modern = try FitFixture.payload("armv6", "n72-ios3/bin/itmedia")"#
+            )
+        }
+        for (id, modernFits) in [
+            ("n72ap-7E18", true), ("n72ap-8C148", nil), ("n72ap-7A341", false), ("n72ap-5F138", false),
+        ] {
             try await Oracle.withTemp { dir in
                 guard let v = try await FitFixture.volume(id, FitFixture.stock(id), in: dir) else {
                     try FixtureRequirements.missing(
                         #"FitCheckTests.swift: let v = try await FitFixture.volume(id, FitFixture.stock(id), in: dir)"#
                     )
                 }
-                let f = try N72Board.guestToolsFit(FitCheck.Firmware(root: v, arch: "armv6"), helpers: helpers)
-                #expect(f.fits == fits && f.piece.contains("it_typein.dylib"), "\(id): \(f.proof)")
-                if !fits { #expect(f.proof.contains("it_agent: load command 0x80000022")) }
+                let fw = FitCheck.Firmware(root: v, arch: "armv6")
+                let f = try N72Board.guestToolsFit(fw, helpers: helpers)
+                #expect(f.fits && f.piece.contains("it_typein.dylib"), "\(id): \(f.proof)")
+                guard let modernFits,
+                    let old = try FitFixture.helpers(in: dir, replacing: "it_agent", with: { _ in modern })
+                else { return }
+                let o = try N72Board.guestToolsFit(fw, helpers: old)
+                #expect(o.fits == modernFits, "\(id): \(o.proof)")
+                if !modernFits { #expect(o.proof.contains("it_agent: load command 0x80000022"), "\(id): \(o.proof)") }
             }
         }
         guard let dmg = FitFixture.dmgs["n72ap-7E18"], Oracle.exists(dmg) else {
