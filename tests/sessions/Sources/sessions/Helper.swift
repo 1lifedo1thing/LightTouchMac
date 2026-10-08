@@ -390,7 +390,8 @@ private func describe(_ buzzes: [(start: Double, seconds: Double?)]) -> String {
 }
 
 /// `sessions phone BASE [--overlay DIR]` (an n90, n88 or m68 base): the Carrier panel's path (app -> link ->
-/// qemu_ios_ui_modem_set/_status -> the modem): booted registered with saved settings, renamed, a bad MCC/MNC refused,
+/// qemu_ios_ui_modem_set/_status -> the modem), once the boot's CommCenter restarts are over (modemSettle: the
+/// status's power-offs and attached): booted registered with saved settings, renamed, a bad MCC/MNC refused,
 /// signal moved, an incoming SMS delivered and its tone heard, a call rung (its ringtone heard, through the app's audio
 /// capture) and hung up, an unknown property refused, and the vibration motor buzzing for the SMS and while ringing, as
 /// the status block reports it (issue 38). `rotate`: a new frame within 1 s of the app's rotation request,
@@ -434,7 +435,7 @@ func phone(_ args: PhoneCheck) -> Never {
                 work: work,
                 name: "carrier",
                 steps: [
-                    "boot", "lit 0.1 300", "wait 60", "dump registered", "modemStatus",
+                    "boot", "lit 0.1 300", "wait 60", "modemSettle 80 240", "dump registered", "modemStatus",
                     "modem carrier Cell Panel", "modem signal-dbm -97", "modem mcc-mnc 001", "wait 1", "modemStatus",
                     "modem incoming-sms +15555550100|hello from the panel", "audio 10", "modemStatus",
                     "modem incoming-call 15555550100", "audio 12", "modemStatus",
@@ -446,6 +447,13 @@ func phone(_ args: PhoneCheck) -> Never {
         )
         r.check(d.finish(600) == 0, "carrier: scenario completed")
         let e = d.events
+        // The boot's CommCenter restarts (it_prefs's Data Roaming reload) are over before the panel's steps.
+        let settled = e.one("modemSettled")
+        r.check(
+            !settled.isEmpty && !settled.bool("timedOut"),
+            "carrier: the modem settled \(format(settled.double("secondsSinceBoot"), 0)) s after boot "
+                + "(new power-offs noticed at \((settled["powerOffsAt"] as? [Double] ?? []).map { format($0, 0) }) s)"
+        )
         let st: [Event] = e.find("modemStatus").map {
             ($0.string("json").flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) } as? Event) ?? [:]
         }

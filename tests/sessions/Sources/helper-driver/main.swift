@@ -228,6 +228,18 @@ let rotationDriver: RotationDriver? = MainActor.assumeIsolated {
 }
 func onMain<T>(_ body: @MainActor () -> T) -> T { DispatchQueue.main.sync { MainActor.assumeIsolated { body() } } }
 
+/// The modem's status JSON (qemu_ios_ui_modem_status), polled twice a beat apart: one poll returns the previous one's.
+func modemStatusNow() -> [String: Any] {
+    _ = request(.modemStatus)
+    usleep(300_000)
+    guard case .success(.modemStatus(let json)) = request(.modemStatus), let json,
+        let o = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any]
+    else { return [:] }
+    return o
+}
+
+var bootAt = Date()
+
 Thread.detachNewThread {
     for step in scenario.steps {
         let p = step.split(separator: " ").map(String.init)
@@ -240,6 +252,7 @@ Thread.detachNewThread {
                 fail("boot configuration: \(error)")
             }
             emit("argv", ["argv": boot.argv])
+            bootAt = Date()
             guard case .success(.ok(true)) = request(.boot(boot)) else { fail("boot refused") }
         case "wait":
             usleep(UInt32(v[0] * 1e6))
@@ -294,6 +307,44 @@ Thread.detachNewThread {
         case "modem":  // modem <property> <value…>: qemu_ios_ui_modem_set through the link
             let value = p.dropFirst(2).joined(separator: " ")
             emit("reply", ["reply": "\(request(.modemSet(property: p[1], value: value)))", "modem": p[1]])
+        case "modemSettle":
+            // modemSettle QUIET MAX: an iPhone's early boot restarts CommCenter (it_prefs's Data Roaming reload), and
+            // each restart switches the modem off (+CPWROFF; the status's power-offs) for seconds to ~30 s. Wait
+            // until no restart can still be coming (QUIET seconds after boot) and the modem has been attached for
+            // 5 s since the last one, at most MAX seconds after boot. Without power-offs/attached (an older emulator)
+            // it waits QUIET.
+            var powerOffs = 0
+            var attachedSince: Date? = nil
+            var offs: [Double] = []
+            while true {
+                let st = modemStatusNow()
+                let since = Date().timeIntervalSince(bootAt)
+                let n = st["power-offs"] as? Int ?? 0
+                if n > powerOffs {
+                    offs.append(since)
+                    powerOffs = n
+                    attachedSince = nil
+                }
+                let attached = st["attached"] as? Bool ?? (st["power-offs"] == nil)
+                if !attached {
+                    attachedSince = nil
+                } else if attachedSince == nil {
+                    attachedSince = Date()
+                }
+                let steady = attachedSince.map { Date().timeIntervalSince($0) >= 5 } ?? false
+                if (since >= v[0] && steady) || since >= v[1] {
+                    emit(
+                        "modemSettled",
+                        [
+                            "secondsSinceBoot": since, "powerOffsAt": offs, "powerOffs": powerOffs,
+                            "attached": attached,
+                            "timedOut": !(since >= v[0] && steady),
+                        ]
+                    )
+                    break
+                }
+                usleep(700_000)
+            }
         case "modemStatus":  // the status as of the previous poll: poll twice, a beat apart
             _ = request(.modemStatus)
             usleep(300_000)
