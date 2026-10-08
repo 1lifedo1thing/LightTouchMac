@@ -34,15 +34,11 @@ extension MainWindowController {
             )
             let storage = StorageUsage(
                 catalog: host.catalog,
-                delete: { [weak self] entry in self?.perform(.delete, for: entry) },
-                canDelete: { [weak self] entry in self?.canPerform(.delete, for: entry) ?? false }
+                jobs: .shared,
+                delete: { [weak self] instance in self?.deleteFromStorage(instance) },
+                canDelete: { [weak self] instance in self?.canDeleteFromStorage(instance) ?? false }
             )
-            let settings = SettingsWindowController(
-                general: GeneralSettingsView(),
-                capture: capture,
-                storage: StorageSettingsView(model: storage)
-            )
-            storage.isShown = { [weak settings] in settings?.window?.isVisible == true && settings?.pane == .storage }
+            let settings = SettingsWindowController(general: GeneralSettingsView(), capture: capture, storage: storage)
             storageUsage = storage
             settingsWindow = settings
         }

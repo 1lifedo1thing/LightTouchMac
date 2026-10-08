@@ -1,9 +1,14 @@
 import Foundation
 import HostRuntime
-// What the views here reach into and the fixture leaves out: the device hub, as the Carrier panel's window
-// controller names it (the panel itself talks only to CarrierBackend); and the Files browser's device side, a fake
-// DeviceServices (in place of HostServiceClient's) whose listings answer late, which records uploads and writes downloads.
+// What the views here reach into and the fixture leaves out: the session host's notification (Settings ▸ Storage);
+// the device hub, as the Carrier panel's window controller names it (the panel itself talks only to CarrierBackend);
+// and the Files browser's device side, a fake DeviceServices (in place of HostServiceClient's) whose listings answer
+// late, which records uploads and writes downloads.
 import LightTouchCore
+
+/// Settings ▸ Storage listens for the sessions changing; Settings ▸ General keeps the vibration sound's switch.
+enum DeviceSessionHost { static let didChangeNotification = Notification.Name("DeviceSessionHostDidChange") }
+enum VibrationSound { static let key = "PlayVibrationSound" }
 
 final class EmulatorController {
     struct Instance { let name = "iPhone" }

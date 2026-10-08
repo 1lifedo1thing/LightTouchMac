@@ -10,12 +10,13 @@ final class SettingsWindowController: NSWindowController {
     private let tabs = SettingsTabViewController()
     private let panes: [NSView]
 
-    init(general: some View, capture: some View, storage: some View) {
+    /// `storage` is measured again each time its pane is shown.
+    init(general: some View, capture: some View, storage: StorageUsage) {
         let resize = SettingsResize()
         panes = [
             NSHostingView(rootView: general.settingsPane(resize)),
             NSHostingView(rootView: capture.settingsPane(resize)),
-            NSHostingView(rootView: storage.settingsPane(resize, maxHeight: 560)),
+            NSHostingView(rootView: StorageSettingsView(model: storage).settingsPane(resize, maxHeight: 560)),
         ]
         tabs.tabStyle = .toolbar
         tabs.canPropagateSelectedChildViewControllerTitle = true
@@ -39,7 +40,11 @@ final class SettingsWindowController: NSWindowController {
         let restored = WindowRestorationPolicy.configure(window, frameAutosaveName: "Settings")
         super.init(window: window)
         resize.action = { [weak self] in self?.fit() }
-        tabs.onSelect = { [weak self] in self?.fit() }
+        tabs.onSelect = { [weak self] in
+            self?.fit()
+            if self?.pane == .storage { storage.reload() }
+        }
+        storage.isShown = { [weak self] in self?.window?.isVisible == true && self?.pane == .storage }
         fit()
         if !restored { window.center() }
     }

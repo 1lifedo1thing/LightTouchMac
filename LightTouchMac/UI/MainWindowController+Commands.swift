@@ -195,29 +195,64 @@ extension MainWindowController {
 
     /// Delete, or with `thenPrepare` delete and prepare the entry again (a base from an older recipe): the same question.
     private func confirmDelete(_ entry: FirmwareCatalog.Entry, thenPrepare: Bool = false) {
-        guard let window, host.instance(for: entry) != nil else { return }
+        guard host.instance(for: entry) != nil else { return }
+        askToDelete(name(entry), thenPrepare: thenPrepare) { [weak self] in
+            // Asked again on the answer: the device may have started (from the menu bar) while the question was up.
+            guard let self, canPerform(thenPrepare ? .prepareAgain : .delete, for: entry) else { return nil }
+            return host.instance(for: entry)
+        } deleted: { [weak self] in
+            if thenPrepare {
+                FirmwareJobs.shared.downloadAndPrepare(entry)
+            } else {
+                self?.library.removeFromList(entry)
+            }
+        }
+    }
+
+    /// Settings ▸ Storage lists every record, also one no row shows: its entry left the catalog, or a newer record
+    /// for the same entry is the row's (host.instance(for:)). The row's own device goes the row's way; such a record
+    /// has no session, so it goes whenever nothing else works on its storage.
+    func canDeleteFromStorage(_ instance: DeviceInstance) -> Bool {
+        if let entry = host.catalog.entry(id: instance.firmware), host.instance(for: entry)?.id == instance.id {
+            return canPerform(.delete, for: entry)
+        }
+        return !host.storageWork.contains(instance.firmware) && !DeviceFilesystemEdits.shared.blocked(instance)
+    }
+
+    func deleteFromStorage(_ instance: DeviceInstance) {
+        if let entry = host.catalog.entry(id: instance.firmware), host.instance(for: entry)?.id == instance.id {
+            return perform(.delete, for: entry)
+        }
+        guard canDeleteFromStorage(instance) else { return }
+        askToDelete("“\(instance.name)”") { [weak self] in
+            self?.canDeleteFromStorage(instance) == true ? instance : nil
+        } deleted: {
+        }
+    }
+
+    /// The delete question; on Delete, `target` says what to delete now (nil: nothing, it changed meanwhile), which
+    /// the host removes off the main actor while the row says Deleting.
+    private func askToDelete(
+        _ name: String,
+        thenPrepare: Bool = false,
+        target: @escaping () -> DeviceInstance?,
+        deleted: @escaping () -> Void
+    ) {
+        guard let window else { return }
         let alert = NSAlert()
         alert.alertStyle = .critical
-        alert.messageText = thenPrepare ? "Prepare \(name(entry)) again?" : "Delete \(name(entry))?"
+        alert.messageText = thenPrepare ? "Prepare \(name) again?" : "Delete \(name)?"
         alert.informativeText = "This permanently removes its apps, settings, and saved state."
         alert.addButton(withTitle: thenPrepare ? "Prepare Again" : "Delete")
         alert.addButton(withTitle: "Cancel")
         alert.buttons.first?.hasDestructiveAction = true
         alert.beginSheetModal(for: window) { [weak self] response in
-            // Asked again on the answer: the device may have started (from the menu bar) while the question was up.
-            guard response == .alertFirstButtonReturn, let self,
-                canPerform(thenPrepare ? .prepareAgain : .delete, for: entry), let instance = host.instance(for: entry)
-            else { return }
-            // Off the main actor; the row says Deleting until it's done.
+            guard response == .alertFirstButtonReturn, let self, let instance = target() else { return }
             let deletion = host.delete(instance)
             Task {
                 do {
                     try await deletion.value
-                    if thenPrepare {
-                        FirmwareJobs.shared.downloadAndPrepare(entry)
-                    } else {
-                        self.library.removeFromList(entry)
-                    }
+                    deleted()
                 } catch { NSAlert(error: error).beginSheetModal(for: window, completionHandler: nil) }
             }
         }

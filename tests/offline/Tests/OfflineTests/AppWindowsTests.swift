@@ -25,6 +25,89 @@ extension SharedState {
             return [view] + children.flatMap(descendants)
         }
 
+        /// Settings ▸ Storage (state audit C-11, B-17): measured again when its pane is shown, and while it is shown
+        /// when the sessions change, so Delete is asked again after a device starts; every record has its own Delete,
+        /// also one whose entry left the catalog and an older record a newer one for the same entry hides in the sidebar.
+        @Test func storageSettings() async throws {
+            let library = DeviceLibrary.shared
+            func record(_ firmware: String) throws -> DeviceInstance {
+                let id = UUID()
+                let prefix = "Devices/\(id.uuidString)"
+                let instance = DeviceInstance(
+                    id: id,
+                    name: firmware,
+                    board: "n72ap",
+                    firmware: firmware,
+                    created: DeviceInstance.now,
+                    base: .init(kind: .prepared, path: prefix + "/base"),
+                    storage: .init(
+                        key: "fixture",
+                        overlay: prefix + "/overlay",
+                        snapshot: prefix + "/snapshot",
+                        usbmuxConf: prefix + "/usbmuxd-conf"
+                    )
+                )
+                try instance.write(state: library.state)
+                return instance
+            }
+            func until(_ condition: () -> Bool) async {
+                let deadline = Date().addingTimeInterval(10)
+                while !condition(), Date() < deadline { try? await Task.sleep(for: .milliseconds(20)) }
+            }
+            var asked: Set<UUID> = []
+            let catalog = try FirmwareCatalog.load(
+                from: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+                    .appendingPathComponent("../../../../LightTouchMac/Resources/firmware-catalog.json")
+                    .standardizedFileURL
+            )
+            let scratch = FileManager.default.temporaryDirectory.appendingPathComponent(
+                "ltm-storage-\(UUID().uuidString)"
+            )
+            defer { try? FileManager.default.removeItem(at: scratch) }
+            let jobs = FirmwareJobs(
+                catalog: catalog,
+                configuration: .ephemeral,
+                state: scratch,
+                logs: scratch,
+                caches: scratch,
+                preparer: nil,
+                resources: nil,
+                sweep: false
+            ) { _ in }
+            let usage = StorageUsage(catalog: catalog, jobs: jobs, delete: { _ in }) {
+                asked.insert($0.id)
+                return true
+            }
+            let settings = SettingsWindowController(general: EmptyView(), capture: EmptyView(), storage: usage)
+            settings.pane = .general
+            await until { usage.usage.devices.isEmpty }
+            let records = try [record("n72ap-0A000"), record("n72ap-7E18"), record("n72ap-7E18")]
+            defer {
+                for r in records {
+                    try? FileManager.default.removeItem(at: DeviceInstance.directory(r.id, state: library.state))
+                }
+                library.reload()
+            }
+            library.reload()
+            try await Task.sleep(for: .milliseconds(300))
+            #expect(usage.usage.devices.isEmpty, "not measured while another pane is shown")
+            settings.pane = .storage
+            await until { usage.usage.devices.count == 3 }
+            #expect(Set(usage.usage.devices.map(\.instance.id)) == Set(records.map(\.id)), "measured when shown")
+            let pane = settings.view(for: .storage)
+            pane.frame = NSRect(x: 0, y: 0, width: 500, height: 560)
+            pane.layoutSubtreeIfNeeded()
+            #expect(asked == Set(records.map(\.id)), "each record asks for its own Delete")
+
+            var heard = 0
+            usage.isShown = {
+                heard += 1
+                return true
+            }
+            NotificationCenter.default.post(name: DeviceSessionHost.didChangeNotification, object: nil)
+            #expect(heard == 1, "a device started or stopped: measured, and Delete asked, again")
+        }
+
         /// Windows opt out of state restoration (no restoration class, no autosave) unless named; a named window keeps
         /// only its frame: the first has nothing to apply, a later one with the same name opens where it was left.
         /// LightTouchApplication's own restoration overrides need their own app process and aren't checked here;

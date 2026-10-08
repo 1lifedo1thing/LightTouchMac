@@ -14,19 +14,20 @@ struct StorageSettingsView: View {
         Form {
             Section("Devices") {
                 if usage.devices.isEmpty { Text("No devices").foregroundStyle(.secondary) }
+                // Every record, also one no sidebar row shows (its entry left the catalog, or a newer record for the
+                // same entry is the row's): each deletes itself.
                 ForEach(usage.devices, id: \.instance.id) { device in
-                    let entry = model.catalog.entry(id: device.instance.firmware)
                     StorageRow(
                         title: model.name(device.instance.firmware),
                         detail: "System \(size(device.base)) · Data \(size(device.data + device.snapshot))",
                         action: "Delete Device…",
-                        enabled: entry.map(model.canDelete) ?? false
-                    ) { entry.map(model.delete) }
+                        enabled: model.canDelete(device.instance)
+                    ) { model.delete(device.instance) }
                 }
             }
             Section("Firmware") {
                 if usage.ipsws.isEmpty { Text("No downloaded or imported IPSWs").foregroundStyle(.secondary) }
-                let inUse = FirmwareJobs.shared.ipswsInUse
+                let inUse = model.jobs.ipswsInUse
                 ForEach(usage.ipsws, id: \.url) { ipsw in
                     let busy = inUse.contains(ipsw.url.deletingPathExtension().lastPathComponent)
                     let kind = ipsw.url.path.hasPrefix(IPSWStore.shared.imports.path) ? "Imported" : "Downloaded"
@@ -39,7 +40,7 @@ struct StorageSettingsView: View {
                 }
             }
             Section("Caches and Logs") {
-                let preparing = FirmwareJobs.shared.jobs.values.contains {
+                let preparing = model.jobs.jobs.values.contains {
                     if case .preparing = $0 { true } else { false }
                 }
                 StorageRow(
@@ -85,7 +86,8 @@ private struct StorageRow: View {
     }
 }
 
-/// What Storage shows, measured off the main thread; measured again when the devices or the firmware jobs change.
+/// What Storage shows, measured off the main thread; measured again when its pane is shown, and while it is shown when
+/// the devices, their sessions or the firmware jobs change (which also asks canDelete again).
 @Observable final class StorageUsage {
     nonisolated struct DeviceUsage: Sendable {
         let instance: DeviceInstance
@@ -103,9 +105,10 @@ private struct StorageRow: View {
 
     private(set) var usage = Usage()
     @ObservationIgnored let catalog: FirmwareCatalog
-    /// MainWindowController's Delete Device (its confirmation included), and whether it may run now.
-    @ObservationIgnored let delete: (FirmwareCatalog.Entry) -> Void
-    @ObservationIgnored let canDelete: (FirmwareCatalog.Entry) -> Bool
+    @ObservationIgnored let jobs: FirmwareJobs
+    /// MainWindowController's Delete Device for one record (its confirmation included), and whether it may run now.
+    @ObservationIgnored let delete: (DeviceInstance) -> Void
+    @ObservationIgnored let canDelete: (DeviceInstance) -> Bool
     @ObservationIgnored private var loading: Task<Void, Never>?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     /// Whether Storage is on screen: changes measure again only then (a download changes its job many times a second).
@@ -113,13 +116,18 @@ private struct StorageRow: View {
 
     init(
         catalog: FirmwareCatalog = .bundled,
-        delete: @escaping (FirmwareCatalog.Entry) -> Void,
-        canDelete: @escaping (FirmwareCatalog.Entry) -> Bool
+        jobs: FirmwareJobs,
+        delete: @escaping (DeviceInstance) -> Void,
+        canDelete: @escaping (DeviceInstance) -> Bool
     ) {
         self.catalog = catalog
+        self.jobs = jobs
         self.delete = delete
         self.canDelete = canDelete
-        observers = [DeviceLibrary.didChangeNotification, FirmwareJobs.didChangeNotification].map {
+        observers = [
+            DeviceLibrary.didChangeNotification, FirmwareJobs.didChangeNotification,
+            DeviceSessionHost.didChangeNotification,
+        ].map {
             NotificationCenter.default.addObserver(forName: $0, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { if self?.isShown() == true { self?.reload() } }
             }
@@ -195,7 +203,7 @@ private struct StorageRow: View {
         let sha1 = url.deletingPathExtension().lastPathComponent
         do {
             // A job that started since the pane was drawn may read it.
-            guard !FirmwareJobs.shared.ipswsInUse.contains(sha1) else { return reload() }
+            guard !jobs.ipswsInUse.contains(sha1) else { return reload() }
             try IPSWStore.shared.remove(sha1)
             logEvent("storage: removed IPSW \(sha1)")
         } catch { NSApp.presentError(error) }
