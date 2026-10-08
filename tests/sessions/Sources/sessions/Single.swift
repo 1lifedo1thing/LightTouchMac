@@ -23,6 +23,7 @@ func single(_ args: SingleCheck) -> Never {
     if args.hostPowerGesture { single["hostPowerGesture"] = true }
     if let zone = args.secondZone { single["secondZone"] = zone }
     if let file = args.readFile { single["readFile"] = file }
+    if let image = args.developerImage { single["developerImage"] = image.path }
     if args.skipSetup { single["skipSetup"] = true }
     if args.jailbreak { single["jailbreak"] = true }
     if let panel = args.panel { single["panel"] = panel }
@@ -269,6 +270,13 @@ func single(_ args: SingleCheck) -> Never {
                 + "(the Mac's \(mac) \(language))"
         )
         r.check(seed.string("location") == "0", "\(d): Location Services off: \(seed.string("location") ?? "?")")
+    }
+    if args.developerImage != nil {
+        let mount = events.one("developerImage", ["device": d])
+        r.check(
+            mount.string("mounted") == "mounted" && !mount.bool("before") && mount.bool("after"),
+            "\(d): the Developer Disk Image mounts and Settings' Developer bundle appears (\(mount))"
+        )
     }
     if let file = args.readFile {
         let reads = events.find("fileRead", ["device": d])

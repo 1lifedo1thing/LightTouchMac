@@ -127,9 +127,32 @@ extension DeviceServices {
         return true
     }
 
+    /// Tweaks' Developer Settings: Apple's Developer Disk Image mounted through lockdown's image mounter (the
+    /// lockdown-ddi operation's child, like lockdown-tz); `image` is the .dmg, its .signature beside it. True when
+    /// it mounted now, false when one was mounted already. `tool`: LightTouchServices, the bundle's by default.
+    public func mountDeveloperImage(_ image: URL, tool: String? = servicesHelper) async throws -> Bool {
+        guard let tool else { throw DeviceToolsError.toolMissing("LightTouchServices") }
+        let result = try await Self.lockdownChild(
+            tool,
+            ["lockdown-ddi", image.path, image.path + ".signature"],
+            socket: clientSocket,
+            timeout: 600  // ~20 MB over the emulated USB
+        )
+        let said = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard result.status == 0 else {
+            throw DeviceToolsError.failed("The device didn’t mount the Developer Disk Image: \(said)")
+        }
+        return said == "mounted"
+    }
+
     /// One of the lockdown child tools, pointed at this device's usbmuxd: its
     /// status and the first KB of each stream.
-    static func lockdownChild(_ tool: String, _ arguments: [String], socket: String) async throws
+    static func lockdownChild(
+        _ tool: String,
+        _ arguments: [String],
+        socket: String,
+        timeout: TimeInterval = Timeouts.query
+    ) async throws
         -> (status: Int32, output: String, error: String)
     {
         try Task.checkCancellation()
@@ -154,7 +177,7 @@ extension DeviceServices {
                 return (status, child.standardOutput, child.standardError)
             }
             group.addTask {
-                try await Task.sleep(for: .seconds(Timeouts.query))
+                try await Task.sleep(for: .seconds(timeout))
                 throw DeviceToolsError.failed("The device did not answer the lockdown helper in time.")
             }
             defer { group.cancelAll() }

@@ -67,6 +67,10 @@ struct SingleConfig: Decodable {
     var audioWAV: String?
     /// A file the guest agent reads back at home (fileRead), e.g. a marker a stopped edit wrote into the root FS.
     var readFile: String?
+    /// Tweaks' Developer Settings: at the first Home this Developer Disk Image (its .signature beside it) is mounted
+    /// through LockdownTools.mountDeveloperImage, the settings bundle Preferences looks for is read before and after,
+    /// and Settings is opened to show its Developer row (`developerImage`, screenshot developer-settings).
+    var developerImage: String?
     /// The base was prepared with firmwarekit create --skip-setup: what is frontmost when the agent first answers, and
     /// at Home what Setup's preferences say (`setupSeed`).
     var skipSetup: Bool?
@@ -423,6 +427,24 @@ nonisolated enum WiFiProbe {
             values["location"] =
                 (location["LocationServicesEnabledIn7.0"] ?? location["LocationServicesEnabled"]).map { "\($0)" } ?? ""
             emit("setupSeed", values)
+        }
+        if let image = s.developerImage, generation == 1 {
+            let bundle = "/Developer/Library/PreferenceBundles/Developer Settings.bundle/Info.plist"
+            let before = asks ? (try? await guestAgent.get(bundle)) != nil : false
+            var mounted: String
+            do {
+                mounted =
+                    try await d.services.mountDeveloperImage(URL(fileURLWithPath: image), tool: s.lockdownTZ)
+                    ? "mounted" : "already"
+            } catch { mounted = "\(error)" }
+            let after = asks ? (try? await guestAgent.get(bundle)) != nil : false
+            if asks { try? await guestAgent.launch("com.apple.Preferences") }
+            try? await Task.sleep(for: .seconds(6))
+            d.screenshot("developer-settings")
+            emit(
+                "developerImage",
+                ["device": d.name, "agent": asks, "before": before, "after": after, "mounted": mounted]
+            )
         }
         if let path = s.readFile {
             let data = asks ? try? await guestAgent.get(path) : nil

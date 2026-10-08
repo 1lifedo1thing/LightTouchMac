@@ -9,6 +9,7 @@
 #include <libimobiledevice/installation_proxy.h>
 #include <libimobiledevice/libimobiledevice.h>
 #include <libimobiledevice/lockdown.h>
+#include <libimobiledevice/mobile_image_mounter.h>
 #include <libimobiledevice/notification_proxy.h>
 #include <libimobiledevice/sbservices.h>
 #include <plist/plist.h>
@@ -20,3 +21,4 @@
 // argv[0] is the operation's name; the exit status is the operation's.
 int ltm_lockdown_tz(int argc, char **argv);
 int ltm_lockdown_mcinstall(int argc, char **argv);
+int ltm_lockdown_ddi(int argc, char **argv);

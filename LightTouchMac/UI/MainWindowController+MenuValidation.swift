@@ -84,6 +84,7 @@ extension MainWindowController: NSMenuItemValidation {
             return row.map { $0.instanceID != nil ? canPerform(.delete, for: $0.entry) : $0.canRemoveFromSidebar }
                 ?? false
         case #selector(eraseDevice(_:)): return selectedEntry.map { canPerform(.erase, for: $0) } ?? false
+        case #selector(showTweaks(_:)): return selectedInstance != nil
         case #selector(toggleCaptureScreenOnly(_:)):
             menuItem.state = captureMode == 1 ? .on : .off
             return !recording.isActive && !capture.screenshotBusy

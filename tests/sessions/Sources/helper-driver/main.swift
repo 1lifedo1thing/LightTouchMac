@@ -41,6 +41,10 @@ struct Scenario: Decodable {
         var files: String?
         /// The Carrier panel's saved settings, as the app boots a radio board with them.
         var carrier: CarrierSettings?
+        /// Tweaks' Time Machine: Unix seconds the guest clock starts at.
+        var clock: Double?
+        /// An itpack whose package for the base is offered, as the app offers its bundled one.
+        var itpack: String?
     }
     var dylib: String?
     var board: String?
@@ -62,14 +66,27 @@ func preparedBoot(_ p: Scenario.Prepared, hardware: DeviceInfo?) throws -> BootC
         bootrom: BootRecipe.bootrom(
             board.bootrom,
             filesRoot: p.files ?? NSHomeDirectory() + "/Developer/qemu-ios-files"
-        )
+        ),
+        clock: p.clock.map(Date.init(timeIntervalSince1970:))
     )
     return try prepared.configuration(
         hardware: hardware,
         bootArgs: "amfi_allow_any_signature=1 cs_enforcement_disable=1",  // the app's default (DeviceOptions.bootArgs)
         usbAddress: nil,
         wifi: true,
-        guestPackage: nil,
+        guestPackage: try p.itpack.flatMap { pack -> String? in
+            let lock = try? DeviceLock.read(base: URL(fileURLWithPath: p.base)) ?? nil
+            let dir = URL(fileURLWithPath: dumpDir).appendingPathComponent("offer")
+            let offer = try GuestPackage.compose(
+                itpack: URL(fileURLWithPath: pack),
+                board: board.rawValue,
+                build: lock?.build ?? "",
+                lock: nil,
+                guest: nil,
+                into: dir
+            )
+            return offer == nil ? nil : dir.path
+        },
         serial: "file:\(p.serial)",
         audio: ["-audio", "driver=none"],
         netdev: "user,id=wifi0",
@@ -239,6 +256,16 @@ func modemStatusNow() -> [String: Any] {
 }
 
 var bootAt = Date()
+let guest = GuestServices(agent: GuestAgent(link: link, cache: GuestAgentCache()))
+/// The base's firmware version, and what the scenario's `tweaks` steps have written and applied this boot.
+let baseVersion =
+    scenario.prepared.flatMap { try? DeviceLock.read(base: URL(fileURLWithPath: $0.base)) }?.productVersion ?? ""
+nonisolated(unsafe) var tweaksWritten: [String] = []
+nonisolated(unsafe) var tweaksApplied = false
+/// An async call's result, from the scenario's thread.
+func blocking<T: Sendable>(_ body: @escaping @Sendable () async throws -> T) -> Result<T, Error> {
+    sync { done in Task { done(await Result { try await body() }) } }
+}
 
 Thread.detachNewThread {
     for step in scenario.steps {
@@ -298,6 +325,35 @@ Thread.detachNewThread {
             }
             usleep(300_000)
             link.send(.touch(slot: 0, phase: 2, x: v[2], y: v[3]))
+        // wake X0 Y0 X1 Y1: until the display is on and the agent says unlocked (6 tries): Home (then Sleep/Wake)
+        // while it sleeps, the unlock drag while locked
+        case "wake":
+            var tries = 0
+            while tries < 6 {
+                tries += 1
+                if link.status?.displaySleeping == true {
+                    let button = tries > 2 ? 1 : 0  // Home, then Sleep/Wake
+                    link.send(.button(button, down: true))
+                    usleep(150_000)
+                    link.send(.button(button, down: false))
+                    usleep(2_000_000)
+                }
+                guard (try? blocking({ try await guest.agent.isLocked() }).get()) != false else {
+                    if link.status?.displaySleeping == false { break }
+                    continue
+                }
+                link.send(.touch(slot: 0, phase: 0, x: v[0], y: v[1]))
+                usleep(150_000)
+                for i in 1...30 {
+                    let f = Double(i) / 30
+                    link.send(.touch(slot: 0, phase: 1, x: v[0] + (v[2] - v[0]) * f, y: v[1] + (v[3] - v[1]) * f))
+                    usleep(30_000)
+                }
+                usleep(300_000)
+                link.send(.touch(slot: 0, phase: 2, x: v[2], y: v[3]))
+                usleep(3_000_000)
+            }
+            emit("wake", ["tries": tries, "sleeping": link.status?.displaySleeping ?? true])
         case "button":
             link.send(.button(Int(v[0]), down: true))
             usleep(150_000)
@@ -375,12 +431,13 @@ Thread.detachNewThread {
             link.send(.touch(slot: 0, phase: 0, x: x, y: y))
             usleep(80_000)
             link.send(.touch(slot: 0, phase: 2, x: x, y: y))
-        case "tapword":  // tapword WORD [DY]: tap where Vision reads WORD on the window's picture, DY below it; else nothing
+        // tapword WORD [DY]: tap where Vision reads WORD (_ for a space) on the window's picture, DY below it; else nothing
+        case "tapword":
             guard let r = rotationDriver else { fail("tapword: no board") }
             dump("tapword")
             let shown = URL(fileURLWithPath: "\(dumpDir)/tapword-shown.png")
             _ = onMain { r.writeShown(URL(fileURLWithPath: "\(dumpDir)/tapword.png"), to: shown) }
-            let at = findWord(p[1], in: shown)
+            let at = findWord(p[1].replacingOccurrences(of: "_", with: " "), in: shown)
             emit("tapword", ["word": p[1], "found": at != nil])
             if let at {
                 let (x, y) = onMain { r.touchPoint(shown: at.x, at.y + (v.first ?? 0)) }
@@ -424,6 +481,78 @@ Thread.detachNewThread {
                 output = "status \(status)\n" + String(decoding: text, as: UTF8.self)
             }
             emit("agent", ["output": output, "op": p[0]])
+        case "defaults":  // defaults DOMAIN KEY bool|int|float|string|delete [VALUE…]: GuestServices.writeDefaults
+            let value: GuestDefaultValue? =
+                switch p[3] {
+                case "bool": .bool(p[4] == "1" || p[4] == "true")
+                case "int": .int(Int(p[4]) ?? 0)
+                case "float": .double(Double(p[4]) ?? 0)
+                case "string": .string(p.dropFirst(4).joined(separator: " "))
+                default: nil
+                }
+            let changed = blocking { try await guest.writeDefaults([GuestDefault(p[1], p[2], value)]) }
+            emit("defaults", ["changed": "\(changed)"])
+        case "agentget":  // agentget NAME REMOTE…: the guest's file into the dump directory as NAME
+            let remote = p.dropFirst(2).joined(separator: " ")
+            let data = blocking { try await guest.agent.get(remote) }
+            if case .success(let d?) = data { try? d.write(to: URL(fileURLWithPath: "\(dumpDir)/\(p[1])")) }
+            emit("agentget", ["path": remote, "result": "\(data.map { $0?.count ?? -1 })"])
+        case "statusbar":  // statusbar clean|clear: Tweaks' Clean Status Bar for the base's version (the agent's op)
+            guard let layout = StatusBarOverride.layout(version: baseVersion) else {
+                emit("statusbar", ["error": "no layout for \(baseVersion)"])
+                break
+            }
+            let body = p[1] == "clean" ? layout.clean : layout.cleared
+            let r = blocking { try await guest.agent.raw("statusbar", body: body) }
+            emit("statusbar", ["result": "\(r.map { $0.status })"])
+        // tweaks NAME,NAME…: TweakApplier with those on, for the base's version, as DeviceTweaks applies
+        case "tweaks":
+            var settings = TweakSettings()
+            settings.on = Set(
+                (p.count > 1 ? p[1] : "").split(separator: ",").compactMap { Tweak(rawValue: String($0)) }
+            )
+            settings.written = tweaksWritten
+            let r = blocking {
+                try await TweakApplier.apply(settings, version: baseVersion, guest: guest, again: tweaksApplied)
+            }
+            if case .success(let result) = r {
+                tweaksWritten = result.written
+                tweaksApplied = true
+            }
+            emit(
+                "tweaks",
+                [
+                    "result": "\(r.map { "written \($0.written) resprung \($0.resprung) missing \($0.missing)" })",
+                    "resprung": (try? r.get().resprung) ?? false, "ok": (try? r.get()) != nil,
+                ]
+            )
+        case "ocr":  // ocr NAME: the picture as the window shows it, and every line Vision reads on it
+            guard let r = rotationDriver else { fail("ocr: no board") }
+            dump(p[1])
+            let shown = URL(fileURLWithPath: "\(dumpDir)/\(p[1])-shown.png")
+            _ = onMain { r.writeShown(URL(fileURLWithPath: "\(dumpDir)/\(p[1]).png"), to: shown) }
+            emit("ocr", ["name": p[1], "lines": readText(in: shown), "redness": redness(of: shown)])
+        case "hidden":  // hidden [BUNDLE-ID]: the hidden apps the guest has (HiddenApp.present); with an id, open it
+            let found = blocking { try await HiddenApp.present(on: guest) }
+            var opened = ""
+            if p.count > 1 {
+                opened = "\(blocking { try await guest.launch(p[1]) })"
+                usleep(8_000_000)
+            }
+            let front = blocking { try await guest.agent.frontmost() }
+            emit(
+                "hidden",
+                [
+                    "apps": (try? found.get().map(\.bundleID)) ?? [], "opened": opened,
+                    "front": (try? front.get().bundleID) ?? "",
+                ]
+            )
+        case "reset":  // the app's Restart (MachineOp.reset): the guest reboots in place
+            link.send(.machine(.reset))
+        case "waitagent":  // waitagent SECONDS: until the agent is alive
+            let start = Date()
+            while link.status?.agentStatus != 1, Date().timeIntervalSince(start) < v[0] { usleep(250_000) }
+            emit("waitagent", ["alive": link.status?.agentStatus == 1, "seconds": Date().timeIntervalSince(start)])
         case "audio":
             guard case .success(.audio(let g)) = request(.audioStart) else {
                 emit("audio", ["error": "no capture"])

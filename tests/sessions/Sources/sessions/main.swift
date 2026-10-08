@@ -52,7 +52,7 @@ struct Sessions: ParsableCommand {
             """,
         subcommands: [
             SingleCheck.self, PairCheck.self, ProxyTrustCheck.self, LocalNetworkCheck.self, HelperCheck.self,
-            HelperBootCheck.self, PhoneCheck.self, RotationCheck.self,
+            HelperBootCheck.self, PhoneCheck.self, RotationCheck.self, TweaksCheck.self,
         ]
     )
 }
@@ -69,6 +69,11 @@ struct SingleCheck: ParsableCommand {
     @Flag(help: "Launch the installed IPA through the guest agent; it must be frontmost.") var launch = false
     @Flag(help: "A second cold boot on the same overlay: a file and the app must survive.") var reboot = false
     @Option(help: "The guest agent reads PATH back at Home.") var readFile: String?
+    @Option(
+        help: "Tweaks' Developer Settings: mount this Developer Disk Image (.signature beside it) at Home.",
+        transform: path
+    )
+    var developerImage: URL?
     @Flag(help: "The base was prepared with --skip-setup: no Setup page, Setup's answers from the Mac.")
     var skipSetup = false
     @Flag(help: "The base was prepared with --jailbreak: Files reads the whole file system through afc2.")

@@ -38,6 +38,7 @@ extension MainWindowController {
     func librarySessionsDidChange(_ library: DeviceLibraryViewController) {
         show(selectedEntry)
         followCarrierPanels()
+        followTweaksPanels()
     }
 
     @objc func filesystemActivityDidChange() { show(selectedEntry) }

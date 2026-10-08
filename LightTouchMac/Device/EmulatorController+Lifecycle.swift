@@ -62,7 +62,8 @@ extension EmulatorController {
     func stopTimeZoneSync() { timeZone.stop() }
     func startTimeZoneSync() { timeZone.start() }
     func setGuestTimeZone(_ identifier: String) async throws {
-        let dated = lock?.pinsClock == true
+        // A pinned clock (a dated beta, or Tweaks' Time Machine) is the guest's own: the Mac's would undo it.
+        let dated = lock?.pinsClock == true || tweaks.bootClock != nil
         try await services.setTimeZone(identifier, keepClock: dated, guest: guest, region: .mac)
     }
 

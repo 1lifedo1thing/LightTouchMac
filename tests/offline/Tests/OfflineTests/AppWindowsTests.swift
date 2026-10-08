@@ -228,6 +228,74 @@ extension SharedState {
             window.close()
         }
 
+        /// The Tweaks panel for a stopped 6.1.6 iPhone and a 3.1.3 iPod: every section and switch is there; a switch the
+        /// firmware can't take is disabled, never left out; one that's on shows its options. Renders light and dark into
+        /// LTM_RENDER_DIR when it's set.
+        @Test func tweaksPanel() throws {
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("tweaks-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: dir) }
+            do {
+                func render(_ version: String, on: Set<Tweak>, name: String) throws -> NSHostingView<TweaksPanel> {
+                    try FileManager.default.createDirectory(
+                        at: dir.appendingPathComponent(name),
+                        withIntermediateDirectories: true
+                    )
+                    let tweaks = DeviceTweaks(
+                        settings: DeviceSettingsFile(directory: dir.appendingPathComponent(name)),
+                        version: version,
+                        guestTools: true,
+                        clockPinned: false
+                    )
+                    tweaks.change { $0.on = on }
+                    let model = TweaksPanelModel(tweaks: tweaks, guest: nil)
+                    model.fingerDots = (get: { true }, set: { _ in })
+                    let hosting = NSHostingView(rootView: TweaksPanel(model: model))
+                    for (appearance, suffix) in [(NSAppearance.Name.aqua, "light"), (.darkAqua, "dark")] {
+                        let window = NSWindow(
+                            contentRect: NSRect(x: 0, y: 0, width: 420, height: 1500),
+                            styleMask: [.titled],
+                            backing: .buffered,
+                            defer: true
+                        )
+                        window.isReleasedWhenClosed = false
+                        window.appearance = NSAppearance(named: appearance)
+                        window.contentView = hosting
+                        for _ in 0..<5 {
+                            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+                            hosting.layoutSubtreeIfNeeded()
+                        }
+                        if let out = ProcessInfo.processInfo.environment["LTM_RENDER_DIR"] {
+                            let bitmap = try #require(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
+                            hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+                            try bitmap.representation(using: .png, properties: [:])?.write(
+                                to: URL(fileURLWithPath: out).appendingPathComponent("tweaks-\(name)-\(suffix).png")
+                            )
+                        }
+                        window.contentView = nil
+                        window.close()
+                    }
+                    return hosting
+                }
+                let phone = try render("6.1.6", on: [.signalNumbers, .slowAnimations, .timeMachine], name: "616")
+                let pod = try render("3.1.3", on: [.keynoteClock, .coreAnimationColors], name: "313")
+                #expect(phone.fittingSize.height > pod.fittingSize.height / 2 && pod.fittingSize.height > 400)
+                // The model decides what is dimmed and why; the view shows it (TweaksTests has the rules).
+                let model = TweaksPanelModel(
+                    tweaks: DeviceTweaks(
+                        settings: DeviceSettingsFile(directory: dir.appendingPathComponent("616")),
+                        version: "6.1.6",
+                        guestTools: true,
+                        clockPinned: false
+                    ),
+                    guest: nil
+                )
+                #expect(
+                    !model.isAvailable(.emojiEverywhere) && !model.isAvailable(.keynoteClock)
+                )
+                #expect(model.isOn(.signalNumbers) && !model.isRunning)
+            }
+        }
+
         /// The Carrier panel against a fake modem: Applying… with a spinner until the modem reports the new carrier and
         /// PLMN, not before or after; the SMS field is multiline. The model's rules are CarrierPanelModelTests'.
         @Test func carrierPanel() async throws {

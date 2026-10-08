@@ -259,6 +259,7 @@ enum MainMenuBuilder {
         network.addItem(item("Proxy…", #selector(MainWindowController.configureWebProxy(_:))))
         menu.addItem(submenu(network, title: "Network"))
         menu.addItem(item("Carrier…", #selector(MainWindowController.showCarrier(_:))))
+        menu.addItem(item("Tweaks…", #selector(MainWindowController.showTweaks(_:))))
         let debug = NSMenu(title: "Debugging")
         debug.addItem(item("Debug Port…", #selector(AppDelegate.showDebugPort(_:))))
         debug.addItem(item("Copy lldb Command", #selector(AppDelegate.copyLLDBCommand(_:))))

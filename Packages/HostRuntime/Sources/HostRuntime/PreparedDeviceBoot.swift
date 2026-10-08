@@ -28,7 +28,8 @@ public struct PreparedDeviceBoot {
         storageKey: String?,
         bootrom: String,
         dieID: String? = nil,
-        panel: String? = nil
+        panel: String? = nil,
+        clock: Date? = nil
     ) throws -> Self {
         let lock = try DeviceLock.read(base: base)
         let strategy = lock?.bootStrategy
@@ -67,7 +68,11 @@ public struct PreparedDeviceBoot {
             strategy: strategy,
             gidBlobs: board.soc == .s5l8900 ? nil : base.appendingPathComponent("gid-blobs.bin").path,
             dieID: unitDieID,
-            machine: (lock?.machineOptions(base: base) ?? [:]).merging(panel.map { ["panel": $0] } ?? [:]) { $1 }
+            machine: (lock?.machineOptions(base: base) ?? [:]).merging(
+                (panel.map { ["panel": $0] } ?? [:])
+                    // Tweaks' Time Machine: the PMU's clock (and the agent's time sync) start at that moment.
+                    .merging(clock.map { ["rtc-epoch": String(Int64($0.timeIntervalSince1970))] } ?? [:]) { $1 }
+            ) { $1 }
         )
     }
 

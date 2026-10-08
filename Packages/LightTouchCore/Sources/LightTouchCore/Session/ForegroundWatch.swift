@@ -24,6 +24,8 @@ public protocol ForegroundHost: AnyObject {
     func applyWebProxy(since applied: Int?, generation: Int) async throws -> Int?
     /// Setup's country page set its own locale: the Mac's region again.
     func setupFinished(generation: Int)
+    /// Brings the guest to the device's tweaks (DeviceTweaks.apply); throws CancellationError to end the watch.
+    func applyTweaks(generation: Int) async throws
 }
 
 @Observable public final class ForegroundWatch {
@@ -63,6 +65,10 @@ public protocol ForegroundHost: AnyObject {
                             generation: generation
                         )
                     } catch { return }
+                    // Not in Setup: its own screens stay as Apple drew them, and a respring would restart it.
+                    if setupGate == nil, host.guestAgentAlive {
+                        do { try await host.applyTweaks(generation: generation) } catch { return }
+                    }
                     do {
                         let fg = host.guestAgentAlive ? try await host.foregroundApp() : nil
                         try Task.checkCancellation()

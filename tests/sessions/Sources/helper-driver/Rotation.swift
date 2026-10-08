@@ -69,7 +69,12 @@ final class MainQueueLink: HelperLink {
         guard let input = CGImageSourceCreateWithURL(source as CFURL, nil),
             let image = CGImageSourceCreateImageAtIndex(input, 0, nil),
             let shown = PanelCapture.rotated(image, clockwiseQuarterTurns: turns),
-            let output = CGImageDestinationCreateWithURL(destination as CFURL, UTType.png.identifier as CFString, 1, nil)
+            let output = CGImageDestinationCreateWithURL(
+                destination as CFURL,
+                UTType.png.identifier as CFString,
+                1,
+                nil
+            )
         else { return false }
         CGImageDestinationAddImage(output, shown, nil)
         return CGImageDestinationFinalize(output)
@@ -81,9 +86,40 @@ func findWord(_ word: String, in image: URL) -> (x: Double, y: Double)? {
     let request = VNRecognizeTextRequest()
     request.recognitionLevel = .accurate
     guard (try? VNImageRequestHandler(url: image).perform([request])) != nil else { return nil }
-    for o in request.results ?? [] {
-        guard o.topCandidates(1).first?.string.trimmingCharacters(in: .whitespaces) == word else { continue }
+    for o in request.results ?? [] where o.topCandidates(1).first?.string.trimmingCharacters(in: .whitespaces) == word {
         return (o.boundingBox.midX, 1 - o.boundingBox.midY)
     }
     return nil
+}
+
+/// Every line Vision reads on an image, top to bottom.
+func readText(in image: URL) -> [String] {
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    request.usesLanguageCorrection = false
+    guard (try? VNImageRequestHandler(url: image).perform([request])) != nil else { return [] }
+    return (request.results ?? []).sorted { $0.boundingBox.midY > $1.boundingBox.midY }
+        .compactMap { $0.topCandidates(1).first?.string }
+}
+
+/// How much redder than green an image is on average (0...255): Core Animation's blended-layers tint.
+func redness(of image: URL) -> Double {
+    guard let input = CGImageSourceCreateWithURL(image as CFURL, nil),
+        let cg = CGImageSourceCreateImageAtIndex(input, 0, nil),
+        let ctx = CGContext(
+            data: nil,
+            width: 64,
+            height: 96,
+            bitsPerComponent: 8,
+            bytesPerRow: 256,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
+    else { return 0 }
+    ctx.draw(cg, in: CGRect(x: 0, y: 0, width: 64, height: 96))
+    guard let data = ctx.data else { return 0 }
+    let p = data.bindMemory(to: UInt8.self, capacity: 256 * 96)
+    var sum = 0
+    for i in stride(from: 0, to: 256 * 96, by: 4) { sum += Int(p[i]) - Int(p[i + 1]) }
+    return Double(sum) / Double(64 * 96)
 }

@@ -147,7 +147,8 @@ extension EmulatorController {
                 storageKey: instance.storage.key,
                 bootrom: BootRecipe.bootrom(profile.bootrom, filesRoot: Bundled.filesRoot),
                 dieID: instance.identity?.dieID,
-                panel: instance.panel
+                panel: instance.panel,
+                clock: tweaks.bootClock
             )
         } catch PreparedDeviceBoot.Failure.baseMismatch {
             baseImageMismatch = true

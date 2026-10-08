@@ -55,6 +55,7 @@ import LightTouchCore
     @objc func selectMotionPose(_ sender: Any?) {}
     @objc func setCompassHeading(_ sender: Any?) {}
     @objc func showCarrier(_ sender: Any?) {}
+    @objc func showTweaks(_ sender: Any?) {}
     @objc func showDeviceInFinder(_ sender: Any?) {}
     @objc func showDeviceLogs(_ sender: Any?) {}
     @objc func showLiveText(_ sender: Any?) {}

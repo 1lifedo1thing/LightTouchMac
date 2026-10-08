@@ -12,6 +12,8 @@ nonisolated final class FakeGuestLink: GuestAgentLink, @unchecked Sendable {
     var files: [String: Data] = [:], modes: [String: String] = [:], owners: [String: String] = [:]
     var cancelled: [String] = [], ops: [String] = [], spawns: [[String]] = [], shells: [String] = [], halts = 0
     var spawnOutput: [String: (Int, String)] = [:]
+    /// The v4 agent's live ops (it_agent v4): what statusbar and cadebug were sent.
+    var v4 = false, statusBars: [Data] = [], caDebug: [String] = []
     var failPut: String?
     var waiting: [String: CheckedContinuation<LinkReply, Error>] = [:]
 
@@ -42,7 +44,9 @@ nonisolated final class FakeGuestLink: GuestAgentLink, @unchecked Sendable {
                 0,
                 Data(
                     (version == 2
-                        ? "it_agent v2\nops ping " + Self.v2ops.joined(separator: " ") + "\n" : "it_agent v1\n").utf8
+                        ? "it_agent v\(v4 ? 4 : 2)\nops ping "
+                            + (Self.v2ops + (v4 ? ["cadebug", "statusbar"] : []))
+                            .joined(separator: " ") + "\n" : "it_agent v1\n").utf8
                 )
             )
         case "spawn":
@@ -80,6 +84,12 @@ nonisolated final class FakeGuestLink: GuestAgentLink, @unchecked Sendable {
             return (0, Data((locked ? "com.apple.springboard\nLock Screen\n" : "com.example.game\nGame\n").utf8))
         case "orientation": return (0, Data((angle + "\n").utf8))
         case "dlicon": return (0, Data())
+        case "statusbar":
+            statusBars.append(body)
+            return (0, Data())
+        case "cadebug":
+            caDebug.append(args)
+            return (0, Data("0x0\n".utf8))
         default: preconditionFailure(op)
         }
     }

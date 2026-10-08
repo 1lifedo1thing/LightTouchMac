@@ -266,6 +266,14 @@ final class EmulatorController {
         scope: bootScope
     ) { [weak self] in self?.link }
 
+    /// Device ▸ Tweaks… (DeviceTweaks): applied by the foreground watch, the clock at each boot.
+    @ObservationIgnored private(set) lazy var tweaks = DeviceTweaks(
+        settings: settingsFile,
+        version: iosVersion,
+        guestTools: hasGuestTools,
+        clockPinned: lock?.pinsClock == true
+    )
+
     // MARK: - Options
     /// Attach to Local Network, the debug port and the boot arguments (DeviceOptions).
     @ObservationIgnored private(set) lazy var options = DeviceOptions(settings: settingsFile, board: instance.board) {

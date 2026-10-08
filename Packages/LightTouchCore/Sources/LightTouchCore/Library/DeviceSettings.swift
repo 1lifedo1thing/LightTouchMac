@@ -28,6 +28,8 @@ public nonisolated struct DeviceSettings: Codable, Equatable {
     public var hardwareKeyboard: Bool?
     /// Attach to Local Network; nil is off.
     public var localNetwork: Bool?
+    /// Device ▸ Tweaks… (DeviceTweaks); nil is none.
+    public var tweaks: TweakSettings?
 
     public static func url(_ device: URL) -> URL { device.appendingPathComponent("settings.plist") }
 

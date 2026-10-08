@@ -78,6 +78,7 @@ extension EmulatorController {
         reachableSince = nil
         agentStatus = 0
         agentStaleSince = nil
+        tweaks.forgetBoot()
         readSetupExpectation()
     }
     func endBoot(_ end: BootEnd) { bootWatch.endBoot(end) }
@@ -97,6 +98,10 @@ extension EmulatorController {
         }
     }
     func setupFinished(generation: Int) { timeZone.schedule(generation: generation) }
+    func applyTweaks(generation: Int) async throws {
+        try await tweaks.apply(guest: guest, isCurrent: { generation == self.bootGeneration })
+        if let services = try? services { await tweaks.mountDeveloperImage(services: services) }
+    }
 
     /// Guest audio for a recording (ScreenMovieWriter). Its clock is the
     /// dylib's: monotonic seconds since the capture started.

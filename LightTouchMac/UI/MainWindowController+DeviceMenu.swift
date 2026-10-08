@@ -134,6 +134,46 @@ extension MainWindowController {
         carrierWindows[id]?.showWindow(sender)
     }
 
+    @objc func showTweaks(_ sender: Any?) {
+        guard let instance = selectedInstance else { return }
+        let id = instance.id
+        if tweaksWindows[id] == nil {
+            let (tweaks, guest) = tweaksSession(instance)
+            let model = TweaksPanelModel(tweaks: tweaks, guest: guest)
+            tweaksWindows[id] = TweaksWindowController(model: model, name: instance.name)
+        }
+        let model = tweaksWindows[id]?.model
+        model?.fingerDots = (
+            get: { [weak self] in self?.deviceVC?.screen.showsTouches ?? false },
+            set: { [weak self] on in
+                guard let screen = self?.deviceVC?.screen, screen.showsTouches != on else { return }
+                self?.toggleTouchOverlay(nil)
+            }
+        )
+        tweaksWindows[id]?.showWindow(sender)
+    }
+
+    /// A device's tweaks and guest: its session's while it runs (applied live), else its settings alone.
+    private func tweaksSession(_ instance: DeviceInstance) -> (DeviceTweaks, GuestServices?) {
+        guard let emulator = host.sessions.first(where: { $0.instance.id == instance.id })?.emulator else {
+            return (DeviceTweaks.stopped(instance), nil)
+        }
+        return (emulator.tweaks, emulator.guest)
+    }
+
+    /// Each Tweaks panel follows its device's session: a new one when it starts, its settings alone when it stops.
+    func followTweaksPanels() {
+        for (id, panel) in tweaksWindows {
+            guard let instance = host.library.instance(id: id) else {
+                panel.close()
+                tweaksWindows[id] = nil
+                continue
+            }
+            let (tweaks, guest) = tweaksSession(instance)
+            panel.model.rebind(tweaks: tweaks, guest: guest)
+        }
+    }
+
     /// Each Carrier panel drives its device's current session; one whose device no longer runs closes.
     func followCarrierPanels() {
         for (id, panel) in carrierWindows {

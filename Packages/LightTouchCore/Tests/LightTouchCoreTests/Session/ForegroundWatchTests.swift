@@ -24,6 +24,8 @@ struct ForegroundWatchTests {
         /// What a poll answers once `fronts` is used up (nil: no agent), so a loaded host can't race past it.
         var settled: (bundleID: String, name: String?)?
         var proxyPasses = 0
+        /// Polls left in `fronts` at each tweaks pass.
+        var tweakPasses: [Int] = []
         var finished: [Int] = []
         /// Polls still to come when Setup finished.
         var remainingAtFinish: Int?
@@ -37,6 +39,7 @@ struct ForegroundWatchTests {
             proxyPasses += 1
             return applied
         }
+        func applyTweaks(generation: Int) async throws { tweakPasses.append(fronts.count) }
         func setupFinished(generation: Int) {
             finished.append(generation)
             remainingAtFinish = fronts.count
@@ -63,6 +66,7 @@ struct ForegroundWatchTests {
             host.settled = nil
             await eventually("the failed poll") { watch.appName == nil }
             #expect(host.proxyPasses >= 2, "the proxy is applied on every pass")
+            #expect(host.tweakPasses.count >= 2, "so are the tweaks")
             watch.stop()
         }
     }
@@ -110,6 +114,10 @@ struct ForegroundWatchTests {
             #expect(
                 FileManager.default.fileExists(atPath: BootRecipe.setupDoneMark(overlay: overlay).path),
                 "the overlay remembers Setup is done"
+            )
+            #expect(
+                !host.tweakPasses.isEmpty && host.tweakPasses.allSatisfy { $0 <= host.remainingAtFinish ?? -1 },
+                "tweaks wait for Setup's end (\(host.tweakPasses))"
             )
         }
     }

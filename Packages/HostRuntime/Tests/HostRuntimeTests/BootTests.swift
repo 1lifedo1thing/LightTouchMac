@@ -352,6 +352,34 @@ extension BootTests {
 }
 
 extension BootTests {
+    /// Tweaks' Time Machine: the clock is the machine's rtc-epoch, in whole Unix seconds; no clock, no option.
+    @Test func aClockIsTheMachinesRTCEpoch() throws {
+        let f = try Fixture(board: .n72, strategy: "iboot")
+        func argv(_ clock: Date?) throws -> String {
+            try PreparedDeviceBoot.prepare(
+                board: .n72,
+                base: f.base,
+                overlay: f.overlay,
+                writableNOR: f.nor,
+                storageKey: "base-A",
+                bootrom: "rom",
+                clock: clock
+            )
+            .configuration(
+                bootArgs: "",
+                usbAddress: nil,
+                wifi: false,
+                guestPackage: nil,
+                serial: "null",
+                audio: [],
+                netdev: nil
+            )
+            .argv[2]
+        }
+        #expect(try argv(Date(timeIntervalSince1970: 1_168_364_460.7)).contains(",rtc-epoch=1168364460"))
+        #expect(try !argv(nil).contains("rtc-epoch"))
+    }
+
     @Test func explicitPathsDoNotImplyManagedOwnership() throws {
         let f = try Fixture(board: .n72, strategy: "iboot")
         let outside = f.root.appendingPathComponent("caller-selected-storage")

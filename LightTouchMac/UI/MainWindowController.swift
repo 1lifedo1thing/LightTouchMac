@@ -212,6 +212,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     // MARK: - Device menu actions (routed via the responder chain)
     /// Device ▸ Carrier…: the running iPhone's fake network, calls and SMS (CarrierPanel), one window per device.
     var carrierWindows: [UUID: CarrierWindowController] = [:]
+    /// Device ▸ Tweaks…: a device's hidden switches (TweaksPanel), one window per device, running or stopped.
+    var tweaksWindows: [UUID: TweaksWindowController] = [:]
 
     // MARK: - Diagnostics
     /// Bundle the logs + provenance into a zip for a bug report. The logs are
