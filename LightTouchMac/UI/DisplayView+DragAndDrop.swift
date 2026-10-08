@@ -4,8 +4,6 @@ import HostRuntime
 import LightTouchCore
 
 extension DisplayView {
-    // MARK: - Drag & drop
-
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         dropHighlight.show(for: dropOperation(sender))
     }

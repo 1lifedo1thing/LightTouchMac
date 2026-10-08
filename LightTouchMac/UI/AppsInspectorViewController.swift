@@ -44,7 +44,7 @@ final class AppsInspectorViewController: NSViewController {
     var haveLoaded = false
     var loadTask: Task<Void, Never>?
 
-    // MARK: Catalog (Store) state
+    // MARK: - Catalog (Store) state
     //
     // The table has exactly two modes, switched by the Installed/Store
     // segmented control (typing a search flips to Store; Store with an empty

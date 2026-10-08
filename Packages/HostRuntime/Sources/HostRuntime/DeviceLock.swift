@@ -179,7 +179,7 @@ public struct DeviceLock: Codable, Sendable, Equatable {
         )
     }
 
-    // MARK: Reading
+    // MARK: - Reading
 
     private static let cacheLock = NSLock()
     nonisolated(unsafe) private static var cache: [String: (stamp: [FileAttributeKey: AnyHashable], lock: DeviceLock)] =
@@ -220,7 +220,7 @@ public struct DeviceLock: Codable, Sendable, Equatable {
     /// A prepared base's lock (`base`/device.lock.json).
     public static func read(base: URL) throws -> DeviceLock? { try read(base.appendingPathComponent(fileName)) }
 
-    // MARK: What the lock says
+    // MARK: - What the lock says
 
     /// The catalog entry's id.
     public var entryID: String? { entry?["id"]?.string }

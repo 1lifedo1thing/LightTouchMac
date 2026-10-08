@@ -7,8 +7,6 @@ import LightTouchCore
 import UniformTypeIdentifiers
 
 extension AppsInspectorViewController {
-    // MARK: - Actions
-
     @objc func addOrRemove(_ sender: NSSegmentedControl) {
         sender.selectedSegment == 0 ? add() : remove(selectedApps)
     }

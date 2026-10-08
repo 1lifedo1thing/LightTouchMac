@@ -8,8 +8,6 @@ import LightTouchCore
 import Observation
 
 extension EmulatorController {
-    // MARK: - Liveness
-
     private func noteFrameAdvanced() {
         lastFrameAdvance = Date()
         if state.runsAfterFrame(poweringOn: poweringOn) {

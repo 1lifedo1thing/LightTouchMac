@@ -95,7 +95,7 @@ public final class HFSPlusVolume {
 
     deinit { close(fd) }
 
-    // MARK: raw fork I/O
+    // MARK: - Raw fork I/O
 
     /// The fork's extents in file order: the eight inline ones, then any in the extents overflow file.
     func extents(_ fork: Fork, fileID: UInt32, resource: Bool = false) throws -> [Extent] {
@@ -263,7 +263,7 @@ public final class HFSPlusVolume {
         return d
     }
 
-    // MARK: B-trees
+    // MARK: - B-trees
 
     struct BTree {
         let fork: Fork, fileID: UInt32, nodeSize: Int, firstLeaf: UInt32
@@ -397,7 +397,7 @@ public final class HFSPlusVolume {
         return node
     }
 
-    // MARK: listings
+    // MARK: - Listings
 
     /// A catalog name as macOS presents it in a path, and back: HFS+ names may hold "/", which the VFS shows as ":"
     /// (1.0's /usr/share/zoneinfo/Etc/GMT-0/15 is GMT-0:15 on the host).
@@ -462,7 +462,7 @@ public final class HFSPlusVolume {
         return out
     }
 
-    // MARK: edits
+    // MARK: - Edits
 
     /// Sets uid/gid (and with `mode`, the permission bits; the file type is kept) on each path's catalog
     /// record, in place. Without `mode` a record already at (uid, gid) is left alone, as build_nand.set_owner
@@ -543,7 +543,7 @@ public final class HFSPlusVolume {
         catalogCache = nil
     }
 
-    // MARK: determinism (what a mount leaves behind: dates, a fresh volume's identifier, the journal)
+    // MARK: - Determinism (what a mount leaves behind: dates, a fresh volume's identifier, the journal)
 
     /// The newest create/modify/attribute/access date in the catalog: on a pristine IPSW volume, its newest file.
     public func newestDate() throws -> UInt32 {

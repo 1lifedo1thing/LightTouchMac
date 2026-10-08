@@ -20,7 +20,7 @@ public enum K48IBoot {
     static let kdfConst = Data(hexLiteral: "db1f5b33606c5f1c1934aa66589c0661")
     static let img3Header = 0x14, nvramOff = 0xFC000, norSize = 0x100000
 
-    // MARK: GID blobs (AES-256 catalog keys)
+    // MARK: - GID blobs (AES-256 catalog keys)
 
     /// Encrypted KBAG (48 bytes) || plaintext IV/key (48 bytes) for every IMG3 the entry has a key for, in IPSW
     /// member order, de-duplicated by KBAG (production and development KBAGs wrap the same DATA key). ipad1_gid.gid_blobs.
@@ -73,7 +73,7 @@ public enum K48IBoot {
         return (Data(records.flatMap { $0.kbag + $0.plain }), names)
     }
 
-    // MARK: DeviceTree (hsic-enabled, re-encrypted with the catalog key)
+    // MARK: - DeviceTree (hsic-enabled, re-encrypted with the catalog key)
 
     /// The NOR DeviceTree img3 with the emulated HSIC keyboard controller added and re-encrypted under the catalog
     /// key, so iBoot (which bypasses image signatures) loads it. ipad1_gid.host_usb_devicetree.
@@ -124,7 +124,7 @@ public enum K48IBoot {
         return Data(out)
     }
 
-    // MARK: NOR
+    // MARK: - NOR
 
     /// The 1 MiB NOR the iBoot path boots: an IMG2 superblock, SysCfg (Mod#/Regn/SrNm/MLB#), two NVRAM banks
     /// (debug-uarts, auto-boot, boot-command=fsboot, boot-args, wifiaddr, btaddr) and the all_flash img3s packed at
@@ -226,7 +226,7 @@ public enum K48IBoot {
         return h
     }
 
-    // MARK: iBoot patching
+    // MARK: - iBoot patching
 
     /// Locate iBoot32Patcher: the bundled copy first (next to firmwarekit itself, then next to the helper; both are
     /// the app's Contents/MacOS, where the archive ships it), then FIRMWAREKIT_IBOOT_PATCHER / IBOOT32PATCHER
@@ -281,7 +281,7 @@ public enum K48IBoot {
         return patched
     }
 
-    // MARK: bytes
+    // MARK: - Bytes
 
     static func le32Bytes(_ v: UInt32) -> [UInt8] { (0..<4).map { UInt8(truncatingIfNeeded: v >> (8 * $0)) } }
 }

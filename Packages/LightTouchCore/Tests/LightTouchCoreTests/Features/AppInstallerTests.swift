@@ -40,7 +40,7 @@ extension SharedState {
             AppInstaller.startMedia(URL(fileURLWithPath: "/tmp/" + name), with: device, presenting: nil)
         }
 
-        // MARK: Per-device scope
+        // MARK: - Per-device scope
 
         @Test func discardPauseAndBusyAreScopedToOneDevice() async throws {
             try await withInstallerState { _, log in
@@ -162,7 +162,7 @@ extension SharedState {
             }
         }
 
-        // MARK: Removals
+        // MARK: - Removals
 
         @Test func removalsQueueBehindInstallsCancelPauseAndKeepSharedIcons() async throws {
             let other = FakeDevice("other")
@@ -292,7 +292,7 @@ extension SharedState {
             }
         }
 
-        // MARK: Media
+        // MARK: - Media
 
         @Test func mediaWaitsBehindInstallsImportsInOrderAndCancels() async throws {
             try await withInstallerState { _, _ in

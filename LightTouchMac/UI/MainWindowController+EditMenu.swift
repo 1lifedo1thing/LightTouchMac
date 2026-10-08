@@ -7,8 +7,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension MainWindowController {
-    // MARK: - Edit menu (guest clipboard / screen)
-
     @objc func saveScreenshot(_ sender: Any?) { capture.saveScreenshot() }
     @objc func saveScreenshotAs(_ sender: Any?) { capture.saveScreenshotAs() }
     @objc func openScreenshot(_ sender: Any?) { capture.openScreenshot() }

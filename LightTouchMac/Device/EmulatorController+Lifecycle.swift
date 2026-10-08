@@ -8,7 +8,6 @@ import LightTouchCore
 import Observation
 
 extension EmulatorController {
-    // MARK: - Boot deadline
     /// Why the helper died, for the row and the dead overlay.
     var deathReason: String? { bootWatch.deathReason }
     func failBoot(_ error: Error) { bootWatch.failBoot(error) }

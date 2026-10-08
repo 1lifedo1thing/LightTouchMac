@@ -138,7 +138,7 @@ public enum Preparer {
         }
     }
 
-    // MARK: one-shots
+    // MARK: - One-shots
 
     struct OneShot: Decodable {
         var exited: Bool
@@ -255,7 +255,7 @@ public enum Preparer {
         return rd
     }
 
-    // MARK: cancel
+    // MARK: - Cancel
 
     /// SIGTERM: every descendant gets SIGTERM (SIGKILL after 1 s), then disk images under `staging` are
     /// force-detached before successful return. Child termination is bounded; disk
@@ -315,7 +315,7 @@ public enum Preparer {
         for process in children where isSameProcess(process) { kill(process.pid, SIGKILL) }
     }
 
-    // MARK: files
+    // MARK: - Files
 
     static func digest<H: HashFunction>(_ url: URL, _ h: H, count: ((Int) -> Void)? = nil) throws -> String {
         var h = h

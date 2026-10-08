@@ -12,7 +12,7 @@ extension FitCheck {
         Set(m.symbols().filter { MachO32.isImport($0.type) }.map(\.name))
     }
 
-    // MARK: it_msmquiet
+    // MARK: - it_msmquiet
 
     /// The keys the "USB device is not supported" notice uses (contrib/it-msmquiet keys[]: 3.2.x UNSUPPORTED_FAILURE,
     /// 4.x UNSUPPORTED_FAILURE_BODY; 5.x's USBDeviceArbitrator the 4.x keys) and the calls it_msmquiet interposes.
@@ -52,7 +52,7 @@ extension FitCheck {
         )
     }
 
-    // MARK: it_prefs
+    // MARK: - it_prefs
 
     /// it_prefs' settings (contrib/it-prefs SETTINGS): the key and the binary that reads it. The iPod build
     /// (IT_PREFS_TIP_ONLY), and the bake that stands in for it on 2.x/3.0, set only the first.
@@ -74,7 +74,7 @@ extension FitCheck {
         }
     }
 
-    // MARK: SpringBoard's environment
+    // MARK: - SpringBoard's environment
 
     static let frameworkDirs = ["System/Library/Frameworks", "System/Library/PrivateFrameworks"]
 
@@ -141,7 +141,7 @@ extension FitCheck {
         return Fit(piece, fits: true, "read: " + read.joined(separator: "; "))
     }
 
-    // MARK: boot-args
+    // MARK: - boot-args
 
     /// The code-signing boot-args the injected binaries are booted with: they are ad-hoc signed, so AMFI must allow any
     /// signature (required: without it none of them runs), and the kernel should not enforce code signing (the AppSync
@@ -185,7 +185,7 @@ extension FitCheck {
 }
 
 extension FitCheck {
-    // MARK: AppSync
+    // MARK: - AppSync
 
     /// What libappsync hooks in its host (contrib/appsync appsync.c): it interposes libmis's signature checks (one of
     /// the two is the host's), and the two Security calls installd's verify_signer_identity makes on the signer
@@ -318,7 +318,7 @@ extension FitCheck {
     }
 }
 
-// MARK: the GL front end (qemu-ios contrib/gles-public: OpenGLES.framework/OpenGLES replaced whole)
+// MARK: - The GL front end (qemu-ios contrib/gles-public: OpenGLES.framework/OpenGLES replaced whole)
 
 extension FitCheck {
     public static let openGLES = "System/Library/Frameworks/OpenGLES.framework/OpenGLES"

@@ -64,7 +64,7 @@ final class DeviceHost: @unchecked Sendable {
         )
     }
 
-    // MARK: Pump
+    // MARK: - Pump
 
     /// Frames at 60 Hz (30 under serious thermal pressure or Low Power Mode) while the app shows the screen
     /// and the guest's display is on (or was just touched); otherwise 4 Hz, enough for the status block and a
@@ -190,7 +190,7 @@ final class DeviceHost: @unchecked Sendable {
         status[.glesSerial] = UInt64(bitPattern: glSerial)
     }
 
-    // MARK: Boot
+    // MARK: - Boot
 
     /// Start qemu_ios_main on a 16 MB-stack thread. Once per process.
     func boot(_ config: BootConfig) throws -> Bool {
@@ -246,7 +246,7 @@ final class DeviceHost: @unchecked Sendable {
         return true
     }
 
-    // MARK: Commands and requests
+    // MARK: - Commands and requests
 
     func perform(_ command: LinkCommand) {
         switch command {
@@ -379,7 +379,7 @@ final class DeviceHost: @unchecked Sendable {
         }
     }
 
-    // MARK: Halt
+    // MARK: - Halt
 
     /// Stop, the app's quit and a vanished app: a hard halt, never a guest
     /// shutdown (a booting or wedged guest cannot be asked to unmount). Pause

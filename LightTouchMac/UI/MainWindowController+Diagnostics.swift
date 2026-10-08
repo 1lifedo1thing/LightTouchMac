@@ -7,8 +7,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension MainWindowController {
-    // MARK: - Diagnostics
-
     /// The selected device's serial and usbmuxd logs and session file, with
     /// the app-wide ones.
     private var diagnosticInstance: DeviceInstance? { session?.instance ?? selectedEntry.flatMap(host.instance(for:)) }

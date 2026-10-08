@@ -4,8 +4,6 @@ import HostRuntime
 import LightTouchCore
 
 extension DisplayView {
-    // MARK: - Layout
-
     /// The shell layer stays at its native pixel size and carries scale and
     /// rotation in a single transform; the content layer is its child, parked
     /// at the screen cutout in shell-native pixels. Locked-together geometry

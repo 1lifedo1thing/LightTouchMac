@@ -4,8 +4,6 @@ import HostRuntime
 import LightTouchCore
 
 extension DisplayView {
-    // MARK: - Tilt (drag the chassis to rotate; the accelerometer follows)
-    //
     // Grabbing the shell anywhere outside the screen — bezel or corners — and
     // dragging side to side steers tilt games; dragging up/down adds pitch.
     // Both axes change the gravity vector measured by the accelerometer.

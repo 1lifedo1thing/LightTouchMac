@@ -6,7 +6,7 @@
 import Foundation
 
 enum WebProxyAdapters {
-    // MARK: Retired services
+    // MARK: - Retired services
 
     /// Exact retired API hosts only (never a vendor's whole domain); a DNS trailing dot and case are normalized.
     /// OpenFeint (shut down 2012) and the YouTube Data API v2 (retired 2015): HTTP 410 without contacting them.
@@ -16,7 +16,7 @@ enum WebProxyAdapters {
         return ["api.openfeint.com", "gdata.youtube.com"].contains(name)
     }
 
-    // MARK: Response rewrites
+    // MARK: - Response rewrites
 
     /// Set-Cookie lines for the guest. HTTPURLResponse joins repeated headers with commas, which
     /// Set-Cookie's own Expires dates contain; Foundation's cookie parser splits them again.
@@ -63,7 +63,7 @@ enum WebProxyAdapters {
         { type.hasPrefix($0) }
     }
 
-    // MARK: Wi-Fi location (docs/ipad1/location.md in qemu-ios)
+    // MARK: - Wi-Fi location (docs/ipad1/location.md in qemu-ios)
 
     /// iOS 3.2's locationd POSTs the BSSIDs it sees to AppleLocationServer (baked to
     /// http://10.0.2.100:3128/clls/wloc) and gets a position per BSSID back; every BSSID is placed at
@@ -175,7 +175,7 @@ enum WebProxyAdapters {
         }
     }
 
-    // MARK: Weather (the stock 7E18 gateway on Open-Meteo)
+    // MARK: - Weather (the stock 7E18 gateway on Open-Meteo)
 
     /// iphone-wu.apple.com/dgw?apptype=weather, answered from Open-Meteo's geocoding and forecast APIs
     /// (CC BY 4.0; noncommercial free tier). City searches return opaque "ltm:" ids; the two default Yahoo ids

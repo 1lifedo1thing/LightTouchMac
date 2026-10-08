@@ -79,7 +79,7 @@ extension DisplayView {
     /// Is the cursor over the device's screen right now?
     private func cursorOverPanel(_ event: NSEvent) -> Bool { normalized(event) != nil }
 
-    // MARK: Pinch
+    // MARK: - Pinch
 
     /// A pinch is the guest's, always — a genuine two-finger pinch with both
     /// contacts tracking the magnification continuously around the point the
@@ -125,7 +125,7 @@ extension DisplayView {
         sendVisualTouch2(phase, Double(x2), Double(a.y))
     }
 
-    // MARK: Two-finger double tap
+    // MARK: - Two-finger double tap
 
     /// macOS calls this for a two-finger double tap — the "smart zoom" gesture.
     /// Over the panel it becomes what it means on the device: a double tap,
@@ -145,7 +145,7 @@ extension DisplayView {
         }
     }
 
-    // MARK: Scroll / swipe
+    // MARK: - Scroll / swipe
 
     /// Over the panel, a two-finger scroll IS a finger dragging the content:
     /// begin a touch where the cursor is and move it with the fingers, through
@@ -259,7 +259,7 @@ extension DisplayView {
         return CGVector(dx: ux * cos(a) - uy * sin(a), dy: ux * sin(a) + uy * cos(a))
     }
 
-    // MARK: Tilt by scroll (cursor off the panel)
+    // MARK: - Tilt by scroll (cursor off the panel)
 
     private func beginScrollTilt() {
         guard touchInteractionEnabled else { return }

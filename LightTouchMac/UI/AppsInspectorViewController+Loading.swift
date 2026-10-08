@@ -7,8 +7,6 @@ import LightTouchCore
 import UniformTypeIdentifiers
 
 extension AppsInspectorViewController {
-    // MARK: - Loading / refresh
-
     /// Keep polling for the life of the view, not just until the device answers
     /// once: right after boot, installation_proxy can answer with an empty
     /// list before installd has finished registering apps, which used to read

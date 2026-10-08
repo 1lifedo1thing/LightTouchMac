@@ -4,8 +4,6 @@ import HostRuntime
 import LightTouchCore
 
 extension DisplayView {
-    // MARK: - Frame polling
-
     /// Frames come from the helper's IOSurface ring: the layer shows the front
     /// surface itself (no copy), and only the 3D model, which needs a texture,
     /// gets a CGImage made from it. Liveness and status are EmulatorController's

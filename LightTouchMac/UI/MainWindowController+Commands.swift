@@ -7,8 +7,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension MainWindowController {
-    // MARK: - Device commands (sidebar, Device menu, placeholder)
-
     /// Runtime conditions on top of what the row allows.
     func canPerform(_ action: DeviceAction, for entry: FirmwareCatalog.Entry) -> Bool {
         guard host.row(for: entry).allows(action, canDownload: FirmwareJobs.shared.canDownload) else { return false }

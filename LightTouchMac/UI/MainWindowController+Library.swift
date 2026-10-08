@@ -7,8 +7,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension MainWindowController {
-    // MARK: - Library and selection
-
     /// Selects the launch device, and starts it when it is the only one set up.
     func selectLaunchDevice() {
         guard let entry = host.launchSelection.flatMap({ library.contains($0) ? $0 : nil }) ?? library.entries.first

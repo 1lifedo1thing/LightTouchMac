@@ -7,8 +7,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension MainWindowController {
-    // MARK: - Health / status surfacing
-
     /// The Files window follows the selected device; its title says which.
     func titleFilesWindow() {
         guard let window = filesWindow?.window else { return }

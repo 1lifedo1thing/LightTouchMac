@@ -134,7 +134,7 @@ nonisolated public final class DeviceLink: @unchecked Sendable {
         lock.withLock { ring }?.front()
     }
 
-    // MARK: Start
+    // MARK: - Start
 
     /// Spawn the helper and connect. Completes once, on `queue`.
     public func start(completion: @escaping @Sendable (Result<HelperInfo, DeviceLinkError>) -> Void) {
@@ -256,7 +256,7 @@ nonisolated public final class DeviceLink: @unchecked Sendable {
         if let (info, completion) = ready { completion(.success(info)) }
     }
 
-    // MARK: Messages
+    // MARK: - Messages
 
     /// Fire-and-forget, ordered. Dropped once the link is invalid.
     public func send(_ command: LinkCommand) {
@@ -302,7 +302,7 @@ nonisolated public final class DeviceLink: @unchecked Sendable {
         }
     }
 
-    // MARK: Teardown
+    // MARK: - Teardown
 
     /// SIGTERM: the helper runs its clean shutdown (bounded) and exits.
     public func terminate() {

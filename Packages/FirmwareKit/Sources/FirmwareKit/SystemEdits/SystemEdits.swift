@@ -430,7 +430,7 @@ public enum SystemEdits {
         return result
     }
 
-    // MARK: the shared bake (every board's system volume)
+    // MARK: - The shared bake (every board's system volume)
 
     /// The web-proxy PAC at /usr/share/ltm/proxy.pac; `dirs` are created too (the iPod's SystemConfiguration
     /// on the system volume). Returns the paths to make root-owned.
@@ -612,7 +612,7 @@ public enum SystemEdits {
         chmod(dir, st.st_mode & 0o7777)
     }
 
-    // MARK: plist edits (ipad1_rootfs.springboard_env, dyld_insert, wifi_proxy_prefs)
+    // MARK: - Plist edits (ipad1_rootfs.springboard_env, dyld_insert, wifi_proxy_prefs)
 
     /// d[k] as a mutable dictionary, inserting `def` when absent (Python's setdefault).
     @discardableResult
@@ -707,7 +707,7 @@ public enum SystemEdits {
         try put(PropertyListSerialization.data(fromPropertyList: d, format: .xml, options: 0), url)
     }
 
-    // MARK: files (in place, umask-default modes, as the oracle's open()/makedirs())
+    // MARK: - Files (in place, umask-default modes, as the oracle's open()/makedirs())
 
     /// Writes `data` into `url` in place (truncating an existing file, so it keeps its catalog record), creating
     /// it 0666 & ~umask if absent; with `mode`, then sets the permission bits.

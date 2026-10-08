@@ -36,7 +36,7 @@ extension EmulatorController {
         bootScope.control(request, on: link, done)
     }
 
-    // MARK: Battery, charger and compass
+    // MARK: - Battery, charger and compass
     var batteryLevel: Int { battery.level }
     var batteryCharging: Bool { battery.charging }
     func setBattery(level: Int) { battery.setLevel(level) }
@@ -68,7 +68,7 @@ extension EmulatorController {
     func startOrientationWatch() { rotation.startGuestWatch() }
     func resetRotation() { rotation.reset() }
 
-    // MARK: Carrier (radio boards)
+    // MARK: - Carrier (radio boards)
     var hasCellular: Bool { carrier.hasCellular }
     var carrierSettings: CarrierSettings { carrier.carrierSettings }
     @discardableResult

@@ -42,7 +42,7 @@ public enum K48NAND {
         return out
     }
 
-    // MARK: geometry
+    // MARK: - Geometry
 
     public struct Geometry: Sendable {
         public let name: String
@@ -174,7 +174,7 @@ public enum K48NAND {
         }
     }
 
-    // MARK: store
+    // MARK: - Store
 
     final class Store {
         let geo: Geometry, stride: Int
@@ -235,7 +235,7 @@ public enum K48NAND {
         deinit { close() }
     }
 
-    // MARK: on-flash structures
+    // MARK: - On-flash structures
 
     static func spare(_ lpn: UInt32, _ usn: UInt32, _ typ: UInt8) -> [UInt8] {
         var s = [UInt8](repeating: 0, count: 12)
@@ -398,7 +398,7 @@ public enum K48NAND {
         }
     }
 
-    // MARK: inputs
+    // MARK: - Inputs
 
     /// The logical disk's head as a 7B500 restore leaves it on a K48, up to partition 1 (LBA 63): p1 Apple_HFS
     /// system at 63, p3 an 8-sector 0xAF stub one sector past its end, p2 0xAE data to 45 sectors before the
@@ -556,7 +556,7 @@ public enum K48NAND {
         try await VolumeMount.makeHFS(url, size: size)
     }
 
-    // MARK: build
+    // MARK: - Build
 
     public enum DataVolume: Sendable {
         case none

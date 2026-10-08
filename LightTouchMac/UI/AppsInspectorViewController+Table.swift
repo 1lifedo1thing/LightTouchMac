@@ -81,7 +81,7 @@ extension AppsInspectorViewController: NSTableViewDataSource, NSTableViewDelegat
     // source list reads as broken. What a pending row can't do (uninstall) is
     // decided where the buttons are enabled, not by refusing the selection.
 
-    // MARK: Dragging — reorder within, files/links out, .ipas in
+    // MARK: - Dragging — reorder within, files/links out, .ipas in
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         if searching {

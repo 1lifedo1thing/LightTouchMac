@@ -4,8 +4,6 @@ import HostRuntime
 import LightTouchCore
 
 extension DisplayView {
-    // MARK: - Free-form screen (issue #21)
-    //
     // View ▸ Free-Form Screen: no bezel, and the screen itself is resizable. Dragging the screen's own edge or
     // corner (nothing else: not the window, the sidebar or the inspector) stretches the current frame to the new
     // size live, with a W × H status snapped to what the board's panel= accepts. Zoom only draws it bigger or
