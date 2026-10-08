@@ -37,12 +37,15 @@ struct CarrierModemTests {
             #expect(!modem.setCarrierSettings(invalid))
             #expect(link.requests.count == 2 && DeviceSettings.load(directory).carrier == next, "nothing saved or sent")
 
+            // Another device's file, since this one's settings are shared while the modem holds them.
+            let other = directory.appendingPathComponent("other")
+            try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
             var file = DeviceSettings()
             file.carrier = invalid
-            try file.save(directory)
+            try file.save(other)
             let reopened = CarrierModem(
                 hasCellular: true,
-                settings: DeviceSettingsFile(directory: directory),
+                settings: DeviceSettingsFile(directory: other),
                 scope: scope
             ) { link }
             #expect(reopened.carrierSettings == CarrierSettings(), "an invalid saved value falls back to the defaults")

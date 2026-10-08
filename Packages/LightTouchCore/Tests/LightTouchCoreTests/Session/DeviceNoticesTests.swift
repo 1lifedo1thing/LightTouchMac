@@ -115,4 +115,21 @@ struct DeviceNoticesTests {
             #expect(read.motionPose == 1 && read.keyboardInputEnabled == false)
         }
     }
+
+    /// Two holders of one device's settings (a session and the Carrier panel's, a stopped device's menu, an
+    /// erase's) see each other's changes, and neither writes back what the other changed.
+    @Test func everyFileOnADeviceSharesItsSettings() throws {
+        try withTemporaryDirectory { directory in
+            let session = DeviceSettingsFile(directory: directory)
+            let other = DeviceSettingsFile(directory: directory)
+            _ = session.value
+            _ = other.value
+            #expect(observes({ _ = session.value }) { other.change { $0.motionPose = 2 } })
+            #expect(session.value.motionPose == 2)
+            session.change { $0.keyboardInputEnabled = false }
+            other.change { $0.localNetwork = true }
+            let read = DeviceSettings.load(directory)
+            #expect(read.motionPose == 2 && read.keyboardInputEnabled == false && read.localNetwork == true)
+        }
+    }
 }

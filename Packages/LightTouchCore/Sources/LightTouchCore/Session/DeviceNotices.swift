@@ -6,22 +6,48 @@ import Foundation
 import HostRuntime
 import Observation
 
-/// This device's settings.plist (DeviceSettings), read once and written on every change. Observable: whatever
-/// reads a setting through it (the keyboard, the notice, the menus' toggles) updates with it.
-@Observable public final class DeviceSettingsFile {
+/// This device's settings.plist (DeviceSettings), read once and written on every change. Every file opened on one
+/// device directory shares one copy while any is open (a session's, a stopped device's menu, an erase's), so none
+/// writes back a value another changed. Observable: whatever reads a setting through it (the keyboard, the notice,
+/// the menus' toggles) updates with it.
+public final class DeviceSettingsFile {
     public let directory: URL
-    public init(directory: URL) { self.directory = directory }
-    @ObservationIgnored private lazy var stored = DeviceSettings.load(directory)
-    public var value: DeviceSettings {
-        access(keyPath: \.value)
-        return stored
+    private let store: Store
+    public init(directory: URL) {
+        self.directory = directory
+        store = Store.open(directory)
     }
+    public var value: DeviceSettings { store.value }
+    public func change(_ change: (inout DeviceSettings) -> Void) { store.change(change) }
 
-    public func change(_ change: (inout DeviceSettings) -> Void) {
-        var value = stored
-        change(&value)
-        if value != stored { withMutation(keyPath: \.value) { stored = value } }
-        do { try value.save(directory) } catch { logEvent("settings: could not save: \(error.localizedDescription)") }
+    @Observable final class Store {
+        let directory: URL
+        init(directory: URL) { self.directory = directory }
+        @ObservationIgnored private lazy var stored = DeviceSettings.load(directory)
+        var value: DeviceSettings {
+            access(keyPath: \.value)
+            return stored
+        }
+
+        func change(_ change: (inout DeviceSettings) -> Void) {
+            var value = stored
+            change(&value)
+            if value != stored { withMutation(keyPath: \.value) { stored = value } }
+            do { try value.save(directory) } catch {
+                logEvent("settings: could not save: \(error.localizedDescription)")
+            }
+        }
+
+        private struct Weak { weak var store: Store? }
+        private static var stores: [String: Weak] = [:]
+        static func open(_ directory: URL) -> Store {
+            let key = directory.standardizedFileURL.path
+            if let store = stores[key]?.store { return store }
+            stores = stores.filter { $0.value.store != nil }
+            let store = Store(directory: directory)
+            stores[key] = Weak(store: store)
+            return store
+        }
     }
 }
 
