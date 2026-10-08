@@ -9,5 +9,7 @@ let package = Package(
     targets: [
         .target(name: "LTMLinkC", publicHeadersPath: "."),
         .target(name: "DeviceRuntime", dependencies: ["HostRuntime", "LTMLinkC"]),
+        .executableTarget(name: "RendezvousTestPeer", dependencies: ["LTMLinkC"]),
+        .testTarget(name: "DeviceRuntimeTests", dependencies: ["DeviceRuntime", "RendezvousTestPeer"]),
     ]
 )

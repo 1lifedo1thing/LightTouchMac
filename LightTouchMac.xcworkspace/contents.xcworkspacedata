@@ -14,6 +14,9 @@
       location = "group:Packages/FirmwareKit">
    </FileRef>
    <FileRef
+      location = "group:Packages/DeviceRuntime">
+   </FileRef>
+   <FileRef
       location = "group:Packages/DeviceServices">
    </FileRef>
    <FileRef

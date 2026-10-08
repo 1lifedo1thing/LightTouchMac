@@ -13,6 +13,9 @@
 //      cannot pass) satisfies the requirement: same Team ID as the app, or the
 //      helper's own designated requirement (its cdhash) for an ad-hoc build;
 //   3. the token matches the one on that helper's argv.
+// A hello whose sender has already exited (it refused the lease, or found no
+// dylib, and answered over the link) is dropped, not rejected: there is no code
+// left to check, and the link reports the helper's own answer.
 // Control never goes over Mach: it is on the private socketpair.
 
 import Foundation
@@ -166,7 +169,11 @@ nonisolated final class DeviceRendezvousServer: @unchecked Sendable {
                 continue
             }
             if let reason = validate(hello, registration) {
-                registration.reject(reason)
+                if reason == Self.senderExited {
+                    NSLog("Light Touch rendezvous: dropped a hello from pid %d: it has exited", hello.pid)
+                } else {
+                    registration.reject(reason)
+                }
                 continue
             }
             let surfaces = ports.compactMap { IOSurfaceLookupFromMachPort($0) }
@@ -178,9 +185,13 @@ nonisolated final class DeviceRendezvousServer: @unchecked Sendable {
         }
     }
 
+    private static let senderExited = "the sender has exited"
+
     private func validate(_ hello: ltm_hello, _ registration: Registration) -> String? {
         guard hello.nports >= 1 else { return "malformed hello" }
         let status = DeviceRendezvous.check(audit: hello.audit, requirement: registration.requirement)
+        // ESRCH (kPOSIXErrorBase + 3): no process has this audit token now. A live peer's failure still rejects.
+        guard status != 100_000 + ESRCH else { return Self.senderExited }
         guard status == errSecSuccess else { return "code signing requirement failed (\(status))" }
         let token = withUnsafeBytes(of: hello.token) {
             $0.bindMemory(to: CChar.self).baseAddress.map { String(cString: $0) } ?? ""

@@ -25,6 +25,13 @@
     },
     {
       "target": {
+        "containerPath": "container:Packages\/DeviceRuntime",
+        "identifier": "DeviceRuntimeTests",
+        "name": "DeviceRuntimeTests"
+      }
+    },
+    {
+      "target": {
         "containerPath": "container:Packages\/FirmwareKit",
         "identifier": "FirmwareKitTests",
         "name": "FirmwareKitTests"
