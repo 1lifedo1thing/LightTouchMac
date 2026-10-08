@@ -9,6 +9,9 @@ final class FirmwareJobs {
     var jobs: [String: FirmwareJob] = [:] {
         didSet { NotificationCenter.default.post(name: Self.didChangeNotification, object: self) }
     }
+    func dismissFailure(_ entry: FirmwareCatalog.Entry) {
+        if case .failed? = jobs[entry.id] { jobs[entry.id] = nil }
+    }
 }
 struct StubInstance { let firmware: String }
 final class DeviceLibrary {

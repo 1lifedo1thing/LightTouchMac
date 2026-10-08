@@ -183,6 +183,7 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
 
     func removeFromList(_ entry: FirmwareCatalog.Entry) {
         let index = items.firstIndex { $0.entry.id == entry.id }
+        FirmwareJobs.shared.dismissFailure(entry)
         list.remove(entry.id)
         listDidChange()
         // The next row takes the selection, as in Finder.

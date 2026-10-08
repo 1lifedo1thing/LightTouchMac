@@ -281,6 +281,9 @@ import HostRuntime
 
     public func cancel(_ entry: FirmwareCatalog.Entry) { run(table.cancel(entry.id)) }
 
+    /// The entry's row left the sidebar: a failure it showed is forgotten, so adding the row again starts clean.
+    public func dismissFailure(_ entry: FirmwareCatalog.Entry) { table.dismiss(entry.id) }
+
     // MARK: - Steps
 
     func receive(_ input: Input) {

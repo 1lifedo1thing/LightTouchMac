@@ -143,4 +143,13 @@ import Testing
         let r5 = none.resume(tasks: ["s"])
         #expect(r5 == [] && none.jobs.isEmpty)
     }
+
+    @Test func dismissingARowForgetsOnlyAFailure() {
+        var t = FirmwareJobTable()
+        t.fail("gone", "x")
+        t.preparing("busy", a, afterDownload: false, now: now)
+        t.dismiss("gone")
+        t.dismiss("busy")
+        #expect(t.phase("gone") == nil && t.phase("busy") == .preparing(a))
+    }
 }

@@ -370,6 +370,7 @@ extension SharedState {
             outline.keyDown(with: delete)
             FirmwareJobs.shared.jobs["n72ap-8C148"] = nil  // the next state change
             if vc.entries.contains(where: { $0.id == "n72ap-8B117" }) { fail("a failed download's row came back") }
+            if FirmwareJobs.shared.jobs["n72ap-8B117"] != nil { fail("the removed row's failure outlived it") }
             FirmwareJobs.shared.jobs = [:]
 
             // Several rows: ⌘A, then one Delete for the lot.

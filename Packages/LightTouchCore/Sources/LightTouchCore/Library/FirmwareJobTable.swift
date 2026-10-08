@@ -142,6 +142,11 @@ public nonisolated struct FirmwareJobTable: Equatable, Sendable {
         jobs[id] = Job(phase: .failed(message), shown: .failed(message))
     }
 
+    /// A failed job's row left the sidebar: its error goes with it.
+    public mutating func dismiss(_ id: String) {
+        if case .failed? = jobs[id]?.phase { jobs[id] = nil }
+    }
+
     /// A job that ends without a device or an error (the entry already has a device).
     public mutating func clear(_ id: String) { jobs[id] = nil }
 
