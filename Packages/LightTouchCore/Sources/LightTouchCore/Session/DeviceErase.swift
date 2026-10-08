@@ -29,7 +29,7 @@ public protocol EraseHost: AnyObject {
 }
 
 public final class DeviceErase {
-    public struct Targets {
+    public nonisolated struct Targets: Sendable {
         public init(overlay: URL, snapshots: [URL], preparedNOR: URL?, state: URL, owner: UUID) {
             self.overlay = overlay
             self.snapshots = snapshots
@@ -44,6 +44,35 @@ public final class DeviceErase {
         public var preparedNOR: URL?
         public var state: URL
         public var owner: UUID
+
+        /// What erasing this device removes, under the app's state.
+        public init(_ instance: DeviceInstance) {
+            let paths = instance.paths
+            self.init(
+                overlay: paths.overlay,
+                snapshots: [paths.snapshot, paths.snapshotTmp, paths.snapshotBad],
+                preparedNOR: paths.writableNOR,
+                state: Bundled.stateDirectory,
+                owner: instance.id
+            )
+        }
+
+        /// Removes them, under the device's storage lease (DeviceStateStorage.erase).
+        public func remove() throws {
+            try DeviceStateStorage.erase(
+                overlay: overlay,
+                snapshots: snapshots,
+                preparedNOR: preparedNOR,
+                state: state,
+                owner: owner
+            )
+        }
+    }
+
+    /// An erase clears the notices whose remedy it was.
+    public static func erased(_ notices: DeviceNotices) {
+        notices.resolve(.erase)
+        notices.resolve(.activation)
     }
 
     private unowned let host: EraseHost
@@ -81,20 +110,8 @@ public final class DeviceErase {
             }
             let targets = host.eraseTargets
             do {
-                try await Task.detached {
-                    try DeviceStateStorage.erase(
-                        overlay: targets.overlay,
-                        snapshots: targets.snapshots,
-                        state: targets.state,
-                        owner: targets.owner
-                    )
-                    if let preparedNOR = targets.preparedNOR, FileManager.default.fileExists(atPath: preparedNOR.path) {
-                        try DeviceStateStorage.checkRemovable(preparedNOR, state: targets.state, owner: targets.owner)
-                        try FileManager.default.removeItem(at: preparedNOR)
-                    }
-                }.value
-                host.notices.resolve(.erase)
-                host.notices.resolve(.activation)
+                try await Task.detached { try targets.remove() }.value
+                Self.erased(host.notices)
                 host.isErasing = false
                 if host.started {
                     logEvent("reset: device erased; starting it fresh")

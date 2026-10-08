@@ -66,6 +66,35 @@ struct DeviceStateStorageTests {
         }
     }
 
+    /// The private NOR goes under the erase's own lease (state audit A-9), checked with the overlay before anything is
+    /// removed: one that isn't this device's storage leaves the overlay too.
+    @Test func eraseRemovesThePrivateNORUnderItsLeaseOrNothing() throws {
+        try withTemporaryDirectory { state in
+            let id = UUID()
+            let device = state.appendingPathComponent("Devices/\(id.uuidString)")
+            let overlay = device.appendingPathComponent("overlay")
+            let nor = device.appendingPathComponent("nor.bin")
+            try fm.createDirectory(at: overlay, withIntermediateDirectories: true)
+            try Data("pages".utf8).write(to: overlay.appendingPathComponent("pages"))
+            try Data("nvram".utf8).write(to: nor)
+            let outside = state.deletingLastPathComponent().appendingPathComponent("nor-\(id.uuidString).bin")
+            try Data("not the device's".utf8).write(to: outside)
+            defer { try? fm.removeItem(at: outside) }
+            #expect(throws: CocoaError.self) {
+                try DeviceStateStorage.erase(
+                    overlay: overlay,
+                    snapshots: [],
+                    preparedNOR: outside,
+                    state: state,
+                    owner: id
+                )
+            }
+            #expect(fm.fileExists(atPath: overlay.path) && fm.fileExists(atPath: outside.path), "nothing removed")
+            try DeviceStateStorage.erase(overlay: overlay, snapshots: [], preparedNOR: nor, state: state, owner: id)
+            #expect(!fm.fileExists(atPath: overlay.path) && !fm.fileExists(atPath: nor.path))
+        }
+    }
+
     /// Erase and Delete Device refuse a device another process holds (its work/lease) or with a durable filesystem
     /// edit (work/edit.json), and change nothing.
     @Test func eraseAndDeleteRefuseAnExternalLeaseAndAPendingEdit() throws {

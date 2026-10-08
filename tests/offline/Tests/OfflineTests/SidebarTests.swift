@@ -8,7 +8,7 @@ import Testing
 
 extension SharedState {
     /// The sidebar (DeviceLibraryViewController) and the Add Device sheet (AddDeviceView) with the real catalog,
-    /// SidebarList, DeviceRow and DeviceDeletions, in windows never ordered in. Every row is two lines (the marketing
+    /// SidebarList, DeviceRow and DeviceStorageWork, in windows never ordered in. Every row is two lines (the marketing
     /// name over the version and its Beta/GM badge; a custom name over "iPad, iOS 3.2.2"); each board shows the artwork
     /// macOS declares for it; rename in place (menu, Return, during a preparation) saves; the context menu dims what a
     /// row can't do; Delete removes an unprepared row and asks the delegate for a prepared one; a download joins the
@@ -482,7 +482,7 @@ extension SharedState {
             brokenOutline.selectAll(nil)
             brokenOutline.keyDown(with: delete)
             let failStart = Date()
-            while !broken.deletions.ids.isEmpty || failureAlerts.count < 2, Date().timeIntervalSince(failStart) < 5 {
+            while !broken.deletions.busy.isEmpty || failureAlerts.count < 2, Date().timeIntervalSince(failStart) < 5 {
                 try await Task.sleep(for: .milliseconds(10))
             }
             if vc.entries.count != 2 || vc.entries.contains(where: { vc.row(for: $0).state != .ready }) {

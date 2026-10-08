@@ -122,7 +122,7 @@ struct DeviceLibraryWatchTests {
         _ = LibraryFixtures.isolatedAppState
         try await LibraryFixtures.withScratch { scratch in
             let state = scratch.appendingPathComponent("State", isDirectory: true)
-            let deletions = DeviceDeletions()
+            let deletions = DeviceStorageWork()
             for phase in [SessionPhase.running, .stopping, .stopped, .dead("The iPod stopped.")] {
                 let instance = try record("\(phase)", state: state)
                 let directory = DeviceInstance.directory(instance.id, state: state)

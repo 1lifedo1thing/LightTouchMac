@@ -1,5 +1,5 @@
 // The sidebar's world, as the app singletons it asks would answer: a host over a catalog with prepared, downloaded and
-// running sets and a slow (or failing) fake removal through the real DeviceDeletions, the jobs, the library.
+// running sets and a slow (or failing) fake removal through the real DeviceStorageWork, the jobs, the library.
 import Cocoa
 import LightTouchCore
 
@@ -37,7 +37,7 @@ final class DeviceSessionHost {
     var running: Set<String> = []
     var sessions: [DeviceSession] = []
     var deleted: [String] = []
-    let deletions = DeviceDeletions()
+    let deletions = DeviceStorageWork()
     /// The fake removal: this long on its thread, then a throw when `failing`.
     var deleteSeconds = 0.0
     var failing = false
@@ -71,7 +71,7 @@ final class DeviceSessionHost {
             session: running.contains(entry.id) ? .running : nil,
             job: FirmwareJobs.shared.jobs[entry.id],
             downloaded: downloaded.contains(entry.id),
-            deleting: deletions.contains(entry.id)
+            busy: deletions.busy[entry.id]
         )
     }
 }

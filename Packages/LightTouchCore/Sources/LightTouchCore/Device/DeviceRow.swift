@@ -130,8 +130,10 @@ public nonisolated enum DeviceRowState: Equatable, Sendable {
     )
     case preparing(Preparation)
     case ready, running, stopping
-    /// Its storage is being removed (DeviceDeletions); the row leaves when that's done.
+    /// Its storage is being removed (DeviceStorageWork); the row leaves when that's done.
     case deleting
+    /// A device with no running session is being erased (DeviceStorageWork).
+    case erasing
     case error(String)
     case unavailable(Unavailable)
 }
@@ -139,6 +141,10 @@ public nonisolated enum DeviceRowState: Equatable, Sendable {
 /// One sidebar row: a catalog entry and what the library, the jobs and the
 /// sessions say about it.
 public nonisolated struct DeviceRow: Equatable, Sendable {
+    /// Work on a device's storage while it has no running session (DeviceStorageWork): the row offers nothing that
+    /// would touch it until that's done.
+    public enum Busy: Equatable, Sendable { case deleting, erasing }
+
     public let entry: FirmwareCatalog.Entry
     public let instanceID: UUID?
     public let hasSession: Bool
@@ -150,7 +156,7 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
     public let preparedByOlderRecipe: Bool
 
     /// `downloaded`: IPSWStore has this entry's IPSW. `baseRecipe`: DeviceRow.baseRecipeVersion of the device's lock.
-    /// `deleting`: DeviceDeletions is removing the device.
+    /// `busy`: DeviceStorageWork is deleting or erasing the device.
     public init(
         entry: FirmwareCatalog.Entry,
         instanceID: UUID?,
@@ -159,7 +165,7 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
         downloaded: Bool = false,
         preparedWithoutActivation: Bool = false,
         baseRecipe: Int? = nil,
-        deleting: Bool = false
+        busy: Busy? = nil
     ) {
         self.entry = entry
         self.instanceID = instanceID
@@ -167,15 +173,18 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
         preparedByOlderRecipe = instanceID != nil && baseRecipe.map { $0 < entry.recipe?.version ?? 0 } ?? false
         hasSession = session != nil
         state =
-            deleting
-            ? .deleting
-            : Self.state(
-                entry: entry,
-                startable: instanceID != nil,
-                session: session,
-                job: job,
-                downloaded: downloaded
-            )
+            switch busy {
+            case .deleting?: .deleting
+            case .erasing?: .erasing
+            case nil:
+                Self.state(
+                    entry: entry,
+                    startable: instanceID != nil,
+                    session: session,
+                    job: job,
+                    downloaded: downloaded
+                )
+            }
     }
 
     /// A session outranks everything; then the catalog's own verdict, a job
@@ -245,7 +254,7 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
         case .downloaded, .bundled, .ready: .none
         case .downloading, .preparing: .progress(progress)
         case .running: .running
-        case .stopping, .deleting: .stopping
+        case .stopping, .deleting, .erasing: .stopping
         case .error: .error
         case .unavailable(.comingSoon): .text("Coming soon")
         case .unavailable(.requiresIPSW): .text("Requires an IPSW")
@@ -351,7 +360,7 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
     /// `canDownload` is FirmwareJobs.canDownload: whether the preparer is present.
     private var working: Bool {
         switch state {
-        case .downloading, .preparing, .stopping, .deleting: true
+        case .downloading, .preparing, .stopping, .deleting, .erasing: true
         default: false
         }
     }
@@ -376,7 +385,7 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
             return canDownload && !isStartable && !working && !isDimmed
         case .importIPSW:
             return !isStartable && entry.status != .comingSoon && !working
-        case .cancel: return !hasSession && working && state != .deleting
+        case .cancel: return !hasSession && primaryAction == .cancel
         case .erase: return instanceID != nil && !working
         case .openFilesystem, .commitFilesystem, .discardFilesystem, .recoverFilesystem:
             return instanceID != nil && !working && state != .running && state != .stopping
@@ -396,7 +405,7 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
         case .error:
             isStartable ? .start : entry.status == .userIPSW && entry.bundled == nil ? .importIPSW : .downloadAndPrepare
         case .unavailable(.requiresIPSW): .importIPSW
-        case .unavailable(.comingSoon), .running, .stopping, .deleting: nil
+        case .unavailable(.comingSoon), .running, .stopping, .deleting, .erasing: nil
         }
     }
 
@@ -453,6 +462,7 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
         case .running: "Running"
         case .stopping: "Stopping"
         case .deleting: "Deleting"
+        case .erasing: "Erasing"
         case .error: "Error"
         case .unavailable(.comingSoon): "Coming soon"
         case .unavailable(.requiresIPSW): "Requires an IPSW"

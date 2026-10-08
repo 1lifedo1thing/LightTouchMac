@@ -189,6 +189,7 @@ final class DevicePlaceholderViewController: NSViewController {
         case .running: status.stringValue = "Running"
         case .stopping: status.stringValue = "Stopping…"
         case .deleting: status.stringValue = "Deleting…"
+        case .erasing: status.stringValue = "Erasing…"
         case .error(let message):
             // What failed, over why (the reason).
             status.stringValue =

@@ -6,12 +6,21 @@ import HostRuntime
 public nonisolated enum DeviceStateStorage {
     /// Only call after the native VM has exited and released its files.
     /// `snapshots`: saved-state files older builds wrote (and their .meta), swept with the overlay.
-    /// `owner` is the device being erased; every path must pass checkRemovable.
-    public static func erase(overlay: URL, snapshots: [URL], state: URL, owner: UUID?) throws {
+    /// `preparedNOR`: the device's private NOR copy, which pairs with its overlay. Removed under the same lease, so no
+    /// helper starting meanwhile keeps the old one.
+    /// `owner` is the device being erased; every path must pass checkRemovable before any is removed.
+    public static func erase(
+        overlay: URL,
+        snapshots: [URL],
+        preparedNOR: URL? = nil,
+        state: URL,
+        owner: UUID?
+    ) throws {
         let lease = try stoppedLease(owner, state: state)
         defer { withExtendedLifetime(lease) {} }
         let fm = FileManager.default
-        let paths = snapshots.flatMap { [$0, $0.appendingPathExtension("meta")] } + [overlay]
+        let paths =
+            snapshots.flatMap { [$0, $0.appendingPathExtension("meta")] } + [preparedNOR].compactMap { $0 } + [overlay]
         for path in paths { try checkRemovable(path, state: state, owner: owner) }
         for path in paths where fm.fileExists(atPath: path.path) {
             try fm.removeItem(at: path)

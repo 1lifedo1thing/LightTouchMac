@@ -113,7 +113,7 @@ extension DeviceSession: LibrarySession {
             downloaded: entry.source.sha1.map { IPSWStore.shared.existing($0) != nil } ?? false,
             preparedWithoutActivation: instance.map(lacksActivation) ?? false,
             baseRecipe: instance.flatMap(baseRecipe),
-            deleting: deletions.contains(entry.id)
+            busy: storageWork.busy[entry.id]
         )
     }
 
@@ -156,7 +156,7 @@ extension DeviceSession: LibrarySession {
     @discardableResult
     func start(_ entry: FirmwareCatalog.Entry) -> DeviceSession? {
         if let session = session(for: entry) { return session }
-        guard !deletions.contains(entry.id) else { return nil }
+        guard !storageWork.contains(entry.id) else { return nil }
         library.reload()  // offline publication may have selected another generation
         guard let instance = instance(for: entry), let profile = entry.profile else { return nil }
         let network = NetworkAccessPreference.resolve(profile: profile)
@@ -216,27 +216,31 @@ extension DeviceSession: LibrarySession {
 
     private var restarting: Set<UUID> = []
 
-    /// A controller for a device that isn't running, which never starts: the
-    /// erase it runs is the one a running device gets.
-    func stoppedController(for entry: FirmwareCatalog.Entry) -> EmulatorController? {
-        guard session(for: entry) == nil, let instance = instance(for: entry), let profile = entry.profile else {
-            return nil
-        }
-        return EmulatorController(instance: instance, profile: profile)
-    }
+    // MARK: Deleting and erasing
 
-    // MARK: Deleting
-
-    /// Deletions in flight; their rows show Deleting and can't start.
-    private(set) lazy var deletions: DeviceDeletions = {
-        let deletions = DeviceDeletions()
-        deletions.onChange = { [weak self] in
+    /// Deletions and erases of devices with no running session; their rows show Deleting or Erasing and can't start.
+    private(set) lazy var storageWork: DeviceStorageWork = {
+        let work = DeviceStorageWork()
+        work.onChange = { [weak self] in
             guard let self else { return }
             library.reload()
             NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
         }
-        return deletions
+        return work
     }()
+
+    /// Erase All Content and Settings for a device with no session, off the main actor (a session's erase is its
+    /// controller's, DeviceErase). Its row says Erasing until the task ends; a failure throws.
+    @discardableResult
+    func erase(_ instance: DeviceInstance) -> Task<Void, Error> {
+        let targets = DeviceErase.Targets(instance)
+        let erase = storageWork.run(instance.firmware, as: .erasing) { try targets.remove() }
+        return Task {
+            try await erase.value
+            let settings = DeviceSettingsFile(directory: instance.paths.directory)
+            DeviceErase.erased(DeviceNotices(settings: settings, shortName: "", storageFailed: { false }))
+        }
+    }
 
     /// Removes a device off the main actor: its directory (record, base, overlay, pairing), its logs and its
     /// settings. A shut-down or dead session is released first; a running one throws DeviceInUse. Its row says
@@ -246,7 +250,7 @@ extension DeviceSession: LibrarySession {
         let state = library.state
         let logs = instance.paths.logs
         let entry = catalog.entry(id: instance.firmware)
-        return deletions.run(
+        return storageWork.run(
             instance.firmware,
             release: { [weak self] in
                 guard let self, let entry else { return true }

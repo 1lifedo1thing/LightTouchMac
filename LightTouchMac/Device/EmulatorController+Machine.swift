@@ -110,14 +110,7 @@ extension EmulatorController {
 
     // MARK: - Device storage paths
 
-    /// Saved-state files older builds wrote beside the overlay; Erase removes them.
-    private var snapshotURL: URL { instance.paths.snapshot }
-    private var snapshotTmpURL: URL { snapshotURL.appendingPathExtension("tmp") }
-    private var snapshotBadURL: URL { snapshotURL.appendingPathExtension("bad") }
     var overlayURL: URL { instance.paths.overlay }
-    /// The device's private NOR copy, which pairs with its overlay: Erase removes it too, and the
-    /// next boot clones base/nor.bin again.
-    private var preparedNORURL: URL? { instance.paths.writableNOR }
 
     static let haltBudget: TimeInterval = ShutdownLadder.Budgets().halt
     /// The quit backstop: the halt, then the kill, then the services worker.
@@ -140,15 +133,7 @@ extension EmulatorController {
     }
 
     func requestFactoryReset() { eraser.request() }
-    var eraseTargets: DeviceErase.Targets {
-        DeviceErase.Targets(
-            overlay: overlayURL,
-            snapshots: [snapshotURL, snapshotTmpURL, snapshotBadURL],
-            preparedNOR: preparedNORURL,
-            state: stateDir,
-            owner: instance.id
-        )
-    }
+    var eraseTargets: DeviceErase.Targets { DeviceErase.Targets(instance) }
     func discardInstalls() { AppInstaller.discard(for: instance.id) }
     func stopGuestWatches() {
         foreground.stop()

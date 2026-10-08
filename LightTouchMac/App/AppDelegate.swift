@@ -303,7 +303,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// (EmulatorController.halt: storage flushed, no guest shutdown).
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let answer = quitting.shouldTerminate(
-            erasing: emulators.contains(where: \.isErasing),
+            erasing: emulators.contains(where: \.isErasing) || host?.storageWork.isErasing == true,
             finishRecording: { windowController?.finishRecordingBeforeQuit() == true },
             preparing: FirmwareJobs.shared.preparing,
             confirmPreparation: { preparing in

@@ -246,27 +246,28 @@ extension MainWindowController {
     /// running device then restarts. The base image is never touched.
     @objc func eraseDevice(_ sender: Any?) { selectedEntry.map { perform(.erase, for: $0) } }
 
-    /// For a device that isn't running, a controller that never starts does
-    /// the same erase.
+    /// A device with no session is erased by the host (its row says Erasing); a started one by its controller.
     func erase(_ entry: FirmwareCatalog.Entry) {
-        guard let window, let emulator = host.session(for: entry)?.emulator ?? host.stoppedController(for: entry) else {
-            return
-        }
+        guard let window, let instance = host.instance(for: entry) else { return }
         let alert = NSAlert()
         alert.alertStyle = .critical
         alert.messageText = "Erase all content and settings?"
         alert.informativeText =
-            "This permanently removes all apps, settings, and saved state from this \(emulator.profile.shortName)."
-            + (AppInstaller.hasPendingWork(for: emulator.instance.id) ? " Installs in progress are cancelled." : "")
+            "This permanently removes all apps, settings, and saved state from this \(entry.profile?.shortName ?? "device")."
+            + (AppInstaller.hasPendingWork(for: instance.id) ? " Installs in progress are cancelled." : "")
         alert.addButton(withTitle: "Erase")
         alert.addButton(withTitle: "Cancel")
         alert.buttons.first?.hasDestructiveAction = true
         alert.beginSheetModal(for: window) { [weak self] response in
             // Asked again on the answer: the device may have started or stopped while the question was up.
             guard response == .alertFirstButtonReturn, let self, canPerform(.erase, for: entry),
-                let emulator = host.session(for: entry)?.emulator ?? host.stoppedController(for: entry)
+                let instance = host.instance(for: entry)
             else { return }
-            emulator.requestFactoryReset()
+            if let emulator = host.session(for: entry)?.emulator { return emulator.requestFactoryReset() }
+            let erase = host.erase(instance)
+            Task {
+                do { try await erase.value } catch { await NSAlert(error: error).beginSheetModal(for: window) }
+            }
         }
     }
 

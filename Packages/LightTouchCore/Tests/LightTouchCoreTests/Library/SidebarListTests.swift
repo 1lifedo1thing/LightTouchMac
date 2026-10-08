@@ -126,7 +126,7 @@ struct SidebarListTests {
             !row(nil, job: .preparing(Preparation(name: "x"))).canRemoveFromSidebar,
             "a preparation in flight left the sidebar"
         )
-        let deleting = DeviceRow(entry: e, instanceID: UUID(), session: nil, job: nil, deleting: true)
+        let deleting = DeviceRow(entry: e, instanceID: UUID(), session: nil, job: nil, busy: .deleting)
         #expect(
             deleting.state == .deleting && deleting.accessory == .stopping && deleting.stateDescription == "Deleting"
         )
@@ -136,5 +136,13 @@ struct SidebarListTests {
                 && !deleting.canRemoveFromSidebar,
             "a deleting row offers an action"
         )
+        // A device with no session being erased (state audit A-9): the row says so and offers nothing that touches
+        // its storage (Start, Erase, Delete) until the erase ends; it can still be shown in Finder.
+        let erasing = DeviceRow(entry: e, instanceID: UUID(), session: nil, job: nil, busy: .erasing)
+        #expect(
+            erasing.state == .erasing && erasing.accessory == .stopping && erasing.stateDescription == "Erasing"
+                && erasing.primaryAction == nil && !erasing.canRemoveFromSidebar
+        )
+        #expect(DeviceAction.allCases.filter { erasing.allows($0, canDownload: true) } == [.showInFinder])
     }
 }
