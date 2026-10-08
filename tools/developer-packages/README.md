@@ -20,7 +20,7 @@ uses its unchanged stock libgcc. The SDK's stock ARMv6 crt1.3.1 startup object i
 used, rather than linking custom QEMU startup C into the GPLv3 Bash executable.
 A standard linker symbol alias selects this startup; modernld otherwise ignores
 its reserved raw `start` name and enters `main` without environment setup. The compiler reserves r9, which iOS2.x uses as its thread pointer. The
-non-PIE classic bindings are checked by `mkold.py --legacy` before its redundant
+non-PIE classic bindings are checked by `machotool mkold --legacy` before its redundant
 LC_DYLD_INFO_ONLY command is removed; 2.x dyld rejects that newer command. No
 QEMU startup or 1.x stat/readdir implementation is linked into Bash. GNU's
 build identifier is fixed at2 so retries do not change the qualified bytes.

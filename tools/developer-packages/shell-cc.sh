@@ -33,5 +33,5 @@ else
  LEGACY_LINK=0 link6 -execute "$out" -no_pie -alias start _ltm_sdk_start -e _ltm_sdk_start "${LTM_BASH_WORK:?}/link-sdk/crt1.o" "${objects[@]}" "${link[@]}" "${LTM_BASH_WORK:?}/link-sdk/libgcc_s.1.dylib"
  # The non-PIE classic bindings are complete. Prove the newer dyld command
  # redundant before dropping it, so 2.x's loader can accept the executable.
- python3 "$ARMV6_HERE/mkold.py" "$out" --subtype 6 --legacy
+ machotool mkold "$out" --subtype 6 --legacy
 fi

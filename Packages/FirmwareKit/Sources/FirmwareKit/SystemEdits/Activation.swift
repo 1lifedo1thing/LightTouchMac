@@ -196,7 +196,7 @@ enum MachOSignature {
         guard h.cputype == armCPU, h.cpusubtype == armv7 else { return "cpu \(h.cputype)/\(h.cpusubtype), not armv7" }
         for lc in m.loadCommands {
             switch lc {
-            case .main, .versionMinIphoneos: return "carries LC_MAIN/LC_VERSION_MIN (not run through mkold.py)"
+            case .main, .versionMinIphoneos: return "carries LC_MAIN/LC_VERSION_MIN (not run through machotool mkold)"
             default: continue
             }
         }

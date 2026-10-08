@@ -35,7 +35,7 @@ sed -i '' 's/| arm-\*  | armbe-\*/| arm64-* | arm-*  | armbe-*/' "$LTM_BASH_WORK
 xcrun vtool -set-build-version ios 3.1 3.1 -replace -output "$LTM_BASH_WORK/link-sdk/libgcc_s.1.dylib" "$LTM_BASH_SDK/usr/lib/libgcc_s.1.dylib"
 # Use the SDK's stock startup object, not QEMU's custom GPLv2 startup C code.
 xcrun lipo "$LTM_BASH_SDK/usr/lib/crt1.3.1.o" -thin armv6 -output "$LTM_BASH_WORK/link-sdk/crt1.o"
-python3 "$LTM_QEMU_SOURCE_DIR/contrib/armv6-toolchain/subtype.py" "$LTM_BASH_WORK/link-sdk/crt1.o" 9
+(ARMV6_SDK="$LTM_BASH_SDK"; . "$LTM_QEMU_SOURCE_DIR/contrib/armv6-toolchain/armv6.sh"; machotool subtype "$LTM_BASH_WORK/link-sdk/crt1.o" 9)
 (cd "$LTM_BASH_WORK/build"
  CC="$HERE/shell-cc.sh" CFLAGS='-O1 -Wno-error=implicit-function-declaration' \
  "$LTM_BASH_WORK/bash-4.0/configure" --host=arm-apple-darwin --build=arm64-apple-darwin \
@@ -59,7 +59,7 @@ cp "$SOURCE"/* "$DEST/Sources/"
 cp "$HERE/bash-source.sha256" "$HERE/build-shell.sh" "$HERE/shell-cc.sh" "$DEST/Sources/"
 # Retain the QEMU build adapters used by the recipe and their copyright notice.
 mkdir -p "$DEST/Sources/armv6-toolchain"
-for adapter in armv6.sh legacy.h crt1old.c subtype.py mkold.py README.md; do
+for adapter in armv6.sh legacy.h crt1old.c machotool.c README.md; do
     cp "$LTM_QEMU_SOURCE_DIR/contrib/armv6-toolchain/$adapter" "$DEST/Sources/armv6-toolchain/"
 done
 # Normalize a development-only default in the retained upstream build adapter.
