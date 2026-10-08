@@ -1,5 +1,8 @@
 // Downloads and preparations per catalog entry, for the sidebar rows and the
-// placeholder (DeviceSession.swift's DeviceRow reads `jobs`).
+// placeholder (DeviceSession.swift's DeviceRow reads `jobs`). Each entry's job is
+// one state in a FirmwareJobTable; this class runs what the table asks for and
+// feeds every download, import and preparer event back to it, in order, through
+// one stream.
 //
 // Download and Prepare: an IPSW either store already has, else a CDN download;
 // then `firmwarekit create` (PreparationJob), then a device in the library.
@@ -18,29 +21,35 @@ import HostRuntime
     /// Posted on the main actor when a preparation becomes a device; `object` is its catalog entry id.
     public static let didPublishNotification = Notification.Name("FirmwareJobsDidPublish")
 
-    public internal(set) var jobs: [String: FirmwareJob] = [:] {
-        didSet { NotificationCenter.default.post(name: Self.didChangeNotification, object: self) }
+    /// What each entry's row shows.
+    public var jobs: [String: FirmwareJob] { table.shown }
+    /// Preparers at work, for Quit's question.
+    public var preparing: Int { table.preparing }
+
+    private var table: FirmwareJobTable {
+        didSet {
+            guard table != oldValue else { return }
+            NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
+        }
     }
+
+    /// What reaches the table from elsewhere, in the order it happened.
+    nonisolated enum Input: Sendable {
+        case download(String, FirmwareDownloads.Event)
+        case preparation(String, UUID, PreparationJob.Event)
+        case imported(UUID, String?, Result<(entry: FirmwareCatalog.Entry, ipsw: URL), any Error>)
+    }
+    private nonisolated let inputs: AsyncStream<Input>.Continuation
 
     private let catalog: FirmwareCatalog
     private let store: IPSWStore
     /// Made in init, once self can be captured by its event handler.
     private var downloads: FirmwareDownloads?
-    private var preparations: [String: PreparationJob] = [:]
-    /// When each job's current phase started and how far along it was, for time remaining.
-    private var starts: [String: (date: Date, fraction: Double)] = [:]
-    /// The IPSWs (sha1s) each downloading job waits for: the entry's own and, for a recipe with
-    /// keybag_ramdisk_from, its sibling's. One job, one bar, weighted by size; prepared when all are here.
-    private var waiting: [String: [String]] = [:]
-    /// Downloads with a live task, and how far each is.
-    private var inFlight: [String: Double] = [:]
-    private let bytes: [String: Int64]
-    /// The host each download comes from once its first source failed (FirmwareDownloads' fallback).
-    private var mirrors: [String: String] = [:]
-    /// Each download job's last speed sample (when, bytes so far) and its measured bytes per second.
-    private var speedSamples: [String: (date: Date, bytes: Double)] = [:]
-    private var speeds: [String: Double] = [:]
-    private let firstHosts: [String: String]
+    /// The preparers and import checks running, by the id their events carry.
+    private var preparations: [UUID: PreparationJob] = [:]
+    private var imports: [UUID: Task<Void, Never>] = [:]
+    /// Each IPSW's first URL by sha1.
+    private let urls: [String: URL]
     /// The state root (Preparing/ and Devices/), the log root, and ~/Library/Caches/<bundle> (the preparer's Decrypted/).
     private let state: URL, logs: URL, caches: URL
     /// firmwarekit, if this build has it (FirmwareJobs.preparer).
@@ -104,12 +113,21 @@ import HostRuntime
             catalog.entries.compactMap { e in e.source.sha1.map { ($0, e) } },
             uniquingKeysWith: { a, _ in a }
         )
-        self.bytes = bytes
         let urls = Dictionary(
             catalog.entries.compactMap { e in e.source.sha1.map { ($0, e.source.urls) } },
             uniquingKeysWith: { a, _ in a }
         )
-        firstHosts = urls.compactMapValues { $0.first?.host }
+        self.urls = Dictionary(
+            catalog.entries.compactMap { e in e.source.sha1.flatMap { sha1 in e.source.url.map { (sha1, $0) } } },
+            uniquingKeysWith: { a, _ in a }
+        )
+        table = FirmwareJobTable(
+            bytes: bytes,
+            hosts: urls.compactMapValues { $0.first?.host },
+            seconds: Dictionary(catalog.entries.map { ($0.id, $0.estimates.seconds) }, uniquingKeysWith: { a, _ in a })
+        )
+        let (stream, inputs) = AsyncStream.makeStream(of: Input.self)
+        self.inputs = inputs
         // Made at launch so a download the last launch started reports here.
         // The source or mirror the file came from decides how it is checked: a "rar" one is unwrapped.
         let install: @Sendable (String, URL, URL?) throws -> URL = { sha1, file, from in
@@ -124,24 +142,24 @@ import HostRuntime
             expectedBytes: { bytes[$0] },
             sources: { urls[$0] ?? [] },
             install: install
-        ) { [weak self] sha1, event in
-            Task { @MainActor in self?.download(sha1, event) }
-        }
+        ) { sha1, event in inputs.yield(.download(sha1, event)) }
         self.downloads = downloads
+        Task { [weak self] in
+            for await input in stream { self?.receive(input) }
+        }
         downloads.active { [weak self] sha1s in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 for sha1 in sha1s {
-                    inFlight[sha1] = inFlight[sha1] ?? 0
-                    if let entry = entry(sha1: sha1), jobs[entry.id] == nil {
-                        starts[entry.id] = nil
-                        waiting[entry.id] = [sha1]
-                        jobs[entry.id] = .downloading(fraction: 0)
+                    if let entry = entry(sha1: sha1), table.isIdle(entry.id) {
+                        _ = table.download(entry.id, [sha1])
                     }
                 }
             }
         }
     }
+
+    deinit { inputs.finish() }
 
     private func entry(sha1: String) -> FirmwareCatalog.Entry? { catalog.entries.first { $0.source.sha1 == sha1 } }
 
@@ -176,7 +194,7 @@ import HostRuntime
     // MARK: - Commands
 
     public func downloadAndPrepare(_ entry: FirmwareCatalog.Entry) {
-        guard jobs[entry.id].map({ if case .failed = $0 { true } else { false } }) ?? true else { return }
+        guard table.request(entry.id) else { return }
         if let blob = Self.bundledBlob(entry, resources: resources) { return prepare(entry, ipsw: blob, bundled: true) }
         guard let sha1 = entry.source.sha1, !refuseExisting(entry) else { return }
         // The entry's IPSW and its keybag sibling's (4.3.1–4.3.5 boot 4.3's ramdisk), whichever aren't here yet.
@@ -199,51 +217,40 @@ import HostRuntime
                 $0 + ($1.source.bytes ?? 0) + ($1.source.isArchive ? $1.source.archiveBytes ?? 0 : 0)
             }
             try IPSWStore.checkSpace(size + entry.estimates.peakBytes + inFlightPeakBytes, at: store.downloads)
-            starts[entry.id] = nil
-            waiting[entry.id] = wanted.map(\.0)
-            jobs[entry.id] = .downloading(fraction: downloadFraction(entry.id), files: wanted.count)
-            for (sha1, url) in wanted where inFlight[sha1] == nil {
-                inFlight[sha1] = 0
-                try downloads?.start(sha1: sha1, url: url)
-            }
         } catch {
-            waiting[entry.id] = nil
-            fail(entry, error)
+            return fail(entry, error)
         }
+        for sha1 in table.download(entry.id, wanted.map(\.0)) { startDownload(sha1) }
     }
 
-    /// How far a job's downloads are together, by their catalog sizes.
-    private func downloadFraction(_ id: String) -> Double {
-        let sha1s = waiting[id] ?? []
-        let weight = { (sha1: String) in Double(max(self.bytes[sha1] ?? 1, 1)) }
-        let total = sha1s.reduce(0) { $0 + weight($1) }
-        let done = sha1s.reduce(0) { $0 + weight($1) * (self.inFlight[$1] ?? (self.store.existing($1) != nil ? 1 : 0)) }
-        return total > 0 ? done / total : 0
+    /// A download that can't start fails every job waiting for it.
+    private func startDownload(_ sha1: String) {
+        do {
+            guard let url = urls[sha1], let downloads else { throw FirmwareError.unsupported }
+            try downloads.start(sha1: sha1, url: url)
+        } catch {
+            receive(.download(sha1, .failed(error as? FirmwareError ?? .failed(error.localizedDescription))))
+        }
     }
 
     /// Hashes, matches in the catalog and clones into State/IPSW, then
     /// prepares. `entry` is the row it was dropped on or imported for, if any.
+    /// An IPSW dropped on a row whose entry has a job under way, or one that matches such an entry, leaves that job
+    /// alone (the IPSW is stored all the same).
     public func importIPSW(_ url: URL, for entry: FirmwareCatalog.Entry?) {
-        if let entry, refuseExisting(entry) { return }
-        if let entry { jobs[entry.id] = .preparing(.init(name: "Checking the IPSW")) }
+        if let entry {
+            guard table.isIdle(entry.id) else {
+                return logEvent("firmware: \(entry.id) has a job under way; not importing \(url.lastPathComponent)")
+            }
+            if refuseExisting(entry) { return }
+        }
+        let token = UUID()
+        if let entry { table.importing(entry.id, token) }
         let catalog = catalog
         let store = store
-        Task.detached {
-            let result = Result { try store.importIPSW(url, catalog: catalog) }
-            await MainActor.run { [weak self] in
-                guard let self else { return }
-                switch result {
-                case .success((let matched, let ipsw)):
-                    if let entry {
-                        guard jobs[entry.id] != nil else { return }  // cancelled while hashing
-                        jobs[entry.id] = nil
-                    }
-                    jobs[matched.id] = nil
-                    prepare(matched, ipsw: ipsw)
-                case .failure(let error):
-                    if let entry { fail(entry, error) } else { presentError(error) }
-                }
-            }
+        let inputs = inputs
+        imports[token] = Task.detached {
+            inputs.yield(.imported(token, entry?.id, Result { try store.importIPSW(url, catalog: catalog) }))
         }
     }
 
@@ -255,11 +262,8 @@ import HostRuntime
 
     /// Peak disk use of the downloads and preparations under way.
     private var inFlightPeakBytes: Int64 {
-        jobs.compactMap { id, job -> Int64? in
-            switch job {
-            case .downloading, .preparing: catalog.entry(id: id)?.estimates.peakBytes
-            case .failed: nil
-            }
+        table.jobs.compactMap { id, job -> Int64? in
+            if case .failed = job.phase { nil } else { catalog.entry(id: id)?.estimates.peakBytes }
         }.reduce(0, +)
     }
 
@@ -272,96 +276,76 @@ import HostRuntime
         return true
     }
 
-    public func cancel(_ entry: FirmwareCatalog.Entry) {
-        speedSamples[entry.id] = nil
-        speeds[entry.id] = nil
-        if let job = preparations[entry.id] {
-            job.cancel()
-        } else if let sha1s = waiting.removeValue(forKey: entry.id) {
-            // A download another job still waits for goes on.
-            for sha1 in sha1s where inFlight[sha1] != nil && !waiting.values.contains(where: { $0.contains(sha1) }) {
-                inFlight[sha1] = nil
-                downloads?.cancel(sha1: sha1)
-            }
-        }
-        jobs[entry.id] = nil
-    }
+    public func cancel(_ entry: FirmwareCatalog.Entry) { run(table.cancel(entry.id)) }
 
     // MARK: - Steps
 
-    /// One IPSW's event, for every job waiting on it.
-    private func download(_ sha1: String, _ event: FirmwareDownloads.Event) {
-        let name = entry(sha1: sha1)?.id ?? sha1
-        let ids = waiting.filter { $0.value.contains(sha1) }.map(\.key).sorted()
-        switch event {
-        case .progress(let fraction):
-            guard inFlight[sha1] != nil else { return }
-            inFlight[sha1] = fraction
-            for id in ids {
-                guard let entry = catalog.entry(id: id), case .downloading? = jobs[id], let sha1s = waiting[id] else {
-                    continue
-                }
-                let overall = downloadFraction(id)
-                // The bar spans the download and the preparation: the time left is both.
-                let left = remaining(entry, overall).map { $0 + Double(entry.estimates.seconds) }
-                jobs[id] = .downloading(
-                    fraction: overall,
-                    remaining: left,
-                    files: sha1s.count,
-                    mirror: sha1s.lazy.compactMap { self.mirrors[$0] ?? self.firstHosts[$0] }.first.flatMap(
-                        FirmwareJob.thirdParty
-                    ),
-                    speed: speed(id, bytes: overall * Double(sha1s.reduce(0) { $0 + (self.bytes[$1] ?? 0) }))
-                )
+    func receive(_ input: Input) {
+        let now = Date()
+        switch input {
+        case .download(let sha1, let event):
+            let name = entry(sha1: sha1)?.id ?? sha1
+            switch event {
+            case .finished: logEvent("firmware: downloaded \(name)")
+            case .failed(let error): logEvent("firmware: download of \(name) failed: \(error.localizedDescription)")
+            case .cancelled: logEvent("firmware: download of \(name) cancelled and discarded")
+            case .progress, .mirror, .resumed: break
             }
-        case .mirror(let url): mirrors[sha1] = url.host
-        case .resumed: break
-        case .finished:
-            inFlight[sha1] = nil
-            mirrors[sha1] = nil
-            logEvent("firmware: downloaded \(name)")
-            // A job with nothing left to fetch prepares; one still fetching the other IPSW waits.
-            for id in ids {
-                guard let entry = catalog.entry(id: id), let sha1s = waiting[id],
-                    sha1s.allSatisfy({ inFlight[$0] == nil })
-                else { continue }
-                waiting[id] = nil
+            run(table.download(sha1, event, now: now))
+        case .preparation(let id, let job, let event):
+            let effects = table.preparation(id, job, event, now: now)
+            switch event {
+            case .begin, .step, .progress: break
+            case .warning(let message): logEvent("firmware: \(id): \(message)")
+            case .published(let instance):
+                preparations[job] = nil
+                logEvent("firmware: \(id) is device \(instance.id.uuidString)")
+                library.reload()
+                NotificationCenter.default.post(name: Self.didPublishNotification, object: id)
+            case .failed(let message):
+                preparations[job] = nil
+                logEvent("firmware: \(id): \(message)")
+            case .cancelled:
+                preparations[job] = nil
+                logEvent("firmware: preparation of \(id) cancelled")
+            }
+            run(effects)
+        case .imported(let token, let id, let result):
+            imports[token] = nil
+            switch result {
+            case .success((let matched, let ipsw)):
+                if table.imported(token, onto: id, matched: matched.id) {
+                    prepare(matched, ipsw: ipsw)
+                } else {
+                    logEvent("firmware: imported \(matched.id)'s IPSW; not preparing (cancelled, or a job under way)")
+                }
+            case .failure(let error):
+                logEvent("firmware: import: \(error.localizedDescription)")
+                if let id {
+                    _ = table.importFailed(token, onto: id, error.localizedDescription)
+                } else {
+                    presentError(error)
+                }
+            }
+        }
+    }
+
+    private func run(_ effects: [FirmwareJobTable.Effect]) {
+        for effect in effects {
+            switch effect {
+            case .cancelDownload(let sha1): downloads?.cancel(sha1: sha1)
+            case .cancelImport(let token): imports.removeValue(forKey: token)?.cancel()
+            case .cancelPreparation(let job): preparations[job]?.cancel()
+            case .prepare(let id):
+                guard let entry = catalog.entry(id: id) else { continue }
                 guard let own = entry.source.sha1, let ipsw = store.existing(own) else {
                     fail(entry, FirmwareError.failed("The download of iOS \(entry.version) is missing."))
                     continue
                 }
                 prepare(entry, ipsw: ipsw, afterDownload: true)
+            case .retry(let id): catalog.entry(id: id).map(downloadAndPrepare)
             }
-            // Nobody waits (the other IPSW of a job that failed): it stays downloaded.
-            if ids.isEmpty { NotificationCenter.default.post(name: Self.didChangeNotification, object: self) }
-        case .failed(let error):
-            inFlight[sha1] = nil
-            mirrors[sha1] = nil
-            for id in ids {
-                waiting[id] = nil
-                if let entry = catalog.entry(id: id) { fail(entry, error) }
-            }
-        case .cancelled:
-            mirrors[sha1] = nil
-            logEvent("firmware: download of \(name) cancelled and discarded")
         }
-    }
-
-    /// Bytes per second over the last few seconds of a job's download; nil until measured.
-    private func speed(_ id: String, bytes: Double) -> Double? {
-        let now = Date()
-        guard let sample = speedSamples[id] else {
-            speedSamples[id] = (now, bytes)
-            return nil
-        }
-        let elapsed = now.timeIntervalSince(sample.date)
-        if elapsed >= 3 {
-            let rate = max(0, bytes - sample.bytes) / elapsed
-            // Smoothed, so one slow interval doesn't swing it.
-            speeds[id] = speeds[id].map { $0 * 0.6 + rate * 0.4 } ?? rate
-            speedSamples[id] = (now, bytes)
-        }
-        return speeds[id]
     }
 
     /// The entry's packed base in this bundle (a development build has none).
@@ -387,16 +371,11 @@ import HostRuntime
     /// download filled the first half of its bar.
     private func prepare(_ entry: FirmwareCatalog.Entry, ipsw: URL, bundled: Bool = false, afterDownload: Bool = false)
     {
-        speedSamples[entry.id] = nil
-        speeds[entry.id] = nil
-        guard preparations[entry.id] == nil else { return }
-        if refuseExisting(entry) {
-            jobs[entry.id] = nil
-            return
-        }
+        guard table.mayPrepare(entry.id) else { return }
+        if refuseExisting(entry) { return table.clear(entry.id) }
         guard let preparer else { return fail(entry, FirmwareError.failed(unavailableReason ?? "")) }
-        let others = jobs.filter { $0.key != entry.id }.compactMap { id, job -> Int64? in
-            if case .preparing = job { return catalog.entry(id: id)?.estimates.peakBytes } else { return nil }
+        let others = table.jobs.filter { $0.key != entry.id }.compactMap { id, job -> Int64? in
+            if case .preparing = job.phase { return catalog.entry(id: id)?.estimates.peakBytes } else { return nil }
         }.reduce(0, +)
         do { try IPSWStore.checkSpace(entry.estimates.peakBytes + others, at: state) } catch {
             return fail(entry, error)
@@ -422,65 +401,18 @@ import HostRuntime
             blob: bundled ? ipsw : nil,
             skipSetup: !bundled && Self.offersSkipSetup(entry) && skipsSetup.contains(entry.id)
         )
-        let job = PreparationJob(request) { [weak self] event in
-            Task { @MainActor in self?.preparation(entry, event) }
+        let id = UUID()
+        let job = PreparationJob(request, id: id) { [inputs, entryID = entry.id] event in
+            inputs.yield(.preparation(entryID, id, event))
         }
-        preparations[entry.id] = job
-        starts[entry.id] = (Date(), 0)
-        jobs[entry.id] = .preparing(.init(name: "Starting", startsAt: afterDownload ? 0.5 : 0))
+        preparations[id] = job
+        table.preparing(entry.id, id, afterDownload: afterDownload, now: Date())
         logEvent("firmware: \(bundled ? "unpacking the built-in" : "preparing") \(entry.id) as \(job.id.uuidString)")
         job.start()
     }
 
-    /// Seconds left from this phase's start (the first report of a resumed download) to `fraction` now.
-    private func remaining(_ entry: FirmwareCatalog.Entry, _ fraction: Double) -> TimeInterval? {
-        guard let start = starts[entry.id] else {
-            starts[entry.id] = (Date(), fraction)
-            return nil
-        }
-        return estimatedRemaining(elapsed: Date().timeIntervalSince(start.date), from: start.fraction, to: fraction)
-    }
-
-    private func preparation(_ entry: FirmwareCatalog.Entry, _ event: PreparationJob.Event) {
-        func update(_ change: (inout Preparation) -> Void) {
-            guard preparations[entry.id] != nil, case .preparing(var p)? = jobs[entry.id] else { return }
-            change(&p)
-            p.remaining = p.overall.flatMap { remaining(entry, $0) }
-            jobs[entry.id] = .preparing(p)
-        }
-        switch event {
-        case .begin(let seconds): update { $0.seconds = seconds }
-        case .step(let index, let count, let name):
-            update {
-                $0.step = index
-                $0.steps = count
-                $0.name = name
-                $0.fraction = 0
-                $0.detail = nil
-            }
-        case .progress(let fraction, let detail):
-            update {
-                $0.fraction = fraction
-                $0.detail = detail ?? $0.detail
-            }
-        case .warning(let message): logEvent("firmware: \(entry.id): \(message)")
-        case .published(let instance):
-            preparations[entry.id] = nil
-            jobs[entry.id] = nil
-            logEvent("firmware: \(entry.id) is device \(instance.id.uuidString)")
-            library.reload()
-            NotificationCenter.default.post(name: Self.didPublishNotification, object: entry.id)
-        case .failed(let message):
-            preparations[entry.id] = nil
-            fail(entry, FirmwareError.failed(message))
-        case .cancelled:
-            preparations[entry.id] = nil
-            logEvent("firmware: preparation of \(entry.id) cancelled")
-        }
-    }
-
     private func fail(_ entry: FirmwareCatalog.Entry, _ error: any Error) {
         logEvent("firmware: \(entry.id): \(error.localizedDescription)")
-        jobs[entry.id] = .failed(error.localizedDescription)
+        table.fail(entry.id, error.localizedDescription)
     }
 }

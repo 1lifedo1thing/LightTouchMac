@@ -137,7 +137,7 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
         return "the guest tools don’t run on it"  // it_boot, the guest package's pieces, the helpers
     }
 
-    public let id = UUID()
+    public let id: UUID
     public let request: Request
     private let onEvent: @Sendable (Event) -> Void
     private var task: Task<Void, Never>?
@@ -154,7 +154,8 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
     public static func preparing(_ state: URL) -> URL { state.appendingPathComponent("Preparing", isDirectory: true) }
 
     /// Events arrive on a background queue, `.published`, `.failed` or `.cancelled` last.
-    public init(_ request: Request, onEvent: @escaping @Sendable (Event) -> Void) {
+    public init(_ request: Request, id: UUID = UUID(), onEvent: @escaping @Sendable (Event) -> Void) {
+        self.id = id
         self.request = request
         self.onEvent = onEvent
     }

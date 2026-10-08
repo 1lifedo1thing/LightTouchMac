@@ -30,12 +30,13 @@ import os
 
     /// A FirmwareJobs over `root`'s state, logs and caches, recording every change to one entry's job.
     @MainActor final class Harness {
-        let state: URL, store: IPSWStore, jobs: FirmwareJobs, library: DeviceLibrary
+        let state: URL, store: IPSWStore, jobs: FirmwareJobs, library: DeviceLibrary, catalog: FirmwareCatalog
         var seen: [String: [FirmwareJob]] = [:]
         var changes: [String: Int] = [:]
         private var observer: (any NSObjectProtocol)?
 
         init(_ root: URL, catalog: FirmwareCatalog, preparer: URL?, resources: URL? = nil) throws {
+            self.catalog = catalog
             state = root.appendingPathComponent("state")
             try StorageLocations.privateDirectory(state)
             store = IPSWStore(
@@ -220,8 +221,9 @@ import os
 
     // MARK: - A sibling's ramdisk
 
-    /// iPad 4.3.1–4.3.5 boot 4.3's ramdisk (recipe.keybag_ramdisk_from); a catalog of 4.3 and 4.3.1 over small file:// IPSWs.
-    @MainActor func siblings(_ tmp: URL) throws -> (
+    /// iPad 4.3.1–4.3.5 boot 4.3's ramdisk (recipe.keybag_ramdisk_from); a catalog of 4.3 and 4.3.1 over small file:// IPSWs
+    /// (4.3's from `baseURL` instead, if given).
+    @MainActor func siblings(_ tmp: URL, baseURL: String? = nil) throws -> (
         Harness, point: FirmwareCatalog.Entry, base: FirmwareCatalog.Entry, argv: URL, pointIPSW: URL
     ) {
         var point = Self.entry("k48ap-8G4")
@@ -234,7 +236,8 @@ import os
             let data = LibraryFixtures.randomData(size)
             try data.write(to: url)
             let source: [String: Any] = [
-                "kind": "ipsw", "url": url.absoluteString, "sha1": IPSWStoreTests.sha1Hex(data), "bytes": size,
+                "kind": "ipsw", "url": i == 1 ? baseURL ?? url.absoluteString : url.absoluteString,
+                "sha1": IPSWStoreTests.sha1Hex(data), "bytes": size,
             ]
             if i == 0 {
                 point["source"] = source
@@ -559,18 +562,23 @@ enum FirmwareKitTool {
     static func path() async throws -> URL { try await Task.detached { try built.get() }.value }
 }
 
-/// A loopback HTTP server: GET of a known path answers its bytes, anything else 404; every path asked is logged.
+/// A loopback HTTP server: GET of a known path answers its bytes, a `hanging` one never answers, anything else 404;
+/// every path asked is logged.
 nonisolated final class TestHTTPServer: @unchecked Sendable {
     private let listener: NWListener
     private let files: [String: Data]
+    private let hanging: Set<String>
+    /// The hanging paths' connections, held open until stop.
+    private var held: [NWConnection] = []
     private let queue = DispatchQueue(label: "test-http")
     private let lock = NSLock()
     private var requests: [String] = []
     private(set) var base = ""
     var log: [String] { lock.withLock { requests } }
 
-    init(_ files: [String: Data]) async throws {
+    init(_ files: [String: Data], hanging: Set<String> = []) async throws {
         self.files = files
+        self.hanging = hanging
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
         listener = try NWListener(using: parameters)
@@ -599,7 +607,10 @@ nonisolated final class TestHTTPServer: @unchecked Sendable {
         base = "http://127.0.0.1:\(port)"
     }
 
-    func stop() { listener.cancel() }
+    func stop() {
+        listener.cancel()
+        lock.withLock { held }.forEach { $0.cancel() }
+    }
 
     private func receive(_ connection: NWConnection, _ buffer: Data) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [self] data, _, done, error in
@@ -612,6 +623,7 @@ nonisolated final class TestHTTPServer: @unchecked Sendable {
                 String(decoding: buffer, as: UTF8.self).split(separator: "\r\n").first?.split(separator: " ") ?? []
             let path = words.count > 1 ? String(words[1]) : ""
             lock.withLock { requests.append(path) }
+            guard !hanging.contains(path) else { return lock.withLock { held.append(connection) } }
             let body = words.first == "GET" ? files[path] : nil
             let head =
                 "HTTP/1.1 \(body == nil ? "404 Not Found" : "200 OK")\r\nContent-Length: \((body ?? Data("gone".utf8)).count)\r\nConnection: close\r\n\r\n"
