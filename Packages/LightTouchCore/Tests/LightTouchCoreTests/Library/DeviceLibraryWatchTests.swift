@@ -115,6 +115,35 @@ struct DeviceLibraryWatchTests {
         }
     }
 
+    /// A vanished device whose helper won't exit stays (nothing may start a second on its storage), and the next
+    /// change to the library stops it again rather than ignoring it for good (state audit B-10).
+    @Test func aVanishedDeviceWhoseHelperWouldNotExitIsTriedAgain() async throws {
+        _ = LibraryFixtures.isolatedAppState
+        try await LibraryFixtures.withScratch { scratch in
+            let state = scratch.appendingPathComponent("State", isDirectory: true)
+            let gone = try record("Gone", state: state)
+            let library = DeviceLibrary(state: state)
+            let session = Started(gone, directory: scratch)
+            session.stuck = true
+            session.fake.fakeHelper?.hung = true
+            session.fake.ladder.budgets.kill = 0.05
+            session.fake.fakeHelper?.onExit = { session.fake.fakeHelper?.isDead = false }
+            var dropped = 0
+            let vanished = VanishedDevices()
+            try FileManager.default.removeItem(at: DeviceInstance.directory(gone.id, state: state))
+            library.reload()
+            vanished.stop([session], library: library) { _ in dropped += 1 }
+            await eventually("the first release failed") { session.releases == 1 }
+            try await Task.sleep(for: .milliseconds(50))
+            #expect(dropped == 0, "a helper that would not exit keeps its session")
+            session.stuck = false
+            session.fake.fakeHelper?.onExit = nil
+            vanished.stop([session], library: library) { _ in dropped += 1 }
+            await eventually("stopped again and dropped") { dropped == 1 }
+            #expect(session.releases == 2)
+        }
+    }
+
     /// Delete and Prepare Again (state audit B-4, B-11): a shut-down or dead device's session lets go of its helper
     /// first, so its storage goes without quitting the app; one running (started again while the question was up)
     /// is refused with DeviceInUse and keeps its storage, where the host used to trap.

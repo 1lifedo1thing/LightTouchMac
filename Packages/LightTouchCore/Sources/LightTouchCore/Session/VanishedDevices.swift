@@ -30,8 +30,9 @@ public final class VanishedDevices {
     private var stopping: Set<UUID> = []
     public init() {}
 
-    /// After the library changed: each session whose record it no longer has stops, once; `drop` takes it out
-    /// once its helper is gone. One whose helper would not exit stays, so nothing starts a second on its storage.
+    /// After the library changed: each session whose record it no longer has stops, once at a time; `drop` takes it
+    /// out once its helper is gone. One whose helper would not exit stays, so nothing starts a second on its storage,
+    /// and the next change to the library tries again.
     public func stop<S: LibrarySession>(_ sessions: [S], library: DeviceLibrary, drop: @escaping (S) -> Void) {
         let present = Set(library.instances.map(\.id))
         for session in sessions where !present.contains(session.instance.id) {
@@ -41,10 +42,9 @@ public final class VanishedDevices {
             let halt = session.ladder.halt()
             Task {
                 _ = await halt.value
-                guard await session.release() else {
-                    return logEvent("library: \(session.instance.name)'s helper did not exit")
-                }
+                let released = await session.release()
                 stopping.remove(id)
+                guard released else { return logEvent("library: \(session.instance.name)'s helper did not exit") }
                 drop(session)
             }
         }
