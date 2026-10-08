@@ -62,30 +62,39 @@ import Testing
         #expect(try IMG2.payload(body) == Data(contentsOf: Self.files.appendingPathComponent("iboot_204_n45ap.bin")))
     }
 
-    /// The oracle, inline: the ipod-1g-fires agent's scratch tools that proved the layout on the emulator.
+    /// The oracle, ported from the ipod-1g-fires agent's scratch tools that proved the layout on the emulator:
     /// logical.py's reading of the store (per logical page, the newest type-0x40 copy by the spare's lpn and age)
     /// as a flat image from LBA 3, and mkstore.py's VFL context (usnDec, next page, checksums; no reserved pool).
-    static let oracle = """
-        import hashlib, json, os, struct, sys
-        store = sys.argv[1]
-        best = {}
-        for b in range(8):
-            for f in os.listdir(f'{store}/bank{b}'):
-                p = int(f.split('.')[0]); raw = open(f'{store}/bank{b}/{f}', 'rb').read()
-                if raw[2048 + 9] != 0x40: continue
-                lpn, age = struct.unpack('<II', raw[2048:2056]); key = (age, (p % 128) * 8 + b)
-                if lpn not in best or key > best[lpn][0]: best[lpn] = (key, raw[:2048])
-        img = b''.join(best[l][1] if l in best else bytes(2048) for l in range(3, max(best) + 1))
-        d = bytearray(2048)
-        def put(o, v, n): d[o:o + n] = (v & ((1 << (8 * n)) - 1)).to_bytes(n, 'little')
-        for i in range(3): put(4 + 2 * i, i, 2)
-        for i in range(1672, 1672 + 281): d[i] = 0xFF
-        put(1954, 35, 2); put(0xC, 0xFFFFFFFF, 4); put(0x12, 8, 2)
-        w = struct.unpack('<510I', bytes(d[:0x7F8])); x = 0
-        for v in w: x ^= v
-        put(0x7F8, (sum(w) + 0xAABBCCDD) & 0xFFFFFFFF, 4); put(0x7FC, x ^ 0xAABBCCDD, 4)
-        print(json.dumps({"image": hashlib.sha256(img).hexdigest(), "pages": len(img) // 2048, "vfl": bytes(d).hex()}))
-        """
+    static func oracle(_ store: URL) throws -> (image: Data, vfl: [UInt8]) {
+        var best: [UInt32: (key: (UInt32, Int), page: Data)] = [:]
+        for b in 0..<8 {
+            let bank = store.appendingPathComponent("bank\(b)")
+            for f in try FileManager.default.contentsOfDirectory(atPath: bank.path) {
+                let p = Int(f.split(separator: ".")[0])!
+                let raw = [UInt8](try Data(contentsOf: bank.appendingPathComponent(f)))
+                guard raw[2048 + 9] == 0x40 else { continue }
+                let u32 = { (o: Int) in (0..<4).reduce(UInt32(0)) { $0 | UInt32(raw[o + $1]) << (8 * $1) } }
+                let (lpn, key) = (u32(2048), (u32(2052), (p % 128) * 8 + b))
+                if let old = best[lpn], old.key >= key { continue }
+                best[lpn] = (key, Data(raw[0..<2048]))
+            }
+        }
+        let image = (3...best.keys.max()!).reduce(into: Data()) { $0 += best[$1]?.page ?? Data(count: 2048) }
+        var d = [UInt8](repeating: 0, count: 2048)
+        let put = { (o: Int, v: UInt32, n: Int) in for i in 0..<n { d[o + i] = UInt8(truncatingIfNeeded: v >> (8 * i)) }
+        }
+        for i in 0..<3 { put(4 + 2 * i, UInt32(i), 2) }
+        for i in 1672..<1672 + 281 { d[i] = 0xFF }
+        put(1954, 35, 2)
+        put(0xC, 0xFFFF_FFFF, 4)
+        put(0x12, 8, 2)
+        let w = stride(from: 0, to: 0x7F8, by: 4).map { o in
+            (0..<4).reduce(UInt32(0)) { $0 | UInt32(d[o + $1]) << (8 * $1) }
+        }
+        put(0x7F8, w.reduce(0, &+) &+ 0xAABB_CCDD, 4)
+        put(0x7FC, w.reduce(0, ^) ^ 0xAABB_CCDD, 4)
+        return (image, d)
+    }
 
     /// A volume with data in its first and third logical blocks and none in its second: every page of all three
     /// is written (the FTL fails the read of a mapped page left erased), the VFL context is VFL_Format's, and the
@@ -135,14 +144,9 @@ import Testing
         }
         #expect(entry(0) == 23 && entry(3799) == 3799 + 23 && entry(3800) == 0xFFFF && entry(4095) == 0xFFFF)
 
-        let r = try Fixtures.run(["python3", "-c", Self.oracle, out.path])
-        #expect(r.status == 0, "\(r.err)")
-        let o = try JSONSerialization.jsonObject(with: r.out) as! [String: Any]
-        #expect(
-            o["pages"] as? Int == 3 * ps - 3 && o["image"] as? String == Preparer.sha256(vol + Data(count: 100 * pp))
-        )
+        let (image, theirs) = try Self.oracle(out)
+        #expect(image.count / pp == 3 * ps - 3 && image == vol + Data(count: 100 * pp))
 
-        let theirs = [UInt8](Data(hex: o["vfl"] as! String)!)
         let le = { (b: [UInt8], o: Int, n: Int) in (0..<n).reduce(UInt64(0)) { $0 | UInt64(b[o + $1]) << (8 * $1) } }
         for bank in 0..<N45NAND.banks {
             let first = [UInt8](try Data(contentsOf: file(N45NAND.Page(bank: bank, page: 35 * 128))))

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 
@@ -5,65 +6,79 @@ import Testing
 
 /// Oracle plumbing for the HFS+ tests: an independent listing through hdiutil mounts, run on temp copies.
 enum HFSOracle {
-    /// python3 -c SCRIPT ARGS...; stdout.
-    static func python(_ script: String, _ args: [String]) throws -> Data {
-        let p = Process()
-        let out = Pipe()
-        let err = Pipe()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        p.arguments =
-            ["python3", "-c", "import sys\n" + script] + args
-        p.standardOutput = out
-        p.standardError = err
-        try p.run()
-        let o = out.fileHandleForReading.readDataToEndOfFile()
-        let e = err.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        guard p.terminationStatus == 0 else {
-            throw FirmwareError(.internal, "python: \(String(decoding: e, as: UTF8.self))")
-        }
-        return o
+    /// One path as the mounted volume shows it; uid/gid only where the owners-on mount could read them, sha256 only
+    /// for readable regular files, link only for symlinks.
+    struct Walked {
+        var uid: Int?
+        var gid: Int?
+        var mode = 0
+        var flags = 0
+        var size = 0
+        var sha256: String?
+        var link: String?
     }
 
     /// A listing through two read-only mounts of IMG (-owners on for uid/gid where reachable, off for the
-    /// rest): {path: [uid, gid, st_mode, st_flags, size, sha256, link]}. Independent of the catalog reader.
-    static let walk = """
-        import hashlib, json, os, subprocess, tempfile
-        img = sys.argv[1]
-        def walk(owners, body):
-            mnt = tempfile.mkdtemp(prefix="fk-walk.")
-            r = subprocess.run(["hdiutil", "attach", "-readonly", "-owners", owners, "-nobrowse", "-noverify", "-imagekey",
-                                "diskimage-class=CRawDiskImage", "-mountpoint", mnt, img], capture_output=True, text=True, check=True)
-            dev = r.stdout.split()[0]
-            try:
-                for root, dn, fn in os.walk(mnt):
-                    for n in ([""] if root == mnt else []) + dn + fn:
-                        p = os.path.join(root, n) if n else root
-                        body(os.path.relpath(p, mnt) if n else "", p)
-            finally:
-                subprocess.run(["hdiutil", "detach", dev], capture_output=True)
-                os.rmdir(mnt)
-        out, own = {}, {}
-        def meta(rel, p):
-            st = os.lstat(p)
-            own[rel] = (st.st_uid, st.st_gid)
-        def content(rel, p):
-            st = os.lstat(p)
-            e = out[rel] = [None, None, st.st_mode, st.st_flags, 0 if os.path.isdir(p) and not os.path.islink(p) else st.st_size, None, None]
-            if os.path.islink(p):
-                e[6] = os.readlink(p)
-            elif os.path.isfile(p) and os.access(p, os.R_OK):
-                h = hashlib.sha256()
-                with open(p, "rb") as f:
-                    for c in iter(lambda: f.read(1 << 22), b""):
-                        h.update(c)
-                e[5] = h.hexdigest()
-        walk("on", meta)
-        walk("off", content)
-        for k, v in out.items():
-            v[0], v[1] = own.get(k, (None, None))
-        json.dump(out, sys.stdout)
-        """
+    /// rest), keyed by path relative to the volume root ("" for the root). Independent of the catalog reader.
+    static func walk(_ img: URL) async throws -> [String: Walked] {
+        var owners: [String: (Int, Int)] = [:]
+        try await mounted(img, owners: "on") { rel, _, st in owners[rel] = (Int(st.st_uid), Int(st.st_gid)) }
+        var out: [String: Walked] = [:]
+        try await mounted(img, owners: "off") { rel, p, st in
+            var e = Walked(uid: owners[rel]?.0, gid: owners[rel]?.1)
+            e.mode = Int(st.st_mode)
+            e.flags = Int(st.st_flags)
+            let type = st.st_mode & S_IFMT
+            e.size = type == S_IFDIR ? 0 : Int(st.st_size)
+            if type == S_IFLNK {
+                e.link = try FileManager.default.destinationOfSymbolicLink(atPath: p)
+            } else if type == S_IFREG, access(p, R_OK) == 0 {
+                e.sha256 = try sha256(of: p)
+            }
+            out[rel] = e
+        }
+        return out
+    }
+
+    /// Attaches IMG read-only at a temp mount point and calls BODY(relative path, path, lstat) for the root and
+    /// everything under it (symlinked directories not followed, unreadable directories skipped), then detaches.
+    static func mounted(
+        _ img: URL,
+        owners: String,
+        _ body: (String, String, stat) throws -> Void
+    ) async throws {
+        let mnt = FileManager.default.temporaryDirectory.appendingPathComponent("fk-walk.\(UUID().uuidString)").path
+        try FileManager.default.createDirectory(atPath: mnt, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(atPath: mnt) }
+        let attach = try await DiskImage.run([
+            "/usr/bin/hdiutil", "attach", "-readonly", "-owners", owners, "-nobrowse", "-noverify", "-imagekey",
+            "diskimage-class=CRawDiskImage", "-mountpoint", mnt, img.path,
+        ])
+        let dev = String(attach.split(whereSeparator: \.isWhitespace).first ?? "")
+        do {
+            func visit(_ rel: String) throws {
+                let p = rel.isEmpty ? mnt : mnt + "/" + rel
+                var st = stat()
+                guard lstat(p, &st) == 0 else { throw FirmwareError(.internal, "lstat \(p): errno \(errno)") }
+                try body(rel, p, st)
+            }
+            try visit("")
+            let e = FileManager.default.enumerator(atPath: mnt)!
+            while let rel = e.nextObject() as? String { try visit(rel) }
+        } catch {
+            _ = try? await DiskImage.run(["/usr/bin/hdiutil", "detach", dev])
+            throw error
+        }
+        _ = try await DiskImage.run(["/usr/bin/hdiutil", "detach", dev])
+    }
+
+    static func sha256(of path: String) throws -> String {
+        let f = try FileHandle(forReadingFrom: URL(fileURLWithPath: path))
+        defer { try? f.close() }
+        var h = SHA256()
+        while let c = try f.read(upToCount: 1 << 22), !c.isEmpty { h.update(data: c) }
+        return h.finalize().map { String(format: "%02x", $0) }.joined()
+    }
 
     /// The raw system volume of a firmware (UDIF slice of the decrypted cache's rootfs.dmg), in `dir`.
     static func rawSystem(_ fw: Oracle.Firmware, in dir: URL) async throws -> URL? {
@@ -85,13 +100,14 @@ enum HFSOracle {
     ) func readerMatchesMount(_ fw: Oracle.Firmware) async throws {
         try await Oracle.withTemp { dir in
             guard let raw = try await HFSOracle.rawSystem(fw, in: dir) else {
-                try FixtureRequirements.missing(#"HFSPlusTests.swift: let raw = try await HFSOracle.rawSystem(fw, in: dir)"#)
+                try FixtureRequirements.missing(
+                    #"HFSPlusTests.swift: let raw = try await HFSOracle.rawSystem(fw, in: dir)"#
+                )
             }
             let vol = try HFSPlusVolume(raw)
             #expect(vol.signature == "HX" && vol.blockSize == 8192)
             let mine = try Oracle.time("HFSPlus listing \(fw.entryID)") { try vol.listing() }
-            let walked =
-                try JSONSerialization.jsonObject(with: HFSOracle.python(HFSOracle.walk, [raw.path])) as! [String: [Any]]
+            let walked = try await HFSOracle.walk(raw)
             #expect(mine.count == walked.count)
             var diffs: [String] = []
             for e in mine {
@@ -99,18 +115,16 @@ enum HFSOracle {
                     diffs.append("only in the catalog: \(e.path)")
                     continue
                 }
-                let uid = w[0] as? Int
-                let gid = w[1] as? Int
-                if let uid, let gid, (uid, gid) != (Int(e.uid), Int(e.gid)) {
+                if let uid = w.uid, let gid = w.gid, (uid, gid) != (Int(e.uid), Int(e.gid)) {
                     diffs.append("\(e.path): owner \(e.uid):\(e.gid) vs \(uid):\(gid)")
                 }
-                if w[2] as? Int != Int(e.mode) {
-                    diffs.append("\(e.path): mode \(String(e.mode, radix: 8)) vs \(String(w[2] as! Int, radix: 8))")
+                if w.mode != Int(e.mode) {
+                    diffs.append("\(e.path): mode \(String(e.mode, radix: 8)) vs \(String(w.mode, radix: 8))")
                 }
-                if w[3] as? Int != Int(e.flags) { diffs.append("\(e.path): flags \(e.flags) vs \(w[3])") }
-                if w[4] as? Int != Int(e.size) { diffs.append("\(e.path): size \(e.size) vs \(w[4])") }
-                if let s = w[5] as? String, s != e.sha256 { diffs.append("\(e.path): sha256") }
-                if w[6] as? String != e.link { diffs.append("\(e.path): link \(e.link ?? "-") vs \(w[6])") }
+                if w.flags != Int(e.flags) { diffs.append("\(e.path): flags \(e.flags) vs \(w.flags)") }
+                if w.size != Int(e.size) { diffs.append("\(e.path): size \(e.size) vs \(w.size)") }
+                if let s = w.sha256, s != e.sha256 { diffs.append("\(e.path): sha256") }
+                if w.link != e.link { diffs.append("\(e.path): link \(e.link ?? "-") vs \(w.link ?? "-")") }
             }
             #expect(diffs.isEmpty, "\(diffs.prefix(20))")
         }
@@ -123,7 +137,9 @@ enum HFSOracle {
     ) func ownershipEdits(_ fw: Oracle.Firmware) async throws {
         try await Oracle.withTemp { dir in
             guard let raw = try await HFSOracle.rawSystem(fw, in: dir) else {
-                try FixtureRequirements.missing(#"HFSPlusTests.swift: let raw = try await HFSOracle.rawSystem(fw, in: dir)"#)
+                try FixtureRequirements.missing(
+                    #"HFSPlusTests.swift: let raw = try await HFSOracle.rawSystem(fw, in: dir)"#
+                )
             }
             let specs = [
                 "private/var/mobile:0:0", "System/Library/LaunchDaemons/com.apple.SpringBoard.plist:501:20",
