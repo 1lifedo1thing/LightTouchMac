@@ -262,8 +262,8 @@ public nonisolated enum BootRecipe {
         let argv =
             ["LightTouchMac", "-M", machine, "-m", d.memory, "-display", "none", "-no-shutdown"]
             + audio + ["-serial", serial] + (netdev.map { ["-netdev", $0] } ?? []) + restore
-        // The settings 3.1.3 will not boot without (contrib/run-ipod-touch.sh). No
-        // IT_LCD_BRIGHT: the guest's own backlight is what makes Lock visible.
+        // The setting 3.1.3 will not boot without. No IT_LCD_BRIGHT: the guest's own
+        // backlight is what makes Lock visible.
         return BootConfig(argv: argv, environment: ["IT_TVOUT_READY": "1"], machine: hardware.machine)
     }
 
