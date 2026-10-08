@@ -36,6 +36,35 @@ extension SharedState {
             }
         }
 
+        /// The button in light and dark, to the temporary directory; the most saturated pixel of each.
+        func render(_ button: NSButton, _ name: String) throws -> [[Int]] {
+            button.sizeToFit()
+            return try [NSAppearance.Name.aqua, .darkAqua].map { appearance in
+                let host = NSView(frame: NSRect(x: 0, y: 0, width: button.frame.width + 8, height: 28))
+                host.appearance = NSAppearance(named: appearance)
+                host.addSubview(button)
+                button.setFrameOrigin(NSPoint(x: 4, y: (28 - button.frame.height) / 2))
+                defer { button.removeFromSuperview() }
+                let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds)!
+                host.cacheDisplay(in: host.bounds, to: bitmap)
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent(
+                    "ltm-filter-button-\(name)-\(appearance.rawValue).png"
+                )
+                try bitmap.representation(using: .png, properties: [:])?.write(to: url)
+                print("render: \(url.path)")
+                var most = [0, 0, 0]
+                for x in 0..<bitmap.pixelsWide {
+                    for y in 0..<bitmap.pixelsHigh {
+                        var raw = [Int](repeating: 0, count: 4)
+                        bitmap.getPixel(&raw, atX: x, y: y)
+                        let rgb = Array(raw.prefix(3))
+                        if raw[3] > 200, rgb.max()! - rgb.min()! > most.max()! - most.min()! { most = rgb }
+                    }
+                }
+                return most
+            }
+        }
+
         func run() async throws {
             func check(_ ok: Bool, _ what: Comment, sourceLocation: SourceLocation = #_sourceLocation) {
                 #expect(ok, what, sourceLocation: sourceLocation)
@@ -63,9 +92,10 @@ extension SharedState {
                 "iPod: family choice dimmed, the toggle live"
             )
             check(
-                items[4].state == .on && podButton.apply(ipod).count == 4,
-                "default: every app, unavailable ones grayed"
+                items[4].state == .on && podButton.apply(ipod).count == 4 && podButton.contentTintColor == nil,
+                "default: every app, unavailable ones grayed, the button untinted"
             )
+            let normal = try render(podButton, "default")
             var changes = 0
             podButton.onChange = { changes += 1 }
             podButton.menu!.performActionForItem(at: 4)
@@ -73,6 +103,14 @@ extension SharedState {
                 changes == 1 && items[4].state == .off && podButton.apply(ipod).count == 2,
                 "toggle reports, checks off and filters"
             )
+            check(podButton.contentTintColor == .controlAccentColor, "a narrower filter tints the button")
+            let active = try render(podButton, "active")
+            for (appearance, (plain, tinted)) in zip(["light", "dark"], zip(normal, active)) {
+                check(
+                    plain.max()! - plain.min()! < 16 && tinted.max()! - tinted.min()! > 60,
+                    "\(appearance): gray by default \(plain), in the accent color when active \(tinted)"
+                )
+            }
 
             // iPad: the family choice, read back with the toggle the iPod saved.
             let padButton = CatalogFilterButton(isIPad: true, defaults: defaults)

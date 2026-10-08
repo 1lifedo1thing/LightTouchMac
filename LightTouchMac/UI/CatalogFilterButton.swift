@@ -3,6 +3,7 @@ import LightTouchCore
 
 /// The standard filter pull-down beside Installed/Store, over CatalogFilter.
 /// The family choice applies only on an iPad; an iPod's is dimmed. Each choice is saved as it's made.
+/// A filter narrower than the default shows filled and in the accent color, as Finder and Mail show theirs.
 final class CatalogFilterButton: NSPopUpButton {
     private(set) var filter: CatalogFilter
     let isIPad: Bool
@@ -37,9 +38,9 @@ final class CatalogFilterButton: NSPopUpButton {
 
     private func update() {
         let items = itemArray
-        let symbol =
-            filter.isActive(iPad: isIPad)
-            ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+        let isActive = filter.isActive(iPad: isIPad)
+        let symbol = isActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+        contentTintColor = isActive ? .controlAccentColor : nil
         items[0].image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Filter")?
             .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))
         items[1].state = filter.iPadOnly ? .off : .on
