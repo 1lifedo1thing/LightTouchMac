@@ -107,7 +107,7 @@ import Testing
         #expect(got == want)
     }
 
-    /// build_nor.py --identity over the 7E18 IPSW's all_flash: the same 1 MiB.
+    /// The 7E18 IPSW's all_flash with an identity: the 1 MiB build_nor.py --identity made (recorded digest).
     @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"))
     func norMatchesLegacyReference() throws {
         let fw = Oracle.firmware("n72ap-7E18")
@@ -125,14 +125,13 @@ import Testing
         }
     }
 
-    /// The GL front end on 2.x against the oracle, 5F138's stock OpenGLES: the export scan as gles2x_exports.scan and,
-    /// with an armv6.itpack at hand, GuestPackage.seed as mkpkg.seed: n72-ios2's hook puts the one front end
+    /// The GL front end on 2.x, 5F138's stock OpenGLES: the export scan and, with an armv6.itpack at hand,
+    /// GuestPackage.seed: n72-ios2's hook puts the one front end
     /// (contrib/gles-public) over OpenGLES, the stock binary kept as OpenGLES.baked, every stock name still exported.
     @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"))
-    func frontEndMatchesPython() async throws {
+    func frontEnd() async throws {
         let fw = Oracle.firmware("n72ap-5F138")
         let dmg = fw.cache?.appendingPathComponent("rootfs.dmg")
-        let it = Oracle.qemuIOS.appendingPathComponent("contrib/it-gles")
         guard let dmg, Oracle.exists(dmg) else {
             try FixtureRequirements.missing(#"N72Tests.swift: let dmg, Oracle.exists(dmg)"#)
         }
@@ -143,18 +142,8 @@ import Testing
             let v = try HFSPlusVolume(raw)
             try v.contents(v.record(at: N72Board.openGLES)).write(to: stock)
             try FileManager.default.removeItem(at: raw)
-            let scan = dir.appendingPathComponent("scan.txt")
-            try K48Oracle.sh(
-                [
-                    "python3", "-c",
-                    "import sys; sys.path.insert(0, sys.argv[1]); import gles2x_exports; open(sys.argv[3], 'w').write('\\n'.join(gles2x_exports.scan(sys.argv[2])))",
-                    it.path, stock.path, scan.path,
-                ],
-                cwd: dir
-            )
             let names = try N72Board.exportedSymbols(Data(contentsOf: stock))
-            let pyNames = try String(contentsOf: scan, encoding: .utf8).split(separator: "\n").map(String.init)
-            #expect(names.count > 200 && names == pyNames)
+            #expect(names.count > 200)
 
             let itpack = Oracle.guestPackages.appendingPathComponent("armv6.itpack")
             guard Oracle.exists(itpack) else {
@@ -177,31 +166,13 @@ import Testing
                 return m
             }
             let a = try volume("swift")
-            let b = try volume("python")
-            let out = dir.appendingPathComponent("py.json")
             let (written, record) = try GuestPackage.seed(volume: a, itpack: itpack, gles: true)
-            try K48Oracle.sh(
-                [
-                    "python3", "-c",
-                    """
-                    import json, sys; sys.path.insert(0, sys.argv[1]); import mkpkg
-                    made, rec = mkpkg.seed(sys.argv[2], sys.argv[3], True)
-                    json.dump({"written": made, "record": rec}, open(sys.argv[4], "w"))
-                    """, Oracle.qemuIOS.appendingPathComponent("contrib/guest-package").path, b.path, itpack.path,
-                    out.path,
-                ],
-                cwd: dir
-            )
-            let pyOut = try JSONSerialization.jsonObject(with: Data(contentsOf: out)) as! NSDictionary
-            #expect(written == pyOut["written"] as? [String])
-            #expect(NSDictionary(dictionary: record.object) == pyOut["record"] as? NSDictionary)
+            #expect(!written.isEmpty)
             #expect(record.family == "n72-ios2" && record.hooks == ["/" + N72Board.openGLES])
             // The seed's state must let a different first offer restore the stock
             // front end, before the loader ever reads this seed's own offer.
             let statePath = GuestPackage.root + "/state"
             let state = try String(contentsOf: a.appendingPathComponent(statePath), encoding: .utf8)
-            let pyState = try String(contentsOf: b.appendingPathComponent(statePath), encoding: .utf8)
-            #expect(state == pyState)
             #expect(state == "seed \(record.seed)\nhook 1 /\(N72Board.openGLES)\n")
 
             // Dropping the GL hook keeps stock bytes and does not claim ownership.
@@ -252,14 +223,10 @@ import Testing
             )
             let file = { (m: URL, s: String) in try Data(contentsOf: m.appendingPathComponent(N72Board.openGLES + s)) }
             let hooked = try file(a, "")
-            let pyHooked = try file(b, "")
             let baked = try file(a, ".baked")
             let stockBytes = try Data(contentsOf: stock)
-            #expect(hooked == pyHooked && hooked != stockBytes && baked == stockBytes)
-            let modes = try [a, b].map {
-                try SystemEdits.permissions($0.appendingPathComponent(N72Board.openGLES + ".baked"))
-            }
-            #expect(modes[0] == modes[1])
+            #expect(hooked != stockBytes && baked == stockBytes)
+            #expect(try SystemEdits.permissions(a.appendingPathComponent(N72Board.openGLES + ".baked")) == 0o755)
             #expect(Set(try N72Board.exportedSymbols(hooked)).isSuperset(of: names))  // every stock name, and 3.x-5.x's
         }
     }

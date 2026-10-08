@@ -37,12 +37,12 @@ import Testing
         }
     }
 
-    /// rootfs.dmg straight off `unzip -p`, against ipad1_fw.py's (vfdecrypt.c).
+    /// rootfs.dmg straight off `unzip -p`, against the recorded digest of ipad1_fw.py's (vfdecrypt.c).
     @Test(
         .enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"),
         arguments: Oracle.firmwares
     )
-    func rootfsMatchesPython(_ fw: Oracle.Firmware) throws {
+    func rootfsMatchesRecordedDigest(_ fw: Oracle.Firmware) throws {
         guard fw.available else { try FixtureRequirements.missing(fw.ipsw.path) }
         let entry = try Oracle.entry(fw.entryID)
         let ipsw = IPSWArchive(fw.ipsw)

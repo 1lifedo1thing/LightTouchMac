@@ -25,12 +25,12 @@ struct IMG3Tests {
         #expect(throws: FirmwareError.self) { try IMG3.tags(Data("nope".utf8)) }
     }
 
-    /// Every ipad1_fw.py output but rootfs.dmg (VFDecryptTests), byte for byte.
+    /// Every ipad1_fw.py output but rootfs.dmg (VFDecryptTests), against their recorded digests.
     @Test(
         .enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"),
         arguments: Oracle.firmwares
     )
-    func decryptMatchesPython(_ fw: Oracle.Firmware) throws {
+    func decryptMatchesRecordedDigests(_ fw: Oracle.Firmware) throws {
         guard fw.available else { try FixtureRequirements.missing(fw.ipsw.path) }
         try Oracle.withTemp { dir in
             let r = try Oracle.time("decrypt components \(fw.entryID)") {

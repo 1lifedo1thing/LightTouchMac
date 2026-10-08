@@ -8,7 +8,7 @@ import Testing
         try await VolumeMount.exec("/usr/bin/hdiutil", ["info"]).1.contains(image.resolvingSymlinksInPath().path)
     }
 
-    /// A fresh volume against ipad1_nand.make_hfs_image; files written through the mount land in the catalog,
+    /// A fresh volume: files written through the mount land in the catalog,
     /// the junk is gone, fsck passed and nothing stays attached.
     @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"))
     func makeMountEdit() async throws {
@@ -48,22 +48,6 @@ import Testing
             #expect(try w.journal()?.needsInit == false)
             try w.leaveJournalToDevice()
             #expect(try w.journal()?.needsInit == true && w.journalSnapshot()?.last?.bytes == Data(count: j.size))
-
-            guard HFSOracle.available else {
-                try FixtureRequirements.missing(#"VolumeMountTests.swift: HFSOracle.available"#)
-            }
-            let py = dir.appendingPathComponent("py.img")
-            _ = try HFSOracle.python(
-                "import ipad1_nand; ipad1_nand.make_hfs_image(sys.argv[1], int(sys.argv[2]))",
-                [py.path, String(64 << 20 + 123)]
-            )
-            let a = try HFSPlusVolume(dir.appendingPathComponent("py.img"))
-            let fresh = dir.appendingPathComponent("fresh.img")
-            try await VolumeMount.makeHFS(fresh, size: 64 << 20 + 123)
-            let b = try HFSPlusVolume(fresh)
-            let geo = { (v: HFSPlusVolume) in "\(v.signature) \(v.blockSize) \(v.totalBlocks) \(v.freeBlocks)" }
-            #expect(geo(a) == geo(b))
-            #expect(try a.listing() == b.listing())
         }
     }
 
@@ -171,34 +155,29 @@ import Testing
         }
     }
 
-    /// Growing the raw 7B500 / 8C148 system volume to partition 1 (1280 MiB) against grow_to_partition:
-    /// same size, same volume-header geometry, same tree.
+    /// Growing the raw 7B500 / 8C148 system volume to partition 1 (1280 MiB): the volume header's geometry
+    /// follows, the tree is unchanged, the alternate header moves and fsck passes.
     @Test(
         .enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"),
         arguments: HFSOracle.ipads
-    ) func growMatchesPython(_ fw: Oracle.Firmware) async throws {
+    ) func grow(_ fw: Oracle.Firmware) async throws {
         try await Oracle.withTemp { dir in
-            guard HFSOracle.available, let raw = try await HFSOracle.rawSystem(fw, in: dir) else {
-                try FixtureRequirements.missing(
-                    #"VolumeMountTests.swift: HFSOracle.available, let raw = try await HFSOracle.rawSystem(fw, in: dir)"#
-                )
+            guard let raw = try await HFSOracle.rawSystem(fw, in: dir) else {
+                try FixtureRequirements.missing(#"VolumeMountTests.swift: let raw = try await HFSOracle.rawSystem(fw, in: dir)"#)
             }
-            let py = dir.appendingPathComponent("py.hfs")
-            try FileManager.default.copyItem(at: raw, to: py)
             let blocks = 1280 << 20 / 4096
-            _ = try HFSOracle.python(
-                "import ipad1_rootfs as r; r.grow_to_partition(sys.argv[1], int(sys.argv[2]))",
-                [py.path, String(blocks)]
-            )
+            let before = try HFSPlusVolume(raw)
+            let tree = try before.listing(hashes: false)
             try await Oracle.time("grow \(fw.entryID)") { try await VolumeMount.grow(raw, toBytes: blocks * 4096) }
-            #expect(try VolumeMount.size(raw) == blocks * 4096 && VolumeMount.size(py) == blocks * 4096)
+            #expect(try VolumeMount.size(raw) == blocks * 4096)
             let a = try HFSPlusVolume(raw)
-            let b = try HFSPlusVolume(py)
+            // the volume spans the partition but its last block (as grow_to_partition left it)
             #expect(
-                a.totalBlocks == b.totalBlocks && a.freeBlocks == b.freeBlocks && a.blockSize == b.blockSize,
-                "swift \(a.totalBlocks) x \(a.blockSize), \(a.freeBlocks) free; python \(b.totalBlocks) x \(b.blockSize), \(b.freeBlocks) free"
+                a.blockSize == before.blockSize && (a.totalBlocks + 1) * a.blockSize == blocks * 4096,
+                "\(before.totalBlocks) x \(before.blockSize) -> \(a.totalBlocks) x \(a.blockSize)"
             )
-            #expect(try a.listing(hashes: false) == b.listing(hashes: false))
+            #expect(a.freeBlocks > before.freeBlocks)
+            #expect(try a.listing(hashes: false) == tree)
             let avh = { (u: URL) throws -> Data in
                 let f = try FileHandle(forReadingFrom: u)
                 defer { try? f.close() }

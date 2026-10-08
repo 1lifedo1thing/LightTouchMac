@@ -20,13 +20,13 @@ import Testing
         #expect(throws: FirmwareError.self) { try APM.hfsSlice(Data("xx".utf8) + map.dropFirst(2)) }
     }
 
-    /// The raw HFS volume against ipad1_rootfs.extract_rootfs. Input: the Python cache's rootfs.dmg (read
-    /// only) when there is one, else our own vfdecrypt of the IPSW.
+    /// The raw HFS volume against the recorded digest of ipad1_rootfs.extract_rootfs's. Input: the decrypt cache's
+    /// rootfs.dmg (read only) when there is one, else our own vfdecrypt of the IPSW.
     @Test(
         .enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"),
         arguments: Oracle.firmwares
     )
-    func rawVolumeMatchesPython(_ fw: Oracle.Firmware) async throws {
+    func rawVolumeMatchesRecordedDigest(_ fw: Oracle.Firmware) async throws {
         guard fw.available else { try FixtureRequirements.missing(fw.ipsw.path) }
         try await Oracle.withTemp { dir in
             var dmg = fw.cache?.appendingPathComponent("rootfs.dmg")

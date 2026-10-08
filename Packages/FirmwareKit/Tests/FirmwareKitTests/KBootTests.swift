@@ -413,11 +413,11 @@ struct KBootTests {
         #expect(KBoot.ibootVersion(nil) == "iBoot-817.29" && KBoot.ibootVersion(Data("none".utf8)) == "iBoot-817.29")
     }
 
-    // sha256 of `ipad1_kboot.py --identity ID [--ramdisk DEC/<UpdateRamDisk>-ramdisk.dmg] DEC OUT` at qemu-ios
+    // Recorded digests: sha256 of `ipad1_kboot.py --identity ID [--ramdisk DEC/<UpdateRamDisk>-ramdisk.dmg] DEC OUT` at qemu-ios
     // ipad1 5e4ab3e6bf (enable-hsic=1), DEC = ipad1_fw.py's output, ID = UnitIdentity.synthesize("ipad1-7B500-default")
     // (IdentityTests' sha 4d3799...), whose die-id now follows ff331e1ef9's ECID-derived words, as the DT's
     // chosen/die-id shows.
-    static let python: [(String, String, String, String)] = [
+    static let recorded: [(String, String, String, String)] = [
         (
             "k48ap-7B500", "018-8374-001-ramdisk.dmg",
             "71f2b5c862f4b2445bcb085071c2b6264f36e0750ea701d2d9a588f0b6d97423",
@@ -435,11 +435,11 @@ struct KBootTests {
         ),
     ]
 
-    /// The whole Swift chain (IPSW -> FirmwareDecryptor -> KBoot) against the Python chain's kboot.bin.
+    /// The whole Swift chain (IPSW -> FirmwareDecryptor -> KBoot) against the recorded digests of the Python chain's kboot.bin.
     @Test(
         .enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"),
-        arguments: python
-    ) func kbootMatchesPython(id: String, ramdisk: String, normal: String, rdMode: String) throws {
+        arguments: recorded
+    ) func kbootMatchesRecordedDigests(id: String, ramdisk: String, normal: String, rdMode: String) throws {
         guard Oracle.firmware(id).available else { try FixtureRequirements.missing("cached IPSW for " + id) }
         try Oracle.withTemp { dir in
             let dec = dir.appendingPathComponent("dec")

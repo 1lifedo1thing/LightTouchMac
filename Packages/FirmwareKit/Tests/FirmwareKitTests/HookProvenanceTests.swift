@@ -60,8 +60,6 @@ struct HookProvenanceTests {
             let present = FileManager.default.fileExists(atPath: original.path)
             let originalBytes = present ? try Data(contentsOf: original) : nil
             let originalMode = present ? try SystemEdits.permissions(original) : nil
-            let py = dir.appendingPathComponent("python")
-            try FileManager.default.copyItem(at: stock, to: py)
             let fw = FitCheck.Firmware(root: stock, arch: arch)
             // A rejected frontend never changes either the true file or absence.
             let invalid = dir.appendingPathComponent("invalid-helpers")
@@ -115,17 +113,7 @@ struct HookProvenanceTests {
             )
             let oldPack = dir.appendingPathComponent("old/" + arch + ".itpack")
             try SystemEdits.mkdirs(oldPack.deletingLastPathComponent())
-            try K48Oracle.sh(
-                [
-                    "python3", "-c",
-                    """
-                    import sys
-                    sys.path.insert(0, sys.argv[1]); import mkpkg
-                    mkpkg.pack([(n,b) for n,b in mkpkg.read_pack(sys.argv[2]) if n != "loader/hook-provenance"], sys.argv[3])
-                    """, Oracle.qemuIOS.appendingPathComponent("contrib/guest-package").path, pack.path, oldPack.path,
-                ],
-                cwd: dir
-            )
+            try FitFixture.repack(pack, to: oldPack) { $0.filter { $0.name != "loader/hook-provenance" } }
             if present {
                 let oldVolume = dir.appendingPathComponent("old-present")
                 try FileManager.default.copyItem(at: stock, to: oldVolume)
@@ -152,31 +140,6 @@ struct HookProvenanceTests {
                 ) == false
             )
 
-            // The maintained Python installer followed by mkpkg.seed must preserve
-            // the same original representation, not a copy of the installed frontend.
-            try K48Oracle.sh(
-                [
-                    "python3", "-c",
-                    """
-                    import sys
-                    sys.path.insert(0, sys.argv[1]); import ipad1_rootfs
-                    ipad1_rootfs.install_gles_frontend(sys.argv[2], sys.argv[3])
-                    ipad1_rootfs.install_gles_frontend(sys.argv[2], sys.argv[3])
-                    ipad1_rootfs.mkpkg.seed(sys.argv[2], sys.argv[4], True)
-                    """, Oracle.qemuIOS.appendingPathComponent("imgtools").path, py.path,
-                    helpers.appendingPathComponent(SystemEdits.Helpers.openGLES).path, pack.path,
-                ],
-                cwd: dir
-            )
-            #expect(try Data(contentsOf: py.appendingPathComponent(provenance)) == baseline)
-            #expect(
-                try SystemEdits.permissions(py.appendingPathComponent(provenance))
-                    == SystemEdits.permissions(stock.appendingPathComponent(provenance))
-            )
-            #expect(
-                try Data(contentsOf: py.appendingPathComponent(GuestPackage.root + "/state"))
-                    == Data(contentsOf: stock.appendingPathComponent(GuestPackage.root + "/state"))
-            )
             print(
                 "\(id): install→seed; original \(present ? "file/stub" : "absent/cache"), provenance \(provenance), seed \(seeded.seed)"
             )

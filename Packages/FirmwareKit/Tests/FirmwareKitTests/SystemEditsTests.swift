@@ -3,19 +3,10 @@ import Testing
 
 @testable import FirmwareKit
 
-/// The oracle's inputs: the Python cache's rootfs.dmg, the qemu-ios helper build outputs (contrib/*/build.sh),
-/// the GL name table and the user's activation hooks. Everything is read in place; outputs go to temp dirs.
+/// The fixtures' inputs: the decrypt cache's rootfs.dmg, the qemu-ios helper build outputs (contrib/*/build.sh)
+/// and the GL name table. Everything is read in place; outputs go to temp dirs.
 enum K48Oracle {
     static let qemu = Oracle.qemuIOS
-    /// FIRMWAREKIT_ACTIVATION_HOOK (an executable) overrides both.
-    static let hooks =
-        ProcessInfo.processInfo.environment["FIRMWAREKIT_ACTIVATION_HOOK"].map { h in
-            Dictionary(uniqueKeysWithValues: ["k48ap-7B500", "k48ap-8C148"].map { ($0, URL(fileURLWithPath: h)) })
-        } ?? [
-            "k48ap-7B500": Oracle.path("Developer/qemu-ios-files/ipad1/offline-activation/patch_lockdownd.py"),
-            "k48ap-8C148": Oracle.path("Developer/qemu-ios-files/ipad1/offline-activation-8C148/patch_lockdownd.py"),
-        ]
-
     /// helpers-dir name -> qemu-ios file.
     static var sources: [String: URL] {
         let guest = qemu.appendingPathComponent("build/ipad1-guest")
@@ -38,7 +29,7 @@ enum K48Oracle {
         return m
     }
 
-    static var available: Bool { HFSOracle.available && sources.values.allSatisfy(Oracle.exists) }
+    static var available: Bool { sources.values.allSatisfy(Oracle.exists) }
 
     /// FIRMWAREKIT_GUEST_TOOLS: a flat guest-tools directory (build-guest-tools.sh's ipad-guest-tools, or the app's
     /// Resources/guest-tools) that stands in for the qemu-ios build outputs where those aren't built.
@@ -128,19 +119,15 @@ enum K48Oracle {
         )
     }
 
-    /// GuestPackage.seed against mkpkg.seed on a plain directory with the real armv7.itpack: the same tree
-    /// (paths, modes, bytes, symlinks) and the same record, for a shim image and a no-shim one.
+    /// GuestPackage.seed on a plain directory with the real armv7.itpack, for a shim image and a no-shim one: the
+    /// record's GLES hook and family, and the seeded state.
     @Test(
         .enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"),
         arguments: [("7B500", true), ("8C148", false), ("9B206", true)]
-    ) func seedMatchesPython(_ build: String, _ gles: Bool) async throws {
+    ) func seed(_ build: String, _ gles: Bool) async throws {
         let itpack = Oracle.guestPackages.appendingPathComponent("armv7.itpack")
-        guard Oracle.exists(itpack),
-            Oracle.exists(K48Oracle.qemu.appendingPathComponent("contrib/guest-package/mkpkg.py"))
-        else {
-            try FixtureRequirements.missing(
-                #"SystemEditsTests.swift: Oracle.exists(itpack), Oracle.exists(K48Oracle.qemu.appendingPathComponent("contrib/guest-package/mkpkg.py"))"#
-            )
+        guard Oracle.exists(itpack) else {
+            try FixtureRequirements.missing(#"SystemEditsTests.swift: Oracle.exists(itpack)"#)
         }
         try await Oracle.withTemp { dir in
             // the firmware the seed's load checks read: its executables, libSystem, cache, and the mounter's job
@@ -177,50 +164,18 @@ enum K48Oracle {
                 return v
             }
             let a = try volume("swift")
-            let b = try volume("python")
             let (written, record) = try GuestPackage.seed(volume: a, itpack: itpack, gles: gles)
-            let out = dir.appendingPathComponent("py.json")
-            try K48Oracle.sh(
-                [
-                    "python3", "-c",
-                    """
-                    import json, sys; sys.path.insert(0, sys.argv[1]); import mkpkg
-                    made, rec = mkpkg.seed(sys.argv[2], sys.argv[3], sys.argv[4] == "1")
-                    json.dump({"written": made, "record": rec}, open(sys.argv[5], "w"))
-                    """, K48Oracle.qemu.appendingPathComponent("contrib/guest-package").path, b.path, itpack.path,
-                    gles ? "1" : "0", out.path,
-                ],
-                cwd: dir
-            )
-            let py = try JSONSerialization.jsonObject(with: Data(contentsOf: out)) as! NSDictionary
-            #expect(written == py["written"] as? [String])
-            #expect(NSDictionary(dictionary: record.object) == py["record"] as? NSDictionary)
+            #expect(!written.isEmpty)
             #expect(record.gles == gles && record.hooks.contains("/" + FitCheck.openGLES) == gles)
             // "9*": 5.x's own family
             if build.hasPrefix("9") { #expect(record.family == "k48-ios5" && record.seed >= 8) }
-            func tree(_ v: URL) throws -> [String: String] {
-                var t: [String: String] = [:]
-                try SystemEdits.walk(v) { rel in
-                    let p = v.appendingPathComponent(rel).path
-                    var st = stat()
-                    lstat(p, &st)
-                    let link = try? FileManager.default.destinationOfSymbolicLink(atPath: p)
-                    let body =
-                        st.st_mode & S_IFMT == S_IFREG
-                        ? Oracle.sha256(try Data(contentsOf: URL(fileURLWithPath: p))) : ""
-                    t[rel] = "\(String(st.st_mode, radix: 8)) \(link ?? body)"
-                }
-                return t
-            }
-            let ta = try tree(a)
-            let tb = try tree(b)
+            var st = stat()
+            #expect(lstat(a.appendingPathComponent("usr/local/lighttouch/state").path, &st) == 0)
+            // the baked it-pbd job is left alone since package serial 2 folded the pasteboard into it_agent
             #expect(
-                ta == tb,
-                "\(Set(ta.map { "\($0) \($1)" }).symmetricDifference(tb.map { "\($0) \($1)" }).sorted().prefix(10))"
+                try Data(contentsOf: a.appendingPathComponent(SystemEdits.daemons + "/com.qemu.it-pbd.plist"))
+                    == Data("job".utf8)
             )
-            // The seed leaves the baked it-pbd job alone since package serial 2 folded the pasteboard into it_agent
-            // (qemu-ios ipad1 136cc59843); the tree comparison above already holds both seeds to the same jobs.
-            #expect(ta["usr/local/lighttouch/state"] != nil)
         }
     }
 
@@ -234,49 +189,16 @@ enum K48Oracle {
         }
     }
 
-    /// Level 2: the Swift-built system and data volumes against ipad1_rootfs.py build + bake --seal
-    /// --activation-hook on the same rootfs.dmg: every path with owner, mode, flags, size, content sha256 and
-    /// symlink target; plists written by either side compared parsed. Expected difference: lockdownd, whose ad-hoc signature representation differs between signers.
-    @Test(arguments: HFSOracle.ipads) func volumesMatchPython(_ fw: Oracle.Firmware) async throws {
-        guard K48Oracle.available, let dmg = fw.cache?.appendingPathComponent("rootfs.dmg"), Oracle.exists(dmg),
-            let hook = K48Oracle.hooks[fw.entryID], FileManager.default.isExecutableFile(atPath: hook.path)
+    /// Level 2: the system and data volumes SystemEdits.buildK48 makes from the rootfs.dmg: the activation ran, the
+    /// seed record, the network services, the seeded tree, the GLES front end with its original kept once, and
+    /// lockdownd as the activation wrote it.
+    @Test(arguments: HFSOracle.ipads) func volumes(_ fw: Oracle.Firmware) async throws {
+        guard K48Oracle.available, let dmg = fw.cache?.appendingPathComponent("rootfs.dmg"), Oracle.exists(dmg)
         else { return }
         try await Oracle.withTemp { dir in
             let entry = try Oracle.entry(fw.entryID)
             let recipe = try #require(entry.recipe)
-            let parts =
-                try JSONSerialization.jsonObject(
-                    with: HFSOracle.python(
-                        """
-                        import json, ipad1_nand as n
-                        m = n.make_mbr(n.Geo(name="k48-16g", **n.GEOMETRIES["k48-16g"]), int(sys.argv[2]))
-                        open(sys.argv[1], "wb").write(m)
-                        print(json.dumps([p[2] for p in n.mbr_parts(m)[:2]]))
-                        """,
-                        [dir.appendingPathComponent("mbr.bin").path, String(recipe.systemMiB)]
-                    )
-                ) as! [Int]
-
-            let py = dir.appendingPathComponent("py")
-            try Oracle.time("python build + bake \(fw.entryID)") {
-                let tool = K48Oracle.qemu.appendingPathComponent("imgtools/ipad1_rootfs.py").path
-                try K48Oracle.sh(
-                    [
-                        "python3", tool, "build", "--base", "pristine", "--rootfs", dmg.path, "--pristine", dmg.path,
-                        "--mbr", dir.appendingPathComponent("mbr.bin").path, "--out", py.path, "--lockdown", "none",
-                        "--stash", "none", "--data-size", "partition", "--no-usb-net",
-                    ] + (recipe.options["appsync"] == true ? ["--appsync"] : []),
-                    cwd: K48Oracle.qemu
-                )
-                try K48Oracle.sh(
-                    [
-                        "python3", tool, "bake", py.appendingPathComponent("pristine").path, "--tools",
-                        K48Oracle.qemu.appendingPathComponent("build/ipad1-guest").path, "--guest-package",
-                        K48Oracle.sources[SystemEdits.Helpers.itpack]!.path, "--seal", "--activation-hook", hook.path,
-                    ],
-                    cwd: K48Oracle.qemu
-                )
-            }
+            let parts = K48NAND.partitions(mbr: [UInt8](K48NAND.makeMBR(systemMiB: recipe.systemMiB)))
             let swift = dir.appendingPathComponent("swift")
             try FileManager.default.createDirectory(at: swift, withIntermediateDirectories: true)
             let helpers = try K48Oracle.helpers(in: dir)
@@ -284,71 +206,16 @@ enum K48Oracle {
                 try await SystemEdits.buildK48(
                     rootfs: dmg,
                     work: swift,
-                    systemBytes: parts[0] * 4096,
-                    dataBytes: Int64(parts[1]) * 4096,
+                    systemBytes: parts[0].count * 4096,
+                    dataBytes: Int64(parts[1].count) * 4096,
                     options: .init(recipe: recipe),
                     helpers: helpers
                 ) { print("  \($0)") }
             }
             #expect(r.activation != nil)
-            // the seed record, as the Python bake wrote it for the lock (the itpack path differs: a symlink here)
-            let pyRecord =
-                try JSONSerialization.jsonObject(
-                    with: Data(contentsOf: py.appendingPathComponent("pristine/guest-package.json"))
-                ) as! NSDictionary
-            var record = try #require(r.guestPackage?.object)
-            record["itpack"] = pyRecord["itpack"]
-            #expect(NSDictionary(dictionary: record) == pyRecord)
             #expect(r.guestPackage?.gles == true && r.engine == SystemEdits.Helpers.openGLES)
 
-            // lockdownd: different ad-hoc signature representation; .journal: each volume's own journal
-            for (vol, expected) in [("system.img", ["usr/libexec/lockdownd"]), ("data.img", [".journal"])] {
-                let a = try HFSPlusVolume(swift.appendingPathComponent(vol))
-                let b = try HFSPlusVolume(py.appendingPathComponent("pristine/" + vol))
-                #expect(try VolumeMount.size(a.url) == VolumeMount.size(b.url))
-                #expect(a.totalBlocks == b.totalBlocks && a.blockSize == b.blockSize)
-                let la = try Oracle.time("listing \(vol)") { try a.listing() }
-                let lb = try b.listing()
-                let ma = Dictionary(uniqueKeysWithValues: la.map { ($0.path, $0) })
-                let mb = Dictionary(uniqueKeysWithValues: lb.map { ($0.path, $0) })
-                var diffs: [String] = []
-                var plists = 0
-                var unexpected: [String] = []
-                // The Python bake still installs it_ethlink; the USB Ethernet bridge is gone.
-                for p in Set(ma.keys).union(mb.keys).sorted() where p != "usr/local/bin/it_ethlink" {
-                    guard var x = ma[p], var y = mb[p] else {
-                        diffs.append("\(p): only in \(ma[p] == nil ? "python" : "swift")")
-                        continue
-                    }
-                    if x.sha256 != y.sha256, x.mode & 0o170000 == 0o100000,
-                        let px = try? PropertyListSerialization.propertyList(
-                            from: a.contents(a.record(at: p)),
-                            format: nil
-                        ) as? NSObject,
-                        let py = try? PropertyListSerialization.propertyList(
-                            from: b.contents(b.record(at: p)),
-                            format: nil
-                        ) as? NSObject, px.isEqual(py)
-                    {
-                        plists += 1
-                        x.sha256 = nil
-                        y.sha256 = nil
-                        x.size = 0
-                        y.size = 0
-                    }
-                    if x != y {
-                        if expected.contains(p) {
-                            unexpected.append("expected: \(p) sha256 \(x.sha256 ?? "-") vs \(y.sha256 ?? "-")")
-                        } else {
-                            diffs.append("\(p): swift \(x) python \(y)")
-                        }
-                    }
-                }
-                print("\(fw.entryID) \(vol): \(la.count) paths, \(plists) plists equal parsed; \(unexpected)")
-                #expect(diffs.isEmpty, "\(vol): \(diffs.prefix(30))")
-                #expect(la.count == lb.count - (mb["usr/local/bin/it_ethlink"] == nil ? 0 : 1))
-            }
-            // the seeded network services really are there (on both sides, so the comparison above is not vacuous)
+            // the seeded network services are there
             let dv = try HFSPlusVolume(swift.appendingPathComponent("data.img"))
             let prefs =
                 try PropertyListSerialization.propertyList(

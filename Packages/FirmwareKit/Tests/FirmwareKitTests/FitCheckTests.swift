@@ -102,6 +102,22 @@ enum FitFixture {
         guard Oracle.exists(itpack) else { return nil }
         return try GuestPack.read(itpack).first { $0.name == name }?.data
     }
+
+    /// `src` rewritten to `dst` with its entries passed through `edit` (GuestPack.read's format: "ITPACK01", a
+    /// little-endian u32 index length, the JSON index, a zlib stream).
+    static func repack(
+        _ src: URL,
+        to dst: URL,
+        _ edit: ([(name: String, data: Data)]) -> [(name: String, data: Data)]
+    ) throws {
+        let entries = edit(try GuestPack.read(src))
+        let index = try JSONSerialization.data(withJSONObject: [
+            "format": 1, "entries": entries.map { ["name": $0.name, "size": $0.data.count] },
+        ])
+        let stream = try (entries.reduce(Data()) { $0 + $1.data } as NSData).compressed(using: .zlib) as Data
+        var length = UInt32(index.count).littleEndian
+        try (GuestPack.magic + Data(bytes: &length, count: 4) + index + Data([0x78, 0x9c]) + stream).write(to: dst)
+    }
 }
 
 @Suite(.serialized, .detachesItsImages) struct FitCheckTests {
@@ -274,18 +290,10 @@ enum FitFixture {
                 )
             }
             let bad = dir.appendingPathComponent("armv6.itpack")
-            try K48Oracle.sh(
-                [
-                    "python3", "-c",
-                    """
-                    import sys; sys.path.insert(0, sys.argv[1]); import mkpkg
-                    e = mkpkg.read_pack(sys.argv[2]); d = dict(e)
-                    e = [(n, d["n72-ios3/bin/itmedia"] if n == "loader/it_boot" else b) for n, b in e]
-                    mkpkg.pack(e, sys.argv[3])
-                    """, Oracle.qemuIOS.appendingPathComponent("contrib/guest-package").path, itpack.path, bad.path,
-                ],
-                cwd: dir
-            )
+            try FitFixture.repack(itpack, to: bad) { e in
+                let itmedia = e.first { $0.name == "n72-ios3/bin/itmedia" }!.data
+                return e.map { ($0.name, $0.name == "loader/it_boot" ? itmedia : $0.data) }
+            }
             let log = FitCheck.Log()
             #expect(throws: FirmwareError.self) { try GuestPackage.seed(volume: v, itpack: bad, gles: true, fit: log) }
             // the seed stops at the loader (before it, n72-ios2's it_typein hook is dropped: its target is not here)

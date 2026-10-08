@@ -238,13 +238,12 @@ import Testing
         }
     }
 
-    /// 1.x GL front end against the oracle on the stock 3A101a IPSW's OpenGLES: the export scan as
-    /// gles2x_exports.scan, the check against opengles-1x.exports (and its refusal of a list that differs), and, with
-    /// an armv6.itpack at hand, N45Board.bake as ipod1g_device.bake on the same three stock files (OpenGLES,
-    /// SpringBoard's job, SystemVersion), with the GL front end and without: the same paths written (all to be
-    /// root-owned, the loader among them), the same record, the hook's and OpenGLES.baked's bytes and modes, the same LK_* job.
+    /// 1.x GL front end on the stock 3A101a IPSW's OpenGLES: the export scan, the check against opengles-1x.exports
+    /// (and its refusal of a list that differs), and, with an armv6.itpack at hand, N45Board.bake on the three stock
+    /// files (OpenGLES, SpringBoard's job, SystemVersion), with the GL front end and without: the paths written (the
+    /// loader among them), the record, the hook's and OpenGLES.baked's bytes, the LK_* job.
     @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"))
-    func frontEndAndBakeMatchPython() async throws {
+    func frontEndAndBake() async throws {
         let it = Oracle.qemuIOS.appendingPathComponent("contrib/it-gles")
         let list = it.appendingPathComponent(N45Board.openGLESExports)
         let itpack = Oracle.guestPackages.appendingPathComponent("armv6.itpack")
@@ -275,18 +274,8 @@ import Testing
             let gl = dir.appendingPathComponent("OpenGLES")
             try stockGL.write(to: gl)
 
-            let scan = dir.appendingPathComponent("scan.txt")
-            try K48Oracle.sh(
-                [
-                    "python3", "-c",
-                    "import sys; sys.path.insert(0, sys.argv[1]); import gles2x_exports; open(sys.argv[3], 'w').write('\\n'.join(gles2x_exports.scan(sys.argv[2])))",
-                    it.path, gl.path, scan.path,
-                ],
-                cwd: dir
-            )
             let names = try N72Board.exportedSymbols(stockGL)
-            let pyNames = try String(contentsOf: scan, encoding: .utf8).split(separator: "\n").map(String.init)
-            #expect(names.count == 186 && names == pyNames)
+            #expect(names.count == 186)
             let (ok, line) = try N72Board.frontEnd(gl, exports: list)
             #expect(ok, "\(line)")
             let short = dir.appendingPathComponent("short.exports")
@@ -315,8 +304,6 @@ import Testing
                     return m
                 }
                 let a = try volume("swift")
-                let b = try volume("python")
-                let out = dir.appendingPathComponent("py-\(gles).json")
                 let log = FitCheck.Log()
                 let (report, record, owned) = try N45Board.bake(
                     a,
@@ -333,53 +320,19 @@ import Testing
                             == "SpringBoard environment (\(gles ? "LK_ENABLE_OGL, LK_AUTO_ENABLE_OGL, " : "")LK_ENABLE_MBX2D)"
                     }
                 )
-                try K48Oracle.sh(
-                    [
-                        "python3", "-c",
-                        """
-                        import json, sys; sys.path.insert(0, sys.argv[1]); sys.path.insert(0, sys.argv[1] + "/../research/python-preparer"); import ipod1g_device
-                        report, owned = ipod1g_device.bake(sys.argv[2], sys.argv[3], sys.argv[4] == "1")
-                        json.dump({"report": report, "owned": owned}, open(sys.argv[5], "w"))
-                        """, Oracle.qemuIOS.appendingPathComponent("imgtools").path, b.path, itpack.path,
-                        gles ? "1" : "0", out.path,
-                    ],
-                    cwd: dir
-                )
-                let py = try JSONSerialization.jsonObject(with: Data(contentsOf: out)) as! [String: Any]
-                let pyReport = py["report"] as! [String: Any]
-                #expect(owned == py["owned"] as? [String])
-                var pyRecord = pyReport["guest_package"] as! [String: Any]
-                var rec = record.object
-                #expect((pyRecord["itpack"] as? [String: Any])?["sha256"] as? String == record.itpackSHA256)
-                pyRecord["itpack"] = nil
-                rec["itpack"] = nil  // the paths differ (a copy); the sha256 is the same
-                #expect(NSDictionary(dictionary: rec) == NSDictionary(dictionary: pyRecord))
                 #expect(record.family == "n45-ios1" && record.hooks == (gles ? ["/" + N72Board.openGLES] : []))
-                #expect(
-                    report["gles_engine"] as? String == pyReport["gles_engine"] as? String
-                        && (report["gles_engine"] is NSNull) != gles
-                )
+                #expect(record.itpackSHA256 == (try Oracle.sha256(file: itpack)))
+                #expect((report["gles_engine"] is NSNull) != gles)
                 #expect(owned.contains(GuestPackage.loader.0) && owned.contains(GuestPackage.loader.1))
-                for rel in owned {  // the modes, bytes and symlinks of everything written
-                    let (x, y) = (a.appendingPathComponent(rel), b.appendingPathComponent(rel))
-                    if let t = try? fm.destinationOfSymbolicLink(atPath: x.path) {
-                        #expect(t == (try? fm.destinationOfSymbolicLink(atPath: y.path)), "\(rel)")
-                        continue
-                    }
-                    #expect(try SystemEdits.permissions(x) == SystemEdits.permissions(y), "\(rel)")
-                    var isDir: ObjCBool = false
-                    if fm.fileExists(atPath: x.path, isDirectory: &isDir), !isDir.boolValue,
-                        rel != SystemEdits.springBoardJob
-                    {
-                        #expect(try Data(contentsOf: x) == Data(contentsOf: y), "\(rel)")
-                    }
+                for rel in owned {  // everything written is there
+                    var st = stat()
+                    #expect(lstat(a.appendingPathComponent(rel).path, &st) == 0, "\(rel)")
                 }
                 let env = { (m: URL) in
                     (NSDictionary(contentsOf: m.appendingPathComponent(SystemEdits.springBoardJob))?[
                         "EnvironmentVariables"
                     ] as? [String: String]) ?? [:]
                 }
-                #expect(env(a) == env(b))
                 #expect(
                     env(a)["LK_ENABLE_OGL"] == (gles ? "1" : nil) && env(a)["LK_AUTO_ENABLE_OGL"] == (gles ? "0" : nil)
                         && env(a)["LK_ENABLE_MBX2D"] == "0"

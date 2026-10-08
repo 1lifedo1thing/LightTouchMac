@@ -6,8 +6,8 @@ import Testing
 @testable import FirmwareKit
 
 struct IdentityTests {
-    // sha256 of json.dumps(ipad1_kboot.synth_identity(seed), indent=1).
-    static let python: [(String, String)] = [
+    // Recorded digests: sha256 of json.dumps(ipad1_kboot.synth_identity(seed), indent=1).
+    static let recorded: [(String, String)] = [
         ("ipad1-7B500-default", "4d379949478173c02768a25adbd7e91c02f63daccd0e65c0e6506b81da61e861"),
         ("x", "40db97bd11bf40b3734a6d5a9fde47e7c0ad135178b25c48bb28553a19d4e2b4"),
         ("y", "0a0ef7113474b96bf46f646f4fb74c0fa01260f800a3f6c791170f796ff4101f"),
@@ -18,7 +18,7 @@ struct IdentityTests {
         ),
     ]
 
-    @Test(arguments: python) func jsonMatchesPython(seed: String, sha: String) throws {
+    @Test(arguments: recorded) func jsonMatchesRecordedDigests(seed: String, sha: String) throws {
         #expect(Oracle.sha256(try UnitIdentity.synthesize(seed: seed).json()) == sha)
     }
 

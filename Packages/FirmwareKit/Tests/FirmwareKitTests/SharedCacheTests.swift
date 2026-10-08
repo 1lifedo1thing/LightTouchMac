@@ -4,16 +4,14 @@ import Testing
 @testable import FirmwareKit
 
 /// Fixture plumbing shared by the wave-A2 tests: firmware lives in ~/Developer/qemu-ios-files and
-/// ~/Downloads, the Python oracle in Oracle.qemuIOS (~/Developer/qemu-ios-ipad1). Nothing is written there; every
+/// ~/Downloads, qemu-ios builds in Oracle.qemuIOS (~/Developer/qemu-ios-ipad1). Nothing is written there; every
 /// output goes to a temp dir that the test deletes.
 enum Fixtures {
     static let home = FileManager.default.homeDirectoryForCurrentUser
     static let files = home.appendingPathComponent("Developer/qemu-ios-files")
     static let qemu = Oracle.qemuIOS
-    static let imgtools = qemu.appendingPathComponent("imgtools")
 
     static func exists(_ u: URL) -> Bool { FileManager.default.fileExists(atPath: u.path) }
-    static var hasPython: Bool { exists(imgtools.appendingPathComponent("ipad1_nand.py")) }
 
     /// Decrypted system volumes carrying the shared caches.
     static let rootfs: [String: (image: URL, raw: Bool, cache: String)] = [
@@ -214,38 +212,24 @@ enum Fixtures {
         #expect(!bad.fits && bad.proof.contains("refusing"), "\(bad.proof)")
     }
 
-    /// Byte-identical patched cache vs appsync_cachepatch.py --patch, and the same status lines.
+    /// The dry run leaves the cache alone, the patch changes it, and a second patch finds it already patched.
     @Test(
         .enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"),
         arguments: ["7B500", "8C148", "7E18", "7B367"]
     )
-    func patchMatchesPython(build: String) throws {
-        guard Fixtures.hasRootfs(build), Fixtures.hasPython else {
-            try FixtureRequirements.missing(#"SharedCacheTests.swift: Fixtures.hasRootfs(build), Fixtures.hasPython"#)
+    func patch(build: String) throws {
+        guard Fixtures.hasRootfs(build) else {
+            try FixtureRequirements.missing(#"SharedCacheTests.swift: Fixtures.hasRootfs(build)"#)
         }
         let dir = try Fixtures.tempDir("dsc")
         defer { try? FileManager.default.removeItem(at: dir) }
         let mine = try Fixtures.cache(build, to: dir)
-        let theirs = dir.appendingPathComponent("python-cache")
-        try FileManager.default.copyItem(at: mine, to: theirs)
-
-        let script = Fixtures.imgtools.appendingPathComponent("appsync_cachepatch.py").path
-        let dry = try Fixtures.run(["python3", script, mine.path])
-        #expect(
-            try AppSyncCachePatch.patchCache(at: mine, apply: false) + "\n" == String(decoding: dry.out, as: UTF8.self)
-        )
-        let t0 = Date()
+        let stock = try Oracle.sha256(file: mine)
+        _ = try AppSyncCachePatch.patchCache(at: mine, apply: false)
+        #expect(try Oracle.sha256(file: mine) == stock)
         let status = try AppSyncCachePatch.patchCache(at: mine)
-        let swiftTime = Date().timeIntervalSince(t0)
-        let t1 = Date()
-        let py = try Fixtures.run(["python3", script, theirs.path, "--patch"])
-        let pyTime = Date().timeIntervalSince(t1)
-        print(
-            "\(build): swift \(String(format: "%.2f", swiftTime)) s, python \(String(format: "%.2f", pyTime)) s: \(status)"
-        )
-        #expect(py.status == 0)
-        #expect(status + "\n" == String(decoding: py.out, as: UTF8.self))
-        #expect(try Fixtures.run(["cmp", mine.path, theirs.path]).status == 0)
+        print("\(build): \(status)")
+        #expect(try Oracle.sha256(file: mine) != stock)
         #expect(try AppSyncCachePatch.patchCache(at: mine).contains("already patched"))
     }
 }

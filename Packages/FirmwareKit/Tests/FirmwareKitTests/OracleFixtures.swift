@@ -2,8 +2,8 @@
 // (withTemp has a sync and an async form on purpose.)
 
 // Oracle fixtures. Inputs are read from ~/Downloads, ~/Developer and ~/Developer/qemu-ios-files and a test
-// skips when its input is absent; outputs go to temp dirs only. Expected values are sha256 digests of the
-// Python oracle's outputs (qemu-ios imgtools: ipad1_fw.py at ipod-ipsw e6de24c7fa, ipad1_kboot.py and
+// skips when its input is absent; outputs go to temp dirs only. Expected values are recorded sha256 digests of
+// the retired Python oracle's outputs (qemu-ios imgtools: ipad1_fw.py at ipod-ipsw e6de24c7fa, ipad1_kboot.py and
 // ipad1_rootfs.extract_rootfs at ipad1 5f365778a4), never the Apple-derived bytes themselves.
 
 import CryptoKit
@@ -16,7 +16,7 @@ enum Oracle {
     static let home = FileManager.default.homeDirectoryForCurrentUser
     static func path(_ p: String) -> URL { home.appendingPathComponent(p) }
     static func exists(_ u: URL) -> Bool { FileManager.default.fileExists(atPath: u.path) }
-    /// The qemu-ios checkout whose imgtools and guest builds are the oracle (FIRMWAREKIT_QEMU_IOS overrides).
+    /// The qemu-ios checkout whose guest builds and C tools the tests read (FIRMWAREKIT_QEMU_IOS overrides).
     static let qemuIOS =
         ProcessInfo.processInfo.environment["FIRMWAREKIT_QEMU_IOS"].map { URL(fileURLWithPath: $0) }
         ?? path("Developer/qemu-ios-ipad1")
@@ -46,7 +46,7 @@ enum Oracle {
         var ipsw: URL
         /// The Python decrypt cache for this IPSW, when there is one.
         var cache: URL?
-        /// sha256 of each ipad1_fw.py output file.
+        /// Recorded sha256 of each ipad1_fw.py output file.
         var components: [String: String]
         var rootfsDMG: String
         var rawVolume: String

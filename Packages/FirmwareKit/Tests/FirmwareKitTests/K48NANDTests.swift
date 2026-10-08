@@ -12,8 +12,6 @@ struct K48NANDTests {
         #expect(K48Board.oneshotTimeout(productVersion: "3.2.2") == 300)
     }
 
-    static let storeFiles = ["geometry.json"] + (0..<2).flatMap { b in (0..<4).map { "bus\(b)-ce\($0).pages" } }
-
     @Test(arguments: ["nand-xor-ff-v2", "future-format", ""])
     func physicalAndUnknownFormatsRefusedBeforePageMapping(_ format: String) throws {
         try Oracle.withTemp { dir in
@@ -112,7 +110,7 @@ struct K48NANDTests {
         }
     }
 
-    /// make_mbr reproduces the 16 GB unit's sector 0 (ipad1_nand.py selfcheck's bytes).
+    /// make_mbr reproduces the 16 GB unit's sector 0.
     @Test func mbrMatchesUnit() {
         let head = [UInt8](K48NAND.makeMBR())
         let unit = Data(
@@ -123,26 +121,13 @@ struct K48NANDTests {
         #expect((head[..<0x1be] + head[0x1ee..<510] + head[512...]).allSatisfy { $0 == 0 })
     }
 
-    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"))
-    func mbrMatchesPython() throws {
-        let head = K48NAND.makeMBR()
-        guard Fixtures.hasPython else { try FixtureRequirements.missing(#"K48NANDTests.swift: Fixtures.hasPython"#) }
-        let dir = try Fixtures.tempDir("mbr")
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let out = dir.appendingPathComponent("mbr.bin")
-        try Fixtures.run(["python3", Fixtures.imgtools.appendingPathComponent("ipad1_nand.py").path, "mbr", out.path])
-        #expect(try Data(contentsOf: out) == Data(head))
-    }
-
-    /// Small synthetic store (Python's selfcheck geometry): byte-identical files vs ipad1_nand.build on the same
-    /// inputs, including a sparse data image and an fstab line, and both checkers accept the Swift store; whitened
-    /// (K48, N81) and plain (N18: ipad1_nand --no-whitening).
+    /// Small synthetic store (the selfcheck geometry), including a sparse data image and an fstab line: the checker
+    /// accepts it and its index pages map exactly; whitened (K48, N81) and plain (N18).
     @Test(
         .enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"),
         arguments: [true, false]
     )
-    func syntheticStoreMatchesPython(whitening: Bool) async throws {
-        guard Fixtures.hasPython else { try FixtureRequirements.missing(#"K48NANDTests.swift: Fixtures.hasPython"#) }
+    func syntheticStore(whitening: Bool) async throws {
         let dir = try Fixtures.tempDir("nand")
         defer { try? FileManager.default.removeItem(at: dir) }
         let ps = 4096
@@ -182,7 +167,6 @@ struct K48NANDTests {
 
         let kv = Array("Darwin Kernel Version selfcheck".utf8)
         let mine = dir.appendingPathComponent("swift")
-        let theirs = dir.appendingPathComponent("python")
         try await K48NAND.build(
             geometry: .selfcheck,
             mbr: paths[0],
@@ -193,26 +177,6 @@ struct K48NANDTests {
             out: mine,
             whitening: whitening
         )
-        let py = """
-            import sys, argparse; sys.path.insert(0, sys.argv[1]); import ipad1_nand as n
-            assert hasattr(n, "WHITENING"), "this oracle's ipad1_nand has no --no-whitening"
-            n.WHITENING = \(whitening ? "True" : "False")
-            n.build(argparse.Namespace(geometry="selfcheck", mbr=sys.argv[2], system=sys.argv[3], s3=sys.argv[4], data=sys.argv[5],
-                    out=sys.argv[6], force=True, kernelcache=None, kernel_version=b"Darwin Kernel Version selfcheck"))
-            sys.exit(0 if n.check(sys.argv[7]) else 1)
-            """
-        let r = try Fixtures.run(
-            ["python3", "-c", py, Fixtures.imgtools.path] + paths.map(\.path) + [theirs.path, mine.path]
-        )
-        #expect(r.status == 0, "\(r.err)")
-        let names = ["geometry.json"] + (0..<2).flatMap { b in (0..<2).map { "bus\(b)-ce\($0).pages" } }
-        for n in names {
-            #expect(
-                try Fixtures.run(["cmp", mine.appendingPathComponent(n).path, theirs.appendingPathComponent(n).path])
-                    .status == 0,
-                "\(n)"
-            )
-        }
         var lines: [String] = []
         #expect(
             try K48NAND.check(store: mine, mbr: paths[0], system: paths[1]) { lines.append($0) },
@@ -222,9 +186,9 @@ struct K48NANDTests {
     }
 
     /// The real thing (FK_NAND_FULL=1): the 7B500 pristine system + 14.7 GB sparse data volume into a
-    /// k48-16g store, every file compared with `ipad1_nand.py build` on the same inputs.
+    /// k48-16g store that the checker accepts.
     @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"))
-    func fullStoreMatchesPython() async throws {
+    func fullStore() async throws {
         let u = Fixtures.files.appendingPathComponent("ipad1/userland/pristine")
         let hw2 = Fixtures.files.appendingPathComponent("ipad1/hw2")
         let inputs = [
@@ -232,18 +196,14 @@ struct K48NANDTests {
             hw2.appendingPathComponent("rdisk0s3.bin"), u.appendingPathComponent("data.img"),
             Fixtures.files.appendingPathComponent("ipad1/7B500/dec/kernelcache.mach"),
         ]
-        guard ProcessInfo.processInfo.environment["FK_NAND_FULL"] == "1", Fixtures.hasPython,
-            inputs.allSatisfy(Fixtures.exists)
-        else {
+        guard ProcessInfo.processInfo.environment["FK_NAND_FULL"] == "1", inputs.allSatisfy(Fixtures.exists) else {
             try FixtureRequirements.missing(
-                #"K48NANDTests.swift: ProcessInfo.processInfo.environment["FK_NAND_FULL"] == "1", Fixtures.hasPython, inputs.allSatisfy(Fixtures.exists)"#
+                #"K48NANDTests.swift: ProcessInfo.processInfo.environment["FK_NAND_FULL"] == "1", inputs.allSatisfy(Fixtures.exists)"#
             )
         }
         let dir = try Fixtures.tempDir("nand-full")
         defer { try? FileManager.default.removeItem(at: dir) }
-        let oracle = ProcessInfo.processInfo.environment["FK_NAND_ORACLE"]  // a prebuilt ipad1_nand.py store, if given
         let mine = dir.appendingPathComponent("swift")
-        let theirs = oracle.map { URL(fileURLWithPath: $0) } ?? dir.appendingPathComponent("python")
         let t0 = Date()
         let res = try await K48NAND.build(
             mbr: inputs[0],
@@ -254,24 +214,7 @@ struct K48NANDTests {
             out: mine
         )
         let swiftTime = Date().timeIntervalSince(t0)
-        if oracle == nil {
-            let t1 = Date()
-            let r = try Fixtures.run([
-                "python3", Fixtures.imgtools.appendingPathComponent("ipad1_nand.py").path, "build",
-                "--mbr", inputs[0].path, "--kernelcache", inputs[4].path, "--system", inputs[1].path,
-                "--s3", inputs[2].path, "--data", inputs[3].path, "--out", theirs.path,
-            ])
-            #expect(r.status == 0, "\(r.err)")
-            print("python build \(String(format: "%.1f", Date().timeIntervalSince(t1))) s")
-        }
         print("k48-16g: \(res.records) records; swift build \(String(format: "%.1f", swiftTime)) s")
-        for n in Self.storeFiles {
-            #expect(
-                try Fixtures.run(["cmp", mine.appendingPathComponent(n).path, theirs.appendingPathComponent(n).path])
-                    .status == 0,
-                "\(n)"
-            )
-        }
         let du = try Fixtures.run(["du", "-sk", mine.path])
         print("swift store on disk: \(String(decoding: du.out, as: UTF8.self))")
         let t2 = Date()
