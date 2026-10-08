@@ -32,6 +32,8 @@ final class AppsInspectorViewController: NSViewController {
     /// current.
     let banner = NSTextField.paneCaption()
     var bannerHeight: NSLayoutConstraint?
+    /// Why the list shown is stale (showStaleBanner); nil once a read succeeds.
+    var staleReason: String?
     var lastLoaded: Date?
     var apps: [InstalledApp] = []
     var pending: [InstallJob] = []

@@ -350,4 +350,14 @@ struct AppsInspectorRowsTests {
         )
         #expect(rows.identities[rows.pending.count - 1] == .job(ObjectIdentifier(queued)) && rows.rowCount == 4)
     }
+
+    /// One banner: paused transfers over a stale list's reason, and once the queue resumes (a stop or an erase
+    /// resumes it) the banner is what the list is, not "Transfers paused" without its Resume button.
+    @Test func theBannerFollowsThePauseAndTheList() {
+        #expect(AppsInspectorBanner(paused: true, stale: "Device powered off") == .paused)
+        #expect(AppsInspectorBanner(paused: false, stale: "Device powered off") == .stale("Device powered off"))
+        #expect(AppsInspectorBanner(paused: false, stale: nil) == .none)
+        #expect(AppsInspectorBanner.none.text == nil && AppsInspectorBanner.none.height == 0)
+        #expect(AppsInspectorBanner.paused.text == "Transfers paused")
+    }
 }

@@ -6,6 +6,33 @@
 import Foundation
 import HostServiceWire
 
+/// The inspector's one banner line, derived whenever it may change: the transfer queue paused (Resume beside it)
+/// over a stale list's reason, or nothing.
+public enum AppsInspectorBanner: Equatable {
+    case none
+    /// The list is kept but the device stopped answering; why.
+    case stale(String)
+    case paused
+
+    public init(paused: Bool, stale: String?) { self = paused ? .paused : stale.map(Self.stale) ?? .none }
+
+    public var text: String? {
+        switch self {
+        case .none: nil
+        case .stale(let reason): reason
+        case .paused: "Transfers paused"
+        }
+    }
+    /// The paused line is taller: the Resume button sits on it.
+    public var height: CGFloat {
+        switch self {
+        case .none: 0
+        case .stale: 18
+        case .paused: 28
+        }
+    }
+}
+
 /// The device as the Apps inspector sees it right now.
 public struct AppsDevice: Equatable {
     public var id: UUID

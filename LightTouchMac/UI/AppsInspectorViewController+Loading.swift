@@ -316,27 +316,34 @@ extension AppsInspectorViewController {
     private func showStaleBanner() {
         let when = AppsInspector.freshnessText(since: lastLoaded)
         if emulator.isPoweredOff {
-            banner.stringValue = "Device powered off"
+            staleReason = "Device powered off"
         } else if emulator.shuttingDown {
-            banner.stringValue = "Device powering off…"
+            staleReason = "Device powering off…"
         } else if emulator.isReconnecting {
-            banner.stringValue = "Reconnecting app services…"
+            staleReason = "Reconnecting app services…"
         } else {
-            banner.stringValue =
+            staleReason =
                 usbUnavailable
                 ? "USB connection unavailable"
                 : emulator.connectionIssue?.summary ?? "Connecting to \(emulator.profile.shortName)…"
         }
         banner.toolTip = [emulator.connectionIssue?.detail, when]
             .compactMap { $0 }.joined(separator: "\n")
-        banner.isHidden = false
-        bannerHeight?.constant = 18
+        showBanner()
     }
 
     func hideStaleBanner() {
-        guard !banner.isHidden else { return }
-        banner.isHidden = true
-        bannerHeight?.constant = 0
+        staleReason = nil
+        showBanner()
+    }
+
+    /// The banner as AppsInspectorBanner derives it now: paused transfers, else the stale reason, else none.
+    private func showBanner() {
+        let shown = AppsInspectorBanner(paused: AppInstaller.isPaused(emulator.instance.id), stale: staleReason)
+        resumeButton.isHidden = shown != .paused
+        banner.stringValue = shown.text ?? ""
+        banner.isHidden = shown == .none
+        bannerHeight?.constant = shown.height
     }
 
     /// Home-screen order when SpringBoard has told us one, and the *displayed*
@@ -400,12 +407,7 @@ extension AppsInspectorViewController {
     func updateButtons() {
         // A cached list can outlive the connection. Match the removal action's
         // reachability gate so stale rows never advertise a usable Uninstall.
-        resumeButton.isHidden = !AppInstaller.isPaused(emulator.instance.id)
-        if AppInstaller.isPaused(emulator.instance.id) {
-            banner.stringValue = "Transfers paused"
-            banner.isHidden = false
-            bannerHeight?.constant = 28
-        }
+        showBanner()
         addRemove.setEnabled(emulator.canQueueInstall, forSegment: 0)
         addRemove.setEnabled(haveLoaded && canUninstall(selectedApps), forSegment: 1)
     }
