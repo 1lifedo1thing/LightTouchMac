@@ -3,7 +3,7 @@
 // The device sits on top, the console below, and the bar between them is the
 // divider: drag it, double-click it, or use its toggle. With the console
 // hidden the bar floats, transparent, over the device's bottom edge, so the
-// device keeps the whole pane.
+// device keeps the whole pane; only its toggle and grab handle take clicks.
 
 import Cocoa
 import LightTouchCore
@@ -160,7 +160,9 @@ final class ConsoleSplitView: NSView {
 
 /// Xcode's debug bar: pinned at the divider, visible when the console isn't,
 /// and itself the divider's grab area (IDEBottomBar.additionalGrabRectsForSplitViewDivider).
-/// Collapsed it draws nothing but a bordered toggle, over the device (issue 33).
+/// Collapsed it draws nothing but a bordered toggle and a grab handle beside it, over the device, and takes
+/// clicks only on those two: the rest of the strip is the device's (issue 33). The handle sits by the toggle,
+/// not centered, because a centered one would cover the iPad's Home button at Fit.
 @MainActor
 final class ConsoleBar: NSView {
     /// DVTControlBar.defaultBarHeight: 36 pt in the macOS 26 design, 27 before it.
@@ -172,6 +174,7 @@ final class ConsoleBar: NSView {
     let source = NSPopUpButton()
     let filter = NSSearchField()
     let clearButton = NSButton()
+    let handle = ConsoleBarHandle()
     private let stack = NSStackView()
     private let spacer = NSView()
     var onToggle: (() -> Void)?
@@ -199,6 +202,7 @@ final class ConsoleBar: NSView {
             toggleButton.setAccessibilityLabel(label)
             // The console's own controls go with it, as Xcode's console footer does.
             for control in [source, filter, clearButton] as [NSView] { control.isHidden = !isExpanded }
+            handle.isHidden = isExpanded
             window?.invalidateCursorRects(for: self)
             needsDisplay = true
         }
@@ -232,7 +236,7 @@ final class ConsoleBar: NSView {
         clearButton.target = self
         clearButton.action = #selector(clear)
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
-        for view in [toggleButton, source, spacer, filter, clearButton] { stack.addArrangedSubview(view) }
+        for view in [toggleButton, handle, source, spacer, filter, clearButton] { stack.addArrangedSubview(view) }
         stack.spacing = 8
         stack.detachesHiddenViews = true
         stack.edgeInsets = NSEdgeInsets(top: 0, left: 8, bottom: 0, right: 8)
@@ -244,6 +248,7 @@ final class ConsoleBar: NSView {
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.topAnchor.constraint(equalTo: topAnchor), stack.bottomAnchor.constraint(equalTo: bottomAnchor),
             filter.widthAnchor.constraint(equalToConstant: 180),
+            handle.widthAnchor.constraint(equalToConstant: 32), handle.heightAnchor.constraint(equalToConstant: 24),
         ])
         isExpanded = false
     }
@@ -263,8 +268,19 @@ final class ConsoleBar: NSView {
         NSRect(x: 0, y: 0, width: bounds.width, height: 1).fill()
     }
 
-    /// The resize cursor over the bar's empty stretches, not over its controls.
+    /// Collapsed, only the toggle and the handle are the bar's; elsewhere the click falls through to the device.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        guard !isExpanded, let hit else { return hit }
+        return hit.isDescendant(of: toggleButton) || hit === handle ? hit : nil
+    }
+
+    /// The resize cursor over the bar's empty stretches, not over its controls; collapsed, over the handle.
     override func resetCursorRects() {
+        guard isExpanded else {
+            addCursorRect(handle.convert(handle.bounds, to: self), cursor: .resizeUpDown)
+            return
+        }
         var x = bounds.minX
         for control in stack.arrangedSubviews where !control.isHidden && control !== spacer {
             let frame = control.convert(control.bounds, to: self)
@@ -299,6 +315,27 @@ final class ConsoleBar: NSView {
     @objc private func clear() { onClear?() }
     @objc private func sourceChosen() { onSource?() }
     @objc private func filterChanged() { onFilter?(filter.stringValue) }
+}
+
+/// The collapsed bar's grab handle: a short capsule. Its clicks and drags go up the responder chain to the bar.
+@MainActor
+final class ConsoleBarHandle: NSView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.handle)
+        setAccessibilityLabel("Console Divider")
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.tertiaryLabelColor.setFill()
+        let capsule = NSRect(x: bounds.midX - 12, y: bounds.midY - 2.5, width: 24, height: 5)
+        NSBezierPath(roundedRect: capsule, xRadius: 2.5, yRadius: 2.5).fill()
+    }
 }
 
 /// The split as a pane of the window's NSSplitViewController.

@@ -466,12 +466,16 @@ extension SharedState {
         }
 
         /// Collapsed, the bar floats over the device pane (issue 33): the pane keeps the whole height, the bar draws
-        /// nothing of its own so the pane shows through, and the toggle has a border to stand on. Expanded, the
-        /// bar is the divider between them as before. Renders go to the temporary directory.
+        /// nothing of its own so the pane shows through, the toggle has a border to stand on, and a click anywhere
+        /// in the strip but the toggle and the grab handle is the pane's; dragging or double-clicking the handle
+        /// works as the bar did. Expanded, the bar is the divider between them as before. Renders go to the
+        /// temporary directory.
         @Test(arguments: [NSAppearance.Name.aqua, .darkAqua]) func collapsedConsoleBarOverlaysThePane(
             _ appearance: NSAppearance.Name
         ) throws {
             final class Fill: NSView {
+                var downs = 0
+                override func mouseDown(with event: NSEvent) { downs += 1 }
                 override func draw(_ dirtyRect: NSRect) {
                     NSColor(srgbRed: 1, green: 0, blue: 1, alpha: 1).setFill()
                     bounds.fill()
@@ -483,8 +487,35 @@ extension SharedState {
             let top = Fill()
             let split = ConsoleSplitView(top: top, autosaveName: "view", defaults: defaults)
             split.appearance = NSAppearance(named: appearance)
-            split.frame = NSRect(x: 0, y: 0, width: 400, height: 300)
+            // In a window, never ordered in. It doesn't dispatch events while hidden, so `press` does what its
+            // sendEvent does: the mouse-down to the view hit-tested under it, the drags and the mouse-up to that view.
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 400, height: 500),
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            window.contentView = split
             split.layoutSubtreeIfNeeded()
+            func event(_ type: NSEvent.EventType, _ p: NSPoint, clicks: Int = 1) -> NSEvent {
+                NSEvent.mouseEvent(
+                    with: type,
+                    location: p,
+                    modifierFlags: [],
+                    timestamp: 0,
+                    windowNumber: window.windowNumber,
+                    context: nil,
+                    eventNumber: 0,
+                    clickCount: clicks,
+                    pressure: 1
+                )!
+            }
+            func press(_ points: [NSPoint], clicks: Int = 1) {
+                guard let first = points.first, let target = split.hitTest(first) else { return }
+                target.mouseDown(with: event(.leftMouseDown, first, clicks: clicks))
+                for p in points.dropFirst() { target.mouseDragged(with: event(.leftMouseDragged, p)) }
+                target.mouseUp(with: event(.leftMouseUp, points.last ?? first, clicks: clicks))
+            }
             let bar = split.bar
             func render(_ name: String) throws -> (NSPoint) -> [Int] {
                 let bitmap = split.bitmapImageRepForCachingDisplay(in: split.bounds)!
@@ -516,12 +547,34 @@ extension SharedState {
             for y in [ConsoleBar.height - 0.5, ConsoleBar.height / 2] {
                 #expect(pixel(NSPoint(x: 300, y: y)) == magenta, "collapsed bar is transparent at y \(y)")
             }
+            // Clicks in the strip away from the toggle and the handle reach the pane, through the window.
+            for p in [NSPoint(x: 300, y: 10), NSPoint(x: 200, y: ConsoleBar.height / 2), NSPoint(x: 4, y: 4)] {
+                let before = top.downs
+                press([p])
+                #expect(top.downs == before + 1, "a click at \(p) in the strip reaches the pane")
+            }
+            #expect(split.layout.isCollapsed, "and leaves the console hidden")
+            let handle = bar.handle
+            let grip = handle.convert(NSPoint(x: handle.bounds.midX, y: handle.bounds.midY), to: nil)
+            #expect(!handle.isHidden && split.hitTest(grip) === handle, "the handle is the bar's, at \(grip)")
+            #expect(pixel(grip) != magenta, "the handle shows")
+            #expect(handle.accessibilityRole() == .handle && handle.accessibilityLabel() == "Console Divider")
+            let toggleAt = bar.toggleButton.convert(NSPoint(x: 10, y: 10), to: nil)
+            #expect(split.hitTest(toggleAt)?.isDescendant(of: bar.toggleButton) == true, "the toggle is the bar's")
+            // A drag up from the handle opens the console at the drag; a drag back down below the threshold hides it.
+            press([grip, NSPoint(x: grip.x, y: grip.y + 60), NSPoint(x: grip.x, y: grip.y + 150)])
+            split.layoutSubtreeIfNeeded()
             #expect(
-                split.hitTest(NSPoint(x: 300, y: 10))?.isDescendant(of: bar) == true,
-                "the bar still takes the drag"
+                !split.layout.isCollapsed && split.log.frame.height == 150,
+                "drag up from the handle opens at 150, got \(split.log.frame.height)"
             )
-
-            bar.toggleButton.performClick(nil)
+            #expect(handle.isHidden, "expanded: no handle")
+            // A double-click on the expanded bar hides the console; one on the handle shows it again.
+            let barAt = NSPoint(x: 300, y: bar.frame.midY)
+            press([barAt], clicks: 2)
+            split.layoutSubtreeIfNeeded()
+            #expect(split.layout.isCollapsed && top.frame == split.bounds, "double-click on the bar hides")
+            press([grip], clicks: 2)
             split.layoutSubtreeIfNeeded()
             #expect(!split.layout.isCollapsed, "shown")
             #expect(
