@@ -326,6 +326,8 @@ final class DisplayView: NSView {
         if window == nil {
             modelLoadTask?.cancel()
             modelFallbackTask?.cancel()
+            // A model cut short is loaded again on the way back (applyBezel skips the bezel it applied).
+            if !modelPresentationFinished { appliedBezel = nil }
             wheelTiltResetTask?.cancel()
             displayLink?.invalidate()
             displayLink = nil

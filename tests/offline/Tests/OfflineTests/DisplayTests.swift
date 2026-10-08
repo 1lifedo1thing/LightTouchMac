@@ -34,6 +34,38 @@ extension SharedState {
             #expect(lcds.first?.minificationFilter != .nearest, "DisplayView's LCD minification should filter")
         }
 
+        /// A display that leaves its window before its model is presented (another device selected meanwhile) shows
+        /// the model when it comes back, where it kept the shell and the Home button hidden until the bezel changed.
+        @Test func aModelLoadCutShortLoadsAgainOnReturn() async throws {
+            try await MainBundle.with(Self.n72Model) {
+                DeviceModelView.loadingDelay = .milliseconds(300)
+                defer { DeviceModelView.loadingDelay = .zero }
+                let display = DisplayView(frame: NSRect(x: 0, y: 0, width: 500, height: 800), profile: .n72)
+                let emulator = EmulatorController()
+                display.emulator = emulator
+                let window = NSWindow(
+                    contentRect: display.frame,
+                    styleMask: [.titled],
+                    backing: .buffered,
+                    defer: false
+                )
+                window.contentView = display
+                try await Task.sleep(for: .milliseconds(50))
+                window.contentView = nil
+                try await Task.sleep(for: .milliseconds(400))
+                window.contentView = display
+                let started = ContinuousClock.now
+                @MainActor func live() -> Bool {
+                    display.subviews.contains { ($0 as? DeviceModelView)?.alphaValue ?? 0 > 0.99 }
+                }
+                while !live() && ContinuousClock.now - started < .seconds(5) {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                #expect(live(), "the model loads again once the display is back in a window")
+                window.contentView = nil
+            }
+        }
+
         /// The 3D model's startup: a fast first frame, a slow asset and a slow first frame all reach live 3D; the photo
         /// placeholder never flashes before the model's first second and shows after it while unprepared models stay
         /// invisible; a stalled renderer callback doesn't keep a closed display alive.
