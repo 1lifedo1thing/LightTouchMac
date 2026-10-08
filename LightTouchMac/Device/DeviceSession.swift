@@ -49,6 +49,11 @@ import LightTouchCore
     }
 }
 
+extension DeviceSession: LibrarySession {
+    var ladder: ShutdownLadder { emulator.ladder }
+    func release() async -> Bool { await emulator.release() }
+}
+
 /// Every session this process has started, the library rows, and the one
 /// launch-selection default.
 @MainActor final class DeviceSessionHost {
@@ -68,6 +73,25 @@ import LightTouchCore
         library = .shared
         catalog = .bundled
         Self.shared = self
+        libraryObserver = NotificationCenter.default.addObserver(
+            forName: DeviceLibrary.didChangeNotification,
+            object: library,
+            queue: nil
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.stopVanished() } }
+    }
+
+    // MARK: Vanished folders
+
+    private var libraryObserver: NSObjectProtocol?
+    private let vanished = VanishedDevices()
+
+    /// A device folder left Devices/ behind the app's back: its session stops and goes (VanishedDevices).
+    private func stopVanished() {
+        vanished.stop(sessions, library: library) { [weak self] session in
+            guard let self else { return }
+            sessions.removeAll { $0 === session }
+            NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
+        }
     }
 
     func session(for entry: FirmwareCatalog.Entry) -> DeviceSession? {
