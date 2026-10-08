@@ -89,9 +89,23 @@ struct DeviceControlsTests {
     }
 
     @Test func batteryReappliedAtBootIPadReplugsIPodSetsChargerMode() async throws {
+        try await withScratchDirectory { directory in try await batteryReapplied(directory) }
+    }
+    func batteryReapplied(_ directory: URL) async throws {
+        for name in ["pad", "pod"] {
+            try FileManager.default.createDirectory(
+                at: directory.appendingPathComponent(name),
+                withIntermediateDirectories: true
+            )
+        }
         let scope = BootSessionScope()
         let pad = Machine()
-        let iPad = BatteryControls(canChooseUSBCharger: true, scope: scope, control: pad.control)
+        let iPad = BatteryControls(
+            canChooseUSBCharger: true,
+            settings: DeviceSettingsFile(directory: directory.appendingPathComponent("pad")),
+            scope: scope,
+            control: pad.control
+        )
         iPad.replugDelay = .milliseconds(10)
         iPad.apply()
         #expect(pad.requests == [.battery(level: 100, charging: 0), .usbCharger(true)])
@@ -122,7 +136,12 @@ struct DeviceControlsTests {
         #expect(pad.requests == [.usbCharger(true)])
 
         let pod = Machine()
-        let iPod = BatteryControls(canChooseUSBCharger: false, scope: scope, control: pod.control)
+        let iPod = BatteryControls(
+            canChooseUSBCharger: false,
+            settings: DeviceSettingsFile(directory: directory.appendingPathComponent("pod")),
+            scope: scope,
+            control: pod.control
+        )
         iPod.apply()
         #expect(pod.requests == [.battery(level: 100, charging: 0)])
         pod.requests = []
@@ -131,6 +150,32 @@ struct DeviceControlsTests {
         pod.requests = []
         iPod.apply()
         #expect(pod.requests == [.battery(level: 100, charging: 2)])
+    }
+
+    /// The choice is the device's, not the controller's: a fresh helper (a new controller over the same device)
+    /// starts from it as an in-place restart does.
+    @Test func aFreshHelperStartsFromTheBatteryChoice() async throws {
+        try await withScratchDirectory { directory in
+            let first = Machine()
+            let before = BatteryControls(
+                canChooseUSBCharger: false,
+                settings: DeviceSettingsFile(directory: directory),
+                scope: BootSessionScope(),
+                control: first.control
+            )
+            before.setLevel(20)
+            before.setCharging(false)
+            let fresh = Machine()
+            let after = BatteryControls(
+                canChooseUSBCharger: false,
+                settings: DeviceSettingsFile(directory: directory),
+                scope: BootSessionScope(),
+                control: fresh.control
+            )
+            #expect(after.level == 20 && !after.charging, "the menu shows the choice")
+            after.apply()
+            #expect(fresh.requests == [.battery(level: 20, charging: 2)], "and the new boot starts from it")
+        }
     }
 
     @Test func onlyABootsFirstFrameRunsIt() {

@@ -67,23 +67,31 @@ public final class KeyboardInput {
 /// The Battery menu: the level and whether the USB port charges the device (off, USB data stays connected).
 /// The iPad's port then grants no charge current (a 500 mA port): "Not Charging", and the lock screen keeps its
 /// wallpaper. The iPod reads not charging but, as on hardware, shows its battery while on USB.
+/// Kept in the device's settings, so every boot starts from the choice, a fresh helper's as much as a restart's.
 public final class BatteryControls {
-    public private(set) var level = 100
-    public private(set) var charging = true
+    public var level: Int { settings.value.batteryLevel ?? 100 }
+    public var charging: Bool { settings.value.batteryCharging ?? true }
+    private let settings: DeviceSettingsFile
     private let canChooseUSBCharger: Bool
     private let scope: BootSessionScope
     private let control: MachineControl
     /// How long the port stays unplugged so the guest re-reads its current.
     var replugDelay: Duration = .seconds(1)
 
-    public init(canChooseUSBCharger: Bool, scope: BootSessionScope, control: @escaping MachineControl) {
+    public init(
+        canChooseUSBCharger: Bool,
+        settings: DeviceSettingsFile,
+        scope: BootSessionScope,
+        control: @escaping MachineControl
+    ) {
+        self.settings = settings
         self.canChooseUSBCharger = canChooseUSBCharger
         self.scope = scope
         self.control = control
     }
 
     public func setLevel(_ level: Int) {
-        self.level = level
+        settings.change { $0.batteryLevel = level }
         control(.battery(level: level, charging: chargingMode)) { _ in }
     }
 
@@ -97,7 +105,7 @@ public final class BatteryControls {
     }
 
     public func setCharging(_ on: Bool) {
-        charging = on
+        settings.change { $0.batteryCharging = on }
         guard canChooseUSBCharger else { return control(.battery(level: level, charging: chargingMode)) { _ in } }
         control(.usbCharger(on)) { [weak self] applied in
             guard applied, let self else { return }

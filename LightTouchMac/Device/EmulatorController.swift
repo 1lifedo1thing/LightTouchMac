@@ -234,10 +234,11 @@ final class EmulatorController {
     // MARK: - Input
     /// The hardware buttons, shake, tilt, pasting and typing (DeviceInput); the keyboard is KeyboardInput.
     @ObservationIgnored private(set) lazy var input = DeviceInput(host: self, settings: settingsFile)
-    /// The Battery menu (BatteryControls): every boot starts from it (at its first frame); a new QEMU otherwise
-    /// starts at its own 80% while the menu still shows the choice.
+    /// The Battery menu (BatteryControls), kept in the device's settings: every boot starts from it (at its first
+    /// frame); until then a new QEMU is at its own 80%.
     @ObservationIgnored private(set) lazy var battery = BatteryControls(
         canChooseUSBCharger: profile.canChooseUSBCharger,
+        settings: settingsFile,
         scope: bootScope
     ) {
         [weak self] request, done in self?.control(request, done)
