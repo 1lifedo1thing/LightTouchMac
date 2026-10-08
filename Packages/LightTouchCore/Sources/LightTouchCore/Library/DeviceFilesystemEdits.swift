@@ -286,23 +286,14 @@ public final class DeviceFilesystemEdits {
         return mountedOn == String(cString: real)
     }
 
-    /// A file open for writing on the volume (lsof), or its free space or file count moving over half a second.
+    /// A file open for writing on the volume, or its free space or file count moving over half a second.
     @concurrent public nonisolated static func isBeingWritten(_ url: URL) async -> Bool {
         func counts() -> [UInt64] {
             var fs = statfs()
             return statfs(url.path, &fs) == 0 ? [fs.f_bfree, fs.f_ffree] : []
         }
         let before = counts()
-        let lsof = Process()
-        lsof.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        lsof.arguments = ["-F", "a", "+f", "--", url.path]
-        let pipe = Pipe()
-        lsof.standardOutput = pipe
-        lsof.standardError = FileHandle.nullDevice
-        guard (try? lsof.run()) != nil else { return false }
-        let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        lsof.waitUntilExit()
-        if output.split(separator: "\n").contains(where: { $0 == "aw" || $0 == "au" }) { return true }
+        if hasWriter(onVolume: url) { return true }
         try? await Task.sleep(for: .milliseconds(500))
         return counts() != before
     }
@@ -332,5 +323,40 @@ public final class DeviceFilesystemEdits {
             }
         unmounts.forEach { $0.waitUntilExit() }
         browsing = []
+    }
+}
+
+extension DeviceFilesystemEdits {
+    /// Any process with a file open for writing on the volume mounted at `url` (libproc: what lsof's access mode
+    /// shows, without spawning it).
+    nonisolated static func hasWriter(onVolume url: URL) -> Bool {
+        guard let real = realpath(url.path, nil) else { return false }
+        let root = String(cString: real) + "/"
+        free(real)
+        let flags = UInt32(PROC_LISTPIDSPATH_PATH_IS_VOLUME | PROC_LISTPIDSPATH_EXCLUDE_EVTONLY)
+        let pidSize = MemoryLayout<pid_t>.size
+        let needed = proc_listpidspath(UInt32(PROC_ALL_PIDS), 0, url.path, flags, nil, 0)
+        guard needed > 0 else { return false }
+        var pids = [pid_t](repeating: 0, count: Int(needed) / pidSize + 16)
+        let listed = proc_listpidspath(UInt32(PROC_ALL_PIDS), 0, url.path, flags, &pids, Int32(pids.count * pidSize))
+        for pid in pids.prefix(max(0, Int(listed)) / pidSize) where pid > 0 {
+            let size = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
+            guard size > 0 else { continue }
+            var fds = [proc_fdinfo](repeating: proc_fdinfo(), count: Int(size) / MemoryLayout<proc_fdinfo>.stride)
+            let got = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, &fds, size)
+            for fd in fds.prefix(max(0, Int(got)) / MemoryLayout<proc_fdinfo>.stride)
+            where fd.proc_fdtype == UInt32(PROX_FDTYPE_VNODE) {
+                var info = vnode_fdinfowithpath()
+                let infoSize = Int32(MemoryLayout<vnode_fdinfowithpath>.size)
+                guard proc_pidfdinfo(pid, fd.proc_fd, PROC_PIDFDVNODEPATHINFO, &info, infoSize) == infoSize else {
+                    continue
+                }
+                let path = withUnsafeBytes(of: info.pvip.vip_path) {
+                    String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self)
+                }
+                if info.pfi.fi_openflags & UInt32(FWRITE) != 0, path.hasPrefix(root) { return true }
+            }
+        }
+        return false
     }
 }

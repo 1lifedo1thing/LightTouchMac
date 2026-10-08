@@ -94,14 +94,4 @@ func walk(_ root: URL) -> [String] {
     return found.sorted()
 }
 
-/// Copies `source` into `target`, merging into what is there (shutil.copytree with dirs_exist_ok).
-func copyTree(_ source: URL, into target: URL) throws {
-    for name in walk(source) {
-        let to = target.appendingPathComponent(name)
-        try files.createDirectory(at: to.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? files.removeItem(at: to)
-        try files.copyItem(at: source.appendingPathComponent(name), to: to)
-    }
-}
-
 func remove(_ path: URL) { try? files.removeItem(at: path) }

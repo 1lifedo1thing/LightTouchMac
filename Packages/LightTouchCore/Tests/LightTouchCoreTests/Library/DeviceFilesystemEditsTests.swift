@@ -365,7 +365,7 @@ import Testing
                     "/usr/bin/hdiutil",
                     ["attach", "-imagekey", "diskimage-class=CRawDiskImage", "-nomount", "-nobrowse", image.path]
                 )
-                .split(whereSeparator: \.isWhitespace).first.map(String.init) ?? ""
+                .split(whereSeparator: \.isWhitespace).first { $0.hasPrefix("/dev/") }.map(String.init) ?? ""
             defer { _ = try? run("/usr/bin/hdiutil", ["detach", dev, "-force"]) }
             _ = try run("/sbin/newfs_hfs", ["-v", "probe", dev])
             let mountPoint = FileManager.default.temporaryDirectory.appendingPathComponent(

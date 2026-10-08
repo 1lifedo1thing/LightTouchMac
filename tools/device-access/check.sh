@@ -20,9 +20,9 @@ export ACCESS_CAPTURE="$CASE/capture"
 export USBMUXD_SOCKET_ADDRESS=127.0.0.1:9999
 "$CASE/access" config --instance "$ID" --usbmux 127.0.0.1:27017 --inetcat "$PROXY" --state "$CASE/known hosts" > "$CASE/config"
 /usr/bin/ssh -G -F "$CASE/config" "$HOST" > "$CASE/resolved" 2>/dev/null
-rg -q '^strictHostKeyChecking ask$|^stricthostkeychecking ask$' "$CASE/resolved"
-rg -q "hostkeyalias $HOST" "$CASE/resolved"
-rg -q 'userknownhostsfile .*known hosts/7dceceb7-1b4c-4f12-9f9d-3b4f93f5ba45/known_hosts' "$CASE/resolved"
+grep -Eq '^strictHostKeyChecking ask$|^stricthostkeychecking ask$' "$CASE/resolved"
+grep -Eq "hostkeyalias $HOST" "$CASE/resolved"
+grep -Eq 'userknownhostsfile .*known hosts/7dceceb7-1b4c-4f12-9f9d-3b4f93f5ba45/known_hosts' "$CASE/resolved"
 # Proxy exits immediately; verify actual SSH invoked the correctly quoted tool
 # with its immutable endpoint, despite an unrelated parent endpoint.
 if "$CASE/access" ssh --instance "$ID" --usbmux 127.0.0.1:27017 --inetcat "$PROXY" --state "$CASE/known hosts" > "$CASE/out" 2> "$CASE/err"; then exit 1; fi
@@ -31,7 +31,7 @@ if "$CASE/access" ssh --instance "$ID" --usbmux 127.0.0.1:27017 --inetcat "$PROX
 [ "$(sed -n '3p' "$CASE/capture")" = 22 ]
 [ "$USBMUXD_SOCKET_ADDRESS" = 127.0.0.1:9999 ]
 "$CASE/access" config --instance "$OTHER" --usbmux 127.0.0.1:27018 --inetcat "$PROXY" --state "$CASE/known hosts" > "$CASE/other"
-rg -q 'Host lighttouch-4dceceb7-1b4c-4f12-9f9d-3b4f93f5ba45' "$CASE/other"
+grep -Eq 'Host lighttouch-4dceceb7-1b4c-4f12-9f9d-3b4f93f5ba45' "$CASE/other"
 [ "$("$CASE/access" gdb --instance "$ID" --gdb 127.0.0.1:1234)" = 'target remote 127.0.0.1:1234' ]
 if "$CASE/access" gdb --instance "$ID" --gdb 0.0.0.0:1234 2>/dev/null; then exit 1; fi
 if "$CASE/access" config --instance "$ID" --usbmux 127.0.0.1:0 --inetcat "$PROXY" 2>/dev/null; then exit 1; fi
@@ -43,9 +43,9 @@ printf '%s %s\n' "$HOST" "$(cat "$INSTANCE/id_ecdsa.pub")" > "$INSTANCE/known_ho
 printf '{"instance":"%s","usbmux":"127.0.0.1:27019","inetcat":"%s"}\n' "$ID" "$PROXY" > "$INSTANCE/connection.json"
 "$CASE/access" config --instance "$ID" --state "$CASE/known hosts" > "$CASE/provisioned"
 /usr/bin/ssh -G -F "$CASE/provisioned" "$HOST" > "$CASE/provisioned-resolved" 2>/dev/null
-rg -q '^stricthostkeychecking true$|^stricthostkeychecking yes$' "$CASE/provisioned-resolved"
-rg -q '^identitiesonly yes$' "$CASE/provisioned-resolved"
-rg -q 'identityfile .*id_ecdsa' "$CASE/provisioned-resolved"
+grep -Eq '^stricthostkeychecking true$|^stricthostkeychecking yes$' "$CASE/provisioned-resolved"
+grep -Eq '^identitiesonly yes$' "$CASE/provisioned-resolved"
+grep -Eq 'identityfile .*id_ecdsa' "$CASE/provisioned-resolved"
 if "$CASE/access" ssh --instance "$ID" --state "$CASE/known hosts" > "$CASE/out" 2> "$CASE/err"; then exit 1; fi
 [ "$(sed -n '1p' "$CASE/capture")" = 127.0.0.1:27019 ]
 "$CASE/access" enable --instance "$ID" --state "$CASE/known hosts" > /dev/null

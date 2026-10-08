@@ -516,8 +516,8 @@ public struct Vendor {
         for source in [
             universal.appendingPathComponent("prefix/share/licenses"),
             universal.appendingPathComponent("static/prefix/share/licenses"),
-        ] {
-            try copyTree(source, into: licenses)
+        ] where files.fileExists(atPath: source.path) {
+            try run(["/usr/bin/ditto", source.path, licenses.path])
         }
         for name in ["LICENSE", "COPYING", "COPYING.LIB"] {
             try copy(qemu.appendingPathComponent(name), licenses.appendingPathComponent("qemu/\(name)"))
