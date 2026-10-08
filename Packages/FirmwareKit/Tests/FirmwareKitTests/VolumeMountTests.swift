@@ -228,11 +228,13 @@ import Testing
                     )
                 }
                 await gate.wait()
-                let observed = try await DiskImage.checkedAttachedImages()
+                // `hdiutil info` can leave an attached image out while others attach or detach: presence is polled.
                 #expect(
-                    observed.contains {
-                        URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path
-                            == image.resolvingSymlinksInPath().path
+                    try await DiskImageTests.eventually {
+                        try await DiskImage.checkedAttachedImages().contains {
+                            URL(fileURLWithPath: $0.image).resolvingSymlinksInPath().path
+                                == image.resolvingSymlinksInPath().path
+                        }
                     }
                 )
                 tool.cancel()
@@ -245,7 +247,11 @@ import Testing
                             == image.resolvingSymlinksInPath().path
                     }
                 )
-                #expect(after.contains { $0.device == retained.device })
+                #expect(
+                    try await DiskImageTests.eventually {
+                        try await DiskImage.checkedAttachedImages().contains { $0.device == retained.device }
+                    }
+                )
             } catch {
                 try await DiskImage.detach(retained.device)
                 throw error

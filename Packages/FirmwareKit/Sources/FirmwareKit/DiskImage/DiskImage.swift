@@ -108,18 +108,23 @@ public enum DiskImage {
         }
         // This image's devices only: a device node another image held before can be this attach's by now.
         let prior = Set(try await checkedAttachedImages().filter(isImage).map(\.device))
+        var named: String?
         do {
             let out = try await execute(attachCommand(image, readOnly: readOnly, mount: mount, backend: backend))
             guard let attached = parseAttach(out) else {
                 throw FirmwareError(.internal, "attach \(image.lastPathComponent): no device in \(out.suffix(600))")
             }
+            named = attached.device
             try Task.checkCancellation()
             return attached
         } catch {
-            // An attach can take effect before its interrupted tool returns a
-            // plist. Only detach newly observed devices for this exact image.
+            // A device the tool's plist named is detached by name: `hdiutil info` can leave an attached image out
+            // while others attach or detach. An attach can also take effect before its interrupted tool returns a
+            // plist; then only newly observed devices for this exact image are detached.
+            let named = named
             do {
                 try await Task.detached {
+                    if let named { return try await detach(named, force: true, backend: backend) }
                     for item in try await checkedAttachedImages() where isImage(item) && !prior.contains(item.device) {
                         try await detach(item.device, force: true, backend: backend)
                     }
