@@ -1,7 +1,7 @@
 import Foundation
 import HostRuntime
 
-/// The emulator's machines (`LightTouchDevice --machines`), recorded in tests/fixtures/machines.json for tests that
+/// The emulator's machines (`LightTouchDevice '{"mode":{"machines":{}}}'`), recorded in tests/fixtures/machines.json for tests that
 /// build argv without the emulator library; tests/release/test-package.py holds the record to the bundled library.
 enum MachineFixtures {
     static let all: [DeviceInfo] = {

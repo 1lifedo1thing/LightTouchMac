@@ -1,4 +1,5 @@
 import CryptoKit
+import FirmwareSchema
 import Foundation
 import HostRuntime
 
@@ -159,17 +160,20 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
             try StorageLocations.privateDirectory(request.log.deletingLastPathComponent())
             FileManager.default.createFile(atPath: request.log.path, contents: nil)
             process.executableURL = request.preparer
-            process.arguments = [
-                "create", "--entry", entryFile.path, "--ipsw", request.ipsw.path, "--out", staging.path,
-                "--seed", id.uuidString, "--helper", request.helper.path, "--cache", request.cache.path,
-            ]
             if let blob = request.blob {
-                process.arguments = [
-                    "unpack-base", "--blob", blob.path, "--out", staging.path, "--seed", id.uuidString,
-                ]
-            } else if let sibling = request.sibling {
-                try JSONEncoder().encode(sibling.entry).write(to: siblingFile)
-                process.arguments! += ["--sibling-entry", siblingFile.path, "--sibling-ipsw", sibling.ipsw.path]
+                process.arguments = FirmwareCommand.UnpackBase(blob: blob, out: staging, seed: id.uuidString).arguments
+            } else {
+                if let sibling = request.sibling { try JSONEncoder().encode(sibling.entry).write(to: siblingFile) }
+                process.arguments =
+                    FirmwareCommand.Create(
+                        entry: entryFile,
+                        ipsw: request.ipsw,
+                        out: staging,
+                        seed: id.uuidString,
+                        helper: request.helper,
+                        cache: request.cache,
+                        sibling: request.sibling.map { (siblingFile, $0.ipsw) }
+                    ).arguments
             }
             let stdout = Pipe()
             process.standardOutput = stdout
@@ -257,7 +261,7 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
         if let preparer {
             let detach = Process()
             detach.executableURL = preparer
-            detach.arguments = ["detach-images", "--root", preparing.path]
+            detach.arguments = FirmwareCommand.DetachImages(root: preparing).arguments
             detach.standardOutput = FileHandle.nullDevice
             if (try? detach.run()) != nil {
                 detach.waitUntilExit()

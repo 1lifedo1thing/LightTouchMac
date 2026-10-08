@@ -215,7 +215,7 @@ private struct StorageRow: View {
         Task {
             do {
                 _ = try await FirmwareTool.run(
-                    ["cache-prune", "--root", IPSWStore.cachesDirectory.appendingPathComponent("Decrypted").path],
+                    FirmwareCommand.CachePrune(root: IPSWStore.cachesDirectory.appendingPathComponent("Decrypted")),
                     executable: executable
                 )
                 logEvent("storage: cleared unused decrypt cache")

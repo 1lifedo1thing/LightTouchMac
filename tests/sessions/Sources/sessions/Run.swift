@@ -100,9 +100,9 @@ func waitGone(_ pid: Int, _ seconds: Double) -> Double? {
 }
 
 /// A fresh work directory: `--work`, or a temporary one.
-func workDirectory(_ args: Arguments, _ name: String) -> URL {
+func workDirectory(_ args: Inputs, _ name: String) -> URL {
     let work =
-        args.path("work")
+        args.work
         ?? FileManager.default.temporaryDirectory
         .appendingPathComponent("ltm-\(name)-\(UUID().uuidString.prefix(8))")
     try? FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)

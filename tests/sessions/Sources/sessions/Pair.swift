@@ -6,19 +6,18 @@ import SessionKit
 /// dragged and a screenshot of each; lockdown through each usbmuxd reaches its own device; one IPA into each through the
 /// one gate; kill -9 of the iPad's helper is noticed while the iPod keeps running; a fresh iPad helper on the same overlay
 /// lights and answers; Stop halts both at once; the bases are untouched.
-func pair(_ args: Arguments) -> Never {
-    guard args.positional.count == 2 else { die("pair needs an n72 base and a k48 base") }
-    let ipod = Base(args.positional[0])
-    let ipad = Base(args.positional[1])
+func pair(_ args: PairCheck) -> Never {
+    let ipod = Base(args.ipodBase)
+    let ipad = Base(args.ipadBase)
     guard ipod.board == "n72ap", ipad.board == "k48ap" else { die("pair boots an n72ap base and a k48ap base") }
-    let work = workDirectory(args, "pair")
-    let tools = Tools.resolve(args, work: work)
-    let ipa = args.path("ipa") ?? checkout("qemu-ios").appendingPathComponent("contrib/it-harness/build/Harness.ipa")
+    let work = workDirectory(args.inputs, "pair")
+    let tools = Tools.resolve(args.inputs, work: work)
+    let ipa = args.ipa ?? checkout("qemu-ios").appendingPathComponent("contrib/it-harness/build/Harness.ipa")
     let before = (SessionJudge.tree(ipod.url), SessionJudge.tree(ipad.url))
     var config = driverConfig(tools, work: work, ipa: ipa)
     config["ipodBase"] = ipod.url.path
     config["ipadBase"] = ipad.url.path
-    if !args.flag("no-offer") {
+    if !args.noOffer {
         config["ipadItpack"] = tools.guest.appendingPathComponent("guest-tools/armv7.itpack").path
     }
     config["timeout"] = 900
@@ -83,7 +82,7 @@ func pair(_ args: Arguments) -> Never {
                 separator: ", "
             )
     )
-    if !args.flag("no-offer") {
+    if !args.noOffer {
         let offer = e.one("offer", ["device": "ipad"])
         let report = e.one("ipadReport")
         r.check(

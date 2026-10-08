@@ -7,7 +7,8 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 STATE="${LTM_DEVELOPER_STATE_DIR:-$HOME/Library/Application Support/Light Touch/DeveloperSSH}"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/ltm-developer-enable.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
-swiftc -module-cache-path "$TMP/modules" "$ROOT/tools/device-access/main.swift" -o "$TMP/access"
+swift build -c release -q --package-path "$ROOT/tools/device-access"
+ln -s "$(swift build -c release --package-path "$ROOT/tools/device-access" --show-bin-path)/device-access" "$TMP/access"
 if [ ! -f "$STATE/payload/developer-tools.json" ]; then
     "$ROOT/tools/developer-packages/fetch.sh" "$STATE/payload"
 fi

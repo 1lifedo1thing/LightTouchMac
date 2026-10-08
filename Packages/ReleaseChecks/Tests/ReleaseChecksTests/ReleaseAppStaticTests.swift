@@ -1,4 +1,5 @@
 import Foundation
+import HostRuntime
 import Testing
 
 @testable import ReleaseChecks
@@ -130,7 +131,11 @@ struct ReleaseAppStaticTests {
         #expect(empty.succeeded && empty.output.isEmpty, "\(empty)")
         #expect(try run([contents.appendingPathComponent("MacOS/inetcat").path, "--version"]).succeeded)
 
-        let probe = try Shell.run([helper.path, "--machines"], environment: ReleaseApp.cleanEnvironment, timeout: 60)
+        let probe = try Shell.run(
+            [helper.path] + HelperLaunch(.machines).arguments,
+            environment: ReleaseApp.cleanEnvironment,
+            timeout: 60
+        )
         try #require(probe.succeeded, "\(probe.error)")
         let listing = try JSONSerialization.jsonObject(with: Data(probe.output.utf8)) as! [String: Any]
         let dylib = contents.appendingPathComponent("Frameworks/libqemu-arm.dylib")
@@ -160,7 +165,7 @@ struct ReleaseAppStaticTests {
         }.compactMap { $0["board"] as? String }
         #expect(
             stale.isEmpty,
-            "tests/fixtures/machines.json differs from the emulator for \(stale): record `LightTouchDevice --machines` again"
+            "tests/fixtures/machines.json differs from the emulator for \(stale): record LightTouchDevice's machines launch again"
         )
 
         // iPhone OS 1.x lockdownd is SSLv3 only: the bundled OpenSSL must have it (build-static-deps.sh).

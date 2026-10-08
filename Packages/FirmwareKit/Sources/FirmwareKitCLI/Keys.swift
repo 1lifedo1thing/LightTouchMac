@@ -7,32 +7,14 @@
 // This is how a key gets into the catalog.
 
 import FirmwareKit
+import FirmwareSchema
 import Foundation
 
-func verifyKeysCommand(_ argv: [String]) -> Never {
-    var flags: [String: String] = [:]
-    var rest = argv[...]
-    while let a = rest.popFirst() {
-        guard ["--entry", "--ipsw"].contains(a), let v = rest.popFirst() else {
-            FileHandle.standardError.write(Data("bad argument \(a)\n".utf8))
-            exit(64)
-        }
-        flags[a] = v
-    }
-    guard let entryPath = flags["--entry"], let ipswPath = flags["--ipsw"] else {
-        FileHandle.standardError.write(Data("verify-keys: --entry and --ipsw are required\n".utf8))
-        exit(64)
-    }
-    let url = { (p: String) in URL(fileURLWithPath: (p as NSString).expandingTildeInPath).standardizedFileURL }
-    func line(_ o: [String: Any]) {
-        FileHandle.standardOutput.write(
-            try! JSONSerialization.data(withJSONObject: o, options: [.sortedKeys]) + Data("\n".utf8)
-        )
-    }
+func verifyKeysCommand(_ command: FirmwareCommand.VerifyKeys) -> Never {
     var allOK = true
     do {
-        let entry = try FirmwareEntry.load(from: url(entryPath))
-        let ipsw = IPSWArchive(url(ipswPath))
+        let entry = try FirmwareEntry.load(from: fileURL(command.entry))
+        let ipsw = IPSWArchive(fileURL(command.ipsw))
         let names = try ipsw.names()
         // 2.x img3s leave the last partial AES block in plaintext; decided once on the kernelcache as the decryptor does.
         var plainTail = false
@@ -120,10 +102,10 @@ func verifyKeysCommand(_ argv: [String]) -> Never {
                 why = "\(error)"
             }
             allOK = allOK && ok
-            line(["component": component, "file": k.file, "ok": ok, "why": why])
+            printJSON(["component": component, "file": k.file, "ok": ok, "why": why])
         }
     } catch {
-        line(["error": "\(error)"])
+        printJSON(["error": "\(error)"])
         exit(1)
     }
     exit(allOK ? 0 : 1)

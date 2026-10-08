@@ -7,7 +7,8 @@
 // Dependencies are pinned to exact versions and recorded with their licenses in build-support/dependencies.json
 // (BuildTools' dependency sources manifest): ZIPFoundation (IPSW members), MachOKit (Mach-O headers, fat
 // files, code signatures), swift-subprocess (`diskutil image` / `hdiutil` through DiskImage), Unrar.swift (a "rar"
-// source's IPSW: RARLAB's UnRAR, extraction only).
+// source's IPSW: RARLAB's UnRAR, extraction only), swift-argument-parser (the firmwarekit command
+// lines, FirmwareSchema's FirmwareCommand).
 import PackageDescription
 
 let package = Package(
@@ -24,9 +25,13 @@ let package = Package(
         .package(url: "https://github.com/p-x9/MachOKit.git", exact: "0.53.0"),
         .package(url: "https://github.com/swiftlang/swift-subprocess.git", exact: "1.0.0"),
         .package(url: "https://github.com/mtgto/Unrar.swift.git", exact: "0.5.4"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", exact: "1.8.2"),
     ],
     targets: [
-        .target(name: "FirmwareSchema"),
+        .target(
+            name: "FirmwareSchema",
+            dependencies: [.product(name: "ArgumentParser", package: "swift-argument-parser")]
+        ),
         .target(name: "CActivation", cSettings: [.define("LT_ACTIVATION_LIBRARY")]),
         .target(
             name: "FirmwareKit",
@@ -44,6 +49,7 @@ let package = Package(
             dependencies: [
                 "FirmwareKit",
                 .product(name: "HostRuntime", package: "HostRuntime"),
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
         .testTarget(

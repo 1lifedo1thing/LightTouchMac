@@ -264,6 +264,19 @@
       "sha256": "0a66f9f000e0a7e4d20fb84a9297547a3d18fc9ae655a7beca6183e8965f4a7f",
       "license": "MIT AND UnRAR",
       "checksum_source": "SHA-256 calculated from this GitHub archive on 2026-10-05. Pinned exact in Packages/FirmwareKit/Package.swift. FirmwareKit's RARSource extracts a \"rar\" catalog source's IPSW through it (developer betas' only public copies); it bundles RARLAB's UnRAR 7.23 source under the UnRAR license (extraction only; redistribution allowed with the license text, which scripts/vendor ships as UnRAR-license.txt)."
+    },
+    {
+      "name": "swift-argument-parser",
+      "version": "1.8.2",
+      "groups": [
+        "swiftpm"
+      ],
+      "archive": "swift-argument-parser-1.8.2.tar.gz",
+      "directory": "swift-argument-parser-1.8.2",
+      "url": "https://github.com/apple/swift-argument-parser/archive/refs/tags/1.8.2.tar.gz",
+      "sha256": "62bb12fb84d07d7f9ebbbbae205d32f941bcfecdcebdd09889f6e7f7f96f04ac",
+      "license": "Apache-2.0",
+      "checksum_source": "SHA-256 calculated from this GitHub archive on 2026-10-07. Pinned exact in Packages/FirmwareKit/Package.swift (FirmwareSchema's FirmwareCommand: the firmwarekit command lines the app builds and the CLI parses), Packages/BuildTools, tests/sessions and tools/device-access. Never in LightTouchDevice, which loads the GPL-2.0-only emulator: it takes its launch as one HostRuntime HelperLaunch value."
     }
   ]
 }

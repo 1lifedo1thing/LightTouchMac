@@ -1,31 +1,15 @@
 import FirmwareKit
+import FirmwareSchema
 import Foundation
 
-@concurrent func bootAdmissionCommand(_ argv: [String]) async -> Int32 {
-    var flags: [String: String] = [:]
-    var allowRaw = false
-    var args = argv.makeIterator()
-    while let flag = args.next() {
-        if flag == "--allow-raw" {
-            allowRaw = true
-            continue
-        }
-        guard ["--device", "--record-policy"].contains(flag), let value = args.next(), flags[flag] == nil else {
-            FirmwareDiagnostics.write(Data("firmwarekit boot-admit: bad argument \(flag)\n".utf8))
-            return 64
-        }
-        flags[flag] = value
-    }
+@concurrent func bootAdmissionCommand(_ command: FirmwareCommand.BootAdmit) async -> Int32 {
     do {
-        guard let path = flags["--device"] else { throw FirmwareError(.internal, "boot-admit requires --device DIR") }
-        let device = URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL
-        let policy: VolumeRecordPolicy
-        switch flags["--record-policy"] ?? "standalone" {
-        case "standalone": policy = .standalone
-        case "managed": policy = try .managedDeviceDirectory(device)
-        default: throw FirmwareError(.internal, "--record-policy must be standalone or managed")
-        }
-        let admitted = try await FirmwareBootAdmission.admit(device: device, policy: policy, allowRaw: allowRaw)
+        let device = fileURL(command.device)
+        let admitted = try await FirmwareBootAdmission.admit(
+            device: device,
+            policy: try VolumeRecordPolicy(command.recordPolicy, device: device),
+            allowRaw: command.allowRaw
+        )
         commandOutput.write(try admitted.jsonData() + Data("\n".utf8))
         return 0
     } catch {
@@ -36,5 +20,15 @@ import Foundation
             commandOutput.write(output + Data("\n".utf8))
         }
         return 1
+    }
+}
+
+extension VolumeRecordPolicy {
+    /// The command line's --record-policy for `device`.
+    init(_ policy: RecordPolicy, device: URL) throws {
+        switch policy {
+        case .standalone: self = .standalone
+        case .managed: self = try .managedDeviceDirectory(device)
+        }
     }
 }

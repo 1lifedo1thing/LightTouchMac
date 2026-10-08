@@ -70,8 +70,8 @@ nonisolated public final class DeviceLink: @unchecked Sendable {
         public var requirement: String? = nil
         /// Spawn -> valid Mach hello + hello reply.
         public var connectTimeout: TimeInterval = 15
-        /// Extra helper arguments (tests).
-        public var arguments: [String] = []
+        /// The device's lease (HelperLaunch.lease).
+        public var lease: URL?
 
         public init(instance: UUID, outputDescriptor: Int32 = -1) {
             self.instance = instance
@@ -153,11 +153,11 @@ nonisolated public final class DeviceLink: @unchecked Sendable {
         _ = fcntl(sv[0], F_SETFD, FD_CLOEXEC)
         _ = fcntl(sv[1], F_SETFD, FD_CLOEXEC)  // the child gets it via dup2 onto 3
         let token = (0..<4).map { _ in String(format: "%08x", arc4random()) }.joined()
-        var argv =
-            [
-                configuration.helper.path, "--connect", server.serviceName, "--token", token,
-                "--instance", configuration.instance.uuidString,
-            ] + configuration.arguments
+        let launch = HelperLaunch(
+            .connect(service: server.serviceName, token: token, instance: configuration.instance),
+            lease: configuration.lease?.path
+        )
+        var argv = [configuration.helper.path] + launch.arguments
         var environment = ProcessInfo.processInfo.environment.merging(configuration.environment) { $1 }
         if let dylib = configuration.dylib { environment["LTM_QEMU_DYLIB"] = dylib }
         let envp = environment.map { "\($0)=\($1)" }

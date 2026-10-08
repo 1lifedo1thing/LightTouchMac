@@ -1,5 +1,6 @@
 // Developer access through stock OpenSSH/SFTP, libusbmuxd inetcat and QEMU GDB.
-// Compile: swiftc tools/device-access/main.swift -o /tmp/ltm-device-access
+// Build: swift build -c release --package-path tools/device-access (.build/release/device-access)
+import ArgumentParser
 import Foundation
 
 struct AccessError: Error, CustomStringConvertible {
@@ -23,42 +24,48 @@ func executable(_ value: String) throws -> String {
     }
     return value
 }
-func run() throws -> Int32 {
-    var args = Array(CommandLine.arguments.dropFirst())
-    guard let mode = args.first, ["ssh", "sftp", "config", "gdb", "enable", "disable"].contains(mode) else {
-        try fail(
-            "Usage: ltm-device-access {enable|disable|ssh|sftp|config|gdb} --instance UUID --usbmux 127.0.0.1:PORT --inetcat /path/to/inetcat [--identity /path/to/private-key] [--state /private/directory] [--gdb 127.0.0.1:PORT] [-- remote-command]"
-        )
+struct DeviceAccess: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "ltm-device-access",
+        abstract: "Developer SSH, SFTP and GDB for one device instance; `-- COMMAND` passes a remote command to ssh."
+    )
+    enum Mode: String, ExpressibleByArgument {
+        case enable, disable, ssh, sftp, config, gdb
     }
-    args.removeFirst()
-    var options: [String: String] = [:]
-    var command: [String] = []
-    while !args.isEmpty {
-        let key = args.removeFirst()
-        if key == "--" {
-            command = args
-            break
-        }
-        guard ["--instance", "--usbmux", "--inetcat", "--identity", "--state", "--gdb", "--batch"].contains(key),
-            !args.isEmpty, options[key] == nil
-        else { try fail("Unknown, duplicate or incomplete option: \(key)") }
-        options[key] = args.removeFirst()
-    }
-    guard let id = options["--instance"].flatMap(UUID.init(uuidString:)) else {
-        try fail("A device instance UUID is required.")
-    }
+    @Argument var mode: Mode
+    @Option(transform: { value in
+        guard let id = UUID(uuidString: value) else { throw ValidationError("A device instance UUID is required.") }
+        return id
+    })
+    var instance: UUID
+    @Option(help: "127.0.0.1:PORT, this instance's private usbmuxd.") var usbmux: String?
+    @Option(help: "The inetcat executable, an absolute path.") var inetcat: String?
+    @Option(help: "A private key, an absolute path.") var identity: String?
+    @Option(help: "The private state directory, an absolute path.") var state: String?
+    @Option(help: "127.0.0.1:PORT, the QEMU GDB stub.") var gdb: String?
+    @Option(help: "An sftp batch file, an absolute path.") var batch: String?
+    @Argument(parsing: .postTerminator) var command: [String] = []
+
+    func run() throws { throw ExitCode(try access(self)) }
+}
+
+func access(_ arguments: DeviceAccess) throws -> Int32 {
+    var (usbmux, inetcat, gdb) = (arguments.usbmux, arguments.inetcat, arguments.gdb)
+    let mode = arguments.mode.rawValue
+    let command = arguments.command
+    let id = arguments.instance
     guard command.isEmpty || mode == "ssh" else { try fail("Remote commands are supported only for ssh.") }
-    if let supplied = options["--usbmux"] { _ = try endpoint(supplied) }
-    if mode == "gdb", let supplied = options["--gdb"] {
+    if let supplied = usbmux { _ = try endpoint(supplied) }
+    if mode == "gdb", let supplied = gdb {
         print("target remote \(try endpoint(supplied))")
         return 0
     }
     let alias = "lighttouch-" + id.uuidString.lowercased()
-    if let directory = options["--state"], !directory.hasPrefix("/") {
+    if let directory = arguments.state, !directory.hasPrefix("/") {
         try fail("State directory must be an absolute path.")
     }
     let base =
-        options["--state"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+        arguments.state.map { URL(fileURLWithPath: $0, isDirectory: true) }
         ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
             "Library/Application Support/Light Touch/DeveloperSSH",
             isDirectory: true
@@ -83,9 +90,9 @@ func run() throws -> Int32 {
         }
         let connection = try JSONDecoder().decode(Connection.self, from: Data(contentsOf: profile))
         guard connection.instance == id else { try fail("Connection profile belongs to another instance.") }
-        options["--usbmux"] = options["--usbmux"] ?? connection.usbmux
-        options["--inetcat"] = options["--inetcat"] ?? connection.inetcat
-        options["--gdb"] = options["--gdb"] ?? connection.gdb
+        usbmux = usbmux ?? connection.usbmux
+        inetcat = inetcat ?? connection.inetcat
+        gdb = gdb ?? connection.gdb
     }
     if mode == "enable" || mode == "disable" {
         let marker = state.appendingPathComponent("enabled")
@@ -99,19 +106,19 @@ func run() throws -> Int32 {
         return 0
     }
     if mode == "gdb" {
-        guard let address = options["--gdb"] else { try fail("Supply the actual enabled QEMU GDB stub with --gdb.") }
+        guard let address = gdb else { try fail("Supply the actual enabled QEMU GDB stub with --gdb.") }
         print("target remote \(try endpoint(address))")
         return 0
     }
-    guard let socket = options["--usbmux"], let tool = options["--inetcat"] else {
+    guard let socket = usbmux, let tool = inetcat else {
         try fail("Supply this instance’s private --usbmux endpoint and --inetcat executable.")
     }
     let socketAddress = try endpoint(socket)
-    let inetcat = try executable(tool)
+    let inetcatPath = try executable(tool)
     let knownHosts = state.appendingPathComponent("known_hosts").path
     let proxy =
         "exec /usr/bin/env " + shellQuote("USBMUXD_SOCKET_ADDRESS=" + socketAddress) + " "
-        + shellQuote(sshLiteral(inetcat)) + " -l %p"
+        + shellQuote(sshLiteral(inetcatPath)) + " -l %p"
     var sshOptions = [
         "HostName=localhost", "Port=22", "User=root", "HostKeyAlias=" + alias,
         "UserKnownHostsFile=" + shellQuote(sshLiteral(knownHosts)),
@@ -119,7 +126,7 @@ func run() throws -> Int32 {
         "ProxyCommand=" + proxy, "ConnectTimeout=10", "ServerAliveInterval=15", "ServerAliveCountMax=2",
     ]
     let provisionedIdentity = state.appendingPathComponent("id_ecdsa").path
-    if let identity = options["--identity"]
+    if let identity = arguments.identity
         ?? (FileManager.default.fileExists(atPath: provisionedIdentity) ? provisionedIdentity : nil)
     {
         guard identity.hasPrefix("/"), !identity.contains("\n"), !identity.contains("\r"),
@@ -141,7 +148,7 @@ func run() throws -> Int32 {
         return 0
     }
     var batchArguments: [String] = []
-    if let batch = options["--batch"] {
+    if let batch = arguments.batch {
         guard mode == "sftp", batch.hasPrefix("/"), FileManager.default.isReadableFile(atPath: batch) else {
             try fail("--batch requires sftp and a readable absolute file path.")
         }
@@ -158,7 +165,4 @@ func run() throws -> Int32 {
     child.waitUntilExit()
     return child.terminationStatus
 }
-do { exit(try run()) } catch {
-    FileHandle.standardError.write(Data(("ltm-device-access: \(error)\n").utf8))
-    exit(2)
-}
+DeviceAccess.main()

@@ -8,10 +8,16 @@ let package = Package(
     name: "BuildTools",
     platforms: [.macOS("14.4")],
     products: [.executable(name: "ltm-build", targets: ["ltm-build"])],
-    dependencies: [.package(path: "../ReleaseChecks")],
+    dependencies: [
+        .package(path: "../ReleaseChecks"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", exact: "1.8.2"),
+    ],
     targets: [
         .target(name: "BuildTools", dependencies: [.product(name: "ReleaseChecks", package: "ReleaseChecks")]),
-        .executableTarget(name: "ltm-build", dependencies: ["BuildTools"]),
+        .executableTarget(
+            name: "ltm-build",
+            dependencies: ["BuildTools", .product(name: "ArgumentParser", package: "swift-argument-parser")]
+        ),
         .testTarget(name: "BuildToolsTests", dependencies: ["BuildTools"]),
     ]
 )

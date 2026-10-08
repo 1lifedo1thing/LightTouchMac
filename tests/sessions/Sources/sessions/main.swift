@@ -1,53 +1,146 @@
+// swift run --package-path tests/sessions sessions <check> [BASE …] [options]   (sessions --help)
+import ArgumentParser
 import Foundation
 
-let usage = """
-    usage: swift run --package-path tests/sessions sessions <check> [BASE …] [options]
+/// The options every check takes: where the executables and the run's files come from.
+struct Inputs: ParsableArguments {
+    @Option(
+        help: "Boot with a built app's helper, services worker, firmwarekit, dylib, usbmuxd and guest package.",
+        transform: path
+    )
+    var app: URL?
+    @Option(help: "Another emulator dylib (a development build).", transform: path) var dylib: URL?
+    @Option(transform: path) var usbmuxd: URL?
+    @Option(help: "The guest's HTTP client (default: the pinned qemu-ios's contrib/it-proxy/httpget).", transform: path)
+    var httpget: URL?
+    @Option(help: "Keeps the logs, screenshots and events (default: a temporary directory).", transform: path)
+    var work: URL?
+    @Option(help: "The signing requirement the driver pins the helper to.") var requirement: String?
+}
 
-    Every boot is headless and silent (-audio driver=none); nothing goes on screen. A BASE is a prepared device
-    (firmwarekit create output); it is read only. Exit 1 on any FAIL.
+/// `value` with ~ expanded.
+func path(_ value: String) -> URL { URL(fileURLWithPath: (value as NSString).expandingTildeInPath) }
 
-      single BASE          one device as the app boots it: lit, lockdown, activation, time zone, the Home screen (agent
-                           state, frame reference), backlight, AFC, an IPA install, a clean shutdown, the base untouched
-          --launch           launch the installed IPA through the guest agent; it must be frontmost
-          --reboot           a second cold boot on the same overlay: a file and the app must survive
-          --read-file PATH   the guest agent reads PATH back at Home
-          --upgrade-ipa IPA  install a newer build of the same app over it; its data must stay
-          --second-zone TZ   with --reboot: boot 2 asks for TZ
-          --host-power-gesture   shut down with the host's power gesture (iPod/1G)
-          --afc-race N [--dirty] N boots, AFC at lockdown's first answer, then Stop
-          --no-install --no-offer --ipa IPA --itpack PACK --audio-wav FILE
-      pair N72_BASE K48_BASE   two devices at once: kill -9 of one, restart, Stop both
-      proxy-trust BASE     the web proxy's CA trusted silently (n72 or k48)
-      local-network BASE   Attach to Local Network off: internet yes, the Mac's LAN no, until turned on (n72)
-      helper               the helper without a guest: signature pin, leases, kill before hello, preparation failure
-      helper-boot BASE     the helper alone on an n72 base: input, rotation, parent death, a meddled overlay, power (--only)
-      phone BASE           an iPhone base: carrier (SMS tone, ringtone), rotate, shutdown, keyboard (--only, --overlay DIR)
+struct Sessions: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "sessions",
+        abstract: "Emulator sessions on prepared bases, headless and silent; exit 1 on any FAIL.",
+        discussion: """
+            Every boot is headless and silent (-audio driver=none); nothing goes on screen. A BASE is a prepared device \
+            (firmwarekit create output); it is read only. Without --app the Debug helper, services worker and \
+            firmwarekit are built (cached in .build/sessions-xcode) and scripts/vendor's directory supplies the rest.
+            """,
+        subcommands: [
+            SingleCheck.self, PairCheck.self, ProxyTrustCheck.self, LocalNetworkCheck.self, HelperCheck.self,
+            HelperBootCheck.self, PhoneCheck.self,
+        ]
+    )
+}
 
-    Inputs: --app "Light Touch.app" boots with a built app's helper, services worker, firmwarekit, dylib, usbmuxd and
-    guest package; without it the Debug helper, services worker and firmwarekit are built (cached in .build/sessions-xcode)
-    and scripts/vendor's directory supplies the rest. --dylib, --usbmuxd, --httpget override; --work DIR keeps the logs,
-    screenshots and events (default: a temporary directory).
-    """
+struct SingleCheck: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "single",
+        abstract: """
+            One device as the app boots it: lit, lockdown, activation, time zone, the Home screen (agent state, frame \
+            reference), backlight, AFC, an IPA install, a clean shutdown, the base untouched.
+            """
+    )
+    @Argument var base: String
+    @Flag(help: "Launch the installed IPA through the guest agent; it must be frontmost.") var launch = false
+    @Flag(help: "A second cold boot on the same overlay: a file and the app must survive.") var reboot = false
+    @Option(help: "The guest agent reads PATH back at Home.") var readFile: String?
+    @Option(help: "Install a newer build of the same app over it; its data must stay.", transform: path)
+    var upgradeIPA: URL?
+    @Option(help: "With --reboot: boot 2 asks for TZ.") var secondZone: String?
+    @Flag(help: "Shut down with the host's power gesture (iPod/1G).") var hostPowerGesture = false
+    @Option(help: "N boots, AFC at lockdown's first answer, then Stop.") var afcRace: Int?
+    @Flag(help: "With --afc-race: dirty boots.") var dirty = false
+    @Flag var noInstall = false
+    @Flag var noOffer = false
+    @Option(transform: path) var ipa: URL?
+    @Option(transform: path) var itpack: URL?
+    @Option(transform: path) var audioWAV: URL?
+    @OptionGroup var inputs: Inputs
+
+    func run() { single(self) }
+}
+
+struct PairCheck: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "pair",
+        abstract: "Two devices at once (an n72 base, a k48 base): kill -9 of one, restart, Stop both."
+    )
+    @Argument var ipodBase: String
+    @Argument var ipadBase: String
+    @Flag var noOffer = false
+    @Option(transform: path) var ipa: URL?
+    @OptionGroup var inputs: Inputs
+
+    func run() { pair(self) }
+}
+
+struct ProxyTrustCheck: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "proxy-trust",
+        abstract: "The web proxy's CA trusted silently (an n72 or k48 base)."
+    )
+    @Argument var base: String
+    @Option var url = "https://example.com/"
+    @OptionGroup var inputs: Inputs
+
+    func run() { proxyTrust(self) }
+}
+
+struct LocalNetworkCheck: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "local-network",
+        abstract: "Attach to Local Network off: internet yes, the Mac's LAN no, until turned on (an n72 base)."
+    )
+    @Argument var base: String
+    @Option var internet = "http://example.com/"
+    @Option var dns = "http://example/"
+    @Option var domain = "com"
+    @OptionGroup var inputs: Inputs
+
+    func run() { localNetworkCheck(self) }
+}
+
+struct HelperCheck: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "helper",
+        abstract: "The helper without a guest: signature pin, leases, kill before hello, preparation failure."
+    )
+    @OptionGroup var inputs: Inputs
+
+    func run() { helperChecks(self) }
+}
+
+struct HelperBootCheck: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "helper-boot",
+        abstract: "The helper alone on an n72 base: input, rotation, parent death, a meddled overlay, power."
+    )
+    @Argument var base: String
+    @Option(help: "The cases, comma-separated.") var only = "ipod,meddle,power"
+    @OptionGroup var inputs: Inputs
+
+    func run() { helperBoot(self) }
+}
+
+struct PhoneCheck: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "phone",
+        abstract: "An iPhone base: carrier (SMS tone, ringtone), rotate, shutdown, keyboard."
+    )
+    @Argument var base: String
+    @Option(help: "The cases, comma-separated.") var only = "carrier,rotate,shutdown,keyboard"
+    @Option(help: "The overlay of a boot that walked Setup (6.x/7.x carrier), cloned.", transform: path)
+    var overlay: URL?
+    @OptionGroup var inputs: Inputs
+
+    func run() { phone(self) }
+}
 
 // App code in the drivers logs and keeps state under the run's own directories, never the user's library.
 setenv("LTM_STATE_DIR", FileManager.default.temporaryDirectory.appendingPathComponent("ltm-sessions-state").path, 1)
-
-let flags: Set<String> = ["launch", "reboot", "no-install", "no-offer", "dirty", "host-power-gesture"]
-let all = Array(CommandLine.arguments.dropFirst())
-guard let check = all.first, check != "--help", check != "-h" else {
-    print(usage)
-    exit(all.isEmpty ? 2 : 0)
-}
-let args = Arguments(Array(all.dropFirst()), flags: flags)
-switch check {
-case "single": single(args)
-case "pair": pair(args)
-case "proxy-trust": proxyTrust(args)
-case "local-network": localNetworkCheck(args)
-case "helper": helperChecks(args)
-case "helper-boot": helperBoot(args)
-case "phone": phone(args)
-default:
-    print(usage)
-    exit(2)
-}
+Sessions.main()

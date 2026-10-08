@@ -94,9 +94,9 @@ func parentKill(_ d: HelperDriver, _ r: Report, budget: Double) {
 /// helpers on one device's lease (the second refused, another device's not, the lease taken again once the holder's
 /// parent dies); the lease admission cases (ordinary and external leases, busy, pending edit and symlink refused), a
 /// kill before hello and a preparation failure, each reaped exactly once with its lease released.
-func helperChecks(_ args: Arguments) -> Never {
-    let work = workDirectory(args, "helper")
-    let tools = Tools.resolve(args, work: work)
+func helperChecks(_ args: HelperCheck) -> Never {
+    let work = workDirectory(args.inputs, "helper")
+    let tools = Tools.resolve(args.inputs, work: work)
     let r = Report()
 
     print("reject")
@@ -115,7 +115,7 @@ func helperChecks(_ args: Arguments) -> Never {
         helper: impostor,
         work: work,
         scenario: ["steps": [String]()],
-        extra: ["--expect-reject", "1"]
+        extra: ["--expect-reject"]
     )
     let rejected = reject.finish(30) == 0
     let rejectOutput = (try? String(contentsOf: reject.driver.out, encoding: .utf8)) ?? ""
@@ -205,13 +205,12 @@ func helperChecks(_ args: Arguments) -> Never {
 /// running helper (the app's notice); SIGTERM halts the helper. `power`: the pump at 60 Hz before boot (30 with the host
 /// constrained); shown 60 Hz with an idle-sleep assertion, hidden at most 5 Hz and none, back to 60 Hz within 100 ms,
 /// the guest's display asleep at most 5 Hz, woken 60 Hz again. `--only a,b` picks cases.
-func helperBoot(_ args: Arguments) -> Never {
-    guard let path = args.positional.first else { die("helper-boot needs a prepared n72 base") }
-    let base = Base(path)
+func helperBoot(_ args: HelperBootCheck) -> Never {
+    let base = Base(args.base)
     guard base.board == "n72ap" else { die("helper-boot boots an n72ap base") }
-    let work = workDirectory(args, "helper-boot")
-    let tools = Tools.resolve(args, work: work)
-    let only = Set((args["only"] ?? "ipod,meddle,power").split(separator: ",").map(String.init))
+    let work = workDirectory(args.inputs, "helper-boot")
+    let tools = Tools.resolve(args.inputs, work: work)
+    let only = Set(args.only.split(separator: ",").map(String.init))
     let r = Report()
 
     if only.contains("ipod") {
@@ -371,20 +370,19 @@ func helperBoot(_ args: Arguments) -> Never {
 /// different from portrait. `shutdown`: the guest confirms its own power-off. `keyboard` (A4): Connect Hardware Keyboard
 /// off and on. 6.x/7.x's first boot sits in Setup, which rejects calls: the carrier case then needs --overlay, the overlay
 /// of a boot that walked Setup (`sessions single` leaves one in its work directory), cloned, never changed.
-func phone(_ args: Arguments) -> Never {
-    guard let path = args.positional.first else { die("phone needs a prepared iPhone base") }
-    let base = Base(path)
+func phone(_ args: PhoneCheck) -> Never {
+    let base = Base(args.base)
     guard ["n90ap", "n88ap", "m68ap"].contains(base.board) else { die("phone boots an n90ap, n88ap or m68ap base") }
-    let work = workDirectory(args, "phone")
-    let tools = Tools.resolve(args, work: work)
-    var only = Set((args["only"] ?? "carrier,rotate,shutdown,keyboard").split(separator: ",").map(String.init))
+    let work = workDirectory(args.inputs, "phone")
+    let tools = Tools.resolve(args.inputs, work: work)
+    var only = Set(args.only.split(separator: ",").map(String.init))
     if base.board != "n90ap" { only.remove("keyboard") }
     let r = Report()
 
     if only.contains("carrier") {
         print("carrier")
         let overlay = work.appendingPathComponent("carrier/overlay")
-        if let source = args.path("overlay") {
+        if let source = args.overlay {
             try? FileManager.default.createDirectory(
                 at: overlay.deletingLastPathComponent(),
                 withIntermediateDirectories: true

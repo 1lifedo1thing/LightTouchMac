@@ -1,6 +1,6 @@
 // A machine as the emulator describes it: libqemu-arm.dylib's qemu_ios_device_info (qemu-ios
 // contrib/ios-app/qemu-ios-ui.h). The helper reports it in its hello and lists every machine with
-// `LightTouchDevice --machines`; nothing on this side keeps a copy.
+// `LightTouchDevice '{"mode":{"machines":{}}}'`; nothing on this side keeps a copy.
 
 import CoreGraphics
 import Foundation
@@ -65,11 +65,11 @@ public struct DeviceInfo: Codable, Sendable, Equatable {
 
     public var screenPixels: CGSize { CGSize(width: screenWidth, height: screenHeight) }
 
-    /// Every machine `helper` (LightTouchDevice) runs: `helper --machines` ({"dylibPath", "machines"}).
+    /// Every machine `helper` (LightTouchDevice) runs: its machines launch ({"dylibPath", "machines"}).
     public static func list(helper: URL) throws -> [DeviceInfo] {
         let process = Process()
         process.executableURL = helper
-        process.arguments = ["--machines"]
+        process.arguments = HelperLaunch(.machines).arguments
         let out = Pipe()
         process.standardOutput = out
         process.standardError = FileHandle.nullDevice
@@ -81,7 +81,7 @@ public struct DeviceInfo: Codable, Sendable, Equatable {
                 .executableLoad,
                 userInfo: [
                     NSLocalizedDescriptionKey:
-                        "\(helper.lastPathComponent) --machines exited \(process.terminationStatus)"
+                        "\(helper.lastPathComponent) machines exited \(process.terminationStatus)"
                 ]
             )
         }

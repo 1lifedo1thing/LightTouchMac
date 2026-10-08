@@ -9,8 +9,13 @@ let package = Package(
     name: "ReleaseChecks",
     platforms: [.macOS("14.4")],
     products: [.library(name: "ReleaseChecks", targets: ["ReleaseChecks"])],
+    // HostRuntime (local, no dependencies of its own): the tests start the bundled helper with its HelperLaunch.
+    dependencies: [.package(path: "../HostRuntime")],
     targets: [
         .target(name: "ReleaseChecks"),
-        .testTarget(name: "ReleaseChecksTests", dependencies: ["ReleaseChecks"]),
+        .testTarget(
+            name: "ReleaseChecksTests",
+            dependencies: ["ReleaseChecks", .product(name: "HostRuntime", package: "HostRuntime")]
+        ),
     ]
 )

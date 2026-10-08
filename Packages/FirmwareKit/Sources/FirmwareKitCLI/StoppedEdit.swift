@@ -1,43 +1,23 @@
 import FirmwareKit
+import FirmwareSchema
 import Foundation
 
-@concurrent func stoppedEditCommand(_ argv: [String]) async -> Int32 {
-    var flags: [String: String] = [:]
-    var args = argv.makeIterator()
-    while let flag = args.next() {
-        guard ["--device", "--action", "--session", "--record-policy", "--cert", "--mount-point"].contains(flag),
-            let value = args.next()
-        else {
-            FirmwareDiagnostics.write(Data("firmwarekit edit: bad argument \(flag)\n".utf8))
-            _ = await FirmwareDiagnostics.finish()
-            exit(64)
-        }
-        flags[flag] = value
-    }
+@concurrent func stoppedEditCommand(_ command: FirmwareCommand.Edit) async -> Int32 {
     do {
-        guard let path = flags["--device"], let action = flags["--action"] else {
-            throw FirmwareError(
-                .internal,
-                "edit requires --device DIR --action begin|mount|commit|discard|recover|trust-anchor"
-            )
-        }
-        let device = URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL
-        let policy: VolumeRecordPolicy
-        switch flags["--record-policy"] ?? "standalone" {
-        case "standalone": policy = .standalone
-        case "managed": policy = try .managedDeviceDirectory(device)
-        default: throw FirmwareError(.internal, "--record-policy must be standalone or managed")
-        }
+        let device = fileURL(command.device)
+        let policy = try VolumeRecordPolicy(command.recordPolicy, device: device)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         func emit<T: Encodable>(_ value: T) throws { commandOutput.write(try encoder.encode(value) + Data("\n".utf8)) }
         let log = { (s: String) in FirmwareDiagnostics.write(Data("firmwarekit edit: \(s)\n".utf8)) }
-        if action == "begin" {
+        if command.action == .begin {
             try emit(try await StoppedVolumeEdit.begin(device: device, policy: policy, log: log))
             return 0
         }
-        if action == "trust-anchor" {  // begin, mount, the 1.x anchor row, commit; nothing when already trusted
-            guard let cert = flags["--cert"] else { throw FirmwareError(.internal, "trust-anchor requires --cert DER") }
+        if command.action == .trustAnchor {  // begin, mount, the 1.x anchor row, commit; nothing when already trusted
+            guard let cert = command.cert else {
+                throw FirmwareError(.internal, "trust-anchor requires --cert DER")
+            }
             let changed = try await TrustStore1x.trust(
                 device: device,
                 certificate: Data(contentsOf: URL(fileURLWithPath: cert)),
@@ -47,25 +27,29 @@ import Foundation
             try emit(["trusted": true, "changed": changed])
             return 0
         }
-        guard let session = flags["--session"].flatMap(UUID.init(uuidString:)) else {
+        guard let session = command.session.flatMap(UUID.init(uuidString:)) else {
             throw FirmwareError(.internal, "edit requires its --session UUID")
         }
-        switch action {
-        case "mount":
-            let mountPoint = flags["--mount-point"].map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
+        switch command.action {
+        case .mount:
             try emit(
-                try await StoppedVolumeEdit.mount(device: device, id: session, policy: policy, mountPoint: mountPoint)
+                try await StoppedVolumeEdit.mount(
+                    device: device,
+                    id: session,
+                    policy: policy,
+                    mountPoint: command.mountPoint.map(fileURL)
+                )
             )
-        case "commit":
+        case .commit:
             try await StoppedVolumeEdit.commit(device: device, id: session, policy: policy, log: log)
             try emit(["committed": session.uuidString])
-        case "discard":
+        case .discard:
             try await StoppedVolumeEdit.discard(device: device, id: session, policy: policy)
             try emit(["discarded": session.uuidString])
-        case "recover":
+        case .recover:
             try await StoppedVolumeEdit.recover(device: device, id: session, policy: policy)
             try emit(["recovered": session.uuidString])
-        default: throw FirmwareError(.internal, "unknown edit action \(action)")
+        case .begin, .trustAnchor: break
         }
         return 0
     } catch {

@@ -1,27 +1,18 @@
-// firmwarekit: the preparer.
+// firmwarekit: the preparer. Its commands and their options are FirmwareSchema's FirmwareCommand types, which the
+// app spawns it with; `firmwarekit help COMMAND` prints one's usage.
 //
-//   firmwarekit create --entry ENTRY.json --ipsw IPSW --out STAGING_DIR
-//                      [--seed SEED] [--helper PATH_TO_LightTouchDevice]
-//                      [--cache DIR] [--guest-tools DIR] [--sibling-entry ENTRY.json --sibling-ipsw IPSW]
-//
-// stdout is JSON Lines only; diagnostics go to stderr. Exit 0 after done, 1 after an error event; SIGTERM,
-// or the parent (the app) exiting, cancels (children stopped, images under STAGING_DIR detached, exit 143)
-// and leaves STAGING_DIR to the caller. Closed command pipes cannot interrupt owned cleanup.
+// create's stdout is JSON Lines only; diagnostics go to stderr. Exit 0 after done, 1 after an error event, 64 for a
+// command line it doesn't take; SIGTERM, or the parent (the app) exiting, cancels (children stopped, images under
+// --out detached, exit 143) and leaves --out to the caller. Closed command pipes cannot interrupt owned cleanup.
 // --guest-tools defaults to ../Resources/guest-tools next to this executable (the app bundle's).
 //
-//   firmwarekit pack-base / unpack-base: the built-in device's blob (PreparedBase.swift)
-//
-//   firmwarekit mount  --device DIR [--volume system|data|all] [--out DIR] [--root DIR]   (a STOPPED device only)
-//   firmwarekit export --device DIR [--volume system|data|all] [--out DIR]
-//   firmwarekit unmount --out DIR
-//
-// mount/export rebuild the device's HFS+ volumes from base + overlay into sparse images in --out (default:
-// a new temp dir) and print one JSON line per volume: {volume, image, clean, repaired, seconds, and for
-// mount device + mountPoint (attached read-only, visible in Finder)}. With --root, mount puts the device's one
-// tree there instead, out of Finder's sidebar: system at DIR, data on DIR/private/var. unmount detaches them
-// (data first) and deletes --out.
-// An error prints {"error": ...} and exits 1.
+// mount/export rebuild the device's HFS+ volumes from base + overlay into sparse images in --out (default: a new
+// temp dir) and print one JSON line per volume: {volume, image, clean, repaired, seconds, and for mount device +
+// mountPoint (attached read-only, visible in Finder)}. With --root, mount puts the device's one tree there instead,
+// out of Finder's sidebar: system at DIR, data on DIR/private/var. unmount detaches them (data first) and deletes
+// --out. An error prints {"error": ...} and exits 1.
 
+import ArgumentParser
 import FirmwareKit
 import FirmwareSchema
 import Foundation
@@ -32,156 +23,125 @@ let commandOutput = PipeOutput(fileDescriptor: STDOUT_FILENO)
     commandOutput.write(Data((event.json + "\n").utf8))
 }
 
-var args = CommandLine.arguments.dropFirst()
-let command = args.popFirst()
-if command == "mount" || command == "export" || command == "unmount" {
-    let selected = command!
-    let arguments = Array(args)
-    let lifetime = CommandLifetime(output: commandOutput) { await volumeCommand(selected, arguments) }
-    exit(await lifetime.wait())
+/// `path` with ~ expanded, standardized.
+func fileURL(_ path: String) -> URL {
+    URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL
 }
-if command == "boot-admit" {
-    let arguments = Array(args)
-    let lifetime = CommandLifetime(output: commandOutput) { await bootAdmissionCommand(arguments) }
-    exit(await lifetime.wait())
-}
-if command == "unpack-base" {
-    let arguments = Array(args)
-    let lifetime = CommandLifetime(output: commandOutput) { await unpackBaseCommand(arguments) }
-    exit(await lifetime.wait())
-}
-if command == "pack-base" { packBaseCommand(Array(args)) }
-if command == "developer-audit" { developerAuditCommand(Array(args)) }
-if command == "developer-offer" { developerOfferCommand(Array(args)) }
-if command == "cache-prune" { cacheCommand(Array(args)) }
-if command == "detach-images" {
-    let arguments = Array(args)
-    let lifetime = CommandLifetime(output: commandOutput) { await detachImagesCommand(arguments) }
-    exit(await lifetime.wait())
-}
-if command == "edit" {
-    let arguments = Array(args)
-    let lifetime = CommandLifetime(output: commandOutput) { await stoppedEditCommand(arguments) }
-    exit(await lifetime.wait())
-}
-if command == "verify-keys" { verifyKeysCommand(Array(args)) }
-if command == "fit" { fitCommand(Array(args)) }
-if command == "unwrap" { unwrapCommand(Array(args)) }
-if command == "fetch" { fetchCommand(Array(args)) }
-guard command == "create" else {
-    FirmwareDiagnostics.write(
-        Data(
-            """
-            firmwarekit \(FirmwareKit.version)
-            usage: firmwarekit boot-admit --device DIR [--record-policy standalone|managed] [--allow-raw]
-                   firmwarekit edit --device DIR --action begin|mount|commit|discard|recover [--session UUID] [--mount-point DIR]
-                   firmwarekit edit --device DIR --action trust-anchor --cert DER   (1.x: the certificate as a system anchor)
-                   firmwarekit cache-prune --root DIR [--ipsw SHA1]
-                   firmwarekit detach-images --root DIR   (force-detach disk images whose files are under DIR)
-                   firmwarekit create --entry ENTRY.json --ipsw IPSW --out DIR [--seed S]
-                                      [--helper PATH] [--cache DIR] [--guest-tools DIR]
-                                      [--sibling-entry ENTRY.json --sibling-ipsw IPSW]   (recipe.keybag_ramdisk_from)
-                                      [--stop-after volumes]   (fit.json: the fit checks' survey, no device)
-                   firmwarekit create --catalog CATALOG.json --id ENTRY_ID --ipsw IPSW --out DIR [create options]
-                   --gl-test adds the GL fixture job to a test device
-                   firmwarekit mount|export --device DIR [--volume system|data|all] [--out DIR] [--root DIR]
-                   firmwarekit unmount --out DIR
-                   firmwarekit pack-base --base CREATE_OUTPUT --out BLOB
-                   firmwarekit unpack-base --blob BLOB --out DIR --seed S   (an n72ap blob; JSON Lines, as create)
-                   firmwarekit verify-keys --entry ENTRY.json --ipsw IPSW
-                   firmwarekit fit --root MOUNTED_SYSTEM_VOLUME [--arch armv6|armv7] MACHO...
-                   firmwarekit unwrap --entry ENTRY.json --archive FILE --out IPSW   (a "rar" source's download)
-                   firmwarekit fetch --entry ENTRY.json --out IPSW   (download and check the entry's IPSW)
 
-            """.utf8
+struct Firmwarekit: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "firmwarekit",
+        version: FirmwareKit.version,
+        subcommands: FirmwareCommand.all.map { $0 }
+    )
+
+    func run() throws { throw ValidationError("a command is required") }
+}
+
+/// `operation` under a CommandLifetime (cancellation on SIGTERM or the parent exiting), then its status.
+@MainActor func supervised(
+    cleanup: (@Sendable () async throws -> Void)? = nil,
+    _ operation: @escaping @Sendable () async -> Int32
+) async -> Never {
+    let lifetime = CommandLifetime(output: commandOutput, cleanup: cleanup, operation: operation)
+    exit(await lifetime.wait())
+}
+
+let parsed: ParsableCommand
+do { parsed = try Firmwarekit.parseAsRoot() } catch { Firmwarekit.exit(withError: error) }
+switch parsed {
+case let command as FirmwareCommand.Create: await createCommand(command)
+case let command as FirmwareCommand.UnpackBase: await supervised { await unpackBaseCommand(command) }
+case let command as FirmwareCommand.PackBase: packBaseCommand(command)
+case let command as FirmwareCommand.BootAdmit: await supervised { await bootAdmissionCommand(command) }
+case let command as FirmwareCommand.Edit: await supervised { await stoppedEditCommand(command) }
+case let command as FirmwareCommand.Mount:
+    await supervised {
+        await volumeCommand(
+            device: command.device,
+            volume: command.volume,
+            out: command.out,
+            root: command.root,
+            recordPolicy: command.recordPolicy
         )
-    )
-    _ = await FirmwareDiagnostics.finish()
-    exit(64)
-}
-var flags: [String: String] = [:]
-let known: Set = [
-    "--catalog", "--id", "--entry", "--ipsw", "--out", "--seed", "--helper", "--cache", "--guest-tools",
-    "--sibling-entry", "--sibling-ipsw", "--stop-after",
-]
-while let a = args.popFirst() {
-    if a == "--gl-test" {
-        flags[a] = "1"
-        continue
     }
-    guard known.contains(a), let v = args.popFirst() else {
-        emit(.error(code: "internal", message: "bad argument \(a)"))
-        _ = await commandOutput.finish()
-        exit(1)
+case let command as FirmwareCommand.Export:
+    await supervised {
+        await volumeCommand(
+            device: command.device,
+            volume: command.volume,
+            out: command.out,
+            root: nil,
+            recordPolicy: command.recordPolicy,
+            export: true
+        )
     }
-    flags[a] = v
-}
-guard let ipsw = flags["--ipsw"], let out = flags["--out"],
-    (flags["--entry"] != nil && flags["--catalog"] == nil && flags["--id"] == nil)
-        || (flags["--entry"] == nil && flags["--catalog"] != nil && flags["--id"] != nil)
-else {
-    emit(.error(code: "internal", message: "use --entry or --catalog with --id; --ipsw and --out are required"))
-    _ = await commandOutput.finish()
-    exit(1)
-}
-let url = { (p: String) in URL(fileURLWithPath: (p as NSString).expandingTildeInPath).standardizedFileURL }
-let staging = url(out)
-
-@Sendable func fail(_ error: Error) async -> Never {
-    FirmwareDiagnostics.write(Data("firmwarekit: \(error)\n".utf8))
-    emit(Preparer.errorEvent(error))
-    _ = await commandOutput.finish()
-    _ = await FirmwareDiagnostics.finish()
-    exit(1)
-}
-var options: Preparer.Options
-do {
-    // The app's packed guest tools (Resources/Guest/guest.aar), unpacked; --guest-tools names another directory.
-    let resources = Bundle.main.executableURL!.resolvingSymlinksInPath().deletingLastPathComponent()
-        .appendingPathComponent("../Resources").standardizedFileURL
-    let bundled =
-        try flags["--guest-tools"] == nil
-        ? GuestArchive.unpacked(resources: resources)?.appendingPathComponent("guest-tools") : nil
-    var entry =
-        try flags["--entry"].map { try FirmwareEntry.load(from: url($0)) }
-        ?? FirmwareEntry.load(id: flags["--id"]!, fromCatalog: url(flags["--catalog"]!))
-    if flags["--gl-test"] != nil { entry.recipe?.options["gl_test"] = true }
-    options = .init(
-        entry: entry,
-        ipsw: url(ipsw),
-        out: staging,
-        seed: flags["--seed"],
-        helper: flags["--helper"].map(url),
-        guestTools: flags["--guest-tools"].map(url) ?? bundled ?? resources.appendingPathComponent("guest-tools"),
-        cache: flags["--cache"].map(url),
-        sibling: try flags["--sibling-entry"].map {
-            (try FirmwareEntry.load(from: url($0)), url(flags["--sibling-ipsw"] ?? ""))
-        }
-    )
-} catch { await fail(error) }
-if let stop = flags["--stop-after"] {
-    guard stop == "volumes" else {
-        emit(.error(code: "internal", message: "--stop-after takes only volumes"))
-        _ = await commandOutput.finish()
-        exit(1)
-    }
-    options.stopAfterVolumes = true
-}
-
-do { try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true) } catch {
-    await fail(error)
-}
-
-let selectedOptions = options
-let lifetime = CommandLifetime(output: commandOutput, cleanup: { try await Preparer.cancel(staging: staging) }) {
+case let command as FirmwareCommand.Unmount: await supervised { await unmountCommand(command) }
+case let command as FirmwareCommand.CachePrune: cacheCommand(command)
+case let command as FirmwareCommand.DetachImages: await supervised { await detachImagesCommand(command) }
+case let command as FirmwareCommand.VerifyKeys: verifyKeysCommand(command)
+case let command as FirmwareCommand.Fit: fitCommand(command)
+case let command as FirmwareCommand.Unwrap: unwrapCommand(command)
+case let command as FirmwareCommand.Fetch: fetchCommand(command)
+case let command as FirmwareCommand.DeveloperOffer: developerOfferCommand(command)
+case let command as FirmwareCommand.DeveloperAudit: developerAuditCommand(command)
+default:  // the root alone, or help
     do {
-        try await Preparer.create(selectedOptions, emit: emit)
-        return 0
-    } catch {
-        if Task.isCancelled { return 143 }
+        var command = parsed
+        try command.run()
+        exit(0)
+    } catch { Firmwarekit.exit(withError: error) }
+}
+
+@MainActor func createCommand(_ command: FirmwareCommand.Create) async -> Never {
+    let staging = fileURL(command.out)
+    @Sendable func fail(_ error: Error) async -> Never {
         FirmwareDiagnostics.write(Data("firmwarekit: \(error)\n".utf8))
         emit(Preparer.errorEvent(error))
-        return 1
+        _ = await commandOutput.finish()
+        _ = await FirmwareDiagnostics.finish()
+        exit(1)
+    }
+    var options: Preparer.Options
+    do {
+        // The app's packed guest tools (Resources/Guest/guest.aar), unpacked; --guest-tools names another directory.
+        let resources = Bundle.main.executableURL!.resolvingSymlinksInPath().deletingLastPathComponent()
+            .appendingPathComponent("../Resources").standardizedFileURL
+        let bundled =
+            try command.guestTools == nil
+            ? GuestArchive.unpacked(resources: resources)?.appendingPathComponent("guest-tools") : nil
+        var entry =
+            if let path = command.entry {
+                try FirmwareEntry.load(from: fileURL(path))
+            } else {
+                try FirmwareEntry.load(id: command.id ?? "", fromCatalog: fileURL(command.catalog ?? ""))
+            }
+        if command.glTest { entry.recipe?.options["gl_test"] = true }
+        options = .init(
+            entry: entry,
+            ipsw: fileURL(command.ipsw),
+            out: staging,
+            seed: command.seed,
+            helper: command.helper.map(fileURL),
+            guestTools: command.guestTools.map(fileURL) ?? bundled ?? resources.appendingPathComponent("guest-tools"),
+            cache: command.cache.map(fileURL),
+            sibling: try command.siblingEntry.map {
+                (try FirmwareEntry.load(from: fileURL($0)), fileURL(command.siblingIpsw ?? ""))
+            }
+        )
+        options.stopAfterVolumes = command.stopAfter == .volumes
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+    } catch { await fail(error) }
+    let selectedOptions = options
+    await supervised(cleanup: { try await Preparer.cancel(staging: staging) }) {
+        do {
+            try await Preparer.create(selectedOptions, emit: emit)
+            return 0
+        } catch {
+            if Task.isCancelled { return 143 }
+            FirmwareDiagnostics.write(Data("firmwarekit: \(error)\n".utf8))
+            emit(Preparer.errorEvent(error))
+            return 1
+        }
     }
 }
-exit(await lifetime.wait())

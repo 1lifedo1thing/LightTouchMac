@@ -2,8 +2,8 @@ import Foundation
 import SessionKit
 
 /// contrib/it-proxy/httpget of the pinned qemu-ios checkout (armv6; the guest's own CFNetwork client), or --httpget.
-func httpget(_ args: Arguments) -> URL {
-    let url = args.path("httpget") ?? checkout("qemu-ios").appendingPathComponent("contrib/it-proxy/httpget")
+func httpget(_ args: Inputs) -> URL {
+    let url = args.httpget ?? checkout("qemu-ios").appendingPathComponent("contrib/it-proxy/httpget")
     guard FileManager.default.fileExists(atPath: url.path) else {
         die("no httpget at \(url.path) (contrib/it-proxy/build.sh, or --httpget)")
     }
@@ -14,16 +14,15 @@ func httpget(_ args: Arguments) -> URL {
 /// never an "Install Profile" screen (session-driver's proxy.swift). The guest's HTTPS client through the proxy fails before
 /// the trust and gets the proxy's own answer after; Safari stays in front on the HTTPS page and its request reached the
 /// proxy; a restart on the same overlay, unlocked, shows the Home screen and no profile screen after the trust runs again.
-func proxyTrust(_ args: Arguments) -> Never {
-    guard let path = args.positional.first else { die("proxy-trust needs a prepared n72 or k48 base") }
-    let base = Base(path)
+func proxyTrust(_ args: ProxyTrustCheck) -> Never {
+    let base = Base(args.base)
     guard ["n72ap", "k48ap"].contains(base.board) else { die("proxy-trust boots an n72ap or k48ap base") }
     let b = base.driverBoard
     let ipad = b == "ipad"
-    let work = workDirectory(args, "proxy-trust")
-    let tools = Tools.resolve(args, work: work)
+    let work = workDirectory(args.inputs, "proxy-trust")
+    let tools = Tools.resolve(args.inputs, work: work)
     let packs = tools.guest.appendingPathComponent("guest-tools")
-    let url = args["url"] ?? "https://example.com/"
+    let url = args.url
     var config = driverConfig(tools, work: work)
     config["timeout"] = 900
     if ipad {
@@ -32,7 +31,7 @@ func proxyTrust(_ args: Arguments) -> Never {
     }
     config["proxy"] = [
         "board": b, "base": base.url.path, "itpack": packs.appendingPathComponent("armv6.itpack").path,
-        "httpget": httpget(args).path, "url": url,
+        "httpget": httpget(args.inputs).path, "url": url,
     ]
     let (e, status) = sessionDriver(
         config,
@@ -233,9 +232,8 @@ final class LANProbe: @unchecked Sendable {
 /// its own DNS while off, but not the listener; once `.netLocalNetwork(true)` it does. A socket shim in the driver,
 /// usbmuxd, the services worker and a copy of the helper signed without the hardened runtime logs every destination:
 /// while off, none may be one macOS counts as the local network (that is what raises its Local Network prompt).
-func localNetworkCheck(_ args: Arguments) -> Never {
-    guard let path = args.positional.first else { die("local-network needs a prepared n72 base") }
-    let base = Base(path)
+func localNetworkCheck(_ args: LocalNetworkCheck) -> Never {
+    let base = Base(args.base)
     guard base.board == "n72ap" else { die("local-network boots an n72ap base") }
     guard
         let lanIP = ["en0", "en1"].lazy.map({
@@ -246,8 +244,8 @@ func localNetworkCheck(_ args: Arguments) -> Never {
         print("SKIP: this Mac has no en0/en1 address to stand in for a LAN host")
         exit(0)
     }
-    let work = workDirectory(args, "local-network")
-    let tools = Tools.resolve(args, work: work)
+    let work = workDirectory(args.inputs, "local-network")
+    let tools = Tools.resolve(args.inputs, work: work)
     guard let probe = LANProbe(address: lanIP) else { die("could not listen on \(lanIP)") }
     let lanURL = "http://\(lanIP):\(probe.port)/lan-probe"
 
@@ -290,8 +288,8 @@ func localNetworkCheck(_ args: Arguments) -> Never {
     config["proxy"] = [
         "board": "ipod", "base": base.url.path,
         "itpack": tools.guest.appendingPathComponent("guest-tools/armv6.itpack").path,
-        "httpget": httpget(args).path, "url": "", "lan": lanURL, "internet": args["internet"] ?? "http://example.com/",
-        "dns": args["dns"] ?? "http://example/", "domain": args["domain"] ?? "com",
+        "httpget": httpget(args.inputs).path, "url": "", "lan": lanURL, "internet": args.internet,
+        "dns": args.dns, "domain": args.domain,
     ]
     let sockets = work.appendingPathComponent("sockets.log")
     let (e, status) = sessionDriver(
@@ -315,7 +313,7 @@ func localNetworkCheck(_ args: Arguments) -> Never {
     )
     r.check(
         got("dns").hasPrefix("HTTP "),
-        "the guest's own DNS while off (\(args["dns"] ?? "http://example/") DIRECT): \(clip(got("dns"), 60))"
+        "the guest's own DNS while off (\(args.dns) DIRECT): \(clip(got("dns"), 60))"
     )
     let lines = ((try? String(contentsOf: sockets, encoding: .utf8)) ?? "").split(separator: "\n").map {
         $0.split(separator: " ").map(String.init)

@@ -10,7 +10,7 @@ enum ShippedResources {
     static let catalogURL = root.appendingPathComponent("LightTouchMac/Resources/firmware-catalog.json")
     static var catalog: FirmwareCatalog { try! FirmwareCatalog.load(from: catalogURL) }
 
-    /// tests/fixtures/machines.json (`LightTouchDevice --machines`) as the process's machines, for board lookups
+    /// tests/fixtures/machines.json (`LightTouchDevice '{"mode":{"machines":{}}}'`) as the process's machines, for board lookups
     /// that need the emulator's facts. Evaluate before the first lookup.
     static let machines: Void = {
         let url = root.appendingPathComponent("tests/fixtures/machines.json")

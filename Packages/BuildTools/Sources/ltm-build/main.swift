@@ -1,116 +1,140 @@
+// scripts/ltm-build SUBCOMMAND ...: the build's tools (Packages/BuildTools); `scripts/ltm-build help SUBCOMMAND`.
+// LTM_ROOT is the repository (the wrapper sets it).
+import ArgumentParser
 import BuildTools
 import Foundation
 import ReleaseChecks
 
-// scripts/ltm-build SUBCOMMAND ...: the build's tools (Packages/BuildTools). LTM_ROOT is the repository (the wrapper
-// sets it).
-//
-//   vendor [--print]                                   scripts/vendor
-//   check-macho [--minos V] [--arch A ...] [--no-weak-imports] PATH ...
-//                                                      every slice's macOS load closure (default minos 14.0, every slice)
-//   merge-native OUTPUT ROOT ...                       per-architecture native roots into one universal root
-//   sources fetch --group G --destination DIR [--cache DIR ...] [--offline] [--manifest FILE]
-//   sources stage-git --source DIR --destination DIR --record FILE
-//   sources note NAME [PATCH ...]                      a shipped package's SOURCE.txt
-//   static-record ROOT ARCH                            build-static-deps.sh's static-build.json
-//   native-record ROOT STATIC QEMU USBMUXD ARCH        build-package-native.sh's native-build.json
-
-let root = URL(
+let repository = URL(
     fileURLWithPath: ProcessInfo.processInfo.environment["LTM_ROOT"] ?? FileManager.default.currentDirectoryPath
 )
-let manifest = root.appendingPathComponent("build-support/dependencies.json")
-var arguments = Array(CommandLine.arguments.dropFirst())
+let dependencyManifest = repository.appendingPathComponent("build-support/dependencies.json")
 
-func usage() -> Never {
-    FileHandle.standardError.write(
-        Data("usage: scripts/ltm-build vendor|check-macho|merge-native|sources|static-record|native-record ...\n".utf8)
-    )
-    exit(2)
-}
-/// The values of every `--name VALUE` (removed from `arguments`).
-@MainActor func values(_ name: String) -> [String] {
-    var found: [String] = []
-    while let i = arguments.firstIndex(of: name), i + 1 < arguments.count {
-        found.append(arguments[i + 1])
-        arguments.removeSubrange(i...i + 1)
-    }
-    return found
-}
-@MainActor func flag(_ name: String) -> Bool {
-    guard let i = arguments.firstIndex(of: name) else { return false }
-    arguments.remove(at: i)
-    return true
-}
 func path(_ text: String) -> URL { URL(fileURLWithPath: text) }
 
-do {
-    guard !arguments.isEmpty else { usage() }
-    switch arguments.removeFirst() {
-    case "vendor":
-        let vendor = Vendor(root: root)
-        if arguments == ["--print"] {
-            print(try vendor.directory().path)
-        } else if arguments.isEmpty {
-            print(try vendor.build().path)
-        } else {
-            print(Vendor.usage)
-            exit(2)
-        }
-    case "check-macho":
-        let minimum = values("--minos").last ?? "14.0"
-        let archs = values("--arch")
-        let noWeak = flag("--no-weak-imports")
-        guard !arguments.isEmpty else { usage() }
-        for file in arguments.map(path) {
-            for arch in archs.isEmpty ? try MachOClosure.architectures(file) : archs {
-                for binary in try MachOClosure.check(file, minimum: minimum, arch: arch, noWeakImports: noWeak) {
+struct LTMBuild: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "ltm-build",
+        subcommands: [
+            VendorCommand.self, CheckMachO.self, MergeNativeCommand.self, Sources.self, StaticRecord.self,
+            NativeRecord.self,
+        ]
+    )
+}
+
+struct VendorCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "vendor", discussion: Vendor.usage)
+    @Flag(help: "Print the vendor directory for the current pins.") var print = false
+
+    func run() throws {
+        let vendor = Vendor(root: repository)
+        Swift.print(try print ? vendor.directory().path : vendor.build().path)
+    }
+}
+
+struct CheckMachO: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "check-macho",
+        abstract: "Every slice's macOS load closure."
+    )
+    @Option var minos = "14.0"
+    @Option(help: "Default: every slice.") var arch: [String] = []
+    @Flag var noWeakImports = false
+    @Argument(transform: path) var files: [URL]
+
+    func run() throws {
+        for file in files {
+            for arch in arch.isEmpty ? try MachOClosure.architectures(file) : arch {
+                for binary in try MachOClosure.check(file, minimum: minos, arch: arch, noWeakImports: noWeakImports) {
                     print("\(arch): \(binary.path)")
                 }
             }
         }
-    case "merge-native":
-        guard arguments.count >= 2 else { usage() }
-        try MergeNative.merge(output: path(arguments[0]), roots: arguments.dropFirst().map(path))
-    case "sources":
-        guard !arguments.isEmpty else { usage() }
-        let command = arguments.removeFirst()
-        let source = values("--manifest").last.map(path) ?? manifest
-        switch command {
-        case "fetch":
-            guard let group = values("--group").last, let destination = values("--destination").last else { usage() }
-            try DependencySources.fetch(
-                manifest: source,
-                group: group,
-                destination: path(destination),
-                caches: values("--cache").map(path),
-                offline: flag("--offline")
-            )
-        case "stage-git":
-            guard let from = values("--source").last, let to = values("--destination").last,
-                let record = values("--record").last
-            else { usage() }
-            try DependencySources.stageGit(source: path(from), destination: path(to), record: path(record))
-        case "note":
-            guard let name = arguments.first else { usage() }
-            print(try DependencySources.note(manifest: source, name: name, patches: Array(arguments.dropFirst())))
-        default: usage()
-        }
-    case "static-record":
-        guard arguments.count == 2 else { usage() }
-        try Records.writeStatic(source: root, root: path(arguments[0]), arch: arguments[1])
-    case "native-record":
-        guard arguments.count == 5 else { usage() }
-        try Records.writeNative(
-            source: root,
-            root: path(arguments[0]),
-            staticPrefix: path(arguments[1]),
-            qemu: path(arguments[2]),
-            usbmuxd: path(arguments[3]),
-            arch: arguments[4]
-        )
-    default: usage()
     }
-} catch {
-    FileHandle.standardError.write(Data("\(error)\n".utf8))
-    exit(1)
 }
+
+struct MergeNativeCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "merge-native",
+        abstract: "Per-architecture native roots into one universal root."
+    )
+    @Argument(transform: path) var output: URL
+    @Argument(transform: path) var roots: [URL]
+
+    func run() throws { try MergeNative.merge(output: output, roots: roots) }
+}
+
+struct Sources: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "sources",
+        abstract: "The pinned dependency sources.",
+        subcommands: [Fetch.self, StageGit.self, Note.self]
+    )
+
+    struct Fetch: ParsableCommand {
+        @Option var group: String
+        @Option(transform: path) var destination: URL
+        @Option(transform: path) var cache: [URL] = []
+        @Flag var offline = false
+        @Option(transform: path) var manifest: URL?
+
+        func run() throws {
+            try DependencySources.fetch(
+                manifest: manifest ?? dependencyManifest,
+                group: group,
+                destination: destination,
+                caches: cache,
+                offline: offline
+            )
+        }
+    }
+
+    struct StageGit: ParsableCommand {
+        @Option(transform: path) var source: URL
+        @Option(transform: path) var destination: URL
+        @Option(transform: path) var record: URL
+
+        func run() throws { try DependencySources.stageGit(source: source, destination: destination, record: record) }
+    }
+
+    struct Note: ParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "A shipped package's SOURCE.txt.")
+        @Argument var name: String
+        @Argument var patches: [String] = []
+        @Option(transform: path) var manifest: URL?
+
+        func run() throws {
+            print(try DependencySources.note(manifest: manifest ?? dependencyManifest, name: name, patches: patches))
+        }
+    }
+}
+
+struct StaticRecord: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "build-static-deps.sh's static-build.json.")
+    @Argument(transform: path) var root: URL
+    @Argument var arch: String
+
+    func run() throws { try Records.writeStatic(source: repository, root: root, arch: arch) }
+}
+
+struct NativeRecord: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "build-package-native.sh's native-build.json.")
+    @Argument(transform: path) var root: URL
+    @Argument(transform: path) var staticPrefix: URL
+    @Argument(transform: path) var qemu: URL
+    @Argument(transform: path) var usbmuxd: URL
+    @Argument var arch: String
+
+    func run() throws {
+        try Records.writeNative(
+            source: repository,
+            root: root,
+            staticPrefix: staticPrefix,
+            qemu: qemu,
+            usbmuxd: usbmuxd,
+            arch: arch
+        )
+    }
+}
+
+LTMBuild.main()

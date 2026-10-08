@@ -4,7 +4,8 @@ set -eu
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CASE="$(mktemp -d "${TMPDIR:-/tmp}/ltm-device-access.XXXXXX")"
 trap 'rm -rf "$CASE"' EXIT
-swiftc -module-cache-path "$CASE/modules" "$ROOT/tools/device-access/main.swift" -o "$CASE/access"
+swift build -c release -q --package-path "$ROOT/tools/device-access"
+ln -s "$(swift build -c release --package-path "$ROOT/tools/device-access" --show-bin-path)/device-access" "$CASE/access"
 ID=7DCECEB7-1B4C-4F12-9F9D-3B4F93F5BA45
 OTHER=4DCECEB7-1B4C-4F12-9F9D-3B4F93F5BA45
 HOST=lighttouch-7dceceb7-1b4c-4f12-9f9d-3b4f93f5ba45

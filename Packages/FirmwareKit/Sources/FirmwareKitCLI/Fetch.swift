@@ -3,58 +3,34 @@
 //   download finishes. The archive is left to the caller.
 // firmwarekit fetch --entry ENTRY.json --out IPSW
 //   The entry's IPSW from its source, then each mirror (SourceFetch): checked as the catalog says, a "rar" one
-//   unwrapped, the archive deleted afterwards; any failure moves on to the next, each attempt logged on stderr. For scripts and end-to-end checks; the app downloads itself.
+//   unwrapped, the archive deleted afterwards; any failure moves on to the next, each attempt logged on stderr. For
+//   scripts and end-to-end checks; the app downloads itself.
 // One JSON line {ipsw, sha1, bytes} on success; {"error": ...} and exit 1 otherwise.
 
 import FirmwareKit
+import FirmwareSchema
 import Foundation
 
 private func done(_ object: [String: Any], _ code: Int32) -> Never {
-    // FIXME: uglyyyyy
-    FileHandle.standardOutput.write(
-        try! JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes])
-            + Data("\n".utf8)
-    )
+    printJSON(object)
     exit(code)
 }
 
-private func flags(_ argv: [String], _ known: Set<String>, _ usage: String) -> [String: URL] {
-    var out: [String: URL] = [:]
-    var rest = argv[...]
-    while let a = rest.popFirst() {
-        guard known.contains(a), let v = rest.popFirst() else {
-            FileHandle.standardError.write(Data("usage: \(usage)\n".utf8))
-            exit(64)
-        }
-        out[a] = URL(fileURLWithPath: (v as NSString).expandingTildeInPath).standardizedFileURL
-    }
-    guard out.count == known.count else {
-        FileHandle.standardError.write(Data("usage: \(usage)\n".utf8))
-        exit(64)
-    }
-    return out
-}
-
-func unwrapCommand(_ argv: [String]) -> Never {
-    let f = flags(
-        argv,
-        ["--entry", "--archive", "--out"],
-        "firmwarekit unwrap --entry ENTRY.json --archive FILE --out IPSW"
-    )
+func unwrapCommand(_ command: FirmwareCommand.Unwrap) -> Never {
+    let out = fileURL(command.out)
     do {
-        let entry = try FirmwareEntry.load(from: f["--entry"]!)
-        try RARSource.unwrap(f["--archive"]!, source: entry.source, to: f["--out"]!)
-        done(["ipsw": f["--out"]!.path, "sha1": entry.source.sha1 ?? "", "bytes": entry.source.bytes ?? 0], 0)
+        let entry = try FirmwareEntry.load(from: fileURL(command.entry))
+        try RARSource.unwrap(fileURL(command.archive), source: entry.source, to: out)
+        done(["ipsw": out.path, "sha1": entry.source.sha1 ?? "", "bytes": entry.source.bytes ?? 0], 0)
     } catch {
         done(["error": "\(error)"], 1)
     }
 }
 
-func fetchCommand(_ argv: [String]) -> Never {
-    let f = flags(argv, ["--entry", "--out"], "firmwarekit fetch --entry ENTRY.json --out IPSW")
-    let out = f["--out"]!
+func fetchCommand(_ command: FirmwareCommand.Fetch) -> Never {
+    let out = fileURL(command.out)
     do {
-        let source = try FirmwareEntry.load(from: f["--entry"]!).source
+        let source = try FirmwareEntry.load(from: fileURL(command.entry)).source
         guard source.sha1 != nil, !source.urls.isEmpty else {
             throw FirmwareError(.unsupported, "the entry's source has no URL and SHA-1")
         }

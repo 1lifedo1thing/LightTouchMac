@@ -11,6 +11,7 @@
 import PackageDescription
 
 let driver: [SwiftSetting] = [.defaultIsolation(MainActor.self), .swiftLanguageMode(.v5)]
+let parser: Target.Dependency = .product(name: "ArgumentParser", package: "swift-argument-parser")
 
 let package = Package(
     name: "Sessions",
@@ -21,10 +22,11 @@ let package = Package(
         .package(path: "../../Packages/DeviceRuntime"),
         .package(path: "../../Packages/DeviceServices"),
         .package(path: "../../Packages/FirmwareKit"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", exact: "1.8.2"),
     ],
     targets: [
         .target(name: "SessionKit"),
-        .executableTarget(name: "sessions", dependencies: ["SessionKit"]),
+        .executableTarget(name: "sessions", dependencies: ["SessionKit", parser]),
         .executableTarget(
             name: "session-driver",
             dependencies: [
@@ -35,6 +37,7 @@ let package = Package(
                 .product(name: "HostServiceClient", package: "DeviceServices"),
                 .product(name: "HostServiceWire", package: "DeviceServices"),
                 .product(name: "FirmwareSchema", package: "FirmwareKit"),
+                parser,
             ],
             swiftSettings: driver
         ),
@@ -44,6 +47,7 @@ let package = Package(
                 .product(name: "LightTouchCore", package: "LightTouchCore"),
                 .product(name: "HostRuntime", package: "HostRuntime"),
                 .product(name: "DeviceRuntime", package: "DeviceRuntime"),
+                parser,
             ],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),

@@ -12,10 +12,11 @@ creates unique private host/client keys automatically. Supported live-tested
 profiles: K48 iOS 3.2.2/7B500 and N72 iOS 3.1.3/7E18. Release bundling is gated by the source/license audit in
 [the payload notes](../developer-packages/README.md).
 
-Compile the host wrapper once:
+Build the host wrapper once (a Swift package):
 
 ```sh
-swiftc tools/device-access/main.swift -o /tmp/ltm-device-access
+swift build -c release --package-path tools/device-access
+cp tools/device-access/.build/release/device-access /tmp/ltm-device-access
 /tmp/ltm-device-access ssh --instance INSTANCE-UUID
 /tmp/ltm-device-access sftp --instance INSTANCE-UUID
 /tmp/ltm-device-access sftp --instance INSTANCE-UUID --batch /absolute/batch-file

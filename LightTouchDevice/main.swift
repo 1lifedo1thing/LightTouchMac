@@ -4,14 +4,8 @@ import HostRuntime
 import IOSurface
 import os
 
-// LightTouchDevice: one emulated device per process.
-//
-//   LightTouchDevice --connect SERVICE --token T --instance UUID [--lease PATH]
-//                                             spawned by the app (DeviceLink); the link socket is fd 3.
-//                                             Hello fails (exit 75) if another process holds PATH's flock.
-//   LightTouchDevice --headless config.json   boot, run scripted actions, PNG dumps, status on stdout
-//   LightTouchDevice --oneshot config.json    boot until QEMU exits or a serial marker (seal/keybag)
-//   LightTouchDevice --machines               load the dylib, print the dylib's path and every machine's DeviceInfo
+// LightTouchDevice: one emulated device per process. Its one argument is its launch (HostRuntime HelperLaunch) as JSON:
+// connect (spawned by the app, DeviceLink), headless, oneshot (firmwarekit's boots) or machines.
 //
 // libqemu-arm.dylib: $LTM_QEMU_DYLIB, else ../Frameworks, else the build rpath.
 // Exit codes: QEMU's, or 64 usage, 70 no dylib, 72 rendezvous failed, 124 one-shot timeout.
@@ -19,18 +13,12 @@ import os
 signal(SIGPIPE, SIG_IGN)
 setvbuf(stdout, nil, _IOLBF, 0)
 
-/// The command line, parsed once; read from the link, boot and main threads.
-let arguments: [String: String] = {
-    var parsed: [String: String] = [:]
-    var it = CommandLine.arguments.dropFirst().makeIterator()
-    while let a = it.next() {
-        guard a.hasPrefix("--"), let v = a == "--machines" ? "" : it.next() else {
-            FileHandle.standardError.write(Data("usage: see main.swift\n".utf8))
-            exit(64)
-        }
-        parsed[a] = v
+/// The launch, read once; read from the link, boot and main threads.
+let launch: HelperLaunch = {
+    do { return try HelperLaunch(arguments: Array(CommandLine.arguments.dropFirst())) } catch {
+        FileHandle.standardError.write(Data("LightTouchDevice: \(error.localizedDescription)\n".utf8))
+        exit(64)
     }
-    return parsed
 }()
 
 /// Never dispatchMain(): it pthread_exit()s the main thread, and the dylib's
@@ -77,7 +65,7 @@ func takeLease(_ path: String?) -> Bool { storageLease.take(path, log: helperLog
 /// Every helper mode verifies managed boot records under the same held lease.
 func installBootStorageAuthority(_ host: DeviceHost) {
     host.bootStorageAuthority = { proof in
-        guard let lease = storageLease.lease, let path = arguments["--lease"] else {
+        guard let lease = storageLease.lease, let path = launch.lease else {
             throw StorageBootProof.Failure.missingLease
         }
         let record = URL(fileURLWithPath: path).deletingLastPathComponent()
@@ -86,13 +74,14 @@ func installBootStorageAuthority(_ host: DeviceHost) {
     }
 }
 
-if let service = arguments["--connect"] {
-    runLinked(service: service, token: arguments["--token"] ?? "")
-} else if let path = arguments["--headless"] {
+switch launch.mode {
+case .connect(let service, let token, _):
+    runLinked(service: service, token: token)
+case .headless(let path):
     runHeadless(configPath: path)
-} else if let path = arguments["--oneshot"] {
+case .oneshot(let path):
     runOneShot(configPath: path)
-} else if arguments["--machines"] != nil {
+case .machines:
     // Every machine the emulator library runs, with its facts (HostRuntime DeviceInfo.list).
     guard let qemu = loadQemu() else { exit(70) }
     struct Listing: Encodable {
@@ -103,14 +92,6 @@ if let service = arguments["--connect"] {
         try! JSONEncoder().encode(Listing(dylibPath: qemu.path, machines: qemu.machines)) + Data("\n".utf8)
     )
     exit(0)
-} else {
-    FileHandle.standardError.write(
-        Data(
-            "usage: LightTouchDevice --connect S --token T --instance U | --headless config.json | --oneshot config.json | --machines\n"
-                .utf8
-        )
-    )
-    exit(64)
 }
 
 // MARK: - Linked (spawned by the app)
@@ -158,7 +139,7 @@ if let service = arguments["--connect"] {
                     channel.drain()
                     exit(70)
                 }
-                guard takeLease(arguments["--lease"]) else {
+                guard takeLease(launch.lease) else {
                     channel.send(.reply(id: id, .failure(DeviceLinkWire.leaseRefusal)))
                     channel.drain()
                     exit(75)
@@ -233,7 +214,7 @@ func decodeConfig<T: Decodable>(_ path: String, _: T.Type) -> T {
     guard let qemu = loadQemu() else { exit(70) }
     let status = StatusBlock.create()
     let host = DeviceHost(qemu: qemu, status: status)
-    guard takeLease(arguments["--lease"]) else { exit(75) }
+    guard takeLease(launch.lease) else { exit(75) }
     installBootStorageAuthority(host)
     let reader = OSAllocatedUnfairLock<FrameRingReader?>(uncheckedState: nil)
     host.onRingChanged = { ring in
@@ -368,7 +349,7 @@ struct OneShotConfig: Decodable {
     if let dylib = config.dylib { setenv("LTM_QEMU_DYLIB", dylib, 1) }
     guard let qemu = loadQemu() else { exit(70) }
     let host = DeviceHost(qemu: qemu, status: StatusBlock.create())
-    guard takeLease(arguments["--lease"]) else { exit(75) }
+    guard takeLease(launch.lease) else { exit(75) }
     installBootStorageAuthority(host)
     let start = Date()
     /// Whether the serial log showed the stop marker, and whether we asked QEMU to stop: set on the watch thread and

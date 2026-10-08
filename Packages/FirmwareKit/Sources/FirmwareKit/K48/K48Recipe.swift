@@ -5,7 +5,7 @@
 // SCEP epoch), and the S5L8922 iPod touch 3G (n18ap, recipe "n18": as n88, the NOR grafted, -M n18, model MC008).
 // Ports ipad1_device.build's board steps,
 // ipad1_keybag.py and ipad1_seal.py over the other modules; the build-time boots run through
-// `LightTouchDevice --oneshot`.
+// `LightTouchDevice` oneshot.
 //
 // Boot files by strategy: `iboot` (default) iBoot.bin (pattern-patched), nor.bin (packed, writable) and
 // gid-blobs.bin; `kboot` (debugging, recipe.boot) kboot.bin and, for 4.x data protection, a blank nor.bin.
@@ -360,7 +360,7 @@ final class K48Board: Board {
         c.log(check.split(separator: "\n").first { $0.contains("FTL_Open") }.map(String.init) ?? "FTL_Open [OK]")
     }
 
-    /// One `LightTouchDevice --oneshot` boot of the store as the device boots (BootRecipe.iPad, the lock's machine
+    /// One `LightTouchDevice` oneshot boot of the store as the device boots (BootRecipe.iPad, the lock's machine
     /// options), with no keyboard and no reboot: the one-shot ends when the guest shuts down, and a restart is a
     /// shutdown too (4.3's launchd turns it_seal's reboot(RB_HALT) into its own clean reboot(RB_AUTOBOOT); 5.x's halt
     /// restarts through the PMU), as qemu-ios imgtools/ipad1_seal.py (8edc395979). `overlay` nil writes the store.

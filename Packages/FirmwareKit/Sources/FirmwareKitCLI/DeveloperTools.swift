@@ -2,35 +2,20 @@ import FirmwareKit
 import FirmwareSchema
 import Foundation
 
-// FIXME: Shouldn't we be using Swift argument parser here? This is a clusterfuck.
-func developerOfferCommand(_ argv: [String]) -> Never {
+func developerOfferCommand(_ command: FirmwareCommand.DeveloperOffer) -> Never {
     do {
-        var flags: [String: String] = [:]
-        var args = argv.makeIterator()
-        while let name = args.next() {
-            guard ["--offer", "--payload", "--state", "--instance", "--public-key", "--serial"].contains(name),
-                flags[name] == nil, let value = args.next()
-            else { throw FirmwareError(.unsupported, "bad developer-offer argument: \(name)") }
-            flags[name] = value
-        }
-        guard let offer = flags["--offer"], let payload = flags["--payload"], let state = flags["--state"],
-            let id = flags["--instance"].flatMap(UUID.init(uuidString:)),
-            let serial = flags["--serial"].flatMap(Int.init)
-        else {
-            throw FirmwareError(
-                .unsupported,
-                "developer-offer --offer DIR --payload DIR --state PRIVATE_DIR --instance UUID [--public-key FILE] --serial N"
-            )
+        guard let id = UUID(uuidString: command.instance) else {
+            throw FirmwareError(.unsupported, "developer-offer --instance takes a UUID")
         }
         let result = try DeveloperTools.augment(
-            offer: URL(fileURLWithPath: offer),
-            payload: URL(fileURLWithPath: payload),
-            state: URL(fileURLWithPath: state),
+            offer: URL(fileURLWithPath: command.offer),
+            payload: URL(fileURLWithPath: command.payload),
+            state: URL(fileURLWithPath: command.state),
             instance: id,
-            authorizedPublicKey: try flags["--public-key"].map {
+            authorizedPublicKey: try command.publicKey.map {
                 try String(contentsOfFile: $0, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
             },
-            serial: serial
+            serial: command.serial
         )
         FileHandle.standardOutput.write(try JSONEncoder().encode(result) + Data("\n".utf8))
         exit(0)
@@ -40,12 +25,9 @@ func developerOfferCommand(_ argv: [String]) -> Never {
     }
 }
 
-func developerAuditCommand(_ argv: [String]) -> Never {
+func developerAuditCommand(_ command: FirmwareCommand.DeveloperAudit) -> Never {
     do {
-        guard argv.count == 2, argv[0] == "--payload" else {
-            throw FirmwareError(.unsupported, "developer-audit --payload DIR")
-        }
-        try DeveloperTools.audit(payload: URL(fileURLWithPath: argv[1]), redistribution: true)
+        try DeveloperTools.audit(payload: URL(fileURLWithPath: command.payload), redistribution: true)
         print("PASS: qualified developer binaries, sources and notices; no instance state")
         exit(0)
     } catch {

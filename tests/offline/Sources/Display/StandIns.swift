@@ -7,7 +7,7 @@ import HostRuntime
 import IOSurface
 import LightTouchCore
 
-/// The machines as LightTouchDevice --machines reports them (tests/fixtures/machines.json), set before a board's facts are read.
+/// The machines as LightTouchDevice's machines launch reports them (tests/fixtures/machines.json), set before a board's facts are read.
 let fixtureMachines: Void = {
     let url = URL(fileURLWithPath: #filePath).resolvingSymlinksInPath().deletingLastPathComponent()
         .appendingPathComponent("../../../fixtures/machines.json").standardizedFileURL

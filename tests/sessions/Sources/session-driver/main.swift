@@ -1,3 +1,4 @@
+import ArgumentParser
 import DeviceRuntime
 import FirmwareSchema
 import Foundation
@@ -62,9 +63,12 @@ func fail(_ why: String) -> Never {
     exit(1)
 }
 
+struct Options: ParsableArguments {
+    @Argument(help: "The run's configuration, as JSON (sessions writes it).") var config: String
+}
 let config = try! JSONDecoder().decode(
     Config.self,
-    from: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]))
+    from: Data(contentsOf: URL(fileURLWithPath: Options.parseOrExit().config))
 )
 // The app's own Bundled answers from these: state, logs and work under the run's directory, the SecureROMs from `files`.
 setenv("LTM_STATE_DIR", config.work, 1)
@@ -956,7 +960,7 @@ CFRunLoopRun()
     configuration.board = profile.rawValue
     configuration.helper = helper
     configuration.requirement = requirement
-    configuration.arguments = ["--lease", lease.path]
+    configuration.lease = lease
     let process = DeviceSessionProcess(configuration: configuration)
     process.onTermination = { pid, termination, code in
         logEvent("device helper \(pid): \(termination), QEMU exit \(code.map(String.init) ?? "none")")

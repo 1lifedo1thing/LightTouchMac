@@ -1,3 +1,4 @@
+import ArgumentParser
 import DeviceRuntime
 import Foundation
 import HostRuntime
@@ -21,11 +22,17 @@ import LightTouchCore
 // occlusion (LinkCommand.screenVisible): how long until the pump has ticked 3 times (back at speed) and, if one was
 // pending, the next frame.
 
-var opts: [String: String] = [:]
-do {
-    var it = CommandLine.arguments.dropFirst().makeIterator()
-    while let a = it.next() { opts[a] = it.next() ?? "" }
+struct Options: ParsableArguments {
+    @Option(help: "LightTouchDevice.") var helper: String
+    @Option(help: "The scenario, as JSON.") var scenario: String
+    @Option(help: "Where frames are dumped.") var dump = "/tmp"
+    @Option(help: "The helper's output.") var log: String?
+    @Option(help: "The signing requirement the link pins the helper to.") var requirement: String?
+    @Option(help: "The device's lease.") var lease: String?
+    @Option(help: "The start must fail with this text.") var expectFailure: String?
+    @Flag(help: "The start must be rejected (an impostor).") var expectReject = false
 }
+let opts = Options.parseOrExit()
 
 struct Scenario: Decodable {
     struct Prepared: Decodable {
@@ -85,19 +92,19 @@ func fail(_ why: String) -> Never {
 
 let scenario = try! JSONDecoder().decode(
     Scenario.self,
-    from: Data(contentsOf: URL(fileURLWithPath: opts["--scenario"]!))
+    from: Data(contentsOf: URL(fileURLWithPath: opts.scenario))
 )
-let dumpDir = opts["--dump"] ?? "/tmp"
+let dumpDir = opts.dump
 let queue = DispatchQueue(label: "driver.link")
 
 var logFD: Int32 = -1
-if let log = opts["--log"] { logFD = open(log, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0o644) }
+if let log = opts.log { logFD = open(log, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0o644) }
 var configuration = DeviceLink.Configuration(instance: UUID(), outputDescriptor: logFD)
-configuration.helper = URL(fileURLWithPath: opts["--helper"]!)
+configuration.helper = URL(fileURLWithPath: opts.helper)
 configuration.dylib = scenario.dylib
 configuration.board = scenario.board
-configuration.requirement = opts["--requirement"]
-if let lease = opts["--lease"] { configuration.arguments = ["--lease", lease] }
+configuration.requirement = opts.requirement
+configuration.lease = opts.lease.map { URL(fileURLWithPath: $0) }
 let link = DeviceLink(configuration: configuration, queue: queue)
 
 let exitedEvent = DispatchSemaphore(value: 0)
@@ -196,11 +203,11 @@ case .success(let info):
     )
 case .failure(let error):
     emit("startFailed", ["error": "\(error)"])
-    if let text = opts["--expect-failure"] { exit("\(error)".contains(text) ? 0 : 1) }
-    exit(opts["--expect-reject"] != nil && "\(error)".contains("rejected") ? 0 : 1)
+    if let text = opts.expectFailure { exit("\(error)".contains(text) ? 0 : 1) }
+    exit(opts.expectReject && "\(error)".contains("rejected") ? 0 : 1)
 }
-if opts["--expect-reject"] != nil { fail("an impostor was accepted") }
-if opts["--expect-failure"] != nil { fail("the start was expected to fail") }
+if opts.expectReject { fail("an impostor was accepted") }
+if opts.expectFailure != nil { fail("the start was expected to fail") }
 display.resume()
 
 Thread.detachNewThread {

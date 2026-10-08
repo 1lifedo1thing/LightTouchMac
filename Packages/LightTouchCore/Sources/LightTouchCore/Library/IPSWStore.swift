@@ -102,7 +102,7 @@ public nonisolated struct IPSWStore: Sendable {
         try JSONEncoder().encode(entry).write(to: entryFile)
         let unwrap = Process()
         unwrap.executableURL = preparer
-        unwrap.arguments = ["unwrap", "--entry", entryFile.path, "--archive", file.path, "--out", download(sha1).path]
+        unwrap.arguments = FirmwareCommand.Unwrap(entry: entryFile, archive: file, out: download(sha1)).arguments
         unwrap.standardOutput = FileHandle.nullDevice
         unwrap.standardError = FileHandle.nullDevice
         try unwrap.run()

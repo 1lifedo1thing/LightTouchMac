@@ -37,7 +37,7 @@ import HostRuntime
         if let helper { configuration.helper = helper }
         configuration.board = profile.rawValue
         configuration.requirement = requirement
-        if let lease { configuration.arguments = ["--lease", lease.path] }
+        configuration.lease = lease
         process = DeviceSessionProcess(configuration: configuration)
         var terminationLog: String?
         process.onTermination = { pid, termination, code in

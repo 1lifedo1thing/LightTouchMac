@@ -1,3 +1,4 @@
+import FirmwareSchema
 import Foundation
 import HostRuntime
 import HostServiceWire
@@ -143,26 +144,33 @@ public final class DeviceFilesystemEdits {
                 }
                 if action == .commitFilesystem { try await waitForCopies(instance) }
                 var intent = pending(instance)
-                let prefix = ["edit", "--device", paths(instance).directory.path, "--record-policy", "managed"]
                 if action == .openFilesystem, intent == nil {
-                    let result = try await FirmwareTool.run(prefix + ["--action", "begin"], executable: executable)
+                    let result = try await FirmwareTool.run(
+                        FirmwareCommand.Edit(device: paths(instance).directory, action: .begin, recordPolicy: .managed),
+                        executable: executable
+                    )
                     let created = try JSONDecoder().decode(Mounted.self, from: result)
                     intent = Intent(id: created.id, phase: "editing")
                 }
                 guard let intent else { throw DeviceToolsError.failed("The edit session is unavailable.") }
-                let operation: String =
+                let operation: FirmwareCommand.Edit.Action =
                     switch action {
-                    case .openFilesystem: "mount"
-                    case .commitFilesystem: "commit"
-                    case .discardFilesystem: "discard"
-                    case .recoverFilesystem: "recover"
+                    case .openFilesystem: .mount
+                    case .commitFilesystem: .commit
+                    case .discardFilesystem: .discard
+                    case .recoverFilesystem: .recover
                     default: throw DeviceToolsError.failed("Unsupported file system action.")
                     }
                 if action == .openFilesystem { activity[instance.id] = "Opening in Finder…" }
                 let mountPoint = mountPoint(instance)
                 _ = try await FirmwareTool.run(
-                    prefix + ["--action", operation, "--session", intent.id.uuidString]
-                        + (action == .openFilesystem ? ["--mount-point", mountPoint.path] : []),
+                    FirmwareCommand.Edit(
+                        device: paths(instance).directory,
+                        action: operation,
+                        session: intent.id,
+                        recordPolicy: .managed,
+                        mountPoint: action == .openFilesystem ? mountPoint : nil
+                    ),
                     executable: executable
                 )
                 if action == .openFilesystem {
@@ -197,10 +205,7 @@ public final class DeviceFilesystemEdits {
         let root = out.appendingPathComponent(instance.profile?.marketingName ?? instance.name, isDirectory: true)
         browsing.insert(instance.id)
         _ = try await FirmwareTool.run(
-            [
-                "mount", "--device", paths(instance).directory.path, "--record-policy", "managed",
-                "--out", out.path, "--root", root.path,
-            ],
+            FirmwareCommand.Mount(device: paths(instance).directory, recordPolicy: .managed, out: out, root: root),
             executable: executable
         )
         open(root)
@@ -218,10 +223,12 @@ public final class DeviceFilesystemEdits {
         if commit { try await waitForCopies(instance) }
         activity[instance.id] = commit ? "Saving the file system…" : "Discarding changes…"
         _ = try await FirmwareTool.run(
-            [
-                "edit", "--device", paths(instance).directory.path, "--record-policy", "managed",
-                "--action", commit ? "commit" : "discard", "--session", intent.id.uuidString,
-            ],
+            FirmwareCommand.Edit(
+                device: paths(instance).directory,
+                action: commit ? .commit : .discard,
+                session: intent.id,
+                recordPolicy: .managed
+            ),
             executable: executable
         )
         removeMountFolder(instance)
@@ -304,7 +311,7 @@ public final class DeviceFilesystemEdits {
     public func endBrowsing(_ id: UUID, executable: URL? = nil) async throws {
         let out = browseDirectory(id)
         guard let executable = executable ?? preparer, FileManager.default.fileExists(atPath: out.path) else { return }
-        _ = try await FirmwareTool.run(["unmount", "--out", out.path], executable: executable)
+        _ = try await FirmwareTool.run(FirmwareCommand.Unmount(out: out), executable: executable)
         browsing.remove(id)
     }
 
@@ -320,7 +327,7 @@ public final class DeviceFilesystemEdits {
             .compactMap { out in
                 let process = Process()
                 process.executableURL = executable
-                process.arguments = ["unmount", "--out", out.path]
+                process.arguments = FirmwareCommand.Unmount(out: out).arguments
                 return (try? process.run()) == nil ? nil : process
             }
         unmounts.forEach { $0.waitUntilExit() }

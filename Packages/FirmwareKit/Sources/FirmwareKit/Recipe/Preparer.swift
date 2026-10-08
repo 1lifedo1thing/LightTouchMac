@@ -1,5 +1,5 @@
 // Preparer: the entry point of `firmwarekit create` and the
-// helpers every board's recipe shares: the `LightTouchDevice --oneshot` boots, the ramdisk-with-helper copy,
+// helpers every board's recipe shares: the `LightTouchDevice` oneshot boots, the ramdisk-with-helper copy,
 // cancel, hashing, the lock's bytes. The steps themselves are Recipe.create; a board (K48Board, N72Board, N45Board)
 // contributes only what differs.
 //
@@ -13,6 +13,7 @@
 
 import CryptoKit
 import Foundation
+import HostRuntime
 
 /// One line of the preparer's stdout.
 public enum PrepareEvent: Equatable, Sendable {
@@ -141,7 +142,7 @@ public enum Preparer {
 
     static func esc(_ p: URL) -> String { p.path.replacingOccurrences(of: ",", with: ",,") }
 
-    /// One `LightTouchDevice --oneshot` boot of `argv` (which routes -serial to `serial`). `during` runs on its own
+    /// One `LightTouchDevice` oneshot boot of `argv` (which routes -serial to `serial`). `during` runs on its own
     /// thread once the helper is started (the iPod keybag's gdbstub handoff); if it throws, the helper is stopped
     /// and the error rethrown.
     static func oneshot(
@@ -167,7 +168,7 @@ public enum Preparer {
         let p = Process()
         let out = Pipe()
         p.executableURL = helper
-        p.arguments = ["--oneshot", cfg.path]
+        p.arguments = HelperLaunch(.oneshot(config: cfg.path)).arguments
         p.standardInput = FileHandle.nullDevice
         p.standardOutput = out
         p.standardError = FileHandle.standardError
@@ -196,7 +197,7 @@ public enum Preparer {
         else {
             throw FirmwareError(
                 .oneshotFailed,
-                "\(helper.lastPathComponent) --oneshot exited \(p.terminationStatus) without a result"
+                "\(helper.lastPathComponent) oneshot exited \(p.terminationStatus) without a result"
             )
         }
         log(

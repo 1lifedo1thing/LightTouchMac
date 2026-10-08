@@ -1,4 +1,4 @@
-// The machines as LightTouchDevice --machines reports them (tests/fixtures/machines.json), set before a board's facts are read.
+// The machines as LightTouchDevice's machines launch reports them (tests/fixtures/machines.json), set before a board's facts are read.
 import Foundation
 import HostRuntime
 

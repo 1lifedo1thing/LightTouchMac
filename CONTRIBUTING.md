@@ -184,7 +184,7 @@ then `init`, then `body`, then private helpers. A piece with its own state, or l
 A board's facts have two homes. The emulator's: qemu-ios's `qemu_ios_device_info` table
 (`contrib/ios-app/qemu-ios-ui.c`): the `-M` machine, the board ID, the screen, the modem, the USB host, the compass,
 the USB charger and the `panel=` limits; the helper reports them in its hello and lists them with
-`LightTouchDevice --machines`, and the app reads them as `DeviceInfo` (`Board.hardware`). The app's: one `Board`
+`LightTouchDevice '{"mode":{"machines":{}}}'`, and the app reads them as `DeviceInfo` (`Board.hardware`). The app's: one `Board`
 case and its `Facts` in `Packages/HostRuntime/Sources/HostRuntime/Board.swift`: the names, the model ID, the SoC
 family (which decides how its prepared base boots and its guest architecture) and the art. Adding a board touches
 those two places; its firmware is catalog entries, and preparing it is a FirmwareKit recipe if no existing one fits.

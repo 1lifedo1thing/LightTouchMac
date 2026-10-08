@@ -11,35 +11,6 @@ func die(_ message: String) -> Never {
     exit(2)
 }
 
-/// `--name value` options, `--flag`s and positional arguments.
-struct Arguments {
-    var positional: [String] = []
-    var values: [String: [String]] = [:]
-    var flags: Set<String> = []
-
-    init(_ args: [String], flags known: Set<String>) {
-        var it = args.makeIterator()
-        while let a = it.next() {
-            if a.hasPrefix("--") {
-                let name = String(a.dropFirst(2))
-                if known.contains(name) {
-                    flags.insert(name)
-                } else if let v = it.next() {
-                    values[name, default: []].append(v)
-                } else {
-                    die("--\(name) needs a value")
-                }
-            } else {
-                positional.append(a)
-            }
-        }
-    }
-    subscript(_ name: String) -> String? { values[name]?.last }
-    func all(_ name: String) -> [String] { values[name] ?? [] }
-    func flag(_ name: String) -> Bool { flags.contains(name) }
-    func path(_ name: String) -> URL? { self[name].map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) } }
-}
-
 /// The pinned checkout `name` (build-support/sources.json "path"; QEMU_IOS_DIR / USBMUXD_SOURCE_DIR override it).
 func checkout(_ name: String) -> URL {
     let env = ["qemu-ios": "QEMU_IOS_DIR", "usbmuxd": "USBMUXD_SOURCE_DIR"][name] ?? ""
@@ -77,10 +48,10 @@ struct Tools {
 
     static let teamRequirement = #"anchor apple generic and certificate leaf[subject.OU] = "SM75355Y6R""#
 
-    static func resolve(_ args: Arguments, work: URL) -> Tools {
+    static func resolve(_ args: Inputs, work: URL) -> Tools {
         let fm = FileManager.default
         let tools: Tools
-        if let app = args.path("app") {
+        if let app = args.app {
             let contents = app.appendingPathComponent("Contents")
             tools = Tools(
                 helper: contents.appendingPathComponent("MacOS/LightTouchDevice"),
@@ -90,7 +61,7 @@ struct Tools {
                 usbmuxd: contents.appendingPathComponent("MacOS/usbmuxd"),
                 files: contents.appendingPathComponent("Resources/Device"),
                 guest: unpack(contents.appendingPathComponent("Resources/Guest/guest.aar"), into: work),
-                requirement: args["requirement"]
+                requirement: args.requirement
             )
         } else {
             guard let vendor = vendorDirectory() else {
@@ -105,12 +76,12 @@ struct Tools {
                 usbmuxd: vendor.appendingPathComponent("MacOS/usbmuxd"),
                 files: vendor.appendingPathComponent("Resources/Device"),
                 guest: unpack(vendor.appendingPathComponent("Resources/Guest/guest.aar"), into: work),
-                requirement: args["requirement"] ?? teamRequirement
+                requirement: args.requirement ?? teamRequirement
             )
         }
         var t = tools
-        if let dylib = args.path("dylib") { t.dylib = dylib }
-        if let usbmuxd = args.path("usbmuxd") { t.usbmuxd = usbmuxd }
+        if let dylib = args.dylib { t.dylib = dylib }
+        if let usbmuxd = args.usbmuxd { t.usbmuxd = usbmuxd }
         for (what, url) in [
             ("helper", t.helper), ("services worker", t.services), ("firmwarekit", t.firmwarekit),
             ("usbmuxd", t.usbmuxd),

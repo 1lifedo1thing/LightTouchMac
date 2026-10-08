@@ -6,45 +6,44 @@ import SessionKit
 /// frontmost app and screen where the base has an agent, the frame against tests/sessions/matrix-refs where there is a
 /// reference), the backlight at the firmware's 100%, AFC round trips past 16 KiB, an IPA install (2.x on), a clean
 /// shutdown confirmed by the guest, and the base untouched.
-func single(_ args: Arguments) -> Never {
-    guard let path = args.positional.first else { die("single needs a prepared base") }
-    let base = Base(path)
-    let work = workDirectory(args, "single")
-    let tools = Tools.resolve(args, work: work)
+func single(_ args: SingleCheck) -> Never {
+    let base = Base(args.base)
+    let work = workDirectory(args.inputs, "single")
+    let tools = Tools.resolve(args.inputs, work: work)
     let d = base.driverBoard
-    let install = !args.flag("no-install") && base.major >= 2  // 1.x has no installation_proxy
-    let ipa = args.path("ipa") ?? checkout("qemu-ios").appendingPathComponent("contrib/it-harness/build/Harness.ipa")
+    let install = !args.noInstall && base.major >= 2  // 1.x has no installation_proxy
+    let ipa = args.ipa ?? checkout("qemu-ios").appendingPathComponent("contrib/it-harness/build/Harness.ipa")
     if install, !FileManager.default.fileExists(atPath: ipa.path) { die("no test IPA at \(ipa.path) (--ipa)") }
     let before = SessionJudge.tree(base.url)
 
     var single: [String: Any] = [
         "board": d, "base": base.url.path, "lockdownTZ": tools.services.path,
-        "launch": args.flag("launch"), "reboot": args.flag("reboot"), "install": install,
+        "launch": args.launch, "reboot": args.reboot, "install": install,
     ]
-    if args.flag("host-power-gesture") { single["hostPowerGesture"] = true }
-    if let zone = args["second-zone"] { single["secondZone"] = zone }
-    if let file = args["read-file"] { single["readFile"] = file }
-    if let upgrade = args.path("upgrade-ipa") { single["upgradeIPA"] = upgrade.path }
-    if let wav = args.path("audio-wav") { single["audioWAV"] = wav.path }
-    let race = Int(args["afc-race"] ?? "")
+    if args.hostPowerGesture { single["hostPowerGesture"] = true }
+    if let zone = args.secondZone { single["secondZone"] = zone }
+    if let file = args.readFile { single["readFile"] = file }
+    if let upgrade = args.upgradeIPA { single["upgradeIPA"] = upgrade.path }
+    if let wav = args.audioWAV { single["audioWAV"] = wav.path }
+    let race = args.afcRace
     if let race {
         single["raceBoots"] = race
-        single["raceDirty"] = args.flag("dirty")
+        single["raceDirty"] = args.dirty
     }
     var config = driverConfig(tools, work: work, ipa: ipa)
-    if !args.flag("no-offer") {  // the app offers its bundled guest package at every boot
+    if !args.noOffer {  // the app offers its bundled guest package at every boot
         let packs = tools.guest.appendingPathComponent("guest-tools")
         if base.armv7 {
-            config["ipadItpack"] = (args.path("itpack") ?? packs.appendingPathComponent("armv7.itpack")).path
+            config["ipadItpack"] = (args.itpack ?? packs.appendingPathComponent("armv7.itpack")).path
         } else {
-            single["itpack"] = (args.path("itpack") ?? packs.appendingPathComponent("armv6.itpack")).path
+            single["itpack"] = (args.itpack ?? packs.appendingPathComponent("armv6.itpack")).path
         }
     }
     if base.board == "k48ap" { config["ipadBase"] = base.url.path }
     config["single"] = single
     // 6.x/7.x: the first boot walks the Setup Assistant; 7.x also boots and pairs far slower. Per boot.
     var timeout = base.major >= 7 ? 1400.0 : base.major >= 6 ? 700 : 560
-    if args.flag("reboot") { timeout *= 2 }
+    if args.reboot { timeout *= 2 }
     if let race { timeout = 200 * Double(race) }
     config["timeout"] = timeout
 
@@ -134,14 +133,14 @@ func single(_ args: Arguments) -> Never {
             "\(d): IPA installed (\(format(inst.double("seconds"), 0)) s, attempt \(inst.int("attempt") ?? 0))"
         )
     }
-    if args.path("upgrade-ipa") != nil {
+    if args.upgradeIPA != nil {
         let up = events.one("upgraded", ["device": d])
         r.check(
             (up.string("error") ?? "x").isEmpty && !(up.string("after") ?? "").isEmpty && up.bool("kept"),
             "\(d): upgrade over the installed app keeps its data (now version \(up.string("version") ?? "")): \(up)"
         )
     }
-    if args.flag("launch") {
+    if args.launch {
         let launches = events.find("launched", ["device": d])
         r.check(
             !launches.isEmpty
@@ -152,7 +151,7 @@ func single(_ args: Arguments) -> Never {
             "\(d): the installed app is frontmost after the agent's launch: \(launches.map { $0.string("frontmost3") ?? $0.string("launchError") ?? "?" })"
         )
     }
-    let boots = args.flag("reboot") ? 2 : 1
+    let boots = args.reboot ? 2 : 1
     let quits = events.find("quit", ["device": d])
     r.check(
         quits.count == boots
@@ -163,7 +162,7 @@ func single(_ args: Arguments) -> Never {
         "\(d): \(quits.count)/\(boots) clean shutdowns, guest power-off confirmed "
             + quits.map { "in \(format($0.double("confirmed"))) s" }.joined(separator: ", ") + ", helper exited"
     )
-    if args.flag("host-power-gesture") {
+    if args.hostPowerGesture {
         let gestures = events.find("hostPowerGesture", ["device": d])
         r.check(
             gestures.count == boots && gestures.allSatisfy { $0.bool("confirmed") && !$0.has("error") },
@@ -177,13 +176,13 @@ func single(_ args: Arguments) -> Never {
             "\(d): lockdown holds the zone asked for at each boot: \(zones.map { "\($0.string("want") ?? "") -> \($0.string("zone") ?? "")" })"
         )
     }
-    if let zone = args["second-zone"] {
+    if let zone = args.secondZone {
         r.check(
             zones.contains { $0.int("generation") == 2 && $0.string("zone") == zone },
             "\(d): the zone follows the Mac's change between boots"
         )
     }
-    if args.flag("reboot") {
+    if args.reboot {
         let persisted = events.find("persist", ["device": d])
         r.check(
             !persisted.isEmpty && persisted.allSatisfy { $0.bool("kept") && $0.bool("same") },
@@ -202,7 +201,7 @@ func single(_ args: Arguments) -> Never {
             "\(d): both boots reached Home, activation and identity"
         )
     }
-    if let file = args["read-file"] {
+    if let file = args.readFile {
         let reads = events.find("fileRead", ["device": d])
         r.check(!reads.isEmpty && reads.allSatisfy { $0.bool("found") }, "\(d): the guest agent reads back \(file)")
     }
