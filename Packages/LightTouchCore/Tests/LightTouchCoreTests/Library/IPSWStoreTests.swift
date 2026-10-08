@@ -160,7 +160,15 @@ struct IPSWStoreTests {
                     && !fm.fileExists(atPath: swept.imports.appendingPathComponent(".c.importing").path)
             )
             #expect(swept.existing("b") != nil && swept.existing("d") != nil)
+            var posts = 0
+            let observer = NotificationCenter.default.addObserver(
+                forName: IPSWStore.didChangeNotification,
+                object: nil,
+                queue: nil
+            ) { _ in posts += 1 }
+            defer { NotificationCenter.default.removeObserver(observer) }
             try swept.remove("b")
+            #expect(posts == 1, "the sidebar and Storage hear of it (state audit B-5)")
             #expect(
                 swept.existing("b") == nil && !fm.fileExists(atPath: swept.resumeData("b").path),
                 "Remove IPSW takes its .resume too"

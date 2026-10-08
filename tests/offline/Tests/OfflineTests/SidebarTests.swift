@@ -122,6 +122,12 @@ extension SharedState {
             {
                 fail("one kind (3.1.3 built in: nothing beside it): \(seen)")
             }
+            // Remove IPSW (Settings ▸ Storage): the store says so and the row stops saying Downloaded (state audit B-5).
+            let removedIPSW = catalog.entry(id: "n72ap-8B117")!
+            host.downloaded = []
+            NotificationCenter.default.post(name: IPSWStore.didChangeNotification, object: nil)
+            if vc.row(for: removedIPSW).state == .downloaded { fail("a removed IPSW's row still says Downloaded") }
+            host.downloaded = ["n72ap-8B117"]
 
             // Mixed: the same two lines.
             (vc, w) = sidebar(["n72ap-8C148", "k48ap-7B500", "n72ap-8B5080c", "n45ap-4B1"], host: host)

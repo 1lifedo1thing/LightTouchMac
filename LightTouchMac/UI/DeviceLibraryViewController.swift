@@ -109,7 +109,9 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         outline.reloadData()
         refresh()
 
-        for name in [DeviceLibrary.didChangeNotification, FirmwareJobs.didChangeNotification] {
+        for name in [
+            DeviceLibrary.didChangeNotification, FirmwareJobs.didChangeNotification, IPSWStore.didChangeNotification,
+        ] {
             NotificationCenter.default.addObserver(self, selector: #selector(stateDidChange), name: name, object: nil)
         }
         NotificationCenter.default.addObserver(

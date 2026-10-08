@@ -221,8 +221,12 @@ public nonisolated struct IPSWStore: Sendable {
 
     // MARK: - Removal
 
+    /// Posted after Remove IPSW: rows that said Downloaded read the store again.
+    public static let didChangeNotification = Notification.Name("IPSWStoreDidChange")
+
     /// Remove IPSW: the download, its .partial and .resume, and the import.
     public func remove(_ sha1: String) throws {
+        defer { NotificationCenter.default.post(name: Self.didChangeNotification, object: nil) }
         for url in [download(sha1), partial(sha1), resumeData(sha1), imported(sha1)]
         where FileManager.default.fileExists(atPath: url.path) {
             try FileManager.default.removeItem(at: url)
