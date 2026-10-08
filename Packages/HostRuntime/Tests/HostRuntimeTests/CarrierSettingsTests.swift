@@ -68,12 +68,13 @@ struct CarrierSettingsTests {
         let json =
             #"{"carrier": "Test Network", "mcc-mnc": "00101", "call-state": "incoming", "last-dialed": "911", "#
             + #""last-mo-sms": "14155550100|Hi | there", "registered": true, "sim-present": false, "signal-dbm": -63, "#
-            + #""mo-sms-count": 2, "error": "the modem is not in a state to ring"}"#
+            + #""mo-sms-count": 2, "emergency-call": true, "error": "the modem is not in a state to ring"}"#
         let s = try #require(ModemStatus(json: json))
         #expect(
             s.carrier == "Test Network" && s.callState == "incoming" && s.lastDialed == "911" && s.registered
-                && !s.simPresent
+                && !s.simPresent && s.emergencyCall
         )
+        #expect(ModemStatus(json: "{}")?.emergencyCall == false)
         #expect(s.signalDBM == -63 && s.moSMSCount == 2 && s.error?.hasPrefix("the modem") == true)
         #expect(s.lastMOSMS?.number == "14155550100" && s.lastMOSMS?.text == "Hi | there")
         #expect(ModemStatus(json: #"{"last-mo-sms": "|"}"#)?.lastMOSMS == nil)

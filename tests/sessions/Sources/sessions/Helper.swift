@@ -370,6 +370,7 @@ func helperBoot(_ args: HelperBootCheck) -> Never {
 /// different from portrait. `shutdown`: the guest confirms its own power-off. `keyboard` (A4): Connect Hardware Keyboard
 /// off and on. 6.x/7.x's first boot sits in Setup, which rejects calls: the carrier case then needs --overlay, the overlay
 /// of a boot that walked Setup (`sessions single` leaves one in its work directory), cloned, never changed.
+/// `emergency` (4.x and 7.x): 911 from the emergency dialer, which asks the modem first (issue 32).
 func phone(_ args: PhoneCheck) -> Never {
     let base = Base(args.base)
     guard ["n90ap", "n88ap", "m68ap"].contains(base.board) else { die("phone boots an n90ap, n88ap or m68ap base") }
@@ -456,6 +457,9 @@ func phone(_ args: PhoneCheck) -> Never {
             "carrier: an unknown property is refused at the link"
         )
     }
+    if only.contains("emergency") {
+        emergencyCall(base, tools: tools, work: work, r)
+    }
     if only.contains("rotate") {
         print("rotate")
         let d = HelperDriver(
@@ -534,4 +538,81 @@ func phone(_ args: PhoneCheck) -> Never {
         )
     }
     finish(r, work: work)
+}
+
+/// 911 from the emergency-only dialer (issue 32): on 4.x the passcode screen's after setting passcode 1111 in Settings;
+/// on 7.x Setup's Home sheet (a fresh overlay, first boot). CommCenter asks the modem `+XEMN="911"` first and dials only
+/// if it answers that this is an emergency number; the Carrier panel's status then shows the call as an emergency call.
+func emergencyCall(_ base: Base, tools: Tools, work: URL, _ r: Report) {
+    print("emergency")
+    let dialing: [String]
+    switch base.major {
+    case 4:
+        let one = ["tap 0.165 0.594", "wait 0.5"]
+        let code = Array([[String]](repeating: one, count: 4).joined())
+        dialing =
+            ["boot", "lit 0.5 400", "wait 40", "button 0", "wait 2", unlockSlide, "wait 4"]
+            // Settings, General, Passcode Lock (the last row, unscrolled), Turn Passcode On, 1111 twice.
+            + [
+                "tap 0.385 0.68", "wait 4", "tap 0.5 0.84", "wait 3", "tap 0.5 0.972", "wait 3", "tap 0.5 0.21",
+                "wait 3",
+            ]
+            + code + ["wait 2"] + code + ["wait 3"]
+            // Lock, wake, slide: the passcode screen, then its Emergency Call button.
+            + ["button 1", "wait 3", "button 0", "wait 2", unlockSlide, "wait 3", "tap 0.165 0.94", "wait 4"]
+            + [
+                "tap 0.784 0.556", "wait 0.5", "tap 0.207 0.33", "wait 0.5", "tap 0.207 0.33", "wait 1",
+                "tap 0.728 0.906",
+            ]
+    case 7:
+        dialing = [
+            "boot", "lit 0.9 600", "wait 10", "button 0", "wait 3", "drag 0.2 0.86 0.9 0.86", "wait 5", "button 0",
+            "wait 3", "tap 0.5 0.735", "wait 4",
+            "tap 0.75 0.54", "wait 0.5", "tap 0.26 0.22", "wait 0.5", "tap 0.26 0.22", "wait 1", "tap 0.5 0.825",
+        ]
+    default:
+        print("  skip: no emergency dialer route for \(base.version)")
+        return
+    }
+    let d = HelperDriver(
+        "emergency",
+        tools: tools,
+        work: work,
+        scenario: preparedScenario(
+            base,
+            tools: tools,
+            work: work,
+            name: "emergency",
+            steps: dialing + [
+                "wait 4", "modemStatus", "modem remote-answer 1", "wait 3", "dump call", "modemStatus",
+                "modem remote-hangup 1", "wait 3", "modemStatus", "quit", "expectExit 60",
+            ]
+        ),
+        environment: ["IOS_BB_TRACE": "2"]
+    )
+    r.check(d.finish(900) == 0, "emergency: scenario completed")
+    let st: [Event] = d.events.find("modemStatus").map {
+        ($0.string("json").flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) } as? Event) ?? [:]
+    }
+    let log = d.nativeLog
+    r.check(
+        log.contains(#"> at+xemn="911""#) && log.contains(#"+XEMN: "911",1"#),
+        "emergency: CommCenter asked whether 911 is an emergency number and the modem said yes"
+    )
+    r.check(log.contains("> atd911;"), "emergency: then dialed it")
+    if r.check(st.count == 3, "emergency: three statuses (\(st.count))") {
+        r.check(
+            st[0].string("last-dialed") == "911" && st[0].bool("emergency-call")
+                && ["dialing", "alerting"].contains(st[0].string("call-state") ?? ""),
+            "emergency: an emergency call going out (\(st[0]))"
+        )
+        r.check(
+            st[1].string("call-state") == "active" && st[1].bool("emergency-call"),
+            "emergency: answered (\(st[1].string("call-state") ?? ""))"
+        )
+        r.check(
+            st[2].string("call-state") == "idle" && !st[2].bool("emergency-call"),
+            "emergency: hung up (\(st[2].string("call-state") ?? ""))"
+        )
+    }
 }

@@ -83,6 +83,8 @@ extension CarrierSettings {
 public struct ModemStatus: Equatable, Sendable {
     public var carrier = "", mccMNC = "", callState = "idle", lastDialed = ""
     public var registered = false, simPresent = false
+    /// The call `callState` describes is to an emergency number.
+    public var emergencyCall = false
     public var signalDBM = -113, moSMSCount = 0
     /// The last outgoing SMS: destination and text.
     public var lastMOSMS: (number: String, text: String)? = nil
@@ -99,6 +101,7 @@ public struct ModemStatus: Equatable, Sendable {
         lastDialed = o["last-dialed"] as? String ?? ""
         registered = o["registered"] as? Bool ?? false
         simPresent = o["sim-present"] as? Bool ?? false
+        emergencyCall = o["emergency-call"] as? Bool ?? false
         signalDBM = o["signal-dbm"] as? Int ?? -113
         moSMSCount = o["mo-sms-count"] as? Int ?? 0
         error = o["error"] as? String
@@ -109,7 +112,8 @@ public struct ModemStatus: Equatable, Sendable {
 
     public static func == (a: ModemStatus, b: ModemStatus) -> Bool {
         a.carrier == b.carrier && a.mccMNC == b.mccMNC && a.callState == b.callState && a.lastDialed == b.lastDialed
-            && a.registered == b.registered && a.simPresent == b.simPresent && a.signalDBM == b.signalDBM
+            && a.registered == b.registered && a.simPresent == b.simPresent && a.emergencyCall == b.emergencyCall
+            && a.signalDBM == b.signalDBM
             && a.moSMSCount == b.moSMSCount && a.error == b.error
             && a.lastMOSMS?.number == b.lastMOSMS?.number && a.lastMOSMS?.text == b.lastMOSMS?.text
     }

@@ -68,7 +68,10 @@ struct CarrierPanel: View {
                     Button("Hang Up") { model.hangUp() }.disabled(!model.canHangUp)
                         .help("The other end ends the call, ringing or connected")
                 }
-                LabeledContent("State", value: model.callState.capitalized)
+                LabeledContent(
+                    "State",
+                    value: model.callState.capitalized + (model.status?.emergencyCall == true ? " (Emergency)" : "")
+                )
                 LabeledContent(
                     "Last Dialed",
                     value: (model.status?.lastDialed).flatMap { $0.isEmpty ? nil : $0 } ?? "—"
