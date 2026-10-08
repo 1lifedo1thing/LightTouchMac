@@ -160,6 +160,8 @@ extension String {
     var localNetwork = false
     /// wifi0 under slirp's restrict from boot (5.x Setup offline): only the guestfwd answers.
     var restricted = false
+    /// The device record's free-form `panel` ("WxH" as it scans), as EmulatorController boots with it.
+    var panel: String?
     init(name: String, profile: Board, base: URL) {
         self.name = name
         self.profile = profile
@@ -205,7 +207,8 @@ extension String {
                 overlay: overlay,
                 writableNOR: nor,
                 storageKey: managedKey,
-                bootrom: BootRecipe.bootrom(profile.bootrom, filesRoot: Self.files)
+                bootrom: BootRecipe.bootrom(profile.bootrom, filesRoot: Self.files),
+                panel: panel
             )
             if profile.isKBoot { offer = try iPadOffer(base: base) }
             let netdev =

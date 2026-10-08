@@ -70,6 +70,10 @@ struct SingleConfig: Decodable {
     /// contrib/it-proxy/httpget (armv6): at the first Home the guest fetches `WiFiProbe.url`, which only wifi0's
     /// guestfwd answers, so the board's Wi-Fi joined (`wifi`).
     var httpget: String?
+    /// Free-form Apply at this panel ("WxH" as it scans): after boot 1's home, the app's Stop and a fresh boot at
+    /// panel=WxH on the same overlay (EmulatorController.setPanel); then the frame's size, the dock row in the new
+    /// bottom band, and a tap on a dock icon launching its app.
+    var panel: String?
 }
 
 /// A page only wifi0 serves (a guestfwd to a shell that answers any request), so a cellular route can't stand in for
@@ -512,6 +516,13 @@ nonisolated enum WiFiProbe {
 
     await boot(1)
 
+    if let panel = s.panel {
+        await resize(d, to: panel, boot: boot, shutdown: shutdown)
+        d.serial?.finish()
+        emit("done")
+        exit(0)
+    }
+
     if s.reboot == true, s.hardStop == true {
         d.process.terminate()  // the app's Stop: pause, flush the overlay, quit QEMU at once
         let exited = await d.process.waitForExit(timeout: 30)
@@ -600,6 +611,125 @@ nonisolated enum WiFiProbe {
     d.serial?.finish()
     emit("done")
     exit(0)
+}
+
+/// Free-form Apply (SingleConfig.panel), from boot 1's Home screen: the app's Stop, boot 2 at the panel, its frame's
+/// size, its dock (the bottom band of boot 1's Home screen, as tall, the same picture at the new bottom), and a tap on
+/// the first dock icon: the agent names an app frontmost, and the screen changes. Emits `resized`, `dock`, `tapLanded`.
+@MainActor func resize(
+    _ d: Device,
+    to panel: String,
+    boot: (Int) async -> Void,
+    shutdown: (Int) async -> Void
+) async {
+    d.process.terminate()  // Apply on a running device: the app's Stop (a hard halt), then a fresh helper
+    let exited = await d.process.waitForExit(timeout: 30)
+    emit(
+        "quit",
+        ["device": d.name, "generation": 1, "hard": true, "exited": exited, "reason": d.process.deathReason ?? ""]
+    )
+    await d.services.stopWorker()
+    d.mux.stop()
+    d.serial?.removeEndpoints()
+    d.panel = panel
+    await boot(2)
+    let want = Board.panelScan(panel) ?? .zero
+    let surface = d.process.link.frontSurface()?.surface
+    emit(
+        "resized",
+        [
+            "device": d.name, "width": surface?.width ?? 0, "height": surface?.height ?? 0,
+            "wantWidth": Int(want.width), "wantHeight": Int(want.height),
+        ]
+    )
+    // The dock: the bottom fifth of the shipped screen, then and now (the same width, so the same picture).
+    let before = d.dir.appendingPathComponent("home.png")
+    let after = d.dir.appendingPathComponent("home2.png")
+    let band = d.profile.screenPixels.height / 5
+    emit(
+        "dock",
+        ["device": d.name, "rows": Int(band), "differs": DockBand.differs(before, after, rows: Int(band)) ?? -1]
+    )
+    // A tap on the first dock icon, half a dock above the bottom edge. A first boot's "Edit Home Screen" tip (an
+    // alert centered on the new screen) is dismissed first, as launch() does at 320x480: its button sits in a gap
+    // between icons when there is no tip.
+    let agent = GuestAgent(link: d.process.link, cache: GuestAgentCache())
+    let points = Double(want.height) * 320 / Double(want.width)
+    await d.tap(0.5, (345 + (points - 480) / 2) / points)
+    try? await Task.sleep(for: .seconds(2))
+    d.screenshot("tip")
+    let y = 1 - Double(band) / 2 / Double(want.height)
+    await d.tap(1 / 8, y)
+    try? await Task.sleep(for: .seconds(6))
+    let front = try? await agent.frontmost()
+    let tapped = await d.wakeForShot("tapped") == nil ? nil : d.dir.appendingPathComponent("tapped.png")
+    emit(
+        "tapLanded",
+        [
+            "device": d.name, "x": 1.0 / 8, "y": y, "frontmost": front?.bundleID ?? "", "screen": front?.name ?? "",
+            "changed": tapped.flatMap { DockBand.differs(after, $0, rows: Int(want.height)) } ?? -1,
+        ]
+    )
+    d.process.link.send(.button(0, down: true))
+    try? await Task.sleep(for: .milliseconds(150))
+    d.process.link.send(.button(0, down: false))
+    try? await Task.sleep(for: .seconds(3))
+    await shutdown(2)
+}
+
+/// The share of 8 x 8-pixel blocks of two captures' bottom `rows` that differ (any channel's mean by more than 24):
+/// nil when either can't be read or they are not the same width.
+enum DockBand {
+    static func differs(_ a: URL, _ b: URL, rows: Int) -> Double? {
+        guard let x = bottom(a, rows: rows), let y = bottom(b, rows: rows), x.width == y.width else { return nil }
+        let w = x.width / 8
+        let h = rows / 8
+        var differing = 0
+        for by in 0..<h {
+            for bx in 0..<w {
+                for c in 0..<3 {
+                    var sa = 0
+                    var sb = 0
+                    for yy in by * 8..<by * 8 + 8 {
+                        for xx in bx * 8..<bx * 8 + 8 {
+                            sa += Int(x.bytes[(yy * x.width + xx) * 4 + c])
+                            sb += Int(y.bytes[(yy * y.width + xx) * 4 + c])
+                        }
+                    }
+                    if abs(sa - sb) / 64 > 24 {
+                        differing += 1
+                        break
+                    }
+                }
+            }
+        }
+        return w * h == 0 ? nil : Double(differing) / Double(w * h)
+    }
+
+    /// The bottom `rows` of a PNG as RGBX.
+    static func bottom(_ url: URL, rows: Int) -> (width: Int, bytes: [UInt8])? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+            let image = CGImageSourceCreateImageAtIndex(source, 0, nil), image.height >= rows,
+            let crop = image.cropping(to: CGRect(x: 0, y: image.height - rows, width: image.width, height: rows))
+        else { return nil }
+        var bytes = [UInt8](repeating: 0, count: crop.width * rows * 4)
+        let drawn = bytes.withUnsafeMutableBytes { buffer -> Bool in
+            guard
+                let context = CGContext(
+                    data: buffer.baseAddress,
+                    width: crop.width,
+                    height: rows,
+                    bitsPerComponent: 8,
+                    bytesPerRow: crop.width * 4,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+                )
+            else { return false }
+            context.draw(crop, in: CGRect(x: 0, y: 0, width: crop.width, height: rows))
+            return true
+        }
+        return drawn ? (crop.width, bytes) : nil
+    }
 }
 
 /// iOS 5's Setup Assistant on a fresh iPad, walked as qemu-ios tests/ipad1/regress.py's gles leg walks it (SETUP_5):

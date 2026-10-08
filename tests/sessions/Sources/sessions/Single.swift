@@ -23,6 +23,7 @@ func single(_ args: SingleCheck) -> Never {
     if args.hostPowerGesture { single["hostPowerGesture"] = true }
     if let zone = args.secondZone { single["secondZone"] = zone }
     if let file = args.readFile { single["readFile"] = file }
+    if let panel = args.panel { single["panel"] = panel }
     if let upgrade = args.upgradeIPA { single["upgradeIPA"] = upgrade.path }
     if let wav = args.audioWAV { single["audioWAV"] = wav.path }
     let race = args.afcRace
@@ -43,7 +44,7 @@ func single(_ args: SingleCheck) -> Never {
     config["single"] = single
     // 6.x/7.x: the first boot walks the Setup Assistant; 7.x also boots and pairs far slower. Per boot.
     var timeout = base.major >= 7 ? 1400.0 : base.major >= 6 ? 700 : 560
-    if args.reboot { timeout *= 2 }
+    if args.reboot || args.panel != nil { timeout *= 2 }
     if let race { timeout = 200 * Double(race) }
     config["timeout"] = timeout
 
@@ -70,6 +71,14 @@ func single(_ args: SingleCheck) -> Never {
             events.find("race", ["device": d]).count == race && events.any("done"),
             "\(d): \(events.find("race", ["device": d]).count)/\(race) boots ran"
         )
+        finish(r, work: work)
+    }
+
+    if let panel = args.panel {
+        resized(r, d, panel: panel, events: events)
+        let after = SessionJudge.tree(base.url)
+        r.check(after == before, "\(d): the prepared base is unchanged")
+        r.check(events.any("done") && status == 0, "driver finished (exit \(status.map(String.init) ?? "timeout"))")
         finish(r, work: work)
     }
 
@@ -226,6 +235,42 @@ func single(_ args: SingleCheck) -> Never {
         )
     }
     finish(r, work: work)
+}
+
+/// `single --panel`: free-form Apply on a running device. Both boots reach Home; the second's frame is the panel; the
+/// dock (the shipped screen's bottom fifth) is the same picture in the new bottom band; a tap on its first icon
+/// brings an app up; the second boot shuts down cleanly.
+func resized(_ r: Report, _ d: String, panel: String, events: Events) {
+    let homes = events.find("home", ["device": d])
+    r.check(
+        homes.count == 2 && homes.allSatisfy { ($0.double("brightness") ?? 0) >= 0.05 },
+        "\(d): Home before and after the restart: \(homes.map { "\($0.string("screen") ?? "?") \(format($0.double("brightness"), 2))" })"
+    )
+    let size = events.one("resized", ["device": d])
+    let got = "\(size.int("width") ?? 0)x\(size.int("height") ?? 0)"
+    r.check(got == panel, "\(d): the frame after Apply is \(got), the panel \(panel)")
+    let dock = events.one("dock", ["device": d])
+    let differs = dock.double("differs") ?? -1
+    r.check(
+        differs >= 0 && differs <= 0.15,
+        "\(d): the dock row is at the new bottom (\(format(differs * 100, 1))% of its blocks differ from before)"
+    )
+    let tap = events.one("tapLanded", ["device": d])
+    let front = tap.string("frontmost") ?? ""
+    let changed = tap.double("changed") ?? -1
+    r.check(
+        (front.isEmpty || front != "com.apple.springboard") && changed > 0.3,
+        "\(d): a tap on the first dock icon opens \(front.isEmpty ? "an app" : front) (\(format(changed * 100, 0))% of the screen changed)"
+    )
+    let quits = events.find("quit", ["device": d])
+    r.check(
+        quits.count == 2 && quits.allSatisfy { $0.bool("exited") }
+            && quits.contains { ($0.double("confirmed") ?? -1) >= 0 },
+        "\(d): Stop for Apply, then a clean shutdown at the new size"
+    )
+    for e in events.find("screenshot") {
+        print("   \(e.string("path") ?? "")  (\(e.int("width") ?? 0)x\(e.int("height") ?? 0))")
+    }
 }
 
 func hex(_ value: Int) -> String { "0x" + String(value, radix: 16) }
