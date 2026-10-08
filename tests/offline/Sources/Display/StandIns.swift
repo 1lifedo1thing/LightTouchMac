@@ -87,7 +87,7 @@ extension NSPasteboard.PasteboardType { static let ltmCatalogApp = Self("test.ca
 /// The 3D model as far as DisplayView sees it: no RealityKit; loading takes loadingDelay, the first frame
 /// preparationDelay (a late callback that ignores cancellation, as a busy renderer's).
 @MainActor final class DeviceModelView: NSView {
-    func physicalScale(heightInPoints height: CGFloat) -> CGFloat { height / 1318 }
+    var drawsNearest = true
     var viewportCenter: CGPoint?
     static var loadingDelay: Duration = .zero
     static var preparationDelay: Duration = .milliseconds(50)

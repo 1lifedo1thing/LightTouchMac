@@ -1,8 +1,8 @@
 import Cocoa
 import LightTouchCore
 
-// The device's size in the pane: the scale each ZoomMode (Fit, Physical Size, the pixel-accurate steps) gives the
-// shell, and how the guest's pixels are filtered at it.
+// The device's size in the pane: ZoomMode's points per guest pixel (p) for the pane, this display and this
+// device as shown, the shell scale that draws it, and how the guest's pixels are filtered at it.
 
 extension DisplayView {
     /// Points of breathing room between the shell and the pane edge when
@@ -13,7 +13,8 @@ extension DisplayView {
     /// Wide enough that the shell's shadow has somewhere to fall.
     static let zoomInset: CGFloat = 16
 
-    var physicalScale: CGFloat? {
+    /// The display's points per millimeter where the view's center is; nil when it reports no physical size.
+    private var pointsPerMillimeter: CGFloat? {
         guard let window else { return nil }
         let center = window.convertPoint(toScreen: convert(CGPoint(x: bounds.midX, y: bounds.midY), to: nil))
         let screen = NSScreen.screens.first { $0.frame.contains(center) } ?? window.screen
@@ -24,79 +25,58 @@ extension DisplayView {
                     logical: screen.frame.size
                 )
             }
-        }.map {
-            let height = profile.physicalHeightMillimeters * $0
-            return modelView?.physicalScale(heightInPoints: height) ?? height / shellPixels.height
         }
     }
 
-    @objc func screenChanged() {
-        if zoom == .physical, physicalScale == nil {
-            zoom = .fit
-            onPhysicalSizeUnavailable?()
-        }
-        needsLayout = true
+    /// The sizes the zoom can be here: Fit for this pane and what is shown (the 3D model's outline, the flat shell
+    /// or the bare screen, turned as the device is), the panel's physical size on this display, its backing scale.
+    var zoomContext: ZoomContext {
+        let usable = deviceLayoutRect
+        let box = fittedBox
+        let shellFit = min(
+            max(usable.width - 2 * Self.zoomInset, 1) / box.width,
+            max(usable.height - 2 * Self.zoomInset, 1) / box.height
+        )
+        return ZoomContext(
+            fit: shellFit * shellPerGuestPixel,
+            physical: ZoomContext.physical(pointsPerMillimeter: pointsPerMillimeter, ppi: profile.panelPPI),
+            backing: window?.backingScaleFactor ?? 2
+        )
     }
+
+    /// Shell pixels per guest pixel: the cutout's width over the panel's (1 in free-form, where they are one).
+    var shellPerGuestPixel: CGFloat { screenCutout.width / nativeScreenPixels.width }
+
+    /// The p on screen now.
+    var zoomPoints: CGFloat { appliedScale * shellPerGuestPixel }
+
+    /// The box Fit fits, in shell pixels as seen: the 3D model's outline once it has one (the iPad's flat art is
+    /// smaller), the flat shell, or bare the screen alone; swapped in landscape.
+    var fittedBox: CGSize {
+        let shell = (modelView ?? pendingModelView)?.shellPixels ?? shellPixels
+        let fitted = bare ? screenCutout.size : shell
+        let rotation = emulator?.rotationDegrees ?? 0
+        return rotation == 90 || rotation == 270 ? CGSize(width: fitted.height, height: fitted.width) : fitted
+    }
+
+    @objc func screenChanged() { needsLayout = true }
 
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
         screenChanged()
     }
 
-    /// The shell's scale for the current zoom, given its on-screen bounding box in display pixels.
-    func zoomScale(fitting shellOnScreenPixels: CGSize) -> CGFloat {
+    /// The shell's scale for the current zoom.
+    func zoomScale() -> CGFloat {
         if let dragScale { return dragScale }  // an edge drag keeps its scale, so the edge stays under the pointer
-        switch zoom {
-        case .pixels(let points) where freeFormActive:
-            return CGFloat(points)  // free-form Nx: a guest pixel is N points (Sam's "at 1x a point is a pixel")
-        case .physical where freeFormActive:
-            // Free-form's shell unit is a guest pixel: the shipped panel's pixel pitch, at its physical size.
-            return physicalScale.map { $0 * profile.screenCutout.height / profile.uprightScreenPixels.height }
-                ?? fitScale(shellOnScreenPixels)
-        case .fit:
-            return fitScale(shellOnScreenPixels)
-        case .physical:
-            return physicalScale ?? fitScale(shellOnScreenPixels)
-        case .pixels(let multiple):
-            return shellScale(guestPixelsPerDisplayPixel: multiple)
-        }
+        return zoomContext.points(for: zoom) / shellPerGuestPixel
     }
 
-    /// Scale is independent of a framebuffer arriving before or after rotation.
-    var pixelMultiple: CGFloat {
-        // Free-form steps in points per guest pixel, the unit its Nx is in.
-        ZoomMode.pixelMultiple(
-            appliedScale: appliedScale,
-            cutoutWidth: screenCutout.width,
-            nativeWidth: nativeScreenPixels.width,
-            backingScale: window?.backingScaleFactor ?? 2,
-            freeForm: freeFormActive
-        )
-    }
-
-    /// Whole display pixels per guest pixel stay crisp (nearest); between the steps (Fit, Physical Size)
-    /// nearest would draw guest pixels one or two display pixels wide, so those are filtered (linear).
-    static func contentsFilter(_ pixelMultiple: CGFloat) -> CALayerContentsFilter {
-        ZoomMode.drawsNearest(pixelMultiple) ? .nearest : .linear
-    }
-
-    private func shellScale(guestPixelsPerDisplayPixel multiple: Int) -> CGFloat {
-        ZoomMode.shellScale(
-            guestPixelsPerDisplayPixel: multiple,
-            cutoutWidth: screenCutout.width,
-            nativeWidth: nativeScreenPixels.width,
-            backingScale: window?.backingScaleFactor ?? 2
-        )
-    }
-
-    /// The largest uniform scale that fits `nativeSize` in the pane inset on
-    /// every side. `nativeSize` is the shell's bounding box in its current
-    /// orientation, so portrait and landscape both land with the same margin
-    /// without either needing its own number.
-    private func fitScale(_ nativeSize: CGSize) -> CGFloat {
-        let usable = deviceLayoutRect
-        let maxWidth = max(usable.width - 2 * Self.zoomInset, 1)
-        let maxHeight = max(usable.height - 2 * Self.zoomInset, 1)
-        return min(maxWidth / nativeSize.width, maxHeight / nativeSize.height)
+    /// Crisp or smoothed by the one rule (ZoomContext.drawsNearest), the flat screen and the 3D model alike.
+    func applyZoomFilter() {
+        let nearest = ZoomContext.drawsNearest(points: zoomPoints, backing: window?.backingScaleFactor ?? 2)
+        contentLayer.magnificationFilter = nearest ? .nearest : .linear
+        modelView?.drawsNearest = nearest
+        pendingModelView?.drawsNearest = nearest
     }
 }

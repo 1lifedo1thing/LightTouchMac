@@ -148,5 +148,5 @@ nonisolated extension Board {
     public var screenCutout: CGRect { facts.art.screenCutout }
     public var homeButtonDiameter: CGFloat { facts.art.homeDiameter }
     public var homeButtonBottomInset: CGFloat { facts.art.homeBottomInset }
-    public var physicalHeightMillimeters: CGFloat { facts.art.heightMillimeters }
+    public var panelPPI: CGFloat { facts.art.ppi }
 }

@@ -163,12 +163,15 @@ extension SharedState {
             frameWidth = 320
             frameHeight = 480
 
-            // Zoom: 2x is two display pixels per guest pixel, the LCD alone sized by it.
-            display.zoom = .pixels(2)
+            // Zoom: 2 points per guest pixel, the LCD alone sized by it; Pixel Accurate is one display pixel each, crisp.
+            display.zoom = .points(2)
             try await settle()
-            check(abs(display.pixelMultiple - 2) < 0.001, "2x zoom gives \(display.pixelMultiple)")
+            check(abs(display.zoomPoints - 2) < 0.001 && abs(box().height - 960) < 1, "2 pt zoom gives \(box())")
+            display.zoom = .pixelAccurate
+            try await settle()
             let backing = window.backingScaleFactor
-            check(abs(box().height - 480 * 2 / backing) < 1, "2x LCD is \(box()) at backing \(backing)")
+            check(abs(box().height * backing - 480) < 0.5, "Pixel Accurate LCD is \(box()) at backing \(backing)")
+            check(lcd.magnificationFilter == .nearest, "Pixel Accurate isn't crisp")
             display.zoom = .fit
 
             // Back on: the shell art, its shadow and (with the stub renderer) the model; off again drops it.
@@ -399,7 +402,6 @@ extension SharedState {
 
             DisplayView.panelCommitDelay = .milliseconds(50)
             var requests: [(CGSize?, Bool)] = []
-            let one = 1
             var statuses: [String?] = []  // what the owner's notice stack is given
             var restarts = true
 
@@ -431,7 +433,7 @@ extension SharedState {
                 display.autoresizingMask = [.width, .height]
                 container.addSubview(display)
                 window.contentView = container
-                display.zoom = .pixels(one)  // free-form Nx is N points per guest pixel
+                display.zoom = .points(1)  // free-form Nx is N points per guest pixel
                 try await settle(display)
                 return (display, e, window)
             }
@@ -494,12 +496,12 @@ extension SharedState {
             check(abs(box(d).midX - 700) < 1 && abs(box(d).midY - 700) < 1, "off center: \(box(d))")
             check(!d.subviews.contains { $0 is DeviceModelView }, "free-form shows a device")
             for f in [CGPoint(x: 0.2, y: 0.3), CGPoint(x: 0.8, y: 0.95)] { touchLands(d, f) }
-            d.zoom = .pixels(2 * one)
+            d.zoom = .points(2)
             try await settle(d)
             check(near(box(d), 640, 1008), "2x: \(box(d))")
-            // ⌘+/⌘− step from the multiple shown, in free-form's unit (points per guest pixel).
-            check(abs(d.pixelMultiple - 2) < 0.001, "2x reads as \(d.pixelMultiple) for zoom stepping")
-            d.zoom = .pixels(one)
+            // ⌘+/⌘− step from the points per guest pixel shown.
+            check(abs(d.zoomPoints - 2) < 0.001, "2x reads as \(d.zoomPoints) for zoom stepping")
+            d.zoom = .points(1)
             try await settle(d)
 
             // Only the screen's own edges resize it. A window resize (AppKit's live resize around it) and a sidebar
@@ -538,7 +540,7 @@ extension SharedState {
                 "fit: \(box(d))"
             )
             untouched("a window resize at Fit")
-            d.zoom = .pixels(one)
+            d.zoom = .points(1)
             try await pane(CGRect(x: 0, y: 0, width: 1400, height: 1400), live: true)
             untouched("a window resize back")
 
@@ -650,21 +652,19 @@ extension SharedState {
                 let sideways = rotation == 90
                 let upright = size(320, 448)
                 let seen = sideways ? size(448, 320) : upright
-                for zoom in [ZoomMode.pixels(1), .pixels(2), .fit] {
+                for zoom in [ZoomMode.points(1), .points(2), .fit] {
                     frameWidth = Int32(sideways ? 448 : 320)
                     frameHeight = Int32(sideways ? 320 : 448)
                     (d, e, w) = try await make(pod, panel: upright, rotation: rotation)
-                    for z in [ZoomMode.pixels(2), .fit, .pixels(1), zoom] {
+                    for z in [ZoomMode.points(2), .fit, .points(1), zoom] {
                         d.zoom = z
                         try await settle(d)
                     }
-                    let k: CGFloat =
-                        zoom == .fit
-                        ? min(
-                            (1400 - 2 * DisplayView.zoomInset) / seen.width,
-                            (1400 - 2 * DisplayView.zoomInset) / seen.height
-                        )
-                        : CGFloat(zoom.percent!) / 100
+                    let fit = min(
+                        (1400 - 2 * DisplayView.zoomInset) / seen.width,
+                        (1400 - 2 * DisplayView.zoomInset) / seen.height
+                    )
+                    let k: CGFloat = if case .points(let p) = zoom { p } else { fit }
                     let what = "\(zoom) at \(rotation)°"
                     check(
                         near(box(d), seen.width * k, seen.height * k) && abs(box(d).midX - 700) < 1

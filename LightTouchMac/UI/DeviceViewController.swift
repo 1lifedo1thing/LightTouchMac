@@ -89,8 +89,6 @@ final class DeviceViewController: NSViewController {
 
     var screen: DisplayView { displayView }
 
-    func setZoom(_ zoom: ZoomMode) { displayView.zoom = zoom }
-
     /// The same preconditions the menu and toolbar enforce for Install App…
     /// A drop used to bypass all of them, so an .ipa dropped during the ~40s
     /// boot (or with app sync off) was accepted, put a spinner in a sidebar

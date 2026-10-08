@@ -3,10 +3,9 @@ import DeviceRuntime
 import HostRuntime
 import LightTouchCore
 
-// Device shell and LCD share a transform. Fit uses the pane bounds; manual
-// zoom uses display pixels per guest pixel, independent of orientation.
+// Device shell and LCD share a transform, whose scale is the zoom's points per guest pixel (DisplayView+Zoom).
 
-/// Fit the whole device in the window, or use an integer display-pixel scale.
+/// The device: its shell (the 3D model, the flat art or none) and its live screen, sized by the zoom.
 final class DisplayView: NSView {
     /// The device this view shows, fixed at init.
     let profile: Board
@@ -42,15 +41,18 @@ final class DisplayView: NSView {
     static let rotationDuration = 0.4
 
     var deviceLayoutRect: CGRect { safeAreaRect }
+    /// The board's own zoom, as last left (ZoomMode.saved); the window saves what the user picks.
     var zoom: ZoomMode = .fit {
         didSet {
             guard oldValue != zoom else { return }
             // A finished edge drag waiting to be recorded keeps no scale of its own: the new zoom draws it.
             if panelDrag == nil, !restartingAtPanel { dragScale = nil }
-            pendingAnimatedLayout = true
+            pendingAnimatedLayout = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
             needsLayout = true
         }
     }
+    /// Called after each layout: what ⌘+ and ⌘− can do depends on the pane and the display too.
+    var onZoomLayout: (() -> Void)?
     /// Set by the scaleMode toggle so the next layout animates even though
     /// orientation didn't change — mirrors how orientationChanged drives it.
     var pendingAnimatedLayout = false
@@ -188,6 +190,7 @@ final class DisplayView: NSView {
         screenCutout = profile.screenCutout
         homeButtonDiameter = profile.homeButtonDiameter
         homeButtonBottomInset = profile.homeButtonBottomInset
+        zoom = .saved(for: profile)
         super.init(frame: frame)
         wantsLayer = true
         layer?.masksToBounds = true
@@ -362,8 +365,6 @@ final class DisplayView: NSView {
             object: window
         )
     }
-
-    var onPhysicalSizeUnavailable: (() -> Void)?
 
     @objc private func homeTapped() {
         endLiveText()

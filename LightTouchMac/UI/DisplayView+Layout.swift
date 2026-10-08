@@ -30,20 +30,9 @@ extension DisplayView {
             (profile.surfaceFollowsRotation ? turned != isLandscape : turned)
             ? CGSize(width: screenCutout.height, height: screenCutout.width)
             : screenCutout.size
-        // The shell's own on-screen bounding box once rotated — this, not just
-        // the content, is what needs to fit inside the pane with margin. The
-        // 3D model's outline, once it has one: the iPad's flat art is smaller.
-        let shell = (modelView ?? pendingModelView)?.shellPixels ?? shellPixels
-        // Bare, the screen's own box is what fits.
-        let fitted = bare ? screenCutout.size : shell
-        let shellOnScreenPixels =
-            isLandscape
-            ? CGSize(width: fitted.height, height: fitted.width)
-            : fitted
-
-        let scale = zoomScale(fitting: shellOnScreenPixels)
+        let scale = zoomScale()
         appliedScale = scale
-        contentLayer.magnificationFilter = Self.contentsFilter(pixelMultiple)
+        applyZoomFilter()
         // Center on the SAFE area, not the raw bounds: with .fullSizeContentView
         // the pane runs behind the toolbar, so centring on bounds would push the
         // device up under it. The gradient still fills the whole pane, which is
@@ -149,6 +138,7 @@ extension DisplayView {
             }
         }
         if freeFormActive { window?.invalidateCursorRects(for: self) }
+        onZoomLayout?()
     }
 
     /// No Home button bare (⇧⌘H presses it), while the model loads, or over a tilting flat shell.

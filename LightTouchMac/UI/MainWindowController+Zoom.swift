@@ -2,7 +2,8 @@ import Cocoa
 import LightTouchCore
 
 // The window's zoom: the toolbar's segmented control, the View menu's zoom items and ⌘+/−, one ZoomMode applied to
-// the device view and remembered across launches: the single source of truth for the toggle, menu, and view.
+// the device view and remembered per board (ZoomMode.saved). The device view is the source of truth; the toolbar
+// and the menu read it through one rule (ZoomContext.canStep).
 
 extension MainWindowController {
     @objc private func zoomSegmentClicked(_ sender: NSSegmentedControl) {
@@ -13,42 +14,43 @@ extension MainWindowController {
         }
     }
 
-    func apply(_ mode: ZoomMode) {
-        guard let deviceVC else { return }
-        let mode = mode == .physical && deviceVC.screen.physicalScale == nil ? ZoomMode.fit : mode
-        zoom = mode
-        deviceVC.setZoom(mode)
-        syncZoomControls()
-        Self.saveZoom(mode)
-    }
+    var zoom: ZoomMode { deviceVC?.screen.zoom ?? .fit }
 
-    private static func saveZoom(_ mode: ZoomMode) {
-        UserDefaults.standard.set(mode.defaultsValue, forKey: ZoomMode.defaultsKey)
-    }
-    static func savedZoom() -> ZoomMode {
-        ZoomMode(defaultsValue: UserDefaults.standard.string(forKey: ZoomMode.defaultsKey))
+    func apply(_ mode: ZoomMode) {
+        guard let screen = deviceVC?.screen else { return }
+        screen.zoom = mode
+        mode.save(for: screen.profile)
+        syncZoomControls()
     }
 
     /// Gray out a direction there is no room left in.
     func syncZoomControls() {
-        let step = zoom.percent.map { $0 / 100 }
-        zoomControl.setEnabled(step != ZoomMode.steps.first, forSegment: 0)
-        zoomControl.setEnabled(step != ZoomMode.steps.last, forSegment: 2)
+        let screen = deviceVC?.screen
+        zoomControl.setEnabled(
+            screen.map { $0.zoomContext.canStep(from: $0.zoomPoints, direction: -1) } ?? false,
+            forSegment: 0
+        )
+        zoomControl.setEnabled(screen != nil, forSegment: 1)
+        zoomControl.setEnabled(
+            screen.map { $0.zoomContext.canStep(from: $0.zoomPoints, direction: 1) } ?? false,
+            forSegment: 2
+        )
     }
 
-    /// One notch along the ladder, from the pinch gesture and from ⌘+ / ⌘−.
-    /// Stepping out of Fit starts from whatever size Fit happens to be showing,
-    /// so the first press nudges the device rather than jumping it.
+    /// One stop along the ladder and the named sizes, from ⌘+ / ⌘− and the toolbar, starting from the size on
+    /// screen whatever produced it. (A pinch is the guest's.)
     func stepZoom(_ direction: Int) {
-        guard let deviceVC else { return }
-        apply(ZoomMode.step(from: deviceVC.screen.pixelMultiple, direction: direction))
+        guard let screen = deviceVC?.screen,
+            let mode = screen.zoomContext.step(from: screen.zoomPoints, direction: direction)
+        else { return }
+        apply(mode)
     }
 
     @objc func zoomIn(_ sender: Any?) { stepZoom(1) }
     @objc func zoomOut(_ sender: Any?) { stepZoom(-1) }
     @objc func zoomPhysicalSize(_ sender: Any?) { apply(.physical) }
     @objc func zoomToFit(_ sender: Any?) { apply(.fit) }
-    @objc func zoomPixelAccurate(_ sender: Any?) { apply(.pixels(1)) }
+    @objc func zoomPixelAccurate(_ sender: Any?) { apply(.pixelAccurate) }
 
     func configureZoomControl() {
         // Out, zoom to fit, in. Momentary, because all are commands rather than states
@@ -85,20 +87,22 @@ extension MainWindowController {
 
     /// Enablement and checkmarks for the View menu's zoom items.
     func validateZoomItem(_ menuItem: NSMenuItem, screen: DisplayView) -> Bool {
+        let context = screen.zoomContext
+        let shown = context.shown(screen.zoom)
         switch menuItem.action {
         case #selector(zoomIn(_:)):
-            guard let largest = ZoomMode.steps.last else { return false }
-            return zoom.percent.map { $0 / 100 } ?? 0 < largest
+            return context.canStep(from: screen.zoomPoints, direction: 1)
         case #selector(zoomOut(_:)):
-            return zoom != .pixels(ZoomMode.steps[0])
+            return context.canStep(from: screen.zoomPoints, direction: -1)
         case #selector(zoomPhysicalSize(_:)):
-            menuItem.state = (zoom == .physical) ? .on : .off
-            return screen.physicalScale != nil
+            menuItem.state = shown == .physical ? .on : .off
+            menuItem.toolTip = context.physical == nil ? "This display doesn’t report its size." : nil
+            return context.physical != nil
         case #selector(zoomToFit(_:)):
-            menuItem.state = (zoom == .fit) ? .on : .off
+            menuItem.state = shown == .fit ? .on : .off
             return true
         case #selector(zoomPixelAccurate(_:)):
-            menuItem.state = (zoom == .pixels(1)) ? .on : .off
+            menuItem.state = shown == .pixelAccurate ? .on : .off
             return true
         default:
             return true

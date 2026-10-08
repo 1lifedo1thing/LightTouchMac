@@ -40,8 +40,8 @@ public enum Board: String, Sendable, CaseIterable, Codable {
         public var screenCutout: CGRect
         /// The Home button's hit circle and its gap to the shell's bottom edge.
         public var homeDiameter: CGFloat, homeBottomInset: CGFloat
-        /// The real device's height, for Actual Size zoom.
-        public var heightMillimeters: CGFloat
+        /// The real panel's pixels per inch, for Physical Size: the screen's size whatever the bezel.
+        public var ppi: CGFloat
     }
 
     public struct Facts: Sendable {
@@ -64,7 +64,7 @@ public enum Board: String, Sendable, CaseIterable, Codable {
             _ cut: (CGFloat, CGFloat, CGFloat, CGFloat),
             home: CGFloat,
             inset: CGFloat,
-            mm: CGFloat
+            ppi: CGFloat
         ) -> Art {
             Art(
                 shell: shell,
@@ -73,7 +73,7 @@ public enum Board: String, Sendable, CaseIterable, Codable {
                 screenCutout: CGRect(x: cut.0, y: cut.1, width: cut.2, height: cut.3),
                 homeDiameter: home,
                 homeBottomInset: inset,
-                heightMillimeters: mm
+                ppi: ppi
             )
         }
         switch self {
@@ -83,7 +83,7 @@ public enum Board: String, Sendable, CaseIterable, Codable {
                 kind: .iPod,
                 productType: "iPod1,1",
                 marketingName: "iPod touch",
-                art: art("shell-1g", "N45", (734, 1311), (70, 211, 594, 891), home: 112, inset: 59, mm: 110)
+                art: art("shell-1g", "N45", (734, 1311), (70, 211, 594, 891), home: 112, inset: 59, ppi: 163)
             )
         case .m68:
             return Facts(
@@ -91,7 +91,7 @@ public enum Board: String, Sendable, CaseIterable, Codable {
                 kind: .iPhone,
                 productType: "iPhone1,1",
                 marketingName: "iPhone",
-                art: art("shell-iphone2g", nil, (383, 729), (33, 130, 320, 480), home: 70, inset: 34, mm: 115)
+                art: art("shell-iphone2g", nil, (383, 729), (33, 130, 320, 480), home: 70, inset: 34, ppi: 163)
             )
         case .n72:
             return Facts(
@@ -100,7 +100,7 @@ public enum Board: String, Sendable, CaseIterable, Codable {
                 productType: "iPod2,1",
                 marketingName: "iPod touch (2nd generation)",
                 guestTools: true,
-                art: art("shell", "N72", (737, 1318), (74, 213, 594, 891), home: 122, inset: 54, mm: 110)
+                art: art("shell", "N72", (737, 1318), (74, 213, 594, 891), home: 122, inset: 54, ppi: 163)
             )
         case .n18:
             return Facts(
@@ -108,7 +108,7 @@ public enum Board: String, Sendable, CaseIterable, Codable {
                 kind: .iPod,
                 productType: "iPod3,1",
                 marketingName: "iPod touch (3rd generation)",
-                art: art("shell", "N72", (737, 1318), (74, 213, 594, 891), home: 122, inset: 54, mm: 110)
+                art: art("shell", "N72", (737, 1318), (74, 213, 594, 891), home: 122, inset: 54, ppi: 163)
             )
         case .n88:
             return Facts(
@@ -116,7 +116,7 @@ public enum Board: String, Sendable, CaseIterable, Codable {
                 kind: .iPhone,
                 productType: "iPhone2,1",
                 marketingName: "iPhone 3GS",
-                art: art("shell-iphone2g", "N88", (383, 729), (33, 130, 320, 480), home: 70, inset: 34, mm: 115.5)
+                art: art("shell-iphone2g", "N88", (383, 729), (33, 130, 320, 480), home: 70, inset: 34, ppi: 163)
             )
         // The iPad's home button: iPad.deviceinfo's homeOriginX/Y (412, 9, bottom-left origin) and its 29x31 home.png.
         case .k48:
@@ -125,7 +125,7 @@ public enum Board: String, Sendable, CaseIterable, Codable {
                 kind: .iPad,
                 productType: "iPad1,1",
                 marketingName: "iPad",
-                art: art("ipad-frame", "K48", (852, 1108), (42, 42, 768, 1024), home: 31, inset: 9, mm: 242.8)
+                art: art("ipad-frame", "K48", (852, 1108), (42, 42, 768, 1024), home: 31, inset: 9, ppi: 132)
             )
         case .n81:
             return Facts(
@@ -133,7 +133,7 @@ public enum Board: String, Sendable, CaseIterable, Codable {
                 kind: .iPod,
                 productType: "iPod4,1",
                 marketingName: "iPod touch (4th generation)",
-                art: art("shell-4g", "N81", (696, 1310), (54, 213, 590, 886), home: 119, inset: 49, mm: 111)
+                art: art("shell-4g", "N81", (696, 1310), (54, 213, 590, 886), home: 119, inset: 49, ppi: 326)
             )
         case .n90:
             return Facts(
@@ -141,7 +141,7 @@ public enum Board: String, Sendable, CaseIterable, Codable {
                 kind: .iPhone,
                 productType: "iPhone3,1",
                 marketingName: "iPhone 4",
-                art: art("shell-iphone4", nil, (730, 1426), (48, 236, 640, 960), home: 140, inset: 52, mm: 115.2)
+                art: art("shell-iphone4", nil, (730, 1426), (48, 236, 640, 960), home: 140, inset: 52, ppi: 326)
             )
         }
     }

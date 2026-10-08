@@ -35,6 +35,11 @@ final class DeviceModelView: NSView {
         return UnlitMaterial()
     }()
     private var screenTexture: TextureResource?
+    /// The screen's pixels drawn crisp rather than smoothed. The display face projects at exactly the pose's scale
+    /// (the camera sits 0.3 from it), so the flat screen's rule holds for it.
+    var drawsNearest = true {
+        didSet { if oldValue != drawsNearest { updateScreenMaterial() } }
+    }
     var viewportCenter: CGPoint? { didSet { updateViewport() } }
     private var rotation = 0
     private var screenOff = false
@@ -231,14 +236,6 @@ final class DeviceModelView: NSView {
         )
     }
 
-    /// Solve the resting front-face projection for a measured chassis height.
-    func physicalScale(heightInPoints height: CGFloat) -> CGFloat {
-        let projectedHeight = Float(height)
-        let depth = displayBounds.max.z - shellBounds.max.z
-        let units = projectedHeight * 0.3 / (3000 * shellBounds.extents.y - projectedHeight * depth)
-        return CGFloat(units * displayBounds.extents.x * 10000 / screenWidth)
-    }
-
     /// The model's upright outline in shell pixels (the flat shell's units), for fitting it.
     var shellPixels: CGSize {
         let pixels = screenWidth / displayBounds.extents.x
@@ -369,8 +366,8 @@ final class DeviceModelView: NSView {
             sampler.modify { descriptor in
                 descriptor.sAddressMode = .clampToEdge
                 descriptor.tAddressMode = .clampToEdge
-                // Upscaled LCD pixels stay square, like DisplayView's flat layer; shrunk ones still filter.
-                descriptor.magFilter = .nearest
+                // DisplayView's one rule (ZoomContext.drawsNearest), as its flat layer; shrunk pixels still filter.
+                descriptor.magFilter = drawsNearest ? .nearest : .linear
                 descriptor.minFilter = .linear
             }
             screenMaterial.color = .init(tint: .white, texture: .init(screenTexture, sampler: sampler))

@@ -38,7 +38,6 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     private let sidebarItem: NSSplitViewItem
     let inspectorItem: NSSplitViewItem
     let zoomControl = NSSegmentedControl()
-    var zoom: ZoomMode = .fit
     var deadOverlay: NSView?
     var filesWindow: DeviceFilesWindowController?
     weak var proxySettingsEditor: ProxySettingsView?
@@ -186,11 +185,6 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
 
     deinit {
         if let modifierMonitor { NSEvent.removeMonitor(modifierMonitor) }
-    }
-
-    override func windowDidLoad() {
-        super.windowDidLoad()
-        apply(Self.savedZoom())  // restore the zoom the user left it at
     }
 
     // MARK: - Library and selection
