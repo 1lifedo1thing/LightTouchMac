@@ -362,8 +362,6 @@ public enum KBoot {
         ] {
             try dt.set("cpus/cpu0", k, .u32(hz))
         }
-        // ponytail: the iPad's table, cut to the slots the DT reserves (the S5L8920's 32); those slots' meanings
-        // there are unchecked. Fix when a driver reads a wrong rate.
         let slots = (dt.props["arm-io"]?["clock-frequencies"]?.length ?? clocks.count * 4) / 4
         try dt.set("arm-io", "clock-frequencies", .words(Array(clocks.prefix(slots))))
         try dt.set("arm-io", "usbphy-frequency", .u32(usbphyHz))

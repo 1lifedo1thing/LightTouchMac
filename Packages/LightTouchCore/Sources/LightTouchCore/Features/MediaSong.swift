@@ -232,7 +232,6 @@ public struct MediaSong: Sendable {
         return id3Genres[index]
     }
 
-    // ponytail: the 80 standard ID3v1 genres; Winamp's extensions (80+) pass through as numbers.
     nonisolated private static let id3Genres = [
         "Blues", "Classic Rock", "Country", "Dance", "Disco", "Funk", "Grunge", "Hip-Hop", "Jazz", "Metal",
         "New Age", "Oldies", "Other", "Pop", "R&B", "Rap", "Reggae", "Rock", "Techno", "Industrial",

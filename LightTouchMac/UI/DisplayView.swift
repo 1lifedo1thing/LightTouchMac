@@ -213,11 +213,6 @@ final class DisplayView: NSView {
         // Ambient — no offset — on purpose: the shadow belongs to the shell
         // layer, so it rides the same transform, and any offset that fell
         // downwards in portrait would fall sideways once the shell rotates.
-        //
-        // ponytail: no shadowPath, so Core Animation derives the shape from the
-        // artwork's alpha — correct for a rounded, beveled device by
-        // construction. The layer's contents never change, so it renders once;
-        // give it a rounded-rect path if it ever shows up in a profile.
         shellLayer.shadowColor = NSColor.black.cgColor
         shellLayer.shadowOpacity = 0.4
         shellLayer.shadowRadius = 40
@@ -1764,8 +1759,6 @@ final class DisplayView: NSView {
         spring.duration = spring.settlingDuration
         shellLayer.add(spring, forKey: "tiltSnap")
         // Gravity snaps straight to rest; the spring is only visual.
-        // ponytail: sample the presentation layer from the display link if a
-        // game ever needs to see the settle.
         sendAttitude()
     }
 

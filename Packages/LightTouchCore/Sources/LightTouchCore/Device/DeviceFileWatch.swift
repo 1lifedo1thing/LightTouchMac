@@ -22,8 +22,6 @@ public nonisolated final class DeviceFileWatch: @unchecked Sendable {
     /// outside the overlay), are watched for delete, rename and revoke; `base`
     /// also for writes (nothing may add or remove an entry there).
     /// `onChange(path)` once per event, on a private queue.
-    // ponytail: children present at start only; a page file QEMU creates later isn't watched
-    // (they all exist once iOS is up, which is when this starts).
     public init(directories: [URL], files: [URL] = [], base: URL?, onChange: @escaping @Sendable (String) -> Void) {
         let fm = FileManager.default
         var watched: [(URL, DispatchSource.FileSystemEvent)] = (directories + files).map {

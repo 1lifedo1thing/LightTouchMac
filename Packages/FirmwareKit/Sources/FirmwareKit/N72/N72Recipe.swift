@@ -275,7 +275,6 @@ final class N72Board: Board {
     }
 
     static func firstMatch(_ d: Data, _ r: Regex<Substring>) -> String? {
-        // ponytail: lossy decode, ASCII targets only
         String(decoding: d, as: UTF8.self).firstMatch(of: r).map { String($0.output) }
     }
 

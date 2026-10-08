@@ -275,7 +275,7 @@ final class K48Board: Board {
         try KBoot.write(decrypted: c.dec, to: kboot, identity: ident, ramdisk: rd)
         let norBefore = try Data(contentsOf: nor)
         let pre = work.appendingPathComponent("store.pre")
-        try fm.copyItem(at: store, to: pre)  // ponytail: clonefile on APFS; a non-APFS staging volume copies in full
+        try fm.copyItem(at: store, to: pre)
         let attempts = 3
         for attempt in 1...attempts {
             let serial = work.appendingPathComponent("keybag-\(attempt).log")

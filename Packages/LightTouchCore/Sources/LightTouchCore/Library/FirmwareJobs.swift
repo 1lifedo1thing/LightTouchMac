@@ -96,7 +96,6 @@ import Foundation
         )
         firstHosts = urls.compactMapValues { $0.first?.host }
         // Made at launch so a download the last launch started reports here.
-        // ponytail: a task resumed at launch from a mirror shows no mirror line until the next fallback.
         // The source or mirror the file came from decides how it is checked: a "rar" one is unwrapped.
         let install: @Sendable (String, URL, URL?) throws -> URL = { sha1, file, from in
             guard var entry = entries[sha1] else { return try store.install(file, sha1: sha1, bytes: bytes[sha1]) }
@@ -113,8 +112,6 @@ import Foundation
         ) { [weak self] sha1, event in
             Task { @MainActor in self?.download(sha1, event) }
         }
-        // ponytail: a resumed download reports under its own entry, so a sibling IPSW the last
-        // launch was fetching for 4.3.x prepares its own entry; persist `waiting` if that matters.
         downloads.active { [weak self] sha1s in
             Task { @MainActor [weak self] in
                 guard let self else { return }
