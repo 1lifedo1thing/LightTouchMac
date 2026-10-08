@@ -5,7 +5,7 @@ import Foundation
 /// the defaults are the 3GPP test network (MCC/MNC 001/01). The validators are the modem's own rules, so a value the
 /// panel accepts is one the modem accepts.
 public struct CarrierSettings: Codable, Equatable, Sendable {
-    public var carrier = "LightTouch"
+    public var carrier = "Light Touch"
     /// MCC (3 digits) + MNC (2 or 3 digits).
     public var mccMNC = "00101"
     public var registered = true
@@ -63,6 +63,20 @@ public struct CarrierSettings: Codable, Equatable, Sendable {
     /// An incoming SMS body: non-empty, no NUL (the modem's property is a C string), at most 160 characters,
     /// one SMS-DELIVER's worth of GSM 7-bit text.
     public static func smsTextOK(_ s: String) -> Bool { !s.isEmpty && s.count <= 160 && !s.contains("\0") }
+}
+
+extension CarrierSettings {
+    /// The default name was "LightTouch" before 2026-10: a device saved with it takes the new default, and any other
+    /// name is kept as typed.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let name = try c.decode(String.self, forKey: .carrier)
+        carrier = name == "LightTouch" ? Self().carrier : name
+        mccMNC = try c.decode(String.self, forKey: .mccMNC)
+        registered = try c.decode(Bool.self, forKey: .registered)
+        simPresent = try c.decode(Bool.self, forKey: .simPresent)
+        bars = try c.decode(Int.self, forKey: .bars)
+    }
 }
 
 /// The modem's state as `qemu_ios_ui_modem_status` reports it (a JSON object).

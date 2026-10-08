@@ -3,6 +3,21 @@ import HostRuntime
 import Testing
 
 struct CarrierSettingsTests {
+    /// A device saved with the old default name ("LightTouch") gets the new one; a typed name stays.
+    @Test func oldDefaultNameBecomesLightTouch() throws {
+        func decoded(_ name: String) throws -> CarrierSettings {
+            var old = CarrierSettings()
+            old.carrier = name
+            old.bars = 2
+            return try PropertyListDecoder().decode(CarrierSettings.self, from: PropertyListEncoder().encode(old))
+        }
+        #expect(CarrierSettings().carrier == "Light Touch")
+        let migrated = try decoded("LightTouch")
+        #expect(migrated.carrier == "Light Touch" && migrated.bars == 2)
+        #expect(try decoded("AT&T").carrier == "AT&T")
+        #expect(try decoded("Light Touch Mobile").carrier == "Light Touch Mobile")
+    }
+
     /// The modem's own rules (qemu-ios ios_bb_plmn_ok, ios_bb_carrier_ok, ios_bb_sms_sender_ok).
     @Test func validatorsMatchTheModem() {
         #expect(CarrierSettings.plmnOK("00101") && CarrierSettings.plmnOK("310410"))

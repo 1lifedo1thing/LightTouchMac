@@ -136,7 +136,7 @@ struct CarrierPanel: View {
             done(
                 ModemStatus(
                     json:
-                        #"{"carrier": "LightTouch", "mcc-mnc": "00101", "call-state": "incoming", "last-dialed": "15555550123", "#
+                        #"{"carrier": "Light Touch", "mcc-mnc": "00101", "call-state": "incoming", "last-dialed": "15555550123", "#
                         + #""last-mo-sms": "15555550100|On my way", "registered": true, "sim-present": true, "signal-dbm": -63, "mo-sms-count": 1}"#
                 )
             )

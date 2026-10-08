@@ -162,7 +162,7 @@ nonisolated final class DeviceRendezvousServer: @unchecked Sendable {
             let registration = registrations[hello.pid]
             lock.unlock()
             guard let registration else {
-                NSLog("LightTouch rendezvous: rejected a hello from pid %d: not a helper this app spawned", hello.pid)
+                NSLog("Light Touch rendezvous: rejected a hello from pid %d: not a helper this app spawned", hello.pid)
                 continue
             }
             if let reason = validate(hello, registration) {
