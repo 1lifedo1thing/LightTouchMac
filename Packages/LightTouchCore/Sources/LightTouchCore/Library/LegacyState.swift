@@ -24,8 +24,8 @@ public nonisolated struct LegacyState: Sendable {
     /// The progress window's words while the erase runs.
     public static let progressMessage = "Erasing the earlier iPod…"
 
-    /// Written when Erase and Continue starts, removed once it has finished: a
-    /// launch that finds it (the app quit midway) carries on without asking again.
+    /// Written when Erase and Continue starts, removed once it has finished or failed: a launch that finds it (the
+    /// app quit midway) carries on without asking again, and one after a failure asks again.
     public static func marker(_ state: URL) -> URL { state.appendingPathComponent(".legacy-erase") }
     /// The user already chose Erase and Continue; this launch finishes it.
     public var resuming: Bool { FileManager.default.fileExists(atPath: Self.marker(state).path) }
@@ -84,6 +84,14 @@ public nonisolated struct LegacyState: Sendable {
         guard fm.createFile(atPath: Self.marker(state).path, contents: nil) else {
             throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: Self.marker(state).path])
         }
+        do { try await removeAll() } catch {
+            try? fm.removeItem(at: Self.marker(state))
+            throw error
+        }
+    }
+
+    @concurrent private func removeAll() async throws {
+        let fm = FileManager.default
         for directory in ipaDirectories { await IPALibrary.adopt(copies: directory) }
         for record in records {
             try DeviceStateStorage.removeDevice(record, state: state)

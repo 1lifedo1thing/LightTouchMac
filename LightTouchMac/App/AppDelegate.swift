@@ -196,21 +196,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     return
                 }
             }
-            let progress = MigrationProgress()
-            progress.window.makeKeyAndOrderFront(nil)
-            Task {
-                do { try await legacy.erase() } catch {
-                    progress.window.orderOut(nil)
-                    NSAlert(error: error).runModal()
-                    Self.requestTermination()
-                    return
-                }
-                progress.window.orderOut(nil)
-                finishLaunching()
-            }
+            eraseLegacy(legacy)
             return
         }
         finishLaunching()
+    }
+
+    /// Erase and Continue's erase; a failure offers Try Again, Show in Finder (the item it couldn't remove, when
+    /// known) or Quit, and the next launch asks again (LegacyState.marker).
+    private func eraseLegacy(_ legacy: LegacyState) {
+        let progress = MigrationProgress()
+        progress.window.makeKeyAndOrderFront(nil)
+        Task {
+            do { try await legacy.erase() } catch {
+                progress.window.orderOut(nil)
+                let alert = NSAlert(error: error)
+                alert.addButton(withTitle: "Try Again")
+                alert.addButton(withTitle: "Quit")
+                let path = (error as NSError).userInfo[NSFilePathErrorKey] as? String
+                if path != nil { alert.addButton(withTitle: "Show in Finder") }
+                switch alert.runModal() {
+                case .alertFirstButtonReturn: return eraseLegacy(legacy)
+                case .alertThirdButtonReturn:
+                    if let path { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }
+                default: break
+                }
+                Self.requestTermination()
+                return
+            }
+            progress.window.orderOut(nil)
+            finishLaunching()
+        }
     }
 
     /// The rest of the launch, once no legacy state is left.

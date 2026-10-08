@@ -406,4 +406,22 @@ import Testing
             )
         }
     }
+
+    /// An erase that fails takes its marker down: the next launch asks again, where it resumed without asking, failed
+    /// the same way and quit, at every launch.
+    @Test func aFailedEraseAsksAgainAtTheNextLaunch() async throws {
+        try await LibraryFixtures.withScratch { root in
+            let state = root.appendingPathComponent("state")
+            let outside = root.appendingPathComponent("outside")
+            try fm.createDirectory(at: state, withIntermediateDirectories: true)
+            try fm.createDirectory(at: outside, withIntermediateDirectories: true)
+            // Not the state's to remove: the erase refuses it.
+            try fm.createSymbolicLink(at: state.appendingPathComponent("device"), withDestinationURL: outside)
+            let legacy = try #require(LegacyState.find(state: state, applicationSupport: nil))
+            #expect(!legacy.resuming)
+            await #expect(throws: (any Error).self) { try await legacy.erase() }
+            #expect(fm.fileExists(atPath: outside.path))
+            #expect(LegacyState.find(state: state, applicationSupport: nil)?.resuming == false)
+        }
+    }
 }
