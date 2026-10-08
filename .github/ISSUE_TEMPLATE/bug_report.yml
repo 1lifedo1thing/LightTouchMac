@@ -40,4 +40,4 @@ body:
     id: diagnostics
     attributes:
       label: Diagnostics
-      description: Help ▸ Export Diagnostics makes a folder of logs. Zip it and attach it here.
+      description: Help ▸ Export Diagnostics saves a zip of the logs, with personal details removed. Attach it here.

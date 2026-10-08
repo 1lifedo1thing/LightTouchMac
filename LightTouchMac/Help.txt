@@ -52,7 +52,7 @@ Device → Pause freezes the device; Resume continues it.
 
 During startup, progress stays visible until the Home screen responds. If startup takes more than 90 seconds, use Show Logs. A status message above the device explains preparation, saved-state, erase, or shutdown failures. Storage-write failures keep the message visible until you free disk space and reopen Light Touch.
 
-Window → Device Logs shows app events, available device console output, and USB logs, including retained previous files. Help → Export Diagnostics collects the complete retained logs for a bug report.
+Window → Device Logs shows app events, available device console output, and USB logs, including retained previous files. Help → Export Diagnostics collects the complete retained logs for a bug report, and Help → Copy Bug Report Info copies a short summary to paste into one. Both leave out personal details: your home folder, user and Mac names, serial numbers and device identifiers.
 
 Use Shut Down or Quit when you can, so the device finishes saving. Restart and Erase All Content and Settings ask first. Erase removes installed apps, media, and settings.
 

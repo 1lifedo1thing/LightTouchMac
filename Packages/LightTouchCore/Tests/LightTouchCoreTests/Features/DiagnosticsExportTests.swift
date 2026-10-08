@@ -165,4 +165,88 @@ struct DiagnosticsExportTests {
             #expect(try text(log) == "sample events")
         }
     }
+
+    /// The archive's logs, info and crash reports carry no identity: the home folder, the user's and the Mac's
+    /// names, the device's own identifiers and anything shaped like one are gone from the text, and a crash report
+    /// loses its identifying members while its stacks and binary images stay byte for byte.
+    @Test func exportIsScrubbed() async throws {
+        try await LibraryFixtures.withScratch { root in
+            let identity = DiagnosticsExport.HostIdentity(
+                home: "/Users/jappleseed",
+                names: ["jappleseed", "Johnny Appleseed", "Johnnys-MacBook-Pro"]
+            )
+            let leaks = [
+                "/Users/jappleseed", "jappleseed", "Johnny Appleseed", "Johnnys-MacBook-Pro", "johnny@icloud.com",
+                "00:1e:c2:aa:bb:cc", "6f1ed002ab5595859014ebf0951522d9a1b2c3d4", "00008020-001A2B3C4D5E6F70",
+                "8874EC96-6945-4F6F-AD3D-96DDEBB6F52B", "012345678901237", "C02XK1ZQJGH5", "seed-4f8a2c",
+            ]
+            let log = root.appendingPathComponent("serial.log")
+            try """
+                2026-10-08T04:23:40Z opened /Users/jappleseed/Library/Devices/8874EC96-6945-4F6F-AD3D-96DDEBB6F52B
+                lockdown: UDID 6f1ed002ab5595859014ebf0951522d9a1b2c3d4 (00008020-001A2B3C4D5E6F70) seed seed-4f8a2c
+                wifi 00:1e:c2:aa:bb:cc imei 012345678901237 serial C02XK1ZQJGH5 on Johnnys-MacBook-Pro
+                Apple ID johnny@icloud.com, user jappleseed (Johnny Appleseed)
+                emulator build 1538771e7dcf3b9c933d599ef98c04ce
+                """.write(to: log, atomically: true, encoding: .utf8)
+            let rotated = root.appendingPathComponent("serial.log.1")
+            try "older: Johnny Appleseed’s iPhone at /Users/jappleseed".write(
+                to: rotated,
+                atomically: true,
+                encoding: .utf8
+            )
+            let stacks = """
+                  "threads" : [{"id" : 1234,"frames" : [{"imageOffset" : 16588,"symbol" : "main","imageIndex" : 0}]}],
+                  "usedImages" : [{"uuid" : "59d15082-65eb-3584-a2a3-77fe117b8dec","base" : 4294967296,
+                  "path" : "/Applications/Light Touch.app/Contents/MacOS/LightTouch","name" : "LightTouch"}]
+                """
+            let report = root.appendingPathComponent("LightTouch-2026-10-08-101010.ips")
+            try """
+                {"app_name":"LightTouch","incident_id":"8231277F-99CB-4CC0-BC6A-EC990F9904ED","os_version":"macOS 27.0"}
+                {
+                  "procPath" : "/Users/jappleseed/Applications/Light Touch.app/Contents/MacOS/LightTouch",
+                  "crashReporterKey" : "4CE2ED4F-7491-7733-6730-2843A1FD34AD",
+                  "bootSessionUUID" : "B69885FD-2DD0-4563-A355-7844D18BF0A6",
+                  "sleepWakeUUID" : "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9",
+                  "incident" : "8231277F-99CB-4CC0-BC6A-EC990F9904ED",
+                  "Hardware UUID" : "11111111-2222-3333-4444-555555555555",
+                  "responsibleProc" : "Johnnys-MacBook-Pro helper",
+                \(stacks)
+                }
+                """.write(to: report, atomically: true, encoding: .utf8)
+            let archive = root.appendingPathComponent("scrubbed.zip")
+            try await DiagnosticsExport.write(
+                to: archive,
+                logs: [log, rotated],
+                info: "device: Johnny Appleseed’s iPhone 8874EC96-6945-4F6F-AD3D-96DDEBB6F52B base /Users/jappleseed/x",
+                crashReports: [report],
+                secrets: ["seed-4f8a2c"],
+                identity: identity
+            )
+            func member(_ name: String) throws -> String {
+                try LibraryFixtures.run("/usr/bin/unzip", ["-p", archive.path, "LightTouchMac-diagnostics/" + name])
+            }
+            let texts = try ["serial.log", "serial.log.1", "info.txt"].map(member)
+            for (name, text) in zip(["serial.log", "serial.log.1", "info.txt"], texts) {
+                for leak in leaks { #expect(!text.localizedCaseInsensitiveContains(leak), "\(name): \(leak)") }
+            }
+            #expect(texts[0].contains("emulator build 1538771e7dcf3b9c933d599ef98c04ce"))
+            #expect(texts[1] == "older: <redacted>’s iPhone at ~")
+            #expect(texts[2] == "device: <redacted>’s iPhone <uuid> base ~/x")
+
+            let crash = try member("CrashReports/LightTouch-2026-10-08-101010.ips")
+            for leak in [
+                "/Users/jappleseed", "Johnnys-MacBook-Pro", "8231277F-99CB-4CC0-BC6A-EC990F9904ED",
+                "4CE2ED4F-7491-7733-6730-2843A1FD34AD", "B69885FD-2DD0-4563-A355-7844D18BF0A6",
+                "0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9", "11111111-2222-3333-4444-555555555555",
+            ] {
+                #expect(!crash.contains(leak), "\(leak)")
+            }
+            #expect(crash.contains(stacks), "the stacks and images are untouched")
+            #expect(crash.contains(#""procPath" : "~/Applications/Light Touch.app/Contents/MacOS/LightTouch""#))
+            #expect(crash.contains(#""crashReporterKey" : "<redacted>""#))
+            // Still a header line and a JSON report.
+            let parts = crash.split(separator: "\n", maxSplits: 1).map { Data($0.utf8) }
+            #expect(parts.count == 2 && parts.allSatisfy { (try? JSONSerialization.jsonObject(with: $0)) != nil })
+        }
+    }
 }

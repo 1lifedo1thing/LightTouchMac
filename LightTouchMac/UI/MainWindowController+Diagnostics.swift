@@ -29,6 +29,14 @@ extension MainWindowController {
         logWindow?.showWindow(sender)
     }
 
+    /// A device's own identity, scrubbed from what leaves the Mac (DiagnosticsExport.scrub): its record's UDID, die
+    /// ID and seed, and its lock's ECID, IMEI, MAC and UID options.
+    static func identitySecrets(_ instance: DeviceInstance, lock: DeviceLock?) -> [String] {
+        [instance.identity?.udid, instance.identity?.dieID, instance.identity?.seed].compactMap { $0 }
+            + (lock?.machine ?? [:]).filter { $0.key.contains(/ecid|imei|iccid|meid|serial|mac|uid/) }
+            .compactMap(\.value.optionText)
+    }
+
     /// Help ▸ Copy Bug Report Info (AppDelegate's, so it works with the window closed): the selected device, then
     /// every other one with a session.
     func copyBugReportInfo() {
@@ -40,9 +48,7 @@ extension MainWindowController {
             let emulator = host.sessions.first { $0.instance.id == instance.id }?.emulator
             let settings = DeviceSettings.load(instance.paths.directory)
             let lock = try? DeviceLock.read(base: instance.paths.base)
-            secrets += [instance.identity?.udid, instance.identity?.dieID, instance.identity?.seed].compactMap { $0 }
-            secrets += (lock?.machine ?? [:]).filter { $0.key.contains(/ecid|imei|iccid|meid|serial|mac|uid/) }
-                .compactMap(\.value.optionText)
+            secrets += Self.identitySecrets(instance, lock: lock)
             var device = BugReportInfo.Device(
                 marketingName: entry.marketingName,
                 board: instance.board,
@@ -120,7 +126,16 @@ extension MainWindowController {
             \(device)
             """
         do {
-            try await DiagnosticsExport.write(to: dest, logs: logs, info: info, crashReports: reports)
+            let secrets = diagnosticInstance.map {
+                Self.identitySecrets($0, lock: try? DeviceLock.read(base: $0.paths.base))
+            }
+            try await DiagnosticsExport.write(
+                to: dest,
+                logs: logs,
+                info: info,
+                crashReports: reports,
+                secrets: secrets ?? []
+            )
             NSWorkspace.shared.activateFileViewerSelecting([dest])
         } catch is CancellationError {
             // The exporter waits for its child to stop before removing scratch.

@@ -1,5 +1,5 @@
-// Help > Export Diagnostics: the logs, device records and a summary zipped atomically into a scratch
-// directory.
+// Help > Export Diagnostics: the logs, device records and a summary, scrubbed of identity (scrub), zipped atomically
+// into a scratch directory.
 
 import Foundation
 import Subprocess
@@ -65,6 +65,8 @@ public nonisolated enum DiagnosticsExport {
         logs: [URL],
         info: String,
         crashReports: [URL] = [],
+        secrets: [String] = [],
+        identity: HostIdentity = .current,
         temporaryRoot: URL = FileManager.default.temporaryDirectory,
         archiver: URL = URL(fileURLWithPath: "/usr/bin/ditto")
     ) async throws {
@@ -84,14 +86,19 @@ public nonisolated enum DiagnosticsExport {
         try fm.createDirectory(at: staging, withIntermediateDirectories: false)
         for source in logs where fm.fileExists(atPath: source.path) {
             try Task.checkCancellation()
-            try fm.copyItem(at: source, to: staging.appendingPathComponent(source.lastPathComponent))
+            let log = String(decoding: try Data(contentsOf: source), as: UTF8.self)
+            try scrub(log, secrets: secrets, identity: identity)
+                .write(to: staging.appendingPathComponent(source.lastPathComponent), atomically: false, encoding: .utf8)
         }
-        try info.write(to: staging.appendingPathComponent("info.txt"), atomically: true, encoding: .utf8)
+        try scrub(info, secrets: secrets, identity: identity)
+            .write(to: staging.appendingPathComponent("info.txt"), atomically: true, encoding: .utf8)
         if !crashReports.isEmpty {
             let reports = staging.appendingPathComponent("CrashReports", isDirectory: true)
             try fm.createDirectory(at: reports, withIntermediateDirectories: false)
             for report in crashReports {
-                try? fm.copyItem(at: report, to: reports.appendingPathComponent(report.lastPathComponent))
+                guard let data = try? Data(contentsOf: report) else { continue }
+                try scrubCrashReport(String(decoding: data, as: UTF8.self), identity: identity)
+                    .write(to: reports.appendingPathComponent(report.lastPathComponent), atomically: false, encoding: .utf8)
             }
         }
 
@@ -131,5 +138,83 @@ public nonisolated enum DiagnosticsExport {
                 ]
             )
         }
+    }
+}
+
+// MARK: - Identity scrubbing
+
+nonisolated extension DiagnosticsExport {
+    /// What names this Mac and its user, for scrubbing.
+    public struct HostIdentity: Sendable {
+        public var home: String
+        public var names: [String]
+        public init(home: String, names: [String]) {
+            self.home = home
+            self.names = names
+        }
+        public static var current: HostIdentity {
+            let host = ProcessInfo.processInfo.hostName
+            return HostIdentity(
+                home: NSHomeDirectory(),
+                names: [NSUserName(), NSFullUserName(), host, host.replacingOccurrences(of: ".local", with: "")]
+            )
+        }
+    }
+
+    /// Shapes of identity, each with its placeholder: email, MAC address, UUID, UDID (new and 40-hex), IMEI/ICCID,
+    /// serial number. 32-hex build IDs don't match.
+    private static let identityShapes: [(NSRegularExpression, String)] = [
+        (#"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#, "<email>"),
+        (#"\b[0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5}\b"#, "<mac>"),
+        (#"\b[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}\b"#, "<uuid>"),
+        (#"\b[0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}\b"#, "<udid>"),
+        (#"\b[0-9A-Fa-f]{40}\b"#, "<udid>"),
+        (#"\b\d{14,20}\b"#, "<number>"),
+        (#"\b(?=[A-Z0-9]*[0-9])(?=[A-Z0-9]*[A-Z])[A-Z0-9]{11,12}\b"#, "<serial>"),
+    ].map { (try! NSRegularExpression(pattern: $0.0), $0.1) }
+
+    /// A crash report's identifying members (its header's and its body's), whose values become <redacted>.
+    private static let crashReportKeys = try! NSRegularExpression(
+        pattern: #"("(?:crashReporterKey|bootSessionUUID|sleepWakeUUID|incident|incident_id|"#
+            + #"Hardware UUID|Sleep/Wake UUID|hardwareUUID|serialNumber|Serial Number)"\s*:\s*)"[^"]*""#
+    )
+
+    private static func replace(_ regex: NSRegularExpression, in text: String, with template: String) -> String {
+        regex.stringByReplacingMatches(
+            in: text,
+            range: NSRange(text.startIndex..., in: text),
+            withTemplate: template
+        )
+    }
+
+    /// The home folder becomes ~, and the user's and the Mac's names and `secrets` <redacted> (whole words).
+    private static func scrubNames(_ text: String, secrets: [String], identity: HostIdentity) -> String {
+        var out = text
+        if identity.home.count > 1 { out = out.replacingOccurrences(of: identity.home, with: "~") }
+        for secret in secrets where secret.count >= 4 {
+            out = out.replacingOccurrences(of: secret, with: "<redacted>", options: .caseInsensitive)
+        }
+        for name in Set(identity.names) where name.count >= 3 {
+            let pattern = "\\b" + NSRegularExpression.escapedPattern(for: name) + "\\b"
+            guard let word = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { continue }
+            out = replace(word, in: out, with: "<redacted>")
+        }
+        return out
+    }
+
+    /// Text without identity: the home folder becomes ~, the user's and the Mac's names and `secrets` (a device's
+    /// UDID, seed, ...) become <redacted>, and anything shaped like a UDID, UUID, MAC address, IMEI/ICCID, serial
+    /// number or email address becomes a placeholder.
+    public static func scrub(_ text: String, secrets: [String] = [], identity: HostIdentity = .current) -> String {
+        identityShapes.reduce(scrubNames(text, secrets: secrets, identity: identity)) {
+            replace($1.0, in: $0, with: $1.1)
+        }
+    }
+
+    /// A crash report (.ips: a JSON header line, then the JSON report) without the home folder, the names, and the
+    /// members that identify the Mac or the report (crashReporterKey, bootSessionUUID, incident, ...). Shapes are
+    /// left alone: the stacks and the binary images' UUIDs are what symbolicate it.
+    public static func scrubCrashReport(_ text: String, identity: HostIdentity = .current) -> String {
+        replace(crashReportKeys, in: scrubNames(text, secrets: [], identity: identity), with: "$1\"<redacted>\"")
     }
 }
