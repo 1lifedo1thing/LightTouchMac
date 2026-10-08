@@ -139,6 +139,7 @@ extension SharedState {
             Apps/-
             Apps/Open
             Apps/Uninstall…
+            Apps/View on Legacy Store
             Apps/-
             Apps/Refresh Apps
             Capture/Save Screenshot  ⌘s
@@ -212,7 +213,7 @@ extension SharedState {
             // device's inspector leaving hands it back the same way (MainMenuBuilder.resetAppsMenu).
             let apps = root.item(withTitle: "Apps")!.submenu!
             #expect(
-                !apps.autoenablesItems && apps.delegate == nil && apps.items.count == 7
+                !apps.autoenablesItems && apps.delegate == nil && apps.items.count == 8
                     && apps.items.allSatisfy { !$0.isEnabled },
                 "Apps with no device"
             )
@@ -221,7 +222,8 @@ extension SharedState {
             MainMenuBuilder.resetAppsMenu()
             #expect(
                 apps.items.map(\.title) == [
-                    "Install App…", "Import Media…", "", "Open", "Uninstall…", "", "Refresh Apps",
+                    "Install App…", "Import Media…", "", "Open", "Uninstall…", "View on Legacy Store", "",
+                    "Refresh Apps",
                 ]
                     && apps.items.allSatisfy { !$0.isEnabled },
                 "Apps reset"

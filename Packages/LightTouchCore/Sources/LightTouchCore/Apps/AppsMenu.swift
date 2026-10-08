@@ -97,6 +97,10 @@ public struct AppsMenu {
         self.targets = targets
     }
 
+    /// The row commands a menu with no selection shows dimmed (MainMenuBuilder.resetAppsMenu too).
+    public static let libraryPlaceholders = ["Open", "Uninstall…", "View on Legacy Store"]
+    public static let storePlaceholders = ["Install", "Choose Version…", "View on Legacy Store"]
+
     public var items: [AppsMenuItem] {
         var menu: [AppsMenuItem] = []
         let device = rows.device
@@ -119,8 +123,10 @@ public struct AppsMenu {
             menu.append(.separator)
         }
         appendAppActions(to: &menu)
+        // With no selection the menu keeps the mode's row commands, dimmed (issue 7).
         if isMainMenu, row < 0 {
-            for title in ["Open", "Uninstall…"] { menu.append(AppsMenuItem(title, .none, isEnabled: false)) }
+            let titles = rows.searching ? AppsMenu.storePlaceholders : AppsMenu.libraryPlaceholders
+            for title in titles { menu.append(AppsMenuItem(title, .none, isEnabled: false)) }
         }
         if menu.last?.isSeparator == false { menu.append(.separator) }
         menu.append(AppsMenuItem(isMainMenu ? "Refresh Apps" : "Refresh", .refresh))

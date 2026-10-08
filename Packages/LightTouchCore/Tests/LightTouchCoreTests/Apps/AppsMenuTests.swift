@@ -103,13 +103,29 @@ struct AppsMenuTests {
         )
     }
 
-    /// With no selection the Apps menu keeps its shape: Open and Uninstall… dimmed, Refresh Apps, and Resume
-    /// Transfers dimmed (never hidden) unless the queue is paused.
+    /// With no selection the Apps menu keeps its shape: the mode's row commands dimmed (the library's Open,
+    /// Uninstall… and View on Legacy Store; the Store's Install, Choose Version… and View on Legacy Store), Refresh
+    /// Apps, and Resume Transfers dimmed (never hidden) unless the queue is paused.
     @Test func stableEmptySelection() {
         var rows = installedRows()
-        rows.searching = true
+        func onlyMenuWideCommandsEnabled(_ menu: [AppsMenuItem]) -> Bool {
+            menu.allSatisfy {
+                $0.isSeparator || $0.isEnabled == ["Install App…", "Import Media…", "Refresh Apps"].contains($0.title)
+            }
+        }
+        func middle(_ menu: [AppsMenuItem]) -> [String] {
+            Array(menu.split(whereSeparator: \.isSeparator)[2]).map(\.title)
+        }
         var menu = AppsMenu(rows: rows, isMainMenu: true, row: -1, selection: []).items
-        #expect(item(menu, "Open")?.isEnabled == false && item(menu, "Uninstall…")?.isEnabled == false)
+        #expect(middle(menu) == ["Open", "Uninstall…", "View on Legacy Store"])
+        #expect(middle(menu) == middle(AppsMenu(rows: rows, isMainMenu: true, row: 0, selection: [0]).items))
+        #expect(onlyMenuWideCommandsEnabled(menu))
+        rows.searching = true
+        rows.apps = []
+        menu = AppsMenu(rows: rows, isMainMenu: true, row: -1, selection: []).items
+        #expect(middle(menu) == ["Install", "Choose Version…", "View on Legacy Store"])
+        #expect(middle(menu) == middle(AppsMenu(rows: rows, isMainMenu: true, row: 0, selection: [0]).items))
+        #expect(onlyMenuWideCommandsEnabled(menu))
         #expect(item(menu, "Refresh Apps") != nil && item(menu, "Resume Transfers")?.isEnabled == false)
         rows.device.transfersPaused = true
         menu = AppsMenu(rows: rows, isMainMenu: true, row: -1, selection: []).items

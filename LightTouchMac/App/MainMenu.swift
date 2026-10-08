@@ -2,6 +2,7 @@
 
 import Cocoa
 import HostRuntime
+import LightTouchCore
 
 /// First-responder actions AppKit dispatches by selector but exposes no Swift
 /// symbol for. Declaring them here lets the menu use `#selector` (verified at
@@ -293,8 +294,7 @@ enum MainMenuBuilder {
         menu.addItem(item("Install App…", #selector(MainWindowController.installApp(_:)), "i", [.shift, .command]))
         menu.addItem(item("Import Media…", #selector(MainWindowController.syncMedia(_:))))
         menu.addItem(.separator())
-        menu.addItem(item("Open", nil))
-        menu.addItem(item("Uninstall…", nil))
+        for title in AppsMenu.libraryPlaceholders { menu.addItem(item(title, nil)) }
         menu.addItem(.separator())
         menu.addItem(item("Refresh Apps", nil))
         for item in menu.items { item.isEnabled = false }
