@@ -65,8 +65,11 @@ public enum SystemEdits {
         /// guest tool -> (install path, mode); ipad1_rootfs.TOOLS (+ SEAL_TOOL, GLTEST_TOOL).
         public static let tools: [(name: String, path: String, mode: mode_t)] = [
             ("it_pbd", "usr/local/bin/it_pbd", 0o755), ("it_prefs", "usr/local/bin/it_prefs", 0o755),
-            ("it_msmquiet.dylib", "usr/local/lib/it_msmquiet.dylib", 0o755),
+            msmQuiet,
         ]
+        public static let msmQuiet: (name: String, path: String, mode: mode_t) = (
+            "it_msmquiet.dylib", "usr/local/lib/it_msmquiet.dylib", 0o755
+        )
         public static let seal = ("it_seal", "usr/local/bin/it_seal", mode_t(0o755))
         public static let glTest = ("it_gltest", "usr/local/bin/it_gltest", mode_t(0o755))
         /// launchd job file names baked into System/Library/LaunchDaemons (mode 0644). The helpers' own jobs
@@ -227,7 +230,7 @@ public enum SystemEdits {
             if legacy { log("this dyld predates LC_DYLD_INFO_ONLY: the legacy-linked helpers and AppSync") }
             // it_msmquiet only where the mounter raises the notice it recognizes; else left out, job untouched
             // (3.1.x has no storage_mounter job at all)
-            let msm = Helpers.tools[3]
+            let msm = Helpers.msmQuiet
             var quietJobs: [(String, String)] = []
             for (job, label) in noticeJobs where o.guestTools && fm.fileExists(atPath: at(job).path) {
                 if try fit.check(
