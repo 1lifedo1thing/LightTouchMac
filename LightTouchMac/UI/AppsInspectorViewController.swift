@@ -16,7 +16,6 @@ import UniformTypeIdentifiers
 // the script's own progress, cancellable from its context menu.
 
 final class AppsInspectorViewController: NSViewController {
-
     private let emulator: EmulatorController
     private let tableView = NSTableView()
     private let addRemove = NSSegmentedControl()
@@ -1131,7 +1130,6 @@ extension AppsInspectorViewController: NSSearchFieldDelegate {
 // MARK: - Context menu
 
 extension AppsInspectorViewController: NSMenuDelegate {
-
     /// The Apps menu and a row's context menu, as LightTouchCore's AppsMenu lays them out.
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
@@ -1197,7 +1195,6 @@ extension AppsInspectorViewController: NSMenuDelegate {
 // MARK: - Table data
 
 extension AppsInspectorViewController: NSTableViewDataSource, NSTableViewDelegate {
-
     func numberOfRows(in tableView: NSTableView) -> Int {
         searching ? catalogResults.count : pending.count + visibleApps.count
     }
@@ -1478,5 +1475,4 @@ extension AppsInspectorViewController: NSTableViewDataSource, NSTableViewDelegat
             self?.resumeInstallsClicked(nil)
         }
     }
-
 }

@@ -23,7 +23,7 @@ extension DeviceServices {
     /// Bytes free on the media partition, via AFC. The pre-flight that names a
     /// full device before installd fails opaquely with PackageExtractionFailed.
     func freeSpaceBytes() async throws -> Int64 {
-        return try await run(Timeouts.query, "free space") { device in
+        try await run(Timeouts.query, "free space") { device in
             let client = try IMobileDevice.startAFC(device: device)
             defer { _ = afc_client_free(client) }
             var value: UnsafeMutablePointer<CChar>?
@@ -50,7 +50,7 @@ extension DeviceServices {
         allowEmpty: Bool = false,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> String {
-        return try await run(Timeouts.stage, "upload") { device in
+        try await run(Timeouts.stage, "upload") { device in
             // File I/O stays on the detached worker, including opening the file.
             let input = try FileHandle(forReadingFrom: ipa)
             defer { try? input.close() }

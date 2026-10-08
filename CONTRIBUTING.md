@@ -133,6 +133,52 @@ through `scripts/sources.py` (the pin in `build-support/sources.json`).
 
 Every headless boot passes `-audio driver=none`. The checks are headless; none of them launch the app.
 
+## Style
+
+Apple's [API Design Guidelines](https://www.swift.org/documentation/api-design-guidelines/) first; where they are
+silent, [Google's Swift style guide](https://google.github.io/swift/). American spelling, except Apple's cancelled,
+cancelling and cancellable.
+
+**Format.** `swift-format` owns layout and the lint rules (`.swift-format`: 4 spaces, 120 columns, one argument per
+line once a call wraps, no blank line after `{` or before `}`, implicit returns, `[]`/`[:]` for empty collections,
+`for … where` over an `if` wrapping a loop body); `clang-format` (`.clang-format`) owns C. Before committing:
+`swift-format format -i -r <paths>`; `swift-format lint -r <paths>` should stay quiet.
+
+**Warnings.** None. Fix the cause: a `@Sendable` closure or a lock-guarded `@unchecked Sendable` box for state shared
+across threads, `MainActor.assumeIsolated` in an AppKit completion that runs on the main thread, `nonisolated` on test
+fixtures in the MainActor-by-default packages. A deprecated API we must keep goes in one small C file with a scoped
+`#pragma clang diagnostic` and a comment saying why (`LightTouchDevice/GuestTLS.c`).
+
+**Files.** One main type per file, named after it; helpers only it uses can live beside it. No created-by or license
+headers. A file whose role isn't obvious from its name opens with a short `//` paragraph saying what it is and why,
+then the imports (sorted, one per line). `// MARK: - Topic` separates the sections of a long type; short files have
+none.
+
+**Access and types.** `private` by default, `private(set)` for state others read; never spell out `internal`;
+`public` only for what another module uses. Access levels go on members, not on `extension`. Classes are `final`
+unless designed for subclassing; prefer structs and enums; `actor` or a lock for shared mutable state. A conformance
+that is its own topic (a delegate, a data source) goes in its own `extension`; `Sendable`, `Hashable` and the like
+stay on the declaration.
+
+**Naming.** Clear at the call site, no `get` prefixes, Booleans read as assertions (`isRunning`), factories start
+with `make`. Acronyms keep one case: `deviceID`, `ipaURL`, `urlSession`. Wire and catalog names live in raw values
+and `CodingKeys`, not in Swift identifiers, in new code.
+
+**Comments.** `///` for documentation, never `/** */`; the first sentence summarizes; `- Parameter`/`- Returns` only
+when they add something. Comments say why, not what. A trailing comment that won't fit in 120 columns goes above the
+line.
+
+**Code.** `guard` for early exits; `for`-`in` for a loop body (`.forEach` for one call); no `!`, `try!` or implicitly unwrapped optionals in new
+non-test code unless the value can't be absent. `@MainActor` for UI state; `async`/`await` over completion handlers
+in new code; `[weak self]` with `guard let self` in escaping closures, on the outermost closure that captures it.
+
+**SwiftUI.** `@Observable` models, not `ObservableObject`; `@State` and `@Environment` are `private`. Properties,
+then `init`, then `body`, then private helpers. A piece with its own state, or longer than a screen, becomes a
+`private struct`; a small piece stays a `private var something: some View`. Previews use `#Preview`.
+
+**Tests.** Swift Testing (`@Test`, `#expect`); test names are camelCase sentences stating the behavior
+(`aBootThatEndsBeforeUSBEndsItsStartup`).
+
 ## Boards
 
 A board's facts have two homes. The emulator's: qemu-ios's `qemu_ios_device_info` table

@@ -154,7 +154,6 @@ public nonisolated enum CatalogError: LocalizedError {
 
 @MainActor
 public enum CatalogClient {
-
     /// Tests may inject a local service; production always uses Legacy Store.
     public static var baseURL = URL(string: "https://legacystore.app")!
     /// Where downloads are staged; nil is Bundled.workDirectory. Tests point it at a temporary directory.

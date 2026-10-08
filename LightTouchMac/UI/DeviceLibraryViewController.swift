@@ -29,7 +29,6 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
     NSMenuDelegate, NSTextFieldDelegate,
     NSMenuItemValidation
 {
-
     /// Outline items are objects so the outline can keep them.
     private final class Entry {
         let entry: FirmwareCatalog.Entry

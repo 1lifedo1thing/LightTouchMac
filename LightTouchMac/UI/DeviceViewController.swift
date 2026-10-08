@@ -9,7 +9,6 @@ import HostRuntime
 import LightTouchCore
 
 final class DeviceViewController: NSViewController {
-
     let emulator: EmulatorController
     private let displayView: DisplayView
     private let panelStatus = CaptureStatusView()

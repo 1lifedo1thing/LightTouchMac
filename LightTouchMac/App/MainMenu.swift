@@ -16,7 +16,6 @@ import HostRuntime
 
 @MainActor
 enum MainMenuBuilder {
-
     static func install(profile: Board) {
         let appName =
             Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
@@ -359,7 +358,6 @@ enum MainMenuBuilder {
         item.submenu = menu
         return item
     }
-
 }
 
 /// The Capture menu. Escape is Discard Recording's (which asks first) only while a recording can be discarded in the

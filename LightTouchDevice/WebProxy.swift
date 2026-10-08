@@ -334,7 +334,7 @@ final class WebProxy: @unchecked Sendable {
 
     /// Request line and headers, a byte at a time (nothing past the blank line is consumed: TLS may follow a CONNECT).
     private func readHead(_ guest: Guest) throws -> (String, String, [(String, String)]) {
-        var head = [UInt8]()
+        var head: [UInt8] = []
         while !head.suffix(4).elementsEqual([13, 10, 13, 10]) {
             guard head.count < Self.headMax - 1 else { throw Reply(431, "Request headers too large") }
             let byte = guest.read(max: 1)

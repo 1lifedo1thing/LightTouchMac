@@ -298,5 +298,4 @@ public struct MediaSong: Sendable {
             guard frames > 0 else { throw DeviceToolsError.failed("The AAC file contains no audio.") }
         }  // Release the audio file and finalize its M4A headers before inspection/upload.
     }
-
 }

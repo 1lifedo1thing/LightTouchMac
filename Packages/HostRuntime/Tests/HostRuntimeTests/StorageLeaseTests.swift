@@ -143,5 +143,4 @@ struct StorageLeaseTests {
         #expect(throws: StorageLease.Failure.inUse) { _ = try StorageLease(path) }
         withExtendedLifetime((owner, successor)) {}
     }
-
 }

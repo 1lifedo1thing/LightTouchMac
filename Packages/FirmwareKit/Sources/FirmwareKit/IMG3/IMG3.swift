@@ -107,7 +107,7 @@ extension Data {
     public init?(hex: String) {
         let chars = Array(hex.utf8)
         guard chars.count % 2 == 0 else { return nil }
-        var out = [UInt8]()
+        var out: [UInt8] = []
         out.reserveCapacity(chars.count / 2)
         for i in stride(from: 0, to: chars.count, by: 2) {
             guard let b = UInt8(String(decoding: chars[i..<i + 2], as: UTF8.self), radix: 16) else { return nil }

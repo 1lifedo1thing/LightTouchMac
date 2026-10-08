@@ -7,7 +7,6 @@ import LightTouchCore
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
-
     private var windowController: MainWindowController?
     private let dockProgress = DockProgress()
     private var host: DeviceSessionHost?

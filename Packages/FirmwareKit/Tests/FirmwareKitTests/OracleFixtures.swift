@@ -205,5 +205,4 @@ enum Oracle {
         defer { print("timing: \(label) \(ContinuousClock.now - t0)") }
         return try await body()
     }
-
 }

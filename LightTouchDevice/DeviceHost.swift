@@ -381,7 +381,6 @@ final class DeviceHost: @unchecked Sendable {
             } else {
                 reply(.failure("Virtual input unavailable"))
             }
-
         }
     }
 

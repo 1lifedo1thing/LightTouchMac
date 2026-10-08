@@ -50,5 +50,4 @@ extension DeviceServices {
             progress: progress
         )
     }
-
 }

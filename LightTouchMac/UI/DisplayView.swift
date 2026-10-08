@@ -8,7 +8,6 @@ import LightTouchCore
 
 /// Fit the whole device in the window, or use an integer display-pixel scale.
 final class DisplayView: NSView {
-
     /// The device this view shows, fixed at init.
     private let profile: Board
     /// The panel at rest — iPod touch 2G: 320×480 at 163 ppi (3.5" panel).

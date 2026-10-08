@@ -16,7 +16,6 @@ import HostRuntime
 
 @MainActor
 public enum IPALibrary {
-
     /// One stored archive; the optional fields are what the install that
     /// stored it knew.
     public struct Entry: Codable, Equatable, Sendable {

@@ -33,9 +33,9 @@ public struct CapturePreferences {
         var locations = [Self.desktopDirectory]
         for url in [saveLocation]
             + (defaults.stringArray(forKey: "captureRecentFolders") ?? [])
-            .map({ URL(fileURLWithPath: $0, isDirectory: true).standardizedFileURL })
+            .map({ URL(fileURLWithPath: $0, isDirectory: true).standardizedFileURL }) where !locations.contains(url)
         {
-            if !locations.contains(url) { locations.append(url) }
+            locations.append(url)
         }
         return locations
     }

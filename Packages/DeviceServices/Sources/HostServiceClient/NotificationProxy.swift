@@ -18,7 +18,6 @@ import HostServiceWire
 /// idempotent and the watcher re-establishes itself if the link drops.
 @MainActor
 public final class NotificationProxy {
-
     private var running = false
     private let endpoint: HostServiceEndpoint
     /// Held so the watcher can actually be stopped. This used to be

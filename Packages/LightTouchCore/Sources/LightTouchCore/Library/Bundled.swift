@@ -22,7 +22,6 @@ import Foundation
 /// Nonisolated: the project defaults to MainActor, and these are read from the
 /// detached tasks that do the blocking device work as well as from the UI.
 public nonisolated enum Bundled {
-
     /// Resources/Guest/guest.aar unpacked (FirmwareKit GuestArchive): guest-tools/, developer-tools/ and tools/;
     /// nil in a build without it.
     public static let guestRoot: URL? = guestRoot(resources: Bundle.main.resourceURL)

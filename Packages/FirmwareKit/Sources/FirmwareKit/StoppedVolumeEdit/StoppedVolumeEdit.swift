@@ -126,7 +126,6 @@ public enum StoppedVolumeEdit {
             }
         }
         return (try StorageGeneration.begin(owner: owner), source, paths, bytes)
-
     }
     private static func object(_ bytes: Data) throws -> [String: Any] {
         guard let record = try? DeviceRecord.object(bytes) else {
@@ -145,7 +144,7 @@ public enum StoppedVolumeEdit {
         policy: StorageRecordPolicy = .standalone,
         mountPoint: URL? = nil
     ) async throws -> Session {
-        return try await StorageGeneration.withOwner(
+        try await StorageGeneration.withOwner(
             try StorageGeneration.resume(device: device, id: id, policy: policy)
         ) { edit in
             let session = try readSession(edit)

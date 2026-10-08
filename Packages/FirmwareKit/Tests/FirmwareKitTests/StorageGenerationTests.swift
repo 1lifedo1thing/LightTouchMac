@@ -224,5 +224,4 @@ struct StorageGenerationTests {
         #expect(try Data(contentsOf: device.appendingPathComponent(DeviceRecord.name)) == original)
         try await edit.close()
     }
-
 }

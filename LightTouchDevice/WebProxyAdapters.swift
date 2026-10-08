@@ -42,7 +42,7 @@ enum WebProxyAdapters {
     static func httpLinks(_ body: Data) -> Data {
         let bytes = [UInt8](body)
         let pattern = Array("https://".utf8)
-        var out = [UInt8]()
+        var out: [UInt8] = []
         var i = 0
         out.reserveCapacity(bytes.count)
         while i < bytes.count {

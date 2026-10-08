@@ -71,5 +71,4 @@ public nonisolated enum MediaIdentity {
         }
         try walk(0, length, 0)
     }
-
 }
