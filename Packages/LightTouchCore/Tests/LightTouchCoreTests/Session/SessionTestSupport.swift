@@ -27,9 +27,15 @@ func withScratchDirectory<T>(_ body: (URL) async throws -> T) async throws -> T 
     return try await body(directory)
 }
 
-/// Polls `condition` every 5 ms; a 30 s guard turns a hang into a failure instead of a stuck run.
-func eventually(_ what: String, _ condition: () -> Bool, sourceLocation: SourceLocation = #_sourceLocation) async {
-    let deadline = Date().addingTimeInterval(30)
+/// Polls `condition` every 5 ms; a guard (30 s unless `within` says otherwise) turns a hang into a failure instead
+/// of a stuck run.
+func eventually(
+    _ what: String,
+    within seconds: TimeInterval = 30,
+    _ condition: () -> Bool,
+    sourceLocation: SourceLocation = #_sourceLocation
+) async {
+    let deadline = Date().addingTimeInterval(seconds)
     while !condition() {
         if Date() > deadline {
             Issue.record("timed out waiting: \(what)", sourceLocation: sourceLocation)

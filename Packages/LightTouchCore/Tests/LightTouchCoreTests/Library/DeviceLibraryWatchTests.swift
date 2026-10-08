@@ -8,6 +8,11 @@ import Testing
 /// The library follows Devices/ as Finder and Terminal change it while the app runs, and a session whose folder
 /// left stops and goes.
 struct DeviceLibraryWatchTests {
+    /// How long a change may take to come back through fseventsd. Its delivery is unbounded on a loaded host (15 s
+    /// and over 30 s were seen in a Unit run), so this is only a hang guard; tests not about the watch call
+    /// reload() instead of waiting for it.
+    static let delivery: TimeInterval = 180
+
     func record(_ name: String, state: URL) throws -> DeviceInstance {
         let id = UUID()
         let prefix = "Devices/\(id.uuidString)"
@@ -71,14 +76,14 @@ struct DeviceLibraryWatchTests {
 
             let trashed = trash.appendingPathComponent(a.id.uuidString)
             try fm.moveItem(at: DeviceInstance.directory(a.id, state: state), to: trashed)
-            await eventually("A leaves") { ids(library) == [b.id] }
+            await eventually("A leaves", within: Self.delivery) { ids(library) == [b.id] }
             #expect(posts == 1)
 
             try fm.removeItem(at: DeviceInstance.directory(b.id, state: state))
-            await eventually("B leaves") { ids(library).isEmpty }
+            await eventually("B leaves", within: Self.delivery) { ids(library).isEmpty }
 
             try fm.moveItem(at: trashed, to: DeviceInstance.directory(a.id, state: state))
-            await eventually("A returns") { ids(library) == [a.id] }
+            await eventually("A returns", within: Self.delivery) { ids(library) == [a.id] }
             #expect(library.instance(id: a.id) == a)
         }
     }
@@ -90,9 +95,9 @@ struct DeviceLibraryWatchTests {
             _ = try record("A", state: state)
             let library = DeviceLibrary(state: state)
             try FileManager.default.removeItem(at: state.appendingPathComponent("Devices"))
-            await eventually("the library empties") { library.instances.isEmpty }
+            await eventually("the library empties", within: Self.delivery) { library.instances.isEmpty }
             let c = try record("C", state: state)
-            await eventually("C appears") { ids(library) == [c.id] }
+            await eventually("C appears", within: Self.delivery) { ids(library) == [c.id] }
         }
     }
 
@@ -220,6 +225,7 @@ struct DeviceLibraryWatchTests {
             let stopping = sessions[0]
 
             try FileManager.default.removeItem(at: DeviceInstance.directory(gone.id, state: state))
+            library.reload()
             await eventually("the session is dropped") { dropped == [gone.id] }
             #expect(stopping.fake.fakeHelper?.terms == 1 && stopping.releases == 1)
             #expect(sessions.map(\.instance.id) == [kept.id])
@@ -227,7 +233,8 @@ struct DeviceLibraryWatchTests {
 
             // Another change to the library stops nothing again.
             _ = try record("New", state: state)
-            await eventually("the new device appears") { library.instances.count == 2 }
+            library.reload()
+            #expect(library.instances.count == 2)
             #expect(dropped == [gone.id] && stopping.fake.fakeHelper?.terms == 1)
         }
     }
