@@ -334,8 +334,8 @@ extension SharedState {
             let bar = split.bar
             let log = split.log
             #expect(
-                log.frame.height == 0 && bar.frame.minY == 0 && top.frame.height == 600,
-                "collapsed: bar pinned at the bottom"
+                log.frame.height == 0 && bar.frame.minY == 0 && top.frame.height == 600 + ConsoleBar.height,
+                "collapsed: bar pinned at the bottom, over the top"
             )
             #expect(
                 bar.filter.isHidden && bar.clearButton.isHidden && !bar.toggleButton.isHidden,
@@ -463,6 +463,75 @@ extension SharedState {
                 again.layout == L(height: 400, isCollapsed: false) && again.bar.toggleButton.state == .on,
                 "restored"
             )
+        }
+
+        /// Collapsed, the bar floats over the device pane (issue 33): the pane keeps the whole height, the bar draws
+        /// nothing of its own so the pane shows through, and the toggle has a border to stand on. Expanded, the
+        /// bar is the divider between them as before. Renders go to the temporary directory.
+        @Test(arguments: [NSAppearance.Name.aqua, .darkAqua]) func collapsedConsoleBarOverlaysThePane(
+            _ appearance: NSAppearance.Name
+        ) throws {
+            final class Fill: NSView {
+                override func draw(_ dirtyRect: NSRect) {
+                    NSColor(srgbRed: 1, green: 0, blue: 1, alpha: 1).setFill()
+                    bounds.fill()
+                }
+            }
+            let suite = "ltm-console-overlay-check-\(getpid())"
+            let defaults = UserDefaults(suiteName: suite)!
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let top = Fill()
+            let split = ConsoleSplitView(top: top, autosaveName: "view", defaults: defaults)
+            split.appearance = NSAppearance(named: appearance)
+            split.frame = NSRect(x: 0, y: 0, width: 400, height: 300)
+            split.layoutSubtreeIfNeeded()
+            let bar = split.bar
+            func render(_ name: String) throws -> (NSPoint) -> [Int] {
+                let bitmap = split.bitmapImageRepForCachingDisplay(in: split.bounds)!
+                split.cacheDisplay(in: split.bounds, to: bitmap)
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent(
+                    "ltm-console-bar-\(name)-\(appearance.rawValue).png"
+                )
+                try bitmap.representation(using: .png, properties: [:])?.write(to: url)
+                print("render: \(url.path)")
+                return { p in
+                    var raw = [Int](repeating: 0, count: 4)
+                    bitmap.getPixel(
+                        &raw,
+                        atX: Int(p.x * CGFloat(bitmap.pixelsWide) / split.bounds.width),
+                        y: Int((split.bounds.height - p.y) * CGFloat(bitmap.pixelsHigh) / split.bounds.height)
+                    )
+                    return Array(raw.prefix(3))
+                }
+            }
+            let magentaAt = NSPoint(x: 300, y: 290)
+            #expect(split.layout.isCollapsed, "starts collapsed")
+            #expect(top.frame == split.bounds, "collapsed: the pane has the whole view, got \(top.frame)")
+            #expect(bar.frame.minY == 0 && bar.frame.height == ConsoleBar.height, "bar at the bottom, \(bar.frame)")
+            #expect(bar.toggleButton.isBordered, "collapsed: the toggle is bordered")
+            #expect(bar.toggleButton.accessibilityLabel() == "Show Console", "the toggle keeps its label")
+            var pixel = try render("collapsed")
+            let magenta = pixel(magentaAt)
+            // Right of the toggle, in the bar's top row and its middle: the pane shows through.
+            for y in [ConsoleBar.height - 0.5, ConsoleBar.height / 2] {
+                #expect(pixel(NSPoint(x: 300, y: y)) == magenta, "collapsed bar is transparent at y \(y)")
+            }
+            #expect(
+                split.hitTest(NSPoint(x: 300, y: 10))?.isDescendant(of: bar) == true,
+                "the bar still takes the drag"
+            )
+
+            bar.toggleButton.performClick(nil)
+            split.layoutSubtreeIfNeeded()
+            #expect(!split.layout.isCollapsed, "shown")
+            #expect(
+                top.frame.minY == bar.frame.maxY && bar.frame.minY == split.log.frame.maxY,
+                "expanded: pane, bar, console stacked; pane \(top.frame) bar \(bar.frame)"
+            )
+            #expect(!bar.toggleButton.isBordered, "expanded: the toggle is as before")
+            pixel = try render("expanded")
+            #expect(pixel(magentaAt) == magenta, "the pane above is as it was")
+            #expect(pixel(NSPoint(x: 300, y: bar.frame.midY)) != magenta, "expanded bar is opaque")
         }
     }
 }

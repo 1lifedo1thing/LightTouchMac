@@ -1,7 +1,9 @@
 // The main pane's bottom console, after Xcode's debug area (IDEKit's
 // IDEEditorArea + IDEBottomBar).
 // The device sits on top, the console below, and the bar between them is the
-// divider: drag it, double-click it, or use its toggle.
+// divider: drag it, double-click it, or use its toggle. With the console
+// hidden the bar floats, transparent, over the device's bottom edge, so the
+// device keeps the whole pane.
 
 import Cocoa
 import LightTouchCore
@@ -21,11 +23,15 @@ final class ConsoleSplitView: NSView {
         constraint.priority = .defaultHigh
         return constraint
     }()
+    /// How far the top runs under the bar: all of it while the console is hidden, none while it shows.
+    private lazy var topUnderBar = top.bottomAnchor.constraint(equalTo: bar.topAnchor)
+    private let top: NSView
     private var dragStart: (layout: ConsoleSplitLayout, height: CGFloat, y: CGFloat)?
 
     init(top: NSView, autosaveName: String, defaults: UserDefaults = .standard) {
         self.autosaveName = autosaveName
         self.defaults = defaults
+        self.top = top
         layout = ConsoleSplitLayout.load(autosaveName, from: defaults)
         super.init(frame: NSRect(x: 0, y: 0, width: 600, height: 600))
         log.borderType = .noBorder
@@ -39,7 +45,7 @@ final class ConsoleSplitView: NSView {
             top.topAnchor.constraint(equalTo: topAnchor),
             top.leadingAnchor.constraint(equalTo: leadingAnchor),
             top.trailingAnchor.constraint(equalTo: trailingAnchor),
-            bar.topAnchor.constraint(equalTo: top.bottomAnchor),
+            topUnderBar,
             bar.leadingAnchor.constraint(equalTo: leadingAnchor),
             bar.trailingAnchor.constraint(equalTo: trailingAnchor),
             log.topAnchor.constraint(equalTo: bar.bottomAnchor),
@@ -119,6 +125,7 @@ final class ConsoleSplitView: NSView {
     private func apply(animated: Bool) {
         let collapsed = layout.isCollapsed
         let target = collapsed ? 0 : layout.height
+        let underBar = collapsed ? ConsoleBar.height : 0
         bar.isExpanded = !collapsed
         if !collapsed { log.isHidden = false }
         // Out of the key-view loop once it's gone, as a collapsed split pane is.
@@ -126,11 +133,13 @@ final class ConsoleSplitView: NSView {
             NSAnimationContext.runAnimationGroup {
                 $0.duration = 0.2
                 consoleHeight.animator().constant = target
+                topUnderBar.animator().constant = underBar
             } completionHandler: { [weak self] in
                 MainActor.assumeIsolated { self?.hideLog(ifCollapsed: collapsed) }
             }
         } else {
             consoleHeight.constant = target
+            topUnderBar.constant = underBar
             hideLog(ifCollapsed: collapsed)
         }
         updatePolling()
@@ -151,6 +160,7 @@ final class ConsoleSplitView: NSView {
 
 /// Xcode's debug bar: pinned at the divider, visible when the console isn't,
 /// and itself the divider's grab area (IDEBottomBar.additionalGrabRectsForSplitViewDivider).
+/// Collapsed it draws nothing but a bordered toggle, over the device (issue 33).
 @MainActor
 final class ConsoleBar: NSView {
     /// DVTControlBar.defaultBarHeight: 36 pt in the macOS 26 design, 27 before it.
@@ -181,6 +191,8 @@ final class ConsoleBar: NSView {
     var isExpanded = false {
         didSet {
             toggleButton.state = isExpanded ? .on : .off
+            // On a transparent bar the toggle needs its own border to read over the device.
+            toggleButton.isBordered = !isExpanded
             toggleButton.contentTintColor = isExpanded ? .controlAccentColor : nil
             let label = isExpanded ? "Hide Console" : "Show Console"
             toggleButton.toolTip = label + " (⇧⌘Y)"
@@ -197,6 +209,7 @@ final class ConsoleBar: NSView {
         toggleButton.setButtonType(.pushOnPushOff)
         toggleButton.bezelStyle = .toolbar
         toggleButton.isBordered = false
+        if #available(macOS 26, *) { toggleButton.borderShape = .roundedRectangle }
         toggleButton.image = NSImage(systemSymbolName: "inset.filled.bottomthird.square", accessibilityDescription: nil)
         toggleButton.target = self
         toggleButton.action = #selector(toggle)
@@ -239,14 +252,15 @@ final class ConsoleBar: NSView {
 
     override var mouseDownCanMoveWindow: Bool { false }
 
-    /// The divider line on top; a second line under the bar while the console
-    /// shows (IDEEditorArea sets the bar's borderSides by visibility).
+    /// The divider line on top and a second line under the bar while the console
+    /// shows (IDEEditorArea sets the bar's borderSides by visibility); nothing while it's hidden.
     override func draw(_ dirtyRect: NSRect) {
+        guard isExpanded else { return }
         NSColor.windowBackgroundColor.setFill()
         bounds.fill()
         NSColor.separatorColor.setFill()
         NSRect(x: 0, y: bounds.maxY - 1, width: bounds.width, height: 1).fill()
-        if isExpanded { NSRect(x: 0, y: 0, width: bounds.width, height: 1).fill() }
+        NSRect(x: 0, y: 0, width: bounds.width, height: 1).fill()
     }
 
     /// The resize cursor over the bar's empty stretches, not over its controls.
