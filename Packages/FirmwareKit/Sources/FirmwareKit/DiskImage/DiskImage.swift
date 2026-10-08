@@ -198,7 +198,12 @@ public enum DiskImage {
         let prefix = root.resolvingSymlinksInPath().path + "/"
         for (path, dev) in try await attachedImagesSeen()
         where URL(fileURLWithPath: path).resolvingSymlinksInPath().path.hasPrefix(prefix) {
-            try await detach(dev, force: true)
+            do {
+                try await detach(dev, force: true)
+            } catch {
+                // One detached by someone else since it was listed is already what this wanted.
+                if try await checkedAttachedImages().contains(where: { $0.device == dev }) { throw error }
+            }
         }
     }
 
