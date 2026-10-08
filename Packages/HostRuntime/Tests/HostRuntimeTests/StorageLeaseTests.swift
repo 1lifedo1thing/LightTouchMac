@@ -2,6 +2,7 @@ import Darwin
 import Foundation
 import HostRuntime
 import Testing
+import os
 
 struct StorageLeaseTests {
     private func fixture(_ body: (URL) throws -> Void) throws {
@@ -62,6 +63,40 @@ struct StorageLeaseTests {
             try FileManager.default.removeItem(at: intent)
             let owner = try StorageLease(path)
             withExtendedLifetime(owner) {}
+        }
+    }
+
+    /// A lease refused for a pending edit had already taken the lock; a child being spawned at that moment shares
+    /// the descriptor until its exec, so closing alone could leave the lock held and refuse the next owner.
+    @Test func pendingEditRefusalUnlocksWhileChildrenSpawn() throws {
+        try fixture { root in
+            let path = root.appendingPathComponent("work/lease")
+            try FileManager.default.createDirectory(
+                at: path.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let intent = path.deletingLastPathComponent().appendingPathComponent("edit.json")
+            let spawning = OSAllocatedUnfairLock(initialState: true)
+            let spawners = (0..<4).map { _ in
+                Thread {
+                    var argv: [UnsafeMutablePointer<CChar>?] = [strdup("/usr/bin/true"), nil]
+                    defer { free(argv[0]) }
+                    while spawning.withLock({ $0 }) {
+                        var pid: pid_t = 0
+                        if posix_spawn(&pid, argv[0], nil, nil, &argv, environ) == 0 { waitpid(pid, nil, 0) }
+                    }
+                }
+            }
+            spawners.forEach { $0.start() }
+            defer { spawning.withLock { $0 = false } }
+            var refused = 0
+            for _ in 0..<2000 {
+                try Data().write(to: intent)
+                #expect(throws: StorageLease.Failure.pendingEdit) { _ = try StorageLease(path) }
+                try FileManager.default.removeItem(at: intent)
+                do { withExtendedLifetime(try StorageLease(path)) {} } catch { refused += 1 }
+            }
+            #expect(refused == 0)
         }
     }
 

@@ -34,6 +34,9 @@ public nonisolated final class StorageLease: Sendable {
             }
             descriptor = OSAllocatedUnfairLock(initialState: fd)
         } catch {
+            // Refused for a pending edit, the lock was already taken: release it as close() does, since a child
+            // being spawned at this moment shares the descriptor until its exec.
+            flock(fd, LOCK_UN)
             Darwin.close(fd)
             throw error
         }
