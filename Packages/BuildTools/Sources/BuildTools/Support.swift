@@ -34,7 +34,7 @@ func writeJSON(_ object: Any, to file: URL) throws {
         withJSONObject: object,
         options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
     )
-    try (data + Data("\n".utf8)).write(to: file)
+    try (data + Data("\n".utf8)).write(to: file, options: .atomic)
 }
 
 /// Runs a command to its exit, its output and error appended to `log` (or inherited); throws on a nonzero status.
@@ -83,15 +83,24 @@ func output(_ arguments: [String], environment: [String: String]? = nil) throws 
     return result.output.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
+/// Finder's folder settings, which appear in any directory someone opened in Finder: never an input or an output.
+func isFinderLitter(_ name: String) -> Bool { (name as NSString).lastPathComponent == ".DS_Store" }
+
 /// Every regular file and symlink under `root` (not descending into linked directories), relative paths, sorted.
 func walk(_ root: URL) -> [String] {
     guard let e = files.enumerator(atPath: root.resolvingSymlinksInPath().path) else { return [] }
     var found: [String] = []
     while let name = e.nextObject() as? String {
         let type = e.fileAttributes?[.type] as? FileAttributeType
-        if type == .typeRegular || type == .typeSymbolicLink { found.append(name) }
+        if (type == .typeRegular || type == .typeSymbolicLink) && !isFinderLitter(name) { found.append(name) }
     }
     return found.sorted()
+}
+
+/// A directory's entries, sorted by path, without Finder's .DS_Store.
+func entries(_ directory: URL) throws -> [URL] {
+    try files.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        .filter { !isFinderLitter($0.lastPathComponent) }.sorted { $0.path < $1.path }
 }
 
 func remove(_ path: URL) { try? files.removeItem(at: path) }

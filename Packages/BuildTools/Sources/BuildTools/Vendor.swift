@@ -12,7 +12,8 @@ public struct Vendor {
         The pin hash covers build-support/sources.json (qemu-ios and usbmuxd commits), dependencies.json, the patches, the
         native recipes and these tools (Packages/BuildTools, ReleaseChecks' Mach-O check). A run with the vendor directory
         complete does nothing; the built-in iPod is prepared again when FirmwareKit, the helper or the guest tools changed.
-        Nothing here deletes a vendor directory.
+        Nothing here deletes a vendor directory. One run at a time: a second run waits for the first (a flock on
+        <vendor root>/.lock).
 
         <vendor>/Frameworks/   libqemu-arm.dylib and its closure, libimobiledevice-1.0 and libplist-2.0: universal,
                                @rpath install names, stripped, ad-hoc signed with the hardened runtime (Xcode re-signs)
@@ -100,9 +101,7 @@ public struct Vendor {
             guard files.fileExists(atPath: item.path, isDirectory: &directory) else { continue }
             let paths =
                 directory.boolValue
-                ? walk(item).filter {
-                    !$0.split(separator: "/").contains(".build") && ($0 as NSString).lastPathComponent != ".DS_Store"
-                }.map { "\(name)/\($0)" }
+                ? walk(item).filter { !$0.split(separator: "/").contains(".build") }.map { "\(name)/\($0)" }
                 : [name]
             for path in paths where !Records.isLinkToDirectory(root.appendingPathComponent(path)) {
                 text += "\(path)\0\(try sha256(root.appendingPathComponent(path)))\0"
@@ -112,8 +111,8 @@ public struct Vendor {
     }
 
     func pinKey() throws -> String {
-        let patches = try files.contentsOfDirectory(atPath: root.appendingPathComponent("build-support/patches").path)
-            .sorted().map { "build-support/patches/\($0)" }
+        let patches = try entries(root.appendingPathComponent("build-support/patches"))
+            .map { "build-support/patches/\($0.lastPathComponent)" }
         return String(try treeHash(Self.keyed + patches).prefix(12))
     }
 
@@ -177,7 +176,7 @@ public struct Vendor {
                 "LTM_ARCH": arch, "QEMU_IOS_DIR": qemu.path,
                 "LTM_STATIC_DEPS": staticRoot.appendingPathComponent("prefix").path,
             ])
-            if !files.fileExists(atPath: staticRoot.appendingPathComponent("prefix/lib/libcrypto.a").path) {
+            if !Self.staticComplete(staticRoot) {
                 remove(staticRoot)
                 try files.createDirectory(at: staticRoot.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try run(
@@ -204,6 +203,31 @@ public struct Vendor {
             environment: env(["LTM_ARCH": Self.archs.joined(separator: " ")])
         )
         return universal
+    }
+
+    /// build-static-deps.sh writes static-build.json as its last step (atomically), so a static root without it is an
+    /// interrupted build, whatever libraries it already holds.
+    static func staticComplete(_ staticRoot: URL) -> Bool {
+        files.fileExists(atPath: staticRoot.appendingPathComponent("static-build.json").path)
+    }
+
+    /// Holds an exclusive flock on `<directory>/.lock` until the returned descriptor is closed (or the process exits):
+    /// concurrent runs share static/<key> and the vendor directories, so a second run waits for the first.
+    static func lock(_ directory: URL, waiting: () -> Void) throws -> Int32 {
+        try files.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appendingPathComponent(".lock").path
+        let fd = open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0o644)
+        guard fd >= 0 else { throw ToolError("vendor: cannot open \(path): \(String(cString: strerror(errno)))") }
+        if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+            waiting()
+            while flock(fd, LOCK_EX) != 0 {
+                guard errno == EINTR else {
+                    close(fd)
+                    throw ToolError("vendor: cannot lock \(path): \(String(cString: strerror(errno)))")
+                }
+            }
+        }
+        return fd
     }
 
     /// qemu-ios's guest export (build-guest-tools.sh), checked for what the app and firmwarekit read.
@@ -420,9 +444,7 @@ public struct Vendor {
             let edits = try relink(source, rpath: "@executable_path/../Frameworks")
             if !edits.isEmpty { try run(["/usr/bin/install_name_tool"] + edits + [target.path], log: toolsLog) }
         }
-        let shipped =
-            (try files.contentsOfDirectory(at: frameworks, includingPropertiesForKeys: nil)
-            + files.contentsOfDirectory(at: tools, includingPropertiesForKeys: nil)).sorted { $0.path < $1.path }
+        let shipped = try entries(frameworks) + entries(tools)
         let dsyms = vendor.appendingPathComponent("dSYMs")
         remove(dsyms)
         try files.createDirectory(at: dsyms, withIntermediateDirectories: true)
@@ -499,7 +521,7 @@ public struct Vendor {
         try run(
             [
                 "/usr/bin/aa", "archive", "-d", packed.path, "-o", res.appendingPathComponent("Guest/guest.aar").path,
-                "-exclude-field", "uid,gid,flg,mtm,btm,ctm",
+                "-exclude-field", "uid,gid,flg,mtm,btm,ctm", "-exclude-name", ".DS_Store",
             ],
             log: toolsLog
         )
@@ -551,12 +573,10 @@ public struct Vendor {
                 licenses.appendingPathComponent("iBoot32Patcher/\(name)")
             )
         }
-        for package in try files.contentsOfDirectory(at: checkouts, includingPropertiesForKeys: nil).sorted(by: {
-            $0.path < $1.path
-        }) {
+        for package in try entries(checkouts) {
             let target = licenses.appendingPathComponent("swift/\(package.lastPathComponent)")
             try files.createDirectory(at: target, withIntermediateDirectories: true)
-            for text in try files.contentsOfDirectory(at: package, includingPropertiesForKeys: nil)
+            for text in try entries(package)
             where ["LICENSE", "LICENCE", "COPYING", "NOTICE"].contains(
                 where: text.lastPathComponent.uppercased().hasPrefix
             ) && Records.isFile(text) {
@@ -601,6 +621,8 @@ public struct Vendor {
 
     /// Builds what is missing or stale; returns the vendor directory.
     public func build() throws -> URL {
+        let lock = try Self.lock(vendorRoot) { say("waiting for another scripts/vendor run to finish") }
+        defer { close(lock) }
         let vendor = try directory()
         let work = vendor.appendingPathComponent("work")
         let stamp = ["recipe": try treeHash(Self.tools), "device": try treeHash(Self.deviceSources)]
