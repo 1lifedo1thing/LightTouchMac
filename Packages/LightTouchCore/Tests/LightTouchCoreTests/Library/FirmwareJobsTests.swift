@@ -54,6 +54,7 @@ import os
                 resources: resources,
                 library: library,
                 sweep: false,
+                defaults: UserDefaults(suiteName: "ltm-tests-\(UUID().uuidString)")!,
                 presentError: { _ in }
             )
             observer = NotificationCenter.default.addObserver(
@@ -253,6 +254,44 @@ import os
     }
     func argv(_ url: URL) -> [String] {
         (try? JSONSerialization.jsonObject(with: Data(contentsOf: url))) as? [String] ?? []
+    }
+
+    // MARK: - Skip Setup Assistant
+
+    /// The preparation screen's Skip Setup Assistant choice reaches firmwarekit create as --skip-setup: for an iOS 5
+    /// entry chosen, not for one left off, and not for a 4.x entry (no Setup Assistant) even when chosen.
+    @Test func theSkipSetupChoiceReachesThePreparer() async throws {
+        try await LibraryFixtures.withScratch { tmp in
+            var entries: [[String: Any]] = []
+            for id in ["k48ap-9B206", "k48ap-8C148"] {
+                var e = Self.entry(id)
+                let data = LibraryFixtures.randomData(1 << 20)
+                let url = tmp.appendingPathComponent("\(id).ipsw")
+                try data.write(to: url)
+                e["source"] = ["kind": "ipsw", "url": url.absoluteString, "sha1": IPSWStoreTests.sha1Hex(data), "bytes": 1 << 20]
+                e["estimates"] = Self.smallEstimates
+                e.removeValue(forKey: "bundled")
+                entries.append(e)
+            }
+            let catalog = try Self.catalog(entries, in: tmp)
+            var seen: [String: [String]] = [:]
+            for (id, chosen) in [("k48ap-9B206", true), ("k48ap-8C148", true), ("k48ap-9B206", false)] {
+                let argvURL = tmp.appendingPathComponent("argv-\(UUID().uuidString).json")
+                let h = try Harness(
+                    tmp.appendingPathComponent(UUID().uuidString),
+                    catalog: catalog,
+                    preparer: try LibraryFixtures.fakePreparer(in: tmp, argv: argvURL)
+                )
+                if chosen { h.jobs.skipsSetup = [id] }
+                h.jobs.downloadAndPrepare(try #require(catalog.entry(id: id)))
+                await h.settle(id)
+                #expect(h.devices(id).count == 1, "\(id) prepared: \(h.seen)")
+                seen["\(id) \(chosen)"] = argv(argvURL)
+            }
+            #expect(seen["k48ap-9B206 true"]?.contains("--skip-setup") == true, "5.1.1, chosen")
+            #expect(seen["k48ap-9B206 false"]?.contains("--skip-setup") == false, "5.1.1, not chosen")
+            #expect(seen["k48ap-8C148 true"]?.contains("--skip-setup") == false, "4.2.1 has no Setup Assistant")
+        }
     }
 
     @Test func everyIPad43PointReleaseBootsTheRamdiskOf43() {

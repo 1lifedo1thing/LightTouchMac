@@ -85,6 +85,97 @@ enum K48Oracle {
         #expect(!SystemEdits.Options(recipe: try recipe("")).dated)
     }
 
+    /// skip_setup: the keys Setup Assistant itself left on walked devices (the data volume diffed before and after the
+    /// sessions harness's walk: n81ap/k48ap 9B206 for 5.x, n90ap 10B329 for 6.x, n90ap 11D257 for 7.x), seeded into the
+    /// /private/var skeleton, merged with what is there; the Mac's language moved first. Nothing before iOS 5.
+    @Test(arguments: [4, 5, 6, 7]) func finishedSetupSeedsWhatSetupWrites(major: Int) throws {
+        let skeleton = FileManager.default.temporaryDirectory.appendingPathComponent("ltm-setup-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: skeleton) }
+        let global = skeleton.appendingPathComponent(SystemEdits.globalPreferences)
+        try FileManager.default.createDirectory(
+            at: global.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try PropertyListSerialization.data(
+            fromPropertyList: ["AppleLanguages": ["en", "fr", "de"], "AppleLocale": "en_US"],
+            format: .binary,
+            options: 0
+        ).write(to: global)
+        func options(_ o: String) throws -> SystemEdits.Options {
+            SystemEdits.Options(
+                recipe: try JSONDecoder().decode(
+                    FirmwareEntry.Recipe.self,
+                    from: Data(
+                        #"{"name": "n90", "version": 1, "storage": "16g", "system_mib": 1664, "data_size": "partition", "boot": "kboot", "options": {\#(o)}}"#
+                            .utf8
+                    )
+                )
+            )
+        }
+        #expect(try options(#""skip_setup": true"#).skipSetup && !options("").skipSetup, "off unless asked for")
+        try SystemEdits.seedFinishedSetup(skeleton, major: major, locale: Locale(identifier: "fr_CA"))
+        func plist(_ path: String) -> [String: Any] {
+            (try? PropertyListSerialization.propertyList(
+                from: Data(contentsOf: skeleton.appendingPathComponent(path)),
+                format: nil
+            )) as? [String: Any] ?? [:]
+        }
+        func keys(_ path: String) -> Set<String> { Set(plist(path).keys) }
+        let mobile = "mobile/Library/Preferences/"
+        if major < 5 {
+            #expect(plist(SystemEdits.globalPreferences)["AppleLocale"] as? String == "en_US")
+            #expect(keys(mobile + "com.apple.purplebuddy.plist").isEmpty)
+            return
+        }
+        let common: Set = [
+            "SetupDone", "SetupFinishedAllSteps", "RestoreChoice", "PBTCPresented", "PBDiagnosticsPresented",
+            "WiFiPresented", "Language", "Locale",
+        ]
+        let buddy: [Int: Set<String>] = [
+            5: common.union(["AppleIDPresented"]), 6: common.union(["AppleIDPB3Presented", "SetupVersion"]),
+            7: common.union([
+                "AppleIDPB5Presented", "PasscodePresented", "SetupVersion", "SetupState", "AppleIDForceUpgrade",
+            ]),
+        ]
+        #expect(keys(mobile + "com.apple.purplebuddy.plist") == buddy[major])
+        #expect(plist(mobile + "com.apple.purplebuddy.plist")["SetupVersion"] as? Int == [6: 3, 7: 5][major])
+        #expect(plist(mobile + "com.apple.purplebuddy.plist")["Locale"] as? String == "fr_CA")
+        #expect(
+            keys(mobile + "com.apple.purplebuddy.notbackedup.plist")
+                == (major == 7
+                    ? ["LocationServices2Presented", "CloudConfigPresented"] : ["LocationServicesPresented"])
+        )
+        let off = major == 7 ? "LocationServicesEnabledIn7.0" : "LocationServicesEnabled"
+        for name in ["com.apple.locationd.plist", "com.apple.locationd.notbackedup.plist"] {
+            #expect(plist(mobile + name)[off] as? Int == 0, "\(name): Location Services off")
+        }
+        #expect(
+            plist("mobile/Library/ConfigurationProfiles/CloudConfigurationDetails.plist")[
+                "CloudConfigurationUIComplete"
+            ]
+                as? Bool == (major == 7 ? true : nil),
+            "7.x: the cloud configuration step done"
+        )
+        #expect(
+            keys(mobile + "com.apple.mobile.user_preferences.plist")
+                == (major == 7 ? ["UserSetLanguage", "UserSetLocale"] : [])
+        )
+        let g = plist(SystemEdits.globalPreferences)
+        #expect(g["AppleLocale"] as? String == "fr_CA" && g["AppleLanguages"] as? [String] == ["fr", "en", "de"])
+        #expect(
+            keys(SystemEdits.dataArk)
+                == (major == 7
+                    ? [
+                        "-ActivationStateAcknowledged", "com.apple.mobile.chaperone-NotSoFresh",
+                        "-FirstPurpleBuddyCompletion",
+                    ]
+                    : [
+                        "com.apple.purplebuddy-SetupState", "com.apple.mobile.user_preferences-UserSetLanguage",
+                        "com.apple.mobile.user_preferences-UserSetLocale",
+                    ])
+        )
+    }
+
     @Test func plistEdits() throws {
         let real = NSMutableDictionary(dictionary: [
             "CurrentSet": "/Sets/S", "NetworkServices": ["W": ["Interface": ["DeviceName": "en0"]]],

@@ -9,6 +9,7 @@
 
 import FirmwareSchema
 import Foundation
+import HostRuntime
 
 /// The app's instance is FirmwareJobs.shared (FirmwareJobs+App.swift); tests make their own over temporary roots.
 @MainActor public final class FirmwareJobs {
@@ -49,6 +50,17 @@ import Foundation
     private let library: DeviceLibrary
     /// Errors with no row to show them on (an IPSW dropped on the window, a second device for an entry).
     private let presentError: (any Error) -> Void
+    private let defaults: UserDefaults
+
+    /// The entries to prepare past Setup Assistant (the preparation screen's checkbox; off unless chosen).
+    public var skipsSetup: Set<String> {
+        get { Set(defaults.stringArray(forKey: "skipSetupEntries") ?? []) }
+        set { defaults.set(newValue.sorted(), forKey: "skipSetupEntries") }
+    }
+    /// Setup Assistant runs on a fresh device from iOS 5 on; before that iTunes activated it.
+    public static func offersSkipSetup(_ entry: FirmwareCatalog.Entry) -> Bool {
+        BootRecipe.setupPhonesHome(iosVersion: entry.version)
+    }
 
     /// `configuration`: tests use an ephemeral session and file URLs. `sweep`: this process holds the library's
     /// lock (Bundled.requireStorage), so staging and torn downloads a previous launch left can go.
@@ -63,8 +75,10 @@ import Foundation
         resources: URL? = Bundle.main.resourceURL,
         library: DeviceLibrary = .shared,
         sweep: Bool = (try? Bundled.requireStorage()) != nil,
+        defaults: UserDefaults = .standard,
         presentError: @escaping (any Error) -> Void
     ) {
+        self.defaults = defaults
         self.catalog = catalog
         self.store = store
         self.state = state
@@ -405,7 +419,8 @@ import Foundation
             helper: Self.helper,
             cache: caches.appendingPathComponent("Decrypted", isDirectory: true),
             log: logs.appendingPathComponent("Preparing/\(entry.id).log"),
-            blob: bundled ? ipsw : nil
+            blob: bundled ? ipsw : nil,
+            skipSetup: !bundled && Self.offersSkipSetup(entry) && skipsSetup.contains(entry.id)
         )
         let job = PreparationJob(request) { [weak self] event in
             Task { @MainActor in self?.preparation(entry, event) }

@@ -41,6 +41,8 @@ public enum FirmwareCommand {
         @Option public var siblingIpsw: String? = nil
         @Option public var stopAfter: Stop? = nil
         @Flag(help: "Adds the GL fixture job to a test device.") public var glTest = false
+        @Flag(help: "Seeds Setup Assistant's finished state (iOS 5 and later): the device starts at the Home screen.")
+        public var skipSetup = false
 
         public init() {}
         public init(
@@ -51,7 +53,8 @@ public enum FirmwareCommand {
             helper: URL? = nil,
             cache: URL? = nil,
             guestTools: URL? = nil,
-            sibling: (entry: URL, ipsw: URL)? = nil
+            sibling: (entry: URL, ipsw: URL)? = nil,
+            skipSetup: Bool = false
         ) {
             self.entry = entry.path
             self.ipsw = ipsw.path
@@ -66,6 +69,7 @@ public enum FirmwareCommand {
             id = nil
             stopAfter = nil
             glTest = false
+            self.skipSetup = skipSetup
         }
 
         public func validate() throws {
@@ -80,7 +84,7 @@ public enum FirmwareCommand {
                     "entry": entry, "catalog": catalog, "id": id, "ipsw": ipsw, "out": out, "seed": seed,
                     "helper": helper, "cache": cache, "guest-tools": guestTools, "sibling-entry": siblingEntry,
                     "sibling-ipsw": siblingIpsw, "stop-after": stopAfter?.rawValue,
-                ]) + (glTest ? ["--gl-test"] : [])
+                ]) + (glTest ? ["--gl-test"] : []) + (skipSetup ? ["--skip-setup"] : [])
         }
     }
 

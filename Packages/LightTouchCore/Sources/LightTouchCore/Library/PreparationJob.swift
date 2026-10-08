@@ -27,7 +27,8 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
             helper: URL,
             cache: URL,
             log: URL,
-            blob: URL? = nil
+            blob: URL? = nil,
+            skipSetup: Bool = false
         ) {
             self.entry = entry
             self.ipsw = ipsw
@@ -39,6 +40,7 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
             self.cache = cache
             self.log = log
             self.blob = blob
+            self.skipSetup = skipSetup
         }
         public var entry: FirmwareCatalog.Entry
         public var ipsw: URL
@@ -54,6 +56,8 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
         public var log: URL
         /// A packed base (the built-in device) to unpack with an identity of its own instead of preparing `ipsw`.
         public var blob: URL? = nil
+        /// Prepare the device past Setup Assistant (firmwarekit create --skip-setup).
+        public var skipSetup = false
     }
 
     public enum Event: Sendable, Equatable {
@@ -175,7 +179,8 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
                         seed: id.uuidString,
                         helper: request.helper,
                         cache: request.cache,
-                        sibling: request.sibling.map { (siblingFile, $0.ipsw) }
+                        sibling: request.sibling.map { (siblingFile, $0.ipsw) },
+                        skipSetup: request.skipSetup
                     ).arguments
             }
             let log = try FileDescriptor.open(request.log.path, .writeOnly)

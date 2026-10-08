@@ -121,6 +121,12 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
             perform(action, for: entry)
         }
         placeholder.onShowLog = { [weak self] in self?.showDeviceLogs(nil) }
+        placeholder.skipsSetup = (
+            { FirmwareJobs.shared.skipsSetup.contains($0) },
+            { id, on in
+                if on { FirmwareJobs.shared.skipsSetup.insert(id) } else { FirmwareJobs.shared.skipsSetup.remove(id) }
+            }
+        )
         placeholder.onDropIPSW = { [weak self] url in self?.handOffIPSW(url, for: self?.selectedEntry) }
         showDetail(placeholder)
         noInspector.shortName = profile.shortName

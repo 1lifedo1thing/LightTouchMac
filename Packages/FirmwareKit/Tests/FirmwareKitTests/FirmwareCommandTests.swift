@@ -16,7 +16,8 @@ struct FirmwareCommandTests {
                 helper: url,
                 cache: url,
                 guestTools: url,
-                sibling: (url, url)
+                sibling: (url, url),
+                skipSetup: true
             ),
             FirmwareCommand.UnpackBase(blob: url, out: url, seed: "S"),
             FirmwareCommand.PackBase(base: url, out: url),
@@ -59,6 +60,13 @@ struct FirmwareCommandTests {
             covered.insert(arguments[0])
         }
         #expect(covered == Set(FirmwareCommand.all.compactMap { $0.configuration.commandName }))
+    }
+
+    /// The app's Skip Setup Assistant choice reaches the preparer as --skip-setup, and only when chosen.
+    @Test func createPassesSkipSetupOnlyWhenChosen() {
+        let url = URL(fileURLWithPath: "/tmp/x")
+        #expect(FirmwareCommand.Create(entry: url, ipsw: url, out: url, skipSetup: true).arguments.last == "--skip-setup")
+        #expect(!FirmwareCommand.Create(entry: url, ipsw: url, out: url).arguments.contains("--skip-setup"))
     }
 
     @Test func createTakesAnEntryOrACatalogWithAnID() {

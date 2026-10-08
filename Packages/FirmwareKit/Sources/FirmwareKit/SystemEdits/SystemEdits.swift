@@ -46,6 +46,9 @@ public enum SystemEdits {
         /// "Set Automatically" starts off, so timed's NTP over Wi-Fi cannot move the clock past the expiry, and
         /// the data ark says unbricked (see bake).
         public var dated = false
+        /// skip_setup (firmwarekit create --skip-setup, never set in the catalog): the data volume says Setup Assistant
+        /// is finished (seedFinishedSetup), so an iOS 5 or later device starts at the Home screen.
+        public var skipSetup = false
         public init() {}
         public init(recipe: FirmwareEntry.Recipe) {
             let o = recipe.options
@@ -57,6 +60,7 @@ public enum SystemEdits {
             bluetooth = o["bluetooth"] ?? false
             guestTools = o["guest_tools"] ?? true
             dated = recipe.rtcEpoch != nil
+            skipSetup = o["skip_setup"] ?? false
         }
     }
 
@@ -387,6 +391,10 @@ public enum SystemEdits {
                 // when TMSystemTimeSet, then !DisableAutomaticTime). Without it a fresh unit's timed took 2026 from NTP.
                 d["DisableAutomaticTime"] = true
             }
+        }
+        if o.skipSetup, productMajor >= 5 {
+            try seedFinishedSetup(skeleton, major: productMajor)
+            log("Setup Assistant: seeded as finished (iOS \(productMajor))")
         }
         if let ark = result.activation?.dataArk {
             // 7.0 beta 1's lockdownd turns the brick state on for an ark without one and lifts it only for a valid

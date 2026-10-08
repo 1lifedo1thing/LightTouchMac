@@ -67,6 +67,9 @@ struct SingleConfig: Decodable {
     var audioWAV: String?
     /// A file the guest agent reads back at home (fileRead), e.g. a marker a stopped edit wrote into the root FS.
     var readFile: String?
+    /// The base was prepared with firmwarekit create --skip-setup: what is frontmost when the agent first answers, and
+    /// at Home what Setup's preferences say (`setupSeed`).
+    var skipSetup: Bool?
     /// contrib/it-proxy/httpget (armv6): at the first Home the guest fetches `WiFiProbe.url`, which only wifi0's
     /// guestfwd answers, so the board's Wi-Fi joined (`wifi`).
     var httpget: String?
@@ -396,6 +399,26 @@ nonisolated enum WiFiProbe {
                     "ok": output.hasPrefix("HTTP 200") && output.hasSuffix(WiFiProbe.body),
                 ]
             )
+        }
+        if s.skipSetup == true, generation == 1 {
+            var values: [String: Any] = [
+                "device": d.name, "agent": asks,
+                "firstFront": (setupFront ?? phoneFront).map { "\($0.bundleID) \($0.name)" } ?? "",
+            ]
+            func plist(_ name: String) async -> [String: Any] {
+                guard asks, let data = try? await guestAgent.get("/var/mobile/Library/Preferences/\(name).plist") else {
+                    return [:]
+                }
+                return (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any] ?? [:]
+            }
+            let buddy = await plist("com.apple.purplebuddy"), global = await plist(".GlobalPreferences")
+            let location = await plist("com.apple.locationd")
+            values["setupDone"] = buddy["SetupDone"] as? Bool ?? false
+            values["locale"] = global["AppleLocale"] as? String ?? ""
+            values["language"] = (global["AppleLanguages"] as? [String])?.first ?? ""
+            values["location"] =
+                (location["LocationServicesEnabledIn7.0"] ?? location["LocationServicesEnabled"]).map { "\($0)" } ?? ""
+            emit("setupSeed", values)
         }
         if let path = s.readFile {
             let data = asks ? try? await guestAgent.get(path) : nil

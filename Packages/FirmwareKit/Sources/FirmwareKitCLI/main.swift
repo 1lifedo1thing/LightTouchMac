@@ -126,6 +126,7 @@ default:  // the root alone, or help
                 try FirmwareEntry.load(id: command.id ?? "", fromCatalog: fileURL(command.catalog ?? ""))
             }
         if command.glTest { entry.recipe?.options["gl_test"] = true }
+        if command.skipSetup { entry.recipe?.options["skip_setup"] = true }
         options = .init(
             entry: entry,
             ipsw: fileURL(command.ipsw),

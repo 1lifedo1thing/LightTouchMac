@@ -65,6 +65,8 @@ struct SingleCheck: ParsableCommand {
     @Flag(help: "Launch the installed IPA through the guest agent; it must be frontmost.") var launch = false
     @Flag(help: "A second cold boot on the same overlay: a file and the app must survive.") var reboot = false
     @Option(help: "The guest agent reads PATH back at Home.") var readFile: String?
+    @Flag(help: "The base was prepared with --skip-setup: no Setup page, Setup's answers from the Mac.")
+    var skipSetup = false
     @Option(help: "Install a newer build of the same app over it; its data must stay.", transform: path)
     var upgradeIPA: URL?
     @Option(help: "With --reboot: boot 2 asks for TZ.") var secondZone: String?

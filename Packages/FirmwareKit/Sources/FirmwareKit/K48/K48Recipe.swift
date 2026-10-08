@@ -453,6 +453,7 @@ final class K48Board: Board {
             "identity": ["die_id": dieID],
             "outputs": outputs,
             "gl_test": SystemEdits.Options(recipe: recipe).glTest,
+            "skip_setup": SystemEdits.Options(recipe: recipe).skipSetup,
             "machine": machineOptions,
         ]
     }

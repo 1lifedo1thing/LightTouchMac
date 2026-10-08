@@ -23,6 +23,7 @@ func single(_ args: SingleCheck) -> Never {
     if args.hostPowerGesture { single["hostPowerGesture"] = true }
     if let zone = args.secondZone { single["secondZone"] = zone }
     if let file = args.readFile { single["readFile"] = file }
+    if args.skipSetup { single["skipSetup"] = true }
     if let panel = args.panel { single["panel"] = panel }
     if let upgrade = args.upgradeIPA { single["upgradeIPA"] = upgrade.path }
     if let wav = args.audioWAV { single["audioWAV"] = wav.path }
@@ -218,6 +219,30 @@ func single(_ args: SingleCheck) -> Never {
                 && (d != "ipod" || ids.count == boots),
             "\(d): both boots reached Home, activation and identity"
         )
+    }
+    if args.skipSetup {
+        // Prepared past Setup: no Setup page on the first boot (a phone's lock screen slide is the only step the
+        // walker may take), and Setup's answers as FirmwareKit seeded them: the Mac's region, Location Services off.
+        let pages = events.find("setup", ["device": d]).compactMap { $0.string("detail") }
+        r.check(
+            pages.allSatisfy { $0 == "Setup walked: (slide)" },
+            "\(d): no Setup page came up: \(pages.isEmpty ? "no walk" : pages.joined(separator: "; "))"
+        )
+        let seed = events.one("setupSeed", ["device": d])
+        let language = Locale.autoupdatingCurrent.language.languageCode?.identifier ?? "en"
+        let mac = Locale.autoupdatingCurrent.region.map { "\(language)_\($0.identifier)" } ?? language
+        r.check(
+            !(seed.string("firstFront") ?? "com.apple.purplebuddy").hasPrefix("com.apple.purplebuddy")
+                && seed.bool("setupDone"),
+            "\(d): Setup finished before the first boot (first answer: \(seed.string("firstFront") ?? "none"), "
+                + "SetupDone \(seed.bool("setupDone")))"
+        )
+        r.check(
+            seed.string("locale") == mac && seed.string("language") == language,
+            "\(d): the Mac's region and language: \(seed.string("locale") ?? "?") \(seed.string("language") ?? "?") "
+                + "(the Mac's \(mac) \(language))"
+        )
+        r.check(seed.string("location") == "0", "\(d): Location Services off: \(seed.string("location") ?? "?")")
     }
     if let file = args.readFile {
         let reads = events.find("fileRead", ["device": d])

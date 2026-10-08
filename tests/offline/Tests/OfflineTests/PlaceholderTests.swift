@@ -116,8 +116,12 @@ extension SharedState {
                 ("requires-ipsw", DeviceRow(entry: ipod, instanceID: nil, session: nil, job: nil)),
             ]
             var failures: [String] = []
+            var skips: Set<String> = []
             for (name, row) in states {
                 let vc = DevicePlaceholderViewController()
+                vc.skipsSetup = (
+                    { skips.contains($0) }, { id, on in if on { skips.insert(id) } else { skips.remove(id) } }
+                )
                 let window = NSWindow(
                     contentRect: NSRect(x: 0, y: 0, width: 760, height: 640),
                     styleMask: [.titled],
@@ -148,8 +152,25 @@ extension SharedState {
                 let labels = all(view).compactMap { $0 as? NSTextField }.filter {
                     visible($0) && !$0.stringValue.isEmpty
                 }
-                let buttons = all(view).compactMap { $0 as? NSButton }.filter { visible($0) && $0.isBordered }
+                let checkboxes = all(view).compactMap { $0 as? NSButton }.filter {
+                    visible($0) && $0.title == "Skip Setup Assistant"
+                }
+                let buttons = all(view).compactMap { $0 as? NSButton }.filter {
+                    visible($0) && $0.isBordered && !checkboxes.contains($0)
+                }
                 func fail(_ s: String) { failures.append("\(name): \(s)") }
+                // Skip Setup Assistant: only before an iOS 5 or later build is prepared (the 5.0 beta here), off until
+                // chosen, and the choice is kept for the entry.
+                if (name == "not-downloaded") != (checkboxes.count == 1) {
+                    fail("Skip Setup shown: \(checkboxes.count)")
+                }
+                if let box = checkboxes.first {
+                    if box.state != .off { fail("Skip Setup on before it was chosen") }
+                    box.performClick(nil)
+                    if !skips.contains(row.entry.id) { fail("the Skip Setup choice wasn't kept") }
+                    vc.update(row, canDownload: true)
+                    if box.state != .on { fail("the kept Skip Setup choice isn't shown") }
+                }
                 // The art is the sidebar's thumbnail for the model, dimmed, not the shell.
                 if let profile = row.entry.profile {
                     let art = all(view).compactMap { $0 as? NSImageView }.first { $0.alphaValue < 1 }

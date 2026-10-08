@@ -3,7 +3,7 @@
 # with its lock) without touching firmware.
 #
 #     fake-firmwarekit create --entry ENTRY.json --ipsw IPSW --out STAGING [--seed S]
-#                             [--helper PATH] [--cache DIR] [--sibling-entry JSON --sibling-ipsw IPSW]
+#                             [--helper PATH] [--cache DIR] [--sibling-entry JSON --sibling-ipsw IPSW] [--skip-setup]
 #
 # FAKE_MODE picks the run: ok (default), error, sha (a sha_mismatch error), crash, incomplete, slow (waits for
 # SIGTERM after step 2, with a read-only nand/ like the real one). FAKE_ARGV, if set, gets argv as JSON.
@@ -19,6 +19,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --entry) entry="$2" ;; --ipsw) ipsw="$2" ;; --out) out="$2" ;; --seed) seed="$2" ;; --cache) cache="$2" ;;
         --helper|--sibling-entry|--sibling-ipsw) ;;
+        --skip-setup) shift; continue ;;
         *) echo "fake: unknown argument $1" >&2; exit 2 ;;
     esac
     shift 2
