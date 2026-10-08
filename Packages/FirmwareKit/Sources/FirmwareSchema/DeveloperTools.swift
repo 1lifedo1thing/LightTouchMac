@@ -221,7 +221,7 @@ nonisolated public enum DeveloperTools {
             }
         }
         let inventory = Data(sourceLines.sorted().joined().utf8)
-        guard hash(inventory) == "a83e15337a64263ae7ce546b82e147b24b09d6fcb5b4559c4d762eafb21f8582" else {
+        guard hash(inventory) == "10119671db51abc5ab7b17030142c7b0a470ba932ab0830472f4039a683561ca" else {
             throw fail("developer redistribution sources or notices are missing or changed")
         }
     }
