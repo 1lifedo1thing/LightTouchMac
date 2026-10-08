@@ -9,13 +9,29 @@ struct Inputs: ParsableArguments {
         transform: path
     )
     var app: URL?
-    @Option(help: "Another emulator dylib (a development build).", transform: path) var dylib: URL?
+    @Option(
+        help: """
+            Another emulator dylib (a development build), for the Debug helper only: not with --app, whose helper \
+            loads the app's own Frameworks/libqemu-arm.dylib (a Release helper ignores LTM_QEMU_DYLIB).
+            """,
+        transform: path
+    )
+    var dylib: URL?
     @Option(transform: path) var usbmuxd: URL?
     @Option(help: "The guest's HTTP client (default: the pinned qemu-ios's contrib/it-proxy/httpget).", transform: path)
     var httpget: URL?
     @Option(help: "Keeps the logs, screenshots and events (default: a temporary directory).", transform: path)
     var work: URL?
     @Option(help: "The signing requirement the driver pins the helper to.") var requirement: String?
+
+    func validate() throws {
+        if app != nil, dylib != nil {
+            throw ValidationError(
+                "--dylib can't be used with --app: the app's helper loads its own Frameworks/libqemu-arm.dylib "
+                    + "(a Release helper ignores LTM_QEMU_DYLIB). Drop --app to boot the Debug helper with --dylib."
+            )
+        }
+    }
 }
 
 /// `value` with ~ expanded.
