@@ -73,11 +73,12 @@ extension MainWindowController {
         filesWindow?.showWindow(sender)
     }
 
-    private func refreshFileStatus() {
+    /// The copy's status shows over the device it copies with, not over whichever is selected.
+    func refreshFileStatus() {
         // A copy pins the window to its device; its end lets the window follow the selection again.
         FilesConnection.shared.setTransferring(hasFileTransfer)
         bindFilesWindow()
-        guard let filesVC, filesVC.hasTransfer else {
+        guard let filesVC, let emulator, FilesConnection.shared.isTransferring(emulator.instance.id) else {
             fileStatus.isHidden = true
             deviceVC?.updateStatusVisibility()
             return

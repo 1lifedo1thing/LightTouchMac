@@ -122,6 +122,7 @@ extension MainWindowController {
         showDetail(workspace.deviceVC)
         inspectorContainer.show(workspace.inspectorVC)
         for status in [startupStatus, fileStatus, captureStatus] { workspace.deviceVC.addStatus(status) }
+        refreshFileStatus()
         // The view restored its board's own zoom; the toolbar follows what it can still do after each layout.
         workspace.deviceVC.screen.onZoomLayout = { [weak self] in self?.syncZoomControls() }
         workspace.deviceVC.onFreeFormChange = { [weak self] in self?.updateSubtitle() }

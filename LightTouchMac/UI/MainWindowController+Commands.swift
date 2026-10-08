@@ -26,7 +26,10 @@ extension MainWindowController {
         case .start: return emulator.map { $0.isDead || ($0.isPoweredOff && !$0.shuttingDown) } ?? true
         case .stop: return emulator?.canShutDown == true
         case .forceStop: return emulator?.canForceStop == true
-        case .erase: return emulator?.isErasing != true && !hasFileTransfer && !recording.isActive
+        case .erase:
+            // A copy holds its own device only (FilesConnection).
+            let copying = host.instance(for: entry).map { FilesConnection.shared.isTransferring($0.id) } ?? false
+            return emulator?.isErasing != true && !copying && !recording.isActive
         default: return true
         }
     }
