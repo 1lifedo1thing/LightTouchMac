@@ -1,4 +1,5 @@
 import AppKit
+import HostRuntime
 import Testing
 
 @testable import AppViews
@@ -357,6 +358,53 @@ extension SharedState {
                 vc.view.layoutSubtreeIfNeeded()
                 drop.draggingExited?(drag)
                 if ring()?.isHidden != true { failures.append("drop: the ring stays after the drag leaves") }
+            }
+
+            // The art sits on the window itself in dark mode, for every board: no lighter square behind it (issue 44;
+            // macOS's iPhone 4 icon has a 12% white plate in its 256-1024 px images).
+            for board in Board.allCases {
+                guard let e = catalog.entries.first(where: { $0.profile == board }) else { continue }
+                let vc = DevicePlaceholderViewController()
+                let window = NSWindow(
+                    contentRect: NSRect(x: 0, y: 0, width: 760, height: 640),
+                    styleMask: [.titled],
+                    backing: .buffered,
+                    defer: true
+                )
+                window.appearance = NSAppearance(named: .darkAqua)
+                window.contentView = vc.view
+                vc.update(DeviceRow(entry: e, instanceID: nil, session: nil, job: nil), canDownload: true)
+                vc.view.layoutSubtreeIfNeeded()
+                func all(_ v: NSView) -> [NSView] { v.subviews.flatMap { [$0] + all($0) } }
+                guard let art = all(vc.view).compactMap({ $0 as? NSImageView }).first(where: { $0.alphaValue < 1 }),
+                    let image = art.image, let bitmap = vc.view.bitmapImageRepForCachingDisplay(in: vc.view.bounds)
+                else {
+                    failures.append("\(board): no art")
+                    continue
+                }
+                vc.view.cacheDisplay(in: vc.view.bounds, to: bitmap)
+                // The image's square, centered in the art view and scaled down to fit.
+                let scale = min(1, art.bounds.width / image.size.width, art.bounds.height / image.size.height)
+                let side = image.size.width * scale
+                let square = vc.view.convert(
+                    NSRect(x: art.bounds.midX - side / 2, y: art.bounds.midY - side / 2, width: side, height: side),
+                    from: art
+                )
+                func pixel(_ p: NSPoint) -> [Int] {
+                    let x = Int(p.x * CGFloat(bitmap.pixelsWide) / vc.view.bounds.width)
+                    let y = Int((vc.view.bounds.height - p.y) * CGFloat(bitmap.pixelsHigh) / vc.view.bounds.height)
+                    var raw = [Int](repeating: 0, count: 4)
+                    bitmap.getPixel(&raw, atX: x, y: y)
+                    return raw
+                }
+                let outside = pixel(NSPoint(x: square.minX - 8, y: square.midY))
+                for corner in [
+                    NSPoint(x: square.minX + 6, y: square.minY + 6), NSPoint(x: square.maxX - 6, y: square.minY + 6),
+                    NSPoint(x: square.minX + 6, y: square.maxY - 6), NSPoint(x: square.maxX - 6, y: square.maxY - 6),
+                ] where zip(pixel(corner), outside).contains(where: { abs($0 - $1) > 1 }) {
+                    failures.append("\(board): the art's square \(pixel(corner)) on the background \(outside)")
+                    break
+                }
             }
 
             // The ⓘ popover: a real size and the build's words, for experimental, untested and beta builds.
