@@ -205,6 +205,8 @@ final class EmulatorController {
     var status: SharedStatus? { process?.status }
     /// The session replaces this controller with a fresh helper (DeviceSessionHost.restart).
     @ObservationIgnored var onRestartRequested: (() -> Void)?
+    /// A restart asked for (onRestartRequested) won't happen: the view's free-form restart ends (C-4).
+    @ObservationIgnored var onRestartRefused: (() -> Void)?
     @ObservationIgnored var onStorageGenerationChanged: (() -> Void)?
     /// The active recording's audio (GuestAudioCapture).
     @ObservationIgnored var audioSink: ((LinkEvent) -> Void)?

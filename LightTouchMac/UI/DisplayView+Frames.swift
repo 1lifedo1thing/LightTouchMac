@@ -66,7 +66,9 @@ extension DisplayView {
         // and the iPod's framebuffer leave it 0, which a layer would honor.
         contentLayer.contents = frame.surface
         if showsHandoff {
+            // The new boot's first frame: the hand-off and its "Restarting at…" are over (state audit C-4).
             showsHandoff = false
+            restartTitle = nil
             needsLayout = true
         }
         if let model = modelView ?? pendingModelView, let image = Self.image(frame.surface, colorSpace: colorSpace) {

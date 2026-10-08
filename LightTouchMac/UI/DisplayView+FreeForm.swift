@@ -231,6 +231,16 @@ extension DisplayView {
         return true
     }
 
+    /// The owner couldn't restart (the helper didn't exit, or another restart was under way): the size waits for
+    /// Apply again, and no later restart inherits this one's last frame (state audit C-4).
+    func panelRestartRefused() {
+        guard restartingAtPanel else { return }
+        restartingAtPanel = false
+        if let deviceKey { Self.handoffs[deviceKey] = nil }
+        updatePowerPresentation()
+        freeFormChanged()
+    }
+
     /// "Restarting at W × H…" while this device restarts at a new size.
     var panelRestartText: String? {
         guard restartingAtPanel else { return nil }

@@ -24,6 +24,7 @@ final class DeviceViewController: NSViewController {
         displayView.onPanelChange = { [weak emulator] upright, restart in
             emulator?.setPanel(upright.map(profile.panelOption(upright:)), restart: restart) ?? false
         }
+        emulator.onRestartRefused = { [weak displayView] in displayView?.panelRestartRefused() }
         // A free-form size waiting for Apply, or the restart at it, is a notice like the others: same stack, same
         // glass, never under one. The window's subtitle reads the size.
         panelStatus.isHidden = true

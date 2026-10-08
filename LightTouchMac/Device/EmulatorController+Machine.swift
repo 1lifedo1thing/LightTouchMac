@@ -43,7 +43,11 @@ extension EmulatorController {
         logEvent("display: restarting \(instance.name) at panel \(panel ?? "native")")
         let halt = halt()
         Task { [weak self] in
-            _ = await halt.value
+            guard await halt.value else {
+                logEvent("display: the helper didn't stop; not restarting at the new panel")
+                self?.onRestartRefused?()
+                return
+            }
             self?.onRestartRequested?()
         }
         return true

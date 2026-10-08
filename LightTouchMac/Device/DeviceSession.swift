@@ -169,13 +169,17 @@ extension DeviceSession: LibrarySession {
         let id = session.instance.id
         guard sessions.contains(where: { $0 === session }), !restarting.contains(id),
             let entry = catalog.entry(id: session.instance.firmware)
-        else { return }
+        else {
+            session.emulator.onRestartRefused?()
+            return
+        }
         restarting.insert(id)
         logEvent("device: restarting \(session.instance.name)")
         Task {
             let released = await session.emulator.release()
             restarting.remove(id)
             guard released else {
+                session.emulator.onRestartRefused?()
                 logEvent(
                     "device: \(session.instance.name)'s helper did not exit; not starting a second one on its storage"
                 )

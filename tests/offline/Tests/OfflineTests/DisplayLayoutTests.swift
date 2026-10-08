@@ -565,6 +565,35 @@ extension SharedState {
             d.mouseDown(with: event(.leftMouseDown, d, CGPoint(x: b.maxX + 4, y: b.midY)))
             check(d.panelDrag == nil && d.panelRestartText == "Restarting at 360 × 504…", "a drag during the restart")
             w.contentView = nil
+            // State audit C-4: the next session's view titles its startup "Restarting at…" until its first frame, no
+            // longer (a later Restart or Start showed the stale size).
+            let restartKey = try #require(d.deviceKey)
+            var (handedOff, handedOffDevice, nextWindow) = try await make(pod, panel: size(360, 504), key: restartKey)
+            check(
+                handedOff.restartTitle == "Restarting at 360 × 504…" && handedOff.showsHandoff,
+                "hand-off \(handedOff.restartTitle ?? "none")"
+            )
+            frozen = false  // the new boot paints
+            _ = handedOff.currentFrame()
+            frozen = true
+            _ = handedOffDevice
+            check(
+                handedOff.restartTitle == nil && !handedOff.showsHandoff,
+                "after the first frame: \(handedOff.restartTitle ?? "none")"
+            )
+            nextWindow.contentView = nil
+            // A restart the owner refused ends the view's: the size waits again, and its last frame is no one's.
+            (d, e, w) = try await make(pod, panel: size(320, 504))
+            d.freeFormTarget = size(360, 504)
+            d.applyPanel()
+            check(d.restartingAtPanel, "restarting")
+            d.panelRestartRefused()
+            check(!d.restartingAtPanel && d.panelRestartText == nil && d.hasPendingPanel, "refused: still waiting")
+            let refusedKey = try #require(d.deviceKey)
+            (handedOff, handedOffDevice, nextWindow) = try await make(pod, panel: size(320, 504), key: refusedKey)
+            check(handedOff.restartTitle == nil && !handedOff.showsHandoff, "a refused restart hands nothing off")
+            nextWindow.contentView = nil
+            w.contentView = nil
 
             // The zoom holds through a drag and after it: Fit becomes the points it showed, no jump on release.
             requests.removeAll()
