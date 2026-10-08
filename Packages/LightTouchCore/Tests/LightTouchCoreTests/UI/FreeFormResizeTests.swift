@@ -106,7 +106,7 @@ struct FreeFormResizeTests {
             let rows = try #require(board.hardware?.panelMaxHeight)
             let tall = FreeFormResize(board: board).snap(upright: CGSize(width: 320, height: rows + 57))
             #expect(tall.size == CGSize(width: 320, height: rows))
-            #expect(tall.limit == "The \(board.shortName)’s display takes at most \(rows) lines.")
+            #expect(tall.limit == "iOS keeps this screen’s height in 9 bits, so \(rows) lines is the most it can use.")
         }
     }
 

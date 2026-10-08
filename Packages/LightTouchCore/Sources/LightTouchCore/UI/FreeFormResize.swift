@@ -115,9 +115,10 @@ nonisolated public struct FreeFormResize: Sendable {
     private var smallest: String { "The smallest screen is \(Int(minSide)) pixels a side." }
 
     private func tooLarge(_ n: Int, rows: Bool) -> String {
-        // The CLCD boards' kernels write the window height in 9 bits (qemu-ios hw/arm/ipod_touch_lcd.c).
+        // The CLCD boards' display driver keeps the window height in 9 bits: at 320x568 iPhone OS 3.1.3 writes 56
+        // rows, draws only those and never gets past its boot spinner, so the emulator can't show more (2026-10-08).
         if rows, board.soc == .s5l8720 || board.soc == .s5l8920 {
-            return "The \(board.shortName)’s display takes at most \(n) lines."
+            return "iOS keeps this screen’s height in 9 bits, so \(n) lines is the most it can use."
         }
         return "The \(board.shortName)’s display takes at most \(n) pixels a side."
     }
