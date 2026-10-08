@@ -97,6 +97,11 @@ public final class BootCycle {
         }
         guard !host.shuttingDown else { return }
         guard !host.storageFailed else { return }
+        if host.state == .paused {
+            // A paused guest can't sync: resume it first (state audit A-14).
+            host.helperLink?.send(.machine(.resume))
+            host.state = .running
+        }
         let preparation = host.readiness.current
         preparation?.cancel()
         let generation = host.bootScope.generation

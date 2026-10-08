@@ -35,6 +35,22 @@ struct BootCycleTests {
         }
     }
 
+    /// State audit A-14: Restart on a paused device asked a guest that couldn't answer to sync, then said it
+    /// "didn't finish saving its files" and left it paused. It resumes the guest first.
+    @Test func restartResumesAPausedGuestFirst() async throws {
+        try await withScratchDirectory { directory in
+            let c = session(directory)
+            c.state = .paused
+            c.link.onCommand = { if $0 == .machine(.resume) { c.syncFails = false } }
+            c.syncFails = true  // as a paused guest's agent
+            c.cycle.reset()
+            await c.bootScope[.reset]?.value
+            #expect(c.link.commands == [.machine(.resume), .machine(.reset)] && c.state == .booting)
+            #expect(c.notices.message == nil)
+            c.readiness.cancel()
+        }
+    }
+
     @Test func aFailedSyncResetsNothing() async throws {
         try await withScratchDirectory { directory in
             let c = session(directory)

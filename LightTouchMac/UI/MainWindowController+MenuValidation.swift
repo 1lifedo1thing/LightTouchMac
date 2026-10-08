@@ -17,7 +17,9 @@ extension MainWindowController: NSMenuItemValidation {
         state.isPaused = emulator.isPaused
         state.isSleeping = emulator.isSleeping
         state.isPoweredOff = emulator.isPoweredOff
+        state.isDead = emulator.isDead
         state.shuttingDown = emulator.shuttingDown
+        state.storageFailed = emulator.storageFailed
         state.isInstalling = emulator.isInstalling
         state.hasPendingInstalls = AppInstaller.hasPendingWork(for: emulator.instance.id)
         state.acceptsInput = emulator.acceptsInput
@@ -155,7 +157,7 @@ extension MainWindowController: NSMenuItemValidation {
             return emulator.profile.canToggleHardwareKeyboard
         case #selector(deviceShutDown(_:)): return emulator.canShutDown
         case #selector(deviceForceStop(_:)): return emulator.canForceStop
-        case #selector(deviceReset(_:)): return !emulator.isDead
+        case #selector(deviceReset(_:)): return apply(deviceMenu.validate(.restart), to: menuItem)
         case #selector(toggleTouchOverlay(_:)):
             menuItem.title = deviceVC.screen.showsTouches ? "Hide Finger Dots" : "Show Finger Dots"
             return true

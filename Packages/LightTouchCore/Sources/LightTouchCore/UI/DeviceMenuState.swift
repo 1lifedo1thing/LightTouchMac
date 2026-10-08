@@ -5,7 +5,9 @@ public struct DeviceMenuState {
     public var isPaused = false
     public var isSleeping = false
     public var isPoweredOff = false
+    public var isDead = false
     public var shuttingDown = false
+    public var storageFailed = false
     /// An install executing now, or one queued behind it (AppInstaller).
     public var isInstalling = false
     public var hasPendingInstalls = false
@@ -30,6 +32,8 @@ public struct DeviceMenuState {
         /// Home, Shake, Volume Up and Down: plain input.
         case input
         case pause
+        /// Restart: in place (a paused guest is resumed first: BootCycle.reset), or Power On when powered off.
+        case restart
     }
 
     public struct Validation: Equatable {
@@ -70,6 +74,8 @@ public struct DeviceMenuState {
                 isEnabled: (isRunning || isPaused) && !isInstalling && !hasPendingInstalls,
                 title: isPaused ? "Resume" : "Pause"
             )
+        case .restart:
+            Validation(isEnabled: !isDead && !shuttingDown && !storageFailed)
         }
     }
 }

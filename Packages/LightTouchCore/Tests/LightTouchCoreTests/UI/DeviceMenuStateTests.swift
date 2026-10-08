@@ -29,6 +29,26 @@ struct DeviceMenuStateTests {
         #expect(!state.validate(.pause).isEnabled, "nothing to pause when stopped")
     }
 
+    /// State audit A-14: Restart was enabled whenever the device wasn't dead. Paused, it is (the restart resumes the
+    /// guest first); powered off it powers on; not while it stops, is dead, or its storage failed.
+    @Test func restartIsOfferedWhereItCanRun() {
+        var state = running()
+        #expect(state.validate(.restart).isEnabled)
+        state.isRunning = false
+        state.isPaused = true
+        #expect(state.validate(.restart).isEnabled)
+        state = DeviceMenuState()
+        state.isPoweredOff = true
+        #expect(state.validate(.restart).isEnabled)
+        for change: (inout DeviceMenuState) -> Void in [
+            { $0.isDead = true }, { $0.shuttingDown = true }, { $0.storageFailed = true },
+        ] {
+            var stopped = running()
+            change(&stopped)
+            #expect(!stopped.validate(.restart).isEnabled)
+        }
+    }
+
     @Test func rotationLeavesArrowKeysToTextBeingEdited() {
         var state = running()
         #expect(state.validate(.rotate).isEnabled)
