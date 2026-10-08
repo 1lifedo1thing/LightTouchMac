@@ -53,6 +53,9 @@ public enum Board: String, Sendable, CaseIterable, Codable {
         /// The image carries our guest agent and shell from preparation (iPod touch 2G); the others get theirs as
         /// a guest package at boot.
         public var guestTools = false
+        /// A GPS receiver the emulator models: the iPhone 3GS's, part of its modem (qemu-ios ios_baseband_gps.c,
+        /// docs/baseband/gps.md). The iPhone 4's BCM4750 isn't modeled; the original iPhone has none.
+        public var hasGPS = false
         public var art: Art
     }
 
@@ -116,6 +119,7 @@ public enum Board: String, Sendable, CaseIterable, Codable {
                 kind: .iPhone,
                 productType: "iPhone2,1",
                 marketingName: "iPhone 3GS",
+                hasGPS: true,
                 art: art("shell-iphone2g", "N88", (383, 729), (33, 130, 320, 480), home: 70, inset: 34, ppi: 163)
             )
         // The iPad's home button: iPad.deviceinfo's homeOriginX/Y (412, 9, bottom-left origin) and its 29x31 home.png.
@@ -159,6 +163,10 @@ public enum Board: String, Sendable, CaseIterable, Codable {
     /// What the device is called in menus, titles and messages ("the iPod").
     public var shortName: String { facts.kind == .iPod ? "iPod" : facts.kind.rawValue }
     public var isPhone: Bool { facts.kind == .iPhone }
+    /// A vibration motor: every iPhone has one the emulator drives (the original iPhone's through its baseband, the
+    /// 3GS's and iPhone 4's from PWM); no iPod touch or iPad has one.
+    public var hasVibrator: Bool { isPhone }
+    public var hasGPS: Bool { facts.hasGPS }
 
     /// The S5L8920/S5L8930 boards: FirmwareKit prepares them alike and they boot kboot (iBoot too on K48) through
     /// BootRecipe.iPad.

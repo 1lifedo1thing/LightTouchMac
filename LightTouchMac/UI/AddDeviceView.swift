@@ -1,6 +1,6 @@
 // The Add Device sheet: the firmware catalog split by device. Devices on the left, with their artwork and how many of
 // their versions are picked; the chosen device's versions on the right, in version order, each with its support
-// status and whether its IPSW is here (else its download size), and below them what the picked versions are. Versions
+// status and whether its IPSW is here (else its download size), and below them the picks (AddDeviceSummary). Versions
 // already in the sidebar are checked and can't be picked again. Only stable builds show until Show experimental is on
 // (remembered). Picks survive switching devices; Add adds them all.
 // A sheet, not a window: it belongs to the one main window and is done before the user goes on (HIG, Sheets).
@@ -21,6 +21,8 @@ struct AddDeviceView: View {
     let groups: [Group]
     let added: Set<String>
     let downloaded: Set<String>
+    /// Entries the bundled guest tools have a package for (GuestPackage.packaged).
+    let guestPackaged: Set<String>
     let onAdd: ([String]) -> Void
     let onCancel: () -> Void
     @State private var selection: Set<String>
@@ -31,6 +33,7 @@ struct AddDeviceView: View {
         catalog: FirmwareCatalog,
         added: Set<String>,
         downloaded: Set<String>,
+        guestPackaged: Set<String> = [],
         selection: Set<String> = [],
         device: String? = nil,
         onAdd: @escaping ([String]) -> Void,
@@ -51,6 +54,7 @@ struct AddDeviceView: View {
         }
         self.added = added
         self.downloaded = downloaded
+        self.guestPackaged = guestPackaged
         self.onAdd = onAdd
         self.onCancel = onCancel
         _selection = State(initialValue: selection)
@@ -116,7 +120,7 @@ struct AddDeviceView: View {
             }
             .padding(16)
         }
-        .frame(minWidth: 660, idealWidth: 780, minHeight: 400, idealHeight: 540)
+        .frame(minWidth: 700, idealWidth: 800, minHeight: 500, idealHeight: 620)
     }
 
     /// The sheet's window: resizable down to the view's minimum, at its last size (autosaved), else the ideal one.
@@ -125,39 +129,42 @@ struct AddDeviceView: View {
         hosting.sizingOptions = [.minSize]
         let sheet = NSWindow(contentViewController: hosting)
         sheet.styleMask = [.titled, .resizable]
-        sheet.setContentSize(NSSize(width: 780, height: 540))
+        sheet.setContentSize(NSSize(width: 800, height: 620))
         sheet.setFrameAutosaveName("AddDeviceSheet")
         return sheet
     }
 
     private func versions(_ group: Group) -> some View {
         VStack(spacing: 0) {
-            List(selection: $selection) {
-                Section {
-                    ForEach(group.entries) { entry in
-                        AddDeviceRow(
-                            entry: entry,
-                            added: added.contains(entry.id),
-                            downloaded: downloaded.contains(entry.id)
-                        )
-                        .selectionDisabled(added.contains(entry.id))
+            ScrollViewReader { list in
+                List(group.entries, selection: $selection) { entry in
+                    AddDeviceRow(
+                        entry: entry,
+                        added: added.contains(entry.id),
+                        downloaded: downloaded.contains(entry.id)
+                    )
+                    .selectionDisabled(added.contains(entry.id))
+                }
+                .contextMenu(
+                    forSelectionType: String.self,
+                    menu: { _ in },
+                    // Double-click or Return in the list adds what's picked, as Add does.
+                    primaryAction: { _ in
+                        if !picked.isEmpty { onAdd(picked) }
                     }
-                } header: {
-                    Text(group.name)
+                )
+                // A device opened on a pick shows it.
+                .task(id: group.id) {
+                    if let pick = group.entries.first(where: { selection.contains($0.id) }) {
+                        list.scrollTo(pick.id, anchor: .center)
+                    }
                 }
             }
-            .contextMenu(
-                forSelectionType: String.self,
-                menu: { _ in },
-                // Double-click or Return in the list adds what's picked, as Add does.
-                primaryAction: { _ in
-                    if !picked.isEmpty { onAdd(picked) }
-                }
-            )
             Divider()
             AddDeviceSummary(
                 entries: shownGroups.flatMap(\.entries).filter { picked.contains($0.id) },
-                downloaded: downloaded
+                downloaded: downloaded,
+                guestPackaged: guestPackaged
             )
         }
     }
@@ -235,62 +242,5 @@ struct AddDeviceRow: View {
             [status, Self.ipsw(entry, downloaded: downloaded), added ? "In the sidebar" : nil]
                 .compactMap { $0 }.joined(separator: ", ")
         )
-    }
-}
-
-/// Below the versions: the one picked version in full (released, download, prepared size, its note), or how many are
-/// picked and what they download.
-struct AddDeviceSummary: View {
-    let entries: [FirmwareCatalog.Entry]
-    let downloaded: Set<String>
-
-    /// What Add will download: the picked IPSWs that aren't here and don't ship with the app.
-    static func downloadBytes(_ entries: [FirmwareCatalog.Entry], downloaded: Set<String>) -> Int64 {
-        entries.filter { $0.bundled == nil && !downloaded.contains($0.id) }.map(AddDeviceRow.downloadBytes).reduce(0, +)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if entries.count == 1, let entry = entries.first {
-                Text(
-                    "\(entry.marketingName), iOS \(entry.version)\(entry.prereleaseBadge.map { " \($0)" } ?? "")"
-                        + " (\(entry.build))"
-                )
-                .font(.headline)
-                Text(facts(entry))
-                    .foregroundStyle(.secondary)
-                if let note = entry.statusNote {
-                    Text(note)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-            } else if !entries.isEmpty {
-                Text("\(entries.count) versions")
-                    .font(.headline)
-                Text(download)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .font(.callout)
-        .frame(maxWidth: .infinity, minHeight: 64, alignment: .topLeading)
-        .padding(12)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var download: String {
-        let bytes = Self.downloadBytes(entries, downloaded: downloaded)
-        return bytes == 0 ? "Nothing to download" : "\(bytes.formatted(.byteCount(style: .file))) to download"
-    }
-
-    private func facts(_ entry: FirmwareCatalog.Entry) -> String {
-        var facts: [String] = []
-        if let released = entry.released.flatMap({ try? Date($0, strategy: .iso8601.year().month().day()) }) {
-            facts.append("Released \(released.formatted(date: .long, time: .omitted))")
-        }
-        facts.append(
-            entry.bundled != nil ? "Included with Light Touch" : downloaded.contains(entry.id) ? "Downloaded" : download
-        )
-        facts.append("\(entry.estimates.preparedBytes.formatted(.byteCount(style: .file))) once prepared")
-        return facts.joined(separator: " · ")
     }
 }

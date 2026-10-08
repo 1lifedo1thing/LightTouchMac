@@ -154,6 +154,9 @@ extension MainWindowController {
             catalog: catalog,
             added: Set(library.entries.map(\.id)),
             downloaded: downloaded,
+            guestPackaged: GuestPackage.packaged(catalog.entries) {
+                GuestPackage.bundledPack(arch: $0, filesRoot: Bundled.filesRoot, guestRoot: Bundled.guestRoot)
+            },
             device: selectedEntry?.board,
             onAdd: { [weak self, weak window] ids in
                 sheet.map { window?.endSheet($0) }

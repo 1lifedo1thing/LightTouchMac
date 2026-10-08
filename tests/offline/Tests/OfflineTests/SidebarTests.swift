@@ -581,6 +581,16 @@ extension SharedState {
                     .appendingPathComponent("../../../../LightTouchMac/Resources/firmware-catalog.json")
                     .standardizedFileURL
             )
+            // The emulator's machine table (cellular, panel limits) as the app lists it from its helper.
+            Machines.set(
+                try JSONDecoder().decode(
+                    [DeviceInfo].self,
+                    from: Data(
+                        contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+                            .appendingPathComponent("../../../fixtures/machines.json").standardizedFileURL
+                    )
+                )
+            )
             let experimentalKey = "addDeviceShowsExperimental"
             defer {
                 UserDefaults.standard.removeObject(forKey: experimentalKey)
@@ -610,7 +620,7 @@ extension SharedState {
                 device: String? = nil,
                 added: Set<String> = ["k48ap-7B500", "n72ap-8C148"],
                 appearance: NSAppearance.Name = .aqua,
-                size: NSSize = NSSize(width: 780, height: 540)
+                size: NSSize = NSSize(width: 800, height: 620)
             ) -> (NSWindow, [NSTableView]) {
                 UserDefaults.standard.set(experimental, forKey: experimentalKey)
                 // Before the view is made: SwiftUI outside the lists takes the appearance it starts with.
@@ -618,7 +628,9 @@ extension SharedState {
                 let view = AddDeviceView(
                     catalog: catalog,
                     added: added,
-                    downloaded: ["n72ap-8B117", "k48ap-7B500", "n72ap-8C148", "k48ap-7B367"],
+                    downloaded: ["n72ap-8B117", "k48ap-7B500", "n72ap-8C148", "k48ap-7B367", "n90ap-11D257"],
+                    // As the bundled itpacks (qemu-ios mkpkg's families) have them.
+                    guestPackaged: ["n88ap-10B500", "n90ap-11D257", "k48ap-9B206"],
                     selection: selection,
                     device: device,
                     onAdd: { addedIDs.append($0) },
@@ -635,8 +647,35 @@ extension SharedState {
                     .sorted { $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX }
                 return (window, tables)
             }
+            /// The live sheet's lists are AppKit source-list and inset tables: a selected sidebar row's highlight is an
+            /// NSVisualEffectView with the .selection material, which the window server composites (accent while the
+            /// window is key and the list focused, gray otherwise) and which draws black in a window never ordered in.
+            /// For the render only, that material is swapped for the color it composites to, emphasized as when the
+            /// sheet is up with the device list focused, or not (another window is key).
+            var emphasized = true
+            func paintSelection(_ content: NSView) {
+                for table in all(content).compactMap({ $0 as? NSTableView }) {
+                    // The device list has the focus; the versions list's selection is then gray.
+                    let focused = emphasized && table.style == .sourceList
+                    for row in all(table).compactMap({ $0 as? NSTableRowView }) where row.isSelected {
+                        row.isEmphasized = focused
+                        for effect in row.subviews.compactMap({ $0 as? NSVisualEffectView })
+                        where effect.material == .selection {
+                            effect.isHidden = true
+                            let box = NSBox(frame: effect.frame)
+                            box.boxType = .custom
+                            box.borderWidth = 0
+                            box.cornerRadius = 5
+                            box.fillColor =
+                                focused ? .selectedContentBackgroundColor : .unemphasizedSelectedContentBackgroundColor
+                            row.addSubview(box, positioned: .below, relativeTo: nil)
+                        }
+                    }
+                }
+            }
             func render(_ window: NSWindow, _ name: String) throws {
                 let content = window.contentView!
+                paintSelection(content)
                 content.display()
                 RunLoop.main.run(until: Date().addingTimeInterval(0.3))
                 let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds)!
@@ -687,7 +726,7 @@ extension SharedState {
             {
                 fail("sheet window: \(window.styleMask), toolbar \(String(describing: window.toolbar))")
             }
-            if window.contentMinSize.width < 600 || window.contentMinSize.width > 780 {
+            if window.contentMinSize.width < 600 || window.contentMinSize.width > 800 {
                 fail("sheet minimum: \(window.contentMinSize)")
             }
             if tables.count != 2 || tables.first?.numberOfRows != 2 {
@@ -726,23 +765,35 @@ extension SharedState {
             }
             if addedIDs != [["k48ap-7B367", "n72ap-5H11a"]] { fail("Return handed over \(addedIDs)") }
 
-            // Experimental shown: every device; type-select reaches the iPhone 3GS.
-            (window, tables) = sheet(experimental: true, selection: ["n88ap-7E18"], device: "n88ap")
+            // Experimental shown: every device. One pick on each device below, and several, in light and dark;
+            // type-select reaches the iPhone 3GS.
+            (window, tables) = sheet(experimental: true, selection: ["n88ap-10B500"], device: "n88ap")
             if tables.first?.numberOfRows != 8 { fail("experimental devices: \(tables.first?.numberOfRows ?? -1)") }
-            try render(window, "experimental-iphone3gs-light")
-            (window, tables) = sheet(
-                experimental: true,
-                selection: ["n88ap-7E18"],
-                device: "n88ap",
-                appearance: .darkAqua
-            )
-            try render(window, "experimental-iphone3gs-dark")
-            (window, tables) = sheet(experimental: true, device: "n45ap", appearance: .darkAqua)
-            try render(window, "experimental-ipod1g-dark")
-            (window, tables) = sheet(experimental: true, selection: ["n90ap-8A293"], device: "n90ap")
-            try render(window, "experimental-iphone4-long-light")
-            (window, tables) = sheet(experimental: true, device: "k48ap", size: NSSize(width: 660, height: 400))
-            try render(window, "experimental-ipad-minimum-light")
+            let picks: [(String, Set<String>, String)] = [
+                ("iphone3gs-6.1.6", ["n88ap-10B500"], "n88ap"),
+                ("iphone4-7.1.2", ["n90ap-11D257"], "n90ap"),
+                ("ipod1g-1.1.4", ["n45ap-4A102"], "n45ap"),
+                ("ipad-5.1.1", ["k48ap-9B206"], "k48ap"),
+                ("several", ["n88ap-10B500", "n90ap-11D257", "k48ap-9B206"], "n90ap"),
+            ]
+            for (name, selection, device) in picks {
+                for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+                    (window, tables) = sheet(
+                        experimental: true,
+                        selection: selection,
+                        device: device,
+                        appearance: appearance
+                    )
+                    try render(window, "\(name)-\(appearance == .aqua ? "light" : "dark")")
+                }
+            }
+            // Not key (another window is): the device list's selection gray.
+            emphasized = false
+            (window, tables) = sheet(experimental: true, selection: ["n90ap-11D257"], device: "n90ap")
+            try render(window, "iphone4-7.1.2-inactive-light")
+            (window, tables) = sheet(experimental: true, device: "k48ap", size: NSSize(width: 700, height: 500))
+            try render(window, "ipad-minimum-inactive-light")
+            emphasized = true
             if let devices = tables.first {
                 window.makeFirstResponder(devices)
                 devices.selectRowIndexes([0], byExtendingSelection: false)

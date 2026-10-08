@@ -67,7 +67,7 @@
   "board": "n88ap",
   "defaultOrientation": 0,
   "hasCellular": true,
-  "hasCompass": false,
+  "hasCompass": true,
   "hasUSBHost": false,
   "machine": "n88",
   "panelMaxHeight": 511,
