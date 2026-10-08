@@ -43,10 +43,9 @@ extension SharedState {
             _ = NSApplication.shared
             NSApp.setActivationPolicy(.prohibited)
             let fixtures = fixture("store-filter")
-            struct Envelope: Decodable { let apps: [CatalogApp] }
             func apps(_ name: String) throws -> [CatalogApp] {
-                try JSONDecoder().decode(Envelope.self, from: Data(contentsOf: fixtures.appendingPathComponent(name)))
-                    .apps
+                let data = try Data(contentsOf: fixtures.appendingPathComponent(name))
+                return try JSONDecoder().decode(Envelope.self, from: data).apps
             }
             let ipod = try apps("ipod2-3.1.3-dash.json")
             let ipad = try apps("ipad1-3.2-dash.json")
@@ -159,3 +158,5 @@ extension SharedState {
         }
     }
 }
+
+private struct Envelope: Decodable { let apps: [CatalogApp] }

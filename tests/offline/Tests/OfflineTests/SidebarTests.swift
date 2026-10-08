@@ -78,13 +78,13 @@ extension SharedState {
             /// Each visible row's texts, top to bottom then leading to trailing: [title, subtitle] and any accessory text.
             func rows(_ vc: DeviceLibraryViewController) -> [[String]] {
                 let outline = all(vc.view).compactMap { $0 as? NSOutlineView }.first!
-                return (0..<outline.numberOfRows).map { r in
+                return (0..<outline.numberOfRows).map { @MainActor r in
                     let cell = outline.view(atColumn: 0, row: r, makeIfNecessary: true)!
-                    func top(_ f: NSTextField) -> CGFloat {
+                    @MainActor func top(_ f: NSTextField) -> CGFloat {
                         let rect = f.convert(f.bounds, to: cell)
                         return cell.isFlipped ? rect.minY : -rect.maxY
                     }
-                    func before(_ a: NSTextField, _ b: NSTextField) -> Bool {
+                    @MainActor func before(_ a: NSTextField, _ b: NSTextField) -> Bool {
                         abs(top(a) - top(b)) > 4
                             ? top(a) < top(b) : a.convert(a.bounds, to: cell).minX < b.convert(b.bounds, to: cell).minX
                     }

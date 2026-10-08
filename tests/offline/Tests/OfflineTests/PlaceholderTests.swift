@@ -342,7 +342,7 @@ extension SharedState {
                 window.appearance = NSAppearance(named: .aqua)
                 window.contentView = vc.view
                 vc.update(states[1].1, canDownload: true)
-                let drop = vc.view as! NSDraggingDestination
+                let drop: NSDraggingDestination = vc.view
                 let drag = Drag()
                 defer { drag.draggingPasteboard.releaseGlobally() }
                 func ring() -> NSView? { vc.view.subviews.first { $0 is DropHighlight } }

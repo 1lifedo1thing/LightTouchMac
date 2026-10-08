@@ -73,7 +73,10 @@ extension SharedState {
             func children(_ view: NSView) -> [NSView] { view.subviews.flatMap { [$0] + children($0) } }
             let all = children(vc.view)
             let browser = try #require(all.compactMap { $0 as? NSBrowser }.first)
-            func rows(_ column: Int) -> Int { browser.matrix(inColumn: column)?.numberOfRows ?? -1 }
+            func rows(_ column: Int) -> Int {
+                guard column <= browser.lastColumn else { return -1 }
+                return (0...).first { browser.loadedCell(atRow: $0, column: column) == nil }!
+            }
             try await until("the root listing") { rows(0) == 1 }
             browser.selectRow(0, inColumn: 0)
             browser.addColumn()
@@ -208,7 +211,7 @@ extension SharedState {
             vc.services = nil
             vc.reload()
             try await until("the stale listing's reply") { replies > asked }
-            #expect(browser.matrix(inColumn: 0)!.numberOfRows == 0 && !export.isEnabled)
+            #expect(rows(0) == 0 && !export.isEnabled)
             #expect(!vc.validateMenuItem(save) && !vc.validateMenuItem(copy) && !vc.validateMenuItem(cancel))
             let idleStatus = vc.transferStatus
             vc.cancelTransfer()

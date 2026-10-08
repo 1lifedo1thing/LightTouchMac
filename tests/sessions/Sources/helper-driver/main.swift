@@ -138,9 +138,9 @@ link.onTerminated = { termination in
     terminated.signal()
 }
 
-func sync<T>(_ body: (@escaping (T) -> Void) -> Void) -> T {
+func sync<T>(_ body: (@escaping @Sendable (T) -> Void) -> Void) -> T {
     let done = DispatchSemaphore(value: 0)
-    var value: T?
+    nonisolated(unsafe) var value: T?
     body {
         value = $0
         done.signal()

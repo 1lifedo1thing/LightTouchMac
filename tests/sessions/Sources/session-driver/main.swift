@@ -62,7 +62,7 @@ func fail(_ why: String) -> Never {
     exit(1)
 }
 
-nonisolated(unsafe) let config = try! JSONDecoder().decode(
+let config = try! JSONDecoder().decode(
     Config.self,
     from: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]))
 )
@@ -184,7 +184,7 @@ extension String {
             url: dir.appendingPathComponent("serial.log"),
             temporaryRoot: work,
             watch: serialWatch?.phrases ?? [],
-            onMatch: serialWatch?.onMatch ?? { _ in }
+            onMatch: serialWatch?.onMatch ?? { @Sendable _ in }
         )
         // Preparation runs after hello, when the helper owns the storage lease.
         func configuration(_ hardware: DeviceInfo?) throws -> BootConfig {

@@ -30,7 +30,7 @@ enum MainBundle {
             format: .xml,
             options: 0
         ).write(to: contents.appendingPathComponent("Info.plist"))
-        nonisolated(unsafe) let bundle = Bundle(url: app)!
+        let bundle = Bundle(url: app)!
         let method = class_getClassMethod(Bundle.self, #selector(getter: Bundle.main))!
         let block: @convention(block) (AnyObject) -> Bundle = { _ in bundle }
         let replacement = imp_implementationWithBlock(block)

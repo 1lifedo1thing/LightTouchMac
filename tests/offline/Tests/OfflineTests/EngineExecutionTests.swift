@@ -29,7 +29,7 @@ extension SharedState {
 
         @Test func deadlinesGateAndEndpoints() async throws {
             let timed = Blocked()
-            let task = Task { try await withDeadline(0.03, "fixture", timed.run) }
+            let task = Task { try await withDeadline(0.03, "fixture") { timed.run() } }
             await Task.detached { timed.waitForEntry() }.value
             do {
                 _ = try await task.value
@@ -41,7 +41,7 @@ extension SharedState {
             // Cancellation completes before an uncooperative worker, without freeing
             // that worker's slot early. Its eventual result is discarded exactly once.
             let blocked = Blocked()
-            let cancelled = Task { try await withDeadline(60, "cancelled", blocked.run) }
+            let cancelled = Task { try await withDeadline(60, "cancelled") { blocked.run() } }
             await Task.detached { blocked.waitForEntry() }.value
             cancelled.cancel()
             let cancellationFinished = await withSoftDeadline(1) {
