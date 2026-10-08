@@ -38,8 +38,11 @@ public nonisolated struct LegacyState: Sendable {
             .flatMap { fm.fileExists(atPath: $0.path) ? $0 : nil }
         var items: [URL] = []
         for name in (try? fm.contentsOfDirectory(atPath: state.path)) ?? []
-        where name == "device" || name == "AppCache" || name == "IPAs" || name.hasPrefix("nandrw-") || name.hasPrefix("snapshot-")
-            || name.hasPrefix(".reset-") || name.hasPrefix("app.log") || name.hasPrefix("serial.log") || name.hasPrefix("web-proxy.") {
+        where name == "device" || name == "AppCache" || name == "IPAs" || name.hasPrefix("nandrw-")
+            || name.hasPrefix("snapshot-")
+            || name.hasPrefix(".reset-") || name.hasPrefix("app.log") || name.hasPrefix("serial.log")
+            || name.hasPrefix("web-proxy.")
+        {
             items.append(state.appendingPathComponent(name))
         }
         for name in ["usbmuxd.log", "usbmuxd.log.1", "usbmuxd.pid", "session.env"] {
@@ -50,12 +53,15 @@ public nonisolated struct LegacyState: Sendable {
         let devices = state.appendingPathComponent("Devices", isDirectory: true)
         for name in (try? fm.contentsOfDirectory(atPath: devices.path)) ?? [] {
             guard let id = UUID(uuidString: name),
-                  let data = try? Data(contentsOf: DeviceRecord.url(devices.appendingPathComponent(name))),
-                  let json = try? DeviceRecord.object(data),
-                  let kind = (json["base"] as? [String: Any])?["kind"] as? String, kind != "prepared" else { continue }
+                let data = try? Data(contentsOf: DeviceRecord.url(devices.appendingPathComponent(name))),
+                let json = try? DeviceRecord.object(data),
+                let kind = (json["base"] as? [String: Any])?["kind"] as? String, kind != "prepared"
+            else { continue }
             records.append(id)
         }
-        guard oldRoot != nil || !items.isEmpty || !records.isEmpty || fm.fileExists(atPath: marker(state).path) else { return nil }
+        guard oldRoot != nil || !items.isEmpty || !records.isEmpty || fm.fileExists(atPath: marker(state).path) else {
+            return nil
+        }
         return LegacyState(state: state, oldRoot: oldRoot, items: items, records: records)
     }
 
@@ -88,6 +94,8 @@ public nonisolated struct LegacyState: Sendable {
         }
         if let oldRoot { try DeviceStateStorage.removeTree(oldRoot) }
         try fm.removeItem(at: Self.marker(state))
-        logEvent("legacy: erased the pre-library state (\(items.count) items, \(records.count) records\(oldRoot == nil ? "" : ", the old root"))")
+        logEvent(
+            "legacy: erased the pre-library state (\(items.count) items, \(records.count) records\(oldRoot == nil ? "" : ", the old root"))"
+        )
     }
 }

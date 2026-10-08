@@ -7,8 +7,12 @@ public enum DeviceProcessDeath: Equatable {
     case stopped
     case unexpected
 
-    public static func classify(startFailure: DeviceLinkError?, qemuExitCode: Int32?,
-                                stopRequested: Bool, termination: DeviceTermination) -> Self {
+    public static func classify(
+        startFailure: DeviceLinkError?,
+        qemuExitCode: Int32?,
+        stopRequested: Bool,
+        termination: DeviceTermination
+    ) -> Self {
         if let startFailure { return .startFailed(startFailure) }
         if qemuExitCode == 0 || (qemuExitCode == nil && stopRequested && termination == .exited(0)) {
             return .stopped
@@ -46,9 +50,11 @@ public enum DeviceProcessDeath: Equatable {
 
     /// Optional stopped-storage preparation precedes spawn/hello. A nil boot
     /// configuration deliberately fails before a boot request.
-    public func start(_ configure: @escaping @MainActor (HelperInfo) -> BootConfig?,
-                      preparation: (@MainActor () async throws -> Void)? = nil,
-                      completion: @escaping @MainActor (Result<HelperInfo, DeviceLinkError>) -> Void) {
+    public func start(
+        _ configure: @escaping @MainActor (HelperInfo) -> BootConfig?,
+        preparation: (@MainActor () async throws -> Void)? = nil,
+        completion: @escaping @MainActor (Result<HelperInfo, DeviceLinkError>) -> Void
+    ) {
         guard !startRequested, !isDead, !stopRequested else {
             completion(.failure(.closed("this device session has already started")))
             return
@@ -79,16 +85,21 @@ public enum DeviceProcessDeath: Equatable {
         }
     }
 
-    private func spawn(_ configure: @escaping @MainActor (HelperInfo) -> BootConfig?,
-                       completion: @escaping @MainActor (Result<HelperInfo, DeviceLinkError>) -> Void) {
+    private func spawn(
+        _ configure: @escaping @MainActor (HelperInfo) -> BootConfig?,
+        completion: @escaping @MainActor (Result<HelperInfo, DeviceLinkError>) -> Void
+    ) {
         link.start { [weak self] result in
             MainActor.assumeIsolated { self?.started(result, configure, completion) }
         }
         helperPID = link.pid
     }
 
-    private func started(_ result: Result<HelperInfo, DeviceLinkError>, _ configure: (HelperInfo) -> BootConfig?,
-                         _ completion: @escaping @MainActor (Result<HelperInfo, DeviceLinkError>) -> Void) {
+    private func started(
+        _ result: Result<HelperInfo, DeviceLinkError>,
+        _ configure: (HelperInfo) -> BootConfig?,
+        _ completion: @escaping @MainActor (Result<HelperInfo, DeviceLinkError>) -> Void
+    ) {
         guard !stopRequested, !isDead else {
             cancelledBeforeBoot = true
             completion(.failure(.closed("device start cancelled before boot")))
@@ -96,8 +107,8 @@ public enum DeviceProcessDeath: Equatable {
             return
         }
         switch result {
-        case let .failure(error): failStart(error, completion)
-        case let .success(info):
+        case .failure(let error): failStart(error, completion)
+        case .success(let info):
             guard let config = configure(info) else { return failStart(.helperFailure("not booted"), completion) }
             guard config.storageProof == nil || info.storageProofValidation == true else {
                 return failStart(.helperFailure("The device helper cannot validate admitted storage."), completion)
@@ -109,13 +120,16 @@ public enum DeviceProcessDeath: Equatable {
         }
     }
 
-    private func booted(_ reply: Result<LinkReply, DeviceLinkError>, _ info: HelperInfo,
-                        _ completion: (Result<HelperInfo, DeviceLinkError>) -> Void) {
+    private func booted(
+        _ reply: Result<LinkReply, DeviceLinkError>,
+        _ info: HelperInfo,
+        _ completion: (Result<HelperInfo, DeviceLinkError>) -> Void
+    ) {
         switch reply {
         case .success(.ok(true)): completion(.success(info))
-        case let .success(.failure(message)): failStart(.helperFailure(message), completion)
-        case let .success(other): failStart(.helperFailure("unexpected boot reply \(other)"), completion)
-        case let .failure(error): failStart(error, completion)
+        case .success(.failure(let message)): failStart(.helperFailure(message), completion)
+        case .success(let other): failStart(.helperFailure("unexpected boot reply \(other)"), completion)
+        case .failure(let error): failStart(error, completion)
         }
     }
 
@@ -124,8 +138,7 @@ public enum DeviceProcessDeath: Equatable {
         if !isDead {
             stopRequested = true
             if startRequested && !bootRequested { cancelledBeforeBoot = true }
-            if let preparationTask { preparationTask.cancel() }
-            else { link.terminate() }
+            if let preparationTask { preparationTask.cancel() } else { link.terminate() }
         }
     }
     public func kill() {
@@ -134,8 +147,12 @@ public enum DeviceProcessDeath: Equatable {
                 stopRequested = true
                 cancelledBeforeBoot = true
             }
-            if let preparationTask { stopRequested = true; preparationTask.cancel() }
-            else { link.kill() }
+            if let preparationTask {
+                stopRequested = true
+                preparationTask.cancel()
+            } else {
+                link.kill()
+            }
         }
     }
 
@@ -155,7 +172,7 @@ public enum DeviceProcessDeath: Equatable {
 
     private func received(_ event: LinkEvent) {
         switch event {
-        case let .qemuExited(code): qemuExitCode = code
+        case .qemuExited(let code): qemuExitCode = code
         case .audio, .audioEnded: onAudio?(event)
         }
     }
@@ -168,8 +185,16 @@ public enum DeviceProcessDeath: Equatable {
 
     private func terminated(_ termination: DeviceTermination) {
         onTermination?(helperPID, termination, qemuExitCode)
-        died(cancelledBeforeBoot ? .stopped : .classify(startFailure: startFailure, qemuExitCode: qemuExitCode,
-                       stopRequested: stopRequested, termination: termination))
+        died(
+            cancelledBeforeBoot
+                ? .stopped
+                : .classify(
+                    startFailure: startFailure,
+                    qemuExitCode: qemuExitCode,
+                    stopRequested: stopRequested,
+                    termination: termination
+                )
+        )
     }
 
     private func died(_ reason: DeviceProcessDeath) {

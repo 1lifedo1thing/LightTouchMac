@@ -1,16 +1,19 @@
-import Foundation
-import Testing
-import HostServiceWire
-import HostRuntime
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import HostServiceWire
+import Testing
+
 @testable import LightTouchCore
 
 /// Restart syncs the guest's filesystem before the reset and retires the boot; a failed or stale sync resets
 /// nothing; a device without guest tools halts and restarts. Power On renews the boot in place and resumes the
 /// machine once the shutdown latch clears.
 struct BootCycleTests {
-    static let freshBoot = ["publish", "reconnectUSB", "forgetConnectionWork", "forgetReachability", "timeZone", "resetRotation",
-                            "foreground", "orientation", "guestPackage", "bootWatch"]
+    static let freshBoot = [
+        "publish", "reconnectUSB", "forgetConnectionWork", "forgetReachability", "timeZone", "resetRotation",
+        "foreground", "orientation", "guestPackage", "bootWatch",
+    ]
 
     func session(_ directory: URL) -> FakeSession {
         let s = FakeSession(directory: directory)
@@ -87,10 +90,13 @@ struct BootCycleTests {
             #expect(c.syncs == 1)
             c.readiness.cancel()
 
-            let failed = session(directory); failed.storageFailed = true
+            let failed = session(directory)
+            failed.storageFailed = true
             failed.cycle.reset()
             #expect(failed.bootScope[.reset] == nil)
-            let off = session(directory); off.state = .poweredOff; off.fakeHelper!.isDead = true
+            let off = session(directory)
+            off.state = .poweredOff
+            off.fakeHelper!.isDead = true
             off.cycle.reset()
             #expect(off.steps == ["restart"], "a halted device restarts with a fresh helper")
         }
@@ -103,8 +109,13 @@ struct BootCycleTests {
             cold.status = helperStatus(displaySleeping: true, shutdownConfirmed: true)
             cold.cycle.powerOn()
             #expect(cold.bootScope.generation == 1 && cold.cycle.poweringOn && cold.state == .booting)
-            #expect(cold.steps == ["publish", "reconnectUSB", "forgetConnectionWork", "forgetGuestFacts", "forgetReachability",
-                                   "forgetEthlink", "resetRotation", "timeZone"], "\(cold.steps)")
+            #expect(
+                cold.steps == [
+                    "publish", "reconnectUSB", "forgetConnectionWork", "forgetGuestFacts", "forgetReachability",
+                    "forgetEthlink", "resetRotation", "timeZone",
+                ],
+                "\(cold.steps)"
+            )
             #expect(cold.link.commands == [.machine(.reset)])
             try await Task.sleep(for: .milliseconds(100))
             #expect(cold.link.commands == [.machine(.reset)], "no resume while the latch is set")
@@ -127,7 +138,10 @@ struct BootCycleTests {
             c.cycle.latchWait = .milliseconds(50)
             c.cycle.powerOn()
             await c.bootScope[.powerOn]?.value
-            #expect(c.state == .poweredOff && !c.cycle.poweringOn && c.bootScope.retired && c.link.commands == [.machine(.reset)])
+            #expect(
+                c.state == .poweredOff && !c.cycle.poweringOn && c.bootScope.retired
+                    && c.link.commands == [.machine(.reset)]
+            )
 
             let gone = session(directory)
             gone.state = .poweredOff

@@ -1,10 +1,10 @@
 // The device's options outside the machine's controls: Attach to Local Network and the debug port (per device,
 // DeviceSettings), and the boot arguments Settings ▸ verbose boot and kernel console add (app-wide, UserDefaults).
 
-import Foundation
-import Observation
-import HostRuntime
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import Observation
 
 @Observable public final class DeviceOptions {
     @ObservationIgnored private let settings: DeviceSettingsFile
@@ -12,8 +12,12 @@ import DeviceRuntime
     @ObservationIgnored private let link: () -> HelperLink?
     @ObservationIgnored private let requestLocalNetworkAccess: () -> Void
 
-    public init(settings: DeviceSettingsFile, board: String, link: @escaping () -> HelperLink?,
-                requestLocalNetworkAccess: @escaping () -> Void = LocalNetworkAccess.request) {
+    public init(
+        settings: DeviceSettingsFile,
+        board: String,
+        link: @escaping () -> HelperLink?,
+        requestLocalNetworkAccess: @escaping () -> Void = LocalNetworkAccess.request
+    ) {
         self.settings = settings
         self.board = board
         self.link = link

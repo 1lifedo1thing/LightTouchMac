@@ -1,7 +1,7 @@
+import Foundation
+import HostRuntime
 import HostServiceClient
 import HostServiceWire
-import HostRuntime
-import Foundation
 
 extension DeviceServices {
     @discardableResult

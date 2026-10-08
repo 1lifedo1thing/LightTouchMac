@@ -17,7 +17,10 @@ nonisolated public struct WebProxyCA: @unchecked Sendable {
     /// The certificate's subject, as encoded: every leaf's issuer.
     public let subject: Data
 
-    enum Failure: Error { case unreadable(String), keyGeneration, signing, identity }
+    enum Failure: Error {
+        case unreadable(String)
+        case keyGeneration, signing, identity
+    }
 
     /// Loads CONFIG.ca.pem, creating it on first use; (re)writes CONFIG.ca.der.
     public static func prepare(config: URL) throws -> WebProxyCA {
@@ -32,13 +35,20 @@ nonisolated public struct WebProxyCA: @unchecked Sendable {
             let key = try newKey()
             let name = DER.name("Light Touch Device Proxy")
             let der = try certificate(key: key, issuerKey: key, issuer: name, subject: name, days: 3650, host: nil)
-            let text = "-----BEGIN PRIVATE KEY-----\n" + DER.pkcs8(try external(key)).base64EncodedString(options: .lineLength64Characters)
-                + "\n-----END PRIVATE KEY-----\n-----BEGIN CERTIFICATE-----\n" + der.base64EncodedString(options: .lineLength64Characters)
+            let text =
+                "-----BEGIN PRIVATE KEY-----\n"
+                + DER.pkcs8(try external(key)).base64EncodedString(options: .lineLength64Characters)
+                + "\n-----END PRIVATE KEY-----\n-----BEGIN CERTIFICATE-----\n"
+                + der.base64EncodedString(options: .lineLength64Characters)
                 + "\n-----END CERTIFICATE-----\n"
             try save(Data(text.utf8), to: pem, mode: 0o600)
             ca = try load(config: config)
         }
-        try save(SecCertificateCopyData(ca.certificate) as Data, to: URL(fileURLWithPath: config.path + ".ca.der"), mode: 0o644)
+        try save(
+            SecCertificateCopyData(ca.certificate) as Data,
+            to: URL(fileURLWithPath: config.path + ".ca.der"),
+            mode: 0o644
+        )
         return ca
     }
 
@@ -50,30 +60,48 @@ nonisolated public struct WebProxyCA: @unchecked Sendable {
         let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
         var st = stat()
         guard fstat(fd, &st) == 0, st.st_uid == getuid(), st.st_mode & 0o077 == 0, st.st_mode & S_IFMT == S_IFREG,
-              let text = String(data: handle.readDataToEndOfFile(), encoding: .utf8),
-              let pkcs8 = pemBlock(text, "PRIVATE KEY"), let rsa = DER.children(pkcs8)?.last?.content,
-              let certDER = pemBlock(text, "CERTIFICATE"),
-              let key = SecKeyCreateWithData(rsa as CFData, [kSecAttrKeyType: kSecAttrKeyTypeRSA,
-                                                             kSecAttrKeyClass: kSecAttrKeyClassPrivate] as CFDictionary, nil),
-              let certificate = SecCertificateCreateWithData(nil, certDER as CFData),
-              let certKey = SecCertificateCopyKey(certificate), let publicKey = SecKeyCopyPublicKey(key),
-              SecKeyCopyExternalRepresentation(certKey, nil) as Data? == SecKeyCopyExternalRepresentation(publicKey, nil) as Data?,
-              let tbs = DER.children(certDER)?.first?.whole, let fields = DER.children(tbs), fields.count > 5
+            let text = String(data: handle.readDataToEndOfFile(), encoding: .utf8),
+            let pkcs8 = pemBlock(text, "PRIVATE KEY"), let rsa = DER.children(pkcs8)?.last?.content,
+            let certDER = pemBlock(text, "CERTIFICATE"),
+            let key = SecKeyCreateWithData(
+                rsa as CFData,
+                [
+                    kSecAttrKeyType: kSecAttrKeyTypeRSA,
+                    kSecAttrKeyClass: kSecAttrKeyClassPrivate,
+                ] as CFDictionary,
+                nil
+            ),
+            let certificate = SecCertificateCreateWithData(nil, certDER as CFData),
+            let certKey = SecCertificateCopyKey(certificate), let publicKey = SecKeyCopyPublicKey(key),
+            SecKeyCopyExternalRepresentation(certKey, nil) as Data? == SecKeyCopyExternalRepresentation(publicKey, nil)
+                as Data?,
+            let tbs = DER.children(certDER)?.first?.whole, let fields = DER.children(tbs), fields.count > 5
         else { throw Failure.unreadable(path) }
         return WebProxyCA(key: key, certificate: certificate, subject: fields[5].whole)
     }
 
     /// A TLS server identity for `host` (a DNS name or an IP literal), valid for a week, under this CA.
     public func identity(for host: String, key leafKey: SecKey) throws -> SecIdentity {
-        let der = try Self.certificate(key: leafKey, issuerKey: key, issuer: subject,
-                                       subject: DER.name(host.utf8.count <= 64 ? host : "Light Touch Device Proxy"), days: 7, host: host)
+        let der = try Self.certificate(
+            key: leafKey,
+            issuerKey: key,
+            issuer: subject,
+            subject: DER.name(host.utf8.count <= 64 ? host : "Light Touch Device Proxy"),
+            days: 7,
+            host: host
+        )
         guard let certificate = SecCertificateCreateWithData(nil, der as CFData),
-              let identity = Self.createIdentity?(nil, certificate, leafKey)?.takeRetainedValue() else { throw Failure.identity }
+            let identity = Self.createIdentity?(nil, certificate, leafKey)?.takeRetainedValue()
+        else { throw Failure.identity }
         return identity
     }
 
     public static func newKey() throws -> SecKey {
-        guard let key = SecKeyCreateRandomKey([kSecAttrKeyType: kSecAttrKeyTypeRSA, kSecAttrKeySizeInBits: 2048] as CFDictionary, nil)
+        guard
+            let key = SecKeyCreateRandomKey(
+                [kSecAttrKeyType: kSecAttrKeyTypeRSA, kSecAttrKeySizeInBits: 2048] as CFDictionary,
+                nil
+            )
         else { throw Failure.keyGeneration }
         return key
     }
@@ -83,10 +111,20 @@ nonisolated public struct WebProxyCA: @unchecked Sendable {
     /// SecIdentityCreate (Security.framework SPI): an identity from a key that isn't in a keychain.
     /// The public way (SecPKCS12Import's kSecImportToMemoryOnly) needs macOS 15; the app supports 14.4.
     private typealias IdentityCreate = @convention(c) (CFAllocator?, SecCertificate, SecKey) -> Unmanaged<SecIdentity>?
-    private static let createIdentity: IdentityCreate? = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "SecIdentityCreate")
-        .map { unsafeBitCast($0, to: IdentityCreate.self) }
+    private static let createIdentity: IdentityCreate? = dlsym(
+        UnsafeMutableRawPointer(bitPattern: -2),
+        "SecIdentityCreate"
+    )
+    .map { unsafeBitCast($0, to: IdentityCreate.self) }
 
-    private static func certificate(key: SecKey, issuerKey: SecKey, issuer: Data, subject: Data, days: Int, host: String?) throws -> Data {
+    private static func certificate(
+        key: SecKey,
+        issuerKey: SecKey,
+        issuer: Data,
+        subject: Data,
+        days: Int,
+        host: String?
+    ) throws -> Data {
         guard let publicKey = SecKeyCopyPublicKey(key) else { throw Failure.keyGeneration }
         var serial = Data((0..<16).map { _ in UInt8.random(in: 0...255) })
         serial[0] &= 0x7f
@@ -103,21 +141,44 @@ nonisolated public struct WebProxyCA: @unchecked Sendable {
                 return inet_pton(family, host, &bytes) == 1 ? Data(bytes.prefix(family == AF_INET ? 4 : 16)) : nil
             }.first
             guard host.utf8.count <= 253, !host.isEmpty,
-                  host.unicodeScalars.allSatisfy({ $0.isASCII && (CharacterSet.alphanumerics.contains($0) || ".-:".unicodeScalars.contains($0)) })
+                host.unicodeScalars.allSatisfy({
+                    $0.isASCII && (CharacterSet.alphanumerics.contains($0) || ".-:".unicodeScalars.contains($0))
+                })
             else { throw Failure.signing }
-            extensions = [DER.extension("2.5.29.19", critical: true, DER.seq()),                       // CA:FALSE
-                          DER.extension("2.5.29.15", critical: true, Data([0x03, 0x02, 0x05, 0xa0])),  // digitalSignature, keyEncipherment
-                          DER.extension("2.5.29.17", critical: false, DER.seq(ip.map { DER.tlv(0x87, $0) } ?? DER.tlv(0x82, Data(host.utf8)))),
-                          DER.extension("2.5.29.37", critical: false, DER.seq(DER.oid("1.3.6.1.5.5.7.3.1")))]  // serverAuth
+            extensions = [
+                DER.extension("2.5.29.19", critical: true, DER.seq()),  // CA:FALSE
+                DER.extension("2.5.29.15", critical: true, Data([0x03, 0x02, 0x05, 0xa0])),  // digitalSignature, keyEncipherment
+                DER.extension(
+                    "2.5.29.17",
+                    critical: false,
+                    DER.seq(ip.map { DER.tlv(0x87, $0) } ?? DER.tlv(0x82, Data(host.utf8)))
+                ),
+                DER.extension("2.5.29.37", critical: false, DER.seq(DER.oid("1.3.6.1.5.5.7.3.1"))),
+            ]  // serverAuth
         } else {
-            extensions = [DER.extension("2.5.29.19", critical: true, DER.seq(DER.tlv(0x01, Data([0xff])), DER.integer(Data([0])))),  // CA, pathlen 0
-                          DER.extension("2.5.29.15", critical: true, Data([0x03, 0x02, 0x01, 0x06]))]  // keyCertSign, cRLSign
+            extensions = [
+                DER.extension(
+                    "2.5.29.19",
+                    critical: true,
+                    DER.seq(DER.tlv(0x01, Data([0xff])), DER.integer(Data([0])))
+                ),  // CA, pathlen 0
+                DER.extension("2.5.29.15", critical: true, Data([0x03, 0x02, 0x01, 0x06])),
+            ]  // keyCertSign, cRLSign
         }
         let sha1RSA = DER.seq(DER.oid("1.2.840.113549.1.1.5"), DER.null)
-        let tbs = DER.seq(DER.tlv(0xa0, DER.integer(Data([2]))), DER.integer(serial), sha1RSA, issuer,
-                          DER.seq(DER.time(validFrom), DER.time(now + Double(days) * 86400)), subject, spki,
-                          DER.tlv(0xa3, DER.seq(extensions.reduce(Data(), +))))
-        guard let signature = SecKeyCreateSignature(issuerKey, .rsaSignatureMessagePKCS1v15SHA1, tbs as CFData, nil) as Data?
+        let tbs = DER.seq(
+            DER.tlv(0xa0, DER.integer(Data([2]))),
+            DER.integer(serial),
+            sha1RSA,
+            issuer,
+            DER.seq(DER.time(validFrom), DER.time(now + Double(days) * 86400)),
+            subject,
+            spki,
+            DER.tlv(0xa3, DER.seq(extensions.reduce(Data(), +)))
+        )
+        guard
+            let signature = SecKeyCreateSignature(issuerKey, .rsaSignatureMessagePKCS1v15SHA1, tbs as CFData, nil)
+                as Data?
         else { throw Failure.signing }
         return DER.seq(tbs, sha1RSA, DER.bitString(signature))
     }
@@ -128,7 +189,8 @@ nonisolated public struct WebProxyCA: @unchecked Sendable {
     }
 
     private static func pemBlock(_ text: String, _ label: String) -> Data? {
-        guard let start = text.range(of: "-----BEGIN \(label)-----"), let end = text.range(of: "-----END \(label)-----", range: start.upperBound..<text.endIndex)
+        guard let start = text.range(of: "-----BEGIN \(label)-----"),
+            let end = text.range(of: "-----END \(label)-----", range: start.upperBound..<text.endIndex)
         else { return nil }
         return Data(base64Encoded: String(text[start.upperBound..<end.lowerBound]), options: .ignoreUnknownCharacters)
     }
@@ -138,7 +200,10 @@ nonisolated public struct WebProxyCA: @unchecked Sendable {
         let fd = open(temporary, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, mode)
         guard fd >= 0 else { throw Failure.unreadable(temporary) }
         let ok = data.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, $0.count) == $0.count }
-        guard close(fd) == 0, ok, rename(temporary, url.path) == 0 else { unlink(temporary); throw Failure.unreadable(url.path) }
+        guard close(fd) == 0, ok, rename(temporary, url.path) == 0 else {
+            unlink(temporary)
+            throw Failure.unreadable(url.path)
+        }
     }
 }
 
@@ -146,9 +211,15 @@ nonisolated public struct WebProxyCA: @unchecked Sendable {
 nonisolated enum DER {
     static func tlv(_ tag: UInt8, _ content: Data) -> Data {
         var length = Data()
-        if content.count < 0x80 { length.append(UInt8(content.count)) } else {
-            var n = content.count, bytes: [UInt8] = []
-            while n > 0 { bytes.insert(UInt8(n & 0xff), at: 0); n >>= 8 }
+        if content.count < 0x80 {
+            length.append(UInt8(content.count))
+        } else {
+            var n = content.count
+            var bytes: [UInt8] = []
+            while n > 0 {
+                bytes.insert(UInt8(n & 0xff), at: 0)
+                n >>= 8
+            }
             length = Data([0x80 | UInt8(bytes.count)] + bytes)
         }
         return Data([tag]) + length + content
@@ -167,7 +238,10 @@ nonisolated enum DER {
         for var arc in arcs.dropFirst(2) {
             var chunk = [UInt8(arc & 0x7f)]
             arc >>= 7
-            while arc > 0 { chunk.insert(UInt8(arc & 0x7f) | 0x80, at: 0); arc >>= 7 }
+            while arc > 0 {
+                chunk.insert(UInt8(arc & 0x7f) | 0x80, at: 0)
+                arc >>= 7
+            }
             out.append(contentsOf: chunk)
         }
         return tlv(0x06, out)
@@ -199,7 +273,8 @@ nonisolated enum DER {
         let bytes = [UInt8](data)
         func element(at i: Int) -> (end: Int, contentStart: Int)? {
             guard i + 1 < bytes.count else { return nil }
-            var length = Int(bytes[i + 1]), start = i + 2
+            var length = Int(bytes[i + 1])
+            var start = i + 2
             if length & 0x80 != 0 {
                 let count = length & 0x7f
                 guard count > 0, count <= 4, start + count <= bytes.count else { return nil }
@@ -210,7 +285,8 @@ nonisolated enum DER {
             return (start + length, start)
         }
         guard let outer = element(at: 0) else { return nil }
-        var result: [(Data, Data)] = [], i = outer.contentStart
+        var result: [(Data, Data)] = []
+        var i = outer.contentStart
         while i < outer.end {
             guard let inner = element(at: i), inner.end <= outer.end else { return nil }
             result.append((Data(bytes[i..<inner.end]), Data(bytes[inner.contentStart..<inner.end])))

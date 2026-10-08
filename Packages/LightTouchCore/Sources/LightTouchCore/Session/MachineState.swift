@@ -1,9 +1,9 @@
 // The VM's lifecycle and the machine controls that move it: pause and resume (the user's, and the Mac's sleep),
 // and the screen's visibility, which paces the status poll.
 
+import DeviceRuntime
 import Foundation
 import HostRuntime
-import DeviceRuntime
 
 /// The VM's lifecycle. Everything the UI enables or disables keys off this; `.dead` is the one that used to be
 /// invisible — QEMU would exit and the app kept a frozen frame with every control live.

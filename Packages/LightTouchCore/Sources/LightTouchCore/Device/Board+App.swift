@@ -22,9 +22,9 @@ nonisolated extension Board {
     /// a 2018 Intel MacBook Pro. The boot's wall-clock budgets scale by it, or an Intel Mac's boot is
     /// stopped while it's still starting.
     #if arch(x86_64)
-    public static let hostSlowdown: TimeInterval = 5
+        public static let hostSlowdown: TimeInterval = 5
     #else
-    public static let hostSlowdown: TimeInterval = 1
+        public static let hostSlowdown: TimeInterval = 1
     #endif
 
     /// The image carries our guest shell and agent from preparation (Board.Facts.guestTools).
@@ -97,13 +97,18 @@ nonisolated extension Board {
     public func snappedPanel(upright size: CGSize) -> CGSize {
         let turned = panelRotation != 0
         let s = turned ? CGSize(width: size.height, height: size.width) : size
-        let lo = CGFloat(hardware?.panelMin ?? 64), step = CGFloat(max(hardware?.panelWidthStep ?? 2, 1))
+        let lo = CGFloat(hardware?.panelMin ?? 64)
+        let step = CGFloat(max(hardware?.panelWidthStep ?? 2, 1))
         let maxPixels = CGFloat(hardware?.panelMaxPixels ?? 0)
-        func fit(_ v: CGFloat, _ hi: Int?) -> CGFloat { min(max(v.isFinite ? v.rounded() : lo, lo), CGFloat(hi ?? 1024)) }
-        var w = fit(s.width, hardware?.panelMaxWidth), h = fit(s.height, hardware?.panelMaxHeight)
+        func fit(_ v: CGFloat, _ hi: Int?) -> CGFloat {
+            min(max(v.isFinite ? v.rounded() : lo, lo), CGFloat(hi ?? 1024))
+        }
+        var w = fit(s.width, hardware?.panelMaxWidth)
+        var h = fit(s.height, hardware?.panelMaxHeight)
         if maxPixels > 0, w * h > maxPixels {
             let k = (maxPixels / (w * h)).squareRoot()
-            w = max(lo, w * k); h = max(lo, h * k)
+            w = max(lo, w * k)
+            h = max(lo, h * k)
         }
         w = max(lo, (w / step).rounded(.down) * step)
         h = h.rounded(.down)
@@ -116,7 +121,9 @@ nonisolated extension Board {
 
     /// The scan of an upright size by the board's convention (the iPad's panel is mounted landscape), and the
     /// upright screen the guest makes of a scan (guestTurn: turned only when wider than tall).
-    public func scan(upright size: CGSize) -> CGSize { panelRotation != 0 ? CGSize(width: size.height, height: size.width) : size }
+    public func scan(upright size: CGSize) -> CGSize {
+        panelRotation != 0 ? CGSize(width: size.height, height: size.width) : size
+    }
     public static func upright(scan: CGSize) -> CGSize {
         guestTurn(scan: scan) != 0 ? CGSize(width: scan.height, height: scan.width) : scan
     }
@@ -129,7 +136,8 @@ nonisolated extension Board {
     public func uprightPanel(_ option: String?) -> CGSize? { Self.panelScan(option).map(Self.upright(scan:)) }
     public static func panelScan(_ option: String?) -> CGSize? {
         guard let parts = option?.split(separator: "x"), parts.count == 2,
-              let w = Int(parts[0]), let h = Int(parts[1]) else { return nil }
+            let w = Int(parts[0]), let h = Int(parts[1])
+        else { return nil }
         return CGSize(width: w, height: h)
     }
 

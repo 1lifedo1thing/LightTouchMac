@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import FirmwareKit
 @testable import FirmwareSchema
 
@@ -12,9 +13,12 @@ struct StorageCapacityTests {
     }
 
     @Test func positiveImportantUsageKeepsReclaimableSpace() throws {
-        let available = try StorageCapacity.available(important: { 100 }, physical: {
-            throw FirmwareError(.internal, "physical query should not run")
-        })
+        let available = try StorageCapacity.available(
+            important: { 100 },
+            physical: {
+                throw FirmwareError(.internal, "physical query should not run")
+            }
+        )
         #expect(available == 100)
     }
 
@@ -26,7 +30,10 @@ struct StorageCapacityTests {
 
     @Test func unavailablePhysicalCapacityDoesNotPretendSpaceExists() {
         #expect(throws: FirmwareError.self) {
-            try StorageCapacity.available(important: { nil }, physical: { throw FirmwareError(.internal, "unavailable") })
+            try StorageCapacity.available(
+                important: { nil },
+                physical: { throw FirmwareError(.internal, "unavailable") }
+            )
         }
     }
 

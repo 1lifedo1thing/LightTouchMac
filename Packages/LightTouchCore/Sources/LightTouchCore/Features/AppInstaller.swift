@@ -20,10 +20,14 @@ import HostServiceWire
     var guestArch: String { get }
     /// The dropped file converted for this device (PreparedMedia.prepare with its board).
     func prepareMedia(_ source: URL) async throws -> PreparedMedia
-    func importMedia(_ media: PreparedMedia, progress: @escaping @Sendable (Double) -> Void, willCommit: () -> Void) async throws
-    func install(_ ipa: URL, placeholderRaised: Bool, progress: @escaping @Sendable (String) -> Void) async throws -> String
+    func importMedia(_ media: PreparedMedia, progress: @escaping @Sendable (Double) -> Void, willCommit: () -> Void)
+        async throws
+    func install(_ ipa: URL, placeholderRaised: Bool, progress: @escaping @Sendable (String) -> Void) async throws
+        -> String
     /// The home-screen placeholder a Legacy Store download raises at its first byte (AppInstallPipeline's).
-    func installPlaceholder(_ action: String, bundleID: String, after previous: Task<Void, Never>?) -> Task<Void, Never>?
+    func installPlaceholder(_ action: String, bundleID: String, after previous: Task<Void, Never>?) -> Task<
+        Void, Never
+    >?
     func uninstall(_ bundleID: String) async throws
     func reportConnectionFailure(_ error: Error, operation: String)
     /// A failed removal's (or a refused command's) alert.
@@ -76,7 +80,10 @@ public final class InstallJob {
         NotificationCenter.default.post(name: .ltmAppsChanged, object: deviceID)
     }
 
-    init(name: String, device: UUID) { self.name = name; deviceID = device }
+    init(name: String, device: UUID) {
+        self.name = name
+        deviceID = device
+    }
 
     /// False once the install has passed the last point cancellation can reach.
     /// instproxy_install runs on a detached thread that ignores cancellation, so
@@ -158,8 +165,11 @@ public enum AppInstaller {
     }
 
     @discardableResult
-    public static func start(_ ipa: URL, with emulator: any InstallDevice,
-                      presenting window: AnyObject?) -> InstallJob {
+    public static func start(
+        _ ipa: URL,
+        with emulator: any InstallDevice,
+        presenting window: AnyObject?
+    ) -> InstallJob {
         // The row goes up on the filename immediately — reading the .ipa costs
         // a couple of unzips, and the point of the row is to appear the moment
         // the drop happens — then takes the app's real display name as soon as
@@ -194,11 +204,17 @@ public enum AppInstaller {
     /// Media shares the ready queue and progress rows with app installation,
     /// so AFC uploads cannot race installs or device lifecycle operations.
     @discardableResult
-    public static func startMedia(_ source: URL, with emulator: any InstallDevice,
-                           presenting window: AnyObject?) -> InstallJob {
+    public static func startMedia(
+        _ source: URL,
+        with emulator: any InstallDevice,
+        presenting window: AnyObject?
+    ) -> InstallJob {
         let job = InstallJob(name: source.deletingPathExtension().lastPathComponent, device: emulator.instance.id)
         // Refused before anything is read, staged or run in the guest: its helpers can't add this here.
-        let refusal = MediaSupport.refusal(PreparedMedia.destination(forExtension: source.pathExtension), on: emulator.mediaFirmware)
+        let refusal = MediaSupport.refusal(
+            PreparedMedia.destination(forExtension: source.pathExtension),
+            on: emulator.mediaFirmware
+        )
         if refusal == nil {
             job.retry = { [weak job, weak emulator, weak window] in
                 guard let emulator else { return }
@@ -268,7 +284,9 @@ public enum AppInstaller {
     /// ("isn't in the correct format") left diagnostics with nothing to go on. A decoding error
     /// never reaches the row as Foundation's text.
     public static func failureText(_ error: Error, _ job: InstallJob) -> String {
-        log("install: \(job.name) failed: \(String(reflecting: error)) [\((error as NSError).domain) \((error as NSError).code)]")
+        log(
+            "install: \(job.name) failed: \(String(reflecting: error)) [\((error as NSError).domain) \((error as NSError).code)]"
+        )
         return error is DecodingError ? CatalogError.unreadable.localizedDescription : error.localizedDescription
     }
 
@@ -278,8 +296,11 @@ public enum AppInstaller {
     /// Downloads run independently. Completed files join the device queue, so
     /// a slow large download cannot block lightweight apps that are ready.
     @discardableResult
-    public static func startCatalog(_ app: CatalogApp, with emulator: any InstallDevice,
-                             presenting window: AnyObject?) -> InstallJob {
+    public static func startCatalog(
+        _ app: CatalogApp,
+        with emulator: any InstallDevice,
+        presenting window: AnyObject?
+    ) -> InstallJob {
         let job = InstallJob(name: app.name, device: emulator.instance.id)
         job.retry = { [weak job, weak emulator, weak window] in
             guard let emulator else { return }
@@ -324,24 +345,36 @@ public enum AppInstaller {
                 }
             }
             do {
-                let ipa = try await CatalogClient.download(app, device: emulator.productType, deviceOS: emulator.iosVersion, arch: emulator.guestArch) { fraction in
+                let ipa = try await CatalogClient.download(
+                    app,
+                    device: emulator.productType,
+                    deviceOS: emulator.iosVersion,
+                    arch: emulator.guestArch
+                ) { fraction in
                     guard !job.isFinished, !job.isCancelled, job.downloadProgress != nil else { return }
                     let percent = fraction < 0 ? -1 : Int(fraction * 100)
                     let previousPercent = job.downloadProgress.map { $0 < 0 ? -1 : Int($0 * 100) }
                     guard percent != previousPercent else { return }
                     job.downloadProgress = fraction
-                    job.status = fraction >= 0
+                    job.status =
+                        fraction >= 0
                         ? "Downloading… \(Int(fraction * 100))%" : "Downloading…"
                     NotificationCenter.default.post(name: .ltmInstallProgress, object: job)
                 }
                 scratch = ipa.deletingLastPathComponent()
                 job.downloadProgress = nil
                 guard let actualID = await AppMetadataCache.bundleID(of: ipa),
-                      actualID == app.bundleID else {
+                    actualID == app.bundleID
+                else {
                     throw CatalogError.invalidCopy("The downloaded IPA does not contain the selected app.")
                 }
-                await install(job, ipa: ipa, with: emulator, presenting: window,
-                              placeholderRaised: raised != nil)
+                await install(
+                    job,
+                    ipa: ipa,
+                    with: emulator,
+                    presenting: window,
+                    placeholderRaised: raised != nil
+                )
             } catch {
                 // Task.cancel() surfaces as URLError.cancelled out of
                 // URLSession, not CancellationError — and cancelling is a
@@ -363,17 +396,19 @@ public enum AppInstaller {
     }
 
     /// Queue when bytes are ready, not when the app was selected.
-    private static func install(_ job: InstallJob, ipa: URL,
-                                with emulator: any InstallDevice,
-                                presenting window: AnyObject?,
-                                placeholderRaised: Bool = false) async {
+    private static func install(
+        _ job: InstallJob,
+        ipa: URL,
+        with emulator: any InstallDevice,
+        presenting window: AnyObject?,
+        placeholderRaised: Bool = false
+    ) async {
         let readyQueue = queue(for: emulator.instance.id)
         if readyQueue.isBusy || readyQueue.isPaused {
             job.status = readyQueue.isPaused ? "Paused" : "Waiting for device…"
             NotificationCenter.default.post(name: .ltmInstallProgress, object: job)
         }
-        do { try await readyQueue.acquire() }
-        catch { return }
+        do { try await readyQueue.acquire() } catch { return }
         defer { readyQueue.release() }
         guard !Task.isCancelled else { return }
         job.status = "Installing…"
@@ -398,10 +433,17 @@ public enum AppInstaller {
             await AppMetadataCache.shared.learn(from: ipa)
             if let id = job.bundleID {
                 let info = await AppMetadataCache.info(of: ipa) ?? [:]
-                await IPALibrary.adopt(ipa, .init(bundleID: id, name: job.name,
-                                                  version: (info["CFBundleShortVersionString"] ?? info["CFBundleVersion"]) as? String,
-                                                  minOS: info["MinimumOSVersion"] as? String, catalogIpaID: job.catalogIpaID),
-                                       device: emulator.instance)
+                await IPALibrary.adopt(
+                    ipa,
+                    .init(
+                        bundleID: id,
+                        name: job.name,
+                        version: (info["CFBundleShortVersionString"] ?? info["CFBundleVersion"]) as? String,
+                        minOS: info["MinimumOSVersion"] as? String,
+                        catalogIpaID: job.catalogIpaID
+                    ),
+                    device: emulator.instance
+                )
             }
             if output.contains("newer than the device's") { emulator.warnMayNotLaunch(job.name, in: window) }
         } catch is CancellationError {
@@ -420,52 +462,64 @@ public enum AppInstaller {
     /// task here makes pending removals visible to Quit even if the inspector
     /// is hidden. Cancellation skips queued work; an active guest operation
     /// finishes before the device slot is released.
-    public static func remove(_ apps: [InstalledApp], with emulator: any InstallDevice,
-                       presenting window: AnyObject?,
-                       willRemove: @escaping (InstalledApp) -> Void,
-                       didRemove: @escaping (InstalledApp) -> Void,
-                       didFinish: @escaping () -> Void) {
-        let id = UUID(), device = emulator.instance.id, readyQueue = queue(for: device)
-        removals[id] = (device, Task {
-            var acquired = false
-            defer {
-                if acquired { readyQueue.release() }
-                removals[id] = nil
-                didFinish()
-                NotificationCenter.default.post(name: .ltmAppsChanged, object: device)
-            }
-            do {
-                try await readyQueue.acquire()
-                acquired = true
-                for app in apps {
-                    try Task.checkCancellation()
-                    willRemove(app)
-                    try await emulator.uninstall(app.id)
-                    IPALibrary.forget(app.id, device: emulator.instance)
-                    // The name and icon are app-wide: another device that still has the app keeps them.
-                    if !IPALibrary.retained(app.id, by: devices()) { AppMetadataCache.shared.forget(app.id) }
-                    didRemove(app)
+    public static func remove(
+        _ apps: [InstalledApp],
+        with emulator: any InstallDevice,
+        presenting window: AnyObject?,
+        willRemove: @escaping (InstalledApp) -> Void,
+        didRemove: @escaping (InstalledApp) -> Void,
+        didFinish: @escaping () -> Void
+    ) {
+        let id = UUID()
+        let device = emulator.instance.id
+        let readyQueue = queue(for: device)
+        removals[id] = (
+            device,
+            Task {
+                var acquired = false
+                defer {
+                    if acquired { readyQueue.release() }
+                    removals[id] = nil
+                    didFinish()
+                    NotificationCenter.default.post(name: .ltmAppsChanged, object: device)
                 }
-            } catch is CancellationError {
-                // Quit can cancel a waiting batch, never an active C call.
-            } catch {
-                guard !Task.isCancelled else { return }
-                log("uninstall failed: \(String(reflecting: error))")
-                pauseIfNeeded(error, with: emulator)
-                emulator.present(error, in: window)
+                do {
+                    try await readyQueue.acquire()
+                    acquired = true
+                    for app in apps {
+                        try Task.checkCancellation()
+                        willRemove(app)
+                        try await emulator.uninstall(app.id)
+                        IPALibrary.forget(app.id, device: emulator.instance)
+                        // The name and icon are app-wide: another device that still has the app keeps them.
+                        if !IPALibrary.retained(app.id, by: devices()) { AppMetadataCache.shared.forget(app.id) }
+                        didRemove(app)
+                    }
+                } catch is CancellationError {
+                    // Quit can cancel a waiting batch, never an active C call.
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    log("uninstall failed: \(String(reflecting: error))")
+                    pauseIfNeeded(error, with: emulator)
+                    emulator.present(error, in: window)
+                }
             }
-        })
+        )
     }
 
     /// Every queued mutation of one device shares this policy: an unavailable
     /// guest must not receive another write immediately after a failed removal.
-    private static func pauseIfNeeded(_ error: Error, with emulator: any InstallDevice,
-                                      excluding failedJob: InstallJob? = nil) {
+    private static func pauseIfNeeded(
+        _ error: Error,
+        with emulator: any InstallDevice,
+        excluding failedJob: InstallJob? = nil
+    ) {
         guard let deviceError = error as? DeviceError, deviceError.shouldPauseInstallQueue else { return }
         let device = emulator.instance.id
         queue(for: device).pause()
         emulator.reportConnectionFailure(error, operation: "Transfer interrupted")
-        for waiting in jobs where waiting.deviceID == device && waiting !== failedJob && waiting.downloadProgress == nil {
+        for waiting in jobs where waiting.deviceID == device && waiting !== failedJob && waiting.downloadProgress == nil
+        {
             waiting.status = "Paused"
             NotificationCenter.default.post(name: .ltmInstallProgress, object: waiting)
         }

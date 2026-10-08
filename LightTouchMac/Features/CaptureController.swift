@@ -5,9 +5,9 @@
 // asks this for what they enable; the device (its screen and canvas capture)
 // comes from the selected session.
 
-import LightTouchCore
-import HostRuntime
 import Cocoa
+import HostRuntime
+import LightTouchCore
 import UniformTypeIdentifiers
 
 @MainActor class CaptureController: NSObject {
@@ -58,7 +58,12 @@ import UniformTypeIdentifiers
         installCaptureStatus()
         installCaptureNotifications()
         recoverUnfinishedRecordings()
-        NotificationCenter.default.addObserver(self, selector: #selector(stopHiddenRecording), name: NSApplication.didHideNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(stopHiddenRecording),
+            name: NSApplication.didHideNotification,
+            object: nil
+        )
         recording.onChange = { [weak self] in self?.refreshRecording() }
         recording.onBeganRecording = { CaptureSound.recordingStarted.play() }
         recording.onStoppedRecording = {
@@ -77,9 +82,9 @@ import UniformTypeIdentifiers
             guard let self else { return }
             CaptureNotifications.shared.cancelReminder()
             switch result {
-            case let .saved(url):
+            case .saved(let url):
                 if capturePreferences.openFinderAfterCapture { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-            case let .recovery(url):
+            case .recovery(let url):
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             case .discarded, .failed: break
             }
@@ -87,8 +92,7 @@ import UniformTypeIdentifiers
         recording.onFinished = { [weak self] success in
             guard let self else { return }
             if success {
-                if quitAfterRecording { terminate() }
-                else if closeAfterRecording { self.window?.performClose(nil) }
+                if quitAfterRecording { terminate() } else if closeAfterRecording { self.window?.performClose(nil) }
             } else if recording.phase == .idle, let failure = recording.failure, let window = self.window {
                 NSAlert(error: failure).beginSheetModal(for: window)
             }
@@ -109,7 +113,9 @@ import UniformTypeIdentifiers
         let deviceVC = workspace.deviceVC
         deviceVC.screen.endLiveText()
         if captureMode == 0 { return try await workspace.canvasCapture.screenshot() }
-        guard let image = deviceVC.screen.captureFrame() else { throw CaptureError.failed("No screen image is available.") }
+        guard let image = deviceVC.screen.captureFrame() else {
+            throw CaptureError.failed("No screen image is available.")
+        }
         return image
     }
 
@@ -120,7 +126,10 @@ import UniformTypeIdentifiers
         onChange()
         Task { [weak self] in
             guard let self else { return }
-            defer { screenshotBusy = false; onChange() }
+            defer {
+                screenshotBusy = false
+                onChange()
+            }
             do {
                 let image = try await captureImage()
                 guard let data = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
@@ -132,12 +141,20 @@ import UniformTypeIdentifiers
                     try copyImage(nsImage)
                     showCopyConfirmation()
                 } else if action == .open {
-                    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Light Touch Screenshots", isDirectory: true)
+                    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(
+                        "Light Touch Screenshots",
+                        isDirectory: true
+                    )
                     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                    let url = folder.appendingPathComponent(captureName("Screenshot")).appendingPathExtension("png").unused
+                    let url = folder.appendingPathComponent(captureName("Screenshot")).appendingPathExtension("png")
+                        .unused
                     try data.write(to: url, options: .atomic)
                     if let application = capturePreferences.openInApplicationURL {
-                        _ = try await NSWorkspace.shared.open([url], withApplicationAt: application, configuration: .init())
+                        _ = try await NSWorkspace.shared.open(
+                            [url],
+                            withApplicationAt: application,
+                            configuration: .init()
+                        )
                     } else {
                         _ = try await NSWorkspace.shared.open(url, configuration: .init())
                     }
@@ -169,9 +186,12 @@ import UniformTypeIdentifiers
                 }
                 if !recording.isActive, action != .open {
                     // With the bezel in the picture, a way to leave it out of the next ones (Capture Screen Only).
-                    captureStatus.showCapture(title: action == .copy ? "Screenshot copied" : "Screenshot saved",
-                                              image: nsImage, fileURL: savedURL,
-                                              link: captureMode == 0 ? "Hide bezels for screenshots" : nil)
+                    captureStatus.showCapture(
+                        title: action == .copy ? "Screenshot copied" : "Screenshot saved",
+                        image: nsImage,
+                        fileURL: savedURL,
+                        link: captureMode == 0 ? "Hide bezels for screenshots" : nil
+                    )
                     deviceVC?.updateStatusVisibility()
                 }
             } catch { NSAlert(error: error).beginSheetModal(for: window, completionHandler: nil) }
@@ -180,7 +200,9 @@ import UniformTypeIdentifiers
 
     private func copyImage(_ image: NSImage) throws {
         NSPasteboard.general.clearContents()
-        guard NSPasteboard.general.writeObjects([image]) else { throw CaptureError.failed("Couldn’t copy the screenshot.") }
+        guard NSPasteboard.general.writeObjects([image]) else {
+            throw CaptureError.failed("Couldn’t copy the screenshot.")
+        }
     }
 
     private func showCopyConfirmation() {
@@ -217,7 +239,9 @@ import UniformTypeIdentifiers
         try capturePreferences.captureDestination(kind, extension: suffix)
     }
 
-    func captureName(_ kind: String, at date: Date = Date()) -> String { CapturePreferences.captureName(kind, at: date) }
+    func captureName(_ kind: String, at date: Date = Date()) -> String {
+        CapturePreferences.captureName(kind, at: date)
+    }
 
     // MARK: - Recording
 
@@ -229,8 +253,18 @@ import UniformTypeIdentifiers
             case .stopAndDelete: recording.stop(discard: true)
             }
         }
-        NotificationCenter.default.addObserver(self, selector: #selector(recordingAppDidResignActive), name: NSApplication.didResignActiveNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(recordingAppDidBecomeActive), name: NSApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(recordingAppDidResignActive),
+            name: NSApplication.didResignActiveNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(recordingAppDidBecomeActive),
+            name: NSApplication.didBecomeActiveNotification,
+            object: nil
+        )
     }
 
     @objc func recordingAppDidResignActive() {
@@ -239,7 +273,11 @@ import UniformTypeIdentifiers
         let seconds = capturePreferences.reminderAfterDuration
         Task { [weak self] in
             guard let self, recording.id == id, recording.canStop, !NSApp.isActive else { return }
-            await CaptureNotifications.shared.scheduleReminder(after: TimeInterval(seconds), recordingID: id, profile: profile())
+            await CaptureNotifications.shared.scheduleReminder(
+                after: TimeInterval(seconds),
+                recordingID: id,
+                profile: profile()
+            )
         }
     }
 
@@ -255,12 +293,17 @@ import UniformTypeIdentifiers
                 }
                 for url in report.saved {
                     if capturePreferences.notifyOnRecordingRecovery,
-                       await CaptureNotifications.shared.notifyRecoveredRecording(url) { continue }
+                        await CaptureNotifications.shared.notifyRecoveredRecording(url)
+                    {
+                        continue
+                    }
                     if capturePreferences.openFinderAfterCapture || capturePreferences.notifyOnRecordingRecovery {
                         NSWorkspace.shared.activateFileViewerSelecting([url])
                     }
                 }
-                for url in report.deleted { logEvent("recording recovery: deleted \(url.lastPathComponent): it can't be played") }
+                for url in report.deleted {
+                    logEvent("recording recovery: deleted \(url.lastPathComponent): it can't be played")
+                }
                 if !report.remaining.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(report.remaining) }
             } catch { logEvent("recording recovery: \(error.localizedDescription)") }
         }
@@ -280,11 +323,15 @@ import UniformTypeIdentifiers
             // saved state must not hijack a newer screenshot's Reveal action.
             if let url = captureStatus.fileURL {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
-            } else if case let .recovery(url) = recording.phase {
+            } else if case .recovery(let url) = recording.phase {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             }
         }
-        captureStatus.onDismiss = { [weak self] in self?.recording.dismiss(); self?.captureStatus.isHidden = true; self?.deviceVC?.updateStatusVisibility() }
+        captureStatus.onDismiss = { [weak self] in
+            self?.recording.dismiss()
+            self?.captureStatus.isHidden = true
+            self?.deviceVC?.updateStatusVisibility()
+        }
     }
 
     private func refreshRecording() {
@@ -297,19 +344,32 @@ import UniformTypeIdentifiers
             captureStatus.isHidden = true
         case .saving:
             captureStatus.isHidden = true
-        case let .saved(url):
-            let thumbnail = recording.previewImage.map { NSImage(cgImage: $0, size: .zero) }
+        case .saved(let url):
+            let thumbnail =
+                recording.previewImage.map { NSImage(cgImage: $0, size: .zero) }
                 ?? NSWorkspace.shared.icon(forFile: url.path)
             captureStatus.showCapture(title: "Recording saved", image: thumbnail, fileURL: url)
         case .recovery:
-            captureStatus.update(title: "Recording needs attention", detail: recording.failure?.localizedDescription ?? "Save to another folder.",
-                                 primary: "Save As…", secondary: "Show in Finder", dismissible: true, appearance: .warning)
+            captureStatus.update(
+                title: "Recording needs attention",
+                detail: recording.failure?.localizedDescription ?? "Save to another folder.",
+                primary: "Save As…",
+                secondary: "Show in Finder",
+                dismissible: true,
+                appearance: .warning
+            )
         }
     }
 
     func toggleRecording() {
-        if recording.canStop { recording.stop(); return }
-        if case .recovery = recording.phase { saveRecordingAs(); return }
+        if recording.canStop {
+            recording.stop()
+            return
+        }
+        if case .recovery = recording.phase {
+            saveRecordingAs()
+            return
+        }
         guard !recording.isActive, canStartRecording, let workspace = session()?.workspace else { return }
         let screen = workspace.deviceVC.screen
         screen.endLiveText()
@@ -318,25 +378,33 @@ import UniformTypeIdentifiers
         let background = NSImage(named: "gradient")?.cgImage(forProposedRect: nil, context: nil, hints: nil)
         let emulator = workspace.deviceVC.emulator
         emulator.warnIfLowOnSpace()
-        recording.start(frame: { [weak screen] in
-            if canvas { return try source.frame() }
-            return screen?.captureFrame()
-        }, audio: { try await emulator.startAudioCapture() }, prepare: { [weak screen] in
-            if canvas {
-                screen?.isCapturingCanvas = true
-                try await source.start(); return source.outputSize
+        recording.start(
+            frame: { [weak screen] in
+                if canvas { return try source.frame() }
+                return screen?.captureFrame()
+            },
+            audio: { try await emulator.startAudioCapture() },
+            prepare: { [weak screen] in
+                if canvas {
+                    screen?.isCapturingCanvas = true
+                    try await source.start()
+                    return source.outputSize
+                }
+                return nil
+            },
+            cleanup: { [weak screen] in
+                if canvas {
+                    await source.stop()
+                    screen?.isCapturingCanvas = false
+                }
+            },
+            background: background,
+            screenSide: screen.screenSide,
+            destination: { [weak self] in
+                guard let self else { throw CaptureError.failed("The capture window was closed.") }
+                return try captureDestination("Recording", extension: "mov")
             }
-            return nil
-        }, cleanup: { [weak screen] in
-            if canvas {
-                await source.stop()
-                screen?.isCapturingCanvas = false
-            }
-        }, background: background, screenSide: screen.screenSide,
-        destination: { [weak self] in
-            guard let self else { throw CaptureError.failed("The capture window was closed.") }
-            return try captureDestination("Recording", extension: "mov")
-        })
+        )
         window?.makeFirstResponder(screen)
     }
 
@@ -359,7 +427,7 @@ import UniformTypeIdentifiers
     }
 
     private func saveRecordingAs() {
-        guard let window, case let .recovery(source) = recording.phase else { return }
+        guard let window, case .recovery(let source) = recording.phase else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.quickTimeMovie]
         panel.nameFieldStringValue = captureName("Recording") + ".mov"
@@ -371,7 +439,10 @@ import UniformTypeIdentifiers
 
     func showRecordingRecovery() {
         do {
-            try FileManager.default.createDirectory(at: ScreenRecordingSession.recoveryDirectory, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(
+                at: ScreenRecordingSession.recoveryDirectory,
+                withIntermediateDirectories: true
+            )
             NSWorkspace.shared.open(ScreenRecordingSession.recoveryDirectory)
         } catch { if let window { NSAlert(error: error).beginSheetModal(for: window) } }
     }

@@ -23,10 +23,10 @@ import System
         self.session = session
         self.onUnexpectedExit = onUnexpectedExit
     }
-    
+
     public struct Session: Sendable {
-        public let clientSocket: String   // USBMUXD_SOCKET_ADDRESS for host tools: "UNIX:<path>"
-        public let guestAddress: String   // usb-tcp-addr the VM dials out to: a socket path
+        public let clientSocket: String  // USBMUXD_SOCKET_ADDRESS for host tools: "UNIX:<path>"
+        public let guestAddress: String  // usb-tcp-addr the VM dials out to: a socket path
 
         /// Fresh socket paths under the per-user temporary directory (a Unix socket path stays under 104 bytes).
         public static func make() -> (session: Session, client: String) {
@@ -35,7 +35,7 @@ import System
         }
         public var paths: [String] { [String(clientSocket.dropFirst("UNIX:".count)), guestAddress] }
     }
-    
+
     public private(set) var session: Session?
     private var daemonTask: Task<Void, Never>?
     private var daemonPID: pid_t?
@@ -51,7 +51,7 @@ import System
     private static let root = "\(NSHomeDirectory())/Developer/usbmuxd-qemu"
     private static var binary: String {
         #if DEBUG
-        if let override = ProcessInfo.processInfo.environment["LTM_USBMUXD"] { return override }
+            if let override = ProcessInfo.processInfo.environment["LTM_USBMUXD"] { return override }
         #endif
         return Bundled.tool("usbmuxd") ?? "\(root)/usbmuxd/src/usbmuxd"
     }
@@ -72,8 +72,10 @@ import System
             try? fm.createDirectory(at: work, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             if let seed = Bundled.resource("usbmuxd-conf") {
                 for name in (try? fm.contentsOfDirectory(atPath: seed)) ?? [] {
-                    try? fm.copyItem(at: URL(fileURLWithPath: seed).appendingPathComponent(name),
-                                     to: work.appendingPathComponent(name))
+                    try? fm.copyItem(
+                        at: URL(fileURLWithPath: seed).appendingPathComponent(name),
+                        to: work.appendingPathComponent(name)
+                    )
                 }
             }
         }
@@ -88,10 +90,12 @@ import System
         chmod(conf.path, 0o700)
         for name in (try? fm.contentsOfDirectory(atPath: conf.path)) ?? [] {
             let path = conf.appendingPathComponent(name).path
-            if (try? fm.attributesOfItem(atPath: path))?[.type] as? FileAttributeType == .typeRegular { chmod(path, 0o600) }
+            if (try? fm.attributesOfItem(atPath: path))?[.type] as? FileAttributeType == .typeRegular {
+                chmod(path, 0o600)
+            }
         }
     }
-    
+
     /// Start usbmuxd and record a session. Returns nil (and does nothing) if the
     /// binary is missing — the app still runs, just without app management.
     /// Everything the daemon writes is the device's own (`paths`), so two
@@ -102,15 +106,16 @@ import System
             logEvent("usbmux: no binary at \(Self.binary); app management disabled")
             return nil
         }
-        
+
         // All writable scratch lives under Application Support, never files-root
         // (which is read-only inside a packaged app's signed bundle).
         do {
             try StorageLocations.privateDirectory(paths.work)
             StorageLocations.excludeFromBackup(paths.work)
-        }
-        catch {
-            logEvent("usbmux: no work directory \(paths.work.path): \(error.localizedDescription); app management disabled")
+        } catch {
+            logEvent(
+                "usbmux: no work directory \(paths.work.path): \(error.localizedDescription); app management disabled"
+            )
             return nil
         }
         pidFile = paths.usbmuxPID.path
@@ -125,7 +130,8 @@ import System
         let guestAddress = session.guestAddress
         self.session = session
 
-        let binary = Self.binary, conf = Self.conf(paths.usbmuxConf)
+        let binary = Self.binary
+        let conf = Self.conf(paths.usbmuxConf)
         let logURL = paths.logs.appendingPathComponent("usbmuxd.log")
         daemonTask = Task.detached {
             do {
@@ -133,8 +139,7 @@ import System
                 // a rotating file descriptor would leave it writing the renamed
                 // generation forever and allow a long session to fill the disk.
                 let capture: ProcessLogCapture?
-                do { capture = try ProcessLogCapture(url: logURL) }
-                catch {
+                do { capture = try ProcessLogCapture(url: logURL) } catch {
                     capture = nil
                     logEvent("usbmux: log capture unavailable: \(error.localizedDescription)")
                 }
@@ -153,8 +158,10 @@ import System
                 }
                 _ = try await run(
                     .path(FilePath(binary)),
-                    arguments: ["-f", "-v", "-S", clientSocket, "-P", "NONE",
-                                "-C", conf],
+                    arguments: [
+                        "-f", "-v", "-S", clientSocket, "-P", "NONE",
+                        "-C", conf,
+                    ],
                     environment: .inherit.updating([
                         "USBMUXD_QEMU_ADDR": guestAddress,
                         // Enumeration has a bounded early-boot probe and retries.
@@ -174,8 +181,11 @@ import System
                     await MainActor.run { [weak self] in
                         self?.daemonPID = pid
                         if let pidFile = self?.pidFile {
-                            try? "\(pid)\n".write(toFile: pidFile, atomically: true,
-                                                  encoding: .utf8)
+                            try? "\(pid)\n".write(
+                                toFile: pidFile,
+                                atomically: true,
+                                encoding: .utf8
+                            )
                         }
                     }
                     // Hold the process open until cancelled, but poll the pid so
@@ -184,7 +194,7 @@ import System
                     // dead daemon look alive forever (the empty-catch bug).
                     while !Task.isCancelled {
                         try await Task.sleep(for: .seconds(1))
-                        if kill(pid, 0) != 0 { break }   // ESRCH: daemon gone
+                        if kill(pid, 0) != 0 { break }  // ESRCH: daemon gone
                     }
                 }
             } catch {
@@ -202,7 +212,7 @@ import System
     /// The daemon exited without stop() — app management is now dead. Clear the
     /// session so canManageApps flips false and tell whoever is listening.
     private func daemonDidDie() {
-        guard session != nil else { return }   // already torn down by stop()
+        guard session != nil else { return }  // already torn down by stop()
         logEvent("usbmux: daemon exited unexpectedly; app management disabled")
         session = nil
         daemonPID = nil
@@ -213,13 +223,15 @@ import System
 
     private func reapStaleDaemon(_ pidFile: String?) {
         guard let pidFile,
-              let text = try? String(contentsOfFile: pidFile, encoding: .utf8),
-              let pid = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)),
-              pid > 0, kill(pid, 0) == 0 else { return }
+            let text = try? String(contentsOfFile: pidFile, encoding: .utf8),
+            let pid = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)),
+            pid > 0, kill(pid, 0) == 0
+        else { return }
         // Only an orphan (reparented to launchd): a daemon with a live parent
         // belongs to another running Light Touch, never to this launch.
         guard let identity = StorageLocations.daemonIdentity(pid), identity.parent == 1,
-              identity.uid == geteuid(), identity.path.hasSuffix("/usbmuxd") else { return }
+            identity.uid == geteuid(), identity.path.hasSuffix("/usbmuxd")
+        else { return }
         logEvent("usbmux: killing stale usbmuxd \(pid) from a previous run")
         kill(pid, SIGTERM)
     }

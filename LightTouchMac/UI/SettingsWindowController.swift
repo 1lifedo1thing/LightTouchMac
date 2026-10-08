@@ -1,5 +1,5 @@
-import LightTouchCore
 import Cocoa
+import LightTouchCore
 import SwiftUI
 
 /// Settings…: one window, a toolbar button per pane, the window sized to the
@@ -12,12 +12,17 @@ final class SettingsWindowController: NSWindowController {
 
     init(general: some View, capture: some View, storage: some View) {
         let resize = SettingsResize()
-        panes = [NSHostingView(rootView: general.settingsPane(resize)),
-                 NSHostingView(rootView: capture.settingsPane(resize)),
-                 NSHostingView(rootView: storage.settingsPane(resize, maxHeight: 560))]
+        panes = [
+            NSHostingView(rootView: general.settingsPane(resize)),
+            NSHostingView(rootView: capture.settingsPane(resize)),
+            NSHostingView(rootView: storage.settingsPane(resize, maxHeight: 560)),
+        ]
         tabs.tabStyle = .toolbar
         tabs.canPropagateSelectedChildViewControllerTitle = true
-        for (view, (title, symbol)) in zip(panes, [("General", "gearshape"), ("Capture", "camera"), ("Storage", "internaldrive")]) {
+        for (view, (title, symbol)) in zip(
+            panes,
+            [("General", "gearshape"), ("Capture", "camera"), ("Storage", "internaldrive")]
+        ) {
             let pane = NSViewController()
             pane.view = view
             pane.title = title
@@ -55,8 +60,11 @@ final class SettingsWindowController: NSWindowController {
         view.layoutSubtreeIfNeeded()
         let frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: view.fittingSize))
         guard frame.size != window.frame.size else { return }
-        window.setFrame(NSRect(x: window.frame.minX, y: window.frame.maxY - frame.height, width: frame.width, height: frame.height),
-                        display: true, animate: window.isVisible)
+        window.setFrame(
+            NSRect(x: window.frame.minX, y: window.frame.maxY - frame.height, width: frame.width, height: frame.height),
+            display: true,
+            animate: window.isVisible
+        )
     }
 }
 

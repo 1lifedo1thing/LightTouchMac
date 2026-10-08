@@ -3,16 +3,21 @@
 // PAC) and the trust; lockdown's MCInstall profile only for a guest without an
 // agent (LockdownTools).
 
-import HostServiceWire
-import FirmwareSchema
 import CryptoKit
 import DeviceRuntime
+import FirmwareSchema
 import Foundation
 import HostRuntime
+import HostServiceWire
 import Security
 
 public struct WebProxySetup: Sendable {
-    public init(services: DeviceServices, guest: GuestServices, proxyDirectory: URL, stoppedTrust: (device: URL, storageKey: String)? = nil) {
+    public init(
+        services: DeviceServices,
+        guest: GuestServices,
+        proxyDirectory: URL,
+        stoppedTrust: (device: URL, storageKey: String)? = nil
+    ) {
         self.services = services
         self.guest = guest
         self.proxyDirectory = proxyDirectory
@@ -42,7 +47,10 @@ public struct WebProxySetup: Sendable {
         let config = URL(fileURLWithPath: proxyFile)
         let der: Data
         do {
-            der = SecCertificateCopyData(try await Task.detached { try WebProxyCA.prepare(config: config) }.value.certificate) as Data
+            der =
+                SecCertificateCopyData(
+                    try await Task.detached { try WebProxyCA.prepare(config: config) }.value.certificate
+                ) as Data
         } catch {
             logEvent("proxy: certificate preparation failed: \(error)")
             throw DeviceToolsError.failed("Couldn’t prepare the proxy certificate.")
@@ -57,8 +65,9 @@ public struct WebProxySetup: Sendable {
                 try await guest.trustCertificate(der, localTool: Self.bundledGuestTool)
                 logEvent("proxy: certificate trusted through the guest agent")
                 return .ready
-            } catch is CancellationError { throw CancellationError() }
-            catch { logEvent("proxy: agent trust failed, offering the profile instead: \(error.localizedDescription)") }
+            } catch is CancellationError { throw CancellationError() } catch {
+                logEvent("proxy: agent trust failed, offering the profile instead: \(error.localizedDescription)")
+            }
         }
         return try await services.offerProfile(proxyFile + ".ca.der") ? .needsTap : .ready
     }
@@ -68,9 +77,10 @@ public struct WebProxySetup: Sendable {
     public static func bundledGuestTool(_ name: String) throws -> Data {
         let catalog = FirmwareCatalog.bundled
         guard let builtIn = catalog.bundled?.keys.sorted().first.flatMap(catalog.entry(id:)),
-              let arch = Board(rawValue: builtIn.board)?.arch,
-              let pack = GuestPackage.bundledPack(arch: arch, filesRoot: Bundled.filesRoot, guestRoot: Bundled.guestRoot),
-              let tool = try GuestPackage.package(in: pack, board: builtIn.board, build: builtIn.build)?.1["bin/\(name)"] else {
+            let arch = Board(rawValue: builtIn.board)?.arch,
+            let pack = GuestPackage.bundledPack(arch: arch, filesRoot: Bundled.filesRoot, guestRoot: Bundled.guestRoot),
+            let tool = try GuestPackage.package(in: pack, board: builtIn.board, build: builtIn.build)?.1["bin/\(name)"]
+        else {
             throw DeviceToolsError.toolMissing(name)
         }
         return tool
@@ -79,7 +89,8 @@ public struct WebProxySetup: Sendable {
     /// Whether the stopped device took `der` as an anchor in its current storage (FirmwareWire.trustAnchorFile).
     public static func trusted(_ der: Data, device: URL, storageKey: String) -> Bool {
         guard let data = try? Data(contentsOf: device.appendingPathComponent(FirmwareWire.trustAnchorFile)),
-              let marker = try? JSONSerialization.jsonObject(with: data) as? [String: String] else { return false }
+            let marker = try? JSONSerialization.jsonObject(with: data) as? [String: String]
+        else { return false }
         let sha1 = Insecure.SHA1.hash(data: der).map { String(format: "%02x", $0) }.joined()
         return marker["sha1"] == sha1 && marker["key"] == storageKey
     }

@@ -7,11 +7,14 @@ import Foundation
 
 func packBaseCommand(_ argv: [String]) -> Never {
     do {
-        guard argv.count == 4, argv[0] == "--base", argv[2] == "--out" else { throw FirmwareError(.internal, "pack-base requires --base DIR --out BLOB") }
+        guard argv.count == 4, argv[0] == "--base", argv[2] == "--out" else {
+            throw FirmwareError(.internal, "pack-base requires --base DIR --out BLOB")
+        }
         try PreparedBase.pack(base: URL(fileURLWithPath: argv[1]), to: URL(fileURLWithPath: argv[3]))
         exit(0)
     } catch {
-        FileHandle.standardError.write(Data("firmwarekit pack-base: \(error)\n".utf8)); exit(1)
+        FileHandle.standardError.write(Data("firmwarekit pack-base: \(error)\n".utf8))
+        exit(1)
     }
 }
 

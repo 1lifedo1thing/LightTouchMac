@@ -10,7 +10,10 @@ public nonisolated struct ClockRegion: Equatable, Sendable {
 
     public static var mac: ClockRegion { ClockRegion(Locale.autoupdatingCurrent) }
 
-    public init(locale: String, uses24HourClock: Bool) { self.locale = locale; self.uses24HourClock = uses24HourClock }
+    public init(locale: String, uses24HourClock: Bool) {
+        self.locale = locale
+        self.uses24HourClock = uses24HourClock
+    }
 
     /// `locale`'s language and region ("en_GB"; a region override "@rg=chzzzz" gives its region, "de_CH"), and whether its time format
     /// (the "j" skeleton, which follows System Settings' 24-hour switch) is 24-hour.

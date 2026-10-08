@@ -14,10 +14,15 @@ public enum DisplayMeasurements {
     public static func pointsPerMillimeter(logical: CGSize, hardware: CGSize, fallbackBounds: CGSize) -> CGFloat? {
         let values = [logical.width, logical.height, hardware.width, hardware.height]
         guard values.allSatisfy({ $0.isFinite && $0 > 0 }) else { return nil }
-        let estimated = CGSize(width: fallbackBounds.width * 25.4 / 72,
-                               height: fallbackBounds.height * 25.4 / 72)
-        guard abs(hardware.width - estimated.width) > 1 || abs(hardware.height - estimated.height) > 1 else { return nil }
-        let x = logical.width / hardware.width, y = logical.height / hardware.height
+        let estimated = CGSize(
+            width: fallbackBounds.width * 25.4 / 72,
+            height: fallbackBounds.height * 25.4 / 72
+        )
+        guard abs(hardware.width - estimated.width) > 1 || abs(hardware.height - estimated.height) > 1 else {
+            return nil
+        }
+        let x = logical.width / hardware.width
+        let y = logical.height / hardware.height
         // Reject unusable metadata rather than stretching the device.
         guard abs(x / y - 1) < 0.05 else { return nil }
         return (x + y) / 2

@@ -9,7 +9,14 @@ import CoreGraphics
 import Foundation
 
 public enum Board: String, Sendable, CaseIterable, Codable {
-    case n45 = "n45ap", m68 = "m68ap", n72 = "n72ap", n18 = "n18ap", n88 = "n88ap", k48 = "k48ap", n81 = "n81ap", n90 = "n90ap"
+    case n45 = "n45ap"
+    case m68 = "m68ap"
+    case n72 = "n72ap"
+    case n18 = "n18ap"
+    case n88 = "n88ap"
+    case k48 = "k48ap"
+    case n81 = "n81ap"
+    case n90 = "n90ap"
 
     /// The SoC family, which decides the prepared base's boot: the S5L8900's iBoot + NOR (iPhone OS 1), the
     /// S5L8720's direct iBoot or SecureROM chain, the S5L8920/S5L8930's direct-kernel kboot (iBoot too on K48).
@@ -46,31 +53,92 @@ public enum Board: String, Sendable, CaseIterable, Codable {
     }
 
     public var facts: Facts {
-        func art(_ shell: String, _ model: String?, _ size: (CGFloat, CGFloat), _ cut: (CGFloat, CGFloat, CGFloat, CGFloat),
-                 home: CGFloat, inset: CGFloat, mm: CGFloat) -> Art {
-            Art(shell: shell, model: model, shellPixels: CGSize(width: size.0, height: size.1),
+        func art(
+            _ shell: String,
+            _ model: String?,
+            _ size: (CGFloat, CGFloat),
+            _ cut: (CGFloat, CGFloat, CGFloat, CGFloat),
+            home: CGFloat,
+            inset: CGFloat,
+            mm: CGFloat
+        ) -> Art {
+            Art(
+                shell: shell,
+                model: model,
+                shellPixels: CGSize(width: size.0, height: size.1),
                 screenCutout: CGRect(x: cut.0, y: cut.1, width: cut.2, height: cut.3),
-                homeDiameter: home, homeBottomInset: inset, heightMillimeters: mm)
+                homeDiameter: home,
+                homeBottomInset: inset,
+                heightMillimeters: mm
+            )
         }
         switch self {
-        case .n45: return Facts(soc: .s5l8900, kind: .iPod, productType: "iPod1,1", marketingName: "iPod touch",
-                                art: art("shell-1g", "N45", (734, 1311), (70, 211, 594, 891), home: 112, inset: 59, mm: 110))
-        case .m68: return Facts(soc: .s5l8900, kind: .iPhone, productType: "iPhone1,1", marketingName: "iPhone",
-                                art: art("shell-iphone2g", nil, (383, 729), (33, 130, 320, 480), home: 70, inset: 34, mm: 115))
-        case .n72: return Facts(soc: .s5l8720, kind: .iPod, productType: "iPod2,1", marketingName: "iPod touch (2nd generation)",
-                                guestTools: true,
-                                art: art("shell", "N72", (737, 1318), (74, 213, 594, 891), home: 122, inset: 54, mm: 110))
-        case .n18: return Facts(soc: .s5l8920, kind: .iPod, productType: "iPod3,1", marketingName: "iPod touch (3rd generation)",
-                                art: art("shell", "N72", (737, 1318), (74, 213, 594, 891), home: 122, inset: 54, mm: 110))
-        case .n88: return Facts(soc: .s5l8920, kind: .iPhone, productType: "iPhone2,1", marketingName: "iPhone 3GS",
-                                art: art("shell-iphone2g", "N88", (383, 729), (33, 130, 320, 480), home: 70, inset: 34, mm: 115.5))
+        case .n45:
+            return Facts(
+                soc: .s5l8900,
+                kind: .iPod,
+                productType: "iPod1,1",
+                marketingName: "iPod touch",
+                art: art("shell-1g", "N45", (734, 1311), (70, 211, 594, 891), home: 112, inset: 59, mm: 110)
+            )
+        case .m68:
+            return Facts(
+                soc: .s5l8900,
+                kind: .iPhone,
+                productType: "iPhone1,1",
+                marketingName: "iPhone",
+                art: art("shell-iphone2g", nil, (383, 729), (33, 130, 320, 480), home: 70, inset: 34, mm: 115)
+            )
+        case .n72:
+            return Facts(
+                soc: .s5l8720,
+                kind: .iPod,
+                productType: "iPod2,1",
+                marketingName: "iPod touch (2nd generation)",
+                guestTools: true,
+                art: art("shell", "N72", (737, 1318), (74, 213, 594, 891), home: 122, inset: 54, mm: 110)
+            )
+        case .n18:
+            return Facts(
+                soc: .s5l8920,
+                kind: .iPod,
+                productType: "iPod3,1",
+                marketingName: "iPod touch (3rd generation)",
+                art: art("shell", "N72", (737, 1318), (74, 213, 594, 891), home: 122, inset: 54, mm: 110)
+            )
+        case .n88:
+            return Facts(
+                soc: .s5l8920,
+                kind: .iPhone,
+                productType: "iPhone2,1",
+                marketingName: "iPhone 3GS",
+                art: art("shell-iphone2g", "N88", (383, 729), (33, 130, 320, 480), home: 70, inset: 34, mm: 115.5)
+            )
         // The iPad's home button: iPad.deviceinfo's homeOriginX/Y (412, 9, bottom-left origin) and its 29x31 home.png.
-        case .k48: return Facts(soc: .s5l8930, kind: .iPad, productType: "iPad1,1", marketingName: "iPad",
-                                art: art("ipad-frame", "K48", (852, 1108), (42, 42, 768, 1024), home: 31, inset: 9, mm: 242.8))
-        case .n81: return Facts(soc: .s5l8930, kind: .iPod, productType: "iPod4,1", marketingName: "iPod touch (4th generation)",
-                                art: art("shell-4g", "N81", (696, 1310), (54, 213, 590, 886), home: 119, inset: 49, mm: 111))
-        case .n90: return Facts(soc: .s5l8930, kind: .iPhone, productType: "iPhone3,1", marketingName: "iPhone 4",
-                                art: art("shell-iphone4", nil, (730, 1426), (48, 236, 640, 960), home: 140, inset: 52, mm: 115.2))
+        case .k48:
+            return Facts(
+                soc: .s5l8930,
+                kind: .iPad,
+                productType: "iPad1,1",
+                marketingName: "iPad",
+                art: art("ipad-frame", "K48", (852, 1108), (42, 42, 768, 1024), home: 31, inset: 9, mm: 242.8)
+            )
+        case .n81:
+            return Facts(
+                soc: .s5l8930,
+                kind: .iPod,
+                productType: "iPod4,1",
+                marketingName: "iPod touch (4th generation)",
+                art: art("shell-4g", "N81", (696, 1310), (54, 213, 590, 886), home: 119, inset: 49, mm: 111)
+            )
+        case .n90:
+            return Facts(
+                soc: .s5l8930,
+                kind: .iPhone,
+                productType: "iPhone3,1",
+                marketingName: "iPhone 4",
+                art: art("shell-iphone4", nil, (730, 1426), (48, 236, 640, 960), home: 140, inset: 52, mm: 115.2)
+            )
         }
     }
 
@@ -113,7 +181,10 @@ public enum Board: String, Sendable, CaseIterable, Codable {
     /// (the machine's `iboot=`) + nor.bin; no GID blobs (1.x's 8900 key is fixed).
     public func requiredFiles(strategy: String?) throws -> (boot: String, files: [String]) {
         func unknown() -> CocoaError {
-            CocoaError(.fileReadCorruptFile, userInfo: [NSLocalizedDescriptionKey: "Unknown boot strategy: \(strategy!)"])
+            CocoaError(
+                .fileReadCorruptFile,
+                userInfo: [NSLocalizedDescriptionKey: "Unknown boot strategy: \(strategy!)"]
+            )
         }
         switch (soc, strategy) {
         case (.s5l8900, nil), (.s5l8900, "iboot"): return ("iBoot.bin", ["nor.bin"])
@@ -122,7 +193,8 @@ public enum Board: String, Sendable, CaseIterable, Codable {
         case (_, nil) where self == .k48, (_, "kboot") where self == .k48: return ("kboot.bin", [])
         case (_, "iboot") where self == .k48: return ("iBoot.bin", ["nor.bin", "gid-blobs.bin"])
         case (_, "bootrom") where self == .k48: return ("SecureROM.bin", ["nor.bin", "gid-blobs.bin"])
-        case (.s5l8920, nil), (.s5l8920, "kboot"), (.s5l8930, nil), (.s5l8930, "kboot"): return ("kboot.bin", ["nor.bin"])
+        case (.s5l8920, nil), (.s5l8920, "kboot"), (.s5l8930, nil), (.s5l8930, "kboot"):
+            return ("kboot.bin", ["nor.bin"])
         default: throw unknown()
         }
     }

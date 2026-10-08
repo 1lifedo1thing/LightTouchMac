@@ -1,13 +1,18 @@
 import Foundation
 import HostServiceWire
 import Testing
+
 @testable import LightTouchCore
 
 /// A scripted device for the install queue (AppInstaller): media preparation, imports and removals start when
 /// asked and finish when the test says so; failures, alerts and overlapping guest work are recorded.
 final class FakeDevice: InstallDevice {
     let instance: DeviceInstance
-    var mediaFirmware = MediaSupport.Firmware(version: "3.1.3", name: "iOS 3.1.3", media: ["Music", "Photos", "Videos"])
+    var mediaFirmware = MediaSupport.Firmware(
+        version: "3.1.3",
+        name: "iOS 3.1.3",
+        media: ["Music", "Photos", "Videos"]
+    )
     let productType: String? = "iPod2,1", iosVersion = "3.1.3", guestArch = "armv6"
     var deviceReachable: Bool? = true
     var failures = 0, overlapped = false
@@ -21,10 +26,20 @@ final class FakeDevice: InstallDevice {
     struct Unreadable: LocalizedError { var errorDescription: String? { "Unreadable photo" } }
 
     init(_ name: String = "device", state: URL? = nil) {
-        instance = DeviceInstance(id: UUID(), name: name, board: "n72ap", firmware: "ipod-3.1.3", created: .now,
-                                  base: .init(kind: .prepared, path: "Devices/\(name)/base"),
-                                  storage: .init(key: name, overlay: "Devices/\(name)/overlay", snapshot: "Devices/\(name)/snapshot",
-                                                 usbmuxConf: "Devices/\(name)/usbmuxd-conf"))
+        instance = DeviceInstance(
+            id: UUID(),
+            name: name,
+            board: "n72ap",
+            firmware: "ipod-3.1.3",
+            created: .now,
+            base: .init(kind: .prepared, path: "Devices/\(name)/base"),
+            storage: .init(
+                key: name,
+                overlay: "Devices/\(name)/overlay",
+                snapshot: "Devices/\(name)/snapshot",
+                usbmuxConf: "Devices/\(name)/usbmuxd-conf"
+            )
+        )
     }
 
     func prepareMedia(_ source: URL) async throws -> PreparedMedia {
@@ -41,9 +56,11 @@ final class FakeDevice: InstallDevice {
             : .photo(MediaPhoto(id: UUID().uuidString, directory: directory, image: file, title: name))
     }
 
-    func importMedia(_ media: PreparedMedia, progress: @escaping @Sendable (Double) -> Void, willCommit: () -> Void) async throws {
+    func importMedia(_ media: PreparedMedia, progress: @escaping @Sendable (Double) -> Void, willCommit: () -> Void)
+        async throws
+    {
         try await guestWork(media.title) { progress(0.25) }
-        try Task.checkCancellation()   // the upload is interruptible; the removal call below is not
+        try Task.checkCancellation()  // the upload is interruptible; the removal call below is not
         willCommit()
         committed.append(media.title)
     }
@@ -59,26 +76,41 @@ final class FakeDevice: InstallDevice {
     }
 
     func finish(_ name: String, error: Error? = nil) {
-        guard let reply = waiting.removeValue(forKey: name) else { Issue.record("\(name) is not waiting"); return }
+        guard let reply = waiting.removeValue(forKey: name) else {
+            Issue.record("\(name) is not waiting")
+            return
+        }
         if let error { reply.resume(throwing: error) } else { reply.resume() }
     }
 
-    func install(_ ipa: URL, placeholderRaised: Bool, progress: @escaping @Sendable (String) -> Void) async throws -> String { "" }
-    func installPlaceholder(_ action: String, bundleID: String, after previous: Task<Void, Never>?) -> Task<Void, Never>? { nil }
-    func reportConnectionFailure(_ error: Error, operation: String) { failures += 1; deviceReachable = false }
+    func install(_ ipa: URL, placeholderRaised: Bool, progress: @escaping @Sendable (String) -> Void) async throws
+        -> String
+    { "" }
+    func installPlaceholder(_ action: String, bundleID: String, after previous: Task<Void, Never>?) -> Task<
+        Void, Never
+    >? { nil }
+    func reportConnectionFailure(_ error: Error, operation: String) {
+        failures += 1
+        deviceReachable = false
+    }
     func present(_ error: Error, in window: AnyObject?) { errors.append(error) }
     func warnMayNotLaunch(_ appName: String, in window: AnyObject?) {}
 }
 
 /// AppInstaller's process-wide collaborators kept in `state` for the life of `body`: the IPA library, the
 /// metadata cache (seeded with a name for each of `named`), the device list and the diagnostics log.
-func withInstallerState<T>(named: [String] = [], devices: @escaping () -> [DeviceInstance] = { [] },
-                           _ body: @MainActor (URL, LogLines) async throws -> T) async throws -> T {
+func withInstallerState<T>(
+    named: [String] = [],
+    devices: @escaping () -> [DeviceInstance] = { [] },
+    _ body: @MainActor (URL, LogLines) async throws -> T
+) async throws -> T {
     try await withTemporaryState { state in
         let metadata = state.appendingPathComponent("AppMetadata", isDirectory: true)
         try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
-        try JSONSerialization.data(withJSONObject: Dictionary(uniqueKeysWithValues: named.map { ($0, ["name": $0, "hasIcon": false]) }))
-            .write(to: metadata.appendingPathComponent("index.json"))
+        try JSONSerialization.data(
+            withJSONObject: Dictionary(uniqueKeysWithValues: named.map { ($0, ["name": $0, "hasIcon": false]) })
+        )
+        .write(to: metadata.appendingPathComponent("index.json"))
         let log = LogLines()
         let before = (IPALibrary.stateRoot, AppMetadataCache.testing, AppInstaller.log, AppInstaller.devices)
         IPALibrary.stateRoot = state

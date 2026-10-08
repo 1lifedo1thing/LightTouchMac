@@ -1,6 +1,6 @@
+import Darwin
 import Foundation
 import os
-import Darwin
 
 /// Native stream I/O preserves JSON-line ordering without holding cancellation
 /// state across a blocking pipe write or occupying a cooperative worker.
@@ -38,7 +38,8 @@ public final class PipeOutput: Sendable {
                     current.pending -= 1
                     if error != 0 && !current.cancelled { current.failure = error }
                     guard current.pending == 0 else { return ([], false) }
-                    let waiters = current.waiters; current.waiters.removeAll()
+                    let waiters = current.waiters
+                    current.waiters.removeAll()
                     return (waiters, current.failure == nil)
                 }
                 for waiter in waiters { waiter.resume(returning: success) }

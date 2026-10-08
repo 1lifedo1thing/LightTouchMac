@@ -1,6 +1,6 @@
-import HostServiceWire
-import Foundation
 import CoreGraphics
+import Foundation
+import HostServiceWire
 import ImageIO
 import UniformTypeIdentifiers
 
@@ -27,10 +27,11 @@ public struct MediaPhoto: Sendable {
                 throw DeviceToolsError.failed("This photo is too large. Choose one smaller than 64 MB.")
             }
             guard let imageSource = CGImageSourceCreateWithURL(source as CFURL, nil),
-                  let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any],
-                  let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
-                  let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue,
-                  width > 0, height > 0 else {
+                let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any],
+                let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
+                let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue,
+                width > 0, height > 0
+            else {
                 throw DeviceToolsError.failed("This photo couldn’t be read.")
             }
             guard width <= 100000, height <= 100000, width * height <= 100_000_000 else {
@@ -46,8 +47,12 @@ public struct MediaPhoto: Sendable {
             try writeBaselineJPEG(imageSource, maxPixelSize: 2048, to: output)
             try Task.checkCancellation()
             let id = try MediaIdentity.identifier(for: output)
-            let result = MediaPhoto(id: id, directory: directory, image: output,
-                                    title: source.deletingPathExtension().lastPathComponent)
+            let result = MediaPhoto(
+                id: id,
+                directory: directory,
+                image: output,
+                title: source.deletingPathExtension().lastPathComponent
+            )
             complete = true
             return result
         }
@@ -58,12 +63,16 @@ public struct MediaPhoto: Sendable {
                 throw CancellationError()
             }
             return photo
-        } onCancel: { worker.cancel() }
+        } onCancel: {
+            worker.cancel()
+        }
     }
 
     /// Upright, opaque (flattened on white), baseline JPEG no larger than `maxPixelSize` on
     /// either side: what the legacy guests' Photos and Music artwork decoders accept.
-    public nonisolated static func writeBaselineJPEG(_ imageSource: CGImageSource, maxPixelSize: Int, to output: URL) throws {
+    public nonisolated static func writeBaselineJPEG(_ imageSource: CGImageSource, maxPixelSize: Int, to output: URL)
+        throws
+    {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
@@ -71,10 +80,17 @@ public struct MediaPhoto: Sendable {
             kCGImageSourceShouldCacheImmediately: true,
         ]
         guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, options as CFDictionary),
-              CGImageSourceGetStatusAtIndex(imageSource, 0) == .statusComplete,
-              let context = CGContext(data: nil, width: thumbnail.width, height: thumbnail.height,
-                bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else {
+            CGImageSourceGetStatusAtIndex(imageSource, 0) == .statusComplete,
+            let context = CGContext(
+                data: nil,
+                width: thumbnail.width,
+                height: thumbnail.height,
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+            )
+        else {
             throw DeviceToolsError.failed("This photo couldn’t be read.")
         }
         try Task.checkCancellation()
@@ -86,7 +102,14 @@ public struct MediaPhoto: Sendable {
         guard let image = context.makeImage() else {
             throw DeviceToolsError.failed("The photo couldn’t be prepared.")
         }
-        guard let destination = CGImageDestinationCreateWithURL(output as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
+        guard
+            let destination = CGImageDestinationCreateWithURL(
+                output as CFURL,
+                UTType.jpeg.identifier as CFString,
+                1,
+                nil
+            )
+        else {
             throw DeviceToolsError.failed("Couldn’t create the prepared photo.")
         }
         let encoding: [CFString: Any] = [

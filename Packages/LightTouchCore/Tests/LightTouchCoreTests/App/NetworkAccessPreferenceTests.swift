@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import LightTouchCore
 
 /// A saved guest-network choice and the command line's --network/--no-network decide without a prompt.
@@ -14,13 +15,22 @@ struct NetworkAccessPreferenceTests {
     @Test(arguments: [[], ["--network"], ["--no-network"], ["--network", "--no-network"]])
     func savedChoiceOrExplicitOverride(_ flags: [String]) {
         withDefaults { defaults in
-            #expect(NetworkAccessPreference.decided(arguments: ["LightTouch"] + flags, defaults: defaults) == (flags.isEmpty ? nil : !flags.contains("--no-network")),
-                    "no saved answer and no flag: ask")
+            #expect(
+                NetworkAccessPreference.decided(arguments: ["LightTouch"] + flags, defaults: defaults)
+                    == (flags.isEmpty ? nil : !flags.contains("--no-network")),
+                "no saved answer and no flag: ask"
+            )
             for saved in [true, false] {
                 defaults.set(saved, forKey: NetworkAccessPreference.key)
                 let explicit = !flags.isEmpty
-                #expect(NetworkAccessPreference.decided(arguments: ["LightTouch"] + flags, defaults: defaults) == (explicit ? !flags.contains("--no-network") : saved))
-                #expect(defaults.bool(forKey: NetworkAccessPreference.key) == saved, "an explicit flag is not remembered")
+                #expect(
+                    NetworkAccessPreference.decided(arguments: ["LightTouch"] + flags, defaults: defaults)
+                        == (explicit ? !flags.contains("--no-network") : saved)
+                )
+                #expect(
+                    defaults.bool(forKey: NetworkAccessPreference.key) == saved,
+                    "an explicit flag is not remembered"
+                )
             }
         }
     }

@@ -40,14 +40,19 @@ public struct DeviceMenuState {
         public var isOn: Bool?
 
         public init(isEnabled: Bool, title: String? = nil, isOn: Bool? = nil) {
-            self.isEnabled = isEnabled; self.title = title; self.isOn = isOn
+            self.isEnabled = isEnabled
+            self.title = title
+            self.isOn = isOn
         }
     }
 
     public func validate(_ item: Item) -> Validation {
         switch item {
         case .lock:
-            Validation(isEnabled: acceptsInput || (isPoweredOff && !shuttingDown), title: isPoweredOff ? "Start" : isSleeping ? "Wake" : "Lock")
+            Validation(
+                isEnabled: acceptsInput || (isPoweredOff && !shuttingDown),
+                title: isPoweredOff ? "Start" : isSleeping ? "Wake" : "Lock"
+            )
         case .rotate:
             Validation(isEnabled: acceptsInput && !editingText)
         case .batteryLevel(let level):
@@ -61,7 +66,10 @@ public struct DeviceMenuState {
         case .input:
             Validation(isEnabled: acceptsInput)
         case .pause:
-            Validation(isEnabled: (isRunning || isPaused) && !isInstalling && !hasPendingInstalls, title: isPaused ? "Resume" : "Pause")
+            Validation(
+                isEnabled: (isRunning || isPaused) && !isInstalling && !hasPendingInstalls,
+                title: isPaused ? "Resume" : "Pause"
+            )
         }
     }
 }
@@ -85,5 +93,7 @@ public struct CaptureAvailability {
     public var canTakeScreenshot: Bool { (isRunning || isPaused) && !isSleeping && !screenshotBusy }
     public var canStartRecording: Bool { isRunning && !isSleeping && !screenshotBusy }
     /// Stopping stays available when the guest stops, and saving a recovered recording needs no device.
-    public var canToggleRecording: Bool { !recordingSaving && (recordingCanStop || recordingNeedsRecovery || canStartRecording) }
+    public var canToggleRecording: Bool {
+        !recordingSaving && (recordingCanStop || recordingNeedsRecovery || canStartRecording)
+    }
 }

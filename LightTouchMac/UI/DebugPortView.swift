@@ -16,16 +16,28 @@ struct DebugPortView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Toggle(isOn: Binding(get: { enabled }, set: { enabled = $0; onToggle() })) {
+            Toggle(
+                isOn: Binding(
+                    get: { enabled },
+                    set: {
+                        enabled = $0
+                        onToggle()
+                    }
+                )
+            ) {
                 Text("Debug Port").font(.headline)
             }
             .toggleStyle(.switch)
             Text(DebugPortText.state(shortName: shortName, enabled: enabled, port: port))
                 .foregroundStyle(.secondary)
-            Text("The emulator’s GDB remote stub. A debugger attached to it runs the \(shortName)’s CPU: it pauses the whole device and reads or changes its kernel and apps. Only this Mac can reach it, and it has no password.")
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "The emulator’s GDB remote stub. A debugger attached to it runs the \(shortName)’s CPU: it pauses the whole device and reads or changes its kernel and apps. Only this Mac can reach it, and it has no password."
+            )
+            .fixedSize(horizontal: false, vertical: true)
             if let port {
-                ForEach(DebugPortText.commands(port: port, lldbWithSymbols: lldbWithSymbols), id: \.0) { title, command in
+                ForEach(DebugPortText.commands(port: port, lldbWithSymbols: lldbWithSymbols), id: \.0) {
+                    title,
+                    command in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(title).font(.subheadline).foregroundStyle(.secondary)
                         HStack(alignment: .top) {

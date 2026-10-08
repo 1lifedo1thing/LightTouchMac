@@ -3,9 +3,9 @@
 // resting gravity. This is the gesture's state and math, DisplayView's tilt without the events and the shell
 // drawing; the attitude reaches the guest's accelerometer as LinkCommand.attitude (EmulatorController.setTilt).
 
-import Foundation
 import CoreGraphics
 import DeviceRuntime
+import Foundation
 
 public struct ChassisTilt {
     public init() {}

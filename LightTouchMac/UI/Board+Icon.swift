@@ -9,7 +9,12 @@ extension Board {
     /// macOS's declared type for the board: its product type is the com.apple.device-model-code tag.
     var deviceType: AppleDeviceType? { AppleDeviceType(productType) }
 
-    var icon: NSImage { Self.icon(modelCode: productType, fallbackSymbol: [.iPad: "ipad", .iPhone: "iphone"][facts.kind] ?? "ipodtouch") }
+    var icon: NSImage {
+        Self.icon(
+            modelCode: productType,
+            fallbackSymbol: [.iPad: "ipad", .iPhone: "iphone"][facts.kind] ?? "ipodtouch"
+        )
+    }
 
     static func icon(modelCode: String, fallbackSymbol: String) -> NSImage {
         AppleDeviceType(modelCode)?.icon ?? NSImage(systemSymbolName: fallbackSymbol, accessibilityDescription: nil)!

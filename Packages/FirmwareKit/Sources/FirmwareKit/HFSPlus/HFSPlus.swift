@@ -24,8 +24,11 @@ public final class HFSPlusVolume {
         public let totalBlocks: UInt32
         public let extents: [Extent]
         init(_ b: [UInt8], _ o: Int) {
-            logicalSize = be64(b, o); totalBlocks = be32(b, o + 12)
-            extents = (0..<8).map { Extent(start: be32(b, o + 16 + 8 * $0), count: be32(b, o + 20 + 8 * $0)) }.filter { $0.count > 0 }
+            logicalSize = be64(b, o)
+            totalBlocks = be32(b, o + 12)
+            extents = (0..<8).map { Extent(start: be32(b, o + 16 + 8 * $0), count: be32(b, o + 20 + 8 * $0)) }.filter {
+                $0.count > 0
+            }
         }
     }
 
@@ -43,7 +46,7 @@ public final class HFSPlusVolume {
         public let node: Int, bodyOffset: Int
         public var isSymlink: Bool { kind == .file && mode & 0o170000 == 0o120000 }
         /// An HFS+ file hard link ('hlnk'/'hfs+'): the content is the private directory's iNode<special>.
-        public var isHardLink: Bool { kind == .file && fileType == 0x686C6E6B && creator == 0x6866732B }
+        public var isHardLink: Bool { kind == .file && fileType == 0x686C_6E6B && creator == 0x6866_732B }
     }
 
     public struct Entry: Sendable, Equatable, Codable {
@@ -65,11 +68,12 @@ public final class HFSPlusVolume {
     private var catalogCache: [CatalogRecord]?
 
     static let rootID: UInt32 = 2, extentsID: UInt32 = 3, catalogID: UInt32 = 4, attributesID: UInt32 = 8
-    static let compressed: UInt8 = 0x20   // UF_COMPRESSED: the content is in com.apple.decmpfs (+ the resource fork)
+    static let compressed: UInt8 = 0x20  // UF_COMPRESSED: the content is in com.apple.decmpfs (+ the resource fork)
     static let privateDirs: Set<String> = ["\0\0\0\0HFS+ Private Data", ".HFS+ Private Directory Data\r"]
 
     public init(_ url: URL, writable: Bool = false) throws {
-        self.url = url; self.writable = writable
+        self.url = url
+        self.writable = writable
         fd = open(url.path, writable ? O_RDWR : O_RDONLY)
         guard fd >= 0 else { throw FirmwareError(.internal, "open \(url.path): \(String(cString: strerror(errno)))") }
         var vh = [UInt8](repeating: 0, count: 512)
@@ -78,9 +82,15 @@ public final class HFSPlusVolume {
             throw FirmwareError(.unsupported, "\(url.lastPathComponent): no HFS+ volume header")
         }
         signature = vh[1] == 0x58 ? "HX" : "H+"
-        fileCount = Int(be32(vh, 32)); folderCount = Int(be32(vh, 36)); blockSize = Int(be32(vh, 40))
-        totalBlocks = Int(be32(vh, 44)); freeBlocks = Int(be32(vh, 48)); nextCatalogID = Int(be32(vh, 64))
-        extentsFork = Fork(vh, 192); catalogFork = Fork(vh, 272); attributesFork = Fork(vh, 352)
+        fileCount = Int(be32(vh, 32))
+        folderCount = Int(be32(vh, 36))
+        blockSize = Int(be32(vh, 40))
+        totalBlocks = Int(be32(vh, 44))
+        freeBlocks = Int(be32(vh, 48))
+        nextCatalogID = Int(be32(vh, 64))
+        extentsFork = Fork(vh, 192)
+        catalogFork = Fork(vh, 272)
+        attributesFork = Fork(vh, 352)
     }
 
     deinit { close(fd) }
@@ -100,19 +110,30 @@ public final class HFSPlusVolume {
         return all
     }
 
-    func io(_ fork: Fork, fileID: UInt32, resource: Bool = false, offset: Int, count: Int,
-            _ body: (_ diskOffset: Int, _ bufferOffset: Int, _ n: Int) throws -> Void) throws {
-        var off = offset, done = 0, base = 0
+    func io(
+        _ fork: Fork,
+        fileID: UInt32,
+        resource: Bool = false,
+        offset: Int,
+        count: Int,
+        _ body: (_ diskOffset: Int, _ bufferOffset: Int, _ n: Int) throws -> Void
+    ) throws {
+        var off = offset
+        var done = 0
+        var base = 0
         for e in try extents(fork, fileID: fileID, resource: resource) where done < count {
             let len = Int(e.count) * blockSize
             if off < base + len {
                 let n = min(count - done, base + len - off)
                 try body(Int(e.start) * blockSize + (off - base), done, n)
-                done += n; off += n
+                done += n
+                off += n
             }
             base += len
         }
-        guard done == count else { throw FirmwareError(.unsupported, "\(url.lastPathComponent): read past the end of file \(fileID)") }
+        guard done == count else {
+            throw FirmwareError(.unsupported, "\(url.lastPathComponent): read past the end of file \(fileID)")
+        }
     }
 
     func read(_ fork: Fork, fileID: UInt32, resource: Bool = false, offset: Int, count: Int) throws -> [UInt8] {
@@ -157,7 +178,7 @@ public final class HFSPlusVolume {
 
     func decmpfsHeader(_ cnid: UInt32) throws -> [UInt8]? {
         if decmpfs == nil { decmpfs = try readDecmpfs() }
-        return decmpfs?[cnid].flatMap { $0.count >= 16 && le32($0, 0) == 0x636D7066 ? $0 : nil }
+        return decmpfs?[cnid].flatMap { $0.count >= 16 && le32($0, 0) == 0x636D_7066 ? $0 : nil }
     }
 
     /// The catalog IDs that own any extended attribute (the attributes B-tree's keys).
@@ -176,11 +197,14 @@ public final class HFSPlusVolume {
         let want = Array("com.apple.decmpfs".utf16)
         try leaves(try btree(attributesFork, fileID: Self.attributesID)) { _, buf, offs in
             for i in 0..<(offs.count - 1) where offs[i + 1] - offs[i] >= 14 {
-                let o = offs[i], keyLen = Int(be16(buf, o)), nameLen = Int(be16(buf, o + 12))
+                let o = offs[i]
+                let keyLen = Int(be16(buf, o))
+                let nameLen = Int(be16(buf, o + 12))
                 guard nameLen == want.count, o + 14 + 2 * nameLen <= offs[i + 1],
-                      (0..<nameLen).allSatisfy({ be16(buf, o + 14 + 2 * $0) == want[$0] }) else { continue }
+                    (0..<nameLen).allSatisfy({ be16(buf, o + 14 + 2 * $0) == want[$0] })
+                else { continue }
                 let body = o + 2 + keyLen
-                guard body + 16 <= offs[i + 1], be32(buf, body) == 0x10 else { continue }   // kHFSPlusAttrInlineData
+                guard body + 16 <= offs[i + 1], be32(buf, body) == 0x10 else { continue }  // kHFSPlusAttrInlineData
                 let size = Int(be32(buf, body + 12))
                 guard body + 16 + size <= offs[i + 1] else { continue }
                 out[be32(buf, o + 4)] = Array(buf[body + 16..<body + 16 + size])
@@ -191,12 +215,15 @@ public final class HFSPlusVolume {
 
     /// decmpfs types 3 (zlib, inline in the attribute) and 4 (zlib, 64 KiB blocks in the resource fork).
     func decompressed(_ r: CatalogRecord) throws -> [UInt8] {
-        guard let x = try decmpfsHeader(r.cnid) else { throw FirmwareError(.unsupported, "\(r.name): compressed, no decmpfs attribute") }
-        let type = le32(x, 4), size = Int(le64(x, 8))
+        guard let x = try decmpfsHeader(r.cnid) else {
+            throw FirmwareError(.unsupported, "\(r.name): compressed, no decmpfs attribute")
+        }
+        let type = le32(x, 4)
+        let size = Int(le64(x, 8))
         func inflate(_ c: ArraySlice<UInt8>, _ max: Int) throws -> [UInt8] {
             guard let first = c.first else { return [] }
-            if first & 0x0F == 0x0F { return Array(c.dropFirst()) }   // stored
-            let z = Array(c.dropFirst(2))                             // zlib header; COMPRESSION_ZLIB is raw deflate
+            if first & 0x0F == 0x0F { return Array(c.dropFirst()) }  // stored
+            let z = Array(c.dropFirst(2))  // zlib header; COMPRESSION_ZLIB is raw deflate
             var out = [UInt8](repeating: 0, count: max)
             let n = compression_decode_buffer(&out, max, z, z.count, nil, COMPRESSION_ZLIB)
             guard n > 0 || max == 0 else { throw FirmwareError(.unsupported, "\(r.name): bad decmpfs zlib data") }
@@ -206,19 +233,27 @@ public final class HFSPlusVolume {
         switch type {
         case 3: out = try inflate(x[16...], size)
         case 4:
-            guard let rf = r.resource, rf.logicalSize >= 260 else { throw FirmwareError(.unsupported, "\(r.name): no compressed resource fork") }
+            guard let rf = r.resource, rf.logicalSize >= 260 else {
+                throw FirmwareError(.unsupported, "\(r.name): no compressed resource fork")
+            }
             let fork = try read(rf, fileID: r.cnid, resource: true, offset: 0, count: Int(rf.logicalSize))
-            let base = Int(be32(fork, 0)) + 4, n = Int(le32(fork, base))
+            let base = Int(be32(fork, 0)) + 4
+            let n = Int(le32(fork, base))
             out = []
             out.reserveCapacity(size)
             for k in 0..<n {
-                let off = base + Int(le32(fork, base + 4 + 8 * k)), len = Int(le32(fork, base + 8 + 8 * k))
-                guard off + len <= fork.count else { throw FirmwareError(.unsupported, "\(r.name): decmpfs block past the fork") }
+                let off = base + Int(le32(fork, base + 4 + 8 * k))
+                let len = Int(le32(fork, base + 8 + 8 * k))
+                guard off + len <= fork.count else {
+                    throw FirmwareError(.unsupported, "\(r.name): decmpfs block past the fork")
+                }
                 out += try inflate(fork[off..<off + len], min(1 << 16, size - out.count))
             }
         default: throw FirmwareError(.unsupported, "\(r.name): decmpfs type \(type)")
         }
-        guard out.count == size else { throw FirmwareError(.unsupported, "\(r.name): decompressed \(out.count) of \(size) bytes") }
+        guard out.count == size else {
+            throw FirmwareError(.unsupported, "\(r.name): decompressed \(out.count) of \(size) bytes")
+        }
         return out
     }
 
@@ -241,9 +276,12 @@ public final class HFSPlusVolume {
 
     /// Every leaf node, in order: (node number, bytes, record offsets incl. the free-space offset).
     func leaves(_ t: BTree, _ body: (Int, [UInt8], [Int]) throws -> Void) throws {
-        var n = t.firstLeaf, seen = Set<UInt32>()
+        var n = t.firstLeaf
+        var seen = Set<UInt32>()
         while n != 0 {
-            guard seen.insert(n).inserted else { throw FirmwareError(.unsupported, "\(url.lastPathComponent): B-tree leaf loop at node \(n)") }
+            guard seen.insert(n).inserted else {
+                throw FirmwareError(.unsupported, "\(url.lastPathComponent): B-tree leaf loop at node \(n)")
+            }
             let buf = try read(t.fork, fileID: t.fileID, offset: Int(n) * t.nodeSize, count: t.nodeSize)
             let count = Int(be16(buf, 10))
             let offs = (0...count).map { Int(be16(buf, t.nodeSize - 2 * ($0 + 1))) }
@@ -259,7 +297,8 @@ public final class HFSPlusVolume {
             for i in 0..<(offs.count - 1) where offs[i + 1] - offs[i] >= 12 + 64 {
                 let o = offs[i]
                 let key = UInt64(be32(buf, o + 4)) << 8 | UInt64(buf[o + 2])
-                let exts = (0..<8).map { Extent(start: be32(buf, o + 12 + 8 * $0), count: be32(buf, o + 16 + 8 * $0)) }.filter { $0.count > 0 }
+                let exts = (0..<8).map { Extent(start: be32(buf, o + 12 + 8 * $0), count: be32(buf, o + 16 + 8 * $0)) }
+                    .filter { $0.count > 0 }
                 out[key, default: []].append((be32(buf, o + 8), exts))
             }
         }
@@ -272,24 +311,40 @@ public final class HFSPlusVolume {
         var out: [CatalogRecord] = []
         try leaves(try btree(catalogFork, fileID: Self.catalogID)) { node, buf, offs in
             for i in 0..<(offs.count - 1) {
-                let start = offs[i], end = offs[i + 1]
+                let start = offs[i]
+                let end = offs[i + 1]
                 guard end - start >= 10 else { continue }
-                let keyLen = Int(be16(buf, start)), parent = be32(buf, start + 2), nameLen = Int(be16(buf, start + 6))
+                let keyLen = Int(be16(buf, start))
+                let parent = be32(buf, start + 2)
+                let nameLen = Int(be16(buf, start + 6))
                 var body = start + 2 + keyLen
                 if body % 2 == 1 { body += 1 }
                 guard body + 2 <= end, start + 8 + 2 * nameLen <= end else { continue }
                 let type = be16(buf, body)
-                guard type == 1 || type == 2, body + 48 <= end else { continue }   // folder / file (threads skipped)
+                guard type == 1 || type == 2, body + 48 <= end else { continue }  // folder / file (threads skipped)
                 let name = String(decoding: (0..<nameLen).map { be16(buf, start + 8 + 2 * $0) }, as: UTF16.self)
                 let file = type == 2 && body + 248 <= end
-                out.append(CatalogRecord(
-                    kind: type == 1 ? .folder : .file, parent: parent, name: name, cnid: be32(buf, body + 8),
-                    uid: be32(buf, body + 32), gid: be32(buf, body + 36), adminFlags: buf[body + 40], ownerFlags: buf[body + 41],
-                    mode: be16(buf, body + 42), special: be32(buf, body + 44),
-                    fileType: body + 56 <= end ? be32(buf, body + 48) : 0, creator: body + 56 <= end ? be32(buf, body + 52) : 0,
-                    data: file ? Fork(buf, body + 88) : nil, resource: file ? Fork(buf, body + 168) : nil,
-                    dates: (0..<5).map { be32(buf, body + 12 + 4 * $0) },
-                    node: node, bodyOffset: body))
+                out.append(
+                    CatalogRecord(
+                        kind: type == 1 ? .folder : .file,
+                        parent: parent,
+                        name: name,
+                        cnid: be32(buf, body + 8),
+                        uid: be32(buf, body + 32),
+                        gid: be32(buf, body + 36),
+                        adminFlags: buf[body + 40],
+                        ownerFlags: buf[body + 41],
+                        mode: be16(buf, body + 42),
+                        special: be32(buf, body + 44),
+                        fileType: body + 56 <= end ? be32(buf, body + 48) : 0,
+                        creator: body + 56 <= end ? be32(buf, body + 52) : 0,
+                        data: file ? Fork(buf, body + 88) : nil,
+                        resource: file ? Fork(buf, body + 168) : nil,
+                        dates: (0..<5).map { be32(buf, body + 12 + 4 * $0) },
+                        node: node,
+                        bodyOffset: body
+                    )
+                )
             }
         }
         catalogCache = out
@@ -310,23 +365,34 @@ public final class HFSPlusVolume {
     }
 
     func resolve(_ path: String, _ idx: [Key: CatalogRecord]) throws -> CatalogRecord {
-        var cid = Self.rootID, hit: CatalogRecord?
+        var cid = Self.rootID
+        var hit: CatalogRecord?
         for part in path.split(separator: "/") {
             guard let r = idx[Key(parent: cid, name: Self.catalogName(String(part)))] else {
-                throw FirmwareError(.internal, "\(url.lastPathComponent): not in the catalog: \(path) (stuck at \(part))")
+                throw FirmwareError(
+                    .internal,
+                    "\(url.lastPathComponent): not in the catalog: \(path) (stuck at \(part))"
+                )
             }
-            hit = r; cid = r.cnid
+            hit = r
+            cid = r.cnid
         }
         if let hit { return hit }
-        guard let root = try catalog().first(where: { $0.cnid == Self.rootID }) else { throw FirmwareError(.unsupported, "no root folder") }
+        guard let root = try catalog().first(where: { $0.cnid == Self.rootID }) else {
+            throw FirmwareError(.unsupported, "no root folder")
+        }
         return root
     }
 
     func inode(_ link: CatalogRecord) throws -> CatalogRecord {
         let idx = try index()
         guard let dir = idx[Key(parent: Self.rootID, name: "\0\0\0\0HFS+ Private Data")],
-              let node = idx[Key(parent: dir.cnid, name: "iNode\(link.special)")] else {
-            throw FirmwareError(.unsupported, "\(url.lastPathComponent): hard link \(link.name) has no iNode\(link.special)")
+            let node = idx[Key(parent: dir.cnid, name: "iNode\(link.special)")]
+        else {
+            throw FirmwareError(
+                .unsupported,
+                "\(url.lastPathComponent): hard link \(link.name) has no iNode\(link.special)"
+            )
         }
         return node
     }
@@ -347,8 +413,13 @@ public final class HFSPlusVolume {
         var memo: [UInt32: String?] = [Self.rootID: ""]
         func path(_ id: UInt32) -> String? {
             if let p = memo[id] { return p }
-            guard let r = byID[id], r.parent != 1 else { memo[id] = .some(nil); return nil }
-            let p: String? = r.parent == Self.rootID && Self.privateDirs.contains(r.name) ? nil
+            guard let r = byID[id], r.parent != 1 else {
+                memo[id] = .some(nil)
+                return nil
+            }
+            let p: String? =
+                r.parent == Self.rootID && Self.privateDirs.contains(r.name)
+                ? nil
                 : path(r.parent).map { $0.isEmpty ? Self.posixName(r.name) : $0 + "/" + Self.posixName(r.name) }
             memo[id] = .some(p)
             return p
@@ -362,8 +433,15 @@ public final class HFSPlusVolume {
             let content = try r.isHardLink ? inode(r) : r
             // a hard link's own record reuses the BSD fields for the link chain; the inode has the real ones
             let c = content
-            var e = Entry(path: p, uid: c.uid, gid: c.gid, mode: c.mode, flags: UInt32(c.adminFlags) << 16 | UInt32(c.ownerFlags),
-                          size: try size(r), resourceSize: content.resource?.logicalSize ?? 0)
+            var e = Entry(
+                path: p,
+                uid: c.uid,
+                gid: c.gid,
+                mode: c.mode,
+                flags: UInt32(c.adminFlags) << 16 | UInt32(c.ownerFlags),
+                size: try size(r),
+                resourceSize: content.resource?.logicalSize ?? 0
+            )
             if r.isSymlink {
                 e.link = String(decoding: try contents(r), as: UTF8.self)
             } else if r.kind == .file && hashes {
@@ -378,7 +456,9 @@ public final class HFSPlusVolume {
     /// ipad1_rootfs.var_owners: {path relative to `top`: (uid, gid)} for everything below it.
     public func owners(under top: String) throws -> [String: (uid: UInt32, gid: UInt32)] {
         var out: [String: (uid: UInt32, gid: UInt32)] = [:]
-        for (p, r) in try paths() where p.hasPrefix(top + "/") { out[String(p.dropFirst(top.count + 1))] = (r.uid, r.gid) }
+        for (p, r) in try paths() where p.hasPrefix(top + "/") {
+            out[String(p.dropFirst(top.count + 1))] = (r.uid, r.gid)
+        }
         return out
     }
 
@@ -388,31 +468,46 @@ public final class HFSPlusVolume {
     /// record, in place. Without `mode` a record already at (uid, gid) is left alone, as build_nand.set_owner
     /// does; returns the number of records changed. Throws before writing anything if a path is missing.
     @discardableResult
-    public func setOwner(_ paths: [String], uid: UInt32, gid: UInt32, mode: UInt16? = nil, flags: UInt32? = nil) throws -> Int {
+    public func setOwner(_ paths: [String], uid: UInt32, gid: UInt32, mode: UInt16? = nil, flags: UInt32? = nil) throws
+        -> Int
+    {
         let idx = try index()
         let targets = try paths.map { p -> CatalogRecord in
-            guard !p.split(separator: "/").isEmpty else { throw FirmwareError(.internal, "refusing to touch the volume root") }
+            guard !p.split(separator: "/").isEmpty else {
+                throw FirmwareError(.internal, "refusing to touch the volume root")
+            }
             let record = try resolve(p, idx)
             return try record.isHardLink ? inode(record) : record
         }
         let t = try btree(catalogFork, fileID: Self.catalogID)
-        var changed = 0, done = Set<UInt32>()
+        var changed = 0
+        var done = Set<UInt32>()
         for r in targets where done.insert(r.cnid).inserted {
             var patch = [UInt8](repeating: 0, count: 8)
-            put32(&patch, 0, uid); put32(&patch, 4, gid)
+            put32(&patch, 0, uid)
+            put32(&patch, 4, gid)
             let at = r.node * t.nodeSize + r.bodyOffset + 32
             if let mode {
                 let m = r.mode & 0o170000 | mode & 0o7777
                 try write(catalogFork, fileID: Self.catalogID, offset: at, bytes: patch)
-                try write(catalogFork, fileID: Self.catalogID, offset: at + 10, bytes: [UInt8(m >> 8), UInt8(m & 0xFF)])
+                try write(
+                    catalogFork,
+                    fileID: Self.catalogID,
+                    offset: at + 10,
+                    bytes: [UInt8(m >> 8), UInt8(m & 0xFF)]
+                )
                 changed += 1
             } else if (r.uid, r.gid) != (uid, gid) {
                 try write(catalogFork, fileID: Self.catalogID, offset: at, bytes: patch)
                 changed += 1
             }
             if let flags {
-                try write(catalogFork, fileID: Self.catalogID, offset: at + 8,
-                    bytes: [UInt8(truncatingIfNeeded: flags >> 16), UInt8(truncatingIfNeeded: flags)])
+                try write(
+                    catalogFork,
+                    fileID: Self.catalogID,
+                    offset: at + 8,
+                    bytes: [UInt8(truncatingIfNeeded: flags >> 16), UInt8(truncatingIfNeeded: flags)]
+                )
             }
         }
         catalogCache = nil
@@ -424,15 +519,20 @@ public final class HFSPlusVolume {
     /// writing anything if a CNID is not such a folder.
     public func setFolderCounts(_ counts: [UInt32: UInt32]) throws {
         guard writable else { throw FirmwareError(.internal, "\(url.lastPathComponent) is open read-only") }
-        let byID = Dictionary(try catalog().filter { $0.kind == .folder }.map { ($0.cnid, $0) }, uniquingKeysWith: { a, _ in a })
+        let byID = Dictionary(
+            try catalog().filter { $0.kind == .folder }.map { ($0.cnid, $0) },
+            uniquingKeysWith: { a, _ in a }
+        )
         let t = try btree(catalogFork, fileID: Self.catalogID)
         let targets = try counts.map { cnid, n -> (Int, UInt32) in
-            guard let r = byID[cnid] else { throw FirmwareError(.internal, "\(url.lastPathComponent): no folder \(cnid)") }
+            guard let r = byID[cnid] else {
+                throw FirmwareError(.internal, "\(url.lastPathComponent): no folder \(cnid)")
+            }
             let body = r.node * t.nodeSize + r.bodyOffset
-            guard try read(catalogFork, fileID: Self.catalogID, offset: body + 3, count: 1)[0] & 0x10 != 0 else {   // kHFSHasFolderCountMask
+            guard try read(catalogFork, fileID: Self.catalogID, offset: body + 3, count: 1)[0] & 0x10 != 0 else {  // kHFSHasFolderCountMask
                 throw FirmwareError(.internal, "\(url.lastPathComponent): folder \(cnid) keeps no folder count")
             }
-            return (body + 84, n)   // HFSPlusCatalogFolder.folderCount
+            return (body + 84, n)  // HFSPlusCatalogFolder.folderCount
         }
         for (at, n) in targets {
             var b = [UInt8](repeating: 0, count: 4)
@@ -466,16 +566,20 @@ public final class HFSPlusVolume {
             for (i, d) in r.dates.prefix(4).enumerated() { put32(&patch, 4 * i, d > after ? to : d) }
             let body = r.node * t.nodeSize + r.bodyOffset
             try write(catalogFork, fileID: Self.catalogID, offset: body + 12, bytes: patch)
-            try write(catalogFork, fileID: Self.catalogID, offset: body + 68, bytes: [0, 0, 0, 0])   // finderInfo.date_added
+            try write(catalogFork, fileID: Self.catalogID, offset: body + 68, bytes: [0, 0, 0, 0])  // finderInfo.date_added
             changed += 1
         }
         catalogCache = nil
         for at in headerOffsets() {
             var vh = [UInt8](repeating: 0, count: 512)
-            guard pread(fd, &vh, 512, off_t(at)) == 512 else { throw FirmwareError(.internal, "read volume header at \(at) of \(url.lastPathComponent)") }
+            guard pread(fd, &vh, 512, off_t(at)) == 512 else {
+                throw FirmwareError(.internal, "read volume header at \(at) of \(url.lastPathComponent)")
+            }
             for o in stride(from: 16, through: 28, by: 4) where be32(vh, o) > after { put32(&vh, o, to) }
             if let uuid, uuid.count == 8 { vh.replaceSubrange(104..<112, with: uuid) }
-            guard pwrite(fd, vh, 512, off_t(at)) == 512 else { throw FirmwareError(.internal, "write volume header at \(at) of \(url.lastPathComponent)") }
+            guard pwrite(fd, vh, 512, off_t(at)) == 512 else {
+                throw FirmwareError(.internal, "write volume header at \(at) of \(url.lastPathComponent)")
+            }
         }
         try zeroBTreeSlack()
         return changed
@@ -485,15 +589,23 @@ public final class HFSPlusVolume {
     /// extents and attributes trees. A node: fLink, bLink, kind, height, numRecords (14 bytes), records, free
     /// space, then the offsets of the records and of the free space, from the node's end.
     func zeroBTreeSlack() throws {
-        for (fork, id) in [(catalogFork, Self.catalogID), (extentsFork, Self.extentsID), (attributesFork, Self.attributesID)] where fork.logicalSize > 0 {
+        for (fork, id) in [
+            (catalogFork, Self.catalogID), (extentsFork, Self.extentsID), (attributesFork, Self.attributesID),
+        ] where fork.logicalSize > 0 {
             let t = try btree(fork, fileID: id)
             for node in 0..<(Int(fork.logicalSize) / t.nodeSize) {
                 let buf = try read(fork, fileID: id, offset: node * t.nodeSize, count: t.nodeSize)
-                let records = Int(be16(buf, 10)), table = t.nodeSize - 2 * (records + 1)
+                let records = Int(be16(buf, 10))
+                let table = t.nodeSize - 2 * (records + 1)
                 guard records > 0, table > 14 else { continue }
                 let free = Int(be16(buf, table))
                 guard free >= 14, free < table, buf[free..<table].contains(where: { $0 != 0 }) else { continue }
-                try write(fork, fileID: id, offset: node * t.nodeSize + free, bytes: [UInt8](repeating: 0, count: table - free))
+                try write(
+                    fork,
+                    fileID: id,
+                    offset: node * t.nodeSize + free,
+                    bytes: [UInt8](repeating: 0, count: table - free)
+                )
             }
         }
     }
@@ -505,7 +617,8 @@ public final class HFSPlusVolume {
         let size = fstat(fd, &st) == 0 ? Int(st.st_size) : 0
         return Set([1024, totalBlocks * blockSize - 1024, size - 1024]).sorted().filter { at in
             var sig = [UInt8](repeating: 0, count: 2)
-            return at >= 1024 && pread(fd, &sig, 2, off_t(at)) == 2 && sig[0] == 0x48 && (sig[1] == 0x2B || sig[1] == 0x58)
+            return at >= 1024 && pread(fd, &sig, 2, off_t(at)) == 2 && sig[0] == 0x48
+                && (sig[1] == 0x2B || sig[1] == 0x58)
         }
     }
 
@@ -513,10 +626,11 @@ public final class HFSPlusVolume {
     /// `needsInit` while the kernel has yet to write its header (newfs_hfs leaves a volume so).
     public func journal() throws -> (offset: Int, size: Int, needsInit: Bool)? {
         var vh = [UInt8](repeating: 0, count: 512)
-        guard pread(fd, &vh, 512, 1024) == 512, be32(vh, 4) & (1 << 13) != 0, be32(vh, 12) != 0 else { return nil }   // kHFSVolumeJournaledBit, journalInfoBlock
-        var jib = [UInt8](repeating: 0, count: 52)   // flags, device_signature[8], offset, size
-        guard pread(fd, &jib, 52, off_t(Int(be32(vh, 12)) * blockSize)) == 52, be32(jib, 0) & 3 == 1 else { return nil }   // in the volume
-        let offset = Int(be64(jib, 36)), size = Int(be64(jib, 44))
+        guard pread(fd, &vh, 512, 1024) == 512, be32(vh, 4) & (1 << 13) != 0, be32(vh, 12) != 0 else { return nil }  // kHFSVolumeJournaledBit, journalInfoBlock
+        var jib = [UInt8](repeating: 0, count: 52)  // flags, device_signature[8], offset, size
+        guard pread(fd, &jib, 52, off_t(Int(be32(vh, 12)) * blockSize)) == 52, be32(jib, 0) & 3 == 1 else { return nil }  // in the volume
+        let offset = Int(be64(jib, 36))
+        let size = Int(be64(jib, 44))
         return size > 0 ? (offset, size, be32(jib, 0) & 4 != 0) : nil
     }
 
@@ -528,7 +642,7 @@ public final class HFSPlusVolume {
         var vh = [UInt8](repeating: 0, count: 512)
         guard let j = try journal(), pread(fd, &vh, 512, 1024) == 512 else { return nil }
         if !j.needsInit {
-            var hdr = [UInt8](repeating: 0, count: 32)   // magic, endian, start, end, ...
+            var hdr = [UInt8](repeating: 0, count: 32)  // magic, endian, start, end, ...
             guard pread(fd, &hdr, 32, off_t(j.offset)) == 32, hdr[8..<16] == hdr[16..<24] else { return nil }
         }
         return try [(Int(be32(vh, 12)) * blockSize, blockSize), (j.offset, j.size)].map { at, n in
@@ -547,10 +661,14 @@ public final class HFSPlusVolume {
     public func leaveJournalToDevice() throws {
         guard writable else { throw FirmwareError(.internal, "\(url.lastPathComponent) is open read-only") }
         var vh = [UInt8](repeating: 0, count: 512)
-        guard let j = try journal(), pread(fd, &vh, 512, 1024) == 512 else { throw FirmwareError(.internal, "\(url.lastPathComponent) has no journal in the volume") }
+        guard let j = try journal(), pread(fd, &vh, 512, 1024) == 512 else {
+            throw FirmwareError(.internal, "\(url.lastPathComponent) has no journal in the volume")
+        }
         let at = Int(be32(vh, 12)) * blockSize
         var jib = [UInt8](repeating: 0, count: 4)
-        guard pread(fd, &jib, 4, off_t(at)) == 4 else { throw FirmwareError(.internal, "read the journal info block of \(url.lastPathComponent)") }
+        guard pread(fd, &jib, 4, off_t(at)) == 4 else {
+            throw FirmwareError(.internal, "read the journal info block of \(url.lastPathComponent)")
+        }
         put32(&jib, 0, be32(jib, 0) | 4)
         try restore([(j.offset, Data(count: j.size)), (at, Data(jib))])
     }
@@ -561,27 +679,40 @@ public final class HFSPlusVolume {
         guard writable else { throw FirmwareError(.internal, "\(url.lastPathComponent) is open read-only") }
         for at in headerOffsets() {
             var a = [UInt8](repeating: 0, count: 4)
-            guard pread(fd, &a, 4, off_t(at + 4)) == 4 else { throw FirmwareError(.internal, "read volume header at \(at) of \(url.lastPathComponent)") }
+            guard pread(fd, &a, 4, off_t(at + 4)) == 4 else {
+                throw FirmwareError(.internal, "read volume header at \(at) of \(url.lastPathComponent)")
+            }
             put32(&a, 0, be32(a, 0) | 0x4000_0000)
-            guard pwrite(fd, a, 4, off_t(at + 4)) == 4 else { throw FirmwareError(.internal, "write volume header at \(at) of \(url.lastPathComponent)") }
+            guard pwrite(fd, a, 4, off_t(at + 4)) == 4 else {
+                throw FirmwareError(.internal, "write volume header at \(at) of \(url.lastPathComponent)")
+            }
         }
     }
 
     public func restore(_ pieces: [(offset: Int, bytes: Data)]) throws {
         guard writable else { throw FirmwareError(.internal, "\(url.lastPathComponent) is open read-only") }
         for p in pieces {
-            guard p.bytes.withUnsafeBytes({ pwrite(fd, $0.baseAddress, p.bytes.count, off_t(p.offset)) }) == p.bytes.count else {
+            guard
+                p.bytes.withUnsafeBytes({ pwrite(fd, $0.baseAddress, p.bytes.count, off_t(p.offset)) }) == p.bytes.count
+            else {
                 throw FirmwareError(.internal, "write \(url.lastPathComponent) at \(p.offset)")
             }
         }
     }
 }
 
-fileprivate func be16(_ b: [UInt8], _ o: Int) -> UInt16 { UInt16(b[o]) << 8 | UInt16(b[o + 1]) }
-fileprivate func be32(_ b: [UInt8], _ o: Int) -> UInt32 { UInt32(b[o]) << 24 | UInt32(b[o + 1]) << 16 | UInt32(b[o + 2]) << 8 | UInt32(b[o + 3]) }
-fileprivate func le32(_ b: [UInt8], _ o: Int) -> UInt32 { UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24 }
-fileprivate func le64(_ b: [UInt8], _ o: Int) -> UInt64 { UInt64(le32(b, o)) | UInt64(le32(b, o + 4)) << 32 }
-fileprivate func be64(_ b: [UInt8], _ o: Int) -> UInt64 { UInt64(be32(b, o)) << 32 | UInt64(be32(b, o + 4)) }
+private func be16(_ b: [UInt8], _ o: Int) -> UInt16 { UInt16(b[o]) << 8 | UInt16(b[o + 1]) }
+private func be32(_ b: [UInt8], _ o: Int) -> UInt32 {
+    UInt32(b[o]) << 24 | UInt32(b[o + 1]) << 16 | UInt32(b[o + 2]) << 8 | UInt32(b[o + 3])
+}
+private func le32(_ b: [UInt8], _ o: Int) -> UInt32 {
+    UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24
+}
+private func le64(_ b: [UInt8], _ o: Int) -> UInt64 { UInt64(le32(b, o)) | UInt64(le32(b, o + 4)) << 32 }
+private func be64(_ b: [UInt8], _ o: Int) -> UInt64 { UInt64(be32(b, o)) << 32 | UInt64(be32(b, o + 4)) }
 private func put32(_ b: inout [UInt8], _ o: Int, _ v: UInt32) {
-    b[o] = UInt8(v >> 24); b[o + 1] = UInt8(v >> 16 & 0xFF); b[o + 2] = UInt8(v >> 8 & 0xFF); b[o + 3] = UInt8(v & 0xFF)
+    b[o] = UInt8(v >> 24)
+    b[o + 1] = UInt8(v >> 16 & 0xFF)
+    b[o + 2] = UInt8(v >> 8 & 0xFF)
+    b[o + 3] = UInt8(v & 0xFF)
 }

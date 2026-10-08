@@ -2,8 +2,8 @@
 // from the record and what the sessions say about it. Pure Foundation; DeviceRowTests covers it.
 
 import FirmwareSchema
-import HostRuntime
 import Foundation
+import HostRuntime
 
 // MARK: - Row state
 
@@ -21,7 +21,13 @@ public nonisolated enum DeviceAction: CaseIterable, Sendable {
 /// `fraction` all of them; `mirror` the host it comes from when that isn't Apple's (archive.org, a mirror);
 /// `speed` bytes per second, once measured.
 public nonisolated enum FirmwareJob: Equatable, Sendable {
-    case downloading(fraction: Double, remaining: TimeInterval? = nil, files: Int = 1, mirror: String? = nil, speed: Double? = nil)
+    case downloading(
+        fraction: Double,
+        remaining: TimeInterval? = nil,
+        files: Int = 1,
+        mirror: String? = nil,
+        speed: Double? = nil
+    )
     case preparing(Preparation)
     case failed(String)
 
@@ -33,8 +39,8 @@ public nonisolated enum FirmwareJob: Equatable, Sendable {
     /// The job's one bar, as its row shows it (DeviceRow.progress); nil for a failure or no fraction yet.
     public var progress: Double? {
         switch self {
-        case let .downloading(fraction, _, _, _, _): fraction / 2
-        case let .preparing(p): p.bar
+        case .downloading(let fraction, _, _, _, _): fraction / 2
+        case .preparing(let p): p.bar
         case .failed: nil
         }
     }
@@ -49,7 +55,16 @@ public nonisolated enum FirmwareJob: Equatable, Sendable {
 
 /// Where a preparation stands (the preparer contract's begin, step and progress events).
 public nonisolated struct Preparation: Equatable, Sendable {
-    public init(step: Int = 0, steps: Int = 0, name: String, fraction: Double = 0.0, seconds: [Double] = [], detail: String? = nil, remaining: TimeInterval? = nil, startsAt: Double = 0.0) {
+    public init(
+        step: Int = 0,
+        steps: Int = 0,
+        name: String,
+        fraction: Double = 0.0,
+        seconds: [Double] = [],
+        detail: String? = nil,
+        remaining: TimeInterval? = nil,
+        startsAt: Double = 0.0
+    ) {
         self.step = step
         self.steps = steps
         self.name = name
@@ -78,7 +93,8 @@ public nonisolated struct Preparation: Equatable, Sendable {
     /// Finished steps plus this one's fraction, weighted by expected seconds; nil with no steps yet.
     public var overall: Double? {
         guard steps > 0 else { return nil }
-        let weights = seconds.count == steps && seconds.allSatisfy({ $0 > 0 }) ? seconds : Array(repeating: 1, count: steps)
+        let weights =
+            seconds.count == steps && seconds.allSatisfy({ $0 > 0 }) ? seconds : Array(repeating: 1, count: steps)
         let done = weights.prefix(min(max(step - 1, 0), steps)).reduce(0, +)
         let current = (1...steps).contains(step) ? weights[step - 1] * min(max(fraction, 0), 1) : 0
         return min(1, (done + current) / weights.reduce(0, +))
@@ -105,7 +121,13 @@ public nonisolated enum DeviceRowState: Equatable, Sendable {
     case downloaded
     /// The app ships its prepared base (`entry.bundled`), not yet unpacked.
     case bundled
-    case downloading(fraction: Double, remaining: TimeInterval? = nil, files: Int = 1, mirror: String? = nil, speed: Double? = nil)
+    case downloading(
+        fraction: Double,
+        remaining: TimeInterval? = nil,
+        files: Int = 1,
+        mirror: String? = nil,
+        speed: Double? = nil
+    )
     case preparing(Preparation)
     case ready, running, stopping
     /// Its storage is being removed (DeviceDeletions); the row leaves when that's done.
@@ -129,35 +151,55 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
 
     /// `downloaded`: IPSWStore has this entry's IPSW. `baseRecipe`: DeviceRow.baseRecipeVersion of the device's lock.
     /// `deleting`: DeviceDeletions is removing the device.
-    public init(entry: FirmwareCatalog.Entry, instanceID: UUID?, session: SessionPhase?,
-         job: FirmwareJob?, downloaded: Bool = false, preparedWithoutActivation: Bool = false,
-         baseRecipe: Int? = nil, deleting: Bool = false) {
+    public init(
+        entry: FirmwareCatalog.Entry,
+        instanceID: UUID?,
+        session: SessionPhase?,
+        job: FirmwareJob?,
+        downloaded: Bool = false,
+        preparedWithoutActivation: Bool = false,
+        baseRecipe: Int? = nil,
+        deleting: Bool = false
+    ) {
         self.entry = entry
         self.instanceID = instanceID
         self.preparedWithoutActivation = preparedWithoutActivation
         preparedByOlderRecipe = instanceID != nil && baseRecipe.map { $0 < entry.recipe?.version ?? 0 } ?? false
         hasSession = session != nil
-        state = deleting ? .deleting : Self.state(entry: entry, startable: instanceID != nil,
-                                                  session: session, job: job, downloaded: downloaded)
+        state =
+            deleting
+            ? .deleting
+            : Self.state(
+                entry: entry,
+                startable: instanceID != nil,
+                session: session,
+                job: job,
+                downloaded: downloaded
+            )
     }
 
     /// A session outranks everything; then the catalog's own verdict, a job
     /// in flight, and finally whether a device exists.
-    private static func state(entry: FirmwareCatalog.Entry, startable: Bool, session: SessionPhase?,
-                              job: FirmwareJob?, downloaded: Bool) -> DeviceRowState {
+    private static func state(
+        entry: FirmwareCatalog.Entry,
+        startable: Bool,
+        session: SessionPhase?,
+        job: FirmwareJob?,
+        downloaded: Bool
+    ) -> DeviceRowState {
         switch session {
         case .running?: return .running
         case .stopping?: return .stopping
-        case let .dead(reason)?: return .error(reason)
+        case .dead(let reason)?: return .error(reason)
         case .stopped?: return .ready
         case nil: break
         }
         if entry.status == .comingSoon { return .unavailable(.comingSoon) }
         switch job {
-        case let .downloading(fraction, remaining, files, mirror, speed)?:
+        case .downloading(let fraction, let remaining, let files, let mirror, let speed)?:
             return .downloading(fraction: fraction, remaining: remaining, files: files, mirror: mirror, speed: speed)
-        case let .preparing(preparation)?: return .preparing(preparation)
-        case let .failed(reason)?: return .error(reason)
+        case .preparing(let preparation)?: return .preparing(preparation)
+        case .failed(let reason)?: return .error(reason)
         case nil: break
         }
         if startable { return .ready }
@@ -179,8 +221,8 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
     /// with no download before it, the whole bar); nil while a job with no download has no steps yet.
     public var progress: Double? {
         switch state {
-        case let .downloading(fraction, _, _, _, _): fraction / 2
-        case let .preparing(p): p.bar
+        case .downloading(let fraction, _, _, _, _): fraction / 2
+        case .preparing(let p): p.bar
         default: nil
         }
     }
@@ -214,8 +256,8 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
     /// "Decrypting…"); nil outside a job.
     public var progressHeadline: String? {
         switch state {
-        case let .downloading(_, _, _, mirror, _): mirror.map { "Downloading from \($0)…" } ?? "Downloading…"
-        case let .preparing(p): p.steps > 0 && !p.name.isEmpty ? p.name + "…" : "Preparing…"
+        case .downloading(_, _, _, let mirror, _): mirror.map { "Downloading from \($0)…" } ?? "Downloading…"
+        case .preparing(let p): p.steps > 0 && !p.name.isEmpty ? p.name + "…" : "Preparing…"
         default: nil
         }
     }
@@ -223,16 +265,20 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
     /// The line under the bar: the percent, the time left and, for a slow or long download, its speed
     /// ("43% · About 12 minutes remaining · 1.2 MB/s"); nil outside a job.
     public var progressLine: String? {
-        let remaining: TimeInterval?, speed: Double?
+        let remaining: TimeInterval?
+        let speed: Double?
         switch state {
-        case let .downloading(_, r, _, _, s): (remaining, speed) = (r, s)
-        case let .preparing(p): (remaining, speed) = (p.remaining, nil)
+        case .downloading(_, let r, _, _, let s): (remaining, speed) = (r, s)
+        case .preparing(let p): (remaining, speed) = (p.remaining, nil)
         default: return nil
         }
         // Slow: under ~2 MB/s, or long: more than 10 minutes to go.
         let showSpeed = speed.map { $0 < 2_000_000 || (remaining ?? 0) > 600 } ?? false
-        let parts = [progressSummary, remaining.map(Self.remainingText),
-                     showSpeed ? speed.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) + "/s" } : nil]
+        let parts = [
+            progressSummary, remaining.map(Self.remainingText),
+            showSpeed
+                ? speed.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) + "/s" } : nil,
+        ]
         let line = parts.compactMap { $0 }.joined(separator: " · ")
         return line.isEmpty ? nil : line
     }
@@ -241,10 +287,11 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
     /// and the third-party mirror it comes from.
     public var progressDetail: [String] {
         switch state {
-        case let .downloading(_, _, files, mirror, _):
+        case .downloading(_, _, let files, let mirror, _):
             (files > 1 ? ["\(files) IPSWs"] : []) + (mirror.map { ["From \($0), a third-party mirror"] } ?? [])
-        case let .preparing(p) where p.steps > 0: ["Step \(p.step) of \(p.steps): \(p.name)", p.detail].compactMap { $0 }
-        case let .preparing(p): [p.name]
+        case .preparing(let p) where p.steps > 0:
+            ["Step \(p.step) of \(p.steps): \(p.name)", p.detail].compactMap { $0 }
+        case .preparing(let p): [p.name]
         default: []
         }
     }
@@ -260,20 +307,24 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
     public var supportExplanation: String? {
         switch entry.status {
         case .untested: "Light Touch hasn’t run this build yet. It may not prepare or start."
-        case .experimental: "This build prepares and starts, but it hasn’t been through every check. Some features may not work."
+        case .experimental:
+            "This build prepares and starts, but it hasn’t been through every check. Some features may not work."
         default: nil
         }
     }
 
     /// "Released June 7, 2011", from the catalog's `released` date.
     public var releaseLine: String? {
-        guard let released = entry.released, let date = try? Date(released + "T12:00:00Z", strategy: .iso8601) else { return nil }
-        return "Released " + date.formatted(Date.FormatStyle(date: .long, time: .omitted, timeZone: TimeZone(identifier: "UTC")!))
+        guard let released = entry.released, let date = try? Date(released + "T12:00:00Z", strategy: .iso8601) else {
+            return nil
+        }
+        return "Released "
+            + date.formatted(Date.FormatStyle(date: .long, time: .omitted, timeZone: TimeZone(identifier: "UTC")!))
     }
 
     /// Before a download or preparation, when `available` bytes can't hold it: the copy's words; nil when there is room.
     public func spaceShortage(available: Int64) -> String? {
-        let download: Int64 = if case let .notDownloaded(bytes) = state { bytes ?? 0 } else { 0 }
+        let download: Int64 = if case .notDownloaded(let bytes) = state { bytes ?? 0 } else { 0 }
         let needed = download + entry.estimates.peakBytes
         guard [.downloaded, .bundled].contains(state) || download > 0, needed > available else { return nil }
         let format = { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
@@ -283,11 +334,12 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
     public static func remainingText(_ seconds: TimeInterval) -> String {
         guard seconds >= 10 else { return "Almost done…" }
         // Rounded to tens of seconds under a minute, whole minutes under 90, then hours.
-        let (rounded, unit): (TimeInterval, NSCalendar.Unit) = switch seconds {
-        case ..<60: ((seconds / 10).rounded(.up) * 10, .second)
-        case ..<5400: ((seconds / 60).rounded() * 60, .minute)
-        default: ((seconds / 3600).rounded() * 3600, .hour)
-        }
+        let (rounded, unit): (TimeInterval, NSCalendar.Unit) =
+            switch seconds {
+            case ..<60: ((seconds / 10).rounded(.up) * 10, .second)
+            case ..<5400: ((seconds / 60).rounded() * 60, .minute)
+            default: ((seconds / 3600).rounded() * 3600, .hour)
+            }
         let format = DateComponentsFormatter()
         format.unitsStyle = .full
         format.allowedUnits = unit
@@ -297,11 +349,18 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
     }
 
     /// `canDownload` is FirmwareJobs.canDownload: whether the preparer is present.
-    private var working: Bool { switch state { case .downloading, .preparing, .stopping, .deleting: true; default: false } }
+    private var working: Bool {
+        switch state {
+        case .downloading, .preparing, .stopping, .deleting: true
+        default: false
+        }
+    }
 
     /// Whether the sidebar may drop this row now: a prepared device when it may be deleted (which asks first),
     /// any other when nothing is running or in flight for it.
-    public var canRemoveFromSidebar: Bool { instanceID != nil ? allows(.delete, canDownload: false) : !hasSession && !working }
+    public var canRemoveFromSidebar: Bool {
+        instanceID != nil ? allows(.delete, canDownload: false) : !hasSession && !working
+    }
 
     /// A prepared device's data goes with it, after asking; a row with nothing on disk just leaves the list.
     public var removeTitle: String { instanceID != nil ? "Delete Device…" : "Remove Device" }
@@ -333,7 +392,8 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
         case .ready: .start
         case .notDownloaded, .downloaded, .bundled: .downloadAndPrepare
         case .downloading, .preparing: .cancel
-        case .error: isStartable ? .start : entry.status == .userIPSW && entry.bundled == nil ? .importIPSW : .downloadAndPrepare
+        case .error:
+            isStartable ? .start : entry.status == .userIPSW && entry.bundled == nil ? .importIPSW : .downloadAndPrepare
         case .unavailable(.requiresIPSW): .importIPSW
         case .unavailable(.comingSoon), .running, .stopping, .deleting: nil
         }
@@ -360,7 +420,8 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
 
     /// The placeholder's line for a base made by an older recipe, beside Prepare Again.
     public var olderRecipeNote: String? {
-        preparedByOlderRecipe ? "This \(entry.profile?.shortName ?? "device") was prepared by an older version of Light Touch." : nil
+        preparedByOlderRecipe
+            ? "This \(entry.profile?.shortName ?? "device") was prepared by an older version of Light Touch." : nil
     }
 
     /// The recipe version that made a base: firmwarekit's lock keeps the catalog entry it was prepared from
@@ -371,7 +432,8 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
     public static func baseRecipeVersion(_ url: URL, device: URL? = nil) -> Int? {
         let lock = (try? DeviceLock.read(url)) ?? nil
         guard let version = lock?.recipeVersion else { return nil }
-        let migrated = device.flatMap { try? Data(contentsOf: $0.appendingPathComponent(FirmwareWire.migratedRecipeFile)) }
+        let migrated =
+            device.flatMap { try? Data(contentsOf: $0.appendingPathComponent(FirmwareWire.migratedRecipeFile)) }
             .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["recipe"] as? Int
         // ponytail: a migration admission later declines (a guest-rewritten GPT) still reads as done; a declined
         // marker from admission would let this flag those few.
@@ -381,8 +443,9 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
     /// The accessory's words: what VoiceOver reads after the version.
     public var stateDescription: String {
         switch state {
-        case let .notDownloaded(bytes):
-            bytes.map { "Not downloaded, " + ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "Not downloaded"
+        case .notDownloaded(let bytes):
+            bytes.map { "Not downloaded, " + ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
+                ?? "Not downloaded"
         case .downloaded: "Downloaded"
         case .bundled: "Built in"
         case .downloading: "Downloading" + (progressSummary.map { ", " + $0 } ?? "…")

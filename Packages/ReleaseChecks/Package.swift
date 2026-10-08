@@ -4,9 +4,13 @@
 // bundle. ReleaseChecksTests runs the fixture halves always (Unit plan) and the app halves in Release.xctestplan,
 // which takes the app from LTM_RELEASE_APP or LTM_RELEASE_ARCHIVE (see CONTRIBUTING, Releases).
 import PackageDescription
-let package = Package(name: "ReleaseChecks", platforms: [.macOS("14.4")],
+
+let package = Package(
+    name: "ReleaseChecks",
+    platforms: [.macOS("14.4")],
     products: [.library(name: "ReleaseChecks", targets: ["ReleaseChecks"])],
     targets: [
         .target(name: "ReleaseChecks"),
         .testTarget(name: "ReleaseChecksTests", dependencies: ["ReleaseChecks"]),
-    ])
+    ]
+)

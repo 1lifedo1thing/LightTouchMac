@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import HostRuntime
+import Testing
 
 struct DeviceLockTests {
     /// What FirmwareKit wrote with JSONSerialization comes back byte for byte through DeviceLock, members it doesn't
@@ -10,20 +10,34 @@ struct DeviceLockTests {
             "format": 1, "board": "n90ap", "build": "8A293", "product_type": "iPhone3,1", "product_version": "4.0",
             "boot_strategy": "kboot", "machine": ["imei": "000000008926131", "rtc-epoch": "1293840000"],
             "identity": ["die_id": "0x9346762c:0x3d3225e5", "seed": "4EF6C1AA", "udid": "748c"],
-            "entry": ["id": "n90ap-8A293", "sha256": "ab", "content": ["board": "n90ap", "recipe": ["version": 2, "storage": "16g"],
-                                                                     "keys": ["iBSS": "a", "iBEC": "b", "iBoot": "c", "kernelcache": "d"]]],
-            "inputs": ["ipsw": ["path": "/a/b c/iPhone.ipsw", "sha1": "00"], "activation": NSNull(), "lockdown": NSNull()],
+            "entry": [
+                "id": "n90ap-8A293", "sha256": "ab",
+                "content": [
+                    "board": "n90ap", "recipe": ["version": 2, "storage": "16g"],
+                    "keys": ["iBSS": "a", "iBEC": "b", "iBoot": "c", "kernelcache": "d"],
+                ],
+            ],
+            "inputs": [
+                "ipsw": ["path": "/a/b c/iPhone.ipsw", "sha1": "00"], "activation": NSNull(), "lockdown": NSNull(),
+            ],
             "guest_package": ["family": "k48-ios4", "gles": true, "seed": 7, "hooks": ["/usr/lib/libappsync.dylib"]],
-            "outputs": ["nand": ["listing_sha256": "cd", "pages": 12345678901]], "gid_components": NSNull(),
+            "outputs": ["nand": ["listing_sha256": "cd", "pages": 12_345_678_901]], "gid_components": NSNull(),
             "fit": ["ratio": 0.5, "warnings": [] as [Any], "ok": false], "created": "2026-10-06T22:07:58Z",
         ]
-        let written = try JSONSerialization.data(withJSONObject: record, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        let written = try JSONSerialization.data(
+            withJSONObject: record,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        )
         let lock = try JSONDecoder().decode(DeviceLock.self, from: written)
         #expect(try lock.data() == written)
         #expect(try DeviceLock(json: record).data() == written)
         #expect(lock.recipeVersion == 2 && lock.entryID == "n90ap-8A293" && lock.entryBoard == "n90ap")
         #expect(lock.pinsClock && !lock.activated && lock.bootStrategy == "kboot")
-        #expect(lock.machineOptions(base: URL(fileURLWithPath: "/nonexistent")) == ["imei": "000000008926131", "rtc-epoch": "1293840000"])
+        #expect(
+            lock.machineOptions(base: URL(fileURLWithPath: "/nonexistent")) == [
+                "imei": "000000008926131", "rtc-epoch": "1293840000",
+            ]
+        )
     }
 
     /// Decoded once while the file is unchanged; a rewrite is read again.

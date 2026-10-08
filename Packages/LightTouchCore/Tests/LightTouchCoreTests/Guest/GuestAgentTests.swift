@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import LightTouchCore
 
 /// GuestAgent and GuestServices over a device's link, with a fake guest behind it (FakeGuestLink): capability
@@ -8,7 +9,8 @@ import Testing
 /// record, halt submission, stale/absent agents and cancellation (agentCancel).
 struct GuestAgentTests {
     @Test func v2OpsAreTypedAndCapabilitiesCached() async throws {
-        let link = FakeGuestLink(), cache = GuestAgentCache()
+        let link = FakeGuestLink()
+        let cache = GuestAgentCache()
         let agent = GuestAgent(link: link, cache: cache)
         try await agent.spawn(["/bin/launchctl", "stop", "com.apple.SpringBoard"])
         try await agent.sync()
@@ -16,7 +18,10 @@ struct GuestAgentTests {
         #expect(link.ops.filter { $0 == "ping" }.count == 1, "the ping is cached")
         #expect(cache.capabilities?.version == 2 && cache.capabilities?.has("dlicon") == true)
         try await agent.put("/tmp/a b", mode: 0o644, Data("x".utf8))
-        #expect(link.files["/tmp/a b"] == Data("x".utf8) && link.modes["/tmp/a b"] == "644", "mode is octal, the last word")
+        #expect(
+            link.files["/tmp/a b"] == Data("x".utf8) && link.modes["/tmp/a b"] == "644",
+            "mode is octal, the last word"
+        )
         #expect(try await agent.get("/nope") == nil, "ENOENT is absent")
         try await agent.unlink("/nope")
         try await agent.chown(501, 501, "/tmp/a b")
@@ -36,7 +41,12 @@ struct GuestAgentTests {
         try await v1.unlink("/tmp/x y")
         try await v1.chown(501, 501, "/var/mobile/Media/LightTouch")
         try await v1.sync()
-        #expect(old.shells == ["'/bin/launchctl' 'stop' 'it'\\''s'", "rm -f '/tmp/x y'", "chown 501:501 '/var/mobile/Media/LightTouch'", "sync"])
+        #expect(
+            old.shells == [
+                "'/bin/launchctl' 'stop' 'it'\\''s'", "rm -f '/tmp/x y'",
+                "chown 501:501 '/var/mobile/Media/LightTouch'", "sync",
+            ]
+        )
         #expect(old.spawns.isEmpty && !old.ops.contains("spawn"), "a v1 agent is never sent a v2 op")
         #expect(try await v1.placeholder("add", id: "x") == false && !old.ops.contains("dlicon"))
     }
@@ -45,7 +55,11 @@ struct GuestAgentTests {
         let link = FakeGuestLink()
         let agent = GuestAgent(link: link, cache: GuestAgentCache())
         try await withTemporaryDirectoryAsync { tmp in
-            func local(_ name: String, _ data: Data) throws -> URL { let u = tmp.appendingPathComponent(name); try data.write(to: u); return u }
+            func local(_ name: String, _ data: Data) throws -> URL {
+                let u = tmp.appendingPathComponent(name)
+                try data.write(to: u)
+                return u
+            }
             let id = UUID().uuidString
             let helper = try local("itphoto", Data("helper".utf8))
             link.spawnOutput["/tmp/ltm-itphoto-\(id)"] = (0, "imported\n")
@@ -70,7 +84,10 @@ struct GuestAgentTests {
             }
             #expect(link.files.keys.allSatisfy { !$0.hasPrefix("/tmp/ltm-") }, "\(link.files.keys)")
             link.spawnOutput["/tmp/ltm-itmedia-\(id)"] = (0, "partial\n")
-            #expect(try await legacy.commitMedia(id: id, helper: "itmedia", localHelper: { music }, metadata: plist) == false)
+            #expect(
+                try await legacy.commitMedia(id: id, helper: "itmedia", localHelper: { music }, metadata: plist)
+                    == false
+            )
         }
     }
 
@@ -78,7 +95,8 @@ struct GuestAgentTests {
         let link = FakeGuestLink()
         let services = GuestServices(agent: GuestAgent(link: link, cache: GuestAgentCache()))
         try await services.launch("com.example.game")
-        link.launchFails = true; link.locked = true
+        link.launchFails = true
+        link.locked = true
         await #expect(throws: AppLaunchError.locked) { try await services.launch("com.example.game") }
         link.locked = false
         await #expect(throws: AppLaunchError.failed) { try await services.launch("com.example.game") }
@@ -94,16 +112,24 @@ struct GuestAgentTests {
     @Test func locationdFirstZoneRecordIsClearedWhileUnloaded() async throws {
         let link = FakeGuestLink()
         let services = GuestServices(agent: GuestAgent(link: link, cache: GuestAgentCache()))
-        let cache = "/var/root/Library/Caches/locationd/cache.plist", job = "/System/Library/LaunchDaemons/com.apple.locationd.plist"
-        link.files[cache] = try PropertyListSerialization.data(fromPropertyList: ["PreviousTimeZone": "America/New_York", "TimeZoneBorderDistance": 12.5],
-                                                               format: .binary, options: 0)
+        let cache = "/var/root/Library/Caches/locationd/cache.plist"
+        let job = "/System/Library/LaunchDaemons/com.apple.locationd.plist"
+        link.files[cache] = try PropertyListSerialization.data(
+            fromPropertyList: ["PreviousTimeZone": "America/New_York", "TimeZoneBorderDistance": 12.5],
+            format: .binary,
+            options: 0
+        )
         #expect(try await services.forgetExternalTimeZone(), "a record to clear")
         #expect(link.spawns == [["/bin/launchctl", "unload", job], ["/bin/launchctl", "load", job]])
         let ops = link.ops.filter { $0 != "ping" && $0 != "get" }
         #expect(ops == ["spawn", "put", "spawn"], "written while locationd is unloaded: \(link.ops)")
-        let cleared = try PropertyListSerialization.propertyList(from: link.files[cache]!, format: nil) as! [String: Any]
+        let cleared =
+            try PropertyListSerialization.propertyList(from: link.files[cache]!, format: nil) as! [String: Any]
         #expect(cleared["PreviousTimeZone"] == nil && cleared["TimeZoneBorderDistance"] as? Double == 12.5)
-        #expect(try await services.forgetExternalTimeZone() == false && link.spawns.count == 2, "no record: locationd left running")
+        #expect(
+            try await services.forgetExternalTimeZone() == false && link.spawns.count == 2,
+            "no record: locationd left running"
+        )
         link.files[cache] = nil
         #expect(try await services.forgetExternalTimeZone() == false && link.spawns.count == 2, "no cache: nothing")
     }
@@ -135,14 +161,20 @@ struct GuestAgentTests {
 
     @Test func capabilitiesParse() {
         #expect(GuestAgentCapabilities.parse("it_agent v1\n") == GuestAgentCapabilities(version: 1, ops: []))
-        #expect(GuestAgentCapabilities.parse("it_agent v2\nops ping spawn\n") == GuestAgentCapabilities(version: 2, ops: ["ping", "spawn"]))
+        #expect(
+            GuestAgentCapabilities.parse("it_agent v2\nops ping spawn\n")
+                == GuestAgentCapabilities(version: 2, ops: ["ping", "spawn"])
+        )
         #expect(GuestAgentCapabilities.parse("nonsense") == nil)
     }
 }
 
 /// withTemporaryDirectory for async bodies.
 func withTemporaryDirectoryAsync<T>(_ body: (URL) async throws -> T) async throws -> T {
-    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ltm-tests-" + UUID().uuidString, isDirectory: true)
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "ltm-tests-" + UUID().uuidString,
+        isDirectory: true
+    )
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
     return try await body(directory)

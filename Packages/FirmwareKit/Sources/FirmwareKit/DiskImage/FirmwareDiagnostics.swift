@@ -1,6 +1,6 @@
-import HostRuntime
 import Darwin
 import Foundation
+import HostRuntime
 
 /// Best-effort command diagnostics. A lost or blocked consumer must never
 /// interrupt owned disk/child cleanup. Normal command delivery is awaited by

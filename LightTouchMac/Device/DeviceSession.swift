@@ -5,10 +5,10 @@
 // LightTouchDevice helper (DeviceProcess), so any number can run at once, a
 // dead one restarts without the app, and the others never notice.
 
-import LightTouchCore
+import Cocoa
 import FirmwareSchema
 import HostRuntime
-import Cocoa
+import LightTouchCore
 
 // MARK: - Sessions
 
@@ -38,9 +38,11 @@ import Cocoa
 
     var phase: SessionPhase {
         if emulator.isDead {
-            return .dead(emulator.baseImageMismatch
-                ? "This \(profile.shortName)’s data was made with an older system image."
-                : emulator.deathReason ?? profile.stoppedReason)
+            return .dead(
+                emulator.baseImageMismatch
+                    ? "This \(profile.shortName)’s data was made with an older system image."
+                    : emulator.deathReason ?? profile.stoppedReason
+            )
         }
         if emulator.isErasing || (emulator.shuttingDown && !emulator.isPoweredOff) { return .stopping }
         return emulator.isPoweredOff ? .stopped : .running
@@ -79,19 +81,26 @@ import Cocoa
 
     func row(for entry: FirmwareCatalog.Entry) -> DeviceRow {
         let instance = instance(for: entry)
-        return DeviceRow(entry: entry, instanceID: instance?.id, session: session(for: entry)?.phase,
-                         job: FirmwareJobs.shared.jobs[entry.id],
-                         downloaded: entry.source.sha1.map { IPSWStore.shared.existing($0) != nil } ?? false,
-                         preparedWithoutActivation: instance.map(lacksActivation) ?? false,
-                         baseRecipe: instance.flatMap(baseRecipe), deleting: deletions.contains(entry.id))
+        return DeviceRow(
+            entry: entry,
+            instanceID: instance?.id,
+            session: session(for: entry)?.phase,
+            job: FirmwareJobs.shared.jobs[entry.id],
+            downloaded: entry.source.sha1.map { IPSWStore.shared.existing($0) != nil } ?? false,
+            preparedWithoutActivation: instance.map(lacksActivation) ?? false,
+            baseRecipe: instance.flatMap(baseRecipe),
+            deleting: deletions.contains(entry.id)
+        )
     }
 
     /// Read once per device, like lacksActivation.
     private var baseRecipes: [UUID: Int?] = [:]
     private func baseRecipe(_ instance: DeviceInstance) -> Int? {
         if let known = baseRecipes[instance.id] { return known }
-        let version = DeviceRow.baseRecipeVersion(instance.paths.base.appendingPathComponent(DeviceLock.fileName),
-                                                   device: instance.paths.directory)
+        let version = DeviceRow.baseRecipeVersion(
+            instance.paths.base.appendingPathComponent(DeviceLock.fileName),
+            device: instance.paths.directory
+        )
         baseRecipes[instance.id] = version
         return version
     }
@@ -124,10 +133,12 @@ import Cocoa
     func start(_ entry: FirmwareCatalog.Entry) -> DeviceSession? {
         if let session = session(for: entry) { return session }
         guard !deletions.contains(entry.id) else { return nil }
-        library.reload() // offline publication may have selected another generation
+        library.reload()  // offline publication may have selected another generation
         guard let instance = instance(for: entry), let profile = entry.profile else { return nil }
         let network = NetworkAccessPreference.resolve(profile: profile)
-        let session = DeviceSession(emulator: EmulatorController(instance: instance, profile: profile, network: network))
+        let session = DeviceSession(
+            emulator: EmulatorController(instance: instance, profile: profile, network: network)
+        )
         sessions.append(session)
         session.emulator.onStorageGenerationChanged = { [weak self] in
             self?.baseRecipes.removeAll()
@@ -150,14 +161,17 @@ import Cocoa
     func restart(_ session: DeviceSession) {
         let id = session.instance.id
         guard sessions.contains(where: { $0 === session }), !restarting.contains(id),
-              let entry = catalog.entry(id: session.instance.firmware) else { return }
+            let entry = catalog.entry(id: session.instance.firmware)
+        else { return }
         restarting.insert(id)
         logEvent("device: restarting \(session.instance.name)")
         Task {
             let released = await session.emulator.release()
             restarting.remove(id)
             guard released else {
-                logEvent("device: \(session.instance.name)'s helper did not exit; not starting a second one on its storage")
+                logEvent(
+                    "device: \(session.instance.name)'s helper did not exit; not starting a second one on its storage"
+                )
                 return
             }
             sessions.removeAll { $0 === session }
@@ -182,7 +196,9 @@ import Cocoa
     /// A controller for a device that isn't running, which never starts: the
     /// erase it runs is the one a running device gets.
     func stoppedController(for entry: FirmwareCatalog.Entry) -> EmulatorController? {
-        guard session(for: entry) == nil, let instance = instance(for: entry), let profile = entry.profile else { return nil }
+        guard session(for: entry) == nil, let instance = instance(for: entry), let profile = entry.profile else {
+            return nil
+        }
         return EmulatorController(instance: instance, profile: profile)
     }
 
@@ -204,7 +220,8 @@ import Cocoa
     @discardableResult
     func delete(_ instance: DeviceInstance) -> Task<Void, Error> {
         precondition(!sessions.contains { $0.instance.id == instance.id })
-        let state = library.state, logs = instance.paths.logs
+        let state = library.state
+        let logs = instance.paths.logs
         return deletions.run(instance.firmware) {
             try DeviceStateStorage.removeDevice(instance.id, state: state)
             try? DeviceStateStorage.removeTree(logs)

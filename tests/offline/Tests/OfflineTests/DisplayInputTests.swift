@@ -18,7 +18,9 @@ import Testing
     }
 }
 /// The first finger's phases.
-@MainActor func touchPhases() -> [Int] { sent.compactMap { if case .touch(_, let phase, _, _) = $0 { phase } else { nil } } }
+@MainActor func touchPhases() -> [Int] {
+    sent.compactMap { if case .touch(_, let phase, _, _) = $0 { phase } else { nil } }
+}
 
 final class Cursor: NSWindow {
     var at = NSPoint.zero
@@ -27,13 +29,31 @@ final class Cursor: NSWindow {
 
 func key(_ code: UInt16, _ chars: String, _ down: Bool = true, _ flags: NSEvent.ModifierFlags = []) -> NSEvent {
     NSEvent.keyEvent(
-        with: down ? .keyDown : .keyUp, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0, context: nil, characters: chars,
-        charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code)!
+        with: down ? .keyDown : .keyUp,
+        location: .zero,
+        modifierFlags: flags,
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        characters: chars,
+        charactersIgnoringModifiers: chars,
+        isARepeat: false,
+        keyCode: code
+    )!
 }
 func flags(_ code: UInt16, _ f: NSEvent.ModifierFlags) -> NSEvent {
     NSEvent.keyEvent(
-        with: .flagsChanged, location: .zero, modifierFlags: f, timestamp: 0, windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "",
-        isARepeat: false, keyCode: code)!
+        with: .flagsChanged,
+        location: .zero,
+        modifierFlags: f,
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        characters: "",
+        charactersIgnoringModifiers: "",
+        isARepeat: false,
+        keyCode: code
+    )!
 }
 
 /// A trackpad/wheel event with the fields AppKit fills in.
@@ -69,8 +89,10 @@ final class Gesture: NSEvent {
     override nonisolated func namesOfPromisedFilesDropped(atDestination dropDestination: URL) -> [String]? { nil }
     func resetSpringLoading() {}
     func enumerateDraggingItems(
-        options: NSDraggingItemEnumerationOptions = [], for view: NSView?,
-        classes classArray: [AnyClass], searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:],
+        options: NSDraggingItemEnumerationOptions = [],
+        for view: NSView?,
+        classes classArray: [AnyClass],
+        searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:],
         using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void
     ) {}
     func files(_ names: [String]) {
@@ -124,7 +146,11 @@ extension SharedState {
             v.keyUp(with: key(1, "s", false))
             #expect(e.log.isEmpty, "nothing left to release: \(e.log)")
             // Composition: marked text is held back until committed, and focus loss drops it.
-            v.setMarkedText("´", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+            v.setMarkedText(
+                "´",
+                selectedRange: NSRange(location: 1, length: 0),
+                replacementRange: NSRange(location: NSNotFound, length: 0)
+            )
             #expect(v.hasMarkedText())
             v.keyDown(with: key(0, "a"))
             #expect(!e.log.contains("0v"), "a key during composition goes to the input system: \(e.log)")
@@ -136,8 +162,14 @@ extension SharedState {
         /// second finger mirrored through the panel center, Option-Shift locks the spacing and pans both; a plain drag is
         /// one finger; the hover rings follow. The pair's rules are MouseTouchPairTests'.
         @Test func mouseMultitouch() async throws {
-            for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] { UserDefaults.standard.removeObject(forKey: key) }
-            defer { for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] { UserDefaults.standard.removeObject(forKey: key) } }
+            for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+            defer {
+                for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] {
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
+            }
             DisplayView.bezel = .off
             let display = DisplayView(frame: NSRect(x: 0, y: 0, width: 800, height: 800), profile: .n72)
             let emulator = EmulatorController()
@@ -151,17 +183,32 @@ extension SharedState {
             display.needsLayout = true
             display.layoutSubtreeIfNeeded()
             func all(_ l: CALayer) -> [CALayer] { [l] + (l.sublayers ?? []).flatMap(all) }
-            let lcd = all(display.layer!).first { $0.backgroundColor == NSColor.black.cgColor && $0.contentsGravity == .resize }!
+            let lcd = all(display.layer!).first {
+                $0.backgroundColor == NSColor.black.cgColor && $0.contentsGravity == .resize
+            }!
             let box = lcd.convert(lcd.bounds, to: display.layer!)
-            let pairRings = all(display.layer!).compactMap { $0 as? CAShapeLayer }.filter { $0.bounds.size == CGSize(width: 30, height: 30) }
+            let pairRings = all(display.layer!).compactMap { $0 as? CAShapeLayer }.filter {
+                $0.bounds.size == CGSize(width: 30, height: 30)
+            }
             #expect(pairRings.count == 2, "pair rings: \(pairRings.count)")
             // Points are percent of the panel.
             func ev(_ t: NSEvent.EventType, _ x: CGFloat, _ y: CGFloat, _ f: NSEvent.ModifierFlags) -> NSEvent {
-                let at = display.convert(CGPoint(x: box.minX + x / 100 * box.width, y: box.minY + y / 100 * box.height), to: nil)
+                let at = display.convert(
+                    CGPoint(x: box.minX + x / 100 * box.width, y: box.minY + y / 100 * box.height),
+                    to: nil
+                )
                 window.at = at
                 return NSEvent.mouseEvent(
-                    with: t, location: at, modifierFlags: f, timestamp: 0, windowNumber: window.windowNumber,
-                    context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+                    with: t,
+                    location: at,
+                    modifierFlags: f,
+                    timestamp: 0,
+                    windowNumber: window.windowNumber,
+                    context: nil,
+                    eventNumber: 0,
+                    clickCount: 1,
+                    pressure: 1
+                )!
             }
             func drag(_ f: NSEvent.ModifierFlags, _ path: [(CGFloat, CGFloat)]) -> [String] {
                 sent = []
@@ -170,7 +217,9 @@ extension SharedState {
                 display.mouseUp(with: ev(.leftMouseUp, path.last!.0, path.last!.1, f))
                 return touchLog()
             }
-            func hover(_ x: CGFloat, _ y: CGFloat, _ f: NSEvent.ModifierFlags) { display.mouseMoved(with: ev(.mouseMoved, x, y, f)) }
+            func hover(_ x: CGFloat, _ y: CGFloat, _ f: NSEvent.ModifierFlags) {
+                display.mouseMoved(with: ev(.mouseMoved, x, y, f))
+            }
             var rings: [String] {
                 pairRings.map {
                     $0.isHidden
@@ -179,10 +228,16 @@ extension SharedState {
                 }
             }
             func expect(_ got: [String], _ want: [String], _ what: String) { #expect(got == want, "\(what)") }
-            expect(drag([], [(30, 40), (20, 30)]), ["1:0@30,40", "1:1@20,30", "1:2@20,30"], "plain drag is one finger")
+            expect(
+                drag([], [(30, 40), (20, 30)]),
+                ["1:0@30,40", "1:1@20,30", "1:2@20,30"],
+                "plain drag is one finger"
+            )
             expect(
                 drag(.option, [(30, 40), (20, 30)]),
-                ["1:0@30,40", "2:0@70,60", "1:1@20,30", "2:1@80,70", "1:2@20,30", "2:2@80,70"], "Option mirrors through the center")
+                ["1:0@30,40", "2:0@70,60", "1:1@20,30", "2:1@80,70", "1:2@20,30", "2:2@80,70"],
+                "Option mirrors through the center"
+            )
             hover(30, 50, .option)
             expect(rings, ["30,50", "70,50"], "Option hover shows the mirrored pair")
             hover(30, 50, [.option, .shift])
@@ -190,21 +245,31 @@ extension SharedState {
             expect(rings, ["20,50", "60,50"], "Option-Shift hover keeps the spacing locked when Shift went down")
             expect(
                 drag([.option, .shift], [(20, 50), (20, 30), (25, 10)]),
-                ["1:0@20,50", "2:0@60,50", "1:1@20,30", "2:1@60,30", "1:1@25,10", "2:1@65,10", "1:2@25,10", "2:2@65,10"],
-                "Option-Shift drags both fingers in parallel")
+                [
+                    "1:0@20,50", "2:0@60,50", "1:1@20,30", "2:1@60,30", "1:1@25,10", "2:1@65,10", "1:2@25,10",
+                    "2:2@65,10",
+                ],
+                "Option-Shift drags both fingers in parallel"
+            )
             expect(rings, ["25,10", "65,10"], "rings return to the hover pair after the drag")
             sent = []
             display.mouseDown(with: ev(.leftMouseDown, 20, 50, [.option, .shift]))
             display.mouseDragged(with: ev(.leftMouseDragged, 20, 40, []))
             expect(rings, ["20,40", "60,40"], "rings track the contacts mid-drag")
             display.mouseUp(with: ev(.leftMouseUp, 20, 40, []))
-            expect(touchLog(), ["1:0@20,50", "2:0@60,50", "1:1@20,40", "2:1@60,40", "1:2@20,40", "2:2@60,40"], "releasing keys mid-drag keeps the pan")
+            expect(
+                touchLog(),
+                ["1:0@20,50", "2:0@60,50", "1:1@20,40", "2:1@60,40", "1:2@20,40", "2:2@60,40"],
+                "releasing keys mid-drag keeps the pan"
+            )
             expect(rings, ["-", "-"], "no rings without Option")
             hover(80, 50, .option)
             hover(80, 50, [.option, .shift])
             expect(
-                drag([.option, .shift], [(80, 50), (70, 50)]), ["1:0@80,50", "2:0@20,50", "1:1@70,50", "2:1@10,50", "1:2@70,50", "2:2@10,50"],
-                "releasing Option drops the old lock; the next Option-Shift locks afresh")
+                drag([.option, .shift], [(80, 50), (70, 50)]),
+                ["1:0@80,50", "2:0@20,50", "1:1@70,50", "2:1@10,50", "1:2@70,50", "2:2@10,50"],
+                "releasing Option drops the old lock; the next Option-Shift locks afresh"
+            )
         }
 
         /// Chassis tilt on the 2D bezel: grab-and-drag rolls and pitches in every orientation and leaves guest touches
@@ -212,8 +277,14 @@ extension SharedState {
         /// a wheel burst returns to rest by itself; a twist tilts off the panel or with Option; layouts during repeated
         /// tilt leave screen and shell upright after release. The gesture math is ChassisTiltTests'.
         @Test func chassisDrag() async throws {
-            for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] { UserDefaults.standard.removeObject(forKey: key) }
-            defer { for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] { UserDefaults.standard.removeObject(forKey: key) } }
+            for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+            defer {
+                for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] {
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
+            }
             DisplayView.bezel = .flat
             let display = DisplayView(frame: NSRect(x: 0, y: 0, width: 800, height: 800), profile: .n72)
             let emulator = EmulatorController()
@@ -227,7 +298,9 @@ extension SharedState {
             }
             layout()
             func all(_ l: CALayer) -> [CALayer] { [l] + (l.sublayers ?? []).flatMap(all) }
-            let lcd = all(display.layer!).first { $0.backgroundColor == NSColor.black.cgColor && $0.contentsGravity == .resize }!
+            let lcd = all(display.layer!).first {
+                $0.backgroundColor == NSColor.black.cgColor && $0.contentsGravity == .resize
+            }!
             let shell = lcd.superlayer!
             let home = display.subviews.first { String(describing: type(of: $0)) == "HomeButton" }!
             func close(_ a: CGFloat, _ b: CGFloat, _ what: String, sourceLocation: SourceLocation = #_sourceLocation) {
@@ -236,17 +309,29 @@ extension SharedState {
             func untouched() -> Bool { emulator.attitude == (7, 7) }
             /// The shell's roll from its transform: scale·Rx(pitch)·Rz(angle)·perspective leaves Rz in the first row.
             func shellAngle() -> CGFloat { atan2(shell.transform.m12, shell.transform.m11) }
-            func shellTurned(_ angle: CGFloat, _ what: String) { close(remainder(shellAngle() - angle, 2 * .pi), 0, what) }
+            func shellTurned(_ angle: CGFloat, _ what: String) {
+                close(remainder(shellAngle() - angle, 2 * .pi), 0, what)
+            }
             func rest(_ rotation: Int) -> CGFloat { rotation == 270 ? -.pi / 2 : CGFloat(rotation) * .pi / 180 }
             func mouse(_ t: NSEvent.EventType, _ p: CGPoint) -> NSEvent {
                 let at = display.convert(p, to: nil)
                 window.at = at
                 return NSEvent.mouseEvent(
-                    with: t, location: at, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
-                    context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+                    with: t,
+                    location: at,
+                    modifierFlags: [],
+                    timestamp: 0,
+                    windowNumber: window.windowNumber,
+                    context: nil,
+                    eventNumber: 0,
+                    clickCount: 1,
+                    pressure: 1
+                )!
             }
             /// Above the screen on the flat shell, in view points (wherever the shell is turned).
-            func chassis() -> CGPoint { shell.convert(CGPoint(x: shell.bounds.midX, y: lcd.frame.minY / 2), to: display.layer!) }
+            func chassis() -> CGPoint {
+                shell.convert(CGPoint(x: shell.bounds.midX, y: lcd.frame.minY / 2), to: display.layer!)
+            }
             func panel() -> CGPoint { lcd.convert(CGPoint(x: lcd.bounds.midX, y: lcd.bounds.midY), to: display.layer!) }
 
             // Drag: linear roll right and pitch up from the grab point (the view is flipped), clamped, in every orientation.
@@ -398,7 +483,10 @@ extension SharedState {
                     display.mouseUp(with: mouse(.leftMouseUp, grab))
                     let combined = CATransform3DConcat(lcd.transform, shell.transform)
                     let scale = hypot(combined.m11, combined.m12)
-                    #expect(abs(combined.m11 / scale - 1) < 1e-5 && abs(combined.m12 / scale) < 1e-5, "screen crooked at \(rotation): \(combined)")
+                    #expect(
+                        abs(combined.m11 / scale - 1) < 1e-5 && abs(combined.m12 / scale) < 1e-5,
+                        "screen crooked at \(rotation): \(combined)"
+                    )
                     #expect(abs(combined.m13) < 1e-5 && abs(combined.m23) < 1e-5, "pitch left over at \(rotation)")
                     close(emulator.attitude.angle, rest(rotation), "rest \(rotation)")
                     close(emulator.attitude.pitch, 0, "level \(rotation)")
@@ -412,8 +500,14 @@ extension SharedState {
         /// apps and media it can take; readiness is rechecked mid-drag; an IPSW goes to the library whatever the device
         /// does; an in-app IPA drag is refused, a Store row's payload taken. The kinds are DroppedFiles'.
         @Test func mediaDrop() throws {
-            for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] { UserDefaults.standard.removeObject(forKey: key) }
-            defer { for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] { UserDefaults.standard.removeObject(forKey: key) } }
+            for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+            defer {
+                for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] {
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
+            }
             DisplayView.bezel = .flat
             let view = DisplayView(frame: NSRect(x: 0, y: 0, width: 800, height: 800), profile: .n72)
             let drag = Drag()
@@ -432,11 +526,17 @@ extension SharedState {
             // The drop-target ring (HIG p.294) shows only while an accepted drag is over the screen.
             func ring() -> NSView? { view.subviews.first { $0 is DropHighlight } }
             drag.files(["Notes.txt"])
-            #expect(view.draggingEntered(drag).isEmpty && ring().map { $0.isHidden } != false, "a refused drag lights nothing")
+            #expect(
+                view.draggingEntered(drag).isEmpty && ring().map { $0.isHidden } != false,
+                "a refused drag lights nothing"
+            )
             // A mixed drop: the badge counts what's taken, the rest is left out without an alert (G3).
             drag.files(["App.IPA", "Photo.PNG", "Song.mp3", "Movie.MOV", "Notes.txt"])
             #expect(view.draggingEntered(drag) == .copy && drag.numberOfValidItemsForDrop == 4)
-            #expect(ring()?.isHidden == false && view.subviews.last === ring(), "an accepted drag highlights the screen")
+            #expect(
+                ring()?.isHidden == false && view.subviews.last === ring(),
+                "an accepted drag highlights the screen"
+            )
             view.draggingExited(drag)
             #expect(ring()?.isHidden == true, "leaving clears the highlight")
             #expect(view.draggingUpdated(drag) == .copy && ring()?.isHidden == false)

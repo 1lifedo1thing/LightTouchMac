@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import FirmwareKit
 
 /// The preparer contract's stream and cancel, through the built `firmwarekit` (skipped when it isn't built).
@@ -14,13 +15,25 @@ import Testing
     @Test func eventLines() throws {
         let cases: [(PrepareEvent, [String: AnyHashable])] = [
             (.begin(steps: 7), ["event": "begin", "steps": 7]),
-            (.begin(steps: 2, seconds: [1.5, 70]), ["event": "begin", "steps": 2, "seconds": [1.5, 70.0] as [Double]]),
-            (.step(index: 3, name: "Building \"the\"/system\nvolume"), ["event": "step", "index": 3, "name": "Building \"the\"/system\nvolume"]),
+            (
+                .begin(steps: 2, seconds: [1.5, 70]),
+                ["event": "begin", "steps": 2, "seconds": [1.5, 70.0] as [Double]]
+            ),
+            (
+                .step(index: 3, name: "Building \"the\"/system\nvolume"),
+                ["event": "step", "index": 3, "name": "Building \"the\"/system\nvolume"]
+            ),
             (.progress(0.42), ["event": "progress", "fraction": 0.42]),
-            (.progress(0.5, detail: "Starting iOS — 42 s"), ["event": "progress", "fraction": 0.5, "detail": "Starting iOS — 42 s"]),
+            (
+                .progress(0.5, detail: "Starting iOS — 42 s"),
+                ["event": "progress", "fraction": 0.5, "detail": "Starting iOS — 42 s"]
+            ),
             (.warning("w"), ["event": "warning", "message": "w"]),
             (.done(lock: "device.lock.json"), ["event": "done", "lock": "device.lock.json"]),
-            (.error(code: "activation_failed", message: "m"), ["event": "error", "code": "activation_failed", "message": "m"]),
+            (
+                .error(code: "activation_failed", message: "m"),
+                ["event": "error", "code": "activation_failed", "message": "m"]
+            ),
         ]
         for (e, want) in cases {
             #expect(!e.json.contains("\n"))
@@ -33,13 +46,17 @@ import Testing
     /// A plan's time estimate: monotonic, on by time past milestones a release never prints, and never to the
     /// last milestone (the halt) or 1 by itself.
     @Test func planFraction() throws {
-        let seal = StepPlan.plan(StepPlan.sealStep), end = seal.milestones.last!.at / seal.seconds
+        let seal = StepPlan.plan(StepPlan.sealStep)
+        let end = seal.milestones.last!.at / seal.seconds
         let unseen = [Double?](repeating: nil, count: seal.milestones.count)
         let early = stride(from: 0.0, through: 600, by: 0.5).map { seal.fraction(elapsed: $0, seen: unseen) }
         #expect(zip(early, early.dropFirst()).allSatisfy { $0 <= $1 } && early.last! < end && early.last! > 0.9 * end)
         var seen = unseen
-        seen[2] = 3   // launchd already up at 3 s (a fast 4.x boot): jumps to its milestone, then on by time
-        #expect(abs(seal.fraction(elapsed: 3, seen: seen) - 19 / 72) < 1e-9 && seal.fraction(elapsed: 13, seen: seen) > 19 / 72)
+        seen[2] = 3  // launchd already up at 3 s (a fast 4.x boot): jumps to its milestone, then on by time
+        #expect(
+            abs(seal.fraction(elapsed: 3, seen: seen) - 19 / 72) < 1e-9
+                && seal.fraction(elapsed: 13, seen: seen) > 19 / 72
+        )
         #expect(seal.fraction(elapsed: 1e6, seen: seen) < end)
         let lock = StepPlan.plan("Writing the lock")
         #expect(abs(lock.fraction(elapsed: 1e6, seen: []) - 0.95) < 1e-9 && StepPlan.plan("no such step").seconds > 0)
@@ -51,7 +68,8 @@ import Testing
         let seal = StepPlan.plan(StepPlan.sealStep, major: 7)
         #expect(seal.seconds > 300 && StepPlan.plan(StepPlan.sealStep, major: 6).seconds < 100)
         var seen = [Double?](repeating: nil, count: seal.milestones.count)
-        seen[0] = 4; seen[1] = 8   // FTL_Open, launchd; no Wi-Fi line (a boot without it), no SpringBoard yet
+        seen[0] = 4
+        seen[1] = 8  // FTL_Open, launchd; no Wi-Fi line (a boot without it), no SpringBoard yet
         let at = stride(from: 10.0, through: 320, by: 30).map { seal.fraction(elapsed: $0, seen: seen) }
         #expect(zip(at, at.dropFirst()).allSatisfy { $1 - $0 > 0.05 }, "every 30 s moves the step on: \(at)")
     }
@@ -60,15 +78,23 @@ import Testing
     /// a boot's milestones change the detail; nothing after stop().
     @Test func progressStream() throws {
         try Oracle.withTemp { work in
-            final class Events: @unchecked Sendable { let lock = NSLock(); var all: [PrepareEvent] = [] }
+            final class Events: @unchecked Sendable {
+                let lock = NSLock()
+                var all: [PrepareEvent] = []
+            }
             let events = Events()
             let p = StepProgress(work: work) { e in events.lock.withLock { events.all.append(e) } }
             let bytes = ByteCount(total: 100)
             p.next(index: 1, name: "Verifying the IPSW")
             p.measure = { bytes.fraction }
-            for _ in 0..<3 { bytes.add(30); Thread.sleep(forTimeInterval: 0.6) }
+            for _ in 0..<3 {
+                bytes.add(30)
+                Thread.sleep(forTimeInterval: 0.6)
+            }
             p.next(index: 2, name: StepPlan.sealStep)
-            try Data("iBoot version: iBoot-817.29\n[FTL:MSG] FTL_Open            [OK]\n".utf8).write(to: work.appendingPathComponent("seal.log"))
+            try Data("iBoot version: iBoot-817.29\n[FTL:MSG] FTL_Open            [OK]\n".utf8).write(
+                to: work.appendingPathComponent("seal.log")
+            )
             Thread.sleep(forTimeInterval: 1.5)
             try Data("*** launchd[1] has started up. ***\n".utf8).write(to: work.appendingPathComponent("seal.log"))
             Thread.sleep(forTimeInterval: 1.5)
@@ -81,7 +107,7 @@ import Testing
             for e in all {
                 switch e {
                 case .step: steps.append([])
-                case let .progress(f, detail): steps[steps.count - 1].append((f, try #require(detail)))
+                case .progress(let f, let detail): steps[steps.count - 1].append((f, try #require(detail)))
                 default: Issue.record("\(e)")
                 }
             }
@@ -103,11 +129,16 @@ import Testing
     @Test func ftlOpenAcrossLines() {
         #expect(Preparer.ftlOpened("[FTL:MSG] FTL_Open            [OK]\n"))
         #expect(Preparer.ftlOpened("AppleNANDFTL: [FTL:MSG] FTL_Open\n            [OK]\n"))
-        #expect(!Preparer.ftlOpened("[FTL:MSG] FTL_Open            [FAIL]\n") && !Preparer.ftlOpened("CXT is not valid\n"))
+        #expect(
+            !Preparer.ftlOpened("[FTL:MSG] FTL_Open            [FAIL]\n") && !Preparer.ftlOpened("CXT is not valid\n")
+        )
     }
 
     @Test func errorCodes() {
-        func code(_ e: Error) -> String? { if case .error(let c, _, _) = Preparer.errorEvent(e) { return c }; return nil }
+        func code(_ e: Error) -> String? {
+            if case .error(let c, _, _) = Preparer.errorEvent(e) { return c }
+            return nil
+        }
         #expect(code(FirmwareError(.activationFailed, "x")) == "activation_failed")
         #expect(code(ActivationFailure("x")) == "activation_failed")
         #expect(code(FirmwareError(.oneshotFailed, "x")) == "oneshot_failed")
@@ -117,10 +148,17 @@ import Testing
         #expect(code(CocoaError(.fileNoSuchFile)) == "internal")
         // A required piece that doesn't fit names itself in the event, for the app's plain words.
         let log = FitCheck.Log()
-        #expect(throws: FirmwareError.self) { try log.check(FitCheck.Fit("OpenGLES front end (contrib/gles-public)", fits: false, "x"), required: true) }
-        do { try log.check(FitCheck.Fit("OpenGLES front end (contrib/gles-public)", fits: false, "x"), required: true) } catch {
+        #expect(throws: FirmwareError.self) {
+            try log.check(FitCheck.Fit("OpenGLES front end (contrib/gles-public)", fits: false, "x"), required: true)
+        }
+        do {
+            try log.check(FitCheck.Fit("OpenGLES front end (contrib/gles-public)", fits: false, "x"), required: true)
+        } catch {
             let line = Self.object(Preparer.errorEvent(error).json)
-            #expect(line?["code"] as? String == "unsupported" && line?["piece"] as? String == "OpenGLES front end (contrib/gles-public)")
+            #expect(
+                line?["code"] as? String == "unsupported"
+                    && line?["piece"] as? String == "OpenGLES front end (contrib/gles-public)"
+            )
         }
         #expect(Self.object(Preparer.errorEvent(FirmwareError(.unsupported, "x")).json)?["piece"] == nil)
     }
@@ -133,26 +171,40 @@ import Testing
         try sh.run()
         defer { if sh.isRunning { sh.terminate() } }
         var kids: [pid_t] = []
-        for _ in 0..<100 where kids.isEmpty { usleep(20_000); kids = Preparer.descendants(of: sh.processIdentifier) }
+        for _ in 0..<100 where kids.isEmpty {
+            usleep(20_000)
+            kids = Preparer.descendants(of: sh.processIdentifier)
+        }
         #expect(kids.count == 1)
         let t0 = Date()
         await Preparer.terminateDescendants(of: sh.processIdentifier, grace: 1)
-        sh.waitUntilExit()   // its `wait` returns once sleep is gone
+        sh.waitUntilExit()  // its `wait` returns once sleep is gone
         #expect(Date().timeIntervalSince(t0) < 2)
         #expect(kids.allSatisfy { kill($0, 0) != 0 })
     }
 
-    struct Run { var lines: [[String: Any]]; var status: Int32; var staging: URL }
+    struct Run {
+        var lines: [[String: Any]]
+        var status: Int32
+        var staging: URL
+    }
 
     /// Runs `firmwarekit create` on `ipsw` with the 7B500 entry; `whileRunning` gets the process after the first stdout bytes.
-    static func create(_ dir: URL, ipsw: URL, extra: [String] = [], whileRunning: ((Process) -> Void)? = nil) throws -> Run {
-        let entry = dir.appendingPathComponent("entry.json"), staging = dir.appendingPathComponent("staging")
+    static func create(_ dir: URL, ipsw: URL, extra: [String] = [], whileRunning: ((Process) -> Void)? = nil) throws
+        -> Run
+    {
+        let entry = dir.appendingPathComponent("entry.json")
+        let staging = dir.appendingPathComponent("staging")
         try JSONEncoder().encode(try Oracle.entry("k48ap-7B500")).write(to: entry)
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
-        let p = Process(), out = Pipe()
+        let p = Process()
+        let out = Pipe()
         p.executableURL = cli
-        p.arguments = ["create", "--entry", entry.path, "--ipsw", ipsw.path, "--out", staging.path, "--helper", "/bin/sh",
-                       "--guest-tools", dir.path] + extra
+        p.arguments =
+            [
+                "create", "--entry", entry.path, "--ipsw", ipsw.path, "--out", staging.path, "--helper", "/bin/sh",
+                "--guest-tools", dir.path,
+            ] + extra
         p.standardOutput = out
         p.standardError = FileHandle.nullDevice
         try p.run()
@@ -173,8 +225,11 @@ import Testing
         return Run(lines: lines.compactMap { $0 }, status: p.terminationStatus, staging: staging)
     }
 
-    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run")) func streamOnError() throws {
-        guard Oracle.exists(Self.cli) else { try FixtureRequirements.missing(#"PreparerTests.swift: Oracle.exists(Self.cli)"#) }
+    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"))
+    func streamOnError() throws {
+        guard Oracle.exists(Self.cli) else {
+            try FixtureRequirements.missing(#"PreparerTests.swift: Oracle.exists(Self.cli)"#)
+        }
         try Oracle.withTemp { dir in
             let ipsw = dir.appendingPathComponent("fake.ipsw")
             try Data("not the pinned IPSW".utf8).write(to: ipsw)
@@ -195,8 +250,11 @@ import Testing
     }
 
     /// SIGTERM mid-step (hashing a sparse 8 GB "IPSW"): exits within 2 s, 143, staging left for the caller.
-    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run")) func cancelWithinTwoSeconds() throws {
-        guard Oracle.exists(Self.cli) else { try FixtureRequirements.missing(#"PreparerTests.swift: Oracle.exists(Self.cli)"#) }
+    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"))
+    func cancelWithinTwoSeconds() throws {
+        guard Oracle.exists(Self.cli) else {
+            try FixtureRequirements.missing(#"PreparerTests.swift: Oracle.exists(Self.cli)"#)
+        }
         try Oracle.withTemp { dir in
             let ipsw = dir.appendingPathComponent("big.ipsw")
             FileManager.default.createFile(atPath: ipsw.path, contents: nil)

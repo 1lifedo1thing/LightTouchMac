@@ -19,7 +19,10 @@ public final class BootSessionScope {
         get { tasks[work] }
         set {
             tasks[work]?.cancel()
-            guard !retired else { newValue?.cancel(); return }
+            guard !retired else {
+                newValue?.cancel()
+                return
+            }
             tasks[work] = newValue
         }
     }
@@ -44,7 +47,7 @@ public final class BootSessionScope {
     public func retire() {
         guard !retired else { return }
         retired = true
-        generation += 1 // invalidate suspended completions before another boot
+        generation += 1  // invalidate suspended completions before another boot
         for task in tasks.values { task.cancel() }
         tasks.removeAll()
         timeZoneObserver = nil

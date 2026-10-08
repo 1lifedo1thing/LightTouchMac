@@ -1,6 +1,6 @@
-import HostServiceWire
-import HostRuntime
 import Foundation
+import HostRuntime
+import HostServiceWire
 
 /// An app-service read can fail while iOS and the USB bridge are still alive.
 /// Keep that distinction when choosing feedback and automatic recovery.
@@ -16,8 +16,14 @@ public nonisolated struct DeviceConnectionIssue: Equatable, Sendable {
     /// The guest is not activated (lockdown's ActivationState, or every
     /// service refused with -34 SERVICE_PROHIBITED): nothing to retry.
     public static func unactivated(profile: Board, detail: String) -> DeviceConnectionIssue {
-        DeviceConnectionIssue(summary: "This \(profile.shortName) isn’t activated. Choose Erase All Content and Settings, then prepare it again.",
-                              detail: detail, blocksCommands: true, reconnectManagement: false, persistent: true)
+        DeviceConnectionIssue(
+            summary:
+                "This \(profile.shortName) isn’t activated. Choose Erase All Content and Settings, then prepare it again.",
+            detail: detail,
+            blocksCommands: true,
+            reconnectManagement: false,
+            persistent: true
+        )
     }
 
     /// nil for the recognized activated states (Activated, FactoryActivated, WildcardActivated)
@@ -37,7 +43,7 @@ public nonisolated struct DeviceConnectionIssue: Equatable, Sendable {
 
     public init?(error: Error, operation: String, profile: Board) {
         guard !(error is CancellationError) else { return nil }
-        if case DeviceError.lockdown(-34) = error {   // SERVICE_PROHIBITED: an unactivated guest
+        if case DeviceError.lockdown(-34) = error {  // SERVICE_PROHIBITED: an unactivated guest
             self = .unactivated(profile: profile, detail: "\(operation): \(error.localizedDescription)")
             return
         }
@@ -56,8 +62,8 @@ public nonisolated struct DeviceConnectionIssue: Equatable, Sendable {
             blocksCommands = true
             reconnectManagement = false
         case DeviceError.lockdown(-4), DeviceError.lockdown(-18), DeviceError.lockdown(-19),
-             DeviceError.lockdown(-20), DeviceError.lockdown(-21), DeviceError.lockdown(-29),
-             DeviceError.lockdown(-30), DeviceError.lockdown(-31):
+            DeviceError.lockdown(-20), DeviceError.lockdown(-21), DeviceError.lockdown(-29),
+            DeviceError.lockdown(-30), DeviceError.lockdown(-31):
             summary = "Couldn’t pair with the \(profile.shortName)"
             blocksCommands = true
             reconnectManagement = false
@@ -82,7 +88,7 @@ public nonisolated struct DeviceConnectionIssue: Equatable, Sendable {
             blocksCommands = true
             reconnectManagement = false
         case DeviceError.lockdown, DeviceError.recovering, DeviceError.timedOut,
-             DeviceError.instproxy(.connFailed, _), DeviceError.instproxy(.receiveTimeout, _):
+            DeviceError.instproxy(.connFailed, _), DeviceError.instproxy(.receiveTimeout, _):
             summary = "App connection interrupted — retrying…"
             blocksCommands = true
             reconnectManagement = true

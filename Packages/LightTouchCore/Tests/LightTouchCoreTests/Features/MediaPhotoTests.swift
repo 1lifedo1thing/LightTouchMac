@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import Testing
 import UniformTypeIdentifiers
+
 @testable import LightTouchCore
 
 /// Photo preparation (MediaPhoto): upright by its EXIF orientation, at most 2048 px, a baseline JPEG, transparency
@@ -13,8 +14,15 @@ struct MediaPhotoTests {
         try await withTemporaryState { work in
             // Landscape pixels, left half red, right half blue, shown rotated a quarter turn clockwise (EXIF 6).
             let source = work.appendingPathComponent("rotated.jpg")
-            try MediaFixtures.image(source, width: 4096, height: 2048, type: .jpeg, orientation: 6, background: red,
-                                    fill: [(CGRect(x: 2048, y: 0, width: 2048, height: 2048), blue)])
+            try MediaFixtures.image(
+                source,
+                width: 4096,
+                height: 2048,
+                type: .jpeg,
+                orientation: 6,
+                background: red,
+                fill: [(CGRect(x: 2048, y: 0, width: 2048, height: 2048), blue)]
+            )
             let image = try await prepareTwice(source)
             let pixels = try MediaFixtures.pixels(image)
             try #require(pixels.width == 1024 && pixels.height == 2048)
@@ -27,7 +35,13 @@ struct MediaPhotoTests {
     @Test func transparencyBecomesWhite() async throws {
         try await withTemporaryState { work in
             let source = work.appendingPathComponent("alpha.png")
-            try MediaFixtures.image(source, width: 300, height: 200, type: .png, fill: [(CGRect(x: 100, y: 50, width: 100, height: 100), red)])
+            try MediaFixtures.image(
+                source,
+                width: 300,
+                height: 200,
+                type: .png,
+                fill: [(CGRect(x: 100, y: 50, width: 100, height: 100), red)]
+            )
             let image = try await prepareTwice(source)
             let pixels = try MediaFixtures.pixels(image)
             try #require(pixels.width == 300 && pixels.height == 200)

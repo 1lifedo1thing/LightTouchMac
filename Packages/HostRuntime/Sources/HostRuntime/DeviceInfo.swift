@@ -29,9 +29,23 @@ public struct DeviceInfo: Codable, Sendable, Equatable {
     public var panelWidthStep: Int
     public var panelMaxPixels: Int
 
-    public init(machine: String, board: String, screenWidth: Int, screenHeight: Int, screenScale: Int,
-                defaultOrientation: Int, hasCellular: Bool, hasUSBHost: Bool, hasCompass: Bool, hasUSBCharger: Bool,
-                panelMin: Int, panelMaxWidth: Int, panelMaxHeight: Int, panelWidthStep: Int, panelMaxPixels: Int) {
+    public init(
+        machine: String,
+        board: String,
+        screenWidth: Int,
+        screenHeight: Int,
+        screenScale: Int,
+        defaultOrientation: Int,
+        hasCellular: Bool,
+        hasUSBHost: Bool,
+        hasCompass: Bool,
+        hasUSBCharger: Bool,
+        panelMin: Int,
+        panelMaxWidth: Int,
+        panelMaxHeight: Int,
+        panelWidthStep: Int,
+        panelMaxPixels: Int
+    ) {
         self.machine = machine
         self.board = board
         self.screenWidth = screenWidth
@@ -63,8 +77,13 @@ public struct DeviceInfo: Codable, Sendable, Equatable {
         let data = out.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
-            throw CocoaError(.executableLoad, userInfo: [NSLocalizedDescriptionKey:
-                "\(helper.lastPathComponent) --machines exited \(process.terminationStatus)"])
+            throw CocoaError(
+                .executableLoad,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "\(helper.lastPathComponent) --machines exited \(process.terminationStatus)"
+                ]
+            )
         }
         struct Listing: Decodable { let machines: [DeviceInfo] }
         return try JSONDecoder().decode(Listing.self, from: data).machines
@@ -81,7 +100,12 @@ public enum Machines {
     /// The helper to list from; set before the first lookup.
     public static var helper: URL? {
         get { lock.withLock { source } }
-        set { lock.withLock { source = newValue; table = nil } }
+        set {
+            lock.withLock {
+                source = newValue
+                table = nil
+            }
+        }
     }
 
     public static func set(_ machines: [DeviceInfo]) {
@@ -92,8 +116,10 @@ public enum Machines {
     public static subscript(board: Board) -> DeviceInfo? {
         lock.withLock {
             if table == nil, let source {
-                do { table = index(try DeviceInfo.list(helper: source)) }
-                catch { table = [:]; FileHandle.standardError.write(Data("machines: \(error.localizedDescription)\n".utf8)) }
+                do { table = index(try DeviceInfo.list(helper: source)) } catch {
+                    table = [:]
+                    FileHandle.standardError.write(Data("machines: \(error.localizedDescription)\n".utf8))
+                }
             }
             return table?[board]
         }
@@ -104,7 +130,7 @@ public enum Machines {
     }
 }
 
-public extension Board {
+extension Board {
     /// The emulator's facts about this board (Machines).
-    var hardware: DeviceInfo? { Machines[self] }
+    public var hardware: DeviceInfo? { Machines[self] }
 }

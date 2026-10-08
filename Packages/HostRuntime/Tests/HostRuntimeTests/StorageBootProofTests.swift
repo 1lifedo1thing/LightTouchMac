@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import HostRuntime
+import Testing
 
 struct StorageBootProofTests {
     @Test func helperLeaseRechecksGenerationWithoutRejectingGuestMetadata() throws {
@@ -8,9 +8,11 @@ struct StorageBootProofTests {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let record = root.appendingPathComponent(DeviceRecord.name)
-        var data: [String: Any] = ["base": ["kind": "prepared", "path": "base/old"],
-                                 "storage": ["key": "old", "overlay": "overlay/old"],
-                                 "identity": ["die_id": "original"], "guest": ["active": 1]]
+        var data: [String: Any] = [
+            "base": ["kind": "prepared", "path": "base/old"],
+            "storage": ["key": "old", "overlay": "overlay/old"],
+            "identity": ["die_id": "original"], "guest": ["active": 1],
+        ]
         func write() throws { try DeviceRecord.data(data).write(to: record) }
         try write()
         let proof = try StorageBootProof.capture(record: record)

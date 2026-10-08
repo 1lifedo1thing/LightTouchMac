@@ -18,7 +18,10 @@ public struct KeyboardPointer {
     public struct Touch: Equatable {
         public let phase: Phase
         public let point: CGPoint
-        public init(_ phase: Phase, _ point: CGPoint) { self.phase = phase; self.point = point }
+        public init(_ phase: Phase, _ point: CGPoint) {
+            self.phase = phase
+            self.point = point
+        }
     }
     public enum FocusMove: Equatable { case next, previous }
 
@@ -38,7 +41,9 @@ public struct KeyboardPointer {
     /// A key down or up. `typingOff`: the device isn't taking typed keys, so the arrows are the pointer's;
     /// `canTouch`: the screen takes touches and no mouse touch, pinch or scroll is under way. Returns whether the key
     /// was the pointer's (not passed on) and the touches to send.
-    public mutating func key(_ code: UInt16, down: Bool, modifiers: KeyModifiers, typingOff: Bool, canTouch: Bool) -> (handled: Bool, touches: [Touch]) {
+    public mutating func key(_ code: UInt16, down: Bool, modifiers: KeyModifiers, typingOff: Bool, canTouch: Bool) -> (
+        handled: Bool, touches: [Touch]
+    ) {
         guard code == Self.space || Self.arrows.contains(code) else { return (false, []) }
         if !down, touchKeys.contains(code) {
             if touchKeys.count == 1 { return (true, end().map { [$0] } ?? []) }
@@ -83,7 +88,8 @@ public struct KeyboardPointer {
     /// Option-Tab are the system's.
     public static func focusMove(keyCode: UInt16, modifiers: KeyModifiers, typingOff: Bool) -> FocusMove? {
         guard keyCode == 48, modifiers.intersection([.command, .option]).isEmpty,
-              modifiers.contains(.control) || typingOff else { return nil }
+            modifiers.contains(.control) || typingOff
+        else { return nil }
         return modifiers.contains(.shift) ? .previous : .next
     }
 }

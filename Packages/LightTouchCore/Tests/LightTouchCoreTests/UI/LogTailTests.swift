@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import LightTouchCore
 
 /// Bounded log reads: the last 64 KB in whole lines, invalid UTF-8, empty and missing files, Clear points and
@@ -9,7 +10,8 @@ struct LogTailTests {
         try withTemporaryFile(named: "serial.log") { file in
             try Data("first\n".utf8).write(to: file)
             #expect(LogTail.read(file) == "first\n")
-            var large = Data(repeating: 65, count: 70000); large.append(Data("\nlast line\n".utf8))
+            var large = Data(repeating: 65, count: 70000)
+            large.append(Data("\nlast line\n".utf8))
             try large.write(to: file)
             #expect(LogTail.read(file) == "last line\n", "a cut first line is dropped")
             try Data([255, 10]).write(to: file)
@@ -25,7 +27,9 @@ struct LogTailTests {
             try Data("old 1\nold 2\n".utf8).write(to: log)
             let size = UInt64(try FileManager.default.attributesOfItem(atPath: log.path)[.size] as! Int)
             let handle = try FileHandle(forWritingTo: log)
-            try handle.seekToEnd(); try handle.write(contentsOf: Data("new 3\n".utf8)); try handle.close()
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data("new 3\n".utf8))
+            try handle.close()
             let cleared = LogTail.read(log, from: size)
             #expect(cleared.text == "new 3\n" && !cleared.rotated, "clear shows only what came after")
             #expect(LogTail.read(log, from: size + 6).text == "", "cleared and nothing new: empty, not the placeholder")

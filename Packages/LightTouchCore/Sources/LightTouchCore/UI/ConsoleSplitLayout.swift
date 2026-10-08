@@ -53,9 +53,11 @@ public struct ConsoleSplitLayout: Codable, Equatable {
     /// started from, so the toggle brings back the console the user had.
     public mutating func drag(from start: ConsoleSplitLayout, to proposed: CGFloat, in available: CGFloat) {
         if let resolved = Self.resolve(proposed, in: available) {
-            height = resolved; isCollapsed = false
+            height = resolved
+            isCollapsed = false
         } else {
-            height = start.height; isCollapsed = true
+            height = start.height
+            isCollapsed = true
         }
     }
 
@@ -75,7 +77,9 @@ public struct ConsoleSplitLayout: Codable, Equatable {
     }
 
     public func save(_ name: String, to defaults: UserDefaults = .standard) {
-        let object = (try? PropertyListEncoder().encode(self)).flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) }
+        let object = (try? PropertyListEncoder().encode(self)).flatMap {
+            try? PropertyListSerialization.propertyList(from: $0, format: nil)
+        }
         defaults.set(object, forKey: "ConsoleSplit \(name)")
     }
 }

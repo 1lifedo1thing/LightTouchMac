@@ -29,17 +29,18 @@ public nonisolated enum BootStage: Int, Comparable, Sendable {
         ":: iBoot for": .loading,
         "Loading kernel cache": .loading,
         "Darwin Kernel Version": .kernel,
-        "iBoot version: ": .kernel,   // the kernel's line, not iBoot's
+        "iBoot version: ": .kernel,  // the kernel's line, not iBoot's
         "launchd[1] has started up": .system,
     ]
 
     /// Stages only move forward: a late marker never takes the boot back.
     public func after(_ event: Event) -> BootStage {
-        let reached: BootStage? = switch event {
-        case let .serial(phrase): Self.serialMarkers[phrase]
-        case .guestTools: .system
-        case .usbAttached: .usb
-        }
+        let reached: BootStage? =
+            switch event {
+            case .serial(let phrase): Self.serialMarkers[phrase]
+            case .guestTools: .system
+            case .usbAttached: .usb
+            }
         return max(self, reached ?? self)
     }
 

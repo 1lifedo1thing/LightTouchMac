@@ -1,8 +1,9 @@
+import DeviceRuntime
 import Foundation
-import Testing
 import HostRuntime
 import HostServiceWire
-import DeviceRuntime
+import Testing
+
 @testable import LightTouchCore
 
 /// The guest's zone follows the Mac's: set once the device is ready, retried until one try sticks, given up when
@@ -43,7 +44,10 @@ import DeviceRuntime
         host.ready = true
         await eventually("set") { host.sets.count == 2 }
         await settle()
-        #expect(host.sets == [TimeZone.current.identifier, TimeZone.current.identifier], "a transient failure is retried, a success ends it")
+        #expect(
+            host.sets == [TimeZone.current.identifier, TimeZone.current.identifier],
+            "a transient failure is retried, a success ends it"
+        )
         sync.stop()
     }
 

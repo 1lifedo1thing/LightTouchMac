@@ -1,8 +1,9 @@
-import Foundation
-import Testing
-import HostServiceWire
 import DeviceRuntime
+import Foundation
 import HostRuntime
+import HostServiceWire
+import Testing
+
 @testable import LightTouchCore
 
 /// Erase completes after the helper exits, then restarts the device (never quits the app); a stopped device just
@@ -21,17 +22,21 @@ struct DeviceEraseTests {
         try Data("old".utf8).write(to: directory.appendingPathComponent("snapshot"))
         return s
     }
-    func exists(_ directory: URL, _ name: String) -> Bool { FileManager.default.fileExists(atPath: directory.appendingPathComponent(name).path) }
+    func exists(_ directory: URL, _ name: String) -> Bool {
+        FileManager.default.fileExists(atPath: directory.appendingPathComponent(name).path)
+    }
 
     @Test func eraseWaitsForTheHelperThenRestartsTheDevice() async throws {
         try await withScratchDirectory { root in
             let directory = root.appendingPathComponent("success")
             let c = try session(directory)
             var erasedBeforeRestart: Bool?
-            c.onRestart = { erasedBeforeRestart = !self.exists(directory, "overlay") && !c.isErasing && c.fakeHelper!.isDead }
+            c.onRestart = {
+                erasedBeforeRestart = !self.exists(directory, "overlay") && !c.isErasing && c.fakeHelper!.isDead
+            }
             c.notices.report("Couldn’t finish erasing the iPod", for: .erase)
             c.eraser.request()
-            c.eraser.request()   // coalesced
+            c.eraser.request()  // coalesced
             #expect(c.isErasing && c.steps.prefix(2) == ["discard", "stopWatches"])
             await eventually("erased") { !c.isErasing }
             #expect(erasedBeforeRestart == true, "data gone, helper gone, before the restart")
@@ -55,7 +60,9 @@ struct DeviceEraseTests {
             c.eraser.request()
             await eventually("gave up") { !c.isErasing }
             #expect(exists(directory, "overlay") && exists(directory, "nor.bin"))
-            #expect(c.notices.message == "Couldn’t stop the iPod to erase it. Try again." && !c.steps.contains("restart"))
+            #expect(
+                c.notices.message == "Couldn’t stop the iPod to erase it. Try again." && !c.steps.contains("restart")
+            )
         }
     }
 
@@ -73,7 +80,9 @@ struct DeviceEraseTests {
             stopped.started = false
             stopped.eraser.request()
             await eventually("erased") { !stopped.isErasing }
-            #expect(!exists(directory, "overlay") && !stopped.steps.contains("restart") && stopped.link.commands.isEmpty)
+            #expect(
+                !exists(directory, "overlay") && !stopped.steps.contains("restart") && stopped.link.commands.isEmpty
+            )
         }
     }
 
@@ -85,8 +94,13 @@ struct DeviceEraseTests {
             // The erase only removes inside the state directory it owns; this overlay is elsewhere.
             let outside = root.appendingPathComponent("elsewhere")
             try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
-            c.eraseTargetsOverride = DeviceErase.Targets(overlay: outside, snapshots: [], preparedNOR: nil,
-                                                         state: root.appendingPathComponent("refused"), owner: UUID())
+            c.eraseTargetsOverride = DeviceErase.Targets(
+                overlay: outside,
+                snapshots: [],
+                preparedNOR: nil,
+                state: root.appendingPathComponent("refused"),
+                owner: UUID()
+            )
             c.eraser.request()
             await eventually("failed") { !c.isErasing }
             #expect(c.notices.message?.hasPrefix("Couldn’t finish erasing the iPod: ") == true)

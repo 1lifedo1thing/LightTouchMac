@@ -20,15 +20,26 @@ extension SharedState {
             var deletes: [String] = []
             var allowed: Set<DeviceAction> = Set(DeviceAction.allCases)
             var selected: [FirmwareCatalog.Entry?] = []
-            func library(_ library: DeviceLibraryViewController, didSelect entry: FirmwareCatalog.Entry?) { selected.append(entry) }
+            func library(_ library: DeviceLibraryViewController, didSelect entry: FirmwareCatalog.Entry?) {
+                selected.append(entry)
+            }
             func libraryRowsDidChange(_ library: DeviceLibraryViewController) {}
-            func library(_ library: DeviceLibraryViewController, canPerform action: DeviceAction, for entry: FirmwareCatalog.Entry) -> Bool {
+            func library(
+                _ library: DeviceLibraryViewController,
+                canPerform action: DeviceAction,
+                for entry: FirmwareCatalog.Entry
+            ) -> Bool {
                 allowed.contains(action)
             }
-            func library(_ library: DeviceLibraryViewController, perform action: DeviceAction, for entry: FirmwareCatalog.Entry) {
+            func library(
+                _ library: DeviceLibraryViewController,
+                perform action: DeviceAction,
+                for entry: FirmwareCatalog.Entry
+            ) {
                 if action == .delete { deletes.append(entry.id) }
             }
-            func library(_ library: DeviceLibraryViewController, importIPSW url: URL, for entry: FirmwareCatalog.Entry?) {}
+            func library(_ library: DeviceLibraryViewController, importIPSW url: URL, for entry: FirmwareCatalog.Entry?)
+            {}
         }
 
         @Test func sidebarAndAddDeviceSheet() async throws {
@@ -36,7 +47,9 @@ extension SharedState {
             NSApp.setActivationPolicy(.prohibited)
             let catalog = try FirmwareCatalog.load(
                 from: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-                    .appendingPathComponent("../../../../LightTouchMac/Resources/firmware-catalog.json").standardizedFileURL)
+                    .appendingPathComponent("../../../../LightTouchMac/Resources/firmware-catalog.json")
+                    .standardizedFileURL
+            )
             let suite = "ltm-check-sidebar-ui-\(UUID().uuidString)"
             let defaults = UserDefaults(suiteName: suite)!
             defer { defaults.removePersistentDomain(forName: suite) }
@@ -53,7 +66,12 @@ extension SharedState {
                 return true
             }
             func window(_ size: NSSize) -> NSWindow {
-                let w = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled], backing: .buffered, defer: false)
+                let w = NSWindow(
+                    contentRect: NSRect(origin: .zero, size: size),
+                    styleMask: [.titled],
+                    backing: .buffered,
+                    defer: false
+                )
                 w.appearance = NSAppearance(named: .aqua)
                 return w
             }
@@ -67,13 +85,18 @@ extension SharedState {
                         return cell.isFlipped ? rect.minY : -rect.maxY
                     }
                     func before(_ a: NSTextField, _ b: NSTextField) -> Bool {
-                        abs(top(a) - top(b)) > 4 ? top(a) < top(b) : a.convert(a.bounds, to: cell).minX < b.convert(b.bounds, to: cell).minX
+                        abs(top(a) - top(b)) > 4
+                            ? top(a) < top(b) : a.convert(a.bounds, to: cell).minX < b.convert(b.bounds, to: cell).minX
                     }
-                    let fields: [NSTextField] = all(cell).compactMap { $0 as? NSTextField }.filter { visible($0) && !$0.stringValue.isEmpty }
+                    let fields: [NSTextField] = all(cell).compactMap { $0 as? NSTextField }.filter {
+                        visible($0) && !$0.stringValue.isEmpty
+                    }
                     return fields.sorted(by: before).map(\.stringValue)
                 }
             }
-            func sidebar(_ ids: [String], names: [String: String] = [:], host: DeviceSessionHost) -> (DeviceLibraryViewController, NSWindow) {
+            func sidebar(_ ids: [String], names: [String: String] = [:], host: DeviceSessionHost) -> (
+                DeviceLibraryViewController, NSWindow
+            ) {
                 SidebarList(ids: ids, names: names).save(defaults)
                 let vc = DeviceLibraryViewController(host: host, defaults: defaults)
                 let w = window(NSSize(width: 240, height: 260))
@@ -89,7 +112,8 @@ extension SharedState {
             var (vc, w) = sidebar(["n72ap-8C148", "n72ap-8B5080c", "n72ap-8B117", "n72ap-7E18"], host: host)
             var seen = rows(vc)
             if seen.map({ Array($0.prefix(1)) + $0.filter { $0.hasPrefix("iOS") } }) != [
-                ["iPod touch (2nd generation)", "iOS 3.1.3"], ["iPod touch (2nd generation)", "iOS 4.1 beta 1"], ["iPod touch (2nd generation)", "iOS 4.1"],
+                ["iPod touch (2nd generation)", "iOS 3.1.3"], ["iPod touch (2nd generation)", "iOS 4.1 beta 1"],
+                ["iPod touch (2nd generation)", "iOS 4.1"],
                 ["iPod touch (2nd generation)", "iOS 4.2.1"],
             ]
                 || seen.contains(where: { $0.count != 2 })
@@ -121,16 +145,28 @@ extension SharedState {
                 types[board] = type.identifier
                 if profile.icon.isTemplate { fail("\(board)'s icon is the SF Symbol fallback") }
             }
-            if types["n45ap"] == nil || types["n45ap"] == types["n72ap"] { fail("the iPod 1G and 2G share a type: \(types)") }
+            if types["n45ap"] == nil || types["n45ap"] == types["n72ap"] {
+                fail("the iPod 1G and 2G share a type: \(types)")
+            }
             if Set(types.values).count != types.count { fail("boards share a type: \(types)") }
-            if !Board.icon(modelCode: "Bogus9,9", fallbackSymbol: "ipodtouch").isTemplate { fail("an unknown model code didn't fall back to the symbol") }
+            if !Board.icon(modelCode: "Bogus9,9", fallbackSymbol: "ipodtouch").isTemplate {
+                fail("an unknown model code didn't fall back to the symbol")
+            }
             /// The image as 24×24 pixels, to tell pictures apart.
             func pixels(_ image: NSImage?) -> Data? {
                 guard let image,
                     let rep = NSBitmapImageRep(
-                        bitmapDataPlanes: nil, pixelsWide: 24, pixelsHigh: 24, bitsPerSample: 8,
-                        samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
-                        bytesPerRow: 0, bitsPerPixel: 0)
+                        bitmapDataPlanes: nil,
+                        pixelsWide: 24,
+                        pixelsHigh: 24,
+                        bitsPerSample: 8,
+                        samplesPerPixel: 4,
+                        hasAlpha: true,
+                        isPlanar: false,
+                        colorSpaceName: .deviceRGB,
+                        bytesPerRow: 0,
+                        bitsPerPixel: 0
+                    )
                 else { return nil }
                 NSGraphicsContext.saveGraphicsState()
                 NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
@@ -142,16 +178,24 @@ extension SharedState {
             let rowIcons = (0..<mixedOutline.numberOfRows).map {
                 (mixedOutline.view(atColumn: 0, row: $0, makeIfNecessary: true) as? NSTableCellView)?.imageView
             }
-            if rowIcons.contains(where: { $0?.image == nil || $0!.isHidden || $0!.image!.isTemplate }) { fail("a mixed row shows no device artwork") }
+            if rowIcons.contains(where: { $0?.image == nil || $0!.isHidden || $0!.image!.isTemplate }) {
+                fail("a mixed row shows no device artwork")
+            }
             let iconPixels = rowIcons.map { pixels($0?.image) }
             // iPad, 1G, 2G, 2G: three pictures, the 2G's twice.
-            if Set(iconPixels.prefix(3)).count != 3 || iconPixels[2] != iconPixels[3] { fail("the rows' artwork doesn't follow the board") }
-            if let icon = rowIcons[0], icon.frame.height < 24 || icon.frame.height > 34 { fail("a two-line row's icon is \(icon.frame.size)") }
+            if Set(iconPixels.prefix(3)).count != 3 || iconPixels[2] != iconPixels[3] {
+                fail("the rows' artwork doesn't follow the board")
+            }
+            if let icon = rowIcons[0], icon.frame.height < 24 || icon.frame.height > 34 {
+                fail("a two-line row's icon is \(icon.frame.size)")
+            }
 
             // Rename in place through the context menu's Rename: the title turns into a field; ending the edit saves.
             vc.select(catalog.entry(id: "k48ap-7B500")!)
             vc.perform(NSSelectorFromString("renameFromMenu:"), with: nil)
-            guard let editor = w.firstResponder as? NSTextView, let field = editor.delegate as? NSTextField, field.isEditable else {
+            guard let editor = w.firstResponder as? NSTextView, let field = editor.delegate as? NSTextField,
+                field.isEditable
+            else {
                 fail("Rename didn't start an edit: \(String(describing: w.firstResponder))")
                 Issue.record("\(failures)")
                 return
@@ -183,8 +227,18 @@ extension SharedState {
                 w.makeFirstResponder(outline)
                 outline.keyDown(
                     with: NSEvent.keyEvent(
-                        with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: w.windowNumber,
-                        context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)!)
+                        with: .keyDown,
+                        location: .zero,
+                        modifierFlags: [],
+                        timestamp: 0,
+                        windowNumber: w.windowNumber,
+                        context: nil,
+                        characters: "\r",
+                        charactersIgnoringModifiers: "\r",
+                        isARepeat: false,
+                        keyCode: 36
+                    )!
+                )
                 if let editor = w.firstResponder as? NSTextView {
                     editor.string = "Lab iPad"
                     w.makeFirstResponder(nil)
@@ -199,13 +253,18 @@ extension SharedState {
             if let editor = w.firstResponder as? NSTextView {
                 editor.string = "Prep iPod"
                 for step in 1...3 {
-                    FirmwareJobs.shared.jobs["n45ap-4B1"] = .preparing(Preparation(step: step, steps: 4, name: "Step \(step)", fraction: 0.5))
+                    FirmwareJobs.shared.jobs["n45ap-4B1"] = .preparing(
+                        Preparation(step: step, steps: 4, name: "Step \(step)", fraction: 0.5)
+                    )
                 }
                 if w.firstResponder !== editor || editor.string != "Prep iPod" {
-                    fail("a preparing row's progress ended the rename: \(String(describing: w.firstResponder)), \(editor.string)")
+                    fail(
+                        "a preparing row's progress ended the rename: \(String(describing: w.firstResponder)), \(editor.string)"
+                    )
                 }
                 w.makeFirstResponder(nil)
-                if (defaults.dictionary(forKey: SidebarList.namesKey) as? [String: String])?["n45ap-4B1"] != "Prep iPod" {
+                if (defaults.dictionary(forKey: SidebarList.namesKey) as? [String: String])?["n45ap-4B1"] != "Prep iPod"
+                {
                     fail("rename during preparation not saved")
                 }
             } else {
@@ -227,8 +286,12 @@ extension SharedState {
             let commands = context.items.filter { !$0.isSeparatorItem && $0.title != "Rename" }
             let live = commands.filter { vc.validateMenuItem($0) }.map(\.title)
             // Start/Shut Down is one item whose title follows the row (Force Stop beside it, dimmed while stopped); Cancel is there only while something can be cancelled.
-            if !["Start", "Show File System in Finder", "Erase All Content and Settings…"].allSatisfy({ t in commands.contains { $0.title == t } })
-                || commands.contains(where: { ["Shut Down…", "Cancel Download", "Cancel Preparation"].contains($0.title) }) || !live.contains("Start")
+            if !["Start", "Show File System in Finder", "Erase All Content and Settings…"].allSatisfy({ t in
+                commands.contains { $0.title == t }
+            })
+                || commands.contains(where: {
+                    ["Shut Down…", "Cancel Download", "Cancel Preparation"].contains($0.title)
+                }) || !live.contains("Start")
                 || live.contains("Force Stop…")
             {
                 fail("context menu: \(commands.map(\.title)), enabled \(live)")
@@ -238,7 +301,9 @@ extension SharedState {
             NotificationCenter.default.post(name: DeviceSessionHost.didChangeNotification, object: nil)
             vc.menuNeedsUpdate(context)
             var titles = context.items.map(\.title)
-            if !titles.contains("Shut Down…") || !titles.contains("Force Stop…") || titles.contains("Start") || titles.contains("Cancel Download") {
+            if !titles.contains("Shut Down…") || !titles.contains("Force Stop…") || titles.contains("Start")
+                || titles.contains("Cancel Download")
+            {
                 fail("a running row's context menu: \(titles)")
             }
             host.running = []
@@ -246,22 +311,38 @@ extension SharedState {
             FirmwareJobs.shared.jobs["n72ap-8C148"] = .preparing(Preparation(step: 1, steps: 2, name: "x"))
             vc.menuNeedsUpdate(context)
             titles = context.items.map(\.title)
-            if !titles.contains("Cancel Preparation") || !titles.contains("Start") { fail("a preparing row's context menu: \(titles)") }
+            if !titles.contains("Cancel Preparation") || !titles.contains("Start") {
+                fail("a preparing row's context menu: \(titles)")
+            }
             FirmwareJobs.shared.jobs = [:]
             // The Dock's bar: running jobs averaged, each as its row's bar; nothing running, no bar.
             let dock = FirmwareJob.dockProgress([
-                .downloading(fraction: 0.5), .preparing(Preparation(step: 1, steps: 2, name: "x", fraction: 0.5, startsAt: 0.5)), .failed("x"),
+                .downloading(fraction: 0.5),
+                .preparing(Preparation(step: 1, steps: 2, name: "x", fraction: 0.5, startsAt: 0.5)), .failed("x"),
             ])
             if dock.map({ abs($0 - 0.4375) > 0.0001 }) ?? true { fail("Dock progress: \(String(describing: dock))") }
-            if FirmwareJob.dockProgress([FirmwareJob.failed("x")]) != nil || FirmwareJob.dockProgress([FirmwareJob]()) != nil {
+            if FirmwareJob.dockProgress([FirmwareJob.failed("x")]) != nil
+                || FirmwareJob.dockProgress([FirmwareJob]()) != nil
+            {
                 fail("a Dock bar with nothing running")
             }
             let delete = NSEvent.keyEvent(
-                with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: w.windowNumber,
-                context: nil, characters: "\u{7f}", charactersIgnoringModifiers: "\u{7f}", isARepeat: false, keyCode: 51)!
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: w.windowNumber,
+                context: nil,
+                characters: "\u{7f}",
+                charactersIgnoringModifiers: "\u{7f}",
+                isARepeat: false,
+                keyCode: 51
+            )!
             vc.select(catalog.entry(id: "n72ap-8C148")!)
             outline.keyDown(with: delete)
-            if delegate.deletes != ["n72ap-8C148"] || !vc.entries.contains(where: { $0.id == "n72ap-8C148" }) { fail("prepared delete: \(delegate.deletes)") }
+            if delegate.deletes != ["n72ap-8C148"] || !vc.entries.contains(where: { $0.id == "n72ap-8C148" }) {
+                fail("prepared delete: \(delegate.deletes)")
+            }
             vc.select(catalog.entry(id: "n72ap-8B5080c")!)
             outline.keyDown(with: delete)
             if vc.entries.contains(where: { $0.id == "n72ap-8B5080c" })
@@ -312,14 +393,18 @@ extension SharedState {
             if vc.selectedEntries.count != 4 || vc.selectedEntry != nil {
                 fail("⌘A: \(vc.selectedEntries.map(\.id)), single \(String(describing: vc.selectedEntry?.id))")
             }
-            if multiDelegate.selected.last != .some(nil) { fail("several rows selected still name one entry to the window") }
+            if multiDelegate.selected.last != .some(nil) {
+                fail("several rows selected still name one entry to the window")
+            }
             if !vc.canRemoveTargets { fail("Delete dimmed over a removable selection") }
             // Offscreen, the selection's material draws black (as in sidebar-renamed's note): the rows' artwork shows on it.
             multiOutline.keyDown(with: delete)  // Cancel
             if alerts.count != 1 { fail("a mixed batch asked \(alerts.count) questions") }
             if let alert = alerts.first {
                 if alert.messageText != "Delete 3 devices?" { fail("batch question: \(alert.messageText)") }
-                if !alert.informativeText.contains("iPod touch (2nd generation) iOS 4.2.1") || !alert.informativeText.contains("iPad iOS 3.2.2") {
+                if !alert.informativeText.contains("iPod touch (2nd generation) iOS 4.2.1")
+                    || !alert.informativeText.contains("iPad iOS 3.2.2")
+                {
                     fail("the question doesn't name the prepared and the skipped device: \(alert.informativeText)")
                 }
                 alert.layout()
@@ -333,31 +418,47 @@ extension SharedState {
             if alerts.count != 2 { fail("the second Delete asked \(alerts.count - 1) questions") }
             // The unprepared rows left at once; the prepared one is Deleting until its storage is gone.
             let doomed = catalog.entry(id: "n72ap-8C148")!
-            if vc.entries.map(\.id) != ["k48ap-7B500", "n72ap-8C148"] { fail("while deleting: \(vc.entries.map(\.id))") }
-            if vc.row(for: doomed).state != .deleting || vc.row(for: doomed).allows(.start, canDownload: true) || vc.row(for: doomed).canRemoveFromSidebar {
-                fail("a deleting row: \(vc.row(for: doomed).state), startable \(vc.row(for: doomed).allows(.start, canDownload: true))")
+            if vc.entries.map(\.id) != ["k48ap-7B500", "n72ap-8C148"] {
+                fail("while deleting: \(vc.entries.map(\.id))")
+            }
+            if vc.row(for: doomed).state != .deleting || vc.row(for: doomed).allows(.start, canDownload: true)
+                || vc.row(for: doomed).canRemoveFromSidebar
+            {
+                fail(
+                    "a deleting row: \(vc.row(for: doomed).state), startable \(vc.row(for: doomed).allows(.start, canDownload: true))"
+                )
             }
             let doomedCell = multiOutline.view(atColumn: 0, row: 1, makeIfNecessary: true)!
             if !(doomedCell.accessibilityLabel() ?? "").contains("Deleting") {
                 fail("a deleting row doesn't say so: \(doomedCell.accessibilityLabel() ?? "nil")")
             }
-            if !all(doomedCell).contains(where: { ($0 as? NSProgressIndicator).map { visible($0) && $0.isIndeterminate } ?? false }) {
+            if !all(doomedCell).contains(where: {
+                ($0 as? NSProgressIndicator).map { visible($0) && $0.isIndeterminate } ?? false
+            }) {
                 fail("a deleting row has no spinner")
             }
             multiOutline.deselectAll(nil)
             // The main actor stays free while the fake removal sleeps on its thread: a heartbeat every 20 ms.
             var beats = 0
-            let heart = Timer.scheduledTimer(withTimeInterval: 0.02, repeats: true) { _ in MainActor.assumeIsolated { beats += 1 } }
+            let heart = Timer.scheduledTimer(withTimeInterval: 0.02, repeats: true) { _ in
+                MainActor.assumeIsolated { beats += 1 }
+            }
             let began = Date()
-            while vc.entries.count > 1, Date().timeIntervalSince(began) < 10 { try await Task.sleep(for: .milliseconds(10)) }
+            while vc.entries.count > 1, Date().timeIntervalSince(began) < 10 {
+                try await Task.sleep(for: .milliseconds(10))
+            }
             heart.invalidate()
             let took = Date().timeIntervalSince(began)
             if took < 0.5 { fail("the fake removal took \(took) s: the heartbeat proves nothing") }
-            if Double(beats) < took / 0.02 * 0.5 { fail("the main actor stalled during deletion: \(beats) heartbeats in \(took) s") }
+            if Double(beats) < took / 0.02 * 0.5 {
+                fail("the main actor stalled during deletion: \(beats) heartbeats in \(took) s")
+            }
             if multi.deleted != ["n72ap-8C148"] || !multiDelegate.deletes.isEmpty {
                 fail("batch deleted \(multi.deleted), per-row deletes \(multiDelegate.deletes)")
             }
-            if vc.entries.map(\.id) != ["k48ap-7B500"] || defaults.stringArray(forKey: SidebarList.entriesKey) != ["k48ap-7B500"] {
+            if vc.entries.map(\.id) != ["k48ap-7B500"]
+                || defaults.stringArray(forKey: SidebarList.entriesKey) != ["k48ap-7B500"]
+            {
                 fail("after the batch: \(vc.entries.map(\.id))")
             }
             if multi.deletions.contains("n72ap-8C148") { fail("still marked deleting") }
@@ -403,7 +504,9 @@ extension SharedState {
             FirmwareJobs.shared.jobs["n72ap-8B117"] = .downloading(fraction: 0.5)
             plainOutline.selectAll(nil)
             let editDelete = NSMenuItem(title: "Delete", action: #selector(NSText.delete(_:)), keyEquivalent: "")
-            if vc.selectedEntries.count != 2 || vc.validateMenuItem(editDelete) { fail("Edit ▸ Delete enabled over running and downloading rows") }
+            if vc.selectedEntries.count != 2 || vc.validateMenuItem(editDelete) {
+                fail("Edit ▸ Delete enabled over running and downloading rows")
+            }
             FirmwareJobs.shared.jobs = [:]
 
             // Empty: the sidebar's own Add Device….
@@ -417,33 +520,47 @@ extension SharedState {
 
             // The sheet: every entry once, grouped by device.
             let sheet = AddDeviceView(
-                catalog: catalog, added: ["k48ap-7B500", "n72ap-8C148"], downloaded: ["n72ap-8B117", "k48ap-7B500", "n72ap-8C148"],
-                selection: ["n72ap-8B117"], onAdd: { _ in }, onCancel: {})
-            if sheet.groups.flatMap(\.entries).map(\.id) != catalog.entries.map(\.id) { fail("the sheet's entries aren't the catalog's, in its order") }
+                catalog: catalog,
+                added: ["k48ap-7B500", "n72ap-8C148"],
+                downloaded: ["n72ap-8B117", "k48ap-7B500", "n72ap-8C148"],
+                selection: ["n72ap-8B117"],
+                onAdd: { _ in },
+                onCancel: {}
+            )
+            if sheet.groups.flatMap(\.entries).map(\.id) != catalog.entries.map(\.id) {
+                fail("the sheet's entries aren't the catalog's, in its order")
+            }
             if sheet.groups.map(\.name) != [
-                "iPad", "iPod touch", "iPod touch (2nd generation)", "iPod touch (3rd generation)", "iPod touch (4th generation)", "iPhone", "iPhone 3GS",
+                "iPad", "iPod touch", "iPod touch (2nd generation)", "iPod touch (3rd generation)",
+                "iPod touch (4th generation)", "iPhone", "iPhone 3GS",
                 "iPhone 4",
             ] {
                 fail("sheet groups: \(sheet.groups.map(\.name))")
             }
             // macOS draws the iPod touch 3G (iPod3,1) with the 2G's picture, the same chassis: those two may match.
             let art = Dictionary(uniqueKeysWithValues: sheet.groups.map { ($0.id, pixels($0.icon)) })
-            if sheet.groups.contains(where: \.icon.isTemplate) || Set(art.filter { $0.key != "n18ap" }.values).count != sheet.groups.count - 1
+            if sheet.groups.contains(where: \.icon.isTemplate)
+                || Set(art.filter { $0.key != "n18ap" }.values).count != sheet.groups.count - 1
                 || art["n18ap"] != art["n72ap"]
             {
                 fail("the sheet's headers don't show each device's artwork")
             }
             // Only stable builds by default; Show experimental brings back the rest, every device with its own.
             let stable = AddDeviceView.shown(sheet.groups, experimental: false).flatMap(\.entries)
-            let releases = catalog.entries.filter { $0.status == .available || ($0.status == .userIPSW && $0.prerelease == nil) }
+            let releases = catalog.entries.filter {
+                $0.status == .available || ($0.status == .userIPSW && $0.prerelease == nil)
+            }
             if stable.isEmpty || stable.map(\.id) != releases.map(\.id) || releases.count == catalog.entries.count
-                || AddDeviceView.shown(sheet.groups, experimental: true).flatMap(\.entries).map(\.id) != catalog.entries.map(\.id)
+                || AddDeviceView.shown(sheet.groups, experimental: true).flatMap(\.entries).map(\.id)
+                    != catalog.entries.map(\.id)
             {
                 fail("Show experimental: \(stable.map(\.id))")
             }
             // A supported build says nothing; the others keep their tag.
             let tags = FirmwareCatalog.Entry.Status.allCasesForCheck.map { AddDeviceRow.statusText($0) }
-            if tags != [nil, "Experimental", "Untested", "Coming Soon", "Requires an IPSW"] { fail("the sheet's tags: \(tags)") }
+            if tags != [nil, "Experimental", "Untested", "Coming Soon", "Requires an IPSW"] {
+                fail("the sheet's tags: \(tags)")
+            }
             #expect(failures.isEmpty, "\(failures.joined(separator: "\n"))")
         }
     }

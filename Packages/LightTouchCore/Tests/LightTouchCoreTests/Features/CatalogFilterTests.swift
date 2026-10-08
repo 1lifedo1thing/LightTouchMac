@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import LightTouchCore
 
 /// The Store's filter (CatalogFilter) and version sheet (CatalogDetailsModel) against recorded Legacy Store answers
@@ -15,9 +16,15 @@ struct CatalogFilterTests {
     @Test func iPodShowsUnavailableAppsUntilToldNot() throws {
         let ipod = try Self.apps("ipod2-3.1.3-dash.json")
         var filter = CatalogFilter()
-        #expect(filter.apply(ipod, iPad: false).count == 4 && !filter.isActive(iPad: false), "default: every app, unavailable ones grayed")
+        #expect(
+            filter.apply(ipod, iPad: false).count == 4 && !filter.isActive(iPad: false),
+            "default: every app, unavailable ones grayed"
+        )
         filter.showUnavailable = false
-        #expect(names(filter.apply(ipod, iPad: false)) == ["Hotel Dash", "Diner Dash"], "iPad-only and too-new apps hidden on the iPod")
+        #expect(
+            names(filter.apply(ipod, iPad: false)) == ["Hotel Dash", "Diner Dash"],
+            "iPad-only and too-new apps hidden on the iPod"
+        )
         #expect(filter.isActive(iPad: false))
         // The iPad-only choice never narrows an iPod.
         let iPadOnly = CatalogFilter(iPadOnly: true, showUnavailable: true)
@@ -27,11 +34,20 @@ struct CatalogFilterTests {
     @Test func iPadFamilyChoice() throws {
         let ipad = try Self.apps("ipad1-3.2-dash.json")
         var filter = CatalogFilter(showUnavailable: false)
-        #expect(names(filter.apply(ipad, iPad: true)) == ["Hotel Dash", "Hotel Dash Deluxe", "Diner Dash"], "all families, runnable")
+        #expect(
+            names(filter.apply(ipad, iPad: true)) == ["Hotel Dash", "Hotel Dash Deluxe", "Diner Dash"],
+            "all families, runnable"
+        )
         filter.iPadOnly = true
-        #expect(names(filter.apply(ipad, iPad: true)) == ["Hotel Dash Deluxe", "Diner Dash"], "iPad Apps Only drops iPhone-only Hotel Dash")
+        #expect(
+            names(filter.apply(ipad, iPad: true)) == ["Hotel Dash Deluxe", "Diner Dash"],
+            "iPad Apps Only drops iPhone-only Hotel Dash"
+        )
         filter.showUnavailable = true
-        #expect(names(filter.apply(ipad, iPad: true)) == ["Hotel Dash Deluxe", "Diner Dash", "Agent Dash"], "unavailable iPad-capable app shown again")
+        #expect(
+            names(filter.apply(ipad, iPad: true)) == ["Hotel Dash Deluxe", "Diner Dash", "Agent Dash"],
+            "unavailable iPad-capable app shown again"
+        )
         #expect(filter.isActive(iPad: true))
     }
 

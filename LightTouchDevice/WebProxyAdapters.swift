@@ -40,20 +40,27 @@ enum WebProxyAdapters {
     /// Dated browsing is a read-only HTTP presentation: absolute https:// links in a text resource become
     /// http:// so old WebKit never opens a tunnel it can't finish. Binary resources are never passed here.
     static func httpLinks(_ body: Data) -> Data {
-        let bytes = [UInt8](body), pattern = Array("https://".utf8)
-        var out = [UInt8](), i = 0
+        let bytes = [UInt8](body)
+        let pattern = Array("https://".utf8)
+        var out = [UInt8]()
+        var i = 0
         out.reserveCapacity(bytes.count)
         while i < bytes.count {
             if i + 8 <= bytes.count, zip(bytes[i..<i + 8], pattern).allSatisfy({ $0 | 0x20 == $1 | 0x20 }) {
-                out += Array("http://".utf8); i += 8
-            } else { out.append(bytes[i]); i += 1 }
+                out += Array("http://".utf8)
+                i += 8
+            } else {
+                out.append(bytes[i])
+                i += 1
+            }
         }
         return Data(out)
     }
 
     static func textual(_ contentType: String?) -> Bool {
         let type = (contentType ?? "").lowercased()
-        return ["text/html", "text/css", "text/javascript", "application/javascript", "application/xhtml+xml"].contains { type.hasPrefix($0) }
+        return ["text/html", "text/css", "text/javascript", "application/javascript", "application/xhtml+xml"].contains
+        { type.hasPrefix($0) }
     }
 
     // MARK: Wi-Fi location (docs/ipad1/location.md in qemu-ios)
@@ -65,7 +72,9 @@ enum WebProxyAdapters {
     /// ALSLocationRequest { 2: ALSWirelessAP { 1: macID } }; response u16 1, u32 type, u32 length,
     /// ALSLocationResponse { 2: ALSWirelessAP { 1: macID, 2: ALSLocation { 1: lat, 2: lon, 3: accuracy } } },
     /// degrees as int64 x 1e8, accuracy in meters. nil: not a location request; 400: malformed.
-    static func location(target: String, method: String, body: Data, position: (Double, Double, Double)) -> (status: Int, body: Data)? {
+    static func location(target: String, method: String, body: Data, position: (Double, Double, Double)) -> (
+        status: Int, body: Data
+    )? {
         var path = Substring(target)
         if let scheme = target.range(of: "://") {
             guard let slash = target[scheme.upperBound...].firstIndex(of: "/") else { return nil }
@@ -76,7 +85,9 @@ enum WebProxyAdapters {
         guard c.be(2) == 1 else { return (400, Data()) }
         for _ in 0..<3 { guard let n = c.be(2), c.skip(Int(n)) else { return (400, Data()) } }
         guard let type = c.be(4), let size = c.be(4), let request = c.take(Int(size)) else { return (400, Data()) }
-        var message = Protobuf.Writer(), fields = Protobuf(bytes: request), macs: [ArraySlice<UInt8>] = []
+        var message = Protobuf.Writer()
+        var fields = Protobuf(bytes: request)
+        var macs: [ArraySlice<UInt8>] = []
         while !fields.bytes.isEmpty {
             guard let (number, ap) = fields.field() else { return (400, Data()) }
             guard number == 2, var ap = ap.map({ Protobuf(bytes: $0) }) else { continue }
@@ -86,21 +97,27 @@ enum WebProxyAdapters {
             }
         }
         for mac in macs {
-            var place = Protobuf.Writer(), entry = Protobuf.Writer()
-            place.int(1, Int64((position.0 * 1e8).rounded())); place.int(2, Int64((position.1 * 1e8).rounded()))
+            var place = Protobuf.Writer()
+            var entry = Protobuf.Writer()
+            place.int(1, Int64((position.0 * 1e8).rounded()))
+            place.int(2, Int64((position.1 * 1e8).rounded()))
             place.int(3, Int64(position.2.rounded()))
-            entry.bytes(1, mac); entry.bytes(2, place.out[...])
+            entry.bytes(1, mac)
+            entry.bytes(2, place.out[...])
             message.bytes(2, entry.out[...])
         }
-        let head: [UInt8] = [0, 1] + [24, 16, 8, 0].map { UInt8(truncatingIfNeeded: type >> $0) }
+        let head: [UInt8] =
+            [0, 1] + [24, 16, 8, 0].map { UInt8(truncatingIfNeeded: type >> $0) }
             + [24, 16, 8, 0].map { UInt8(truncatingIfNeeded: message.out.count >> $0) }
         return (200, Data(head + message.out))
     }
 
     /// CONFIG.location, "LAT LON [ACCURACY]", replaceable while the guest runs; else Apple Park, 30 m.
     static func position(_ file: URL) -> (Double, Double, Double) {
-        let values = ((try? String(contentsOf: file, encoding: .utf8)) ?? "").split(whereSeparator: \.isWhitespace).prefix(3).map { Double($0) }
-        guard values.count >= 2, let lat = values[0], let lon = values[1], lat.isFinite, lon.isFinite, abs(lat) <= 90, abs(lon) <= 180
+        let values = ((try? String(contentsOf: file, encoding: .utf8)) ?? "").split(whereSeparator: \.isWhitespace)
+            .prefix(3).map { Double($0) }
+        guard values.count >= 2, let lat = values[0], let lon = values[1], lat.isFinite, lon.isFinite, abs(lat) <= 90,
+            abs(lon) <= 180
         else { return (37.33490, -122.00898, 30) }
         let accuracy = values.count == 3 ? values[2].flatMap { $0.isFinite && $0 > 0 && $0 < 100_000 ? $0 : nil } : nil
         return (lat, lon, accuracy ?? 30)
@@ -131,7 +148,8 @@ enum WebProxyAdapters {
             case 0: return varint().map { _ in (key >> 3, nil) }
             case 1: return take(8).map { _ in (key >> 3, nil) }
             case 5: return take(4).map { _ in (key >> 3, nil) }
-            case 2: guard let n = varint(), n <= UInt64(bytes.count), let value = take(Int(n)) else { return nil }
+            case 2:
+                guard let n = varint(), n <= UInt64(bytes.count), let value = take(Int(n)) else { return nil }
                 return (key >> 3, value)
             default: return nil
             }
@@ -140,10 +158,20 @@ enum WebProxyAdapters {
             var out: [UInt8] = []
             mutating func varint(_ value: UInt64) {
                 var v = value
-                repeat { out.append(UInt8(v & 0x7f) | (v > 0x7f ? 0x80 : 0)); v >>= 7 } while v > 0
+                repeat {
+                    out.append(UInt8(v & 0x7f) | (v > 0x7f ? 0x80 : 0))
+                    v >>= 7
+                } while v > 0
             }
-            mutating func int(_ number: UInt64, _ value: Int64) { varint(number << 3); varint(UInt64(bitPattern: value)) }
-            mutating func bytes(_ number: UInt64, _ value: ArraySlice<UInt8>) { varint(number << 3 | 2); varint(UInt64(value.count)); out += value }
+            mutating func int(_ number: UInt64, _ value: Int64) {
+                varint(number << 3)
+                varint(UInt64(bitPattern: value))
+            }
+            mutating func bytes(_ number: UInt64, _ value: ArraySlice<UInt8>) {
+                varint(number << 3 | 2)
+                varint(UInt64(value.count))
+                out += value
+            }
         }
     }
 
@@ -154,17 +182,25 @@ enum WebProxyAdapters {
     /// (Cupertino, New York) work too; other old ids get 422 rather than guessed coordinates. Bad provider data
     /// fails the update (the guest keeps its forecast); nothing is made up. nil: another service.
     /// `fetch(host, path, query)` is an HTTPS GET returning parsed JSON, or nil.
-    static func weather(target: String, method: String, body: Data,
-                        fetch: (String, String, [String: String]) -> Any?) -> (status: Int, body: Data)? {
-        guard let url = URLComponents(string: target), url.host?.lowercased() == "iphone-wu.apple.com", url.path == "/dgw" else { return nil }
+    static func weather(
+        target: String,
+        method: String,
+        body: Data,
+        fetch: (String, String, [String: String]) -> Any?
+    ) -> (status: Int, body: Data)? {
+        guard let url = URLComponents(string: target), url.host?.lowercased() == "iphone-wu.apple.com",
+            url.path == "/dgw"
+        else { return nil }
         let services = (url.queryItems ?? []).filter { $0.name == "apptype" }
         guard services.count <= 1 else { return (400, Data()) }
         guard services.first?.value == "weather" else { return nil }
-        guard method == "POST", url.user == nil, url.password == nil, !body.isEmpty, body.count <= 65536, !body.contains(0),
-              let xml = String(data: body, encoding: .utf8),
-              xml.range(of: "<!DOCTYPE", options: .caseInsensitive) == nil, xml.range(of: "<!ENTITY", options: .caseInsensitive) == nil,
-              let request = try? XMLDocument(xmlString: xml, options: .nodeLoadExternalEntitiesNever), request.dtd == nil,
-              let root = request.rootElement(), root.name == "request", root.elements(forName: "query").count == 1
+        guard method == "POST", url.user == nil, url.password == nil, !body.isEmpty, body.count <= 65536,
+            !body.contains(0),
+            let xml = String(data: body, encoding: .utf8),
+            xml.range(of: "<!DOCTYPE", options: .caseInsensitive) == nil,
+            xml.range(of: "<!ENTITY", options: .caseInsensitive) == nil,
+            let request = try? XMLDocument(xmlString: xml, options: .nodeLoadExternalEntitiesNever), request.dtd == nil,
+            let root = request.rootElement(), root.name == "request", root.elements(forName: "query").count == 1
         else { return (400, Data()) }
         let query = root.elements(forName: "query")[0]
         let response = XMLElement(name: "response")
@@ -174,35 +210,54 @@ enum WebProxyAdapters {
             let phrases = query.elements(forName: "phrase")
             guard phrases.count == 1, let phrase = string(phrases[0].stringValue, 200) else { return (400, Data()) }
             if phrase.count >= 2 {
-                guard let result = fetch("geocoding-api.open-meteo.com", "/v1/search",
-                                         ["name": phrase, "count": "10", "language": "en", "format": "json"]) as? [String: Any],
-                      let places = (result["results"] ?? []) as? [Any], places.count <= 10 else { return (502, Data()) }
+                guard
+                    let result = fetch(
+                        "geocoding-api.open-meteo.com",
+                        "/v1/search",
+                        ["name": phrase, "count": "10", "language": "en", "format": "json"]
+                    ) as? [String: Any],
+                    let places = (result["results"] ?? []) as? [Any], places.count <= 10
+                else { return (502, Data()) }
                 for entry in places {
                     guard let place = place(entry), let entry = entry as? [String: Any] else { return (502, Data()) }
                     let item = child(list, "item")
-                    child(item, "id", identifier(place)); child(item, "city", place.name)
-                    child(item, "region", string(entry["admin1"], 200) ?? ""); child(item, "regionname", string(entry["admin1"], 200) ?? "")
-                    child(item, "country", string(entry["country_code"], 8) ?? ""); child(item, "countryname", string(entry["country"], 200) ?? "")
+                    child(item, "id", identifier(place))
+                    child(item, "city", place.name)
+                    child(item, "region", string(entry["admin1"], 200) ?? "")
+                    child(item, "regionname", string(entry["admin1"], 200) ?? "")
+                    child(item, "country", string(entry["country_code"], 8) ?? "")
+                    child(item, "countryname", string(entry["country"], 200) ?? "")
                 }
             }
         case "getforecastbylocationid":
             let identifiers = ((try? query.nodes(forXPath: "./list/id")) ?? []).map { $0.stringValue ?? "" }
             let units = query.elements(forName: "unit")
-            guard (1...20).contains(identifiers.count), units.count == 1, let unit = units[0].stringValue, unit == "c" || unit == "f"
+            guard (1...20).contains(identifiers.count), units.count == 1, let unit = units[0].stringValue,
+                unit == "c" || unit == "f"
             else { return (400, Data()) }
             var places: [Place] = []
             for id in identifiers {
-                guard let place = decode(id) else { return (422, Data()) }   // an unknown retired Yahoo id: never guess
+                guard let place = decode(id) else { return (422, Data()) }  // an unknown retired Yahoo id: never guess
                 places.append(place)
             }
-            let result = fetch("api.open-meteo.com", "/v1/forecast", [
-                "latitude": places.map { String($0.latitude) }.joined(separator: ","),
-                "longitude": places.map { String($0.longitude) }.joined(separator: ","),
-                "current": "temperature_2m,weather_code,is_day", "daily": "weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset",
-                "temperature_unit": unit == "c" ? "celsius" : "fahrenheit", "timezone": "auto", "forecast_days": "6"])
-            guard let forecasts = result is [String: Any] ? [result!] : result as? [Any], forecasts.count == places.count else { return (502, Data()) }
+            let result = fetch(
+                "api.open-meteo.com",
+                "/v1/forecast",
+                [
+                    "latitude": places.map { String($0.latitude) }.joined(separator: ","),
+                    "longitude": places.map { String($0.longitude) }.joined(separator: ","),
+                    "current": "temperature_2m,weather_code,is_day",
+                    "daily": "weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset",
+                    "temperature_unit": unit == "c" ? "celsius" : "fahrenheit", "timezone": "auto",
+                    "forecast_days": "6",
+                ]
+            )
+            guard let forecasts = result is [String: Any] ? [result!] : result as? [Any],
+                forecasts.count == places.count
+            else { return (502, Data()) }
             for (index, place) in places.enumerated() {
-                guard let item = forecast(forecasts[index], id: identifiers[index], place: place, celsius: unit == "c") else { return (502, Data()) }
+                guard let item = forecast(forecasts[index], id: identifiers[index], place: place, celsius: unit == "c")
+                else { return (502, Data()) }
                 list.addChild(item)
             }
         default: return (400, Data())
@@ -210,31 +265,41 @@ enum WebProxyAdapters {
         return (200, XMLDocument(rootElement: response).xmlData)
     }
 
-    struct Place: Equatable { var latitude, longitude: Double; var name: String }
+    struct Place: Equatable {
+        var latitude, longitude: Double
+        var name: String
+    }
 
     static func number(_ value: Any?, _ low: Double, _ high: Double) -> Double? {
-        guard let n = value as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID(), n.doubleValue.isFinite, n.doubleValue >= low, n.doubleValue <= high
+        guard let n = value as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID(), n.doubleValue.isFinite,
+            n.doubleValue >= low, n.doubleValue <= high
         else { return nil }
         return n.doubleValue
     }
     static func string(_ value: Any?, _ maximum: Int) -> String? {
-        guard let s = value as? String, s.utf16.count <= maximum, s.rangeOfCharacter(from: .controlCharacters) == nil else { return nil }
+        guard let s = value as? String, s.utf16.count <= maximum, s.rangeOfCharacter(from: .controlCharacters) == nil
+        else { return nil }
         return s
     }
     static func place(_ value: Any?) -> Place? {
-        guard let d = value as? [String: Any], let lat = number(d["latitude"], -90, 90), let lon = number(d["longitude"], -180, 180),
-              let name = string(d["name"], 200), !name.isEmpty else { return nil }
+        guard let d = value as? [String: Any], let lat = number(d["latitude"], -90, 90),
+            let lon = number(d["longitude"], -180, 180),
+            let name = string(d["name"], 200), !name.isEmpty
+        else { return nil }
         return Place(latitude: lat, longitude: lon, name: name)
     }
     static func identifier(_ place: Place) -> String {
-        let json = try! JSONSerialization.data(withJSONObject: ["latitude": place.latitude, "longitude": place.longitude, "name": place.name],
-                                               options: .sortedKeys)
+        let json = try! JSONSerialization.data(
+            withJSONObject: ["latitude": place.latitude, "longitude": place.longitude, "name": place.name],
+            options: .sortedKeys
+        )
         return "ltm:" + json.base64EncodedString()
     }
     static func decode(_ id: String) -> Place? {
         if id == "USCA0273|12797509" { return Place(latitude: 37.323, longitude: -122.032, name: "Cupertino") }
         if id == "USNY0996|2459115" { return Place(latitude: 40.7143, longitude: -74.006, name: "New York") }
-        guard id.utf16.count <= 2048, id.hasPrefix("ltm:"), let data = Data(base64Encoded: String(id.dropFirst(4))) else { return nil }
+        guard id.utf16.count <= 2048, id.hasPrefix("ltm:"), let data = Data(base64Encoded: String(id.dropFirst(4)))
+        else { return nil }
         return place(try? JSONSerialization.jsonObject(with: data))
     }
     static func icon(_ code: Any?, daylight: Bool) -> String? {
@@ -277,35 +342,52 @@ enum WebProxyAdapters {
     static func moon(_ timestamp: TimeInterval) -> [String: String] {
         var cycle = (timestamp - 947182500.0) / (29.53059 * 86400.0)
         cycle -= cycle.rounded(.down)
-        return ["moonphase": String(Int((cycle * 8 + 0.5).rounded(.down)) % 8),
-                "moonfacevisible": String(format: "%.3f", 50 * (1 - cos(2 * Double.pi * cycle)))]
+        return [
+            "moonphase": String(Int((cycle * 8 + 0.5).rounded(.down)) % 8),
+            "moonfacevisible": String(format: "%.3f", 50 * (1 - cos(2 * Double.pi * cycle))),
+        ]
     }
     static func forecast(_ data: Any, id: String, place: Place, celsius: Bool) -> XMLElement? {
         guard let data = data as? [String: Any], let offset = number(data["utc_offset_seconds"], -50400, 50400),
-              let current = data["current"] as? [String: Any], let daily = data["daily"] as? [String: Any],
-              let temperature = number(current["temperature_2m"], -200, 200), let isDay = number(current["is_day"], 0, 1), isDay == isDay.rounded(),
-              let time = clockTime(current["time"]), let now = date(current["time"], "yyyy-MM-dd'T'HH:mm"),
-              let icon = icon(current["weather_code"], daylight: isDay == 1) else { return nil }
+            let current = data["current"] as? [String: Any], let daily = data["daily"] as? [String: Any],
+            let temperature = number(current["temperature_2m"], -200, 200), let isDay = number(current["is_day"], 0, 1),
+            isDay == isDay.rounded(),
+            let time = clockTime(current["time"]), let now = date(current["time"], "yyyy-MM-dd'T'HH:mm"),
+            let icon = icon(current["weather_code"], daylight: isDay == 1)
+        else { return nil }
         var columns: [String: [Any]] = [:]
         for key in ["time", "temperature_2m_max", "temperature_2m_min", "weather_code", "sunrise", "sunset"] {
             guard let column = daily[key] as? [Any], column.count == 6 else { return nil }
             columns[key] = column
         }
-        guard let sunrise = clockTime(columns["sunrise"]![0]), let sunset = clockTime(columns["sunset"]![0]) else { return nil }
+        guard let sunrise = clockTime(columns["sunrise"]![0]), let sunset = clockTime(columns["sunset"]![0]) else {
+            return nil
+        }
         let item = XMLElement(name: "item")
         attributes(child(item, "location"), ["id": id, "city": place.name])
         attributes(child(item, "units"), ["temperature": celsius ? "C" : "F"])
         let astronomy = child(item, "astronomy")
-        attributes(astronomy, ["sunrise": sunrise, "sunset": sunset].merging(moon(now.timeIntervalSince1970 - offset)) { $1 })
+        attributes(
+            astronomy,
+            ["sunrise": sunrise, "sunset": sunset].merging(moon(now.timeIntervalSince1970 - offset)) { $1 }
+        )
         attributes(child(item, "condition"), ["time": time, "temp": String(format: "%.0f", temperature), "code": icon])
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         for day in 0..<6 {
-            guard let when = date(columns["time"]![day], "yyyy-MM-dd"), let condition = self.icon(columns["weather_code"]![day], daylight: true),
-                  let high = number(columns["temperature_2m_max"]![day], -200, 200), let low = number(columns["temperature_2m_min"]![day], -200, 200),
-                  high >= low else { return nil }
-            attributes(child(item, "forecast"), ["high": String(format: "%.0f", high), "low": String(format: "%.0f", low), "code": condition,
-                                                 "dayofweek": String(calendar.component(.weekday, from: when))])
+            guard let when = date(columns["time"]![day], "yyyy-MM-dd"),
+                let condition = self.icon(columns["weather_code"]![day], daylight: true),
+                let high = number(columns["temperature_2m_max"]![day], -200, 200),
+                let low = number(columns["temperature_2m_min"]![day], -200, 200),
+                high >= low
+            else { return nil }
+            attributes(
+                child(item, "forecast"),
+                [
+                    "high": String(format: "%.0f", high), "low": String(format: "%.0f", low), "code": condition,
+                    "dayofweek": String(calendar.component(.weekday, from: when)),
+                ]
+            )
         }
         child(item, "link", "http://open-meteo.com/")
         return item
@@ -317,6 +399,8 @@ enum WebProxyAdapters {
         return node
     }
     private static func attributes(_ node: XMLElement, _ values: [String: String]) {
-        for (key, value) in values.sorted(by: { $0.key < $1.key }) { node.addAttribute(XMLNode.attribute(withName: key, stringValue: value) as! XMLNode) }
+        for (key, value) in values.sorted(by: { $0.key < $1.key }) {
+            node.addAttribute(XMLNode.attribute(withName: key, stringValue: value) as! XMLNode)
+        }
     }
 }

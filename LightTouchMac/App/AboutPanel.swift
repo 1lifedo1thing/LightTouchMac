@@ -1,5 +1,5 @@
-import LightTouchCore
 import Cocoa
+import LightTouchCore
 import SwiftUI
 
 /// About Light Touch: the standard panel with AboutCredits' runs as its credits. Show Licenses opens the Licenses
@@ -8,8 +8,12 @@ import SwiftUI
 extension AboutCredits {
     @MainActor static func show() {
         let bundle = Bundle.main
-        let text = credits(buildInputs: bundle.url(forResource: "build-inputs", withExtension: "json").flatMap { try? Data(contentsOf: $0) },
-                           licenses: licensesDirectory != nil)
+        let text = credits(
+            buildInputs: bundle.url(forResource: "build-inputs", withExtension: "json").flatMap {
+                try? Data(contentsOf: $0)
+            },
+            licenses: licensesDirectory != nil
+        )
         NSApp.orderFrontStandardAboutPanel(options: [.credits: text])
         // The panel's credits view opens links itself; Show Licenses is the app's.
         let credits = NSApp.windows.lazy.compactMap { $0.contentView.flatMap(Self.textView(in:)) }.first
@@ -23,8 +27,10 @@ extension AboutCredits {
         let size = NSFont.smallSystemFontSize
         let paragraph = NSMutableParagraphStyle()
         paragraph.tabStops = [NSTextTab(textAlignment: .left, location: 170)]
-        let body: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: size), .foregroundColor: NSColor.labelColor,
-                                                   .paragraphStyle: paragraph]
+        let body: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: size), .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: paragraph,
+        ]
         let out = NSMutableAttributedString()
         for run in runs(buildInputs: buildInputs, licenses: licenses) {
             var attributes = body
@@ -57,7 +63,11 @@ enum LicensesWindow {
 
     @MainActor static func show() {
         if window == nil, let directory = AboutCredits.licensesDirectory {
-            let window = NSWindow(contentViewController: NSHostingController(rootView: LicensesView(licenses: AboutCredits.licenses(in: directory))))
+            let window = NSWindow(
+                contentViewController: NSHostingController(
+                    rootView: LicensesView(licenses: AboutCredits.licenses(in: directory))
+                )
+            )
             window.title = "Licenses"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.setContentSize(NSSize(width: 860, height: 560))
@@ -99,6 +109,6 @@ private struct LicenseText: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
         }
-        .id(text)   // a new component starts at its top
+        .id(text)  // a new component starts at its top
     }
 }

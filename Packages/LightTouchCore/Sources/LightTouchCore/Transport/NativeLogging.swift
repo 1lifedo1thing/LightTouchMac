@@ -131,7 +131,9 @@ public nonisolated final class LogPipeReader: @unchecked Sendable {
         }
     }
 
-    public init(descriptor: Int32, log: RotatingLog, watch: LogWatch? = nil, cleanup: (@Sendable () -> Void)? = nil) throws {
+    public init(descriptor: Int32, log: RotatingLog, watch: LogWatch? = nil, cleanup: (@Sendable () -> Void)? = nil)
+        throws
+    {
         let flags = fcntl(descriptor, F_GETFL)
         guard flags >= 0, fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) == 0 else {
             throw StorageLocations.posixError()
@@ -209,13 +211,17 @@ public nonisolated final class ProcessLogCapture: Sendable {
             reader = try LogPipeReader(descriptor: descriptors[0], log: RotatingLog(url: url))
             writeDescriptor = descriptors[1]
         } catch {
-            Darwin.close(descriptors[0]); Darwin.close(descriptors[1])
+            Darwin.close(descriptors[0])
+            Darwin.close(descriptors[1])
             throw error
         }
     }
 
     public func flush() { reader.flush() }
-    deinit { Darwin.close(writeDescriptor); reader.finish() }
+    deinit {
+        Darwin.close(writeDescriptor)
+        reader.finish()
+    }
 }
 
 /// QEMU's supported pipe backend opens <path>.in/.out. These are private,
@@ -227,9 +233,16 @@ public nonisolated final class SerialLogCapture: Sendable {
 
     /// `watch`: phrases reported the first time the guest prints them (iBoot's
     /// "Entering recovery mode"), from the reader's queue.
-    public init(url: URL, temporaryRoot: URL = FileManager.default.temporaryDirectory,
-         watch: [String] = [], onMatch: @escaping @Sendable (String) -> Void = { _ in }) throws {
-        let directory = temporaryRoot.appendingPathComponent("LightTouch-serial-\(UUID().uuidString)", isDirectory: true)
+    public init(
+        url: URL,
+        temporaryRoot: URL = FileManager.default.temporaryDirectory,
+        watch: [String] = [],
+        onMatch: @escaping @Sendable (String) -> Void = { _ in }
+    ) throws {
+        let directory = temporaryRoot.appendingPathComponent(
+            "LightTouch-serial-\(UUID().uuidString)",
+            isDirectory: true
+        )
         self.directory = directory
         try StorageLocations.privateDirectory(directory)
         var descriptor: Int32 = -1
@@ -240,8 +253,11 @@ public nonisolated final class SerialLogCapture: Sendable {
             }
             descriptor = open(path + ".out", O_RDWR | O_NONBLOCK | O_CLOEXEC)
             guard descriptor >= 0 else { throw StorageLocations.posixError() }
-            reader = try LogPipeReader(descriptor: descriptor, log: RotatingLog(url: url),
-                                       watch: watch.isEmpty ? nil : .init(phrases: watch, onMatch: onMatch)) {
+            reader = try LogPipeReader(
+                descriptor: descriptor,
+                log: RotatingLog(url: url),
+                watch: watch.isEmpty ? nil : .init(phrases: watch, onMatch: onMatch)
+            ) {
                 try? FileManager.default.removeItem(at: directory)
             }
             argument = "pipe:" + path
@@ -283,5 +299,9 @@ public nonisolated final class SerialLogCapture: Sendable {
         capture = pipe
     }
 
-    public static func flush() { fflush(stdout); fflush(stderr); capture?.flush() }
+    public static func flush() {
+        fflush(stdout)
+        fflush(stderr)
+        capture?.flush()
+    }
 }

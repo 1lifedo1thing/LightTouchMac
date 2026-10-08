@@ -1,10 +1,10 @@
 // The guest package per boot: the offer composed from the bundled itpack for the guest's loader, and the watch
 // that judges it (GuestPackageSession) and keeps the device record's `guest` serials and verdicts.
 
-import Foundation
-import Observation
-import HostRuntime
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import Observation
 
 /// What the guest-package watch reads of the session.
 public protocol GuestPackageHost: AnyObject {
@@ -25,8 +25,13 @@ public protocol GuestPackageHost: AnyObject {
     /// The bundled itpack for an arch (GuestPackage.bundledPack).
     @ObservationIgnored private let pack: (String) -> URL?
 
-    public init(host: GuestPackageHost, stateDirectory: URL = Bundled.stateDirectory,
-                pack: @escaping (String) -> URL? = { GuestPackage.bundledPack(arch: $0, filesRoot: Bundled.filesRoot, guestRoot: Bundled.guestRoot) }) {
+    public init(
+        host: GuestPackageHost,
+        stateDirectory: URL = Bundled.stateDirectory,
+        pack: @escaping (String) -> URL? = {
+            GuestPackage.bundledPack(arch: $0, filesRoot: Bundled.filesRoot, guestRoot: Bundled.guestRoot)
+        }
+    ) {
         self.host = host
         self.stateDirectory = stateDirectory
         self.pack = pack
@@ -80,26 +85,46 @@ public protocol GuestPackageHost: AnyObject {
         let build = instance.firmware.split(separator: "-").last.map(String.init) ?? ""
         do {
             try FileManager.default.createDirectory(at: instance.paths.work, withIntermediateDirectories: true)
-            offer = GuestOfferComposition.offer(augmentation: GuestDeveloperTools.augmentation(instance: instance, build: build)) { augment in
-                try GuestPackage.compose(itpack: pack, board: instance.board, build: build,
-                                         lock: lockRecord, guest: guestRecord, into: offerDirectory, augment: augment)
+            offer = GuestOfferComposition.offer(
+                augmentation: GuestDeveloperTools.augmentation(instance: instance, build: build)
+            ) { augment in
+                try GuestPackage.compose(
+                    itpack: pack,
+                    board: instance.board,
+                    build: build,
+                    lock: lockRecord,
+                    guest: guestRecord,
+                    into: offerDirectory,
+                    augment: augment
+                )
             }
         } catch {
             logEvent("guest package: no offer: \(error.localizedDescription)")
         }
-        if let offer { logEvent("guest package: offering \(offer.serial == 0 ? "the built-in package" : "serial \(offer.serial) (\(offer.version))")") }
+        if let offer {
+            logEvent(
+                "guest package: offering \(offer.serial == 0 ? "the built-in package" : "serial \(offer.serial) (\(offer.version))")"
+            )
+        }
         return offer == nil ? nil : offerDirectory.path
     }
 
     /// One sample for this boot's watch; nil ends it (a later boot, a dead or stopping device, no helper).
     func sample(generation: Int) -> GuestPackageSession.Observation? {
         guard generation == host.bootScope.generation, !host.isDead, !host.shuttingDown,
-              let status = host.status else { return nil }
+            let status = host.status
+        else { return nil }
         // iPods report their agent channel; iPads use a real lockdown
         // round trip because the helper has no pasteboard-agent status.
-        let healthy = host.state == .running && status.uiReady
+        let healthy =
+            host.state == .running && status.uiReady
             && (host.hasGuestTools ? status.agentStatus == 1 : host.deviceReachable == true)
-        return .init(report: status.guestPackage, record: guestRecord, glesProtocol: status.glesProtocol, healthy: healthy)
+        return .init(
+            report: status.guestPackage,
+            record: guestRecord,
+            glesProtocol: status.glesProtocol,
+            healthy: healthy
+        )
     }
 
     /// Judge this boot: a report and a healthy session (UI up, the agent or
@@ -112,24 +137,34 @@ public protocol GuestPackageHost: AnyObject {
         let generation = host.bootScope.generation
         let interval = interval
         task = Task { [weak self] in
-            await GuestPackageSession.watch(offer: offer, interval: interval, sample: { [weak self] in
-                self?.sample(generation: generation)
-            }, publish: { [weak self] update in
-                guard let self, generation == host.bootScope.generation, !host.isDead, !host.shuttingDown else { return }
-                if let report = update.changedReport {
-                    logEvent("guest package: loader reports serial \(report.serial), result \(report.result)")
+            await GuestPackageSession.watch(
+                offer: offer,
+                interval: interval,
+                sample: { [weak self] in
+                    self?.sample(generation: generation)
+                },
+                publish: { [weak self] update in
+                    guard let self, generation == host.bootScope.generation, !host.isDead, !host.shuttingDown else {
+                        return
+                    }
+                    if let report = update.changedReport {
+                        logEvent("guest package: loader reports serial \(report.serial), result \(report.result)")
+                    }
+                    if update.changesRecord {
+                        updateGuestRecord { update.apply(to: &$0) }
+                    }
+                    status = update.status
+                    switch update.verdict {
+                    case .good(let serial)?: logEvent("guest package: serial \(serial) judged good")
+                    case .bad(let serial)?:
+                        logEvent(
+                            "guest package: serial \(serial) judged bad (no healthy session in \(GuestPackage.badAfter))"
+                        )
+                    case .legacy?: logEvent("guest package: no report; legacy baked guest tools")
+                    default: break
+                    }
                 }
-                if update.changesRecord {
-                    updateGuestRecord { update.apply(to: &$0) }
-                }
-                status = update.status
-                switch update.verdict {
-                case .good(let serial)?: logEvent("guest package: serial \(serial) judged good")
-                case .bad(let serial)?: logEvent("guest package: serial \(serial) judged bad (no healthy session in \(GuestPackage.badAfter))")
-                case .legacy?: logEvent("guest package: no report; legacy baked guest tools")
-                default: break
-                }
-            })
+            )
         }
     }
 }

@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import HostRuntime
 import Testing
+
 @testable import FirmwareKit
 
 struct IdentityTests {
@@ -11,7 +12,10 @@ struct IdentityTests {
         ("x", "40db97bd11bf40b3734a6d5a9fde47e7c0ad135178b25c48bb28553a19d4e2b4"),
         ("y", "0a0ef7113474b96bf46f646f4fb74c0fa01260f800a3f6c791170f796ff4101f"),
         ("", "e78717179783745bef5ecf24f96391e07bb9a9b1ccd97ccc31b231889d04005f"),
-        ("caf\u{e9} \u{2713} \"q\"\\\n\t\u{7f}\u{1F600}", "bd4f2ab2194d18d4c25738444a4ba831213ffa0b362bbac56e1bffaedab49dc7"),
+        (
+            "caf\u{e9} \u{2713} \"q\"\\\n\t\u{7f}\u{1F600}",
+            "bd4f2ab2194d18d4c25738444a4ba831213ffa0b362bbac56e1bffaedab49dc7"
+        ),
     ]
 
     @Test(arguments: python) func jsonMatchesPython(seed: String, sha: String) throws {
@@ -20,24 +24,29 @@ struct IdentityTests {
 
     @Test func defaultSeed() throws {
         let id = try UnitIdentity.synthesize(seed: "ipad1-7B500-default")
-        #expect(String(decoding: id.json(), as: UTF8.self) == """
-            {
-             "serial-number": "0Y2ZETGRCJB",
-             "mlb-serial-number": "83FGZ84AP5CMG",
-             "unique-chip-id": "0x6bb6bf76e7",
-             "die-id": [
-              "0xe7e35db5",
-              "0x686525db"
-             ],
-             "wifi-mac": "02:ea:75:42:31:de",
-             "bt-mac": "02:ea:75:42:31:df",
-             "model-number": "MB292",
-             "region-info": "LL/A",
-             "seed": "ipad1-7B500-default",
-             "udid": "144707f35769dad502241e7df06a757d8eeea130"
-            }
-            """)
-        #expect(id.udid == UnitIdentity.udid(serial: "0Y2ZETGRCJB", wifiMAC: "02:EA:75:42:31:DE", btMAC: "02:ea:75:42:31:df"))
+        #expect(
+            String(decoding: id.json(), as: UTF8.self) == """
+                {
+                 "serial-number": "0Y2ZETGRCJB",
+                 "mlb-serial-number": "83FGZ84AP5CMG",
+                 "unique-chip-id": "0x6bb6bf76e7",
+                 "die-id": [
+                  "0xe7e35db5",
+                  "0x686525db"
+                 ],
+                 "wifi-mac": "02:ea:75:42:31:de",
+                 "bt-mac": "02:ea:75:42:31:df",
+                 "model-number": "MB292",
+                 "region-info": "LL/A",
+                 "seed": "ipad1-7B500-default",
+                 "udid": "144707f35769dad502241e7df06a757d8eeea130"
+                }
+                """
+        )
+        #expect(
+            id.udid
+                == UnitIdentity.udid(serial: "0Y2ZETGRCJB", wifiMAC: "02:EA:75:42:31:DE", btMAC: "02:ea:75:42:31:df")
+        )
         #expect(throws: FirmwareError.self) { try UnitIdentity.synthesize(seed: "s", storage: "64g") }
     }
 
@@ -53,10 +62,17 @@ struct IdentityTests {
     /// The 1G has no Bluetooth: no bt-mac, and the UDID is lockdownd's SHA1(serial + Wi-Fi MAC + "").
     @Test func iPod1G() throws {
         let pod = try UnitIdentity.synthesizeIPod(seed: "ipod1g-test", modelNumber: "MA623", regionInfo: "LL/A")
-        let id = try UnitIdentity.synthesizeIPod(seed: "ipod1g-test", modelNumber: "MA623", regionInfo: "LL/A", bluetooth: false)
+        let id = try UnitIdentity.synthesizeIPod(
+            seed: "ipod1g-test",
+            modelNumber: "MA623",
+            regionInfo: "LL/A",
+            bluetooth: false
+        )
         #expect(id["unique-chip-id"] == nil)
         #expect(id["bt-mac"] == nil && id["wifi-mac"] == pod["wifi-mac"] && id["serial-number"] == pod["serial-number"])
-        #expect(id.udid == Data(Insecure.SHA1.hash(data: Data((id["serial-number"]! + id["wifi-mac"]!).utf8))).hexString)
+        #expect(
+            id.udid == Data(Insecure.SHA1.hash(data: Data((id["serial-number"]! + id["wifi-mac"]!).utf8))).hexString
+        )
         #expect(id.udid != pod.udid)
     }
 
@@ -64,9 +80,20 @@ struct IdentityTests {
     @Test func iPhone() throws {
         let id = try UnitIdentity.synthesizeIPhone(seed: "iphone2g-test", modelNumber: "MA501", regionInfo: "LL/A")
         let imei = try #require(id["imei"])
-        #expect(imei.count == 15 && imei.hasPrefix("00000000") && UnitIdentity.syntheticTAC == "00000000" && UnitIdentity.luhn(String(imei.prefix(14))) == Int(String(imei.last!)))
-        #expect(UnitIdentity.luhn("49015420323751") == 8)   // the classic example IMEI 490154203237518
-        #expect(id["bt-mac"] != nil && id.udid == Data(Insecure.SHA1.hash(data: Data((id["serial-number"]! + imei + id["wifi-mac"]! + id["bt-mac"]!).utf8))).hexString)
+        #expect(
+            imei.count == 15 && imei.hasPrefix("00000000") && UnitIdentity.syntheticTAC == "00000000"
+                && UnitIdentity.luhn(String(imei.prefix(14))) == Int(String(imei.last!))
+        )
+        #expect(UnitIdentity.luhn("49015420323751") == 8)  // the classic example IMEI 490154203237518
+        #expect(
+            id["bt-mac"] != nil
+                && id.udid
+                    == Data(
+                        Insecure.SHA1.hash(
+                            data: Data((id["serial-number"]! + imei + id["wifi-mac"]! + id["bt-mac"]!).utf8)
+                        )
+                    ).hexString
+        )
         #expect(id.fields.filter { $0.key == "udid" }.count == 1)
     }
 
@@ -77,8 +104,16 @@ struct IdentityTests {
         let id = base.addingIMEI(seed: "iphone4-8C148-default")
         let imei = try #require(id["imei"])
         #expect(id.fields[1].key == "imei" && id.fields.last?.key == "udid" && id.fields.count == base.fields.count + 1)
-        #expect(id.fields.filter { $0.key != "imei" && $0.key != "udid" }.map(\.key) == base.fields.filter { $0.key != "udid" }.map(\.key))
-        #expect(id.udid == Data(Insecure.SHA1.hash(data: Data((id["serial-number"]! + imei + id["wifi-mac"]! + id["bt-mac"]!).utf8))).hexString)
+        #expect(
+            id.fields.filter { $0.key != "imei" && $0.key != "udid" }.map(\.key)
+                == base.fields.filter { $0.key != "udid" }.map(\.key)
+        )
+        #expect(
+            id.udid
+                == Data(
+                    Insecure.SHA1.hash(data: Data((id["serial-number"]! + imei + id["wifi-mac"]! + id["bt-mac"]!).utf8))
+                ).hexString
+        )
         #expect(id.udid != base.udid)
         let legacy = try JSONSerialization.jsonObject(with: base.json()) as! [String: Any]
         #expect(IPhoneIdentity.upgraded(legacy)?.imei == imei && IPhoneIdentity.upgraded(legacy)?.udid == id.udid)
@@ -86,7 +121,8 @@ struct IdentityTests {
 
     @Test func writeIsExclusiveAndPrivate() throws {
         try Oracle.withTemp { dir in
-            let id = try UnitIdentity.synthesize(seed: "x"), url = dir.appendingPathComponent("identity.json")
+            let id = try UnitIdentity.synthesize(seed: "x")
+            let url = dir.appendingPathComponent("identity.json")
             try id.write(to: url)
             let mode = try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int
             #expect(mode == 0o600)
@@ -102,10 +138,20 @@ struct IdentityTests {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         let any = dir.appendingPathComponent("file")
-        for n in ["file", "iBoot.bin", "gid-blobs.bin", "nor.bin", "kboot.bin"] { try Data(n.utf8).write(to: dir.appendingPathComponent(n)) }
-        let o = Preparer.Options(entry: try Oracle.entry("k48ap-7B500"), ipsw: dir, out: dir, helper: nil, guestTools: dir)
+        for n in ["file", "iBoot.bin", "gid-blobs.bin", "nor.bin", "kboot.bin"] {
+            try Data(n.utf8).write(to: dir.appendingPathComponent(n))
+        }
+        let o = Preparer.Options(
+            entry: try Oracle.entry("k48ap-7B500"),
+            ipsw: dir,
+            out: dir,
+            helper: nil,
+            guestTools: dir
+        )
         let board = try K48Board(o)
-        board.helper = any; board.patcher = any; board.mbr = any
+        board.helper = any
+        board.patcher = any
+        board.mbr = any
         board.vols = SystemEdits.Result(system: dir, data: dir)
         let id = try board.identity(seed: "k48-lock")
         let lock = try board.lock(Recipe.Context(o, recipe: o.entry.recipe!, emit: { _ in }))

@@ -1,5 +1,5 @@
-import HostRuntime
 import Cocoa
+import HostRuntime
 
 /// The browser and transfer task survive closing this independently owned window.
 final class DeviceFilesWindowController: NSWindowController {

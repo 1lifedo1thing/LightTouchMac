@@ -17,7 +17,10 @@ public struct MouseTouchPair {
     /// (nil off the panel).
     public mutating func track(_ flags: KeyModifiers, at point: CGPoint?) {
         guard gesture == nil else { return }
-        guard flags.contains(.option), flags.contains(.shift) else { lockedOffset = nil; return }
+        guard flags.contains(.option), flags.contains(.shift) else {
+            lockedOffset = nil
+            return
+        }
         if lockedOffset == nil, let point { lockedOffset = Self.mirrorOffset(point) }
     }
 

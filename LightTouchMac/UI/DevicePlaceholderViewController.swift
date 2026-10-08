@@ -1,9 +1,9 @@
 // The detail area for a device that isn't running in this window: its art,
 // dimmed, what it is, where it stands, and the one thing to do next.
 
-import LightTouchCore
-import HostRuntime
 import Cocoa
+import HostRuntime
+import LightTouchCore
 
 final class DevicePlaceholderViewController: NSViewController {
     var onAction: ((DeviceAction) -> Void)?
@@ -32,8 +32,11 @@ final class DevicePlaceholderViewController: NSViewController {
     private let dontSave = NSButton(title: "Don’t Save", target: nil, action: nil)
     private let space = NSTextField(wrappingLabelWithString: "")
     /// The build's catalog note (untested, experimental, where a beta came from), in a popover.
-    private let info = NSButton(image: NSImage(systemSymbolName: "info.circle", accessibilityDescription: "About This Build")!,
-                                target: nil, action: nil)
+    private let info = NSButton(
+        image: NSImage(systemSymbolName: "info.circle", accessibilityDescription: "About This Build")!,
+        target: nil,
+        action: nil
+    )
     private var row: DeviceRow?
 
     override func loadView() {
@@ -65,7 +68,10 @@ final class DevicePlaceholderViewController: NSViewController {
         info.target = self
         info.action = #selector(infoClicked(_:))
         progressLine.textColor = .secondaryLabelColor
-        progressLine.font = .monospacedDigitSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .subheadline).pointSize, weight: .regular)
+        progressLine.font = .monospacedDigitSystemFont(
+            ofSize: NSFont.preferredFont(forTextStyle: .subheadline).pointSize,
+            weight: .regular
+        )
         progressLine.alignment = .center
         for button in [showLog, prepareAgain, showFiles, dontSave, primary] {
             button.bezelStyle = .push
@@ -152,7 +158,10 @@ final class DevicePlaceholderViewController: NSViewController {
         switch row.state {
         case .bundled, .notDownloaded, .downloaded:
             status.stringValue = row.stateDescription
-            if !canDownload, let why = FirmwareJobs.shared.unavailableReason { reason.stringValue = why; reason.isHidden = false }
+            if !canDownload, let why = FirmwareJobs.shared.unavailableReason {
+                reason.stringValue = why
+                reason.isHidden = false
+            }
         case .downloading:
             show(row).setAccessibilityLabel("Download progress")
         case .preparing:
@@ -169,9 +178,10 @@ final class DevicePlaceholderViewController: NSViewController {
         case .running: status.stringValue = "Running"
         case .stopping: status.stringValue = "Stopping…"
         case .deleting: status.stringValue = "Deleting…"
-        case let .error(message):
+        case .error(let message):
             // What failed, over why (the reason).
-            status.stringValue = row.hasSession ? "Stopped unexpectedly" : row.isStartable ? "Couldn’t start" : "Couldn’t prepare"
+            status.stringValue =
+                row.hasSession ? "Stopped unexpectedly" : row.isStartable ? "Couldn’t start" : "Couldn’t prepare"
             reason.stringValue = message
             reason.isHidden = false
             showLog.isHidden = false
@@ -183,7 +193,9 @@ final class DevicePlaceholderViewController: NSViewController {
 
         if let editing {
             status.stringValue = "Editing file system"
-            reason.stringValue = editing ? "It’s open in Finder. Ejecting it there also saves your changes."
+            reason.stringValue =
+                editing
+                ? "It’s open in Finder. Ejecting it there also saves your changes."
                 : "Show it in Finder to keep editing."
             reason.isHidden = false
             prepareAgain.isHidden = true
@@ -219,7 +231,9 @@ final class DevicePlaceholderViewController: NSViewController {
 
         // Disk numbers only when they stop a download or preparation.
         // (spaceShortage(available: 0) is nil for a row that needs no space: skip the volume query on every progress tick.)
-        let shortage = row.spaceShortage(available: 0) == nil ? nil
+        let shortage =
+            row.spaceShortage(available: 0) == nil
+            ? nil
             : (try? IPSWStore.availableSpace(at: Bundled.stateDirectory)).flatMap(row.spaceShortage(available:))
         space.stringValue = shortage ?? ""
         space.isHidden = shortage == nil
@@ -228,7 +242,7 @@ final class DevicePlaceholderViewController: NSViewController {
     private static func makeBar() -> NSProgressIndicator {
         let bar = NSProgressIndicator()
         bar.style = .bar
-        bar.isIndeterminate = false   // NSProgressIndicator starts indeterminate: a bar that never fills
+        bar.isIndeterminate = false  // NSProgressIndicator starts indeterminate: a bar that never fills
         bar.minValue = 0
         bar.maxValue = 1
         return bar
@@ -277,9 +291,13 @@ final class DevicePlaceholderViewController: NSViewController {
             label.preferredMaxLayoutWidth = 280
             return label
         }
-        let stack = NSStackView(views: [label(row.supportNote, .headline), label(row.supportExplanation, .body, .secondaryLabelColor),
-                                        label(row.entry.statusNote, .body), label(row.releaseLine, .subheadline, .secondaryLabelColor)]
-            .compactMap { $0 })
+        let stack = NSStackView(
+            views: [
+                label(row.supportNote, .headline), label(row.supportExplanation, .body, .secondaryLabelColor),
+                label(row.entry.statusNote, .body), label(row.releaseLine, .subheadline, .secondaryLabelColor),
+            ]
+            .compactMap { $0 }
+        )
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 6
@@ -316,12 +334,19 @@ private final class IPSWDropView: NSView {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     private func ipsws(_ sender: NSDraggingInfo) -> [URL] {
-        DroppedFiles.files(sender.draggingPasteboard.readObjects(forClasses: [NSURL.self],
-                                                                 options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? [], .ipsw)
+        DroppedFiles.files(
+            sender.draggingPasteboard.readObjects(
+                forClasses: [NSURL.self],
+                options: [.urlReadingFileURLsOnly: true]
+            ) as? [URL] ?? [],
+            .ipsw
+        )
     }
 
     private lazy var highlight = DropHighlight.install(in: self)
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { highlight.show(for: ipsws(sender).isEmpty ? [] : .copy) }
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        highlight.show(for: ipsws(sender).isEmpty ? [] : .copy)
+    }
     override func draggingExited(_ sender: NSDraggingInfo?) { highlight.show(for: []) }
     override func draggingEnded(_ sender: NSDraggingInfo) { highlight.show(for: []) }
 

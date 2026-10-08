@@ -5,9 +5,9 @@
 // services' (InstallationProxy, AFC) and the agent's (dlicon); the order and
 // the policy between them live here.
 
+import Foundation
 import HostServiceClient
 import HostServiceWire
-import Foundation
 import Subprocess
 import System
 
@@ -16,7 +16,8 @@ public protocol AppInstallServices: Sendable {
     func freeSpaceBytes() async throws -> Int64
     func stage(_ ipa: URL, progress: @escaping @Sendable (Double) -> Void) async throws -> String
     func removeStaged(_ path: String) async
-    func install(_ ipa: URL, staged: String, bundleID: String, progress: @escaping @Sendable (Int, String) -> Void) async throws
+    func install(_ ipa: URL, staged: String, bundleID: String, progress: @escaping @Sendable (Int, String) -> Void)
+        async throws
 }
 extension DeviceServices: AppInstallServices {}
 
@@ -28,7 +29,12 @@ public protocol InstallPlaceholderAgent: Sendable {
 extension GuestAgent: InstallPlaceholderAgent {}
 
 public struct AppInstallPipeline: Sendable {
-    public init(services: any AppInstallServices, agent: any InstallPlaceholderAgent, deviceOS: String = "3.1.3", afcReadyTimeout: Duration = .seconds(300)) {
+    public init(
+        services: any AppInstallServices,
+        agent: any InstallPlaceholderAgent,
+        deviceOS: String = "3.1.3",
+        afcReadyTimeout: Duration = .seconds(300)
+    ) {
         self.services = services
         self.agent = agent
         self.deviceOS = deviceOS
@@ -48,8 +54,11 @@ public struct AppInstallPipeline: Sendable {
     /// short, human phase strings for the sidebar row. The return string is
     /// non-empty only to carry the "SDK too new" marker the caller warns on.
     @discardableResult
-    public func install(_ ipa: URL, placeholderRaised: Bool = false,
-                 progress: @escaping @Sendable (String) -> Void = { _ in }) async throws -> String {
+    public func install(
+        _ ipa: URL,
+        placeholderRaised: Bool = false,
+        progress: @escaping @Sendable (String) -> Void = { _ in }
+    ) async throws -> String {
         // MinimumOSVersion, NOT DTSDKName. The SDK an app was BUILT with says
         // nothing about whether it runs: Temple Run 1.0 is DTSDKName
         // iphoneos4.2 with MinimumOSVersion 3.0 and runs fine on 3.1.3 (the
@@ -69,7 +78,8 @@ public struct AppInstallPipeline: Sendable {
         // multi-minute upload, for a file that was never installable.
         guard await AppMetadataCache.bundleID(of: ipa) != nil else {
             throw DeviceError.preflight(
-                "“\(ipa.lastPathComponent)” isn’t an app archive (IPA).")
+                "“\(ipa.lastPathComponent)” isn’t an app archive (IPA)."
+            )
         }
 
         do {
@@ -84,7 +94,8 @@ public struct AppInstallPipeline: Sendable {
             // two differently named files raised two placeholders. The filter
             // is also what makes the value safe inside the single quotes it is
             // interpolated into below.
-            let key = await AppMetadataCache.bundleID(of: ipa)
+            let key =
+                await AppMetadataCache.bundleID(of: ipa)
                 ?? ipa.deletingPathExtension().lastPathComponent
             let placeholder = Self.placeholderID(for: key)
             // The add and the cancel are two independent fire-and-forget agent
@@ -152,10 +163,11 @@ public struct AppInstallPipeline: Sendable {
         guard (Int(deviceOS.prefix { $0.isNumber }) ?? 0) >= 7 else { return try await services.freeSpaceBytes() }
         let deadline = ContinuousClock.now + afcReadyTimeout
         while true {
-            do { return try await services.freeSpaceBytes() }
-            catch DeviceError.timedOut {
+            do { return try await services.freeSpaceBytes() } catch DeviceError.timedOut {
                 guard ContinuousClock.now < deadline else {
-                    throw DeviceError.failed("The device’s file service didn’t answer while iOS was starting, so the app wasn’t sent. Try again in a minute.")
+                    throw DeviceError.failed(
+                        "The device’s file service didn’t answer while iOS was starting, so the app wasn’t sent. Try again in a minute."
+                    )
                 }
                 progress("Waiting for iOS to finish starting…")
                 try await Task.sleep(for: .seconds(1))
@@ -169,7 +181,8 @@ public struct AppInstallPipeline: Sendable {
     /// to the original, which is exactly today's behavior.
     private static func execBitRepaired(_ ipa: URL) async throws -> URL? {
         guard let member = await AppMetadataCache.executableMember(of: ipa),
-              let helper = Bundled.tool("ipod-helper") else { return nil }
+            let helper = Bundled.tool("ipod-helper")
+        else { return nil }
         guard let mode = ZipMembers.permissions(ipa, member), mode & 0o111 == 0 else { return nil }
 
         let out = FileManager.default.temporaryDirectory
@@ -180,7 +193,9 @@ public struct AppInstallPipeline: Sendable {
         let result = try await run(
             .path(FilePath(helper)),
             arguments: ["ipa-chmod", ipa.path, out.path, member],
-            output: .discarded, error: .string(limit: 1 << 16))
+            output: .discarded,
+            error: .string(limit: 1 << 16)
+        )
         guard result.terminationStatus.isSuccess, FileManager.default.fileExists(atPath: out.path) else {
             logEvent("install: executable repair failed: \(result.standardError)")
             throw DeviceError.preflight("Couldn’t prepare the app’s files for install.")
@@ -208,8 +223,7 @@ public struct AppInstallPipeline: Sendable {
     private func withTransientRetry(attempts: Int, _ body: () async throws -> Void) async throws {
         var lastError: Error = DeviceError.failed("no attempt made")
         for i in 0..<attempts {
-            do { return try await body() }
-            catch let error as DeviceError where error.isTransient {
+            do { return try await body() } catch let error as DeviceError where error.isTransient {
                 lastError = error
                 try await Task.sleep(for: .seconds(Double(min(i + 1, 5)) * 2))
             }
@@ -222,7 +236,8 @@ public struct AppInstallPipeline: Sendable {
     /// cancels — never two. (Two ids was tried: the download's icon and the
     /// install's coexisted on the home screen through the whole install.)
     public static func placeholderID(for key: String) -> String {
-        "qemu-install-" + key
+        "qemu-install-"
+            + key
             .filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == "_" }
     }
 
@@ -230,8 +245,11 @@ public struct AppInstallPipeline: Sendable {
     /// catalog's download phase). Cancel of an id that is already gone is a
     /// no-op on SpringBoard, so belt-and-suspenders cancels are safe.
     @discardableResult
-    public func installPlaceholder(_ action: String, bundleID: String,
-                            after previous: Task<Void, Never>? = nil) -> Task<Void, Never>? {
+    public func installPlaceholder(
+        _ action: String,
+        bundleID: String,
+        after previous: Task<Void, Never>? = nil
+    ) -> Task<Void, Never>? {
         guard agent.isAlive else { return nil }
         return placeholderIcon(action, Self.placeholderID(for: bundleID), bundleID: bundleID, after: previous)
     }
@@ -241,14 +259,19 @@ public struct AppInstallPipeline: Sendable {
     /// which lets the `cancel` in a defer still run when the install was
     /// cancelled; if even that is lost, the icon dies with the running SpringBoard.
     @discardableResult
-    private func placeholderIcon(_ action: String, _ id: String, bundleID: String? = nil,
-                                 after previous: Task<Void, Never>? = nil) -> Task<Void, Never> {
+    private func placeholderIcon(
+        _ action: String,
+        _ id: String,
+        bundleID: String? = nil,
+        after previous: Task<Void, Never>? = nil
+    ) -> Task<Void, Never> {
         let agent = self.agent
         return Task {
             await previous?.value
             guard agent.isAlive else { return }
-            do { try await agent.placeholder(action, id: id, bundleID: bundleID) }
-            catch { logEvent("install placeholder \(action): \(error.localizedDescription)") }
+            do { try await agent.placeholder(action, id: id, bundleID: bundleID) } catch {
+                logEvent("install placeholder \(action): \(error.localizedDescription)")
+            }
         }
     }
 }

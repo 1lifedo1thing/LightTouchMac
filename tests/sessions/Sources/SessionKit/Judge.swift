@@ -3,12 +3,12 @@ import Foundation
 /// One line of a driver's JSON output.
 public typealias Event = [String: Any]
 
-public extension Dictionary where Key == String, Value == Any {
-    func string(_ key: String) -> String? { self[key] as? String }
-    func double(_ key: String) -> Double? { (self[key] as? NSNumber)?.doubleValue }
-    func int(_ key: String) -> Int? { (self[key] as? NSNumber)?.intValue }
-    func bool(_ key: String) -> Bool { (self[key] as? NSNumber)?.boolValue ?? false }
-    func has(_ key: String) -> Bool { self[key] != nil && !(self[key] is NSNull) }
+extension Dictionary where Key == String, Value == Any {
+    public func string(_ key: String) -> String? { self[key] as? String }
+    public func double(_ key: String) -> Double? { (self[key] as? NSNumber)?.doubleValue }
+    public func int(_ key: String) -> Int? { (self[key] as? NSNumber)?.intValue }
+    public func bool(_ key: String) -> Bool { (self[key] as? NSNumber)?.boolValue ?? false }
+    public func has(_ key: String) -> Bool { self[key] != nil && !(self[key] is NSNull) }
 }
 
 /// A driver run's events, with lookups by name and field values.
@@ -19,7 +19,9 @@ public struct Events {
     /// The JSON lines of `text`; any other line becomes a `text` event.
     public init(jsonLines text: String) {
         all = text.split(separator: "\n").map { line in
-            (try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? Event ?? ["event": "text", "text": String(line)]
+            (try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? Event ?? [
+                "event": "text", "text": String(line),
+            ]
         }
     }
 
@@ -42,7 +44,10 @@ public final class Report {
         fflush(stdout)
         return ok
     }
-    public func note(_ text: String) { print("  --   \(text)"); fflush(stdout) }
+    public func note(_ text: String) {
+        print("  --   \(text)")
+        fflush(stdout)
+    }
     public var allPassed: Bool { failed == 0 && passed > 0 }
     public var summary: String { "\(passed)/\(passed + failed) passed" }
 }
@@ -53,26 +58,37 @@ public enum SessionJudge {
     /// agent's screen name), an agent that never answered, a frame that differs from its reference (matrix-refs) all
     /// fail; a build without an agent and without a reference is unknown (nil). Stock 2.x has no guest agent, so a
     /// known-good picture is its evidence; a lit Connect-to-iTunes screen alone never qualifies as home.
-    public static func home(lock: [String: Any], events: Events, entryID: String, references: URL) -> (ok: Bool?, detail: String) {
+    public static func home(lock: [String: Any], events: Events, entryID: String, references: URL) -> (
+        ok: Bool?, detail: String
+    ) {
         let package = lock["guest_package"] as? [String: Any] ?? [:]
         let derived = lock["derived"] as? [String: Any] ?? [:]
-        let hasAgent = (package["jobs"] as? [String] ?? []).contains("com.qemu.it-agent.plist")
+        let hasAgent =
+            (package["jobs"] as? [String] ?? []).contains("com.qemu.it-agent.plist")
             || (derived.string("guest_tools") ?? "").hasPrefix("installed")
         var shots: [String: Event] = [:]
         for e in events.find("screenshot") {
-            if let path = e.string("path") { shots[URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent] = e }
+            if let path = e.string("path") {
+                shots[URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent] = e
+            }
         }
         let homes = events.find("home")
         let names = ["home", "home2", "installed"].filter { shots[$0] != nil }
         guard !names.isEmpty else { return (nil, "no home screenshot taken") }
         let dark = names.filter { (shots[$0]?.double("brightness") ?? 0) < 0.05 }
         let wrong = homes.compactMap { h -> String? in
-            guard let front = h.string("frontmost"), !front.isEmpty, front != "com.apple.springboard" else { return nil }
+            guard let front = h.string("frontmost"), !front.isEmpty, front != "com.apple.springboard" else {
+                return nil
+            }
             return front
         }
-        let locked = homes.filter { $0.string("frontmost") == "com.apple.springboard" && $0.string("screen") != "Home Screen" }
-            .map { $0.int("generation") ?? 1 }
-        let unanswered = homes.filter { hasAgent && ($0.string("frontmost") ?? "").isEmpty }.map { $0.int("generation") ?? 1 }
+        let locked = homes.filter {
+            $0.string("frontmost") == "com.apple.springboard" && $0.string("screen") != "Home Screen"
+        }
+        .map { $0.int("generation") ?? 1 }
+        let unanswered = homes.filter { hasAgent && ($0.string("frontmost") ?? "").isEmpty }.map {
+            $0.int("generation") ?? 1
+        }
         var frames: [String: FrameCheck.Verdict] = [:]
         for name in names {
             let ref = references.appendingPathComponent("\(entryID)-\(name).png")
@@ -81,19 +97,34 @@ public enum SessionJudge {
             }
         }
         let badFrames = frames.filter { !$0.value.ok }.keys.sorted()
-        let observed = Set(homes.filter { !($0.string("frontmost") ?? "").isEmpty }.map { h -> String in
-            let g = h.int("generation") ?? 1
-            return g == 1 ? "home" : "home\(g)"
-        })
+        let observed = Set(
+            homes.filter { !($0.string("frontmost") ?? "").isEmpty }.map { h -> String in
+                let g = h.int("generation") ?? 1
+                return g == 1 ? "home" : "home\(g)"
+            }
+        )
         let unknown = names.filter { $0.hasPrefix("home") && !hasAgent && !observed.contains($0) && frames[$0] == nil }
-        let ok: Bool? = !dark.isEmpty || !wrong.isEmpty || !locked.isEmpty || !unanswered.isEmpty || !badFrames.isEmpty ? false
+        let ok: Bool? =
+            !dark.isEmpty || !wrong.isEmpty || !locked.isEmpty || !unanswered.isEmpty || !badFrames.isEmpty
+            ? false
             : unknown.isEmpty ? true : nil
         var parts: [String] = []
-        parts.append("brightness " + names.map { "\($0) " + String(format: "%.3f", shots[$0]?.double("brightness") ?? -1) }.joined(separator: ", "))
+        parts.append(
+            "brightness "
+                + names.map { "\($0) " + String(format: "%.3f", shots[$0]?.double("brightness") ?? -1) }.joined(
+                    separator: ", "
+                )
+        )
         if !homes.isEmpty {
-            parts.append("frontmost " + (hasAgent ? homes.map { h in
-                [h.string("frontmost"), h.string("screen")].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: " / ")
-            }.map { $0.isEmpty ? "no answer" : $0 }.joined(separator: ", ") : "unknown (no guest agent on this build)"))
+            parts.append(
+                "frontmost "
+                    + (hasAgent
+                        ? homes.map { h in
+                            [h.string("frontmost"), h.string("screen")].compactMap { $0?.isEmpty == false ? $0 : nil }
+                                .joined(separator: " / ")
+                        }.map { $0.isEmpty ? "no answer" : $0 }.joined(separator: ", ")
+                        : "unknown (no guest agent on this build)")
+            )
         }
         if !dark.isEmpty { parts.append("dark \(dark)") }
         if !wrong.isEmpty { parts.append("wrong app \(wrong)") }
@@ -108,14 +139,16 @@ public enum SessionJudge {
     /// or nil where the emulator does not decode the backlight.
     public static func backlightTop(board: String, base: URL, productVersion: String) -> Int? {
         switch board {
-        case "n45ap", "m68ap": return 0x2e   // ApplePCF50635PMUBacklight's "raw" table tops out at LEDOUT 0x2e
-        case "n72ap": return 0xf5            // AppleD1759PMUBacklight at Brightness 1.0
+        case "n45ap", "m68ap": return 0x2e  // ApplePCF50635PMUBacklight's "raw" table tops out at LEDOUT 0x2e
+        case "n72ap": return 0xf5  // AppleD1759PMUBacklight at Brightness 1.0
         case "k48ap", "n81ap", "n90ap":
             // 6.x+ kernels step through the device tree's backlight-table (u16 codes, 0x7b3 at the n90's top); earlier
             // ones run the SWI level up to its full 11 bits. An iBoot base (firmwarekit's iPad, up to 5.1.1) has no
             // kboot.bin to read the tree from; its version says which.
             let major = Int(productVersion.split(separator: ".").first ?? "") ?? 0
-            guard let kboot = try? Data(contentsOf: base.appendingPathComponent("kboot.bin")) else { return major < 6 ? 0x7ff : nil }
+            guard let kboot = try? Data(contentsOf: base.appendingPathComponent("kboot.bin")) else {
+                return major < 6 ? 0x7ff : nil
+            }
             var name = Data("backlight-table".utf8)
             name.append(Data(count: 32 - name.count))
             guard let at = kboot.range(of: name)?.lowerBound else { return 0x7ff }
@@ -136,7 +169,10 @@ public enum SessionJudge {
         while let rel = walk.nextObject() as? String {
             var st = stat()
             guard lstat(root.appendingPathComponent(rel).path, &st) == 0 else { continue }
-            out[rel] = [Int(st.st_size), Int(st.st_mode), Int(st.st_mtimespec.tv_sec) * 1_000_000_000 + Int(st.st_mtimespec.tv_nsec)]
+            out[rel] = [
+                Int(st.st_size), Int(st.st_mode),
+                Int(st.st_mtimespec.tv_sec) * 1_000_000_000 + Int(st.st_mtimespec.tv_nsec),
+            ]
         }
         return out
     }
@@ -149,11 +185,14 @@ public enum SessionJudge {
             case (nil, let b?): lines.append("added \(path) (size \(b[0]), mode \(String(b[1], radix: 8)))")
             case (_?, nil): lines.append("removed \(path)")
             case (let a?, let b?):
-                let moved = zip(["size", "mode", "mtime_ns"], zip(a, b)).filter { $1.0 != $1.1 }.map { "\($0) \($1.0)->\($1.1)" }
+                let moved = zip(["size", "mode", "mtime_ns"], zip(a, b)).filter { $1.0 != $1.1 }.map {
+                    "\($0) \($1.0)->\($1.1)"
+                }
                 lines.append("changed \(path): " + moved.joined(separator: ", "))
             default: break
             }
         }
-        return lines.prefix(limit).joined(separator: "; ") + (lines.count > limit ? "; … \(lines.count - limit) more" : "")
+        return lines.prefix(limit).joined(separator: "; ")
+            + (lines.count > limit ? "; … \(lines.count - limit) more" : "")
     }
 }

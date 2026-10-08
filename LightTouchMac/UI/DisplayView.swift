@@ -1,10 +1,10 @@
-import LightTouchCore
-import HostRuntime
+import Cocoa
 import DeviceRuntime
+import HostRuntime
+import LightTouchCore
+
 // Device shell and LCD share a transform. Fit uses the pane bounds; manual
 // zoom uses display pixels per guest pixel, independent of orientation.
-
-import Cocoa
 
 /// Fit the whole device in the window, or use an integer display-pixel scale.
 final class DisplayView: NSView {
@@ -70,8 +70,14 @@ final class DisplayView: NSView {
 
     func updatePowerPresentation() {
         guard let emulator else { return }
-        let next: PowerPresentation = restartingAtPanel ? .awake : emulator.isPoweredOff ? .poweredOff
-            : emulator.shuttingDown ? .shuttingDown : (emulator.isSleeping && !emulator.preparingDevice && !isShowingLiveText) ? .sleeping : .awake
+        let next: PowerPresentation =
+            restartingAtPanel
+            ? .awake
+            : emulator.isPoweredOff
+                ? .poweredOff
+                : emulator.shuttingDown
+                    ? .shuttingDown
+                    : (emulator.isSleeping && !emulator.preparingDevice && !isShowingLiveText) ? .sleeping : .awake
         guard next != powerPresentation else { return }
         powerPresentation = next
         powerBadge?.removeFromSuperview()
@@ -97,7 +103,7 @@ final class DisplayView: NSView {
             container.translatesAutoresizingMaskIntoConstraints = false
             NSLayoutConstraint.activate([
                 container.widthAnchor.constraint(equalToConstant: 160),
-                container.heightAnchor.constraint(equalToConstant: 128)
+                container.heightAnchor.constraint(equalToConstant: 128),
             ])
             symbol = container
         } else {
@@ -118,7 +124,11 @@ final class DisplayView: NSView {
         stack.orientation = .vertical
         stack.spacing = 10
         if next != .shuttingDown {
-            let button = NSButton(title: next == .poweredOff ? "Start" : "Wake", target: self, action: #selector(wakeDevice(_:)))
+            let button = NSButton(
+                title: next == .poweredOff ? "Start" : "Wake",
+                target: self,
+                action: #selector(wakeDevice(_:))
+            )
             button.bezelStyle = .rounded
             stack.addArrangedSubview(button)
         }
@@ -126,7 +136,7 @@ final class DisplayView: NSView {
         addSubview(stack)
         NSLayoutConstraint.activate([
             stack.centerXAnchor.constraint(equalTo: safeAreaLayoutGuide.centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: safeAreaLayoutGuide.centerYAnchor)
+            stack.centerYAnchor.constraint(equalTo: safeAreaLayoutGuide.centerYAnchor),
         ])
         powerBadge = stack
         stack.isHidden = isCapturingCanvas
@@ -239,9 +249,15 @@ final class DisplayView: NSView {
             ring.isHidden = true
             layer?.addSublayer(ring)
         }
-        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+        addTrackingArea(
+            NSTrackingArea(
+                rect: .zero,
+                options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                owner: self
+            )
+        )
 
-        contentLayer.magnificationFilter = .nearest   // until a layout picks by scale (contentsFilter)
+        contentLayer.magnificationFilter = .nearest  // until a layout picks by scale (contentsFilter)
         // The shell is opaque, so the LCD draws on top of it. Black backing
         // shows a powered-on device screen during boot, before the first frame.
         contentLayer.contentsGravity = .resize
@@ -253,7 +269,12 @@ final class DisplayView: NSView {
         homeButton.action = #selector(homeTapped)
         addSubview(homeButton)
         applyBezel(Self.bezel)
-        NotificationCenter.default.addObserver(self, selector: #selector(bezelPreferenceChanged), name: Self.bezelDidChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(bezelPreferenceChanged),
+            name: Self.bezelDidChange,
+            object: nil
+        )
         attitudeIndicator.target = self
         attitudeIndicator.action = #selector(levelAttitude(_:))
         attitudeIndicator.isHidden = true
@@ -269,10 +290,15 @@ final class DisplayView: NSView {
         registerForDraggedTypes([.fileURL, .ltmCatalogApp])
         setAccessibilityLabel("\(profile.displayName) screen")
         setAccessibilityRole(.group)
-        setAccessibilityCustomActions(Self.screenActions.map { title, action in
-            NSAccessibilityCustomAction(name: title) { [weak self] in NSApp.sendAction(action, to: nil, from: self) }
-        })
-        setAccessibilityHelp("Turn off Send Keyboard Input (Device > Input) to move a pointer with the arrow keys. Hold Space to touch; Shift-arrow drags.")
+        setAccessibilityCustomActions(
+            Self.screenActions.map { title, action in
+                NSAccessibilityCustomAction(name: title) { [weak self] in NSApp.sendAction(action, to: nil, from: self)
+                }
+            }
+        )
+        setAccessibilityHelp(
+            "Turn off Send Keyboard Input (Device > Input) to move a pointer with the arrow keys. Hold Space to touch; Shift-arrow drags."
+        )
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -295,10 +321,12 @@ final class DisplayView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         shellLayer.removeAnimation(forKey: "modelPresentation")
-        shellLayer.contents = bare ? nil : NSImage(named: profile.shellImageName)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        shellLayer.contents =
+            bare ? nil : NSImage(named: profile.shellImageName)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
         shellLayer.shadowOpacity = bare ? 0 : 0.4
         // Bare, the transform turns and scales about the screen's center, which layout() puts at the pane's.
-        shellLayer.anchorPoint = bare
+        shellLayer.anchorPoint =
+            bare
             ? CGPoint(x: screenCutout.midX / shellPixels.width, y: screenCutout.midY / shellPixels.height)
             : CGPoint(x: 0.5, y: 0.5)
         shellLayer.isHidden = false
@@ -306,7 +334,8 @@ final class DisplayView: NSView {
         modelPresentationFinished = true
         // macOS 14 keeps the photo shell; RealityKit texture rotation requires 15.
         if bezel == .model, #available(macOS 15, *), let name = profile.deviceModelName,
-           let url = Bundle.main.url(forResource: name, withExtension: "usdz", subdirectory: "Models") {
+            let url = Bundle.main.url(forResource: name, withExtension: "usdz", subdirectory: "Models")
+        {
             modelPresentationFinished = false
             // Give RealityKit one second to present the device itself. Slower
             // startup shows a temporary photo while the live model keeps
@@ -376,7 +405,9 @@ final class DisplayView: NSView {
             fade.fillMode = .forwards
             fade.isRemovedOnCompletion = false
             shellLayer.add(fade, forKey: "modelPresentation")
-        } else { shellLayer.isHidden = true }
+        } else {
+            shellLayer.isHidden = true
+        }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = duration
             model.animator().alphaValue = CGFloat(shellLayer.opacity)
@@ -386,7 +417,7 @@ final class DisplayView: NSView {
         }
     }
 
-    override var isFlipped: Bool { true }          // y-down, matching the guest
+    override var isFlipped: Bool { true }  // y-down, matching the guest
     override var acceptsFirstResponder: Bool { true }
     /// A click into a window in the background touches the device at once, as on a real screen.
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -431,7 +462,12 @@ final class DisplayView: NSView {
         // Every window entry: leaving one dropped all of this view's observers (above), the bezel's included,
         // so a view that had left a window (a session swap, a restart at a new panel) ignored View ▸ Show Device
         // Bezel for good. The preference may have changed meanwhile too.
-        NotificationCenter.default.addObserver(self, selector: #selector(bezelPreferenceChanged), name: Self.bezelDidChange, object: nil)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(bezelPreferenceChanged),
+            name: Self.bezelDidChange,
+            object: nil
+        )
         bezelPreferenceChanged()
         let link = displayLink(target: self, selector: #selector(step))
         link.add(to: .main, forMode: .common)
@@ -440,10 +476,18 @@ final class DisplayView: NSView {
         for name in [NSWindow.didChangeScreenNotification, NSWindow.didMoveNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(screenChanged), name: name, object: window)
         }
-        NotificationCenter.default.addObserver(self, selector: #selector(screenChanged),
-            name: NSApplication.didChangeScreenParametersNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(releaseHeldKeys),
-            name: NSWindow.didResignKeyNotification, object: window)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(screenChanged),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(releaseHeldKeys),
+            name: NSWindow.didResignKeyNotification,
+            object: window
+        )
     }
 
     var onPhysicalSizeUnavailable: (() -> Void)?
@@ -453,7 +497,10 @@ final class DisplayView: NSView {
         let screen = NSScreen.screens.first { $0.frame.contains(center) } ?? window.screen
         return screen.flatMap { screen in
             (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber).flatMap {
-                DisplayMeasurements.pointsPerMillimeter(display: CGDirectDisplayID($0.uint32Value), logical: screen.frame.size)
+                DisplayMeasurements.pointsPerMillimeter(
+                    display: CGDirectDisplayID($0.uint32Value),
+                    logical: screen.frame.size
+                )
             }
         }.map {
             let height = profile.physicalHeightMillimeters * $0
@@ -461,13 +508,21 @@ final class DisplayView: NSView {
         }
     }
     @objc private func screenChanged() {
-        if zoom == .physical, physicalScale == nil { zoom = .fit; onPhysicalSizeUnavailable?() }
+        if zoom == .physical, physicalScale == nil {
+            zoom = .fit
+            onPhysicalSizeUnavailable?()
+        }
         needsLayout = true
     }
-    override func viewDidChangeBackingProperties() { super.viewDidChangeBackingProperties(); screenChanged() }
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        screenChanged()
+    }
 
-
-    @objc private func homeTapped() { endLiveText(); emulator?.pressHome() }
+    @objc private func homeTapped() {
+        endLiveText()
+        emulator?.pressHome()
+    }
 
     // MARK: - Layout
 
@@ -493,7 +548,8 @@ final class DisplayView: NSView {
         // UI into it (guestTurn). A panel fixed to the shell (the iPad's) keeps
         // that; the iPod's pre-rotated surface also swaps with the device.
         let turned = guestTurn != 0
-        let cutoutSize = (profile.surfaceFollowsRotation ? turned != isLandscape : turned)
+        let cutoutSize =
+            (profile.surfaceFollowsRotation ? turned != isLandscape : turned)
             ? CGSize(width: screenCutout.height, height: screenCutout.width)
             : screenCutout.size
         // The shell's own on-screen bounding box once rotated — this, not just
@@ -502,19 +558,21 @@ final class DisplayView: NSView {
         let shell = (modelView ?? pendingModelView)?.shellPixels ?? shellPixels
         // Bare, the screen's own box is what fits.
         let fitted = bare ? screenCutout.size : shell
-        let shellOnScreenPixels = isLandscape
+        let shellOnScreenPixels =
+            isLandscape
             ? CGSize(width: fitted.height, height: fitted.width)
             : fitted
 
         let scale: CGFloat
         switch zoom {
         case _ where dragScale != nil:
-            scale = dragScale!   // an edge drag keeps its scale, so the edge stays under the pointer
+            scale = dragScale!  // an edge drag keeps its scale, so the edge stays under the pointer
         case .pixels(let points) where freeFormActive:
-            scale = CGFloat(points)   // free-form Nx: a guest pixel is N points (Sam's "at 1x a point is a pixel")
+            scale = CGFloat(points)  // free-form Nx: a guest pixel is N points (Sam's "at 1x a point is a pixel")
         case .physical where freeFormActive:
             // Free-form's shell unit is a guest pixel: the shipped panel's pixel pitch, at its physical size.
-            scale = physicalScale.map { $0 * profile.screenCutout.height / profile.uprightScreenPixels.height }
+            scale =
+                physicalScale.map { $0 * profile.screenCutout.height / profile.uprightScreenPixels.height }
                 ?? fitScale(shellOnScreenPixels)
         case .fit:
             scale = fitScale(shellOnScreenPixels)
@@ -543,18 +601,26 @@ final class DisplayView: NSView {
         // (AppKit's geometry flip inverts a layer transform's handedness too),
         // so `rest` feeds both unconverted. At rest+tilt the button is mid-drag
         // and invisible anyway, so only `rest` is projected.
-        let buttonCenterNative = CGPoint(x: shellPixels.width / 2,
-                                         y: shellPixels.height - homeButtonBottomInset
-                                            - homeButtonDiameter / 2)
-        let native = CGVector(dx: buttonCenterNative.x - shellCenter.x,
-                              dy: buttonCenterNative.y - shellCenter.y)
-        let buttonOffset = CGVector(dx: native.dx * cos(rest) - native.dy * sin(rest),
-                                    dy: native.dx * sin(rest) + native.dy * cos(rest))
+        let buttonCenterNative = CGPoint(
+            x: shellPixels.width / 2,
+            y: shellPixels.height - homeButtonBottomInset
+                - homeButtonDiameter / 2
+        )
+        let native = CGVector(
+            dx: buttonCenterNative.x - shellCenter.x,
+            dy: buttonCenterNative.y - shellCenter.y
+        )
+        let buttonOffset = CGVector(
+            dx: native.dx * cos(rest) - native.dy * sin(rest),
+            dy: native.dx * sin(rest) + native.dy * cos(rest)
+        )
         let buttonDiameter = (homeButtonDiameter * scale).rounded()
         let buttonRect = CGRect(
             x: (viewCenter.x + buttonOffset.dx * scale - buttonDiameter / 2).rounded(),
             y: (viewCenter.y + buttonOffset.dy * scale - buttonDiameter / 2).rounded(),
-            width: buttonDiameter, height: buttonDiameter)
+            width: buttonDiameter,
+            height: buttonDiameter
+        )
 
         let animate = orientationChanged || pendingAnimatedLayout
         pendingAnimatedLayout = false
@@ -590,7 +656,7 @@ final class DisplayView: NSView {
             CATransaction.setAnimationDuration(Self.rotationDuration)
             CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeInEaseOut))
         } else {
-            CATransaction.setDisableActions(true)   // no implicit fade on plain resize
+            CATransaction.setDisableActions(true)  // no implicit fade on plain resize
         }
         shellLayer.position = viewCenter
         shellLayer.transform = motionTransform(angle: angle, scale: scale)
@@ -604,25 +670,41 @@ final class DisplayView: NSView {
         updateModelPose(animated: animate)
         if let modelView, let rect = modelView.homeButtonRect {
             homeButton.frame = convert(rect, from: modelView)
-        } else { homeButton.frame = buttonRect }
+        } else {
+            homeButton.frame = buttonRect
+        }
         if let liveTextView, let root = layer {
             if let modelView {
                 let a = convert(modelView.projectedPoint(.zero), from: modelView)
                 let b = convert(modelView.projectedPoint(CGPoint(x: 1, y: 1)), from: modelView)
-                liveTextView.frame = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x-a.x), height: abs(b.y-a.y))
-            } else { liveTextView.frame = contentLayer.convert(contentLayer.bounds, to: root) }
+                liveTextView.frame = CGRect(
+                    x: min(a.x, b.x),
+                    y: min(a.y, b.y),
+                    width: abs(b.x - a.x),
+                    height: abs(b.y - a.y)
+                )
+            } else {
+                liveTextView.frame = contentLayer.convert(contentLayer.bounds, to: root)
+            }
         }
         if freeFormActive { window?.invalidateCursorRects(for: self) }
     }
 
     /// No Home button bare (⇧⌘H presses it), while the model loads, or over a tilting flat shell.
-    private var homeButtonHidden: Bool { bare || !modelPresentationFinished || (modelView == nil && (tiltAngle != 0 || pitchAngle != 0)) }
+    private var homeButtonHidden: Bool {
+        bare || !modelPresentationFinished || (modelView == nil && (tiltAngle != 0 || pitchAngle != 0))
+    }
 
     /// Scale is independent of a framebuffer arriving before or after rotation.
     var pixelMultiple: CGFloat {
         // Free-form steps in points per guest pixel, the unit its Nx is in.
-        ZoomMode.pixelMultiple(appliedScale: appliedScale, cutoutWidth: screenCutout.width, nativeWidth: nativeScreenPixels.width,
-                               backingScale: window?.backingScaleFactor ?? 2, freeForm: freeFormActive)
+        ZoomMode.pixelMultiple(
+            appliedScale: appliedScale,
+            cutoutWidth: screenCutout.width,
+            nativeWidth: nativeScreenPixels.width,
+            backingScale: window?.backingScaleFactor ?? 2,
+            freeForm: freeFormActive
+        )
     }
 
     private var appliedScale: CGFloat = 1
@@ -634,8 +716,12 @@ final class DisplayView: NSView {
     }
 
     private func shellScale(guestPixelsPerDisplayPixel multiple: Int) -> CGFloat {
-        ZoomMode.shellScale(guestPixelsPerDisplayPixel: multiple, cutoutWidth: screenCutout.width, nativeWidth: nativeScreenPixels.width,
-                            backingScale: window?.backingScaleFactor ?? 2)
+        ZoomMode.shellScale(
+            guestPixelsPerDisplayPixel: multiple,
+            cutoutWidth: screenCutout.width,
+            nativeWidth: nativeScreenPixels.width,
+            backingScale: window?.backingScaleFactor ?? 2
+        )
     }
 
     /// The largest uniform scale that fits `nativeSize` in the pane inset on
@@ -685,7 +771,9 @@ final class DisplayView: NSView {
     /// The resize's status for the window's notice stack (the owner shows it there, one surface with the others):
     /// "W × H" while dragging, "Restarting at W × H…" while this device restarts; nil, none.
     var onPanelStatus: ((String?) -> Void)?
-    private(set) var panelReadoutText: String? { didSet { if oldValue != panelReadoutText { onPanelStatus?(panelReadoutText) } } }
+    private(set) var panelReadoutText: String? {
+        didSet { if oldValue != panelReadoutText { onPanelStatus?(panelReadoutText) } }
+    }
     /// "Restarting at W × H…" for the startup notice of a boot this view's device restarted at a new panel.
     private(set) var restartTitle: String?
 
@@ -744,7 +832,12 @@ final class DisplayView: NSView {
         // One shell unit per guest pixel, centered where the shipped screen sits.
         nativeScreenPixels = size
         let center = CGPoint(x: profile.screenCutout.midX, y: profile.screenCutout.midY)
-        screenCutout = CGRect(x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height)
+        screenCutout = CGRect(
+            x: center.x - size.width / 2,
+            y: center.y - size.height / 2,
+            width: size.width,
+            height: size.height
+        )
     }
 
     /// Upright ⇄ as seen: the device's quarter-turns swap the sides.
@@ -766,7 +859,8 @@ final class DisplayView: NSView {
     /// The edges a press just outside the screen grabs (-1 left/top, +1 right/bottom, 0 neither); nil off the band.
     private func panelEdges(at p: CGPoint) -> CGVector? {
         guard isFreeForm, !restartingAtPanel, let root = layer else { return nil }
-        let r = contentLayer.convert(contentLayer.bounds, to: root), band: CGFloat = 10
+        let r = contentLayer.convert(contentLayer.bounds, to: root)
+        let band: CGFloat = 10
         guard r.insetBy(dx: -band, dy: -band).contains(p), !r.contains(p) else { return nil }
         return CGVector(dx: p.x < r.minX ? -1 : p.x > r.maxX ? 1 : 0, dy: p.y < r.minY ? -1 : p.y > r.maxY ? 1 : 0)
     }
@@ -783,8 +877,12 @@ final class DisplayView: NSView {
         case .leftMouseDragged:
             guard let drag = panelDrag, let scale = dragScale else { return false }
             // The screen stays centered: an edge moves half the size change, so the size changes twice the pointer's.
-            updatePanelTarget(onScreen: CGSize(width: drag.size.width + 2 * (p.x - drag.origin.x) * drag.edges.dx / scale,
-                                               height: drag.size.height + 2 * (p.y - drag.origin.y) * drag.edges.dy / scale))
+            updatePanelTarget(
+                onScreen: CGSize(
+                    width: drag.size.width + 2 * (p.x - drag.origin.x) * drag.edges.dx / scale,
+                    height: drag.size.height + 2 * (p.y - drag.origin.y) * drag.edges.dy / scale
+                )
+            )
             needsLayout = true
         default:
             guard panelDrag != nil else { return false }
@@ -813,7 +911,7 @@ final class DisplayView: NSView {
     private func commitPanel() {
         guard let target = freeFormTarget, isFreeForm, !restartingAtPanel else { return }
         if target == freeFormPanel || !requestPanel(target) {
-            if target != freeFormPanel { runningScan = profile.scan(upright: target) }   // recorded for the next start
+            if target != freeFormPanel { runningScan = profile.scan(upright: target) }  // recorded for the next start
             freeFormPanel = target
             freeFormTarget = nil
             dragScale = nil
@@ -839,14 +937,17 @@ final class DisplayView: NSView {
     override func resetCursorRects() {
         super.resetCursorRects()
         guard isFreeForm, !restartingAtPanel, let root = layer else { return }
-        let r = contentLayer.convert(contentLayer.bounds, to: root), band: CGFloat = 10
+        let r = contentLayer.convert(contentLayer.bounds, to: root)
+        let band: CGFloat = 10
         addCursorRect(CGRect(x: r.minX - band, y: r.minY, width: band, height: r.height), cursor: .resizeLeftRight)
         addCursorRect(CGRect(x: r.maxX, y: r.minY, width: band, height: r.height), cursor: .resizeLeftRight)
         addCursorRect(CGRect(x: r.minX, y: r.minY - band, width: r.width, height: band), cursor: .resizeUpDown)
         addCursorRect(CGRect(x: r.minX, y: r.maxY, width: r.width, height: band), cursor: .resizeUpDown)
-        for x in [r.minX - band, r.maxX] { for y in [r.minY - band, r.maxY] {
-            addCursorRect(CGRect(x: x, y: y, width: band, height: band), cursor: .crosshair)
-        } }
+        for x in [r.minX - band, r.maxX] {
+            for y in [r.minY - band, r.maxY] {
+                addCursorRect(CGRect(x: x, y: y, width: band, height: band), cursor: .crosshair)
+            }
+        }
     }
 
     // MARK: - Frame polling
@@ -913,15 +1014,28 @@ final class DisplayView: NSView {
         surface.decrementUseCount()
         let info: CGBitmapInfo = [.byteOrder32Little, CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue)]
         guard let provider = CGDataProvider(data: data as CFData) else { return nil }
-        return CGImage(width: surface.width, height: surface.height, bitsPerComponent: 8, bitsPerPixel: 32,
-                       bytesPerRow: surface.bytesPerRow, space: colorSpace, bitmapInfo: info,
-                       provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+        return CGImage(
+            width: surface.width,
+            height: surface.height,
+            bitsPerComponent: 8,
+            bitsPerPixel: 32,
+            bytesPerRow: surface.bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: info,
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: false,
+            intent: .defaultIntent
+        )
     }
 
     private var liveTextView: InlineLiveTextView?
     var isShowingLiveText: Bool { liveTextView != nil }
     func toggleLiveText() {
-        if liveTextView != nil { endLiveText(); return }
+        if liveTextView != nil {
+            endLiveText()
+            return
+        }
         guard let image = captureFrame(includeTouches: false) else { return }
         resetMotion()
         let view = InlineLiveTextView(image: image)
@@ -974,7 +1088,9 @@ final class DisplayView: NSView {
         emulator?.link?.send(.touch2(phase: Int(phase), x: x, y: y))
     }
     private func noteTouch(slot: Int, phase: Int32, x: Double, y: Double) {
-        visibleTouches[slot] = (CGPoint(x: x, y: y), phase == TouchPhase.end ? CACurrentMediaTime() + Self.touchFadeDuration : .infinity)
+        visibleTouches[slot] = (
+            CGPoint(x: x, y: y), phase == TouchPhase.end ? CACurrentMediaTime() + Self.touchFadeDuration : .infinity
+        )
         updateTouchOverlay()
     }
     private var touchInteractionEnabled: Bool {
@@ -986,7 +1102,10 @@ final class DisplayView: NSView {
         touchLayers.removeAll()
     }
     private var activeTouches: [(slot: Int, point: CGPoint, opacity: CGFloat)] {
-        guard touchInteractionEnabled else { clearTouchOverlay(); return [] }
+        guard touchInteractionEnabled else {
+            clearTouchOverlay()
+            return []
+        }
         let now = CACurrentMediaTime()
         visibleTouches = visibleTouches.filter { $0.value.expires > now }
         guard showsTouches else { return [] }
@@ -1007,13 +1126,16 @@ final class DisplayView: NSView {
         touchOverlayLayer.frame = layer?.bounds ?? bounds
         for touch in touches {
             let dot: CALayer
-            if let existing = touchLayers[touch.slot] { dot = existing }
-            else {
+            if let existing = touchLayers[touch.slot] {
+                dot = existing
+            } else {
                 dot = CALayer()
                 dot.actions = ["opacity": NSNull(), "position": NSNull(), "bounds": NSNull(), "shadowPath": NSNull()]
                 let gradient = CAGradientLayer()
-                gradient.colors = [NSColor.white.withAlphaComponent(0.95).cgColor,
-                                   NSColor(white: 0.94, alpha: 0.9).cgColor]
+                gradient.colors = [
+                    NSColor.white.withAlphaComponent(0.95).cgColor,
+                    NSColor(white: 0.94, alpha: 0.9).cgColor,
+                ]
                 gradient.startPoint = CGPoint(x: 0.5, y: 0)
                 gradient.endPoint = CGPoint(x: 0.5, y: 1)
                 gradient.masksToBounds = true
@@ -1041,42 +1163,68 @@ final class DisplayView: NSView {
         if let liveTextView { return liveTextView.capturedImage }
         guard let image = capturePanelFrame(includeTouches: includeTouches) else { return nil }
         // Match the window: scan-to-upright plus, where the surface doesn't follow it, the device's own quarter-turn.
-        let turns = PanelCapture.quarterTurns(guestTurn: guestTurn, deviceDegrees: emulator?.rotationDegrees ?? 0,
-                                              surfaceFollowsRotation: profile.surfaceFollowsRotation)
+        let turns = PanelCapture.quarterTurns(
+            guestTurn: guestTurn,
+            deviceDegrees: emulator?.rotationDegrees ?? 0,
+            surfaceFollowsRotation: profile.surfaceFollowsRotation
+        )
         guard turns != 0 else { return image }
         return PanelCapture.rotated(image, clockwiseQuarterTurns: turns) ?? image
     }
 
     private func capturePanelFrame(includeTouches: Bool) -> CGImage? {
         guard let surface = currentFrame(), let image = Self.image(surface, colorSpace: colorSpace) else { return nil }
-        let width = image.width, height = image.height
+        let width = image.width
+        let height = image.height
         let info: CGBitmapInfo = [.byteOrder32Little, CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue)]
         let touches = includeTouches ? activeTouches : []
         guard !touches.isEmpty,
-              let context = CGContext(data: nil, width: Int(width), height: Int(height),
-                                      bitsPerComponent: 8, bytesPerRow: width * 4,
-                                      space: colorSpace, bitmapInfo: info.rawValue) else { return image }
+            let context = CGContext(
+                data: nil,
+                width: Int(width),
+                height: Int(height),
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: colorSpace,
+                bitmapInfo: info.rawValue
+            )
+        else { return image }
         context.draw(image, in: CGRect(x: 0, y: 0, width: Int(width), height: Int(height)))
         let pixelScale = CGFloat(width) / max(contentLayer.bounds.width * appliedScale, 1)
         let diameter = 44 * pixelScale
-        let colors = [NSColor.white.withAlphaComponent(0.95).cgColor,
-                      NSColor(white: 0.94, alpha: 0.9).cgColor] as CFArray
-        guard let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: [0, 1]) else { return image }
+        let colors =
+            [
+                NSColor.white.withAlphaComponent(0.95).cgColor,
+                NSColor(white: 0.94, alpha: 0.9).cgColor,
+            ] as CFArray
+        guard let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: [0, 1]) else {
+            return image
+        }
         for touch in touches {
-            let rect = CGRect(x: touch.point.x * CGFloat(width) - diameter / 2,
-                              y: (1 - touch.point.y) * CGFloat(height) - diameter / 2,
-                              width: diameter, height: diameter)
+            let rect = CGRect(
+                x: touch.point.x * CGFloat(width) - diameter / 2,
+                y: (1 - touch.point.y) * CGFloat(height) - diameter / 2,
+                width: diameter,
+                height: diameter
+            )
             context.saveGState()
             context.setAlpha(touch.opacity)
-            context.setShadow(offset: CGSize(width: 0, height: -2 * pixelScale), blur: 5 * pixelScale,
-                              color: NSColor.black.withAlphaComponent(0.22).cgColor)
+            context.setShadow(
+                offset: CGSize(width: 0, height: -2 * pixelScale),
+                blur: 5 * pixelScale,
+                color: NSColor.black.withAlphaComponent(0.22).cgColor
+            )
             context.setFillColor(NSColor.white.cgColor)
             context.fillEllipse(in: rect)
             context.setShadow(offset: .zero, blur: 0, color: nil)
             context.addEllipse(in: rect)
             context.clip()
-            context.drawLinearGradient(gradient, start: CGPoint(x: rect.midX, y: rect.maxY),
-                                       end: CGPoint(x: rect.midX, y: rect.minY), options: [])
+            context.drawLinearGradient(
+                gradient,
+                start: CGPoint(x: rect.midX, y: rect.maxY),
+                end: CGPoint(x: rect.midX, y: rect.minY),
+                options: []
+            )
             context.restoreGState()
         }
         return context.makeImage()
@@ -1109,7 +1257,7 @@ final class DisplayView: NSView {
         let cp = contentLayer.convert(p, from: rootLayer)
         let b = contentLayer.bounds
         guard b.width > 0, b.height > 0, b.contains(cp) else { return nil }
-        return (Double(cp.x / b.width), Double(cp.y / b.height))   // isFlipped → y-down
+        return (Double(cp.x / b.width), Double(cp.y / b.height))  // isFlipped → y-down
     }
 
     // MARK: - Trackpad gestures
@@ -1148,11 +1296,13 @@ final class DisplayView: NSView {
     /// out. Probes the margin around the point through the same mapping as `normalized`, so it holds for the 3D
     /// model, the flat shell and any rotation or zoom.
     private func nearScreenEdge(_ event: NSEvent) -> (Double, Double)? {
-        let point = event.locationInWindow, m = Self.screenEdgeMargin
+        let point = event.locationInWindow
+        let m = Self.screenEdgeMargin
         let probes = [(-m, 0), (m, 0), (0, -m), (0, m), (-m, -m), (m, -m), (-m, m), (m, m)]
         guard normalized(windowPoint: point) == nil,
-              probes.contains(where: { normalized(windowPoint: NSPoint(x: point.x + $0.0, y: point.y + $0.1)) != nil }),
-              let p = clampedPanelPoint(event) else { return nil }
+            probes.contains(where: { normalized(windowPoint: NSPoint(x: point.x + $0.0, y: point.y + $0.1)) != nil }),
+            let p = clampedPanelPoint(event)
+        else { return nil }
         return (Double(p.x), Double(p.y))
     }
 
@@ -1160,7 +1310,9 @@ final class DisplayView: NSView {
     /// `normalized` this does not fail when the cursor is just outside — a pinch
     /// that drifts off the edge mid-gesture should keep tracking, not stop dead.
     private func clampedPanelPoint(_ event: NSEvent) -> CGPoint? {
-        if let modelView { return modelView.panelPoint(modelView.convert(event.locationInWindow, from: nil), clamped: true) }
+        if let modelView {
+            return modelView.panelPoint(modelView.convert(event.locationInWindow, from: nil), clamped: true)
+        }
         guard let rootLayer = layer else { return nil }
         let cp = contentLayer.convert(convert(event.locationInWindow, from: nil), from: rootLayer)
         let b = contentLayer.bounds
@@ -1191,7 +1343,7 @@ final class DisplayView: NSView {
         case .began:
             guard let p = clampedPanelPoint(event) else { return }
             gestureAnchor = p
-            pinchSpread = 0.12          // a comfortable starting separation
+            pinchSpread = 0.12  // a comfortable starting separation
             pinchingGuest = true
             sendPinch(TouchPhase.begin)
         case .changed:
@@ -1211,7 +1363,8 @@ final class DisplayView: NSView {
     /// Two contacts mirrored through the anchor, along the panel's x axis.
     private func sendPinch(_ phase: Int32) {
         let a = gestureAnchor
-        let x1 = min(max(a.x - pinchSpread, 0), 1), x2 = min(max(a.x + pinchSpread, 0), 1)
+        let x1 = min(max(a.x - pinchSpread, 0), 1)
+        let x2 = min(max(a.x + pinchSpread, 0), 1)
         sendVisualTouch(0, phase, Double(x1), Double(a.y))
         sendVisualTouch2(phase, Double(x2), Double(a.y))
     }
@@ -1251,8 +1404,10 @@ final class DisplayView: NSView {
         // Host tilt ends with the fingers. Momentum belongs to content
         // scrolling, and must not start a second model gesture at the cursor.
         if !scrollTilting && scrollPoint == nil && !event.momentumPhase.isEmpty { return }
-        if scrollPoint == nil && !scrollTilting && (event.phase == .began || (event.phase.isEmpty && event.momentumPhase.isEmpty))
-            && (!cursorOverPanel(event) || event.modifierFlags.contains(.option)) {
+        if scrollPoint == nil && !scrollTilting
+            && (event.phase == .began || (event.phase.isEmpty && event.momentumPhase.isEmpty))
+            && (!cursorOverPanel(event) || event.modifierFlags.contains(.option))
+        {
             beginScrollTilt()
         }
         if scrollTilting {
@@ -1321,7 +1476,8 @@ final class DisplayView: NSView {
         let b = contentLayer.bounds
         guard b.width > 0, b.height > 0, var p = clampedPanelPoint(event) else { return }
         let delta = Self.scrollMovement(event)
-        let dx = delta.dx, dy = delta.dy
+        let dx = delta.dx
+        let dy = delta.dy
         let d = rotatedPanelDelta(dx, dy)
         sendVisualTouch(0, TouchPhase.begin, Double(p.x), Double(p.y))
         p.x = min(max(p.x + d.dx / b.width, 0), 1)
@@ -1341,7 +1497,8 @@ final class DisplayView: NSView {
     private func rotatedPanelDelta(_ dx: CGFloat, _ dy: CGFloat) -> CGVector {
         let a = -(Self.layerAngle(emulator?.rotationDegrees ?? 0) + tiltAngle + guestTurn)  // the scan stands a quarter turn from upright when the guest turned its UI
         let s = max(appliedScale * (contentLayer.bounds.width / max(framePixels.width, 1)), 0.01)
-        let ux = dx / s, uy = dy / s
+        let ux = dx / s
+        let uy = dy / s
         return CGVector(dx: ux * cos(a) - uy * sin(a), dy: ux * sin(a) + uy * cos(a))
     }
 
@@ -1373,7 +1530,7 @@ final class DisplayView: NSView {
                 }
             }
         case .ended, .cancelled:
-            endTilt()          // springs the shell back and restores gravity
+            endTilt()  // springs the shell back and restores gravity
         default:
             break
         }
@@ -1382,7 +1539,11 @@ final class DisplayView: NSView {
     /// Precise deltas are points; conventional wheels report lines. Preserve
     /// both signs because NSEvent has already honored the system preference.
     private static func scrollMovement(_ event: NSEvent) -> CGVector {
-        ChassisTilt.scrollMovement(dx: event.scrollingDeltaX, dy: event.scrollingDeltaY, precise: event.hasPreciseScrollingDeltas)
+        ChassisTilt.scrollMovement(
+            dx: event.scrollingDeltaX,
+            dy: event.scrollingDeltaY,
+            precise: event.hasPreciseScrollingDeltas
+        )
     }
 
     override func rotate(with event: NSEvent) {
@@ -1392,7 +1553,10 @@ final class DisplayView: NSView {
             tilt.beginTwist(rotation: emulator?.rotationDegrees ?? 0)
         }
         guard rotatingChassis else { return }
-        if event.phase == .ended || event.phase == .cancelled { endTilt(); return }
+        if event.phase == .ended || event.phase == .cancelled {
+            endTilt()
+            return
+        }
         // NSEvent rotation is incremental counterclockwise degrees; this
         // flipped view's roll is clockwise radians. Scrolling preferences do
         // not affect a physical two-finger twist.
@@ -1413,7 +1577,9 @@ final class DisplayView: NSView {
             shellLayer.removeAnimation(forKey: "tiltSnap")
             return
         }
-        if let (nx, ny) = normalized(event) ?? nearScreenEdge(event) { touchPair.down(at: CGPoint(x: nx, y: ny), event.modifierFlags) }
+        if let (nx, ny) = normalized(event) ?? nearScreenEdge(event) {
+            touchPair.down(at: CGPoint(x: nx, y: ny), event.modifierFlags)
+        }
         emit(event, TouchPhase.begin)
     }
 
@@ -1434,7 +1600,10 @@ final class DisplayView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         if panelResize(event) { return }
-        if tilting { endTilt(); return }
+        if tilting {
+            endTilt()
+            return
+        }
         emit(event, TouchPhase.end)
         touchPair.up()
         updatePairRings(event.modifierFlags)
@@ -1447,10 +1616,14 @@ final class DisplayView: NSView {
     /// Option-Shift locks their spacing (Simulator's convention).
     private func updatePairRings(_ flags: NSEvent.ModifierFlags) {
         guard !touchDown else { return }
-        let point = window.flatMap { normalized(windowPoint: $0.mouseLocationOutsideOfEventStream) }.map { CGPoint(x: $0.0, y: $0.1) }
+        let point = window.flatMap { normalized(windowPoint: $0.mouseLocationOutsideOfEventStream) }.map {
+            CGPoint(x: $0.0, y: $0.1)
+        }
         touchPair.track(KeyModifiers(flags), at: point)
-        guard touchInteractionEnabled, let point, let second = touchPair.secondFinger(for: point, KeyModifiers(flags)) else {
-            showPairRings(nil); return
+        guard touchInteractionEnabled, let point, let second = touchPair.secondFinger(for: point, KeyModifiers(flags))
+        else {
+            showPairRings(nil)
+            return
         }
         showPairRings((point, second))
     }
@@ -1477,7 +1650,7 @@ final class DisplayView: NSView {
     /// on to, so the same rate that feels direct under a finger feels wild here.
     /// A full trackpad sweep is a few degrees, which is the range tilt games use.
     private var tilting: Bool { tilt.tilting }
-    private var tiltAngle: CGFloat { tilt.tiltAngle }   // current drag delta from rest
+    private var tiltAngle: CGFloat { tilt.tiltAngle }  // current drag delta from rest
 
     /// The shell layer's rest rotation for a guest orientation, signed so 270°
     /// comes in as a single quarter turn (-π/2), not three of them — the
@@ -1491,7 +1664,8 @@ final class DisplayView: NSView {
 
     /// The model's side buttons are hardware, like Home: they work asleep too.
     private func pressModelControl(_ event: NSEvent) -> Bool {
-        guard let modelView, let control = modelView.control(at: modelView.convert(event.locationInWindow, from: nil)) else { return false }
+        guard let modelView, let control = modelView.control(at: modelView.convert(event.locationInWindow, from: nil))
+        else { return false }
         switch control {
         case .sleepWake: emulator?.pressLock()
         case .volumeUp: emulator?.pressVolumeUp()
@@ -1525,15 +1699,26 @@ final class DisplayView: NSView {
     }
 
     private func updateModelPose(animated: Bool = false, spring: Bool = false) {
-        (modelView ?? pendingModelView)?.pose(scale: appliedScale, rotation: emulator?.rotationDegrees ?? 0,
-                        roll: tiltAngle, pitch: pitchAngle,
-                        flat: emulator?.motionPose == .flat, animated: animated, spring: spring)
+        (modelView ?? pendingModelView)?.pose(
+            scale: appliedScale,
+            rotation: emulator?.rotationDegrees ?? 0,
+            roll: tiltAngle,
+            pitch: pitchAngle,
+            flat: emulator?.motionPose == .flat,
+            animated: animated,
+            spring: spring
+        )
     }
 
     private func projectedPanelPoint(_ point: CGPoint) -> CGPoint {
         if let modelView { return convert(modelView.projectedPoint(point), from: modelView) }
-        return contentLayer.convert(CGPoint(x: point.x * contentLayer.bounds.width,
-                                           y: point.y * contentLayer.bounds.height), to: layer)
+        return contentLayer.convert(
+            CGPoint(
+                x: point.x * contentLayer.bounds.width,
+                y: point.y * contentLayer.bounds.height
+            ),
+            to: layer
+        )
     }
 
     @objc private func levelAttitude(_ sender: Any?) { resetMotion() }
@@ -1630,7 +1815,12 @@ final class DisplayView: NSView {
 
     private func send(_ touch: KeyboardPointer.Touch?) {
         guard let touch else { return }
-        let phase = switch touch.phase { case .begin: TouchPhase.begin; case .update: TouchPhase.update; case .end: TouchPhase.end }
+        let phase =
+            switch touch.phase {
+            case .begin: TouchPhase.begin
+            case .update: TouchPhase.update
+            case .end: TouchPhase.end
+            }
         sendVisualTouch(0, phase, touch.point.x, touch.point.y, keyboard: true)
     }
 
@@ -1638,8 +1828,11 @@ final class DisplayView: NSView {
 
     /// Tab out of the screen (KeyboardPointer.focusMove).
     private func moveFocusOut(_ event: NSEvent) -> Bool {
-        switch KeyboardPointer.focusMove(keyCode: event.keyCode, modifiers: KeyModifiers(event.modifierFlags),
-                                         typingOff: emulator?.keyboardInputEnabled == false) {
+        switch KeyboardPointer.focusMove(
+            keyCode: event.keyCode,
+            modifiers: KeyModifiers(event.modifierFlags),
+            typingOff: emulator?.keyboardInputEnabled == false
+        ) {
         case .next?: window?.selectNextKeyView(self)
         case .previous?: window?.selectPreviousKeyView(self)
         case nil: return false
@@ -1648,15 +1841,21 @@ final class DisplayView: NSView {
     }
 
     private func keyboardPointerKey(_ event: NSEvent, down: Bool) -> Bool {
-        let (handled, touches) = keyboardPointer.key(event.keyCode, down: down, modifiers: KeyModifiers(event.modifierFlags),
-                                                     typingOff: emulator?.keyboardInputEnabled == false,
-                                                     canTouch: touchInteractionEnabled && !touchDown && !pinchingGuest && scrollPoint == nil)
+        let (handled, touches) = keyboardPointer.key(
+            event.keyCode,
+            down: down,
+            modifiers: KeyModifiers(event.modifierFlags),
+            typingOff: emulator?.keyboardInputEnabled == false,
+            canTouch: touchInteractionEnabled && !touchDown && !pinchingGuest && scrollPoint == nil
+        )
         touches.forEach(send)
         return handled
     }
 
     private func updateKeyboardPointer() {
-        let active = touchInteractionEnabled && emulator?.keyboardInputEnabled == false && window?.isKeyWindow == true && window?.firstResponder === self
+        let active =
+            touchInteractionEnabled && emulator?.keyboardInputEnabled == false && window?.isKeyWindow == true
+            && window?.firstResponder === self
         if !active { endKeyboardTouch() }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -1670,14 +1869,14 @@ final class DisplayView: NSView {
     private var consumedWakeSpace = false
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 49, event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
-           consumedWakeSpace || (emulator?.isSleeping == true && emulator?.acceptsInput == true) {
+            consumedWakeSpace || (emulator?.isSleeping == true && emulator?.acceptsInput == true)
+        {
             if !consumedWakeSpace && !event.isARepeat { emulator?.pressLock() }
             consumedWakeSpace = true
             return
         }
         if isShowingLiveText {
-            if event.keyCode == 53 { endLiveText() }
-            else { super.keyDown(with: event) }
+            if event.keyCode == 53 { endLiveText() } else { super.keyDown(with: event) }
             return
         }
         if moveFocusOut(event) { return }
@@ -1687,9 +1886,14 @@ final class DisplayView: NSView {
             return
         }
         if keyboardPointerKey(event, down: true) { return }
-        if !hasMarkedText(), GuestKeyboard.passesThrough(keyCode: event.keyCode, characters: event.characters,
-                                                          shift: event.modifierFlags.contains(.shift),
-                                                          inputSource: inputContext?.selectedKeyboardInputSource) {
+        if !hasMarkedText(),
+            GuestKeyboard.passesThrough(
+                keyCode: event.keyCode,
+                characters: event.characters,
+                shift: event.modifierFlags.contains(.shift),
+                inputSource: inputContext?.selectedKeyboardInputSource
+            )
+        {
             pressKey(event.keyCode)
         } else {
             // Another layout, a dead key or an input method: the text input system composes, insertText sends.
@@ -1713,11 +1917,17 @@ final class DisplayView: NSView {
     /// Focus left the screen (another view, window or app): every key the guest has down goes up.
     @objc func releaseHeldKeys() {
         for code in heldKeys.releaseAll() { emulator?.sendKey(macKeyCode: code, down: false) }
-        if hasMarkedText() { inputContext?.discardMarkedText(); unmarkText() }
+        if hasMarkedText() {
+            inputContext?.discardMarkedText()
+            unmarkText()
+        }
     }
 
     override func keyUp(with event: NSEvent) {
-        if event.keyCode == 49 && consumedWakeSpace { consumedWakeSpace = false; return }
+        if event.keyCode == 49 && consumedWakeSpace {
+            consumedWakeSpace = false
+            return
+        }
         if !keyboardPointer.touchKeys.isEmpty, keyboardPointerKey(event, down: false) { return }
         if isShowingLiveText { return }
         if !event.modifierFlags.intersection([.command, .control]).isEmpty {
@@ -1757,8 +1967,12 @@ final class DisplayView: NSView {
 
     // MARK: - Drag & drop
 
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { dropHighlight.show(for: dropOperation(sender)) }
-    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { dropHighlight.show(for: dropOperation(sender)) }
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        dropHighlight.show(for: dropOperation(sender))
+    }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        dropHighlight.show(for: dropOperation(sender))
+    }
     override func draggingExited(_ sender: NSDraggingInfo?) { dropHighlight.show(for: []) }
     override func draggingEnded(_ sender: NSDraggingInfo) { dropHighlight.show(for: []) }
     private lazy var dropHighlight = DropHighlight.install(in: self)
@@ -1784,7 +1998,8 @@ final class DisplayView: NSView {
         // the Finder as its .ipa), but dropping one back on the device would
         // just reinstall what's already there — only OUTSIDE files install.
         guard sender.draggingSource == nil else { return [] }
-        let count = (onDropIPA == nil ? 0 : dropped(sender, .ipa).count)
+        let count =
+            (onDropIPA == nil ? 0 : dropped(sender, .ipa).count)
             + (onDropMedia == nil ? 0 : dropped(sender, .media).count)
         guard count > 0 else { return [] }
         sender.numberOfValidItemsForDrop = count
@@ -1809,7 +2024,7 @@ final class DisplayView: NSView {
         let ipas = dropped(sender, .ipa)
         let media = dropped(sender, .media)
         guard !ipas.isEmpty || !media.isEmpty else { return false }
-        ipas.forEach { onDropIPA?($0) }   // AppInstaller queues them
+        ipas.forEach { onDropIPA?($0) }  // AppInstaller queues them
         media.forEach { onDropMedia?($0) }
         return true
     }
@@ -1867,14 +2082,21 @@ extension DisplayView: NSTextInputClient {
         if let keyInText { pressKey(keyInText.keyCode) }
     }
     func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
-        markedText = NSMutableAttributedString(attributedString: (string as? NSAttributedString) ?? NSAttributedString(string: string as? String ?? ""))
+        markedText = NSMutableAttributedString(
+            attributedString: (string as? NSAttributedString) ?? NSAttributedString(string: string as? String ?? "")
+        )
     }
     func unmarkText() { markedText = NSMutableAttributedString() }
     func selectedRange() -> NSRange { NSRange(location: markedText.length, length: 0) }
-    func markedRange() -> NSRange { markedText.length > 0 ? NSRange(location: 0, length: markedText.length) : NSRange(location: NSNotFound, length: 0) }
+    func markedRange() -> NSRange {
+        markedText.length > 0
+            ? NSRange(location: 0, length: markedText.length) : NSRange(location: NSNotFound, length: 0)
+    }
     func hasMarkedText() -> Bool { markedText.length > 0 }
     func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? {
-        guard let clipped = Range(range, in: markedText.string).map({ NSRange($0, in: markedText.string) }) else { return nil }
+        guard let clipped = Range(range, in: markedText.string).map({ NSRange($0, in: markedText.string) }) else {
+            return nil
+        }
         actualRange?.pointee = clipped
         return markedText.attributedSubstring(from: clipped)
     }

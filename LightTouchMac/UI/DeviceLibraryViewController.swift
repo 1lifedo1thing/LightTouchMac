@@ -5,24 +5,30 @@
 // which entry they are for (the clicked row for its context menu, the
 // selection otherwise).
 
-import LightTouchCore
+import Cocoa
 import FirmwareSchema
 import HostRuntime
-import Cocoa
+import LightTouchCore
 import UniformTypeIdentifiers
 
 @MainActor protocol DeviceLibraryDelegate: AnyObject {
     func library(_ library: DeviceLibraryViewController, didSelect entry: FirmwareCatalog.Entry?)
     /// Row states changed; the selection didn't.
     func libraryRowsDidChange(_ library: DeviceLibraryViewController)
-    func library(_ library: DeviceLibraryViewController, canPerform action: DeviceAction, for entry: FirmwareCatalog.Entry) -> Bool
+    func library(
+        _ library: DeviceLibraryViewController,
+        canPerform action: DeviceAction,
+        for entry: FirmwareCatalog.Entry
+    ) -> Bool
     func library(_ library: DeviceLibraryViewController, perform action: DeviceAction, for entry: FirmwareCatalog.Entry)
     /// A dropped IPSW, with the row it was dropped on.
     func library(_ library: DeviceLibraryViewController, importIPSW url: URL, for entry: FirmwareCatalog.Entry?)
 }
 
-final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate, NSTextFieldDelegate,
-                                         NSMenuItemValidation {
+final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate,
+    NSMenuDelegate, NSTextFieldDelegate,
+    NSMenuItemValidation
+{
 
     /// Outline items are objects so the outline can keep them.
     private final class Entry {
@@ -105,10 +111,16 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         for name in [DeviceLibrary.didChangeNotification, FirmwareJobs.didChangeNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(stateDidChange), name: name, object: nil)
         }
-        NotificationCenter.default.addObserver(self, selector: #selector(sessionsDidChange),
-                                               name: DeviceSessionHost.didChangeNotification, object: nil)
-        sessionTracking = ObservationLoop(read: { [weak self] in self?.trackedSessionState() },
-                                          onChange: { [weak self] in self?.stateDidChange() })
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(sessionsDidChange),
+            name: DeviceSessionHost.didChangeNotification,
+            object: nil
+        )
+        sessionTracking = ObservationLoop(
+            read: { [weak self] in self?.trackedSessionState() },
+            onChange: { [weak self] in self?.stateDidChange() }
+        )
     }
 
     /// What a row shows of its running device: the session's phase (running, stopping, stopped, dead and why).
@@ -144,7 +156,8 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         let targets = targetEntries
         guard targets.count > 1 else {
             return targets.first.map { row(for: $0) }.map {
-                $0.instanceID != nil ? delegate?.library(self, canPerform: .delete, for: $0.entry) == true : $0.canRemoveFromSidebar
+                $0.instanceID != nil
+                    ? delegate?.library(self, canPerform: .delete, for: $0.entry) == true : $0.canRemoveFromSidebar
             } ?? false
         }
         return !batch(targets).isEmpty
@@ -197,7 +210,9 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
     /// A device prepared, a download started or an IPSW dropped for an entry not in the list: it joins the list.
     private func adoptOwned() {
         // A failed job stays listed for its row's error; it doesn't bring back a row the user removed.
-        let running = FirmwareJobs.shared.jobs.compactMap { id, job -> String? in if case .failed = job { nil } else { id } }
+        let running = FirmwareJobs.shared.jobs.compactMap { id, job -> String? in
+            if case .failed = job { nil } else { id }
+        }
         let owned = host.library.instances.map(\.firmware) + running
         if list.add(owned.filter { host.catalog.entry(id: $0) != nil }) { listDidChange() }
     }
@@ -215,7 +230,9 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         var batch = Batch()
         for entry in entries {
             let row = row(for: entry)
-            if row.instanceID != nil, row.canRemoveFromSidebar, delegate?.library(self, canPerform: .delete, for: entry) == true {
+            if row.instanceID != nil, row.canRemoveFromSidebar,
+                delegate?.library(self, canPerform: .delete, for: entry) == true
+            {
                 batch.delete.append(entry)
             } else if row.instanceID == nil, row.canRemoveFromSidebar {
                 batch.remove.append(entry)
@@ -230,7 +247,10 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
     /// (`remove`); several ask once if any is prepared, else leave at once.
     func removeTargets() {
         let targets = targetEntries
-        guard targets.count > 1 else { targets.first.map(remove); return }
+        guard targets.count > 1 else {
+            targets.first.map(remove)
+            return
+        }
         let batch = batch(targets)
         guard !batch.isEmpty else { return }
         guard !batch.delete.isEmpty, let window = view.window else { return finish(batch) }
@@ -242,7 +262,10 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
     }
 
     /// Shows the batch question and a failed deletion; a check answers them without a window on screen.
-    var presentAlert: (NSAlert, NSWindow, @escaping (NSApplication.ModalResponse) -> Void) -> Void = { alert, window, done in
+    var presentAlert: (NSAlert, NSWindow, @escaping (NSApplication.ModalResponse) -> Void) -> Void = {
+        alert,
+        window,
+        done in
         alert.beginSheetModal(for: window, completionHandler: done)
     }
 
@@ -251,10 +274,12 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         let alert = NSAlert()
         alert.alertStyle = .critical
         alert.messageText = count == 1 ? "Delete \(name(batch.delete[0]))?" : "Delete \(count) devices?"
-        var info = "This permanently removes the apps, settings, and saved state of "
+        var info =
+            "This permanently removes the apps, settings, and saved state of "
             + ListFormatter.localizedString(byJoining: batch.delete.map(name)) + "."
         if !batch.skipped.isEmpty {
-            info += " " + ListFormatter.localizedString(byJoining: batch.skipped.map(name))
+            info +=
+                " " + ListFormatter.localizedString(byJoining: batch.skipped.map(name))
                 + (batch.skipped.count == 1 ? " is" : " are") + " running or busy and stays."
         }
         alert.informativeText = info
@@ -280,14 +305,18 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
                     listDidChange()
                 } catch { errors.append(error) }
             }
-            if let error = errors.first, let window = view.window { presentAlert(NSAlert(error: error), window) { _ in } }
+            if let error = errors.first, let window = view.window {
+                presentAlert(NSAlert(error: error), window) { _ in }
+            }
         }
     }
 
     // MARK: - Selection
 
     /// The one selected row; nil with none or several (single-device commands need exactly one).
-    var selectedEntry: FirmwareCatalog.Entry? { outline.selectedRowIndexes.count == 1 ? entry(at: outline.selectedRow) : nil }
+    var selectedEntry: FirmwareCatalog.Entry? {
+        outline.selectedRowIndexes.count == 1 ? entry(at: outline.selectedRow) : nil
+    }
     var selectedEntries: [FirmwareCatalog.Entry] { outline.selectedRowIndexes.compactMap(entry(at:)) }
 
     func row(for entry: FirmwareCatalog.Entry) -> DeviceRow { rows[entry.id] ?? host.row(for: entry) }
@@ -322,7 +351,10 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
 
     // MARK: - State
 
-    @objc private func stateDidChange() { adoptOwned(); refresh() }
+    @objc private func stateDidChange() {
+        adoptOwned()
+        refresh()
+    }
 
     /// Redraws only the rows whose state changed; status changes arrive often.
     private func refresh() {
@@ -339,7 +371,10 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         // every second).
         for index in changed {
             let entry = items[index].entry
-            (outline.view(atColumn: 0, row: index, makeIfNecessary: false) as? DeviceRowCell)?.update(row(for: entry), label: list.label(for: entry))
+            (outline.view(atColumn: 0, row: index, makeIfNecessary: false) as? DeviceRowCell)?.update(
+                row(for: entry),
+                label: list.label(for: entry)
+            )
         }
         // The placeholder and menus read the same rows.
         delegate?.libraryRowsDidChange(self)
@@ -388,7 +423,7 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         if !cancelledRename {
             list.rename(entry.id, to: control.stringValue, defaultTitle: SidebarList.label(for: entry, name: nil).title)
         }
-        cancelledRename = true   // one finish per edit
+        cancelledRename = true  // one finish per edit
         listDidChange()
         view.window?.makeFirstResponder(outline)
         delegate?.libraryRowsDidChange(self)
@@ -406,7 +441,9 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
 
     // MARK: - Delegate
 
-    func outlineView(_ outlineView: NSOutlineView, typeSelectStringFor tableColumn: NSTableColumn?, item: Any) -> String? {
+    func outlineView(_ outlineView: NSOutlineView, typeSelectStringFor tableColumn: NSTableColumn?, item: Any)
+        -> String?
+    {
         (item as? Entry).map { list.label(for: $0.entry).title }
     }
 
@@ -414,7 +451,8 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let entry = (item as? Entry)?.entry else { return nil }
-        let cell = outlineView.makeView(withIdentifier: DeviceRowCell.identifier, owner: nil) as? DeviceRowCell
+        let cell =
+            outlineView.makeView(withIdentifier: DeviceRowCell.identifier, owner: nil) as? DeviceRowCell
             ?? DeviceRowCell()
         cell.update(row(for: entry), label: list.label(for: entry))
         return cell
@@ -432,7 +470,8 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         (.downloadAndPrepare, "Download and Prepare"), (.importIPSW, "Import IPSW…"), (.cancel, "Cancel"), (nil, ""),
         (.showInFinder, "Show in Finder"),
         (.openFilesystem, "Show File System in Finder"), (.commitFilesystem, "Save File System Changes"),
-        (.discardFilesystem, "Discard File System Changes"), (.recoverFilesystem, "Finish File System Recovery"), (nil, ""),
+        (.discardFilesystem, "Discard File System Changes"), (.recoverFilesystem, "Finish File System Recovery"),
+        (nil, ""),
         (.erase, "Erase All Content and Settings…"),
     ]
 
@@ -441,7 +480,11 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         let targets = targetEntries
         if targets.count > 1 {
             let batch = batch(targets)
-            let remove = NSMenuItem(title: Self.batchTitle(batch), action: #selector(removeFromMenu(_:)), keyEquivalent: "")
+            let remove = NSMenuItem(
+                title: Self.batchTitle(batch),
+                action: #selector(removeFromMenu(_:)),
+                keyEquivalent: ""
+            )
             remove.target = self
             menu.addItem(remove)
             return
@@ -455,9 +498,12 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
             if action == .cancel, delegate?.library(self, canPerform: .cancel, for: entry) != true { continue }
             // One item whose title follows the row: Shut Down while it runs, Start otherwise.
             let running = [.running, .stopping].contains(row(for: entry).state)
-            let (command, label) = action == .start && running ? (DeviceAction.stop, "Shut Down…")
-                : action == .downloadAndPrepare ? (action, row(for: entry).prepareTitle)
-                : action == .cancel ? (action, row(for: entry).cancelTitle) : (action, title)
+            let (command, label) =
+                action == .start && running
+                ? (DeviceAction.stop, "Shut Down…")
+                : action == .downloadAndPrepare
+                    ? (action, row(for: entry).prepareTitle)
+                    : action == .cancel ? (action, row(for: entry).cancelTitle) : (action, title)
             let item = NSMenuItem(title: label, action: #selector(contextAction(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = command
@@ -467,7 +513,11 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         let rename = NSMenuItem(title: "Rename", action: #selector(renameFromMenu(_:)), keyEquivalent: "")
         rename.target = self
         menu.addItem(rename)
-        let remove = NSMenuItem(title: row(for: entry).removeTitle, action: #selector(removeFromMenu(_:)), keyEquivalent: "")
+        let remove = NSMenuItem(
+            title: row(for: entry).removeTitle,
+            action: #selector(removeFromMenu(_:)),
+            keyEquivalent: ""
+        )
         remove.target = self
         menu.addItem(remove)
     }
@@ -497,34 +547,51 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
     // MARK: - IPSW and .ipa drops
 
     private static func files(_ info: NSDraggingInfo, _ kind: DroppedFiles) -> [URL] {
-        DroppedFiles.files(info.draggingPasteboard.readObjects(forClasses: [NSURL.self],
-                                                               options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? [], kind)
+        DroppedFiles.files(
+            info.draggingPasteboard.readObjects(
+                forClasses: [NSURL.self],
+                options: [.urlReadingFileURLsOnly: true]
+            ) as? [URL] ?? [],
+            kind
+        )
     }
     private static func ipsws(_ info: NSDraggingInfo) -> [URL] { files(info, .ipsw) }
 
     /// The running device behind a row that can take an .ipa now.
     private func installTarget(_ item: Any?) -> EmulatorController? {
         guard let entry = (item as? Entry)?.entry, let emulator = host.session(for: entry)?.emulator,
-              emulator.canQueueInstall else { return nil }
+            emulator.canQueueInstall
+        else { return nil }
         return emulator
     }
 
-    func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo,
-                     proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
+    func outlineView(
+        _ outlineView: NSOutlineView,
+        validateDrop info: NSDraggingInfo,
+        proposedItem item: Any?,
+        proposedChildIndex index: Int
+    ) -> NSDragOperation {
         // An .ipa installs on the running device whose row it lands on.
         if !Self.files(info, .ipa).isEmpty {
             guard installTarget(item) != nil else { return [] }
-            if index != NSOutlineViewDropOnItemIndex { outlineView.setDropItem(item, dropChildIndex: NSOutlineViewDropOnItemIndex) }
+            if index != NSOutlineViewDropOnItemIndex {
+                outlineView.setDropItem(item, dropChildIndex: NSOutlineViewDropOnItemIndex)
+            }
             return .copy
         }
         guard !Self.ipsws(info).isEmpty else { return [] }
         // Onto a version row names the entry; anywhere else lets the catalog decide.
-        if !(item is Entry) { outlineView.setDropItem(nil, dropChildIndex: NSOutlineViewDropOnItemIndex) }
-        else if index != NSOutlineViewDropOnItemIndex { outlineView.setDropItem(item, dropChildIndex: NSOutlineViewDropOnItemIndex) }
+        if !(item is Entry) {
+            outlineView.setDropItem(nil, dropChildIndex: NSOutlineViewDropOnItemIndex)
+        } else if index != NSOutlineViewDropOnItemIndex {
+            outlineView.setDropItem(item, dropChildIndex: NSOutlineViewDropOnItemIndex)
+        }
         return .copy
     }
 
-    func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
+    func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int)
+        -> Bool
+    {
         let ipas = Self.files(info, .ipa)
         if !ipas.isEmpty {
             guard let emulator = installTarget(item) else { return false }
@@ -545,10 +612,13 @@ private final class SidebarOutlineView: NSOutlineView {
     /// Return on one selected row renames it, as in the Finder's sidebar.
     var onRename: ((Int) -> Void)?
     override func keyDown(with event: NSEvent) {
-        if [.delete, .deleteForward].contains(event.specialKey), event.modifierFlags.isDisjoint(with: [.command, .option, .control]) {
+        if [.delete, .deleteForward].contains(event.specialKey),
+            event.modifierFlags.isDisjoint(with: [.command, .option, .control])
+        {
             onDelete?()
         } else if [.carriageReturn, .enter].contains(event.specialKey),
-                  event.modifierFlags.isDisjoint(with: [.command, .option, .control, .shift]), selectedRowIndexes.count == 1 {
+            event.modifierFlags.isDisjoint(with: [.command, .option, .control, .shift]), selectedRowIndexes.count == 1
+        {
             onRename?(selectedRow)
         } else {
             super.keyDown(with: event)
@@ -639,9 +709,15 @@ final class DeviceRowCell: NSTableCellView {
         icon.isHidden = icon.image == nil
         icon.alphaValue = row.isDimmed ? 0.5 : 1
         let size = row.entry.source.bytes.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
-        toolTip = (["iOS \(row.entry.version) (\(row.entry.build))",
-                    row.supportNote, row.accessory == .notDownloaded ? size.map { "Not downloaded, \($0)" } ?? "Not downloaded" : nil]
-                   + [row.progressHeadline] + row.progressDetail + [row.progressLine]).compactMap { $0 }.joined(separator: "\n")
+        toolTip =
+            ([
+                "iOS \(row.entry.version) (\(row.entry.build))",
+                row.supportNote,
+                row.accessory == .notDownloaded ? size.map { "Not downloaded, \($0)" } ?? "Not downloaded" : nil,
+            ]
+            + [row.progressHeadline] + row.progressDetail + [row.progressLine]).compactMap { $0 }.joined(
+                separator: "\n"
+            )
 
         detail.isHidden = true
         ring.isHidden = true
@@ -650,19 +726,21 @@ final class DeviceRowCell: NSTableCellView {
         switch row.accessory {
         case .none: break
         case .notDownloaded: show(symbol: "arrow.down.circle", color: .tertiaryLabelColor, size: 12)
-        case let .progress(fraction): spin(fraction: fraction)
+        case .progress(let fraction): spin(fraction: fraction)
         case .running: show(symbol: "circle.fill", color: .systemGreen, size: 8)
         case .stopping: spin(fraction: nil)
         case .error: show(symbol: "exclamationmark.triangle.fill", color: .systemYellow, size: 12)
-        case let .text(text): show(text)
+        case .text(let text): show(text)
         }
         if let note = row.note, detail.isHidden { show(note) }
         // One element per row for VoiceOver: "iPad1,1, iOS 4.2 beta 1, Running, Untested".
         setAccessibilityElement(true)
         setAccessibilityRole(.cell)
-        setAccessibilityLabel(([label.title, label.subtitle, row.stateDescription] + [row.note, row.supportNote].compactMap { $0 })
-            .joined(separator: ", "))
-        if case let .error(reason) = row.state { setAccessibilityHelp(reason) } else { setAccessibilityHelp(nil) }
+        setAccessibilityLabel(
+            ([label.title, label.subtitle, row.stateDescription] + [row.note, row.supportNote].compactMap { $0 })
+                .joined(separator: ", ")
+        )
+        if case .error(let reason) = row.state { setAccessibilityHelp(reason) } else { setAccessibilityHelp(nil) }
     }
 
     private func show(_ text: String?) {

@@ -34,7 +34,8 @@ public enum IPhoneIdentity {
     /// nil when it lacks what the UDID needs.
     public static func upgraded(_ identity: [String: Any]) -> (imei: String, udid: String)? {
         guard let serial = identity["serial-number"] as? String, let wifi = identity["wifi-mac"] as? String,
-              let bt = identity["bt-mac"] as? String else { return nil }
+            let bt = identity["bt-mac"] as? String
+        else { return nil }
         let imei = identity["imei"] as? String ?? (identity["seed"] as? String).map(imei(seed:))
         return imei.map { ($0, udid(serial: serial, imei: $0, wifiMAC: wifi, btMAC: bt)) }
     }

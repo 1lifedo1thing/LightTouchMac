@@ -1,8 +1,8 @@
 // The Store rows' AppKit side of the Legacy Store client (LightTouchCore's CatalogClient): the
 // catalog row's drag type and its icons.
 
-import LightTouchCore
 import Cocoa
+import LightTouchCore
 
 extension NSPasteboard.PasteboardType {
     /// A JSON-encoded CatalogApp riding a drag out of the Store list, so the
@@ -19,8 +19,9 @@ extension CatalogClient {
         guard let url = app.iconURL else { return nil }
         if let memo = iconMemo.object(forKey: url.absoluteString as NSString) { return memo }
         guard let (data, response) = try? await URLSession.shared.data(for: request(url)),
-              (response as? HTTPURLResponse)?.statusCode == 200,
-              let image = NSImage(data: data) else { return nil }
+            (response as? HTTPURLResponse)?.statusCode == 200,
+            let image = NSImage(data: data)
+        else { return nil }
         iconMemo.setObject(image, forKey: url.absoluteString as NSString)
         return image
     }

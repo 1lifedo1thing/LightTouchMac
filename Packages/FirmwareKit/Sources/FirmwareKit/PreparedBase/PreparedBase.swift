@@ -35,14 +35,20 @@ public enum PreparedBase {
     public static func pack(base: URL, to blob: URL) throws {
         let fm = FileManager.default
         var names: [String] = []
-        guard let walk = fm.enumerator(atPath: base.path) else { throw FirmwareError(.internal, "can't read \(base.path)") }
+        guard let walk = fm.enumerator(atPath: base.path) else {
+            throw FirmwareError(.internal, "can't read \(base.path)")
+        }
         while let name = walk.nextObject() as? String {
-            if (walk.fileAttributes?[.type] as? FileAttributeType) == .typeRegular, (name as NSString).lastPathComponent != ".DS_Store" {
+            if (walk.fileAttributes?[.type] as? FileAttributeType) == .typeRegular,
+                (name as NSString).lastPathComponent != ".DS_Store"
+            {
                 names.append(name)
             }
         }
         names.sort()
-        guard names.contains("device.lock.json") else { throw FirmwareError(.unsupported, "\(base.path) has no device.lock.json") }
+        guard names.contains("device.lock.json") else {
+            throw FirmwareError(.unsupported, "\(base.path) has no device.lock.json")
+        }
         let lock = try scrubbedLock(Data(contentsOf: base.appendingPathComponent("device.lock.json")))
         let entries = try names.map { name -> Entry in
             let attributes = try fm.attributesOfItem(atPath: base.appendingPathComponent(name).path)
@@ -57,7 +63,9 @@ public enum PreparedBase {
         withUnsafeBytes(of: UInt32(index.count).littleEndian) { head.append(contentsOf: $0) }
         try out.write(contentsOf: head + index)
         var z = z_stream()
-        guard deflateInit_(&z, 6, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size)) == Z_OK else { throw FirmwareError(.internal, "deflateInit") }
+        guard deflateInit_(&z, 6, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size)) == Z_OK else {
+            throw FirmwareError(.internal, "deflateInit")
+        }
         defer { deflateEnd(&z) }
         var buffer = [UInt8](repeating: 0, count: chunk)
         func deflate(_ input: Data, finish: Bool) throws {
@@ -77,7 +85,10 @@ public enum PreparedBase {
             }
         }
         for name in names {
-            if name == "device.lock.json" { try deflate(lock, finish: false); continue }
+            if name == "device.lock.json" {
+                try deflate(lock, finish: false)
+                continue
+            }
             let input = try FileHandle(forReadingFrom: base.appendingPathComponent(name))
             defer { try? input.close() }
             while let data = try input.read(upToCount: chunk), !data.isEmpty { try deflate(data, finish: false) }
@@ -88,14 +99,22 @@ public enum PreparedBase {
     /// The lock with the host paths `create` records (its IPSW, decrypt cache, guest tools, helper, guest package)
     /// reduced to their last component: nothing reads them back, and a shipped blob names no build machine.
     static func scrubbedLock(_ data: Data) throws -> Data {
-        guard var lock = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw FirmwareError(.unsupported, "device.lock.json is not an object") }
+        guard var lock = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw FirmwareError(.unsupported, "device.lock.json is not an object")
+        }
         func name(_ value: Any?) -> Any { (value as? String).map { ($0 as NSString).lastPathComponent } ?? NSNull() }
         if var inputs = lock["inputs"] as? [String: Any] {
-            if var ipsw = inputs["ipsw"] as? [String: Any] { ipsw["path"] = name(ipsw["path"]); inputs["ipsw"] = ipsw }
+            if var ipsw = inputs["ipsw"] as? [String: Any] {
+                ipsw["path"] = name(ipsw["path"])
+                inputs["ipsw"] = ipsw
+            }
             for key in ["decrypted", "guest_tools"] where inputs[key] != nil { inputs[key] = name(inputs[key]) }
             lock["inputs"] = inputs
         }
-        if var tool = lock["tool"] as? [String: Any], tool["helper"] != nil { tool["helper"] = name(tool["helper"]); lock["tool"] = tool }
+        if var tool = lock["tool"] as? [String: Any], tool["helper"] != nil {
+            tool["helper"] = name(tool["helper"])
+            lock["tool"] = tool
+        }
         if var package = lock["guest_package"] as? [String: Any], var itpack = package["itpack"] as? [String: Any] {
             itpack["path"] = name(itpack["path"])
             package["itpack"] = itpack
@@ -113,17 +132,28 @@ public enum PreparedBase {
         let fm = FileManager.default
         let input = try FileHandle(forReadingFrom: blob)
         defer { try? input.close() }
-        guard let head = try input.read(upToCount: 12), head.count == 12, head.prefix(8) == magic else { throw invalid(blob, "not a packed device") }
+        guard let head = try input.read(upToCount: 12), head.count == 12, head.prefix(8) == magic else {
+            throw invalid(blob, "not a packed device")
+        }
         let length = Int(head[8]) | Int(head[9]) << 8 | Int(head[10]) << 16 | Int(head[11]) << 24
         guard let indexData = try input.read(upToCount: length), indexData.count == length,
-              let entries = try? JSONDecoder().decode([String: [Entry]].self, from: indexData)["entries"] else { throw invalid(blob, "bad index") }
-        for e in entries where e.size < 0 || e.name.hasPrefix("/") || e.name.isEmpty
-            || e.name.split(separator: "/", omittingEmptySubsequences: false).contains(where: { $0 == ".." || $0.isEmpty || $0 == "." }) {
+            let entries = try? JSONDecoder().decode([String: [Entry]].self, from: indexData)["entries"]
+        else { throw invalid(blob, "bad index") }
+        for e in entries
+        where e.size < 0 || e.name.hasPrefix("/") || e.name.isEmpty
+            || e.name.split(separator: "/", omittingEmptySubsequences: false).contains(where: {
+                $0 == ".." || $0.isEmpty || $0 == "."
+            })
+        {
             throw invalid(blob, "bad entry \(e.name)")
         }
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)
-        let total = entries.reduce(0) { $0 + $1.size }, step = max(total / 100, 1)
-        var written = 0, reported = -1, next = 0, remaining = 0
+        let total = entries.reduce(0) { $0 + $1.size }
+        let step = max(total / 100, 1)
+        var written = 0
+        var reported = -1
+        var next = 0
+        var remaining = 0
         var output: FileHandle?
         func url(_ e: Entry) -> URL { directory.appendingPathComponent(e.name) }
         /// Opens the next entry with bytes to receive, finishing every empty one on the way; false past the end.
@@ -135,7 +165,11 @@ public enum PreparedBase {
                 guard fm.createFile(atPath: url(e).path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
                     throw FirmwareError(.internal, "create \(url(e).path)")
                 }
-                if e.size > 0 { output = try FileHandle(forWritingTo: url(e)); remaining = e.size; return true }
+                if e.size > 0 {
+                    output = try FileHandle(forWritingTo: url(e))
+                    remaining = e.size
+                    return true
+                }
                 chmod(url(e).path, mode_t(e.mode))
             }
             return false
@@ -155,15 +189,22 @@ public enum PreparedBase {
                     chmod(url(entries[next - 1]).path, mode_t(entries[next - 1].mode))
                 }
             }
-            if written / step != reported { reported = written / step; try progress(Double(written) / Double(max(total, 1))) }
+            if written / step != reported {
+                reported = written / step
+                try progress(Double(written) / Double(max(total, 1)))
+            }
         }
         var z = z_stream()
-        guard inflateInit_(&z, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size)) == Z_OK else { throw FirmwareError(.internal, "inflateInit") }
+        guard inflateInit_(&z, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size)) == Z_OK else {
+            throw FirmwareError(.internal, "inflateInit")
+        }
         defer { inflateEnd(&z) }
         var buffer = [UInt8](repeating: 0, count: chunk)
         var status = Z_OK
         while status != Z_STREAM_END {
-            guard var source = try input.read(upToCount: chunk).map({ [UInt8]($0) }), !source.isEmpty else { throw invalid(blob, "truncated stream") }
+            guard var source = try input.read(upToCount: chunk).map({ [UInt8]($0) }), !source.isEmpty else {
+                throw invalid(blob, "truncated stream")
+            }
             try source.withUnsafeMutableBufferPointer { s in
                 z.next_in = s.baseAddress
                 z.avail_in = uInt(s.count)
@@ -173,7 +214,9 @@ public enum PreparedBase {
                         z.avail_out = uInt(b.count)
                         return inflate(&z, Z_NO_FLUSH)
                     }
-                    guard status == Z_OK || status == Z_STREAM_END || status == Z_BUF_ERROR else { throw invalid(blob, "corrupt stream") }
+                    guard status == Z_OK || status == Z_STREAM_END || status == Z_BUF_ERROR else {
+                        throw invalid(blob, "corrupt stream")
+                    }
                     try emit(buffer[0..<(chunk - Int(z.avail_out))])
                 } while z.avail_out == 0 && status != Z_STREAM_END
             }
@@ -192,14 +235,19 @@ public enum PreparedBase {
     /// nvram, and the lock's identity, machine and nor hash. Other boards' identities reach their volumes; refused.
     public static func reseed(_ base: URL, seed: String) throws {
         let fm = FileManager.default
-        let lockURL = base.appendingPathComponent("device.lock.json"), identityURL = base.appendingPathComponent("identity.json")
+        let lockURL = base.appendingPathComponent("device.lock.json")
+        let identityURL = base.appendingPathComponent("identity.json")
         let norURL = base.appendingPathComponent("nor.bin")
         guard var lock = try JSONSerialization.jsonObject(with: Data(contentsOf: lockURL)) as? [String: Any] else {
             throw FirmwareError(.unsupported, "device.lock.json is not an object")
         }
-        guard lock["board"] as? String == "n72ap" else { throw FirmwareError(.unsupported, "only an n72ap base takes a new identity, not \(lock["board"] ?? "?")") }
+        guard lock["board"] as? String == "n72ap" else {
+            throw FirmwareError(.unsupported, "only an n72ap base takes a new identity, not \(lock["board"] ?? "?")")
+        }
         let old = try UnitIdentity.load(from: identityURL)
-        guard let model = old["model-number"], let region = old["region-info"] else { throw FirmwareError(.unsupported, "identity.json has no model or region") }
+        guard let model = old["model-number"], let region = old["region-info"] else {
+            throw FirmwareError(.unsupported, "identity.json has no model or region")
+        }
         let id = try UnitIdentity.synthesizeIPod(seed: seed, modelNumber: model, regionInfo: region)
         try fm.removeItem(at: identityURL)
         try id.write(to: identityURL)
@@ -210,7 +258,9 @@ public enum PreparedBase {
         chmod(norURL.path, mode_t(mode))
         lock["identity"] = ["seed": seed, "udid": id.udid ?? "", "sha256": try Preparer.digest(identityURL, SHA256())]
         var machine = lock["machine"] as? [String: Any] ?? [:]
-        machine["wifi-mac"] = id["wifi-mac"]; machine["bt-mac"] = id["bt-mac"]; machine["ecid"] = id["unique-chip-id"]
+        machine["wifi-mac"] = id["wifi-mac"]
+        machine["bt-mac"] = id["bt-mac"]
+        machine["ecid"] = id["unique-chip-id"]
         lock["machine"] = machine
         if var outputs = lock["outputs"] as? [String: Any], var record = outputs["nor"] as? [String: Any] {
             record["sha256"] = Preparer.sha256(nor)

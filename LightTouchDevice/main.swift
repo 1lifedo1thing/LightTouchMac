@@ -1,5 +1,9 @@
 import DeviceRuntime
+import Foundation
 import HostRuntime
+import IOSurface
+import os
+
 // LightTouchDevice: one emulated device per process.
 //
 //   LightTouchDevice --connect SERVICE --token T --instance UUID [--lease PATH]
@@ -12,10 +16,6 @@ import HostRuntime
 // libqemu-arm.dylib: $LTM_QEMU_DYLIB, else ../Frameworks, else the build rpath.
 // Exit codes: QEMU's, or 64 usage, 70 no dylib, 72 rendezvous failed, 124 one-shot timeout.
 
-import Foundation
-import IOSurface
-import os
-
 signal(SIGPIPE, SIG_IGN)
 setvbuf(stdout, nil, _IOLBF, 0)
 
@@ -24,7 +24,10 @@ let arguments: [String: String] = {
     var parsed = [String: String]()
     var it = CommandLine.arguments.dropFirst().makeIterator()
     while let a = it.next() {
-        guard a.hasPrefix("--"), let v = a == "--machines" ? "" : it.next() else { FileHandle.standardError.write(Data("usage: see main.swift\n".utf8)); exit(64) }
+        guard a.hasPrefix("--"), let v = a == "--machines" ? "" : it.next() else {
+            FileHandle.standardError.write(Data("usage: see main.swift\n".utf8))
+            exit(64)
+        }
         parsed[a] = v
     }
     return parsed
@@ -92,18 +95,31 @@ if let service = arguments["--connect"] {
 } else if arguments["--machines"] != nil {
     // Every machine the emulator library runs, with its facts (HostRuntime DeviceInfo.list).
     guard let qemu = loadQemu() else { exit(70) }
-    struct Listing: Encodable { let dylibPath: String; let machines: [DeviceInfo] }
-    FileHandle.standardOutput.write(try! JSONEncoder().encode(Listing(dylibPath: qemu.path, machines: qemu.machines)) + Data("\n".utf8))
+    struct Listing: Encodable {
+        let dylibPath: String
+        let machines: [DeviceInfo]
+    }
+    FileHandle.standardOutput.write(
+        try! JSONEncoder().encode(Listing(dylibPath: qemu.path, machines: qemu.machines)) + Data("\n".utf8)
+    )
     exit(0)
 } else {
-    FileHandle.standardError.write(Data("usage: LightTouchDevice --connect S --token T --instance U | --headless config.json | --oneshot config.json | --machines\n".utf8))
+    FileHandle.standardError.write(
+        Data(
+            "usage: LightTouchDevice --connect S --token T --instance U | --headless config.json | --oneshot config.json | --machines\n"
+                .utf8
+        )
+    )
     exit(64)
 }
 
 // MARK: - Linked (spawned by the app)
 
 @MainActor func runLinked(service: String, token: String) -> Never {
-    guard fcntl(3, F_GETFD) != -1 else { helperLog("no link on fd 3: not spawned by DeviceLink"); exit(64) }
+    guard fcntl(3, F_GETFD) != -1 else {
+        helperLog("no link on fd 3: not spawned by DeviceLink")
+        exit(64)
+    }
     let parent = getppid()
     let qemu = loadQemu()
     let status = StatusBlock.create()
@@ -111,7 +127,10 @@ if let service = arguments["--connect"] {
     if let host { installBootStorageAuthority(host) }
 
     let kr = DeviceRendezvous.sendHello(service: service, token: token, generation: 0, surfaces: [status.surface])
-    guard kr == 0 else { helperLog("rendezvous with \(service) failed: \(kr)"); exit(72) }
+    guard kr == 0 else {
+        helperLog("rendezvous with \(service) failed: \(kr)")
+        exit(72)
+    }
 
     let linkQueue = DispatchQueue(label: "LightTouch.link")
     // nonisolated(unsafe): assigned once, below, before the channel reads its first message; only read after.
@@ -120,38 +139,52 @@ if let service = arguments["--connect"] {
         guard let host else { exit(0) }
         host.halt(reason: reason)
     }
-    channel = LinkChannel<AppMessage, HelperMessage>(fd: 3, queue: linkQueue, onMessage: { message in
-        switch message {
-        case .command(let command):
-            host?.perform(command)
-        case .request(let id, .hello(let version, let board)):
-            guard version == DeviceLinkWire.protocolVersion else {
-                channel.send(.reply(id: id, .failure("protocol \(version) is not \(DeviceLinkWire.protocolVersion)")))
-                return
+    channel = LinkChannel<AppMessage, HelperMessage>(
+        fd: 3,
+        queue: linkQueue,
+        onMessage: { message in
+            switch message {
+            case .command(let command):
+                host?.perform(command)
+            case .request(let id, .hello(let version, let board)):
+                guard version == DeviceLinkWire.protocolVersion else {
+                    channel.send(
+                        .reply(id: id, .failure("protocol \(version) is not \(DeviceLinkWire.protocolVersion)"))
+                    )
+                    return
+                }
+                guard let host else {
+                    channel.send(.reply(id: id, .failure("The device helper could not load libqemu-arm.dylib.")))
+                    channel.drain()
+                    exit(70)
+                }
+                guard takeLease(arguments["--lease"]) else {
+                    channel.send(.reply(id: id, .failure(DeviceLinkWire.leaseRefusal)))
+                    channel.drain()
+                    exit(75)
+                }
+                channel.send(.reply(id: id, .hello(host.info(board: board))))
+            case .request(let id, let request):
+                guard let host else {
+                    channel.send(.reply(id: id, .failure("no emulator")))
+                    return
+                }
+                host.handle(request) { channel.send(.reply(id: id, $0)) }
             }
-            guard let host else {
-                channel.send(.reply(id: id, .failure("The device helper could not load libqemu-arm.dylib.")))
-                channel.drain()
-                exit(70)
-            }
-            guard takeLease(arguments["--lease"]) else {
-                channel.send(.reply(id: id, .failure(DeviceLinkWire.leaseRefusal)))
-                channel.drain()
-                exit(75)
-            }
-            channel.send(.reply(id: id, .hello(host.info(board: board))))
-        case .request(let id, let request):
-            guard let host else { channel.send(.reply(id: id, .failure("no emulator"))); return }
-            host.handle(request) { channel.send(.reply(id: id, $0)) }
+        },
+        onClose: { error in
+            helperLog("link closed\(error.map { ": \($0)" } ?? "")")
+            DispatchQueue.main.async { shutdown("link closed") }
         }
-    }, onClose: { error in
-        helperLog("link closed\(error.map { ": \($0)" } ?? "")")
-        DispatchQueue.main.async { shutdown("link closed") }
-    })
+    )
 
     host?.onRingChanged = { ring in
-        let kr = DeviceRendezvous.sendHello(service: service, token: token, generation: ring.generation,
-                                            surfaces: [status.surface] + ring.surfaces)
+        let kr = DeviceRendezvous.sendHello(
+            service: service,
+            token: token,
+            generation: ring.generation,
+            surfaces: [status.surface] + ring.surfaces
+        )
         if kr != 0 { helperLog("ring hello failed: \(kr)") }
     }
     host?.onEvent = { channel.send(.event($0)) }
@@ -164,7 +197,10 @@ if let service = arguments["--connect"] {
 
     // Parent death: a process-exit source on the parent, plus EOF on the link.
     let parentWatch = DispatchSource.makeProcessSource(identifier: parent, eventMask: .exit, queue: .main)
-    parentWatch.setEventHandler { helperLog("parent \(parent) exited"); shutdown("parent exited") }
+    parentWatch.setEventHandler {
+        helperLog("parent \(parent) exited")
+        shutdown("parent exited")
+    }
     parentWatch.resume()
     if getppid() != parent || parent == 1 { shutdown("parent already gone") }
     onTerminationSignals { shutdown($0) }
@@ -201,7 +237,9 @@ func decodeConfig<T: Decodable>(_ path: String, _: T.Type) -> T {
     installBootStorageAuthority(host)
     let reader = OSAllocatedUnfairLock<FrameRingReader?>(uncheckedState: nil)
     host.onRingChanged = { ring in
-        reader.withLockUnchecked { $0 = FrameRingReader(status: status, generation: ring.generation, surfaces: ring.surfaces) }
+        reader.withLockUnchecked {
+            $0 = FrameRingReader(status: status, generation: ring.generation, surfaces: ring.surfaces)
+        }
         emit(["event": "ring", "generation": ring.generation, "width": ring.width, "height": ring.height])
     }
     host.onExit = { rc in
@@ -210,8 +248,10 @@ func decodeConfig<T: Decodable>(_ path: String, _: T.Type) -> T {
     }
     host.startPump()
     onTerminationSignals { host.halt(reason: $0) }
-    do { _ = try host.boot(config.boot) }
-    catch { helperLog("boot storage admission: \(error)"); exit(75) }
+    do { _ = try host.boot(config.boot) } catch {
+        helperLog("boot storage admission: \(error)")
+        exit(75)
+    }
 
     @Sendable func front() -> IOSurface? { reader.withLockUnchecked { $0?.front()?.surface } }
     let start = Date()
@@ -224,7 +264,9 @@ func decodeConfig<T: Decodable>(_ path: String, _: T.Type) -> T {
         while lit < need {
             if Date().timeIntervalSince(start) > (config.maxSeconds ?? 500) {
                 emit(["event": "never-lit", "brightness": lit])
-                if let dir = config.dumpDir, let s = front() { FrameTools.writePNG(s, to: URL(fileURLWithPath: "\(dir)/never-lit.png")) }
+                if let dir = config.dumpDir, let s = front() {
+                    FrameTools.writePNG(s, to: URL(fileURLWithPath: "\(dir)/never-lit.png"))
+                }
                 qemu.quit()
                 return
             }
@@ -241,12 +283,17 @@ func decodeConfig<T: Decodable>(_ path: String, _: T.Type) -> T {
             case "dump":
                 guard let dir = config.dumpDir, let s = front() else { break }
                 let url = URL(fileURLWithPath: "\(dir)/\(p[1]).png")
-                emit(["event": "dump", "path": url.path, "ok": FrameTools.writePNG(s, to: url), "brightness": FrameTools.brightness(s)])
+                emit([
+                    "event": "dump", "path": url.path, "ok": FrameTools.writePNG(s, to: url),
+                    "brightness": FrameTools.brightness(s),
+                ])
             case "tap":
-                host.perform(.touch(slot: 0, phase: 0, x: v[0], y: v[1])); usleep(80_000)
+                host.perform(.touch(slot: 0, phase: 0, x: v[0], y: v[1]))
+                usleep(80_000)
                 host.perform(.touch(slot: 0, phase: 2, x: v[0], y: v[1]))
             case "drag":
-                host.perform(.touch(slot: 0, phase: 0, x: v[0], y: v[1])); usleep(150_000)
+                host.perform(.touch(slot: 0, phase: 0, x: v[0], y: v[1]))
+                usleep(150_000)
                 for i in 1...30 {
                     let f = Double(i) / 30
                     host.perform(.touch(slot: 0, phase: 1, x: v[0] + (v[2] - v[0]) * f, y: v[1] + (v[3] - v[1]) * f))
@@ -255,10 +302,12 @@ func decodeConfig<T: Decodable>(_ path: String, _: T.Type) -> T {
                 usleep(300_000)
                 host.perform(.touch(slot: 0, phase: 2, x: v[2], y: v[3]))
             case "button":
-                host.perform(.button(Int(v[0]), down: true)); usleep(150_000)
+                host.perform(.button(Int(v[0]), down: true))
+                usleep(150_000)
                 host.perform(.button(Int(v[0]), down: false))
             case "key":
-                host.perform(.key(macKeyCode: Int(v[0]), down: true)); usleep(80_000)
+                host.perform(.key(macKeyCode: Int(v[0]), down: true))
+                usleep(80_000)
                 host.perform(.key(macKeyCode: Int(v[0]), down: false))
             case "snapshot":
                 let t0 = Date()
@@ -268,14 +317,16 @@ func decodeConfig<T: Decodable>(_ path: String, _: T.Type) -> T {
                     usleep(100_000)
                     let done = DispatchSemaphore(value: 0)
                     host.handle(.snapshotStatus) { reply in
-                        if case let .snapshot(c, e) = reply { result.withLock { $0 = (c, e) } }
+                        if case .snapshot(let c, let e) = reply { result.withLock { $0 = (c, e) } }
                         done.signal()
                     }
                     done.wait()
                     if result.withLock({ $0.code }) >= 2 { break }
                 }
                 let (code, error) = result.withLock { $0 }
-                emit(["event": "snapshot", "status": code, "error": error ?? "", "seconds": Date().timeIntervalSince(t0)])
+                emit([
+                    "event": "snapshot", "status": code, "error": error ?? "", "seconds": Date().timeIntervalSince(t0),
+                ])
             case "resume": host.perform(.snapshotResume)
             case "shutdown": host.halt(reason: "action")
             case "quit": host.perform(.machine(.quit))
@@ -287,12 +338,14 @@ func decodeConfig<T: Decodable>(_ path: String, _: T.Type) -> T {
 }
 
 func describe(_ s: SharedStatus) -> [String: Any] {
-    ["heartbeat": s.heartbeat, "frameSerial": s.frameSerial, "width": s.width, "height": s.height,
-     "uiReady": s.uiReady, "storageFailed": s.storageFailed, "shutdownConfirmed": s.shutdownConfirmed,
-     "displaySleeping": s.displaySleeping, "agentStatus": s.agentStatus, "glesContexts": s.glesContexts,
-     "iconGeneration": s.iconGeneration, "qemuState": s.qemuState.rawValue, "exitCode": s.exitCode,
-     "guestPackage": s.guestPackage.map { ["serial": $0.serial, "result": $0.result] } ?? NSNull(),
-     "glesProtocol": s.glesProtocol, "glesSerial": s.glesSerial, "backlightLevel": s.backlightLevel]
+    [
+        "heartbeat": s.heartbeat, "frameSerial": s.frameSerial, "width": s.width, "height": s.height,
+        "uiReady": s.uiReady, "storageFailed": s.storageFailed, "shutdownConfirmed": s.shutdownConfirmed,
+        "displaySleeping": s.displaySleeping, "agentStatus": s.agentStatus, "glesContexts": s.glesContexts,
+        "iconGeneration": s.iconGeneration, "qemuState": s.qemuState.rawValue, "exitCode": s.exitCode,
+        "guestPackage": s.guestPackage.map { ["serial": $0.serial, "result": $0.result] } ?? NSNull(),
+        "glesProtocol": s.glesProtocol, "glesSerial": s.glesSerial, "backlightLevel": s.backlightLevel,
+    ]
 }
 
 // MARK: - One-shot (seal / keybag boots)
@@ -325,8 +378,10 @@ struct OneShotConfig: Decodable {
     /// exited: QEMU returned by itself (the guest halted), not because we quit it.
     @Sendable func finish(exited: Bool, code: Int32) -> Never {
         let marker = flags.withLock { $0.marker }
-        emit(["event": "oneshot", "exited": exited, "exitCode": code, "marker": marker,
-              "seconds": Date().timeIntervalSince(start)])
+        emit([
+            "event": "oneshot", "exited": exited, "exitCode": code, "marker": marker,
+            "seconds": Date().timeIntervalSince(start),
+        ])
         exit(marker ? 0 : exited ? code : 124)
     }
     host.onExit = { rc in finish(exited: !flags.withLock { $0.stopping }, code: rc) }
@@ -334,19 +389,32 @@ struct OneShotConfig: Decodable {
     // The preparer (firmwarekit) died: nobody will read this boot's result.
     let parent = getppid()
     let parentWatch = DispatchSource.makeProcessSource(identifier: parent, eventMask: .exit, queue: .main)
-    parentWatch.setEventHandler { helperLog("parent \(parent) exited"); flags.withLock { $0.stopping = true }; qemu.quit() }
+    parentWatch.setEventHandler {
+        helperLog("parent \(parent) exited")
+        flags.withLock { $0.stopping = true }
+        qemu.quit()
+    }
     parentWatch.resume()
-    do { _ = try host.boot(config.boot) }
-    catch { helperLog("boot storage admission: \(error)"); exit(75) }
-    if getppid() != parent || parent == 1 { flags.withLock { $0.stopping = true }; qemu.quit() }
+    do { _ = try host.boot(config.boot) } catch {
+        helperLog("boot storage admission: \(error)")
+        exit(75)
+    }
+    if getppid() != parent || parent == 1 {
+        flags.withLock { $0.stopping = true }
+        qemu.quit()
+    }
     Thread.detachNewThread {
         while !host.hasExited {
             usleep(500_000)
             if config.stopMarker != nil || config.stopPattern != nil,
-               let text = try? String(contentsOfFile: config.serialLog, encoding: .isoLatin1) {
+                let text = try? String(contentsOfFile: config.serialLog, encoding: .isoLatin1)
+            {
                 if let stop = config.stopMarker, text.contains(stop) { flags.withLock { $0.marker = true } }
                 if let pattern = config.stopPattern,
-                   text.replacingOccurrences(of: "\n", with: "").range(of: pattern, options: .regularExpression) != nil { flags.withLock { $0.marker = true } }
+                    text.replacingOccurrences(of: "\n", with: "").range(of: pattern, options: .regularExpression) != nil
+                {
+                    flags.withLock { $0.marker = true }
+                }
             }
             if flags.withLock({ $0.marker }) || Date().timeIntervalSince(start) > config.timeout {
                 flags.withLock { $0.stopping = true }

@@ -3,11 +3,15 @@
 // (ReleaseChecks' MachOClosure), the universal merge of per-architecture native roots, and the pinned dependency
 // sources (fetch, stage-git, note) with the native and static build records.
 import PackageDescription
-let package = Package(name: "BuildTools", platforms: [.macOS("14.4")],
+
+let package = Package(
+    name: "BuildTools",
+    platforms: [.macOS("14.4")],
     products: [.executable(name: "ltm-build", targets: ["ltm-build"])],
     dependencies: [.package(path: "../ReleaseChecks")],
     targets: [
         .target(name: "BuildTools", dependencies: [.product(name: "ReleaseChecks", package: "ReleaseChecks")]),
         .executableTarget(name: "ltm-build", dependencies: ["BuildTools"]),
         .testTarget(name: "BuildToolsTests", dependencies: ["BuildTools"]),
-    ])
+    ]
+)

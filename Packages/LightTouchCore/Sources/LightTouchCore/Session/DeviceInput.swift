@@ -1,10 +1,10 @@
 // The device's input besides the keyboard (KeyboardInput): the hardware buttons, shake, the chassis tilt and its
 // motion pose, pasting and composed text.
 
-import Foundation
-import Observation
-import HostRuntime
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import Observation
 
 /// What the input reads of the session.
 public protocol InputHost: AnyObject {
@@ -29,7 +29,10 @@ public protocol InputHost: AnyObject {
     // MARK: Hardware buttons
 
     /// The emulator's button numbers (qemu-ios-ui.h).
-    public enum Button: Int { case home = 0, power, volumeUp, volumeDown }
+    public enum Button: Int {
+        case home = 0
+        case power, volumeUp, volumeDown
+    }
 
     static let holdInterval: TimeInterval = 0.10
 

@@ -33,9 +33,12 @@ nonisolated enum IMobileDevice {
     /// own domain so a locked guest or unavailable service is not mistaken for
     /// an unresponsive device. The caller owns the returned client.
     static func startService<E: IMobileDeviceResult>(
-        _ name: String, device: OpaquePointer,
+        _ name: String,
+        device: OpaquePointer,
         newClient: (OpaquePointer?, lockdownd_service_descriptor_t?, UnsafeMutablePointer<OpaquePointer?>?) -> E,
-        freeClient: (OpaquePointer?) -> E, connectError: (Int32) -> Error) throws -> OpaquePointer {
+        freeClient: (OpaquePointer?) -> E,
+        connectError: (Int32) -> Error
+    ) throws -> OpaquePointer {
         var lockdown: OpaquePointer?
         let handshake = lockdownd_client_new_with_handshake(device, &lockdown, "LightTouchMac")
         guard handshake.ok, let lockdown else {
@@ -61,8 +64,12 @@ nonisolated enum IMobileDevice {
     }
 
     static func startInstallationProxy(device: OpaquePointer) throws -> OpaquePointer {
-        try startService("com.apple.mobile.installation_proxy", device: device,
-                         newClient: { instproxy_client_new($0, $1, $2) }, freeClient: { instproxy_client_free($0) }) {
+        try startService(
+            "com.apple.mobile.installation_proxy",
+            device: device,
+            newClient: { instproxy_client_new($0, $1, $2) },
+            freeClient: { instproxy_client_free($0) }
+        ) {
             DeviceError.instproxy(.init(code: $0), phase: "connect")
         }
     }
@@ -81,7 +88,9 @@ nonisolated enum IMobileDevice {
 
     /// Foundation → plist_t. The caller owns the result and must plist_free it.
     static func encode(_ value: Any) -> plist_t? {
-        guard let data = try? PropertyListSerialization.data(fromPropertyList: value, format: .xml, options: 0) else { return nil }
+        guard let data = try? PropertyListSerialization.data(fromPropertyList: value, format: .xml, options: 0) else {
+            return nil
+        }
         var node: plist_t?
         _ = data.withUnsafeBytes { buffer in
             plist_from_xml(buffer.baseAddress?.assumingMemoryBound(to: CChar.self), UInt32(buffer.count), &node)

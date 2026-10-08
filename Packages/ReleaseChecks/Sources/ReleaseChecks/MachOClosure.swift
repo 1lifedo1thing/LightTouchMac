@@ -11,7 +11,9 @@ public enum MachOClosure {
 
     public static func architectures(_ path: URL) throws -> [String] {
         let result = try Shell.run(["lipo", "-archs", path.path])
-        guard result.succeeded else { throw Failure("\(path.path): lipo: \(result.error.trimmingCharacters(in: .whitespacesAndNewlines))") }
+        guard result.succeeded else {
+            throw Failure("\(path.path): lipo: \(result.error.trimmingCharacters(in: .whitespacesAndNewlines))")
+        }
         return result.output.split(whereSeparator: \.isWhitespace).map(String.init)
     }
 
@@ -34,7 +36,9 @@ public enum MachOClosure {
                 if let rpath = named("path") { found.rpaths.append(rpath) }
             case "LC_BUILD_VERSION":
                 let platform = field("platform") ?? ""
-                guard platform == "1" || platform == "MACOS" else { throw Failure("\(path.path): not a macOS binary (platform \(platform))") }
+                guard platform == "1" || platform == "MACOS" else {
+                    throw Failure("\(path.path): not a macOS binary (platform \(platform))")
+                }
                 found.minimum = field("minos")
             case "LC_VERSION_MIN_MACOSX":
                 found.minimum = field("version")
@@ -51,8 +55,10 @@ public enum MachOClosure {
     }
 
     static func expand(_ path: String, loader: URL, executable: URL) -> URL {
-        URL(fileURLWithPath: path.replacingOccurrences(of: "@loader_path", with: loader.path)
-            .replacingOccurrences(of: "@executable_path", with: executable.path))
+        URL(
+            fileURLWithPath: path.replacingOccurrences(of: "@loader_path", with: loader.path)
+                .replacingOccurrences(of: "@executable_path", with: executable.path)
+        )
     }
 
     /// The binary's own rpaths for `arch`, as written (scripts/vendor's relink edits them).
@@ -61,10 +67,13 @@ public enum MachOClosure {
     /// The binary's non-system dependencies for `arch`, each with the file it resolves to through the binary's own
     /// rpaths (@loader_path and @executable_path both its directory).
     public static func dependencies(_ path: URL, arch: String) throws -> [(name: String, file: URL)] {
-        let meta = try metadata(path, arch: arch), dir = path.deletingLastPathComponent()
+        let meta = try metadata(path, arch: arch)
+        let dir = path.deletingLastPathComponent()
         let search = meta.rpaths.map { expand($0, loader: dir, executable: dir) }
-        return try meta.dependencies.filter { !$0.hasPrefix("/usr/lib/") && !$0.hasPrefix("/System/Library/") }.map { dependency in
-            let candidates = dependency.hasPrefix("@rpath/")
+        return try meta.dependencies.filter { !$0.hasPrefix("/usr/lib/") && !$0.hasPrefix("/System/Library/") }.map {
+            dependency in
+            let candidates =
+                dependency.hasPrefix("@rpath/")
                 ? search.map { $0.appendingPathComponent(String(dependency.dropFirst("@rpath/".count))) }
                 : [expand(dependency, loader: dir, executable: dir)]
             guard let file = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) else {
@@ -77,42 +86,83 @@ public enum MachOClosure {
     /// Checks `path` and everything it loads for `arch`. `executable`: the directory @executable_path means (an app's
     /// Contents/MacOS for a dylib in it). Returns every binary in the closure.
     @discardableResult
-    public static func check(_ path: URL, minimum target: String, arch: String, bundle: URL? = nil, executable: URL? = nil,
-                             noWeakImports: Bool = false) throws -> [URL] {
+    public static func check(
+        _ path: URL,
+        minimum target: String,
+        arch: String,
+        bundle: URL? = nil,
+        executable: URL? = nil,
+        noWeakImports: Bool = false
+    ) throws -> [URL] {
         var seen: Set<String> = []
-        try check(path.resolvingSymlinksInPath(), target: target, arch: arch, bundle: bundle?.resolvingSymlinksInPath(),
-                  inherited: [], executable: executable ?? path.resolvingSymlinksInPath().deletingLastPathComponent(),
-                  seen: &seen, noWeakImports: noWeakImports)
+        try check(
+            path.resolvingSymlinksInPath(),
+            target: target,
+            arch: arch,
+            bundle: bundle?.resolvingSymlinksInPath(),
+            inherited: [],
+            executable: executable ?? path.resolvingSymlinksInPath().deletingLastPathComponent(),
+            seen: &seen,
+            noWeakImports: noWeakImports
+        )
         return seen.sorted().map { URL(fileURLWithPath: $0) }
     }
 
-    private static func check(_ path: URL, target: String, arch: String, bundle: URL?, inherited: [URL], executable: URL,
-                              seen: inout Set<String>, noWeakImports: Bool) throws {
+    private static func check(
+        _ path: URL,
+        target: String,
+        arch: String,
+        bundle: URL?,
+        inherited: [URL],
+        executable: URL,
+        seen: inout Set<String>,
+        noWeakImports: Bool
+    ) throws {
         guard seen.insert(path.path).inserted else { return }
         if noWeakImports {
             let imports = try Shell.run(["nm", "-arch", arch, "-m", path.path]).output
-            let weak = imports.split(separator: "\n").filter { $0.contains("(undefined)") && $0.contains("weak external") }
-                .compactMap { $0.split(separator: " ").last.map(String.init) }
-            if !weak.isEmpty { throw Failure("\(path.path): unexpected weak imports in native code: \(weak.sorted().joined(separator: ", "))") }
+            let weak = imports.split(separator: "\n").filter {
+                $0.contains("(undefined)") && $0.contains("weak external")
+            }
+            .compactMap { $0.split(separator: " ").last.map(String.init) }
+            if !weak.isEmpty {
+                throw Failure(
+                    "\(path.path): unexpected weak imports in native code: \(weak.sorted().joined(separator: ", "))"
+                )
+            }
         }
         let meta = try metadata(path, arch: arch)
         let minimum = meta.minimum!
         if version(target).lexicographicallyPrecedes(version(minimum)) {
             throw Failure("\(path.path): requires macOS \(minimum), app supports \(target)")
         }
-        let search = meta.rpaths.map { expand($0, loader: path.deletingLastPathComponent(), executable: executable) } + inherited
-        for dependency in meta.dependencies where !dependency.hasPrefix("/usr/lib/") && !dependency.hasPrefix("/System/Library/") {
-            let candidates = dependency.hasPrefix("@rpath/")
+        let search =
+            meta.rpaths.map { expand($0, loader: path.deletingLastPathComponent(), executable: executable) } + inherited
+        for dependency in meta.dependencies
+        where !dependency.hasPrefix("/usr/lib/") && !dependency.hasPrefix("/System/Library/") {
+            let candidates =
+                dependency.hasPrefix("@rpath/")
                 ? search.map { $0.appendingPathComponent(String(dependency.dropFirst("@rpath/".count))) }
                 : [expand(dependency, loader: path.deletingLastPathComponent(), executable: executable)]
-            guard let resolved = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) })?.resolvingSymlinksInPath() else {
+            guard
+                let resolved = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) })?
+                    .resolvingSymlinksInPath()
+            else {
                 throw Failure("\(path.path): unresolved dependency \(dependency)")
             }
             if let bundle, dependency.hasPrefix("/") || !resolved.path.hasPrefix(bundle.path + "/") {
                 throw Failure("\(path.path): dependency escapes relocatable bundle: \(dependency)")
             }
-            try check(resolved, target: target, arch: arch, bundle: bundle, inherited: search, executable: executable,
-                      seen: &seen, noWeakImports: noWeakImports)
+            try check(
+                resolved,
+                target: target,
+                arch: arch,
+                bundle: bundle,
+                inherited: search,
+                executable: executable,
+                seen: &seen,
+                noWeakImports: noWeakImports
+            )
         }
     }
 }

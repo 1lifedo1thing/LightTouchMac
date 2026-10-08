@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import ReleaseChecks
 
 /// The repository this test file sits in.

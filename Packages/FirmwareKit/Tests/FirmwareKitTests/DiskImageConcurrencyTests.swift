@@ -3,6 +3,7 @@
 import Darwin
 import Foundation
 import Testing
+
 @testable import FirmwareKit
 
 struct DiskImageConcurrencyTests {
@@ -13,7 +14,7 @@ struct DiskImageConcurrencyTests {
                     let expected = "bridge-\(index)"
                     // Await the actual shared disk-tool subprocess leaf.
                     let (status, output) = try await DiskImage.exec([
-                        "/usr/bin/printf", "%s", expected
+                        "/usr/bin/printf", "%s", expected,
                     ])
                     return status == 0 && output == expected
                 }
@@ -43,14 +44,17 @@ struct DiskImageConcurrencyTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         let pidFile = dir.appendingPathComponent("pid")
         let tool = Task {
-            try await DiskImage.exec(["/bin/sh", "-c", "printf '%s' $$ > \"$1\"; exec /bin/sleep 60", "fixture", pidFile.path])
+            try await DiskImage.exec([
+                "/bin/sh", "-c", "printf '%s' $$ > \"$1\"; exec /bin/sleep 60", "fixture", pidFile.path,
+            ])
         }
         let deadline = ContinuousClock.now.advanced(by: .seconds(5))
         while !FileManager.default.fileExists(atPath: pidFile.path), ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(5))
         }
         guard let pid = Int32(try String(contentsOf: pidFile, encoding: .utf8)) else {
-            tool.cancel(); _ = try? await tool.value
+            tool.cancel()
+            _ = try? await tool.value
             throw FirmwareError(.internal, "fixture child did not report its pid")
         }
         tool.cancel()
@@ -63,7 +67,12 @@ struct DiskImageConcurrencyTests {
         #expect(try DiskImage.parseAttachments(status: 0, output: empty).isEmpty)
         #expect(throws: FirmwareError.self) { _ = try DiskImage.parseAttachments(status: 1, output: empty) }
         #expect(throws: FirmwareError.self) { _ = try DiskImage.parseAttachments(status: 0, output: "not a plist") }
-        #expect(throws: FirmwareError.self) { _ = try DiskImage.parseAttachments(status: 0, output: empty.replacingOccurrences(of: "images", with: "unknown")) }
+        #expect(throws: FirmwareError.self) {
+            _ = try DiskImage.parseAttachments(
+                status: 0,
+                output: empty.replacingOccurrences(of: "images", with: "unknown")
+            )
+        }
     }
 
 }

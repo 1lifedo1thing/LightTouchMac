@@ -1,5 +1,5 @@
-import LightTouchCore
 import AppKit
+import LightTouchCore
 
 /// The screen's and the capture keys' view of an event's modifiers.
 extension KeyModifiers {

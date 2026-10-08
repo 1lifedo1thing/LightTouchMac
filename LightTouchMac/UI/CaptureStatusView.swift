@@ -1,5 +1,5 @@
-import LightTouchCore
 import Cocoa
+import LightTouchCore
 import SwiftUI
 
 /// Transient feedback shares Device Hub's thumbnail/title/subtitle/accessory banner layout.
@@ -41,27 +41,39 @@ final class CaptureStatusView: NSView {
 
     init() {
         super.init(frame: .zero)
-        hosting = NSHostingView(rootView: CaptureBanner(state: state,
-            primary: { [weak self] in self?.onPrimary?() },
-            link: { [weak self] in self?.performLink() },
-            secondary: { [weak self] in self?.onSecondary?() },
-            dismiss: { [weak self] in self?.dismissBanner() },
-            hovering: { [weak self] hovered in
-                self?.dismissal?.cancel()
-                if !hovered { self?.scheduleDismissal() }
-            }))
+        hosting = NSHostingView(
+            rootView: CaptureBanner(
+                state: state,
+                primary: { [weak self] in self?.onPrimary?() },
+                link: { [weak self] in self?.performLink() },
+                secondary: { [weak self] in self?.onSecondary?() },
+                dismiss: { [weak self] in self?.dismissBanner() },
+                hovering: { [weak self] hovered in
+                    self?.dismissal?.cancel()
+                    if !hovered { self?.scheduleDismissal() }
+                }
+            )
+        )
         hosting.sizingOptions = []
         hosting.translatesAutoresizingMaskIntoConstraints = false
         addSubview(hosting)
         NSLayoutConstraint.activate([
-            hosting.leadingAnchor.constraint(equalTo: leadingAnchor), hosting.trailingAnchor.constraint(equalTo: trailingAnchor),
-            hosting.topAnchor.constraint(equalTo: topAnchor), hosting.bottomAnchor.constraint(equalTo: bottomAnchor)
+            hosting.leadingAnchor.constraint(equalTo: leadingAnchor),
+            hosting.trailingAnchor.constraint(equalTo: trailingAnchor),
+            hosting.topAnchor.constraint(equalTo: topAnchor), hosting.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
     }
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    func update(title: String, detail: String = "", busy: Bool = false, primary: String? = nil,
-                secondary: String? = nil, dismissible: Bool = false, appearance: Appearance = .neutral) {
+    func update(
+        title: String,
+        detail: String = "",
+        busy: Bool = false,
+        primary: String? = nil,
+        secondary: String? = nil,
+        dismissible: Bool = false,
+        appearance: Appearance = .neutral
+    ) {
         dismissal?.cancel()
         dismissalAnimation?.cancel()
         fileMonitor?.cancel()
@@ -85,7 +97,10 @@ final class CaptureStatusView: NSView {
 
     /// The banner's text button, if it shows one.
     var linkTitle: String? { state.link }
-    func performLink() { state.link = nil; onLink?() }
+    func performLink() {
+        state.link = nil
+        onLink?()
+    }
 
     /// `link`: a text button under the title (a capture preference), which `onLink` handles; it goes once clicked.
     func showCapture(title: String, image: NSImage, fileURL: URL?, link: String? = nil) {
@@ -99,7 +114,10 @@ final class CaptureStatusView: NSView {
                 guard let self, self.presentationID == id else { return }
                 self.dismissBanner()
             }
-            if !FileManager.default.fileExists(atPath: fileURL.path) { dismissBanner(); return }
+            if !FileManager.default.fileExists(atPath: fileURL.path) {
+                dismissBanner()
+                return
+            }
         }
         dismissesAutomatically = true
         scheduleDismissal()
@@ -196,7 +214,11 @@ private struct CaptureBanner: View {
             .help(state.detail)
             if state.fileURL != nil {
                 accessory("Open in Finder", symbol: "chevron.right", action: secondary)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { accessoryHeight = $0 }
+                    .onGeometryChange(for: CGFloat.self) {
+                        $0.size.height
+                    } action: {
+                        accessoryHeight = $0
+                    }
             } else if let title = state.primary {
                 Button(title, action: primary).controlSize(.small)
             }
@@ -281,4 +303,3 @@ private struct CaptureGlassSurface<S: Shape>: ViewModifier {
         }
     }
 }
-

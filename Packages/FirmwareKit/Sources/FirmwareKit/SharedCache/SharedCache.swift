@@ -21,8 +21,17 @@ extension UnsafeRawBufferPointer {
 
 public struct DyldSharedCache: @unchecked Sendable {
     public struct Mapping: Sendable { public let address: UInt64, size: UInt64, fileOffset: UInt64 }
-    public struct Image: Sendable { public let path: String; public let address: UInt64; public let headerOffset: Int }
-    public struct Symbol: Sendable { public let name: String; public let type: UInt8; public let desc: UInt16; public let value: UInt32 }
+    public struct Image: Sendable {
+        public let path: String
+        public let address: UInt64
+        public let headerOffset: Int
+    }
+    public struct Symbol: Sendable {
+        public let name: String
+        public let type: UInt8
+        public let desc: UInt16
+        public let value: UInt32
+    }
 
     /// The whole cache, memory-mapped (never copied).
     public let data: Data
@@ -40,7 +49,13 @@ public struct DyldSharedCache: @unchecked Sendable {
         }
         let (maps, imgs): ([Mapping], [(UInt64, Int)]) = data.withUnsafeBytes { b in
             let (mo, mc, io, ic) = (Int(b.u32le(0x10)), Int(b.u32le(0x14)), Int(b.u32le(0x18)), Int(b.u32le(0x1c)))
-            let maps = (0..<mc).map { i in Mapping(address: b.u64le(mo + 32 * i), size: b.u64le(mo + 32 * i + 8), fileOffset: b.u64le(mo + 32 * i + 16)) }
+            let maps = (0..<mc).map { i in
+                Mapping(
+                    address: b.u64le(mo + 32 * i),
+                    size: b.u64le(mo + 32 * i + 8),
+                    fileOffset: b.u64le(mo + 32 * i + 16)
+                )
+            }
             return (maps, (0..<ic).map { i in (b.u64le(io + 32 * i), Int(b.u32le(io + 32 * i + 24))) })
         }
         mappings = maps
@@ -53,7 +68,9 @@ public struct DyldSharedCache: @unchecked Sendable {
     }
 
     public func fileOffset(of address: UInt64) -> Int? {
-        mappings.first { $0.address <= address && address < $0.address + $0.size }.map { Int($0.fileOffset + address - $0.address) }
+        mappings.first { $0.address <= address && address < $0.address + $0.size }.map {
+            Int($0.fileOffset + address - $0.address)
+        }
     }
 
     public func image(_ path: String) -> Image? { images.first { $0.path == path } }
@@ -62,7 +79,7 @@ public struct DyldSharedCache: @unchecked Sendable {
     func loadCommands(_ img: Image, _ body: (UInt32, Int, UnsafeRawBufferPointer) -> Void) {
         data.withUnsafeBytes { b in
             let h = img.headerOffset
-            guard h >= 0, b.u32le(h) == 0xFEEDFACE else { return }
+            guard h >= 0, b.u32le(h) == 0xFEED_FACE else { return }
             var off = h + 28
             for _ in 0..<b.u32le(h + 16) {
                 body(b.u32le(off), off, b)
@@ -81,7 +98,12 @@ public struct DyldSharedCache: @unchecked Sendable {
         data.withUnsafeBytes { b in
             for s in 0..<nsyms {
                 let e = symoff + 12 * s
-                let sym = Symbol(name: b.latin1(stroff + Int(b.u32le(e))), type: b[e + 4], desc: b.u16le(e + 6), value: b.u32le(e + 8))
+                let sym = Symbol(
+                    name: b.latin1(stroff + Int(b.u32le(e))),
+                    type: b[e + 4],
+                    desc: b.u16le(e + 6),
+                    value: b.u32le(e + 8)
+                )
                 if !body(sym) { return }
             }
         }
@@ -89,7 +111,10 @@ public struct DyldSharedCache: @unchecked Sendable {
 
     public func symbolNames(in img: Image) -> [String] {
         var out: [String] = []
-        forEachSymbol(in: img) { out.append($0.name); return true }
+        forEachSymbol(in: img) {
+            out.append($0.name)
+            return true
+        }
         return out
     }
 
@@ -101,7 +126,8 @@ public struct DyldSharedCache: @unchecked Sendable {
             for k in 0..<Int(b.u32le(off + 48)) {
                 let so = off + 56 + 68 * k
                 guard String(decoding: b.cBytes(so).prefix(16), as: UTF8.self) == section,
-                      let start = fileOffset(of: UInt64(b.u32le(so + 32))) else { continue }
+                    let start = fileOffset(of: UInt64(b.u32le(so + 32)))
+                else { continue }
                 let bytes = b[start..<start + Int(b.u32le(so + 36))]
                 out += bytes.split(separator: 0).map { String($0.map { Character(Unicode.Scalar($0)) }) }
             }
@@ -114,7 +140,9 @@ public struct DyldSharedCache: @unchecked Sendable {
     public func findSymbol(_ name: String) throws -> (address: UInt64, thumb: Bool) {
         let want = Array(name.utf8)
         for img in images {
-            guard img.headerOffset >= 0 else { throw FirmwareError(.internal, "VA \(hex(img.address)) not in any mapping") }
+            guard img.headerOffset >= 0 else {
+                throw FirmwareError(.internal, "VA \(hex(img.address)) not in any mapping")
+            }
             var hit: (UInt64, Bool)?
             var tab: (Int, Int, Int)?
             loadCommands(img) { cmd, off, b in
@@ -127,7 +155,7 @@ public struct DyldSharedCache: @unchecked Sendable {
                     let value = b.u32le(e + 8)
                     guard value != 0, b[e + 4] & 0x0e == 0x0e else { continue }
                     if b.cBytes(stroff + Int(b.u32le(e))).elementsEqual(want) {
-                        hit = (UInt64(value), b.u16le(e + 6) & 0x0008 != 0)   // N_ARM_THUMB_DEF
+                        hit = (UInt64(value), b.u16le(e + 6) & 0x0008 != 0)  // N_ARM_THUMB_DEF
                         return
                     }
                 }
@@ -147,13 +175,14 @@ public enum AppSyncCachePatch {
     public static let patch: [UInt8] = [0x00, 0x20, 0x70, 0x47]
 
     static func looksLikeThumbEntry(_ b: [UInt8]) -> Bool {
-        let hw = UInt16(b[0]) | UInt16(b[1]) << 8, hw2 = UInt16(b[2]) | UInt16(b[3]) << 8
-        if hw & 0xFF00 == 0xB500 { return true }                        // push {..., lr}  (3.x/4.x, 5.0 beta 9A5220p)
-        if hw == 0xE92D { return hw2 & 0x4000 != 0 }                    // push.w with LR
+        let hw = UInt16(b[0]) | UInt16(b[1]) << 8
+        let hw2 = UInt16(b[2]) | UInt16(b[3]) << 8
+        if hw & 0xFF00 == 0xB500 { return true }  // push {..., lr}  (3.x/4.x, 5.0 beta 9A5220p)
+        if hw == 0xE92D { return hw2 & 0x4000 != 0 }  // push.w with LR
         // iOS 5.x libmis exports MISValidateSignature as a tail-thunk `movs rN,#imm ; b.w <impl>`
         // (9A5288d..9B206: 0022 fff7). Overwriting its first word with `movs r0,#0 ; bx lr` returns
         // success just as patching a framed entry does. Recognized by shape, not by build.
-        if hw & 0xF800 == 0x2000 { return hw2 & 0xF800 == 0xF000 }      // movs rN,#imm then a 32-bit branch
+        if hw & 0xF800 == 0x2000 { return hw2 & 0xF800 == 0xF000 }  // movs rN,#imm then a 32-bit branch
         return false
     }
 
@@ -163,11 +192,16 @@ public enum AppSyncCachePatch {
     /// function entry (or already the patch).
     public static func locate(_ cache: DyldSharedCache) throws -> (va: UInt64, offset: Int, word: [UInt8]) {
         let (va, thumb) = try cache.findSymbol(target)
-        guard let foff = cache.fileOffset(of: va) else { throw FirmwareError(.internal, "VA \(hex(va)) not in any mapping") }
+        guard let foff = cache.fileOffset(of: va) else {
+            throw FirmwareError(.internal, "VA \(hex(va)) not in any mapping")
+        }
         let cur = [UInt8](cache.data[foff..<foff + 4])
         guard cur == patch || (thumb && looksLikeThumbEntry(cur)) else {
             let curHex = cur.map { String(format: "%02x", $0) }.joined()
-            throw FirmwareError(.unsupported, "\(target) prologue \(curHex) at \(hex(foff)) is not a Thumb function entry — refusing to patch")
+            throw FirmwareError(
+                .unsupported,
+                "\(target) prologue \(curHex) at \(hex(foff)) is not a Thumb function entry — refusing to patch"
+            )
         }
         return (va, foff, cur)
     }
@@ -175,7 +209,8 @@ public enum AppSyncCachePatch {
     @discardableResult
     public static func patchCache(at url: URL, apply: Bool = true) throws -> String {
         let (va, foff, cur) = try locate(DyldSharedCache(contentsOf: url))
-        let curHex = cur.map { String(format: "%02x", $0) }.joined(), patchHex = "00207047"
+        let curHex = cur.map { String(format: "%02x", $0) }.joined()
+        let patchHex = "00207047"
         if cur == patch { return "\(target) already patched (VA \(hex(va)) off \(hex(foff)))" }
         if !apply { return "would patch \(target) \(curHex) -> \(patchHex) at \(hex(foff))" }
         let fh = try FileHandle(forUpdating: url)

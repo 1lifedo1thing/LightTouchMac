@@ -17,7 +17,20 @@
 import Foundation
 
 public nonisolated struct CatalogApp: Codable, Sendable {
-    public init(bundleID: String? = nil, name: String, developer: String? = nil, version: String? = nil, minOS: String? = nil, size: Int64? = nil, ipaID: Int, iconURL: URL? = nil, downloadURL: URL, appURL: URL? = nil, md5: String? = nil, compat: Compat? = nil) {
+    public init(
+        bundleID: String? = nil,
+        name: String,
+        developer: String? = nil,
+        version: String? = nil,
+        minOS: String? = nil,
+        size: Int64? = nil,
+        ipaID: Int,
+        iconURL: URL? = nil,
+        downloadURL: URL,
+        appURL: URL? = nil,
+        md5: String? = nil,
+        compat: Compat? = nil
+    ) {
         self.bundleID = bundleID
         self.name = name
         self.developer = developer
@@ -57,13 +70,22 @@ public nonisolated struct CatalogApp: Codable, Sendable {
         /// UIDeviceFamily: "1" iPhone/iPod touch, "2" iPad.
         public var deviceFamily: [String]? = nil
 
-        public enum CodingKeys: String, CodingKey { case compatible, reasons, deviceFamily = "device_family" }
+        public enum CodingKeys: String, CodingKey {
+            case compatible, reasons
+            case deviceFamily = "device_family"
+        }
     }
 
     public enum CodingKeys: String, CodingKey {
-        case bundleID = "bundle_id", name, developer, version, minOS = "min_os"
-        case size, ipaID = "ipa_id", iconURL = "icon_url"
-        case downloadURL = "download_url", appURL = "app_url", md5, compat
+        case bundleID = "bundle_id"
+        case name, developer, version
+        case minOS = "min_os"
+        case size
+        case ipaID = "ipa_id"
+        case iconURL = "icon_url"
+        case downloadURL = "download_url"
+        case appURL = "app_url"
+        case md5, compat
     }
 
     /// Why the server excluded this app for the device, in user words; nil
@@ -113,7 +135,8 @@ public nonisolated enum CatalogError: LocalizedError {
 
     /// The error for a non-200 answer and its body.
     public static func status(_ code: Int, body: Data) -> CatalogError {
-        code == 400 && String(decoding: body, as: UTF8.self).contains("device must be one of") ? .unsupportedDevice(name: nil) : .badStatus(code)
+        code == 400 && String(decoding: body, as: UTF8.self).contains("device must be one of")
+            ? .unsupportedDevice(name: nil) : .badStatus(code)
     }
 
     public var errorDescription: String? {
@@ -165,12 +188,20 @@ public enum CatalogClient {
     /// suggested (most-archived compatible) list, compatible apps only. A
     /// query also lists the apps the device can't run (API 2.1), grayed with
     /// the reason, so searching for one says why instead of nothing.
-    public static func search(_ query: String, device: String? = nil, os: String = "3.1.3") async throws -> [CatalogApp] {
-        var components = URLComponents(url: baseURL.appendingPathComponent("api/emulator/apps"),
-                                       resolvingAgainstBaseURL: false)!
-        components.queryItems = [URLQueryItem(name: "limit", value: "50")]
-            + (query.isEmpty ? [] : [URLQueryItem(name: "q", value: query),
-                                     URLQueryItem(name: "incompatible", value: "include")])
+    public static func search(_ query: String, device: String? = nil, os: String = "3.1.3") async throws -> [CatalogApp]
+    {
+        var components = URLComponents(
+            url: baseURL.appendingPathComponent("api/emulator/apps"),
+            resolvingAgainstBaseURL: false
+        )!
+        components.queryItems =
+            [URLQueryItem(name: "limit", value: "50")]
+            + (query.isEmpty
+                ? []
+                : [
+                    URLQueryItem(name: "q", value: query),
+                    URLQueryItem(name: "incompatible", value: "include"),
+                ])
             + target(device: device, os: os)
         let (data, response) = try await URLSession.shared.data(for: request(components.url!))
         if let code = (response as? HTTPURLResponse)?.statusCode, code != 200 {
@@ -182,14 +213,18 @@ public enum CatalogClient {
     }
 
     /// The copy, if it runs on this device (a 2.1 server 404s it otherwise).
-    public static func compatibleCopy(_ id: Int, device: String? = nil, os: String = "3.1.3") async throws -> CatalogApp {
-        var url = URLComponents(url: baseURL.appendingPathComponent("api/emulator/apps"),
-                                resolvingAgainstBaseURL: false)!
+    public static func compatibleCopy(_ id: Int, device: String? = nil, os: String = "3.1.3") async throws -> CatalogApp
+    {
+        var url = URLComponents(
+            url: baseURL.appendingPathComponent("api/emulator/apps"),
+            resolvingAgainstBaseURL: false
+        )!
         url.queryItems = [URLQueryItem(name: "ipa_id", value: String(id))] + target(device: device, os: os)
         struct Envelope: Decodable { let apps: [CatalogApp] }
         let result: Envelope = try await get(url.url!)
         guard result.apps.count == 1, let app = result.apps.first, app.ipaID == id,
-              app.compat?.compatible != false else {
+            app.compat?.compatible != false
+        else {
             throw CatalogError.invalidCopy("This copy is no longer available.")
         }
         return app
@@ -208,8 +243,10 @@ public enum CatalogClient {
             throw CatalogError.invalidCopy("This app has no catalog identifier.")
         }
         struct Envelope: Decodable { let data: [CatalogVersion] }
-        let result: Envelope = try await get(baseURL.appendingPathComponent("api/v1/apps")
-            .appendingPathComponent(key).appendingPathComponent("versions"))
+        let result: Envelope = try await get(
+            baseURL.appendingPathComponent("api/v1/apps")
+                .appendingPathComponent(key).appendingPathComponent("versions")
+        )
         return result.data
     }
 
@@ -227,9 +264,10 @@ public enum CatalogClient {
     /// A DecodingError goes to app.log whole (type, coding path, the decoder's words) and reaches
     /// the user as CatalogError.unreadable, not Foundation's "isn't in the correct format".
     private static func decode<T: Decodable>(_ type: T.Type, _ data: Data, from url: URL) throws -> T {
-        do { return try JSONDecoder().decode(type, from: data) }
-        catch let error as DecodingError {
-            log("Legacy Store: couldn’t read \(url.path)?\(url.query ?? "") (\(data.count) bytes) as \(T.self): \(String(reflecting: error))")
+        do { return try JSONDecoder().decode(type, from: data) } catch let error as DecodingError {
+            log(
+                "Legacy Store: couldn’t read \(url.path)?\(url.query ?? "") (\(data.count) bytes) as \(T.self): \(String(reflecting: error))"
+            )
             throw CatalogError.unreadable
         }
     }
@@ -238,8 +276,13 @@ public enum CatalogClient {
     /// disk — unless the library already holds the copy (its checksum), in
     /// which case the file is a clone of that, with no transfer. A failed or
     /// cancelled transfer owns no permanent scratch directory.
-    public static func download(_ app: CatalogApp, device: String? = nil, deviceOS: String = "3.1.3", arch: String = "armv6",
-                         progress: @escaping @MainActor @Sendable (Double) -> Void) async throws -> URL {
+    public static func download(
+        _ app: CatalogApp,
+        device: String? = nil,
+        deviceOS: String = "3.1.3",
+        arch: String = "armv6",
+        progress: @escaping @MainActor @Sendable (Double) -> Void
+    ) async throws -> URL {
         let current = try await compatibleCopy(app.ipaID, device: device, os: deviceOS)
         guard current.bundleID == app.bundleID else {
             throw CatalogError.invalidCopy("The archived copy no longer matches this app.")
@@ -259,8 +302,10 @@ public enum CatalogClient {
             }
             details = copy
         }
-        let dir = (scratchDirectory ?? Bundled.workDirectory).appendingPathComponent("catalog-\(app.ipaID)-\(UUID().uuidString)",
-                                                               isDirectory: true)
+        let dir = (scratchDirectory ?? Bundled.workDirectory).appendingPathComponent(
+            "catalog-\(app.ipaID)-\(UUID().uuidString)",
+            isDirectory: true
+        )
         let safeName = String(app.name.map { "/:\0".contains($0) ? "-" : $0 }.prefix(120))
         let file = dir.appendingPathComponent("\(safeName.isEmpty ? "App" : safeName).ipa")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -269,8 +314,10 @@ public enum CatalogClient {
                 try IPALibrary.clone(stored, to: file)
             } else if let details {
                 let delegate = CatalogDownloadProgress(report: progress)
-                let (temporary, response) = try await URLSession.shared.download(for: request(current.downloadURL),
-                                                                                delegate: delegate)
+                let (temporary, response) = try await URLSession.shared.download(
+                    for: request(current.downloadURL),
+                    delegate: delegate
+                )
                 defer { try? FileManager.default.removeItem(at: temporary) }
                 guard let response = response as? HTTPURLResponse, response.statusCode == 200 else {
                     throw CatalogError.badStatus((response as? HTTPURLResponse)?.statusCode ?? 0)
@@ -292,12 +339,20 @@ public enum CatalogClient {
 nonisolated private final class CatalogDownloadProgress: NSObject, URLSessionDownloadDelegate {
     let report: @MainActor @Sendable (Double) -> Void
     init(report: @escaping @MainActor @Sendable (Double) -> Void) { self.report = report }
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
-                    didFinishDownloadingTo location: URL) {}
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
-                    didWriteData bytesWritten: Int64, totalBytesWritten: Int64,
-                    totalBytesExpectedToWrite: Int64) {
-        let fraction = totalBytesExpectedToWrite > 0
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didFinishDownloadingTo location: URL
+    ) {}
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        let fraction =
+            totalBytesExpectedToWrite > 0
             ? min(1, Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)) : -1
         Task { @MainActor [report] in report(fraction) }
     }

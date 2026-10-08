@@ -1,8 +1,9 @@
-import Foundation
-import Testing
-import HostServiceWire
 import DeviceRuntime
+import Foundation
 import HostRuntime
+import HostServiceWire
+import Testing
+
 @testable import LightTouchCore
 
 /// A boot that never lights ends as a named error with the helper halted, never "Booting…" forever; recovery mode
@@ -29,18 +30,26 @@ struct BootWatchTests {
             await halted(late)
             #expect(late.state == .dead(exitCode: nil) && late.bootWatch.deathReason == BootWatch.deadlineReason(.n72))
             #expect(late.bootWatch.deathReason!.hasPrefix("The iPod didn’t start within"))
-            #expect(late.steps == ["retire", "release"] && late.timeZoneStops == 1, "the helper's death retires the boot's work")
+            #expect(
+                late.steps == ["retire", "release"] && late.timeZoneStops == 1,
+                "the helper's death retires the boot's work"
+            )
         }
     }
 
     @Test func aFinishedOrVisibleBootIsLeftAlone() async throws {
         try await withScratchDirectory { directory in
-            let lit = session(directory, .k48); lit.bootFinished = true
-            lit.bootWatch.start(); await lit.bootWatch.current?.value
+            let lit = session(directory, .k48)
+            lit.bootFinished = true
+            lit.bootWatch.start()
+            await lit.bootWatch.current?.value
             #expect(lit.fakeHelper!.terms == 0 && !lit.isDead && lit.bootWatch.deathReason == nil)
             // iOS on screen ("slide to set up") with its guest tools reporting, USB never answering: kept running.
-            let setUp = session(directory, .k48); setUp.state = .running; setUp.readiness.noteBoot(.guestTools)
-            setUp.bootWatch.start(); await setUp.bootWatch.current?.value
+            let setUp = session(directory, .k48)
+            setUp.state = .running
+            setUp.readiness.noteBoot(.guestTools)
+            setUp.bootWatch.start()
+            await setUp.bootWatch.current?.value
             #expect(!setUp.isDead && setUp.fakeHelper!.terms == 0 && setUp.bootWatch.deathReason == nil)
         }
     }
@@ -48,13 +57,19 @@ struct BootWatchTests {
     @Test func iBootsPictureOrNoPictureIsStillStopped() async throws {
         try await withScratchDirectory { directory in
             let quiet = session(directory, .k48)
-            quiet.bootWatch.start(); await halted(quiet)
+            quiet.bootWatch.start()
+            await halted(quiet)
             #expect(quiet.isDead, "a lit display without lockdown is not a finished boot")
-            let logo = session(directory, .k48); logo.state = .running; logo.readiness.noteBoot(.serial("Darwin Kernel Version"))
-            logo.bootWatch.start(); await halted(logo)
+            let logo = session(directory, .k48)
+            logo.state = .running
+            logo.readiness.noteBoot(.serial("Darwin Kernel Version"))
+            logo.bootWatch.start()
+            await halted(logo)
             #expect(logo.bootWatch.deathReason == BootWatch.deadlineReason(.k48), "iBoot's picture alone is not iOS")
-            let dark = session(directory, .k48); dark.readiness.noteBoot(.guestTools)
-            dark.bootWatch.start(); await halted(dark)
+            let dark = session(directory, .k48)
+            dark.readiness.noteBoot(.guestTools)
+            dark.bootWatch.start()
+            await halted(dark)
             #expect(dark.isDead, "no picture by the deadline: stopped")
         }
     }
@@ -67,7 +82,10 @@ struct BootWatchTests {
             #expect(recovery.bootWatch.current?.isCancelled == true)
             await eventually("recovery halted") { recovery.isDead }
             #expect(recovery.fakeHelper!.terms == 1 && recovery.bootWatch.deathReason == BootWatch.recoveryReason(.k48))
-            #expect(recovery.bootWatch.deathReason!.contains("recovery mode") && recovery.bootWatch.deathReason!.contains("iPad"))
+            #expect(
+                recovery.bootWatch.deathReason!.contains("recovery mode")
+                    && recovery.bootWatch.deathReason!.contains("iPad")
+            )
             recovery.bootWatch.abort("again")
             #expect(recovery.fakeHelper!.terms == 1, "a dead session isn't aborted twice")
         }
@@ -75,7 +93,8 @@ struct BootWatchTests {
 
     @Test func aHelperIgnoringSIGTERMIsKilledAndStoppingSessionsAreLeftAlone() async throws {
         try await withScratchDirectory { directory in
-            let stuck = session(directory); stuck.fakeHelper!.hung = true
+            let stuck = session(directory)
+            stuck.fakeHelper!.hung = true
             stuck.bootWatch.abort("stuck")
             await eventually("killed") { stuck.fakeHelper!.kills == 1 }
             #expect(stuck.fakeHelper!.terms == 1)
@@ -86,7 +105,10 @@ struct BootWatchTests {
             stopping.bootWatch.abort("late")
             #expect(stopping.fakeHelper!.terms == terms && stopping.bootWatch.deathReason == nil)
             await eventually("halted") { stopping.isDead || stopping.state == .poweredOff }
-            #expect(stopping.state == .poweredOff && stopping.bootWatch.deathReason == nil, "a halt's exit is Stopped, not a crash")
+            #expect(
+                stopping.state == .poweredOff && stopping.bootWatch.deathReason == nil,
+                "a halt's exit is Stopped, not a crash"
+            )
         }
     }
 
@@ -104,12 +126,24 @@ struct BootWatchTests {
         try await withScratchDirectory { directory in
             let missing = CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: "/state/Devices/x/base/iBoot.bin"])
             let reason = BootWatch.bootFilesReason(missing, profile: .n72)
-            #expect(reason == "This iPod’s system files are incomplete: iBoot.bin is missing. Delete it and prepare it again.")
-            #expect(BootWatch.bootFilesReason(CocoaError(.fileReadCorruptFile), profile: .k48).hasPrefix("Couldn’t prepare the iPad’s storage: "))
+            #expect(
+                reason
+                    == "This iPod’s system files are incomplete: iBoot.bin is missing. Delete it and prepare it again."
+            )
+            #expect(
+                BootWatch.bootFilesReason(CocoaError(.fileReadCorruptFile), profile: .k48).hasPrefix(
+                    "Couldn’t prepare the iPad’s storage: "
+                )
+            )
             let failing = session(directory)
-            #expect(observes({ _ = failing.bootWatch.deathReason }) { failing.bootWatch.failBoot(missing) },
-                    "the dead overlay's reason follows")
-            #expect(failing.state == .dead(exitCode: 1) && failing.bootWatch.deathReason == reason && failing.notices.message == reason)
+            #expect(
+                observes({ _ = failing.bootWatch.deathReason }) { failing.bootWatch.failBoot(missing) },
+                "the dead overlay's reason follows"
+            )
+            #expect(
+                failing.state == .dead(exitCode: 1) && failing.bootWatch.deathReason == reason
+                    && failing.notices.message == reason
+            )
         }
     }
 }

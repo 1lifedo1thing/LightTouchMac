@@ -23,7 +23,12 @@ extension SharedState {
             ]
             for width in [280.0, 320.0, 400.0] {
                 for text in messages {
-                    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 360), styleMask: [.titled], backing: .buffered, defer: true)
+                    let window = NSWindow(
+                        contentRect: NSRect(x: 0, y: 0, width: width, height: 360),
+                        styleMask: [.titled],
+                        backing: .buffered,
+                        defer: true
+                    )
                     window.appearance = NSAppearance(named: .aqua)
                     let pane = NSView()
                     pane.translatesAutoresizingMaskIntoConstraints = false
@@ -40,26 +45,38 @@ extension SharedState {
                     let hold = pane.widthAnchor.constraint(equalToConstant: width)
                     hold.priority = NSLayoutConstraint.Priority(490)  // NSSplitView's holding priority for an inspector
                     NSLayoutConstraint.activate([
-                        hold, pane.widthAnchor.constraint(greaterThanOrEqualToConstant: 280), pane.widthAnchor.constraint(lessThanOrEqualToConstant: 400),
-                        pane.leadingAnchor.constraint(equalTo: host.leadingAnchor), pane.topAnchor.constraint(equalTo: host.topAnchor),
+                        hold, pane.widthAnchor.constraint(greaterThanOrEqualToConstant: 280),
+                        pane.widthAnchor.constraint(lessThanOrEqualToConstant: 400),
+                        pane.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+                        pane.topAnchor.constraint(equalTo: host.topAnchor),
                         pane.bottomAnchor.constraint(equalTo: host.bottomAnchor),
                         caption.topAnchor.constraint(equalTo: pane.topAnchor, constant: 12),
                         caption.leadingAnchor.constraint(equalTo: pane.leadingAnchor, constant: 8),
                         caption.trailingAnchor.constraint(equalTo: pane.trailingAnchor, constant: -8),
-                        message.centerXAnchor.constraint(equalTo: pane.centerXAnchor), message.centerYAnchor.constraint(equalTo: pane.centerYAnchor),
+                        message.centerXAnchor.constraint(equalTo: pane.centerXAnchor),
+                        message.centerYAnchor.constraint(equalTo: pane.centerYAnchor),
                         message.leadingAnchor.constraint(equalTo: pane.leadingAnchor, constant: 16),
                         message.trailingAnchor.constraint(equalTo: pane.trailingAnchor, constant: -16),
-                        retry.topAnchor.constraint(equalTo: message.bottomAnchor, constant: 12), retry.centerXAnchor.constraint(equalTo: pane.centerXAnchor),
+                        retry.topAnchor.constraint(equalTo: message.bottomAnchor, constant: 12),
+                        retry.centerXAnchor.constraint(equalTo: pane.centerXAnchor),
                     ])
                     host.layoutSubtreeIfNeeded()
                     let name = "\(Int(width)) “\(text)”"
                     #expect(abs(pane.frame.width - width) <= 0.5, "\(name): the pane went \(pane.frame.width) wide")
-                    for label in [message, caption] { #expect(pane.bounds.contains(label.frame), "\(name): \(label.frame) outside the pane") }
-                    let needed = message.cell!.cellSize(forBounds: NSRect(x: 0, y: 0, width: message.frame.width, height: 10_000))
+                    for label in [message, caption] {
+                        #expect(pane.bounds.contains(label.frame), "\(name): \(label.frame) outside the pane")
+                    }
+                    let needed = message.cell!.cellSize(
+                        forBounds: NSRect(x: 0, y: 0, width: message.frame.width, height: 10_000)
+                    )
                     #expect(
                         needed.height <= message.frame.height + 0.5 && needed.width <= message.frame.width + 0.5,
-                        "\(name): the message needs \(needed), has \(message.frame.size)")
-                    #expect(retry.frame.minY >= 0 && retry.frame.maxY <= message.frame.minY, "\(name): Retry overlaps the message")
+                        "\(name): the message needs \(needed), has \(message.frame.size)"
+                    )
+                    #expect(
+                        retry.frame.minY >= 0 && retry.frame.maxY <= message.frame.minY,
+                        "\(name): Retry overlaps the message"
+                    )
                 }
             }
         }
@@ -78,8 +95,17 @@ extension SharedState {
             #expect(target.leveled)
             func render() -> Data {
                 let bitmap = NSBitmapImageRep(
-                    bitmapDataPlanes: nil, pixelsWide: 40, pixelsHigh: 40, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
-                    isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 160, bitsPerPixel: 32)!
+                    bitmapDataPlanes: nil,
+                    pixelsWide: 40,
+                    pixelsHigh: 40,
+                    bitsPerSample: 8,
+                    samplesPerPixel: 4,
+                    hasAlpha: true,
+                    isPlanar: false,
+                    colorSpaceName: .deviceRGB,
+                    bytesPerRow: 160,
+                    bitsPerPixel: 32
+                )!
                 NSGraphicsContext.saveGraphicsState()
                 NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
                 button.draw(button.bounds)
@@ -99,9 +125,17 @@ extension SharedState {
                 let button = RecordingToolbarButton(target: nil, action: #selector(record(_:)))
                 var count = 0
                 @objc func record(_ sender: Any?) { count += 1 }
-                func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [.init("record")] }
-                func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
-                func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+                func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+                    [.init("record")]
+                }
+                func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+                    toolbarDefaultItemIdentifiers(toolbar)
+                }
+                func toolbar(
+                    _ toolbar: NSToolbar,
+                    itemForItemIdentifier id: NSToolbarItem.Identifier,
+                    willBeInsertedIntoToolbar flag: Bool
+                ) -> NSToolbarItem? {
                     let item = NSToolbarItem(itemIdentifier: id)
                     item.label = "Record"
                     item.view = button
@@ -109,7 +143,12 @@ extension SharedState {
                 }
             }
             let target = Target()
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 420), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 620, height: 420),
+                styleMask: [.titled, .resizable],
+                backing: .buffered,
+                defer: false
+            )
             let toolbar = NSToolbar(identifier: "record-check")
             toolbar.delegate = target
             toolbar.displayMode = .iconOnly
@@ -133,7 +172,10 @@ extension SharedState {
             button.layoutSubtreeIfNeeded()
             let spinner = button.subviews.compactMap { $0 as? NSProgressIndicator }.first
             #expect(!button.isEnabled && button.title.isEmpty && button.accessibilityLabel() == "Saving Recording…")
-            #expect(spinner.map { $0.frame.width > 0 && $0.frame.height > 0 && button.bounds.contains($0.frame) } == true, "Saving progress must fit")
+            #expect(
+                spinner.map { $0.frame.width > 0 && $0.frame.height > 0 && button.bounds.contains($0.frame) } == true,
+                "Saving progress must fit"
+            )
             #expect(button.accessibilityValue() == nil)
             button.update(.recovery, elapsed: "1:23:45", enabled: true)
             #expect(button.accessibilityLabel() == "Save Recording As…" && button.isEnabled)
@@ -160,7 +202,12 @@ extension SharedState {
         /// the action keeps its width whatever its text, a transfer shows (in)determinate progress beside Cancel. What each
         /// row says is LightTouchCoreTests' AppsInspectorRowsTests.
         @Test func appRows() {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 56), styleMask: [.titled], backing: .buffered, defer: false)
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 400, height: 56),
+                styleMask: [.titled],
+                backing: .buffered,
+                defer: false
+            )
             enum Row {
                 case result(String)
                 case progress(Double?)
@@ -172,12 +219,29 @@ extension SharedState {
                         switch row {
                         case .result(let button):
                             let app = CatalogApp(
-                                bundleID: "test", name: name, developer: "Example Developer", version: "1.0", size: 5_000_000,
-                                ipaID: 1, downloadURL: URL(string: "https://example.invalid/1")!)
-                            cell = AppRowCells.catalogCell(app, icon: nil, button: button, enabled: true, row: 0, target: nil, action: nil)
+                                bundleID: "test",
+                                name: name,
+                                developer: "Example Developer",
+                                version: "1.0",
+                                size: 5_000_000,
+                                ipaID: 1,
+                                downloadURL: URL(string: "https://example.invalid/1")!
+                            )
+                            cell = AppRowCells.catalogCell(
+                                app,
+                                icon: nil,
+                                button: button,
+                                enabled: true,
+                                row: 0,
+                                target: nil,
+                                action: nil
+                            )
                         case .progress(let fraction):
                             cell = AppRowCells.progressCell(
-                                icon: nil, title: name, subtitle: "Downloading… 50%", fraction: fraction,
+                                icon: nil,
+                                title: name,
+                                subtitle: "Downloading… 50%",
+                                fraction: fraction,
                                 job: InstallJob(name: name, device: UUID())
                             ) {}
                         }
@@ -197,10 +261,16 @@ extension SharedState {
                         } else {
                             #expect(abs(buttonFrame.width - 54) < 0.5, "Action width changed with text")
                         }
-                        #expect(title.frame.maxX < buttonFrame.minX && title.frame.minX > image.frame.maxX, "\(width) \(name)")
+                        #expect(
+                            title.frame.maxX < buttonFrame.minX && title.frame.minX > image.frame.maxX,
+                            "\(width) \(name)"
+                        )
                         if case .progress(let fraction) = row {
                             let progress = cell.subviews.compactMap { $0 as? NSProgressIndicator }.first!
-                            #expect(!progress.isHidden && !button.isHidden && progress.frame.width == 16, "Progress must remain visible alongside Cancel")
+                            #expect(
+                                !progress.isHidden && !button.isHidden && progress.frame.width == 16,
+                                "Progress must remain visible alongside Cancel"
+                            )
                             #expect(progress.isIndeterminate == (fraction == nil))
                         }
                     }

@@ -48,8 +48,7 @@
 
 /* Match the type the device reports (uint on old lockdownd, real on newer),
  * like idevicedate. */
-static double get_time(lockdownd_client_t cli, int *is_real)
-{
+static double get_time(lockdownd_client_t cli, int *is_real) {
     plist_t v = NULL;
     double t = -1;
     if (lockdownd_get_value(cli, NULL, "TimeIntervalSince1970", &v) == LOCKDOWN_E_SUCCESS && v) {
@@ -67,8 +66,7 @@ static double get_time(lockdownd_client_t cli, int *is_real)
 }
 
 /* Returns the time the device holds afterwards (-1 if unreadable). */
-static double set_time(lockdownd_client_t cli, time_t now)
-{
+static double set_time(lockdownd_client_t cli, time_t now) {
     int is_real = 0;
     get_time(cli, &is_real);
     plist_t node = is_real ? plist_new_real((double)now) : plist_new_uint((uint64_t)now);
@@ -88,8 +86,7 @@ static double set_time(lockdownd_client_t cli, time_t now)
     return held;
 }
 
-static char *current_zone(lockdownd_client_t cli)
-{
+static char *current_zone(lockdownd_client_t cli) {
     plist_t v = NULL;
     char *s = NULL;
     if (lockdownd_get_value(cli, NULL, "TimeZone", &v) == LOCKDOWN_E_SUCCESS && v) {
@@ -102,19 +99,18 @@ static char *current_zone(lockdownd_client_t cli)
 /* Finish local preparation through the guest's own protocol. This never sends
  * identities or activation requests to an external service. Kept in the child
  * process for the same SetValue isolation as clock synchronization. */
-static char *string_value(lockdownd_client_t cli, const char *key)
-{
+static char *string_value(lockdownd_client_t cli, const char *key) {
     plist_t value = NULL;
     char *s = NULL;
     if (lockdownd_get_value(cli, NULL, key, &value) == LOCKDOWN_E_SUCCESS && value) {
-        if (plist_get_node_type(value) == PLIST_STRING) plist_get_string_val(value, &s);
+        if (plist_get_node_type(value) == PLIST_STRING)
+            plist_get_string_val(value, &s);
         plist_free(value);
     }
     return s;
 }
 
-static int bool_value(lockdownd_client_t cli, const char *key)
-{
+static int bool_value(lockdownd_client_t cli, const char *key) {
     plist_t value = NULL;
     int result = -1;
     if (lockdownd_get_value(cli, NULL, key, &value) == LOCKDOWN_E_SUCCESS && value) {
@@ -128,21 +124,20 @@ static int bool_value(lockdownd_client_t cli, const char *key)
     return result;
 }
 
-static int activated(const char *state)
-{
-    return state && (!strcmp(state, "Activated") || !strcmp(state, "FactoryActivated") ||
-                     !strcmp(state, "WildcardActivated"));
+static int activated(const char *state) {
+    return state &&
+           (!strcmp(state, "Activated") || !strcmp(state, "FactoryActivated") || !strcmp(state, "WildcardActivated"));
 }
 
-static int ensure_true(lockdownd_client_t cli, const char *key)
-{
-    if (bool_value(cli, key) == 1) return 1;
-    if (lockdownd_set_value(cli, NULL, key, plist_new_bool(1)) != LOCKDOWN_E_SUCCESS) return 0;
+static int ensure_true(lockdownd_client_t cli, const char *key) {
+    if (bool_value(cli, key) == 1)
+        return 1;
+    if (lockdownd_set_value(cli, NULL, key, plist_new_bool(1)) != LOCKDOWN_E_SUCCESS)
+        return 0;
     return bool_value(cli, key) == 1;
 }
 
-static int finish_activation(lockdownd_client_t cli)
-{
+static int finish_activation(lockdownd_client_t cli) {
     char *state = string_value(cli, "ActivationState");
     if (!activated(state)) {
         fprintf(stderr, "activation state: %s\n", state ? state : "unavailable");
@@ -153,8 +148,8 @@ static int finish_activation(lockdownd_client_t cli)
     char *product = string_value(cli, "ProductType");
     char *version = string_value(cli, "ProductVersion");
     unsigned major = 0;
-    int legacy_ipod = product && !strncmp(product, "iPod", 4) && version &&
-        sscanf(version, "%u.", &major) == 1 && major >= 1 && major <= 3;
+    int legacy_ipod = product && !strncmp(product, "iPod", 4) && version && sscanf(version, "%u.", &major) == 1 &&
+                      major >= 1 && major <= 3;
     free(product);
     free(version);
     if (legacy_ipod && (!ensure_true(cli, "iTunesHasConnected") || bool_value(cli, "BrickState") == 1)) {
@@ -184,8 +179,7 @@ static int finish_activation(lockdownd_client_t cli)
  * value it holds makes lockdownd post AppleTimePreferencesChangedNotification,
  * as Settings' 24-Hour Time switch does, and the lock clock redraws in the new
  * zone. No value changes; a lockdownd without the key is left alone. */
-static void refresh_clocks(lockdownd_client_t cli)
-{
+static void refresh_clocks(lockdownd_client_t cli) {
     int h24 = bool_value(cli, "Uses24HourClock");
     if (h24 >= 0 && lockdownd_set_value(cli, NULL, "Uses24HourClock", plist_new_bool(h24)) != LOCKDOWN_E_SUCCESS)
         fprintf(stderr, "clock refresh failed\n");
@@ -193,17 +187,18 @@ static void refresh_clocks(lockdownd_client_t cli)
 
 /* The Mac's region (Locale in com.apple.international) and 24-hour setting, where this lockdownd has
  * them. Returns whether anything changed. */
-static int set_region(lockdownd_client_t cli, const char *locale, int h24)
-{
+static int set_region(lockdownd_client_t cli, const char *locale, int h24) {
     int changed = 0;
     if (locale) {
         plist_t v = NULL;
         char *have = NULL;
         if (lockdownd_get_value(cli, "com.apple.international", "Locale", &v) == LOCKDOWN_E_SUCCESS && v) {
-            if (plist_get_node_type(v) == PLIST_STRING) plist_get_string_val(v, &have);
+            if (plist_get_node_type(v) == PLIST_STRING)
+                plist_get_string_val(v, &have);
             plist_free(v);
             if (!have || strcmp(have, locale)) {
-                if (lockdownd_set_value(cli, "com.apple.international", "Locale", plist_new_string(locale)) == LOCKDOWN_E_SUCCESS)
+                if (lockdownd_set_value(cli, "com.apple.international", "Locale", plist_new_string(locale)) ==
+                    LOCKDOWN_E_SUCCESS)
                     changed = 1;
                 else
                     fprintf(stderr, "locale not set\n");
@@ -228,8 +223,7 @@ static int set_region(lockdownd_client_t cli, const char *locale, int h24)
  * the zone to locationd/timed, which relinks /var/db/timezone/localtime a
  * moment later, so a changed zone is polled until it reads back; the clocks
  * are refreshed only once it has, and only when it changed. */
-static char *set_zone(lockdownd_client_t cli, const char *want)
-{
+static char *set_zone(lockdownd_client_t cli, const char *want) {
     char *zone = current_zone(cli);
     if (zone && strcmp(zone, want) == 0)
         return zone;
@@ -255,14 +249,15 @@ static char *set_zone(lockdownd_client_t cli, const char *want)
 }
 
 /* argv[0] is the operation name, the rest as the standalone tool took them. */
-int ltm_lockdown_tz(int argc, char **argv)
-{
+int ltm_lockdown_tz(int argc, char **argv) {
     const char *locale = NULL;
     int h24 = -1;
     /* The region options come last; what's before them is the zone and the clock. */
     while (argc >= 4 && (!strcmp(argv[argc - 2], "--locale") || !strcmp(argv[argc - 2], "--24h"))) {
-        if (!strcmp(argv[argc - 2], "--locale")) locale = argv[argc - 1];
-        else h24 = atoi(argv[argc - 1]) != 0;
+        if (!strcmp(argv[argc - 2], "--locale"))
+            locale = argv[argc - 1];
+        else
+            h24 = atoi(argv[argc - 1]) != 0;
         argc -= 2;
     }
     if (argc < 2 || argc > 3) {

@@ -20,12 +20,17 @@ public final class QuitCoordinator {
     /// One quit request. `finishRecording` is true when a recording holds the quit (it asks the user itself);
     /// `confirmPreparation` and `confirmChanges` ask; `cancelChanges` drops queued installs and transfers;
     /// `running` are the halts of the devices still running, each calling back once.
-    public func shouldTerminate(erasing: Bool,
-                                finishRecording: () -> Bool,
-                                preparing: Int, confirmPreparation: (Int) -> Bool,
-                                hasDevices: Bool,
-                                changesInProgress: Bool, confirmChanges: () -> Bool, cancelChanges: () -> Void,
-                                running: [(@escaping () -> Void) -> Void]) -> Answer {
+    public func shouldTerminate(
+        erasing: Bool,
+        finishRecording: () -> Bool,
+        preparing: Int,
+        confirmPreparation: (Int) -> Bool,
+        hasDevices: Bool,
+        changesInProgress: Bool,
+        confirmChanges: () -> Bool,
+        cancelChanges: () -> Void,
+        running: [(@escaping () -> Void) -> Void]
+    ) -> Answer {
         if erasing { return .cancel }
         if awaitingTermination { return .later }
         if finishRecording() { return .cancel }

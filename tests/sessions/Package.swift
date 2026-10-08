@@ -12,7 +12,9 @@ import PackageDescription
 
 let driver: [SwiftSetting] = [.defaultIsolation(MainActor.self), .swiftLanguageMode(.v5)]
 
-let package = Package(name: "Sessions", platforms: [.macOS("14.4")],
+let package = Package(
+    name: "Sessions",
+    platforms: [.macOS("14.4")],
     dependencies: [
         .package(path: "../../Packages/LightTouchCore"),
         .package(path: "../../Packages/HostRuntime"),
@@ -23,19 +25,28 @@ let package = Package(name: "Sessions", platforms: [.macOS("14.4")],
     targets: [
         .target(name: "SessionKit"),
         .executableTarget(name: "sessions", dependencies: ["SessionKit"]),
-        .executableTarget(name: "session-driver", dependencies: [
-            "SessionKit",
-            .product(name: "LightTouchCore", package: "LightTouchCore"),
-            .product(name: "HostRuntime", package: "HostRuntime"),
-            .product(name: "DeviceRuntime", package: "DeviceRuntime"),
-            .product(name: "HostServiceClient", package: "DeviceServices"),
-            .product(name: "HostServiceWire", package: "DeviceServices"),
-            .product(name: "FirmwareSchema", package: "FirmwareKit"),
-        ], swiftSettings: driver),
-        .executableTarget(name: "helper-driver", dependencies: [
-            .product(name: "LightTouchCore", package: "LightTouchCore"),
-            .product(name: "HostRuntime", package: "HostRuntime"),
-            .product(name: "DeviceRuntime", package: "DeviceRuntime"),
-        ], swiftSettings: [.swiftLanguageMode(.v5)]),
+        .executableTarget(
+            name: "session-driver",
+            dependencies: [
+                "SessionKit",
+                .product(name: "LightTouchCore", package: "LightTouchCore"),
+                .product(name: "HostRuntime", package: "HostRuntime"),
+                .product(name: "DeviceRuntime", package: "DeviceRuntime"),
+                .product(name: "HostServiceClient", package: "DeviceServices"),
+                .product(name: "HostServiceWire", package: "DeviceServices"),
+                .product(name: "FirmwareSchema", package: "FirmwareKit"),
+            ],
+            swiftSettings: driver
+        ),
+        .executableTarget(
+            name: "helper-driver",
+            dependencies: [
+                .product(name: "LightTouchCore", package: "LightTouchCore"),
+                .product(name: "HostRuntime", package: "HostRuntime"),
+                .product(name: "DeviceRuntime", package: "DeviceRuntime"),
+            ],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
         .testTarget(name: "SessionKitTests", dependencies: ["SessionKit"]),
-    ])
+    ]
+)

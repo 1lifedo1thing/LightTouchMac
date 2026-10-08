@@ -28,11 +28,16 @@ extension SharedState {
             var numberOfValidItemsForDrop = 0
             var springLoadingHighlight: NSSpringLoadingHighlight { .none }
             func slideDraggedImage(to screenPoint: NSPoint) {}
-            override nonisolated func namesOfPromisedFilesDropped(atDestination dropDestination: URL) -> [String]? { nil }
+            override nonisolated func namesOfPromisedFilesDropped(atDestination dropDestination: URL) -> [String]? {
+                nil
+            }
             func resetSpringLoading() {}
             func enumerateDraggingItems(
-                options: NSDraggingItemEnumerationOptions = [], for view: NSView?, classes classArray: [AnyClass],
-                searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:], using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void
+                options: NSDraggingItemEnumerationOptions = [],
+                for view: NSView?,
+                classes classArray: [AnyClass],
+                searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:],
+                using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void
             ) {}
             func files(_ names: [String]) {
                 draggingPasteboard.clearContents()
@@ -45,7 +50,9 @@ extension SharedState {
             NSApp.setActivationPolicy(.prohibited)
             let catalog = try FirmwareCatalog.load(
                 from: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-                    .appendingPathComponent("../../../../LightTouchMac/Resources/firmware-catalog.json").standardizedFileURL)
+                    .appendingPathComponent("../../../../LightTouchMac/Resources/firmware-catalog.json")
+                    .standardizedFileURL
+            )
             func entry(_ id: String) -> FirmwareCatalog.Entry { catalog.entry(id: id)! }
             let id = UUID()
             let beta = entry("k48ap-9A5220p")
@@ -57,36 +64,65 @@ extension SharedState {
             let states: [(String, DeviceRow)] = [
                 ("not-downloaded", DeviceRow(entry: beta, instanceID: nil, session: nil, job: nil)),
                 ("downloaded", DeviceRow(entry: ipad, instanceID: nil, session: nil, job: nil, downloaded: true)),
-                ("downloading", DeviceRow(entry: beta, instanceID: nil, session: nil, job: .downloading(fraction: 0.43, remaining: 70))),
+                (
+                    "downloading",
+                    DeviceRow(
+                        entry: beta,
+                        instanceID: nil,
+                        session: nil,
+                        job: .downloading(fraction: 0.43, remaining: 70)
+                    )
+                ),
                 (
                     "downloading-archive",
                     DeviceRow(
-                        entry: beta, instanceID: nil, session: nil,
-                        job: .downloading(fraction: 0.43, remaining: 1900, mirror: "archive.org", speed: 850_000))
+                        entry: beta,
+                        instanceID: nil,
+                        session: nil,
+                        job: .downloading(fraction: 0.43, remaining: 1900, mirror: "archive.org", speed: 850_000)
+                    )
                 ),
                 ("preparing", DeviceRow(entry: beta, instanceID: nil, session: nil, job: .preparing(prep))),
                 (
                     "almost-done",
                     DeviceRow(
-                        entry: beta, instanceID: nil, session: nil,
+                        entry: beta,
+                        instanceID: nil,
+                        session: nil,
                         job: .preparing(
                             {
                                 var p = prep
                                 p.remaining = 4
                                 return p
-                            }()))
+                            }()
+                        )
+                    )
                 ),
-                ("downloading-starting", DeviceRow(entry: beta, instanceID: nil, session: nil, job: .downloading(fraction: 0.01))),
+                (
+                    "downloading-starting",
+                    DeviceRow(entry: beta, instanceID: nil, session: nil, job: .downloading(fraction: 0.01))
+                ),
                 ("error", DeviceRow(entry: beta, instanceID: nil, session: nil, job: .failed(unsupported))),
                 ("ready", DeviceRow(entry: ipad, instanceID: id, session: nil, job: nil)),
-                ("older-recipe", DeviceRow(entry: entry("n45ap-4B1"), instanceID: id, session: nil, job: nil, baseRecipe: 1)),
-                ("stopped", DeviceRow(entry: ipad, instanceID: id, session: .dead("The iPad stopped unexpectedly."), job: nil)),
+                (
+                    "older-recipe",
+                    DeviceRow(entry: entry("n45ap-4B1"), instanceID: id, session: nil, job: nil, baseRecipe: 1)
+                ),
+                (
+                    "stopped",
+                    DeviceRow(entry: ipad, instanceID: id, session: .dead("The iPad stopped unexpectedly."), job: nil)
+                ),
                 ("requires-ipsw", DeviceRow(entry: ipod, instanceID: nil, session: nil, job: nil)),
             ]
             var failures: [String] = []
             for (name, row) in states {
                 let vc = DevicePlaceholderViewController()
-                let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 640), styleMask: [.titled], backing: .buffered, defer: true)
+                let window = NSWindow(
+                    contentRect: NSRect(x: 0, y: 0, width: 760, height: 640),
+                    styleMask: [.titled],
+                    backing: .buffered,
+                    defer: true
+                )
                 window.appearance = NSAppearance(named: .aqua)
                 window.contentView = vc.view
                 vc.update(row, canDownload: true)
@@ -102,8 +138,15 @@ extension SharedState {
                     }
                     return v.window != nil
                 }
-                func frame(_ v: NSView) -> NSRect { v.convert(v.alignmentRect(forFrame: v.frame).offsetBy(dx: -v.frame.minX, dy: -v.frame.minY), to: view) }
-                let labels = all(view).compactMap { $0 as? NSTextField }.filter { visible($0) && !$0.stringValue.isEmpty }
+                func frame(_ v: NSView) -> NSRect {
+                    v.convert(
+                        v.alignmentRect(forFrame: v.frame).offsetBy(dx: -v.frame.minX, dy: -v.frame.minY),
+                        to: view
+                    )
+                }
+                let labels = all(view).compactMap { $0 as? NSTextField }.filter {
+                    visible($0) && !$0.stringValue.isEmpty
+                }
                 let buttons = all(view).compactMap { $0 as? NSButton }.filter { visible($0) && $0.isBordered }
                 func fail(_ s: String) { failures.append("\(name): \(s)") }
                 // The art is the sidebar's thumbnail for the model, dimmed, not the shell.
@@ -122,13 +165,17 @@ extension SharedState {
                 for l in labels {
                     let f = frame(l)
                     if !view.bounds.contains(f) { fail("\(l.stringValue) outside the view") }
-                    if l.maximumNumberOfLines != 0 || l.cell?.wraps == false, l.intrinsicContentSize.width > l.frame.width + 0.5 {
+                    if l.maximumNumberOfLines != 0 || l.cell?.wraps == false,
+                        l.intrinsicContentSize.width > l.frame.width + 0.5
+                    {
                         fail("\(l.stringValue) clipped")
                     }
                 }
                 // Top to bottom: name, version, state.
                 let texts = labels.sorted { frame($0).midY > frame($1).midY }.map(\.stringValue)
-                guard let n = texts.firstIndex(of: row.entry.profile!.marketingName), let v = texts.firstIndex(where: { $0.hasPrefix("iOS ") }) else {
+                guard let n = texts.firstIndex(of: row.entry.profile!.marketingName),
+                    let v = texts.firstIndex(where: { $0.hasPrefix("iOS ") })
+                else {
                     fail("no name or version: \(texts)")
                     continue
                 }
@@ -142,11 +189,15 @@ extension SharedState {
                     for b in buttons where b !== p {
                         if abs(frame(b).midY - frame(p).midY) > 0.5 { fail("\(b.title) not on \(primary)'s row") }
                         if frame(b).maxX > frame(p).minX { fail("\(b.title) after the default button") }
-                        if abs(frame(b).height - frame(p).height) > 0.5 { fail("\(b.title) and \(primary) differ in size") }
+                        if abs(frame(b).height - frame(p).height) > 0.5 {
+                            fail("\(b.title) and \(primary) differ in size")
+                        }
                     }
                     if p.keyEquivalent == "\r" && row.primaryAction == .cancel { fail("Return cancels") }
                 }
-                if row.isError && !buttons.contains(where: { $0.title == "Show Logs" }) { fail("an error without Show Logs") }
+                if row.isError && !buttons.contains(where: { $0.title == "Show Logs" }) {
+                    fail("an error without Show Logs")
+                }
                 // A base from an older recipe: its line and Prepare Again beside Start (still the default); no other state shows them.
                 let again = buttons.first { $0.title == "Prepare Again…" }
                 if (name == "older-recipe") != (again != nil) { fail("Prepare Again shown: \(again != nil)") }
@@ -154,28 +205,38 @@ extension SharedState {
                 if row.preparedByOlderRecipe, again?.isEnabled != true || row.primaryTitle != "Start" {
                     fail("Prepare Again disabled or Start not the default")
                 }
-                if row.isError && !texts.contains(where: { $0.hasPrefix("Couldn’t ") || $0 == "Stopped unexpectedly" }) {
+                if row.isError && !texts.contains(where: { $0.hasPrefix("Couldn’t ") || $0 == "Stopped unexpectedly" })
+                {
                     fail("an error headline that doesn't say what failed: \(texts)")
                 }
                 if texts.contains("Error") { fail("a bare Error headline") }
                 // A job's headline is its stage ("Downloading from archive.org…", "Decrypting…"), right under the version;
                 // under the bar, the percent and the time left (and a slow download's speed).
                 if let headline = row.progressHeadline {
-                    if texts[safe: v + 1] != headline { fail("headline \(texts[safe: v + 1] ?? "none"), want \(headline): \(texts)") }
+                    if texts[safe: v + 1] != headline {
+                        fail("headline \(texts[safe: v + 1] ?? "none"), want \(headline): \(texts)")
+                    }
                     if texts[safe: v + 2] != row.progressLine || texts.count != v + 3 {
                         fail("the line under the bar: \(texts), want \(row.progressLine ?? "nil")")
                     }
                     if !(row.progressLine ?? "").contains("%") { fail("no percent: \(row.progressLine ?? "nil")") }
-                    if row.progress != nil, let bar = all(view).compactMap({ $0 as? NSProgressIndicator }).first(where: visible),
-                        let line = texts[safe: v + 2], let label = labels.first(where: { $0.stringValue == line }), !(frame(bar).minY > frame(label).maxY)
+                    if row.progress != nil,
+                        let bar = all(view).compactMap({ $0 as? NSProgressIndicator }).first(where: visible),
+                        let line = texts[safe: v + 2], let label = labels.first(where: { $0.stringValue == line }),
+                        !(frame(bar).minY > frame(label).maxY)
                     {
                         fail("the percent line isn't under the bar")
                     }
                 }
-                if name == "downloading-archive", texts[safe: v + 1] != "Downloading from archive.org…" || !(texts[safe: v + 2] ?? "").hasSuffix("850 KB/s") {
+                if name == "downloading-archive",
+                    texts[safe: v + 1] != "Downloading from archive.org…"
+                        || !(texts[safe: v + 2] ?? "").hasSuffix("850 KB/s")
+                {
                     fail("a slow archive.org download: \(texts)")
                 }
-                if name == "almost-done", !(texts[safe: v + 2] ?? "").hasSuffix("Almost done…") { fail("Almost done without its ellipsis: \(texts)") }
+                if name == "almost-done", !(texts[safe: v + 2] ?? "").hasSuffix("Almost done…") {
+                    fail("Almost done without its ellipsis: \(texts)")
+                }
                 if let bar = all(view).compactMap({ $0 as? NSProgressIndicator }).first(where: visible),
                     !["Download progress", "Preparation progress"].contains(bar.accessibilityLabel() ?? "")
                 {
@@ -186,7 +247,12 @@ extension SharedState {
             // A file system operation in flight: its words with a spinner in the state line, and Start held.
             do {
                 let vc = DevicePlaceholderViewController()
-                let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 640), styleMask: [.titled], backing: .buffered, defer: true)
+                let window = NSWindow(
+                    contentRect: NSRect(x: 0, y: 0, width: 760, height: 640),
+                    styleMask: [.titled],
+                    backing: .buffered,
+                    defer: true
+                )
                 window.appearance = NSAppearance(named: .aqua)
                 window.contentView = vc.view
                 func all(_ v: NSView) -> [NSView] { v.subviews.flatMap { [$0] + all($0) } }
@@ -202,13 +268,21 @@ extension SharedState {
                 vc.update(ready, canDownload: true, activity: "Reading the file system…")
                 vc.view.layoutSubtreeIfNeeded()
                 let texts = all(vc.view).compactMap { $0 as? NSTextField }.filter { visible($0) }.map(\.stringValue)
-                let spinner = all(vc.view).compactMap { $0 as? NSProgressIndicator }.first { $0.style == .spinning && visible($0) }
+                let spinner = all(vc.view).compactMap { $0 as? NSProgressIndicator }.first {
+                    $0.style == .spinning && visible($0)
+                }
                 let start = all(vc.view).compactMap { $0 as? NSButton }.first { $0.title == "Start" }
-                if !texts.contains("Reading the file system…") || texts.contains("Ready") || spinner == nil || start?.isEnabled != false {
-                    failures.append("activity: \(texts), spinner \(spinner != nil), Start enabled \(start?.isEnabled ?? false)")
+                if !texts.contains("Reading the file system…") || texts.contains("Ready") || spinner == nil
+                    || start?.isEnabled != false
+                {
+                    failures.append(
+                        "activity: \(texts), spinner \(spinner != nil), Start enabled \(start?.isEnabled ?? false)"
+                    )
                 }
                 vc.update(ready, canDownload: true)
-                if all(vc.view).contains(where: { ($0 as? NSProgressIndicator)?.style == .spinning && visible($0) }) || start?.isEnabled != true {
+                if all(vc.view).contains(where: { ($0 as? NSProgressIndicator)?.style == .spinning && visible($0) })
+                    || start?.isEnabled != true
+                {
                     failures.append("the spinner stays or Start stays held after the operation")
                 }
             }
@@ -216,7 +290,12 @@ extension SharedState {
             // Two jobs, one placeholder: each has its own bar, so switching rows never animates one bar between their values.
             do {
                 let vc = DevicePlaceholderViewController()
-                let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 640), styleMask: [.titled], backing: .buffered, defer: true)
+                let window = NSWindow(
+                    contentRect: NSRect(x: 0, y: 0, width: 760, height: 640),
+                    styleMask: [.titled],
+                    backing: .buffered,
+                    defer: true
+                )
                 window.contentView = vc.view
                 func shownBar() -> NSProgressIndicator? {
                     func all(_ v: NSView) -> [NSView] { v.subviews.flatMap { [$0] + all($0) } }
@@ -229,23 +308,37 @@ extension SharedState {
                         return bar.window != nil
                     }
                 }
-                let a = DeviceRow(entry: beta, instanceID: nil, session: nil, job: .preparing(.init(step: 9, steps: 10, name: "x", fraction: 1)))
+                let a = DeviceRow(
+                    entry: beta,
+                    instanceID: nil,
+                    session: nil,
+                    job: .preparing(.init(step: 9, steps: 10, name: "x", fraction: 1))
+                )
                 let b = DeviceRow(entry: ipad, instanceID: nil, session: nil, job: .downloading(fraction: 0.4))
                 vc.update(a, canDownload: true)
                 let barA = shownBar()
                 vc.update(b, canDownload: true)
                 let barB = shownBar()
                 if barA == nil || barB == nil || barA === barB || barB?.doubleValue != 0.2 {
-                    failures.append("switching jobs reused one bar: \(String(describing: barA)) \(String(describing: barB))")
+                    failures.append(
+                        "switching jobs reused one bar: \(String(describing: barA)) \(String(describing: barB))"
+                    )
                 }
                 vc.update(a, canDownload: true)
-                if shownBar() !== barA || barA?.doubleValue != 0.9 { failures.append("switching back didn't show the first job's own bar at 90%") }
+                if shownBar() !== barA || barA?.doubleValue != 0.9 {
+                    failures.append("switching back didn't show the first job's own bar at 90%")
+                }
             }
 
             // An .ipsw dragged over the placeholder lights the drop ring; anything else doesn't (HIG p.294).
             do {
                 let vc = DevicePlaceholderViewController()
-                let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 640), styleMask: [.titled], backing: .buffered, defer: true)
+                let window = NSWindow(
+                    contentRect: NSRect(x: 0, y: 0, width: 760, height: 640),
+                    styleMask: [.titled],
+                    backing: .buffered,
+                    defer: true
+                )
                 window.appearance = NSAppearance(named: .aqua)
                 window.contentView = vc.view
                 vc.update(states[1].1, canDownload: true)
@@ -254,9 +347,13 @@ extension SharedState {
                 defer { drag.draggingPasteboard.releaseGlobally() }
                 func ring() -> NSView? { vc.view.subviews.first { $0 is DropHighlight } }
                 drag.files(["Notes.txt"])
-                if drop.draggingEntered?(drag) != [] || ring()?.isHidden == false { failures.append("drop: a non-IPSW drag was accepted or lit") }
+                if drop.draggingEntered?(drag) != [] || ring()?.isHidden == false {
+                    failures.append("drop: a non-IPSW drag was accepted or lit")
+                }
                 drag.files(["iPad1,1_3.2.2_7B500_Restore.ipsw"])
-                if drop.draggingEntered?(drag) != .copy || ring()?.isHidden != false { failures.append("drop: an IPSW drag isn't highlighted") }
+                if drop.draggingEntered?(drag) != .copy || ring()?.isHidden != false {
+                    failures.append("drop: an IPSW drag isn't highlighted")
+                }
                 vc.view.layoutSubtreeIfNeeded()
                 drop.draggingExited?(drag)
                 if ring()?.isHidden != true { failures.append("drop: the ring stays after the drag leaves") }
@@ -278,12 +375,16 @@ extension SharedState {
                 if size.width < 100 || size.height < 40 || content.view.frame.size != size {
                     failures.append("\(e.id): popover size \(size), view \(content.view.frame.size)")
                 }
-                if let tag = row.supportNote, !words.contains(where: { $0.stringValue == tag }) || !text.contains(row.supportExplanation ?? "?") {
+                if let tag = row.supportNote,
+                    !words.contains(where: { $0.stringValue == tag }) || !text.contains(row.supportExplanation ?? "?")
+                {
                     failures.append("\(e.id): no \(tag) and its explanation: \(text)")
                 }
                 if !text.contains("Released ") { failures.append("\(e.id): no release date: \(text)") }
                 if let note = e.statusNote, !text.contains(note) { failures.append("\(e.id): no source note: \(text)") }
-                for w in words where !content.view.bounds.contains(w.frame) { failures.append("\(e.id): \(w.stringValue) outside the popover") }
+                for w in words where !content.view.bounds.contains(w.frame) {
+                    failures.append("\(e.id): \(w.stringValue) outside the popover")
+                }
             }
             #expect(failures.isEmpty, "\(failures.joined(separator: "\n"))")
         }

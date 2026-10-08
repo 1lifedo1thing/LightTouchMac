@@ -1,5 +1,5 @@
-import Foundation
 import FirmwareSchema
+import Foundation
 import HostRuntime
 
 /// The 1.x admission step (FirmwareWire.admissionRecipeSteps: n45 2 -> 3, m68 1 -> 2): a device prepared before
@@ -16,8 +16,12 @@ public nonisolated enum N45Migration {
     static let stamp = ".n45-sc-prefs-2"
 
     /// Runs the step on a stopped 1.x device that needs it. True when it edited. The caller holds no lease.
-    nonisolated(nonsending) public static func systemConfiguration(device: URL, policy: StorageRecordPolicy = .standalone,
-                                                                   allowRaw: Bool = false, log: (String) -> Void = { _ in }) async throws -> Bool {
+    nonisolated(nonsending) public static func systemConfiguration(
+        device: URL,
+        policy: StorageRecordPolicy = .standalone,
+        allowRaw: Bool = false,
+        log: (String) -> Void = { _ in }
+    ) async throws -> Bool {
         guard let step = try pending(device: device, policy: policy, allowRaw: allowRaw) else { return false }
         let session = try await StoppedVolumeEdit.begin(device: device, policy: policy, log: log)
         do {
@@ -31,9 +35,13 @@ public nonisolated enum N45Migration {
         log("SystemConfiguration preferences written to /\(N45Board.scPrefs) (recipe \(step))")
         let owner = try OwnedStorageRecord.acquire(device: device, policy: policy)
         defer { withExtendedLifetime(owner) {} }
-        if let overlay = owner.paths?.overlay { try N72NAND.writeDurably(Data(), to: overlay.appendingPathComponent(stamp)) }
-        try N72NAND.writeDurably(JSONSerialization.data(withJSONObject: ["recipe": step, "step": "n45-sc-prefs"], options: [.sortedKeys]),
-                                 to: device.appendingPathComponent(FirmwareWire.migratedRecipeFile))
+        if let overlay = owner.paths?.overlay {
+            try N72NAND.writeDurably(Data(), to: overlay.appendingPathComponent(stamp))
+        }
+        try N72NAND.writeDurably(
+            JSONSerialization.data(withJSONObject: ["recipe": step, "step": "n45-sc-prefs"], options: [.sortedKeys]),
+            to: device.appendingPathComponent(FirmwareWire.migratedRecipeFile)
+        )
         return true
     }
 
@@ -42,10 +50,13 @@ public nonisolated enum N45Migration {
         let owner = try OwnedStorageRecord.acquire(device: device, policy: policy, allowRaw: allowRaw)
         defer { withExtendedLifetime(owner) {} }
         guard let bytes = owner.bytes, let paths = owner.paths,
-              let board = (try? DeviceRecord.object(bytes))?["board"] as? String,
-              HostRuntime.Board(rawValue: board)?.soc == .s5l8900 else { return nil }
-        guard let version = (try? DeviceLock.read(base: paths.base))??.recipeVersion, let step = FirmwareWire.admissionRecipeSteps[board]?[version],
-              !FileManager.default.fileExists(atPath: paths.overlay.appendingPathComponent(stamp).path) else { return nil }
+            let board = (try? DeviceRecord.object(bytes))?["board"] as? String,
+            HostRuntime.Board(rawValue: board)?.soc == .s5l8900
+        else { return nil }
+        guard let version = (try? DeviceLock.read(base: paths.base))??.recipeVersion,
+            let step = FirmwareWire.admissionRecipeSteps[board]?[version],
+            !FileManager.default.fileExists(atPath: paths.overlay.appendingPathComponent(stamp).path)
+        else { return nil }
         return step
     }
 }

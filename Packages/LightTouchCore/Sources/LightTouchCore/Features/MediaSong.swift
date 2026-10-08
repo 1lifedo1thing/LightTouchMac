@@ -1,7 +1,7 @@
-import HostServiceWire
-import Foundation
 import AVFoundation
 import AudioToolbox
+import Foundation
+import HostServiceWire
 import ImageIO
 
 /// Immutable host staging copy. Metadata and uploaded bytes always describe
@@ -26,7 +26,8 @@ public struct MediaSong: Sendable {
             }
             let values = try source.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
             guard values.isRegularFile == true, let size = values.fileSize,
-                  size > 0, size <= 1 << 30 else {
+                size > 0, size <= 1 << 30
+            else {
                 throw DeviceToolsError.failed("Audio files must be smaller than 1 GB.")
             }
             let id = UUID().uuidString.lowercased()
@@ -77,7 +78,8 @@ public struct MediaSong: Sendable {
             let asset = AVURLAsset(url: audio)
             let duration = try await asset.load(.duration).seconds
             guard duration.isFinite, duration > 0, duration <= 86400,
-                  try await !asset.load(.hasProtectedContent) else {
+                try await !asset.load(.hasProtectedContent)
+            else {
                 throw DeviceToolsError.failed("This audio file is protected or has an unsupported duration.")
             }
             let tracks = try await asset.loadTracks(withMediaType: .audio)
@@ -89,25 +91,32 @@ public struct MediaSong: Sendable {
                 kAudioFormatMPEG4AAC, kAudioFormatMPEG4AAC_HE,
                 kAudioFormatMPEGLayer3, kAudioFormatAppleLossless, kAudioFormatLinearPCM,
             ]
-            guard !formats.isEmpty, formats.allSatisfy({ format in
-                guard let stream = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee else { return false }
-                return supported.contains(stream.mFormatID)
-                    && (1...2).contains(stream.mChannelsPerFrame)
-                    && (8000...48000).contains(stream.mSampleRate)
-            }) else {
-                throw DeviceToolsError.failed("Use AAC, MP3, Apple Lossless or PCM audio, with one or two channels at 8–48 kHz.")
+            guard !formats.isEmpty,
+                formats.allSatisfy({ format in
+                    guard let stream = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee else {
+                        return false
+                    }
+                    return supported.contains(stream.mFormatID)
+                        && (1...2).contains(stream.mChannelsPerFrame)
+                        && (8000...48000).contains(stream.mSampleRate)
+                })
+            else {
+                throw DeviceToolsError.failed(
+                    "Use AAC, MP3, Apple Lossless or PCM audio, with one or two channels at 8–48 kHz."
+                )
             }
             properties["filename"] = audio.lastPathComponent
             properties["duration_ms"] = duration * 1000
             if properties["title"] == nil { properties["title"] = source.deletingPathExtension().lastPathComponent }
             var artwork: URL?
             if let cover, cover.count <= 16 << 20, let image = CGImageSourceCreateWithData(cover as CFData, nil),
-               CGImageSourceGetCount(image) > 0,
-               let dimensions = CGImageSourceCopyPropertiesAtIndex(image, 0, nil) as? [CFString: Any],
-               let width = dimensions[kCGImagePropertyPixelWidth] as? Int,
-               let height = dimensions[kCGImagePropertyPixelHeight] as? Int,
-               width > 0, height > 0, width <= 16384, height <= 16384,
-               width * height <= 32_000_000 {
+                CGImageSourceGetCount(image) > 0,
+                let dimensions = CGImageSourceCopyPropertiesAtIndex(image, 0, nil) as? [CFString: Any],
+                let width = dimensions[kCGImagePropertyPixelWidth] as? Int,
+                let height = dimensions[kCGImagePropertyPixelHeight] as? Int,
+                width > 0, height > 0, width <= 16384, height <= 16384,
+                width * height <= 32_000_000
+            {
                 let url = directory.appendingPathComponent("artwork.jpg")
                 // Unreadable art is dropped, never the song.
                 if (try? MediaPhoto.writeBaselineJPEG(image, maxPixelSize: 640, to: url)) != nil {
@@ -119,8 +128,14 @@ public struct MediaSong: Sendable {
             try PropertyListSerialization.data(fromPropertyList: properties, format: .xml, options: 0)
                 .write(to: metadata, options: .atomic)
             try Task.checkCancellation()
-            let result = MediaSong(id: contentID, directory: directory, audio: audio,
-                                   metadata: metadata, title: properties["title"] as! String, artwork: artwork)
+            let result = MediaSong(
+                id: contentID,
+                directory: directory,
+                audio: audio,
+                metadata: metadata,
+                title: properties["title"] as! String,
+                artwork: artwork
+            )
             complete = true
             return result
         }
@@ -131,7 +146,9 @@ public struct MediaSong: Sendable {
                 throw CancellationError()
             }
             return song
-        } onCancel: { worker.cancel() }
+        } onCancel: {
+            worker.cancel()
+        }
     }
 
     /// Every tag the device's Music library keeps, from iTunes (MP4) or ID3 (MP3) metadata, with
@@ -142,7 +159,8 @@ public struct MediaSong: Sendable {
         var cover: Data?
         func text(_ item: AVMetadataItem) async throws -> String? {
             guard let value = try await item.load(.stringValue)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !value.isEmpty, value.utf8.count <= 4096 else { return nil }
+                !value.isEmpty, value.utf8.count <= 4096
+            else { return nil }
             return value
         }
         /// "3/12", or iTunes' binary trkn/disk atom: 2 pad bytes, UInt16 number, UInt16 count.
@@ -152,7 +170,9 @@ public struct MediaSong: Sendable {
                 let bytes = [UInt8](data)
                 return (Int(bytes[2]) << 8 | Int(bytes[3]), Int(bytes[4]) << 8 | Int(bytes[5]))
             }
-            let parts = value.split(separator: "/", maxSplits: 1).map { Int($0.trimmingCharacters(in: .whitespaces)) ?? 0 }
+            let parts = value.split(separator: "/", maxSplits: 1).map {
+                Int($0.trimmingCharacters(in: .whitespaces)) ?? 0
+            }
             return (parts[0], parts.count > 1 ? parts[1] : 0)
         }
         func set(_ key: String, _ value: Any?) { if let value, properties[key] == nil { properties[key] = value } }
@@ -175,10 +195,15 @@ public struct MediaSong: Sendable {
                 if let data = try await item.load(.dataValue), data.count >= 2 {
                     set("genre", id3Genres.indices.contains(Int(data[1]) - 1) ? id3Genres[Int(data[1]) - 1] : nil)
                 }
-            case .iTunesMetadataTrackNumber, .id3MetadataTrackNumber: setPair(("track_number", "track_count"), try await pair(item))
-            case .iTunesMetadataDiscNumber, .id3MetadataPartOfASet: setPair(("disc_number", "disc_count"), try await pair(item))
-            case .iTunesMetadataReleaseDate, .id3MetadataYear, .id3MetadataRecordingTime, .id3MetadataOriginalReleaseYear:
-                if let value = try await text(item), let year = Int(value.prefix(4)), (1...9999).contains(year) { set("year", year) }
+            case .iTunesMetadataTrackNumber, .id3MetadataTrackNumber:
+                setPair(("track_number", "track_count"), try await pair(item))
+            case .iTunesMetadataDiscNumber, .id3MetadataPartOfASet:
+                setPair(("disc_number", "disc_count"), try await pair(item))
+            case .iTunesMetadataReleaseDate, .id3MetadataYear, .id3MetadataRecordingTime,
+                .id3MetadataOriginalReleaseYear:
+                if let value = try await text(item), let year = Int(value.prefix(4)), (1...9999).contains(year) {
+                    set("year", year)
+                }
             case .iTunesMetadataDiscCompilation, AVMetadataIdentifier("id3/TCMP"):
                 var flag = try await item.load(.numberValue)?.intValue
                 if flag == nil, let value = try await text(item) { flag = Int(value) }
@@ -211,11 +236,15 @@ public struct MediaSong: Sendable {
     nonisolated private static let id3Genres = [
         "Blues", "Classic Rock", "Country", "Dance", "Disco", "Funk", "Grunge", "Hip-Hop", "Jazz", "Metal",
         "New Age", "Oldies", "Other", "Pop", "R&B", "Rap", "Reggae", "Rock", "Techno", "Industrial",
-        "Alternative", "Ska", "Death Metal", "Pranks", "Soundtrack", "Euro-Techno", "Ambient", "Trip-Hop", "Vocal", "Jazz+Funk",
+        "Alternative", "Ska", "Death Metal", "Pranks", "Soundtrack", "Euro-Techno", "Ambient", "Trip-Hop", "Vocal",
+        "Jazz+Funk",
         "Fusion", "Trance", "Classical", "Instrumental", "Acid", "House", "Game", "Sound Clip", "Gospel", "Noise",
-        "AlternRock", "Bass", "Soul", "Punk", "Space", "Meditative", "Instrumental Pop", "Instrumental Rock", "Ethnic", "Gothic",
-        "Darkwave", "Techno-Industrial", "Electronic", "Pop-Folk", "Eurodance", "Dream", "Southern Rock", "Comedy", "Cult", "Gangsta",
-        "Top 40", "Christian Rap", "Pop/Funk", "Jungle", "Native American", "Cabaret", "New Wave", "Psychadelic", "Rave", "Showtunes",
+        "AlternRock", "Bass", "Soul", "Punk", "Space", "Meditative", "Instrumental Pop", "Instrumental Rock", "Ethnic",
+        "Gothic",
+        "Darkwave", "Techno-Industrial", "Electronic", "Pop-Folk", "Eurodance", "Dream", "Southern Rock", "Comedy",
+        "Cult", "Gangsta",
+        "Top 40", "Christian Rap", "Pop/Funk", "Jungle", "Native American", "Cabaret", "New Wave", "Psychadelic",
+        "Rave", "Showtunes",
         "Trailer", "Lo-Fi", "Tribal", "Acid Punk", "Acid Jazz", "Polka", "Retro", "Musical", "Rock & Roll", "Hard Rock",
     ]
 
@@ -227,9 +256,10 @@ public struct MediaSong: Sendable {
             let format = input.processingFormat
             let codec = input.fileFormat.streamDescription.pointee.mFormatID
             guard [kAudioFormatMPEG4AAC, kAudioFormatMPEG4AAC_HE].contains(codec),
-                  (1...2).contains(format.channelCount),
-                  (8000...48000).contains(format.sampleRate),
-                  let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4096) else {
+                (1...2).contains(format.channelCount),
+                (8000...48000).contains(format.sampleRate),
+                let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4096)
+            else {
                 throw DeviceToolsError.failed("Use mono or stereo AAC audio at 8–48 kHz.")
             }
             let settings: [String: Any] = [
@@ -238,8 +268,12 @@ public struct MediaSong: Sendable {
                 AVNumberOfChannelsKey: format.channelCount,
                 AVEncoderBitRateKey: 96000 * Int(format.channelCount),
             ]
-            let output = try AVAudioFile(forWriting: destination, settings: settings,
-                                        commonFormat: format.commonFormat, interleaved: format.isInterleaved)
+            let output = try AVAudioFile(
+                forWriting: destination,
+                settings: settings,
+                commonFormat: format.commonFormat,
+                interleaved: format.isInterleaved
+            )
             var frames: AVAudioFramePosition = 0
             while input.framePosition < input.length {
                 try Task.checkCancellation()
@@ -262,7 +296,7 @@ public struct MediaSong: Sendable {
                 }
             }
             guard frames > 0 else { throw DeviceToolsError.failed("The AAC file contains no audio.") }
-        } // Release the audio file and finalize its M4A headers before inspection/upload.
+        }  // Release the audio file and finalize its M4A headers before inspection/upload.
     }
 
 }

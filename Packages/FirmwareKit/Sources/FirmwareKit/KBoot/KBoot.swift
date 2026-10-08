@@ -30,9 +30,11 @@ public enum KBoot {
     public static let fbWidth = 1024, fbHeight = 768, fbDepth = 32
     /// ipad1_kboot.DEFAULT_BOOT_ARGS. enable-hsic=1: 4.x's AppleS5L8930XUSBArbitrator::handleStart publishes the
     /// USB host nubs for the DT's hsic-enabled only when this boot-arg is 1 (no USB keyboard without it); 3.x ignores it.
-    public static let defaultBootArgs = "serial=3 debug=0x8 amfi_allow_any_signature=1 cs_enforcement_disable=1 enable-hsic=1"
+    public static let defaultBootArgs =
+        "serial=3 debug=0x8 amfi_allow_any_signature=1 cs_enforcement_disable=1 enable-hsic=1"
     public static let defaultIBootVersion = "iBoot-817.29"
-    public static let rootMatching = "<dict><key>IOProviderClass</key><string>IOMedia</string><key>IOPropertyMatch</key>"
+    public static let rootMatching =
+        "<dict><key>IOProviderClass</key><string>IOMedia</string><key>IOPropertyMatch</key>"
         + "<dict><key>Partition ID</key><integer>1</integer></dict></dict>"
 
     // Measured on a real iPad 1 running 7B500: cpu/memory 0, bus/peripheral 100 MHz, fixed/timebase 24 MHz.
@@ -50,7 +52,8 @@ public enum KBoot {
         ("ecc-correctable", 8), ("ecc-threshold", 8), ("bbt-format", 3),
         ("read-cycle-ns", 25), ("read-setup-ns", 10), ("read-hold-ns", 10), ("read-delay-ns", 20),
         ("read-valid-ns", 20), ("write-cycle-ns", 25), ("write-hold-ns", 10),
-        ("meta-per-logical-page", 12), ("valid-meta-per-logical-page", 10), ("logical-page-size", 4096), ("ppn-device", 0),
+        ("meta-per-logical-page", 12), ("valid-meta-per-logical-page", 10), ("logical-page-size", 4096),
+        ("ppn-device", 0),
         // iBoot-1219 (5.x): the populated CEs numbered across the buses (bus b's at 8b + n); AppleIOPFMI-49's
         // _fmiInitVirtToPhysMap loops forever on an empty one. 4 CEs on each of 2 buses.
         ("ce-bitmap", 0x0F0F),
@@ -76,20 +79,58 @@ public enum KBoot {
         /// IPSW lacks and every UIFont and bitmap context comes back nil. nil: leave the slot alone.
         public var productID: [UInt8]? = nil
 
-        public static let k48 = Board(fbWidth: 1024, fbHeight: 768, rotation: 270, scale: 1,
-                                      boardID: 0x02, modelNumber: "MB292")
-        public static let n81 = Board(fbWidth: 640, fbHeight: 960, rotation: 0, scale: 2,
-                                      boardID: 0x08, modelNumber: "MC540")
-        public static let n90 = Board(fbWidth: 640, fbHeight: 960, rotation: 0, scale: 2,
-                                      boardID: 0x00, modelNumber: "MC603", dram: 0x2000_0000, radio: true)
+        public static let k48 = Board(
+            fbWidth: 1024,
+            fbHeight: 768,
+            rotation: 270,
+            scale: 1,
+            boardID: 0x02,
+            modelNumber: "MB292"
+        )
+        public static let n81 = Board(
+            fbWidth: 640,
+            fbHeight: 960,
+            rotation: 0,
+            scale: 2,
+            boardID: 0x08,
+            modelNumber: "MC540"
+        )
+        public static let n90 = Board(
+            fbWidth: 640,
+            fbHeight: 960,
+            rotation: 0,
+            scale: 2,
+            boardID: 0x00,
+            modelNumber: "MC603",
+            dram: 0x2000_0000,
+            radio: true
+        )
         /// iPhone 3GS (S5L8920): -M n88, model MB715. Its baseband node is unmatched (no modem model yet).
-        public static let n88 = Board(fbWidth: 320, fbHeight: 480, rotation: 0, scale: 1,
-                                      boardID: 0x00, modelNumber: "MB715", platformName: "s5l8920x", chipID: 0x8920,
-                                      productID: [0x87, 0x84, 0xae, 0x8d, 0x70, 0x66, 0xb0, 0xf0, 0x13, 0x6b,
-                                                  0xe9, 0x1d, 0xcf, 0xe6, 0x32, 0xa4, 0x36, 0xff, 0xd6, 0xfb])
+        public static let n88 = Board(
+            fbWidth: 320,
+            fbHeight: 480,
+            rotation: 0,
+            scale: 1,
+            boardID: 0x00,
+            modelNumber: "MB715",
+            platformName: "s5l8920x",
+            chipID: 0x8920,
+            productID: [
+                0x87, 0x84, 0xae, 0x8d, 0x70, 0x66, 0xb0, 0xf0, 0x13, 0x6b,
+                0xe9, 0x1d, 0xcf, 0xe6, 0x32, 0xa4, 0x36, 0xff, 0xd6, 0xfb,
+            ]
+        )
         /// iPod touch 3G (S5L8922): -M n18, model MC008; NOR-less, so it takes the graft.
-        public static let n18 = Board(fbWidth: 320, fbHeight: 480, rotation: 0, scale: 1,
-                                      boardID: 0x02, modelNumber: "MC008", platformName: "s5l8922x", chipID: 0x8922)
+        public static let n18 = Board(
+            fbWidth: 320,
+            fbHeight: 480,
+            rotation: 0,
+            scale: 1,
+            boardID: 0x02,
+            modelNumber: "MC008",
+            platformName: "s5l8922x",
+            chipID: 0x8922
+        )
         /// The S5L8920 family (-M n18, n88): no metadata whitening in its DTs, the IPSW's NAND epoch, no USB host.
         public var isS5L8920: Bool { platformName != "s5l8930x" }
 
@@ -107,19 +148,44 @@ public enum KBoot {
     /// K48's 4.x (8C148) spi0/nor-flash subtree: diagnostics, nvram, the image area and effaceable storage
     /// (ipad1_kboot.NOR_GRAFT). Phandles are K48's.
     static let norGraft: [(String, String, [(String, DeviceTree.Value)])] = [
-        ("arm-io/spi0", "nor-flash", [("compatible", .string("nor-flash,spi")), ("#address-cells", .u32(1)),
-                                      ("device_type", .string("nor-flash")), ("#size-cells", .u32(1)),
-                                      ("ranges", .words([0, 0, 0x10_0000])), ("reg", .words([0, 0x53, 0x0801_0000, 0, 0, 0, 0, 0])),
-                                      ("AAPL,phandle", .u32(0x0091_70E0))]),
-        ("arm-io/spi0/nor-flash", "diagnostic-data", [("compatible", .string("diagnostic-data,format1")),
-                                                      ("device_type", .string("diagnostic-data")),
-                                                      ("reg", .words([0x6000, 0x2000, 0x4000, 0x2000])), ("AAPL,phandle", .u32(0x0091_74F0))]),
-        ("arm-io/spi0/nor-flash", "nvram", [("compatible", .string("nvram,chrp")), ("device_type", .string("nvram")),
-                                            ("reg", .words([0xF_C000, 0x2000, 0xF_E000, 0x2000])), ("AAPL,phandle", .u32(0x0091_7880))]),
-        ("arm-io/spi0/nor-flash", "raw-device", [("compatible", .string("raw-device,non-nvram")), ("device_type", .string("raw-device")),
-                                                 ("reg", .words([0x8000, 0xF_2000, 0, 0x1000])), ("AAPL,phandle", .u32(0x0091_7860))]),
-        ("arm-io/spi0/nor-flash", "effaceable", [("compatible", .string("effaceable,nor")), ("device_type", .string("effaceable")),
-                                                 ("reg", .words([0xF_A000, 0x1000, 0xF_B000, 0x1000])), ("AAPL,phandle", .u32(0x0091_7F70))]),
+        (
+            "arm-io/spi0", "nor-flash",
+            [
+                ("compatible", .string("nor-flash,spi")), ("#address-cells", .u32(1)),
+                ("device_type", .string("nor-flash")), ("#size-cells", .u32(1)),
+                ("ranges", .words([0, 0, 0x10_0000])), ("reg", .words([0, 0x53, 0x0801_0000, 0, 0, 0, 0, 0])),
+                ("AAPL,phandle", .u32(0x0091_70E0)),
+            ]
+        ),
+        (
+            "arm-io/spi0/nor-flash", "diagnostic-data",
+            [
+                ("compatible", .string("diagnostic-data,format1")),
+                ("device_type", .string("diagnostic-data")),
+                ("reg", .words([0x6000, 0x2000, 0x4000, 0x2000])), ("AAPL,phandle", .u32(0x0091_74F0)),
+            ]
+        ),
+        (
+            "arm-io/spi0/nor-flash", "nvram",
+            [
+                ("compatible", .string("nvram,chrp")), ("device_type", .string("nvram")),
+                ("reg", .words([0xF_C000, 0x2000, 0xF_E000, 0x2000])), ("AAPL,phandle", .u32(0x0091_7880)),
+            ]
+        ),
+        (
+            "arm-io/spi0/nor-flash", "raw-device",
+            [
+                ("compatible", .string("raw-device,non-nvram")), ("device_type", .string("raw-device")),
+                ("reg", .words([0x8000, 0xF_2000, 0, 0x1000])), ("AAPL,phandle", .u32(0x0091_7860)),
+            ]
+        ),
+        (
+            "arm-io/spi0/nor-flash", "effaceable",
+            [
+                ("compatible", .string("effaceable,nor")), ("device_type", .string("effaceable")),
+                ("reg", .words([0xF_A000, 0x1000, 0xF_B000, 0x1000])), ("AAPL,phandle", .u32(0x0091_7F70)),
+            ]
+        ),
     ]
 
     /// A NOR-less board: graft the NOR in. Either way take the NAND off boot duty (the N88 has its own NOR
@@ -154,7 +220,11 @@ public enum KBoot {
         public var pa: UInt32, length: UInt32
         /// nil: zero-fill.
         public var data: Data?
-        public init(pa: UInt32, length: UInt32, data: Data?) { self.pa = pa; self.length = length; self.data = data }
+        public init(pa: UInt32, length: UInt32, data: Data?) {
+            self.pa = pa
+            self.length = length
+            self.data = data
+        }
     }
 
     public struct Image: Sendable {
@@ -165,7 +235,8 @@ public enum KBoot {
     /// The first "iBoot-N(.N)*" in a decrypted iBoot, else the default.
     public static func ibootVersion(_ iboot: Data?) -> String {
         guard let b = iboot.map([UInt8].init) else { return defaultIBootVersion }
-        let tag = Array("iBoot-".utf8), digit = { (c: UInt8) in c >= 0x30 && c <= 0x39 }
+        let tag = Array("iBoot-".utf8)
+        let digit = { (c: UInt8) in c >= 0x30 && c <= 0x39 }
         var i = 0
         while i + tag.count < b.count {
             if b[i] == tag[0], b[i..<i + tag.count].elementsEqual(tag), digit(b[i + tag.count]) {
@@ -183,7 +254,9 @@ public enum KBoot {
     }
 
     /// (root props, chosen props, {node: local-mac-address}) for an identity.
-    static func identityDT(_ id: UnitIdentity, board: Board = .k48) throws -> ([(String, DeviceTree.Value)], [(String, DeviceTree.Value)], [(String, Data)]) {
+    static func identityDT(_ id: UnitIdentity, board: Board = .k48) throws -> (
+        [(String, DeviceTree.Value)], [(String, DeviceTree.Value)], [(String, Data)]
+    ) {
         func need(_ k: String) throws -> String {
             guard let v = id[k] else { throw FirmwareError(.unsupported, "identity: missing \(k)") }
             return v
@@ -194,22 +267,33 @@ public enum KBoot {
             return v
         }
         func mac(_ s: String) throws -> Data {
-            guard let d = Data(hex: s.replacingOccurrences(of: ":", with: "")) else { throw FirmwareError(.unsupported, "identity: bad MAC \(s)") }
+            guard let d = Data(hex: s.replacingOccurrences(of: ":", with: "")) else {
+                throw FirmwareError(.unsupported, "identity: bad MAC \(s)")
+            }
             return d
         }
         let ecid = try hex(need("unique-chip-id"))
         guard let die = id.dieID, die.count == 2 else { throw FirmwareError(.unsupported, "identity: missing die-id") }
         let dieWords = try die.map { w -> UInt32 in
             let v = try hex(w)
-            guard v <= UInt32.max else { throw FirmwareError(.unsupported, "identity: die-id word \(w) is over 32 bits") }
+            guard v <= UInt32.max else {
+                throw FirmwareError(.unsupported, "identity: die-id word \(w) is over 32 bits")
+            }
             return UInt32(v)
         }
-        guard ecid >> 32 <= UInt32.max else { throw FirmwareError(.unsupported, "identity: unique-chip-id over 64 bits") }
-        let root: [(String, DeviceTree.Value)] = [("serial-number", .string(try need("serial-number"))),
-                                                  ("mlb-serial-number", .string(try need("mlb-serial-number")))]
+        guard ecid >> 32 <= UInt32.max else {
+            throw FirmwareError(.unsupported, "identity: unique-chip-id over 64 bits")
+        }
+        let root: [(String, DeviceTree.Value)] =
+            [
+                ("serial-number", .string(try need("serial-number"))),
+                ("mlb-serial-number", .string(try need("mlb-serial-number"))),
+            ]
             + model.map { k, v in (k, .string(id[k] ?? (k == "model-number" ? board.modelNumber : v))) }
-        let chosen: [(String, DeviceTree.Value)] = [("unique-chip-id", .words([UInt32(ecid & 0xFFFF_FFFF), UInt32(ecid >> 32)])),
-                                                    ("die-id", .words(dieWords))]
+        let chosen: [(String, DeviceTree.Value)] = [
+            ("unique-chip-id", .words([UInt32(ecid & 0xFFFF_FFFF), UInt32(ecid >> 32)])),
+            ("die-id", .words(dieWords)),
+        ]
         // Bluetooth hangs off whichever UART the board wires it to (K48 uart3, N81 uart1): fillDT finds it.
         return (root, chosen, [("arm-io/sdio", try mac(need("wifi-mac"))), ("bluetooth", try mac(need("bt-mac")))])
     }
@@ -220,9 +304,14 @@ public enum KBoot {
     /// and initNVRAMImage loops on it forever.
     static func nvramImage(size: Int) -> Data {
         func part(_ sig: UInt8, _ name: String, _ units: Int) -> Data {
-            var h = [sig, 0, UInt8(units & 0xFF), UInt8(units >> 8)] + Array(name.utf8) + [UInt8](repeating: 0, count: 12 - name.utf8.count)
+            var h =
+                [sig, 0, UInt8(units & 0xFF), UInt8(units >> 8)] + Array(name.utf8)
+                + [UInt8](repeating: 0, count: 12 - name.utf8.count)
             var c = UInt32(h[0])
-            for x in h[2...] { c += UInt32(x); if c > 0xFF { c = (c & 0xFF) + 1 } }
+            for x in h[2...] {
+                c += UInt32(x)
+                if c > 0xFF { c = (c & 0xFF) + 1 }
+            }
             h[1] = UInt8(c)
             return Data(h) + Data(count: units * 16 - 16)
         }
@@ -230,16 +319,27 @@ public enum KBoot {
         return part(0x70, "common", common) + part(0x7F, "free", size / 16 - common)
     }
 
-    static func fillDT(_ dt: inout DeviceTree, memoryMap: [(String, UInt32, UInt32)], identity: UnitIdentity,
-                       iboot: String, rootMatching: String) throws {
+    static func fillDT(
+        _ dt: inout DeviceTree,
+        memoryMap: [(String, UInt32, UInt32)],
+        identity: UnitIdentity,
+        iboot: String,
+        rootMatching: String
+    ) throws {
         let board = Board.of(dt)
         let (root, chosen, macs) = try identityDT(identity, board: board)
         for (k, v) in [("platform-name", DeviceTree.Value.string(board.platformName))] + root { try dt.set("", k, v) }
-        let flags: [(String, DeviceTree.Value)] = ["debug-enabled", "production-cert", "secure-boot", "gid-aes-key",
-                                                    "uid-aes-key", "system-trusted"].map { ($0, .u32(1)) }
+        let flags: [(String, DeviceTree.Value)] = [
+            "debug-enabled", "production-cert", "secure-boot", "gid-aes-key",
+            "uid-aes-key", "system-trusted",
+        ].map { ($0, .u32(1)) }
         for (k, v) in flags + [("board-id", .u32(board.boardID)), ("chip-id", .u32(board.chipID))] + chosen
-            + [("firmware-version", .string(iboot)), ("display-rotation", .u32(board.rotation)), ("display-scale", .u32(board.scale)),
-               ("root-matching", .string(rootMatching))] {
+            + [
+                ("firmware-version", .string(iboot)), ("display-rotation", .u32(board.rotation)),
+                ("display-scale", .u32(board.scale)),
+                ("root-matching", .string(rootMatching)),
+            ]
+        {
             // 3.1.3's DTs (N88 7E18) have none of these: nothing to fill.
             if ["die-id", "display-rotation", "display-scale"].contains(k), dt.props["chosen"]?[k] == nil { continue }
             try dt.set("chosen", k, v)
@@ -252,11 +352,14 @@ public enum KBoot {
             try dt.set("product", "product-id", .bytes(Data(id)))
         }
         // iBoot-1940 also copies syscfg's MACs to /chosen; 7.x's MobileGestalt reads them there (and hashes them into the UDID).
-        for (k, node) in [("mac-address-wifi0", "arm-io/sdio"), ("mac-address-bluetooth0", "bluetooth")] where dt.props["chosen"]?[k] != nil {
+        for (k, node) in [("mac-address-wifi0", "arm-io/sdio"), ("mac-address-bluetooth0", "bluetooth")]
+        where dt.props["chosen"]?[k] != nil {
             if let mac = macs.first(where: { $0.0 == node })?.1 { try dt.set("chosen", k, .bytes(mac)) }
         }
-        for (k, hz) in [("clock-frequency", cpuHz), ("memory-frequency", memHz), ("bus-frequency", busHz),
-                        ("peripheral-frequency", periphHz), ("fixed-frequency", fixedHz), ("timebase-frequency", timebaseHz)] {
+        for (k, hz) in [
+            ("clock-frequency", cpuHz), ("memory-frequency", memHz), ("bus-frequency", busHz),
+            ("peripheral-frequency", periphHz), ("fixed-frequency", fixedHz), ("timebase-frequency", timebaseHz),
+        ] {
             try dt.set("cpus/cpu0", k, .u32(hz))
         }
         // ponytail: the iPad's table, cut to the slots the DT reserves (the S5L8920's 32); those slots' meanings
@@ -264,24 +367,26 @@ public enum KBoot {
         let slots = (dt.props["arm-io"]?["clock-frequencies"]?.length ?? clocks.count * 4) / 4
         try dt.set("arm-io", "clock-frequencies", .words(Array(clocks.prefix(slots))))
         try dt.set("arm-io", "usbphy-frequency", .u32(usbphyHz))
-        if dt.contains("arm-io/sgx") { try dt.set("arm-io/sgx", "compatible", .string("none")) }   // no SGX model
+        if dt.contains("arm-io/sgx") { try dt.set("arm-io/sgx", "compatible", .string("none")) }  // no SGX model
         for (want, mac) in macs {
             let path = dt.props.keys.sorted().first { $0 == want || $0.hasSuffix("/" + want) } ?? want
             if dt.contains(path) { try dt.set(path, "local-mac-address", .bytes(mac)) }
         }
-        if dt.contains("arm-io/mipi-dsim/lcd") {   // the panel id iBoot's pinot_init writes; the DSI model's reply
+        if dt.contains("arm-io/mipi-dsim/lcd") {  // the panel id iBoot's pinot_init writes; the DSI model's reply
             // 3.0's DTs (N88 7A341) have no raw-panel-id slot
             for k in ["lcd-panel-id", "raw-panel-id"] where dt.props["arm-io/mipi-dsim/lcd"]?[k] != nil {
                 try dt.set("arm-io/mipi-dsim/lcd", k, .u32(0x00A1_D13C))
             }
         }
-        if dt.contains("baseband"), !board.radio {   // Wi-Fi iPad: no radio, so unmatch and unname the N82 baseband node
-            for (k, v) in [("compatible", "none"), ("device_type", "none"), ("name", "nobb")] { try dt.set("baseband", k, .string(v)) }
+        if dt.contains("baseband"), !board.radio {  // Wi-Fi iPad: no radio, so unmatch and unname the N82 baseband node
+            for (k, v) in [("compatible", "none"), ("device_type", "none"), ("name", "nobb")] {
+                try dt.set("baseband", k, .string(v))
+            }
             // lockdownd still reads the node's identity (N88): GSMA's test IMEI and a placeholder serial, so nothing
             // passes for a real unit (s5l8920_kboot.py).
             if dt.props["baseband"]?["device-imei"] != nil {
                 try dt.set("baseband", "device-imei", .string("004999010640000"))
-                if dt.props["baseband"]?["snum"] != nil {   // 3.0's DT has none
+                if dt.props["baseband"]?["snum"] != nil {  // 3.0's DT has none
                     try dt.set("baseband", "snum", .bytes(Data("TESTSNUM0000".utf8)))
                 }
             }
@@ -300,12 +405,20 @@ public enum KBoot {
     }
 
     /// The flat physical image, its load PA, entry PA and boot_args PA. `ramdisk`: raw HFS to boot as md0.
-    public static func build(kernel: Data, deviceTree: Data, bootArgs: String = defaultBootArgs, identity: UnitIdentity,
-                             iboot: String = defaultIBootVersion, ramdisk: Data? = nil) throws -> Image {
+    public static func build(
+        kernel: Data,
+        deviceTree: Data,
+        bootArgs: String = defaultBootArgs,
+        identity: UnitIdentity,
+        iboot: String = defaultIBootVersion,
+        ramdisk: Data? = nil
+    ) throws -> Image {
         let page = { (n: Int) in (n + 0xFFF) & ~0xFFF }
         let m = try MachO(kernel)
         let segs = m.segments.filter { $0.name != "__PAGEZERO" }
-        guard let lowest = segs.map(\.vmaddr).min() else { throw FirmwareError(.unsupported, "kernelcache has no segments") }
+        guard let lowest = segs.map(\.vmaddr).min() else {
+            throw FirmwareError(.unsupported, "kernelcache has no segments")
+        }
         let vbase = Int(lowest & 0xF000_0000)
         let pa = { (va: Int) in UInt32(truncatingIfNeeded: va - vbase + Int(physBase)) }
         var dt = try DeviceTree(deviceTree)
@@ -321,14 +434,19 @@ public enum KBoot {
             top += page(rd.count)
             args += " rd=md0"
         }
-        let dtVA = top, argsVA = top + page(dtLen), endVA = argsVA + 0x1000
+        let dtVA = top
+        let argsVA = top + page(dtLen)
+        let endVA = argsVA + 0x1000
         let topOfKernel = pa((endVA + 0x3FFF) & ~0x3FFF)
 
         var image = Data(count: endVA - vbase)
         var memoryMap: [(String, UInt32, UInt32)] = []
         for s in segs {
-            let n = Int(min(s.filesize, s.vmsize)), at = Int(s.vmaddr) - vbase
-            guard Int(s.fileoff) + n <= kernel.count else { throw FirmwareError(.unsupported, "kernelcache segment \(s.name) runs past the file") }
+            let n = Int(min(s.filesize, s.vmsize))
+            let at = Int(s.vmaddr) - vbase
+            guard Int(s.fileoff) + n <= kernel.count else {
+                throw FirmwareError(.unsupported, "kernelcache segment \(s.name) runs past the file")
+            }
             let from = kernel.startIndex + Int(s.fileoff)
             image.replaceSubrange(at..<at + n, with: kernel[from..<from + n])
             memoryMap.append(("Kernel-\(s.name)", pa(Int(s.vmaddr)), s.vmsize))
@@ -338,7 +456,13 @@ public enum KBoot {
             memoryMap.append(("RAMDisk", pa(rdVA), UInt32(rd.count)))
         }
         memoryMap += [("DeviceTree", pa(dtVA), UInt32(dtLen)), ("BootArgs", pa(argsVA), 0x1000)]
-        try fillDT(&dt, memoryMap: memoryMap, identity: identity, iboot: iboot, rootMatching: ramdisk == nil ? rootMatching : "")
+        try fillDT(
+            &dt,
+            memoryMap: memoryMap,
+            identity: identity,
+            iboot: iboot,
+            rootMatching: ramdisk == nil ? rootMatching : ""
+        )
         image.replaceSubrange(dtVA - vbase..<dtVA - vbase + dt.data.count, with: dt.data)
 
         // boot_args rev 1 / the version the kernel checks for (2, or 3 from xnu-1735.47). Video: base, display
@@ -347,10 +471,12 @@ public enum KBoot {
         let cmdline = Array(args.utf8)
         guard cmdline.count < 256 else { throw FirmwareError(.unsupported, "boot-args longer than BOOT_LINE_LENGTH") }
         var ba = Data([1, 0, m.bootArgsVersion(), 0])
-        ba += DeviceTree.Value.le([UInt32(vbase), physBase, board.memSize, topOfKernel,
-                                   board.vramPA, verbose ? 0 : 1, UInt32(board.fbWidth * fbDepth / 8), UInt32(board.fbWidth),
-                                   UInt32(board.fbHeight), UInt32(fbDepth) | (board.scale - 1) << 16,
-                                   0, UInt32(dtVA), UInt32(dtLen)])
+        ba += DeviceTree.Value.le([
+            UInt32(vbase), physBase, board.memSize, topOfKernel,
+            board.vramPA, verbose ? 0 : 1, UInt32(board.fbWidth * fbDepth / 8), UInt32(board.fbWidth),
+            UInt32(board.fbHeight), UInt32(fbDepth) | (board.scale - 1) << 16,
+            0, UInt32(dtVA), UInt32(dtLen),
+        ])
         ba += cmdline + [UInt8](repeating: 0, count: 256 - cmdline.count)
         image.replaceSubrange(argsVA - vbase..<argsVA - vbase + ba.count, with: ba)
         return Image(image: image, loadPA: physBase, entryPA: pa(Int(try m.entry())), bootArgsPA: pa(argsVA))
@@ -363,23 +489,40 @@ public enum KBoot {
             out += Data("K48SEG\0\0".utf8) + DeviceTree.Value.le([s.pa, s.length, s.data == nil ? 1 : 0])
             if let d = s.data { out += d }
         }
-        out += Data("K48KBOOT".utf8) + DeviceTree.Value.le([img.loadPA, img.entryPA, img.bootArgsPA, UInt32(img.image.count)])
+        out +=
+            Data("K48KBOOT".utf8)
+            + DeviceTree.Value.le([img.loadPA, img.entryPA, img.bootArgsPA, UInt32(img.image.count)])
         return out
     }
 
     /// ipad1_kboot.main: kboot.bin from a decrypted-firmware directory.
-    public static func write(decrypted dir: URL, to out: URL, identity: UnitIdentity, bootArgs: String = defaultBootArgs,
-                             ramdisk: URL? = nil) throws {
+    public static func write(
+        decrypted dir: URL,
+        to out: URL,
+        identity: UnitIdentity,
+        bootArgs: String = defaultBootArgs,
+        ramdisk: URL? = nil
+    ) throws {
         let file = { (n: String) in dir.appendingPathComponent(n) }
         let exists = { (n: String) in FileManager.default.fileExists(atPath: file(n).path) }
-        let img = try build(kernel: Data(contentsOf: file("kernelcache.mach")), deviceTree: Data(contentsOf: file("DeviceTree.bin")),
-                            bootArgs: bootArgs, identity: identity,
-                            iboot: ibootVersion(exists("iBoot.bin") ? try Data(contentsOf: file("iBoot.bin")) : nil),
-                            ramdisk: try ramdisk.map { try Data(contentsOf: $0) })
+        let img = try build(
+            kernel: Data(contentsOf: file("kernelcache.mach")),
+            deviceTree: Data(contentsOf: file("DeviceTree.bin")),
+            bootArgs: bootArgs,
+            identity: identity,
+            iboot: ibootVersion(exists("iBoot.bin") ? try Data(contentsOf: file("iBoot.bin")) : nil),
+            ramdisk: try ramdisk.map { try Data(contentsOf: $0) }
+        )
         let board = Board.of(try DeviceTree(Data(contentsOf: file("DeviceTree.bin"))))
-        let logo = exists("AppleLogo.bin") ? try BootLogo.segments(iBootIm: Data(contentsOf: file("AppleLogo.bin")), framebufferPA: board.vramPA,
-                                                                   width: board.fbWidth, height: board.fbHeight,
-                                                                   turn: board.rotation == 270) : []
+        let logo =
+            exists("AppleLogo.bin")
+            ? try BootLogo.segments(
+                iBootIm: Data(contentsOf: file("AppleLogo.bin")),
+                framebufferPA: board.vramPA,
+                width: board.fbWidth,
+                height: board.fbHeight,
+                turn: board.rotation == 270
+            ) : []
         try bundle(img, segments: logo).write(to: out)
     }
 }
@@ -396,16 +539,28 @@ public struct MachO: Sendable {
 
     public init(_ data: Data) throws {
         self.data = data
-        guard data.count >= 28, Self.u32(data, 0) == 0xFEED_FACE else { throw FirmwareError(.unsupported, "not a 32-bit Mach-O") }
-        var segs: [Segment] = [], off = 28
+        guard data.count >= 28, Self.u32(data, 0) == 0xFEED_FACE else {
+            throw FirmwareError(.unsupported, "not a 32-bit Mach-O")
+        }
+        var segs: [Segment] = []
+        var off = 28
         for _ in 0..<Self.u32(data, 16) {
-            guard off + 8 <= data.count else { throw FirmwareError(.unsupported, "Mach-O load commands run past the file") }
-            let cmd = Self.u32(data, off), size = Int(Self.u32(data, off + 4))
-            if cmd == 1 {   // LC_SEGMENT
+            guard off + 8 <= data.count else {
+                throw FirmwareError(.unsupported, "Mach-O load commands run past the file")
+            }
+            let cmd = Self.u32(data, off)
+            let size = Int(Self.u32(data, off + 4))
+            if cmd == 1 {  // LC_SEGMENT
                 let nameBytes = data[data.startIndex + off + 8..<data.startIndex + off + 24].prefix { $0 != 0 }
-                segs.append(Segment(name: String(decoding: nameBytes, as: UTF8.self),
-                                    vmaddr: Self.u32(data, off + 24), vmsize: Self.u32(data, off + 28),
-                                    fileoff: Self.u32(data, off + 32), filesize: Self.u32(data, off + 36)))
+                segs.append(
+                    Segment(
+                        name: String(decoding: nameBytes, as: UTF8.self),
+                        vmaddr: Self.u32(data, off + 24),
+                        vmsize: Self.u32(data, off + 28),
+                        fileoff: Self.u32(data, off + 32),
+                        filesize: Self.u32(data, off + 36)
+                    )
+                )
             }
             guard size > 0 else { break }
             off += size
@@ -419,13 +574,18 @@ public struct MachO: Sendable {
     /// boot with 2); 4.3.5's xnu-1735.47 and iOS 5's xnu-1878 say 3.
     public func bootArgsVersion() -> UInt8 {
         guard let so = data.range(of: Data("pe_identify_machine: Epoch Mismatch".utf8))?.lowerBound,
-              let seg = segments.first(where: { Int($0.fileoff) <= so - data.startIndex && so - data.startIndex < Int($0.fileoff + $0.filesize) })
+            let seg = segments.first(where: {
+                Int($0.fileoff) <= so - data.startIndex && so - data.startIndex < Int($0.fileoff + $0.filesize)
+            })
         else { return 2 }
         let sva = seg.vmaddr + UInt32(so - data.startIndex) - seg.fileoff
         if let lit = data.range(of: Data(DeviceTree.Value.le([sva])))?.lowerBound {
             let window = [UInt8](data[max(data.startIndex, lit - 0x400)..<lit])
             for n in 0..<8 {
-                guard window.count > 2, let i = (0..<(window.count - 1)).reversed().first(where: { window[$0] == 0x40 | UInt8(n) && window[$0 + 1] == 0x88 })
+                guard window.count > 2,
+                    let i = (0..<(window.count - 1)).reversed().first(where: {
+                        window[$0] == 0x40 | UInt8(n) && window[$0 + 1] == 0x88
+                    })
                 else { continue }
                 for j in (i + 2)..<min(i + 10, window.count) where window[j] == 0x28 | UInt8(n) { return window[j - 1] }
             }
@@ -439,19 +599,23 @@ public struct MachO: Sendable {
         }
         func namesString(_ at: Int, _ seg: Segment) -> Bool {
             for o in stride(from: at, to: min(at + 24, bytes.count - 10), by: 2) {
-                let hw1 = h16(o), hw2 = h16(o + 2)
-                guard hw1 & 0xFBF0 == 0xF240 else { continue }                 // movw
-                let rd = (hw2 >> 8) & 0xF, lo = imm16(hw1, hw2)
-                let t1 = h16(o + 4), t2 = h16(o + 6)
-                guard t1 & 0xFBF0 == 0xF2C0, (t2 >> 8) & 0xF == rd else { continue }   // movt, same register
-                guard h16(o + 8) == 0x4478 | (rd & 7) | ((rd & 8) << 4) else { continue }   // add rd, pc
+                let hw1 = h16(o)
+                let hw2 = h16(o + 2)
+                guard hw1 & 0xFBF0 == 0xF240 else { continue }  // movw
+                let rd = (hw2 >> 8) & 0xF
+                let lo = imm16(hw1, hw2)
+                let t1 = h16(o + 4)
+                let t2 = h16(o + 6)
+                guard t1 & 0xFBF0 == 0xF2C0, (t2 >> 8) & 0xF == rd else { continue }  // movt, same register
+                guard h16(o + 8) == 0x4478 | (rd & 7) | ((rd & 8) << 4) else { continue }  // add rd, pc
                 let pc = seg.vmaddr &+ UInt32(o + 8 - Int(seg.fileoff)) &+ 4
                 return (imm16(t1, t2) << 16 | lo) &+ pc == sva
             }
             return false
         }
         for seg in segments where seg.filesize > 0 {
-            let lo = Int(seg.fileoff), hi = min(Int(seg.fileoff + seg.filesize), bytes.count - 4)
+            let lo = Int(seg.fileoff)
+            let hi = min(Int(seg.fileoff + seg.filesize), bytes.count - 4)
             guard lo < hi else { continue }
             for i in stride(from: lo, to: hi, by: 2) where bytes[i + 1] == 0x88 && bytes[i] & 0xF8 == 0x40 {
                 let n = bytes[i] & 7
@@ -465,7 +629,8 @@ public struct MachO: Sendable {
     public func entry() throws -> UInt32 {
         var off = 28
         for _ in 0..<Self.u32(data, 16) {
-            let cmd = Self.u32(data, off), size = Int(Self.u32(data, off + 4))
+            let cmd = Self.u32(data, off)
+            let size = Int(Self.u32(data, off + 4))
             if cmd == 5 { return Self.u32(data, off + 16 + 15 * 4) }
             guard size > 0 else { break }
             off += size

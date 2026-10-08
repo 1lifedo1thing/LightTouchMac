@@ -12,19 +12,27 @@ public enum Shell {
     /// Runs `arguments` (the first is the executable: an absolute path, or a name found on PATH, /usr/bin first) to its
     /// exit. Output goes through files, so a chatty tool never blocks on a full pipe.
     @discardableResult
-    public static func run(_ arguments: [String], input: String? = nil, environment: [String: String]? = nil,
-                           timeout: TimeInterval = 600) throws -> CommandResult {
+    public static func run(
+        _ arguments: [String],
+        input: String? = nil,
+        environment: [String: String]? = nil,
+        timeout: TimeInterval = 600
+    ) throws -> CommandResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: try resolve(arguments[0], path: environment?["PATH"]))
         process.arguments = Array(arguments.dropFirst())
         if let environment { process.environment = environment }
-        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("release-checks-\(UUID().uuidString)")
+        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "release-checks-\(UUID().uuidString)"
+        )
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: scratch) }
-        let out = scratch.appendingPathComponent("out"), err = scratch.appendingPathComponent("err")
+        let out = scratch.appendingPathComponent("out")
+        let err = scratch.appendingPathComponent("err")
         FileManager.default.createFile(atPath: out.path, contents: nil)
         FileManager.default.createFile(atPath: err.path, contents: nil)
-        let outHandle = try FileHandle(forWritingTo: out), errHandle = try FileHandle(forWritingTo: err)
+        let outHandle = try FileHandle(forWritingTo: out)
+        let errHandle = try FileHandle(forWritingTo: err)
         process.standardOutput = outHandle
         process.standardError = errHandle
         let stdin = Pipe()
@@ -36,22 +44,32 @@ public enum Shell {
         }
         let deadline = Date().addingTimeInterval(timeout)
         while process.isRunning {
-            if Date() > deadline { process.terminate(); process.waitUntilExit(); throw ShellError.timedOut(arguments.joined(separator: " ")) }
+            if Date() > deadline {
+                process.terminate()
+                process.waitUntilExit()
+                throw ShellError.timedOut(arguments.joined(separator: " "))
+            }
             usleep(20_000)
         }
-        try? outHandle.close(); try? errHandle.close()
-        return CommandResult(status: process.terminationStatus,
-                             output: (try? String(contentsOf: out, encoding: .utf8)) ?? "",
-                             error: (try? String(contentsOf: err, encoding: .utf8)) ?? "")
+        try? outHandle.close()
+        try? errHandle.close()
+        return CommandResult(
+            status: process.terminationStatus,
+            output: (try? String(contentsOf: out, encoding: .utf8)) ?? "",
+            error: (try? String(contentsOf: err, encoding: .utf8)) ?? ""
+        )
     }
 
     /// `name` on the command's PATH (the environment it runs in), then this process's, then the system's.
     static func resolve(_ name: String, path given: String? = nil) throws -> String {
         if name.hasPrefix("/") { return name }
-        let path = (given ?? "").split(separator: ":").map(String.init)
+        let path =
+            (given ?? "").split(separator: ":").map(String.init)
             + (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init)
             + ["/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/libexec", "/opt/homebrew/bin", "/usr/local/bin"]
-        guard let found = path.map({ "\($0)/\(name)" }).first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+        guard
+            let found = path.map({ "\($0)/\(name)" }).first(where: { FileManager.default.isExecutableFile(atPath: $0) })
+        else {
             throw ShellError.notFound(name)
         }
         return found
@@ -59,7 +77,8 @@ public enum Shell {
 }
 
 public enum ShellError: Error, CustomStringConvertible {
-    case notFound(String), timedOut(String)
+    case notFound(String)
+    case timedOut(String)
     public var description: String {
         switch self {
         case .notFound(let name): "no \(name) on PATH"

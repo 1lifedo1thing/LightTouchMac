@@ -10,11 +10,15 @@ public nonisolated enum LogTail {
         do {
             let file = try FileHandle(forReadingFrom: url)
             defer { try? file.close() }
-            let size = try file.seekToEnd(), limit: UInt64 = 65536
-            let rotated = size < from, start = max(rotated ? 0 : from, size > limit ? size - limit : 0)
+            let size = try file.seekToEnd()
+            let limit: UInt64 = 65536
+            let rotated = size < from
+            let start = max(rotated ? 0 : from, size > limit ? size - limit : 0)
             try file.seek(toOffset: start)
             var data = try file.read(upToCount: Int(limit)) ?? Data()
-            if start > (rotated ? 0 : from), let newline = data.firstIndex(of: 10) { data = Data(data.suffix(from: data.index(after: newline))) }
+            if start > (rotated ? 0 : from), let newline = data.firstIndex(of: 10) {
+                data = Data(data.suffix(from: data.index(after: newline)))
+            }
             if data.isEmpty { return (from > 0 && !rotated ? "" : "No log output yet.", rotated) }
             return (String(decoding: data, as: UTF8.self), rotated)
         } catch {
@@ -24,7 +28,9 @@ public nonisolated enum LogTail {
 
     /// The lines containing `filter`, case-insensitively; everything for an empty filter.
     public static func filtered(_ value: String, by filter: String) -> String {
-        filter.isEmpty ? value : value.split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { $0.localizedCaseInsensitiveContains(filter) }.joined(separator: "\n")
+        filter.isEmpty
+            ? value
+            : value.split(separator: "\n", omittingEmptySubsequences: false)
+                .filter { $0.localizedCaseInsensitiveContains(filter) }.joined(separator: "\n")
     }
 }

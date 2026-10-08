@@ -1,5 +1,6 @@
 import Foundation
 import HostRuntime
+
 @testable import LightTouchCore
 
 /// The repository's shipped catalog and the machines fixture, for tests that read them.

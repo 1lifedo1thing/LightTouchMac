@@ -15,21 +15,24 @@ import IOSurface
 import LTMLinkC
 
 nonisolated public enum StatusSlot: Int, CaseIterable {
-    case magic = 0, layoutVersion, heartbeat, frameSerial, front, width, height,
-         ringGeneration, held,              // held: 1 + the ring index the app is reading, 0 none
-         uiReady, storageFailed, shutdownConfirmed, displaySleeping, agentStatus,
-         glesContexts, iconGeneration,      // retired icon counter slot: zero; preserve ABI offsets
-         qemuState,                         // QemuState
-         exitCode, publishTicks, helperPID,
-         // layout 2: it_boot's QC_PKG_REPORT and the GL shim's QC_GLES_HELLO
-         guestPackageReported, guestPackage, guestPackageState,   // serial, it_boot R_* (Int64 bit patterns)
-         glesProtocol, glesSerial,
-         guestPackageSupported,             // the dylib has the guest-package= property (set before boot)
-         backlightLevel                     // qemu_ios_ui_backlight_level (Int64 bit pattern)
+    case magic = 0
+    case layoutVersion, heartbeat, frameSerial, front, width, height,
+        ringGeneration, held,  // held: 1 + the ring index the app is reading, 0 none
+        uiReady, storageFailed, shutdownConfirmed, displaySleeping, agentStatus,
+        glesContexts, iconGeneration,  // retired icon counter slot: zero; preserve ABI offsets
+        qemuState,  // QemuState
+        exitCode, publishTicks, helperPID,
+        // layout 2: it_boot's QC_PKG_REPORT and the GL shim's QC_GLES_HELLO
+        guestPackageReported, guestPackage, guestPackageState,  // serial, it_boot R_* (Int64 bit patterns)
+        glesProtocol, glesSerial,
+        guestPackageSupported,  // the dylib has the guest-package= property (set before boot)
+        backlightLevel  // qemu_ios_ui_backlight_level (Int64 bit pattern)
 }
 
 nonisolated public enum QemuState: UInt64, Sendable {
-    case notStarted = 0, running = 1, exited = 2
+    case notStarted = 0
+    case running = 1
+    case exited = 2
 }
 
 /// One synchronous read of the status block.
@@ -62,7 +65,28 @@ nonisolated public struct SharedStatus: Sendable, Equatable {
     public var guestPackageSupported = false
     /// The level the guest last programmed into the backlight driver (its raw code; 0 off), -1 where not decoded.
     public var backlightLevel = -1
-    public init(heartbeat: UInt64, frameSerial: UInt64, width: Int, height: Int, ringGeneration: UInt64, uiReady: Bool, storageFailed: Bool, shutdownConfirmed: Bool, displaySleeping: Bool, agentStatus: Int, glesContexts: Int, iconGeneration: UInt64, qemuState: QemuState, exitCode: Int32, helperPID: Int32, guestPackage: GuestPackageReport? = nil, glesProtocol: Int32 = 0, glesSerial: Int64 = 0, guestPackageSupported: Bool = false, backlightLevel: Int = -1) {
+    public init(
+        heartbeat: UInt64,
+        frameSerial: UInt64,
+        width: Int,
+        height: Int,
+        ringGeneration: UInt64,
+        uiReady: Bool,
+        storageFailed: Bool,
+        shutdownConfirmed: Bool,
+        displaySleeping: Bool,
+        agentStatus: Int,
+        glesContexts: Int,
+        iconGeneration: UInt64,
+        qemuState: QemuState,
+        exitCode: Int32,
+        helperPID: Int32,
+        guestPackage: GuestPackageReport? = nil,
+        glesProtocol: Int32 = 0,
+        glesSerial: Int64 = 0,
+        guestPackageSupported: Bool = false,
+        backlightLevel: Int = -1
+    ) {
         self.heartbeat = heartbeat
         self.frameSerial = frameSerial
         self.width = width
@@ -96,7 +120,7 @@ nonisolated public struct GuestPackageReport: Sendable, Equatable {
 }
 
 nonisolated public struct StatusBlock: @unchecked Sendable {
-    public static let magic: UInt64 = 0x4C544D5354415432   // "LTMSTAT2"
+    public static let magic: UInt64 = 0x4C54_4D53_5441_5432  // "LTMSTAT2"
     public static let layoutVersion: UInt64 = 2
     public static let bytes = 4096
 
@@ -131,31 +155,43 @@ nonisolated public struct StatusBlock: @unchecked Sendable {
     public func bumpHeartbeat() { _ = ltm_add(base + StatusSlot.heartbeat.rawValue, 1) }
 
     public func snapshot() -> SharedStatus {
-        SharedStatus(heartbeat: self[.heartbeat], frameSerial: self[.frameSerial],
-                     width: Int(self[.width]), height: Int(self[.height]),
-                     ringGeneration: self[.ringGeneration],
-                     uiReady: self[.uiReady] != 0, storageFailed: self[.storageFailed] != 0,
-                     shutdownConfirmed: self[.shutdownConfirmed] != 0, displaySleeping: self[.displaySleeping] != 0,
-                     agentStatus: Int(self[.agentStatus]), glesContexts: Int(self[.glesContexts]),
-                     iconGeneration: self[.iconGeneration],
-                     qemuState: QemuState(rawValue: self[.qemuState]) ?? .notStarted,
-                     exitCode: Int32(truncatingIfNeeded: Int64(bitPattern: self[.exitCode])),
-                     helperPID: Int32(truncatingIfNeeded: self[.helperPID]),
-                     guestPackage: self[.guestPackageReported] == 0 ? nil
-                        : GuestPackageReport(serial: Int64(bitPattern: self[.guestPackage]),
-                                             result: Int32(truncatingIfNeeded: Int64(bitPattern: self[.guestPackageState]))),
-                     glesProtocol: Int32(truncatingIfNeeded: Int64(bitPattern: self[.glesProtocol])),
-                     glesSerial: Int64(bitPattern: self[.glesSerial]),
-                     guestPackageSupported: self[.guestPackageSupported] != 0,
-                     backlightLevel: Int(Int64(bitPattern: self[.backlightLevel])))
+        SharedStatus(
+            heartbeat: self[.heartbeat],
+            frameSerial: self[.frameSerial],
+            width: Int(self[.width]),
+            height: Int(self[.height]),
+            ringGeneration: self[.ringGeneration],
+            uiReady: self[.uiReady] != 0,
+            storageFailed: self[.storageFailed] != 0,
+            shutdownConfirmed: self[.shutdownConfirmed] != 0,
+            displaySleeping: self[.displaySleeping] != 0,
+            agentStatus: Int(self[.agentStatus]),
+            glesContexts: Int(self[.glesContexts]),
+            iconGeneration: self[.iconGeneration],
+            qemuState: QemuState(rawValue: self[.qemuState]) ?? .notStarted,
+            exitCode: Int32(truncatingIfNeeded: Int64(bitPattern: self[.exitCode])),
+            helperPID: Int32(truncatingIfNeeded: self[.helperPID]),
+            guestPackage: self[.guestPackageReported] == 0
+                ? nil
+                : GuestPackageReport(
+                    serial: Int64(bitPattern: self[.guestPackage]),
+                    result: Int32(truncatingIfNeeded: Int64(bitPattern: self[.guestPackageState]))
+                ),
+            glesProtocol: Int32(truncatingIfNeeded: Int64(bitPattern: self[.glesProtocol])),
+            glesSerial: Int64(bitPattern: self[.glesSerial]),
+            guestPackageSupported: self[.guestPackageSupported] != 0,
+            backlightLevel: Int(Int64(bitPattern: self[.backlightLevel]))
+        )
     }
 }
 
 /// Tagged sRGB, as screenshots and movies are: untagged, Core Animation shows the guest's pixels in the
 /// display's own space, so a P3 screen drew pure red (255, 0, 0) as P3 red, more saturated than the device.
 nonisolated public func makeSurface(width: Int, height: Int, bytesPerElement: Int = 4) -> IOSurface {
-    let surface = IOSurface(properties: [.width: width, .height: height, .bytesPerElement: bytesPerElement,
-                                         .pixelFormat: 0x42475241 /* 'BGRA' */])!
+    let surface = IOSurface(properties: [
+        .width: width, .height: height, .bytesPerElement: bytesPerElement,
+        .pixelFormat: 0x4247_5241 /* 'BGRA' */,
+    ])!
     if let srgb = CGColorSpace(name: CGColorSpace.sRGB)?.copyICCData() {
         IOSurfaceSetValue(unsafeBitCast(surface, to: IOSurfaceRef.self), kIOSurfaceColorSpace, srgb)
     }
@@ -186,7 +222,7 @@ nonisolated public final class FrameRingWriter: @unchecked Sendable {
     public func activate() {
         status[.width] = UInt64(width)
         status[.height] = UInt64(height)
-        status[.front] = 3      // nothing published in this ring yet: the reader keeps its last surface
+        status[.front] = 3  // nothing published in this ring yet: the reader keeps its last surface
         status[.ringGeneration] = generation
     }
 
@@ -220,9 +256,19 @@ nonisolated public final class FrameRingWriter: @unchecked Sendable {
         } else {
             for y in 0..<height { memcpy(dst + y * surface.bytesPerRow, pixels + y * rowBytes, rowBytes) }
         }
-        var buffer = vImage_Buffer(data: dst, height: vImagePixelCount(height), width: vImagePixelCount(width),
-                                   rowBytes: surface.bytesPerRow)
-        _ = vImageOverwriteChannelsWithScalar_ARGB8888(255, &buffer, &buffer, 0x1 /* the 4th byte */, vImage_Flags(kvImageNoFlags))
+        var buffer = vImage_Buffer(
+            data: dst,
+            height: vImagePixelCount(height),
+            width: vImagePixelCount(width),
+            rowBytes: surface.bytesPerRow
+        )
+        _ = vImageOverwriteChannelsWithScalar_ARGB8888(
+            255,
+            &buffer,
+            &buffer,
+            0x1 /* the 4th byte */,
+            vImage_Flags(kvImageNoFlags)
+        )
     }
 }
 

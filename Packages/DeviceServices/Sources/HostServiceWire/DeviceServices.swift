@@ -17,8 +17,10 @@ public nonisolated struct DeviceServices: Sendable {
 extension DeviceServices {
     public static func validateFilePath(_ path: String) throws {
         guard !path.hasPrefix("/"), !path.contains("\0"),
-              path.isEmpty || path.split(separator: "/", omittingEmptySubsequences: false)
-                .allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
+            path.isEmpty
+                || path.split(separator: "/", omittingEmptySubsequences: false)
+                    .allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." })
+        else {
             throw DeviceError.preflight("Invalid device file path.")
         }
     }
@@ -50,10 +52,11 @@ extension DeviceServices {
     public static func isOrphanedMediaUpload(_ name: String) -> Bool {
         let parts = name.components(separatedBy: ".upload-")
         guard parts.count == 2,
-              ["audio.mp3", "audio.m4a", "audio.aac", "audio.wav", "image.jpg"].contains(parts[0]),
-              !parts[1].hasPrefix(stagingSession + "-") else { return false }
+            ["audio.mp3", "audio.m4a", "audio.aac", "audio.wav", "image.jpg"].contains(parts[0]),
+            !parts[1].hasPrefix(stagingSession + "-")
+        else { return false }
         let suffix = parts[1]
-        if UUID(uuidString: suffix) != nil { return true } // Earlier atomic uploads.
+        if UUID(uuidString: suffix) != nil { return true }  // Earlier atomic uploads.
         return suffix.count == 73 && suffix[suffix.index(suffix.startIndex, offsetBy: 36)] == "-"
             && UUID(uuidString: String(suffix.prefix(36))) != nil
             && UUID(uuidString: String(suffix.suffix(36))) != nil
@@ -68,8 +71,9 @@ public nonisolated enum HomeScreenLayout {
     public static func flatten(_ state: [Any]) -> [String] {
         var ids: [String] = []
         func walk(_ node: Any) {
-            if let list = node as? [Any] { list.forEach(walk) }
-            else if let icon = node as? [String: Any] {
+            if let list = node as? [Any] {
+                list.forEach(walk)
+            } else if let icon = node as? [String: Any] {
                 if let id = icon["displayIdentifier"] as? String { ids.append(id) }
                 if let lists = icon["iconLists"] { walk(lists) }
             }

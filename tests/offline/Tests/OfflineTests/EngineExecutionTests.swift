@@ -68,7 +68,9 @@ extension SharedState {
                 }
             }
             try await withCheckedThrowingContinuation { entered.attach($0) }
-            let queued = Task { try await gate.serialized { () -> Bool in preconditionFailure("cancelled waiter executed") } }
+            let queued = Task {
+                try await gate.serialized { () -> Bool in preconditionFailure("cancelled waiter executed") }
+            }
             queued.cancel()
             let queuedCancelled = await withSoftDeadline(1) {
                 do {
@@ -96,7 +98,8 @@ extension SharedState {
                         _ = routed.run()
                         #expect(
                             String(cString: getenv("USBMUXD_SOCKET_ADDRESS")) == endpointA,
-                            "late C connection was routed to another device")
+                            "late C connection was routed to another device"
+                        )
                         return 1
                     }
                 }

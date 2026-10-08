@@ -1,5 +1,5 @@
-import LightTouchCore
 import Cocoa
+import LightTouchCore
 import SwiftUI
 
 /// A version picker backed by the public copy API; install eligibility is
@@ -7,10 +7,24 @@ import SwiftUI
 final class CatalogDetailsViewController: NSHostingController<CatalogDetailsView> {
     let model: CatalogDetailsModel
 
-    init(app: CatalogApp, device: String? = nil, deviceOS: String = "3.1.3", arch: String = "armv6",
-         installedVersion: String? = nil, canInstall: @escaping () -> Bool, install: @escaping (CatalogApp) -> Void) {
-        model = CatalogDetailsModel(app: app, device: device, deviceOS: deviceOS, arch: arch,
-                                    installedVersion: installedVersion, canInstall: canInstall, install: install)
+    init(
+        app: CatalogApp,
+        device: String? = nil,
+        deviceOS: String = "3.1.3",
+        arch: String = "armv6",
+        installedVersion: String? = nil,
+        canInstall: @escaping () -> Bool,
+        install: @escaping (CatalogApp) -> Void
+    ) {
+        model = CatalogDetailsModel(
+            app: app,
+            device: device,
+            deviceOS: deviceOS,
+            arch: arch,
+            installedVersion: installedVersion,
+            canInstall: canInstall,
+            install: install
+        )
         super.init(rootView: CatalogDetailsView(model: model))
         sizingOptions = .preferredContentSize
         model.close = { [weak self] in self.map { $0.dismiss($0) } }

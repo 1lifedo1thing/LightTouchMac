@@ -1,12 +1,20 @@
-import LightTouchCore
 import Cocoa
+import LightTouchCore
 
 /// A live, selectable tail of one log file: the Device Logs window's view and
 /// the main window's console. Selecting text (or `isPaused`) holds updates.
 @MainActor
 final class LogTextView: NSScrollView {
     let text = NSTextView()
-    var url: URL? { didSet { if url != oldValue { origin = 0; raw = ""; text.string = "" } } }
+    var url: URL? {
+        didSet {
+            if url != oldValue {
+                origin = 0
+                raw = ""
+                text.string = ""
+            }
+        }
+    }
     /// Shows only the lines containing it (case-insensitive), like Xcode's console filter.
     var filter = "" { didSet { if filter != oldValue { show(raw) } } }
     var isPaused = false
@@ -45,7 +53,10 @@ final class LogTextView: NSScrollView {
         }
     }
 
-    func stopPolling() { polling?.cancel(); polling = nil }
+    func stopPolling() {
+        polling?.cancel()
+        polling = nil
+    }
 
     func clear() {
         origin = url.flatMap { try? FileManager.default.attributesOfItem(atPath: $0.path)[.size] as? UInt64 } ?? 0
@@ -57,7 +68,9 @@ final class LogTextView: NSScrollView {
         guard window?.isVisible == true, !isPaused, text.selectedRange().length == 0, let url else { return }
         let from = origin
         let value = await Task.detached(priority: .utility) { LogTail.read(url, from: from) }.value
-        guard !Task.isCancelled, self.url == url, origin == from, !isPaused, text.selectedRange().length == 0 else { return }
+        guard !Task.isCancelled, self.url == url, origin == from, !isPaused, text.selectedRange().length == 0 else {
+            return
+        }
         if value.rotated { origin = 0 }
         guard value.text != raw else { return }
         raw = value.text
@@ -83,8 +96,12 @@ final class LogWindowController: NSWindowController, NSWindowDelegate {
 
     init(logs: [URL]) {
         self.logs = logs
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 440),
-                              styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 440),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
         super.init(window: window)
         window.title = "Device Logs"
         window.isReleasedWhenClosed = false
@@ -93,8 +110,10 @@ final class LogWindowController: NSWindowController, NSWindowDelegate {
         window.delegate = self
         picker.addItems(withTitles: logs.map(\.lastPathComponent))
         picker.setAccessibilityLabel("Log file")
-        picker.target = self; picker.action = #selector(sourceChanged(_:))
-        pause.target = self; pause.action = #selector(pauseChanged(_:))
+        picker.target = self
+        picker.action = #selector(sourceChanged(_:))
+        pause.target = self
+        pause.action = #selector(pauseChanged(_:))
         log.url = logs.first
         log.borderType = .bezelBorder
         let controls = NSStackView(views: [picker, pause])
@@ -145,7 +164,12 @@ final class DeviceNoticeViewController: NSTitlebarAccessoryViewController {
         super.init(nibName: nil, bundle: nil)
         layoutAttribute = .bottom
         view = NSView(frame: NSRect(x: 0, y: 0, width: 640, height: 56))
-        let icon = NSImageView(image: NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: "Device needs attention")!)
+        let icon = NSImageView(
+            image: NSImage(
+                systemSymbolName: "exclamationmark.triangle",
+                accessibilityDescription: "Device needs attention"
+            )!
+        )
         icon.contentTintColor = .labelColor
         message.maximumNumberOfLines = 2
         message.preferredMaxLayoutWidth = 400
@@ -155,14 +179,16 @@ final class DeviceNoticeViewController: NSTitlebarAccessoryViewController {
         let logs = NSButton(title: "Show Logs", target: self, action: #selector(showLogs))
         logs.bezelStyle = .rounded
         action.bezelStyle = .rounded
-        action.target = self; action.action = #selector(performAction)
+        action.target = self
+        action.action = #selector(performAction)
         action.isHidden = true
         let buttons = NSStackView(views: [action, logs])
         buttons.spacing = 8
         buttons.detachesHiddenViews = true
         dismiss.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Dismiss")
         dismiss.isBordered = false
-        dismiss.target = self; dismiss.action = #selector(dismissNotice)
+        dismiss.target = self
+        dismiss.action = #selector(dismissNotice)
         dismiss.toolTip = "Dismiss"
         dismiss.setAccessibilityLabel("Dismiss")
         for child in [icon, message, buttons, dismiss] {

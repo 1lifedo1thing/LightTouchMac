@@ -13,8 +13,10 @@ public nonisolated struct CatalogFilter: Equatable {
     public var showUnavailable = true
 
     public static func load(_ defaults: UserDefaults = .standard) -> CatalogFilter {
-        CatalogFilter(iPadOnly: defaults.bool(forKey: "storeIPadAppsOnly"),
-                      showUnavailable: defaults.object(forKey: "storeShowUnavailable") as? Bool ?? true)
+        CatalogFilter(
+            iPadOnly: defaults.bool(forKey: "storeIPadAppsOnly"),
+            showUnavailable: defaults.object(forKey: "storeShowUnavailable") as? Bool ?? true
+        )
     }
 
     public func save(_ defaults: UserDefaults = .standard) {

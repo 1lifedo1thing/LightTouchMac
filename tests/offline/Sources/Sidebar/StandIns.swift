@@ -2,17 +2,22 @@
 // running sets and a slow (or failing) fake removal through the real DeviceDeletions, the jobs, the library.
 import Cocoa
 import LightTouchCore
+
 final class FirmwareJobs {
     static let shared = FirmwareJobs()
     static let didChangeNotification = Notification.Name("FirmwareJobsDidChange")
-    var jobs: [String: FirmwareJob] = [:] { didSet { NotificationCenter.default.post(name: Self.didChangeNotification, object: self) } }
+    var jobs: [String: FirmwareJob] = [:] {
+        didSet { NotificationCenter.default.post(name: Self.didChangeNotification, object: self) }
+    }
 }
 struct StubInstance { let firmware: String }
 final class DeviceLibrary {
     static let didChangeNotification = Notification.Name("DeviceLibraryDidChange")
     var instances: [StubInstance] = []
 }
-extension FirmwareCatalog.Entry.Status { static let allCasesForCheck: [Self] = [.available, .experimental, .untested, .comingSoon, .userIPSW] }
+extension FirmwareCatalog.Entry.Status {
+    static let allCasesForCheck: [Self] = [.available, .experimental, .untested, .comingSoon, .userIPSW]
+}
 final class EmulatorController { var canQueueInstall = false }
 final class DeviceSession {
     let emulator = EmulatorController()
@@ -35,18 +40,35 @@ final class DeviceSessionHost {
     var failing = false
     struct Failed: LocalizedError { var errorDescription: String? { "The device’s folder couldn’t be removed." } }
     func delete(_ instance: StubInstance) -> Task<Void, Error> {
-        let seconds = deleteSeconds, failing = failing, id = instance.firmware
-        let removal = deletions.run(id) { Thread.sleep(forTimeInterval: seconds); if failing { throw Failed() } }
-        return Task { try await removal.value; deleted.append(id); prepared[id] = nil }
+        let seconds = deleteSeconds
+        let failing = failing
+        let id = instance.firmware
+        let removal = deletions.run(id) {
+            Thread.sleep(forTimeInterval: seconds)
+            if failing { throw Failed() }
+        }
+        return Task {
+            try await removal.value
+            deleted.append(id)
+            prepared[id] = nil
+        }
     }
     init(catalog: FirmwareCatalog) {
         self.catalog = catalog
         deletions.onChange = { NotificationCenter.default.post(name: Self.didChangeNotification, object: nil) }
     }
-    func instance(for entry: FirmwareCatalog.Entry) -> StubInstance? { prepared[entry.id].map { _ in StubInstance(firmware: entry.id) } }
+    func instance(for entry: FirmwareCatalog.Entry) -> StubInstance? {
+        prepared[entry.id].map { _ in StubInstance(firmware: entry.id) }
+    }
     func session(for entry: FirmwareCatalog.Entry) -> DeviceSession? { nil }
     func row(for entry: FirmwareCatalog.Entry) -> DeviceRow {
-        DeviceRow(entry: entry, instanceID: prepared[entry.id], session: running.contains(entry.id) ? .running : nil, job: FirmwareJobs.shared.jobs[entry.id],
-                  downloaded: downloaded.contains(entry.id), deleting: deletions.contains(entry.id))
+        DeviceRow(
+            entry: entry,
+            instanceID: prepared[entry.id],
+            session: running.contains(entry.id) ? .running : nil,
+            job: FirmwareJobs.shared.jobs[entry.id],
+            downloaded: downloaded.contains(entry.id),
+            deleting: deletions.contains(entry.id)
+        )
     }
 }

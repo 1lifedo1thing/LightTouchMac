@@ -37,7 +37,9 @@ extension SharedState {
                 set {}
             }
             func enumerateDraggingItems(
-                options: NSDraggingItemEnumerationOptions = [], for view: NSView?, classes: [AnyClass],
+                options: NSDraggingItemEnumerationOptions = [],
+                for view: NSView?,
+                classes: [AnyClass],
                 searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:],
                 using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void
             ) {}
@@ -80,10 +82,26 @@ extension SharedState {
             browser.sendAction(browser.action!, to: browser.target)
             let export = try #require(all.compactMap { $0 as? NSButton }.first { $0.title == "Save to Mac…" })
             #expect(export.isEnabled)
-            let save = NSMenuItem(title: "Save to Mac…", action: #selector(DeviceFilesViewController.exportFile), keyEquivalent: "")
-            let copy = NSMenuItem(title: "Copy to iPod…", action: #selector(DeviceFilesViewController.importFile), keyEquivalent: "")
-            let cancel = NSMenuItem(title: "Cancel Transfer", action: #selector(DeviceFilesViewController.cancelTransfer), keyEquivalent: "")
-            let hidden = NSMenuItem(title: "Show Hidden Files", action: #selector(DeviceFilesViewController.toggleHidden(_:)), keyEquivalent: "")
+            let save = NSMenuItem(
+                title: "Save to Mac…",
+                action: #selector(DeviceFilesViewController.exportFile),
+                keyEquivalent: ""
+            )
+            let copy = NSMenuItem(
+                title: "Copy to iPod…",
+                action: #selector(DeviceFilesViewController.importFile),
+                keyEquivalent: ""
+            )
+            let cancel = NSMenuItem(
+                title: "Cancel Transfer",
+                action: #selector(DeviceFilesViewController.cancelTransfer),
+                keyEquivalent: ""
+            )
+            let hidden = NSMenuItem(
+                title: "Show Hidden Files",
+                action: #selector(DeviceFilesViewController.toggleHidden(_:)),
+                keyEquivalent: ""
+            )
             #expect(vc.validateMenuItem(save) && vc.validateMenuItem(copy) && !vc.validateMenuItem(cancel))
             vc.toggleHidden(hidden)
             #expect(vc.validateMenuItem(hidden) && hidden.title == "Hide Hidden Files" && hidden.state == .off)
@@ -107,28 +125,48 @@ extension SharedState {
             browser.selectRowIndexes(IndexSet([0, 1]), inColumn: 1)
             browser.sendAction(browser.action!, to: browser.target)
             #expect(vc.validateMenuItem(save) && export.isEnabled, "two files selected can be saved")
-            #expect(vc.browser(browser, canDragRowsWith: IndexSet([0, 1]), inColumn: 1, with: NSEvent()), "files drag out")
-            #expect(!vc.browser(browser, canDragRowsWith: IndexSet([0]), inColumn: 0, with: NSEvent()), "a folder doesn't drag out")
+            #expect(
+                vc.browser(browser, canDragRowsWith: IndexSet([0, 1]), inColumn: 1, with: NSEvent()),
+                "files drag out"
+            )
+            #expect(
+                !vc.browser(browser, canDragRowsWith: IndexSet([0]), inColumn: 0, with: NSEvent()),
+                "a folder doesn't drag out"
+            )
             let board = NSPasteboard(name: .init("ltm-files-ui-" + UUID().uuidString))
-            #expect(vc.browser(browser, writeRowsWith: IndexSet([0, 1]), inColumn: 1, to: board) && board.pasteboardItems?.count == 2, "two promises")
+            #expect(
+                vc.browser(browser, writeRowsWith: IndexSet([0, 1]), inColumn: 1, to: board)
+                    && board.pasteboardItems?.count == 2,
+                "two promises"
+            )
             let out = FileManager.default.temporaryDirectory.appendingPathComponent("ltm-files-ui-" + UUID().uuidString)
             try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: out) }
-            let provider = vc.promise(DeviceFile(name: "note.txt", path: "Folder/note.txt", isDirectory: false, isRegular: true, size: 5))
+            let provider = vc.promise(
+                DeviceFile(name: "note.txt", path: "Folder/note.txt", isDirectory: false, isRegular: true, size: 5)
+            )
             #expect(vc.filePromiseProvider(provider, fileNameForType: provider.fileType) == "note.txt")
             var fulfilled: Error?? = nil
-            vc.filePromiseProvider(provider, writePromiseTo: out.appendingPathComponent("note.txt")) { fulfilled = .some($0) }
+            vc.filePromiseProvider(provider, writePromiseTo: out.appendingPathComponent("note.txt")) {
+                fulfilled = .some($0)
+            }
             try await until("the promise") { fulfilled != nil }
             #expect(
-                fulfilled! == nil && (try? String(contentsOf: out.appendingPathComponent("note.txt"), encoding: .utf8)) == "device:Folder/note.txt",
-                "promised file written")
+                fulfilled! == nil
+                    && (try? String(contentsOf: out.appendingPathComponent("note.txt"), encoding: .utf8))
+                        == "device:Folder/note.txt",
+                "promised file written"
+            )
             // Drag in: onto the folder row puts the files in it; a Finder file anywhere in column 1 goes to Folder.
             let local = out.appendingPathComponent("from-mac.txt")
             try Data("x".utf8).write(to: local)
             var row = 0
             var column = 0
             var op = NSBrowser.DropOperation.on
-            #expect(vc.browser(browser, validateDrop: Drop([local]), proposedRow: &row, column: &column, dropOperation: &op) == .copy)
+            #expect(
+                vc.browser(browser, validateDrop: Drop([local]), proposedRow: &row, column: &column, dropOperation: &op)
+                    == .copy
+            )
             #expect(vc.browser(browser, acceptDrop: Drop([local]), atRow: 0, column: 0, dropOperation: .on))
             try await until("the drop upload") { !vc.hasTransfer && uploads.count == 1 }
             #expect(uploads.last! == ("from-mac.txt", "Folder"), "dropped into the folder: \(uploads)")
@@ -140,7 +178,9 @@ extension SharedState {
             column = 1
             op = .on
             #expect(
-                vc.browser(browser, validateDrop: Drop([local]), proposedRow: &row, column: &column, dropOperation: &op) == .copy && op == .above && row == -1)
+                vc.browser(browser, validateDrop: Drop([local]), proposedRow: &row, column: &column, dropOperation: &op)
+                    == .copy && op == .above && row == -1
+            )
             #expect(vc.browser(browser, acceptDrop: Drop([local]), atRow: -1, column: 1, dropOperation: .above))
             try await until("the second drop upload") { !vc.hasTransfer && uploads.count == 2 }
             #expect(uploads.last! == ("from-mac.txt", "Folder"), "dropped into the column's folder: \(uploads)")
@@ -157,7 +197,8 @@ extension SharedState {
             try await until("the Quick Look copies") { presented }
             #expect(
                 vc.previewURLs.map(\.lastPathComponent) == ["file.bin", "note.txt"]
-                    && vc.previewURLs.allSatisfy { FileManager.default.fileExists(atPath: $0.path) })
+                    && vc.previewURLs.allSatisfy { FileManager.default.fileExists(atPath: $0.path) }
+            )
             #expect(vc.numberOfPreviewItems(in: nil) == 2)
             #expect(controller.browser === vc && browser.selectedColumn == 1)
             #expect(!window.isExcludedFromWindowsMenu && window.styleMask.contains(.resizable))
@@ -176,8 +217,17 @@ extension SharedState {
             let next = vc.view.nextResponder
             vc.view.nextResponder = sink
             let key = NSEvent.keyEvent(
-                with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
-                characters: "x", charactersIgnoringModifiers: "x", isARepeat: false, keyCode: 7)!
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                characters: "x",
+                charactersIgnoringModifiers: "x",
+                isARepeat: false,
+                keyCode: 7
+            )!
             vc.view.keyDown(with: key)
             vc.view.scrollWheel(with: key)
             #expect(sink.events == 0, "the browser swallows its keys and scrolls")

@@ -1,6 +1,6 @@
-import LightTouchCore
-import HostRuntime
 import Cocoa
+import HostRuntime
+import LightTouchCore
 
 final class ProxySettingsView: NSView {
     private let enabled = NSButton(checkboxWithTitle: "Use HTTP proxy", target: nil, action: nil)
@@ -97,8 +97,7 @@ final class ProxySettingsView: NSView {
         statusLabel.textColor = status == .failed ? .labelColor : .secondaryLabelColor
         statusRow.isHidden = status.message(for: profile) == nil
         progress.isHidden = !status.isWorking
-        if status.isWorking { progress.startAnimation(nil) }
-        else { progress.stopAnimation(nil) }
+        if status.isWorking { progress.startAnimation(nil) } else { progress.stopAnimation(nil) }
         resizeToFit()
     }
 
@@ -154,4 +153,3 @@ extension ProxySettingsView {
         return sheet
     }
 }
-

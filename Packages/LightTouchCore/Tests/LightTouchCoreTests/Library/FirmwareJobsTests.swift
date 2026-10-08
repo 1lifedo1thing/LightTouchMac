@@ -4,6 +4,7 @@ import Foundation
 import HostRuntime
 import Network
 import Testing
+
 @testable import LightTouchCore
 
 /// FirmwareJobs end to end, each over its own temporary state, logs and caches, an ephemeral URLSession and a fake
@@ -14,8 +15,11 @@ import Testing
     init() { _ = LibraryFixtures.isolatedAppState }
 
     /// The shipped catalog's entries as JSON, to edit and load as a test catalog.
-    static let shipped: [String: Any] = try! JSONSerialization.jsonObject(with: Data(contentsOf: LibraryFixtures.shippedCatalog)) as! [String: Any]
-    static func entry(_ id: String) -> [String: Any] { (shipped["entries"] as! [[String: Any]]).first { $0["id"] as? String == id }! }
+    static let shipped: [String: Any] =
+        try! JSONSerialization.jsonObject(with: Data(contentsOf: LibraryFixtures.shippedCatalog)) as! [String: Any]
+    static func entry(_ id: String) -> [String: Any] {
+        (shipped["entries"] as! [[String: Any]]).first { $0["id"] as? String == id }!
+    }
     static func catalog(_ entries: [[String: Any]], in directory: URL) throws -> FirmwareCatalog {
         let url = directory.appendingPathComponent("catalog.json")
         try JSONSerialization.data(withJSONObject: ["format": 1, "entries": entries]).write(to: url)
@@ -33,13 +37,29 @@ import Testing
         init(_ root: URL, catalog: FirmwareCatalog, preparer: URL?, resources: URL? = nil) throws {
             state = root.appendingPathComponent("state")
             try StorageLocations.privateDirectory(state)
-            store = IPSWStore(downloads: root.appendingPathComponent("Caches/IPSW"), imports: state.appendingPathComponent("IPSW"))
+            store = IPSWStore(
+                downloads: root.appendingPathComponent("Caches/IPSW"),
+                imports: state.appendingPathComponent("IPSW")
+            )
             library = DeviceLibrary(state: state)
-            jobs = FirmwareJobs(catalog: catalog, store: store, configuration: .ephemeral, state: state,
-                                logs: root.appendingPathComponent("Logs"), caches: root.appendingPathComponent("Caches"),
-                                preparer: preparer, resources: resources, library: library, sweep: false,
-                                presentError: { _ in })
-            observer = NotificationCenter.default.addObserver(forName: FirmwareJobs.didChangeNotification, object: jobs, queue: nil) { [weak self] _ in
+            jobs = FirmwareJobs(
+                catalog: catalog,
+                store: store,
+                configuration: .ephemeral,
+                state: state,
+                logs: root.appendingPathComponent("Logs"),
+                caches: root.appendingPathComponent("Caches"),
+                preparer: preparer,
+                resources: resources,
+                library: library,
+                sweep: false,
+                presentError: { _ in }
+            )
+            observer = NotificationCenter.default.addObserver(
+                forName: FirmwareJobs.didChangeNotification,
+                object: jobs,
+                queue: nil
+            ) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     for (id, job) in self.jobs.jobs {
@@ -56,13 +76,19 @@ import Testing
         /// Waits (up to 60 s) for a failure, or a device whose job has gone (the record is renamed into place on the
         /// preparer's thread just before the job hears).
         func settle(_ id: String) async {
-            for _ in 0..<1200 where !failed(id) && (devices(id).isEmpty || jobs.jobs[id] != nil) { try? await Task.sleep(for: .milliseconds(50)) }
+            for _ in 0..<1200 where !failed(id) && (devices(id).isEmpty || jobs.jobs[id] != nil) {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
         }
-        func downloads(_ id: String) -> [FirmwareJob] { (seen[id] ?? []).filter { if case .downloading = $0 { true } else { false } } }
+        func downloads(_ id: String) -> [FirmwareJob] {
+            (seen[id] ?? []).filter { if case .downloading = $0 { true } else { false } }
+        }
     }
 
-    static func files(_ job: FirmwareJob?) -> Int { if case let .downloading(_, _, n, _, _)? = job { n } else { 0 } }
-    static func fraction(_ job: FirmwareJob) -> Double { if case let .downloading(f, _, _, _, _) = job { f } else { -1 } }
+    static func files(_ job: FirmwareJob?) -> Int { if case .downloading(_, _, let n, _, _)? = job { n } else { 0 } }
+    static func fraction(_ job: FirmwareJob) -> Double {
+        if case .downloading(let f, _, _, _, _) = job { f } else { -1 }
+    }
 
     // MARK: - Sources and mirrors
 
@@ -78,36 +104,76 @@ import Testing
     }
     static let size = 2 << 20
     static func ipsw(_ url: String, mirrors: [(String, String)], sha1: String) -> [String: any Sendable] {
-        ["kind": "ipsw", "url": url, "sha1": sha1, "bytes": size, "mirrors": mirrors.map { ["url": $0.0, "sha1": $0.1, "bytes": size] }]
+        [
+            "kind": "ipsw", "url": url, "sha1": sha1, "bytes": size,
+            "mirrors": mirrors.map { ["url": $0.0, "sha1": $0.1, "bytes": size] },
+        ]
     }
     /// Unrar.swift's own test fixture (MIT): a 107-byte RAR 5 archive holding README.md, 40 bytes.
-    static let rar = Data(base64Encoded: "UmFyIRoHAQAzkrXlCgEFBgAFAQGAgAD3EqflHwICqAAGqACkgwIWO/FfV7UGeoAAAQlSRUFETUUubWQjIFVucmFyCgpBIGRlc2NyaXB0aW9uIG9mIHRoaXMgcGFja2FnZS4KHXdWUQMFBAA=")!
+    static let rar = Data(
+        base64Encoded:
+            "UmFyIRoHAQAzkrXlCgEFBgAFAQGAgAD3EqflHwICqAAGqACkgwIWO/FfV7UGeoAAAQlSRUFETUUubWQjIFVucmFyCgpBIGRlc2NyaXB0aW9uIG9mIHRoaXMgcGFja2FnZS4KHXdWUQMFBAA="
+    )!
     static let member = Data("# Unrar\n\nA description of this package.\n".utf8)
     static func rarSource(_ base: String, archiveSHA1: String) -> [String: any Sendable] {
-        ["kind": "rar", "url": base + "/media_ipsw.rar", "archive_sha1": archiveSHA1, "archive_bytes": rar.count, "member": "README.md",
-         "sha1": IPSWStoreTests.sha1Hex(member), "bytes": member.count]
+        [
+            "kind": "rar", "url": base + "/media_ipsw.rar", "archive_sha1": archiveSHA1, "archive_bytes": rar.count,
+            "member": "README.md",
+            "sha1": IPSWStoreTests.sha1Hex(member), "bytes": member.count,
+        ]
     }
     nonisolated static let sources: [Source] = [
-        .init(name: "404: the mirror's copy", source: { b, s in ipsw(b + "/gone.ipsw", mirrors: [(b + "/good.ipsw", s)], sha1: s) },
-              outcome: .success, paths: ["/gone.ipsw", "/good.ipsw"]),
-        .init(name: "hash: other bytes rejected, the mirror's copy", source: { b, s in ipsw(b + "/bad.ipsw", mirrors: [(b + "/good.ipsw", s)], sha1: s) },
-              outcome: .success, paths: ["/bad.ipsw", "/good.ipsw"]),
-        .init(name: "dns: the mirror's copy", source: { b, s in ipsw("http://ipsw.invalid/gone.ipsw", mirrors: [(b + "/good.ipsw", s)], sha1: s) },
-              outcome: .success, paths: ["/good.ipsw"]),
-        .init(name: "exhausted: fails, nothing kept", source: { b, s in ipsw(b + "/gone.ipsw", mirrors: [(b + "/bad.ipsw", s)], sha1: s) },
-              outcome: .failure, paths: ["/gone.ipsw", "/bad.ipsw"]),
-        .init(name: "unlisted: a mirror for another sha1 is never asked", source: { b, s in ipsw(b + "/gone.ipsw", mirrors: [(b + "/good.ipsw", String(repeating: "0", count: 40))], sha1: s) },
-              outcome: .failure, paths: ["/gone.ipsw"]),
-        .init(name: "rar: unwrapped by firmwarekit", source: { b, _ in rarSource(b, archiveSHA1: IPSWStoreTests.sha1Hex(rar)) },
-              outcome: .direct, paths: ["/media_ipsw.rar"]),
-        .init(name: "rar-other: another archive's sha1 fails", source: { b, _ in rarSource(b, archiveSHA1: String(repeating: "0", count: 40)) },
-              outcome: .failure, paths: ["/media_ipsw.rar"]),
+        .init(
+            name: "404: the mirror's copy",
+            source: { b, s in ipsw(b + "/gone.ipsw", mirrors: [(b + "/good.ipsw", s)], sha1: s) },
+            outcome: .success,
+            paths: ["/gone.ipsw", "/good.ipsw"]
+        ),
+        .init(
+            name: "hash: other bytes rejected, the mirror's copy",
+            source: { b, s in ipsw(b + "/bad.ipsw", mirrors: [(b + "/good.ipsw", s)], sha1: s) },
+            outcome: .success,
+            paths: ["/bad.ipsw", "/good.ipsw"]
+        ),
+        .init(
+            name: "dns: the mirror's copy",
+            source: { b, s in ipsw("http://ipsw.invalid/gone.ipsw", mirrors: [(b + "/good.ipsw", s)], sha1: s) },
+            outcome: .success,
+            paths: ["/good.ipsw"]
+        ),
+        .init(
+            name: "exhausted: fails, nothing kept",
+            source: { b, s in ipsw(b + "/gone.ipsw", mirrors: [(b + "/bad.ipsw", s)], sha1: s) },
+            outcome: .failure,
+            paths: ["/gone.ipsw", "/bad.ipsw"]
+        ),
+        .init(
+            name: "unlisted: a mirror for another sha1 is never asked",
+            source: { b, s in
+                ipsw(b + "/gone.ipsw", mirrors: [(b + "/good.ipsw", String(repeating: "0", count: 40))], sha1: s)
+            },
+            outcome: .failure,
+            paths: ["/gone.ipsw"]
+        ),
+        .init(
+            name: "rar: unwrapped by firmwarekit",
+            source: { b, _ in rarSource(b, archiveSHA1: IPSWStoreTests.sha1Hex(rar)) },
+            outcome: .direct,
+            paths: ["/media_ipsw.rar"]
+        ),
+        .init(
+            name: "rar-other: another archive's sha1 fails",
+            source: { b, _ in rarSource(b, archiveSHA1: String(repeating: "0", count: 40)) },
+            outcome: .failure,
+            paths: ["/media_ipsw.rar"]
+        ),
     ]
 
     @Test(arguments: sources)
     func aFailedSourceFallsBackToTheNext(_ c: Source) async throws {
         try await LibraryFixtures.withScratch { tmp in
-            let good = LibraryFixtures.randomData(Self.size), bad = LibraryFixtures.randomData(Self.size)
+            let good = LibraryFixtures.randomData(Self.size)
+            let bad = LibraryFixtures.randomData(Self.size)
             let server = try await TestHTTPServer(["/good.ipsw": good, "/bad.ipsw": bad, "/media_ipsw.rar": Self.rar])
             defer { server.stop() }
             var entry = Self.entry("k48ap-7B367")
@@ -119,17 +185,31 @@ import Testing
             let h = try Harness(tmp, catalog: catalog, preparer: preparer)
             h.jobs.downloadAndPrepare(e)
             await h.settle(e.id)
-            let mirrors = Set((h.seen[e.id] ?? []).compactMap { if case let .downloading(_, _, _, mirror, _) = $0 { mirror } else { nil } })
+            let mirrors = Set(
+                (h.seen[e.id] ?? []).compactMap {
+                    if case .downloading(_, _, _, let mirror, _) = $0 { mirror } else { nil }
+                }
+            )
             switch c.outcome {
             case .success, .direct:
                 #expect(h.devices(e.id).count == 1 && h.jobs.jobs[e.id] == nil, "prepared: \(h.seen)")
                 let stored = try #require(h.store.existing(e.source.sha1!))
-                #expect(try IPSWStore.sha1(of: stored) == e.source.sha1!, "the stored IPSW hashes to the catalog's sha1")
+                #expect(
+                    try IPSWStore.sha1(of: stored) == e.source.sha1!,
+                    "the stored IPSW hashes to the catalog's sha1"
+                )
                 if c.outcome == .success { #expect(mirrors == ["127.0.0.1"], "the job named the mirror it came from") }
-                #expect((try? FileManager.default.contentsOfDirectory(atPath: h.store.downloads.path)) == [e.source.sha1! + ".ipsw"],
-                        "only the IPSW is left in the downloads")
+                #expect(
+                    (try? FileManager.default.contentsOfDirectory(atPath: h.store.downloads.path)) == [
+                        e.source.sha1! + ".ipsw"
+                    ],
+                    "only the IPSW is left in the downloads"
+                )
             case .failure:
-                #expect(h.failed(e.id) && h.devices(e.id).isEmpty, "no source served the IPSW, so the job failed: \(h.seen)")
+                #expect(
+                    h.failed(e.id) && h.devices(e.id).isEmpty,
+                    "no source served the IPSW, so the job failed: \(h.seen)"
+                )
                 #expect(h.store.existing(e.source.sha1!) == nil, "nothing in the store")
             }
             #expect(server.log == c.paths)
@@ -139,8 +219,11 @@ import Testing
     // MARK: - A sibling's ramdisk
 
     /// iPad 4.3.1–4.3.5 boot 4.3's ramdisk (recipe.keybag_ramdisk_from); a catalog of 4.3 and 4.3.1 over small file:// IPSWs.
-    @MainActor func siblings(_ tmp: URL) throws -> (Harness, point: FirmwareCatalog.Entry, base: FirmwareCatalog.Entry, argv: URL, pointIPSW: URL) {
-        var point = Self.entry("k48ap-8G4"), base = Self.entry("k48ap-8F190")
+    @MainActor func siblings(_ tmp: URL) throws -> (
+        Harness, point: FirmwareCatalog.Entry, base: FirmwareCatalog.Entry, argv: URL, pointIPSW: URL
+    ) {
+        var point = Self.entry("k48ap-8G4")
+        var base = Self.entry("k48ap-8F190")
         let ipsws = tmp.appendingPathComponent("ipsws")
         try FileManager.default.createDirectory(at: ipsws, withIntermediateDirectories: true)
         for (i, size) in [(0, 3 << 20), (1, 5 << 20)] {
@@ -148,15 +231,28 @@ import Testing
             let url = ipsws.appendingPathComponent("\(id).ipsw")
             let data = LibraryFixtures.randomData(size)
             try data.write(to: url)
-            let source: [String: Any] = ["kind": "ipsw", "url": url.absoluteString, "sha1": IPSWStoreTests.sha1Hex(data), "bytes": size]
-            if i == 0 { point["source"] = source; point["estimates"] = Self.smallEstimates } else { base["source"] = source; base["estimates"] = Self.smallEstimates }
+            let source: [String: Any] = [
+                "kind": "ipsw", "url": url.absoluteString, "sha1": IPSWStoreTests.sha1Hex(data), "bytes": size,
+            ]
+            if i == 0 {
+                point["source"] = source
+                point["estimates"] = Self.smallEstimates
+            } else {
+                base["source"] = source
+                base["estimates"] = Self.smallEstimates
+            }
         }
         let catalog = try Self.catalog([base, point], in: tmp)
         let argv = tmp.appendingPathComponent("argv.json")
         let h = try Harness(tmp, catalog: catalog, preparer: try LibraryFixtures.fakePreparer(in: tmp, argv: argv))
-        return (h, catalog.entry(id: "k48ap-8G4")!, catalog.entry(id: "k48ap-8F190")!, argv, ipsws.appendingPathComponent("k48ap-8G4.ipsw"))
+        return (
+            h, catalog.entry(id: "k48ap-8G4")!, catalog.entry(id: "k48ap-8F190")!, argv,
+            ipsws.appendingPathComponent("k48ap-8G4.ipsw")
+        )
     }
-    func argv(_ url: URL) -> [String] { (try? JSONSerialization.jsonObject(with: Data(contentsOf: url))) as? [String] ?? [] }
+    func argv(_ url: URL) -> [String] {
+        (try? JSONSerialization.jsonObject(with: Data(contentsOf: url))) as? [String] ?? []
+    }
 
     @Test func everyIPad43PointReleaseBootsTheRamdiskOf43() {
         let shipped = (Self.shipped["entries"] as! [[String: Any]])
@@ -174,15 +270,24 @@ import Testing
             await h.settle(point.id)
             #expect(h.devices(point.id).count == 1 && h.jobs.jobs[point.id] == nil, "4.3.1 prepared: \(h.seen)")
             let downloads = h.downloads(point.id)
-            #expect(!downloads.isEmpty && downloads.allSatisfy { Self.files($0) == 2 }, "every download report is the two-IPSW job")
+            #expect(
+                !downloads.isEmpty && downloads.allSatisfy { Self.files($0) == 2 },
+                "every download report is the two-IPSW job"
+            )
             let fractions = downloads.map(Self.fraction)
             #expect(fractions == fractions.sorted(), "the one bar only grows: \(fractions)")
-            #expect((h.seen[point.id] ?? []).contains { if case .preparing = $0 { true } else { false } }, "then the preparation")
+            #expect(
+                (h.seen[point.id] ?? []).contains { if case .preparing = $0 { true } else { false } },
+                "then the preparation"
+            )
             #expect(h.changes[base.id] == nil && h.devices(base.id).isEmpty, "4.3 gets no job and no device of its own")
             let sibling = try #require(h.store.existing(base.source.sha1!))
             #expect(h.store.existing(point.source.sha1!) != nil, "both IPSWs in the store")
             let a = argv(argvURL)
-            #expect(a.firstIndex(of: "--sibling-ipsw").map { a[$0 + 1] } == sibling.path, "the preparer boots 4.3's ramdisk")
+            #expect(
+                a.firstIndex(of: "--sibling-ipsw").map { a[$0 + 1] } == sibling.path,
+                "the preparer boots 4.3's ramdisk"
+            )
             #expect(a.contains("--sibling-entry"))
         }
     }
@@ -194,8 +299,14 @@ import Testing
             await h.settle(point.id)
             #expect(h.devices(point.id).count == 1, "4.3.1 prepared after its sibling's download: \(h.seen)")
             let downloads = h.downloads(point.id)
-            #expect(!downloads.isEmpty && downloads.allSatisfy { Self.files($0) == 1 }, "the import queued only 4.3's IPSW")
-            #expect(h.store.existing(base.source.sha1!) != nil && h.changes[base.id] == nil, "4.3's IPSW fetched under 4.3.1's job")
+            #expect(
+                !downloads.isEmpty && downloads.allSatisfy { Self.files($0) == 1 },
+                "the import queued only 4.3's IPSW"
+            )
+            #expect(
+                h.store.existing(base.source.sha1!) != nil && h.changes[base.id] == nil,
+                "4.3's IPSW fetched under 4.3.1's job"
+            )
             #expect(argv(argvURL).contains("--sibling-ipsw"))
         }
     }
@@ -217,27 +328,48 @@ import Testing
     /// Resources/Device/n72ap-7E18.itbase; the real firmwarekit unpacks it.
     @MainActor func builtIn(_ tmp: URL) async throws -> (Harness, FirmwareCatalog.Entry) {
         let fk = try await FirmwareKitTool.path()
-        let template = tmp.appendingPathComponent("template"), fm = FileManager.default
+        let template = tmp.appendingPathComponent("template")
+        let fm = FileManager.default
         try fm.createDirectory(at: template.appendingPathComponent("nand/cs0"), withIntermediateDirectories: true)
         try Data(repeating: 7, count: 4160).write(to: template.appendingPathComponent("nand/cs0/1.page"))
-        for (name, data) in [("iBoot.bin", Data("ibot".utf8)), ("gid-blobs.bin", Data(count: 64)), ("nor.bin", Data(count: 0x100000))] {
+        for (name, data) in [
+            ("iBoot.bin", Data("ibot".utf8)), ("gid-blobs.bin", Data(count: 64)), ("nor.bin", Data(count: 0x100000)),
+        ] {
             try data.write(to: template.appendingPathComponent(name))
         }
-        try JSONSerialization.data(withJSONObject: ["seed": "lighttouch-built-in", "model-number": "MB528", "region-info": "LL/A",
-                                                    "serial-number": "X", "udid": "u"]).write(to: template.appendingPathComponent("identity.json"))
+        try JSONSerialization.data(withJSONObject: [
+            "seed": "lighttouch-built-in", "model-number": "MB528", "region-info": "LL/A",
+            "serial-number": "X", "udid": "u",
+        ]).write(to: template.appendingPathComponent("identity.json"))
         try JSONSerialization.data(withJSONObject: [
             "board": "n72ap", "boot_strategy": "iboot", "entry": ["id": "n72ap-7E18"],
             "identity": ["seed": "lighttouch-built-in", "udid": "u", "sha256": "x"], "machine": ["aes-uid": "engine"],
             "outputs": ["nor": ["path": "nor.bin", "sha256": "x"]],
             "inputs": ["ipsw": ["path": NSHomeDirectory() + "/Library/Caches/x.ipsw"], "guest_tools": template.path],
-            "tool": ["helper": template.appendingPathComponent("LightTouchDevice").path]]).write(to: template.appendingPathComponent("device.lock.json"))
-        try LibraryFixtures.run("/bin/chmod", ["-R", "a-w", template.appendingPathComponent("nand").path, template.appendingPathComponent("nor.bin").path])
+            "tool": ["helper": template.appendingPathComponent("LightTouchDevice").path],
+        ]).write(to: template.appendingPathComponent("device.lock.json"))
+        try LibraryFixtures.run(
+            "/bin/chmod",
+            [
+                "-R", "a-w", template.appendingPathComponent("nand").path,
+                template.appendingPathComponent("nor.bin").path,
+            ]
+        )
         let resources = tmp.appendingPathComponent("Resources")
         try fm.createDirectory(at: resources.appendingPathComponent("Device"), withIntermediateDirectories: true)
-        try LibraryFixtures.run(fk.path, ["pack-base", "--base", template.path, "--out", resources.appendingPathComponent("Device/n72ap-7E18.itbase").path])
+        try LibraryFixtures.run(
+            fk.path,
+            [
+                "pack-base", "--base", template.path, "--out",
+                resources.appendingPathComponent("Device/n72ap-7E18.itbase").path,
+            ]
+        )
         let catalog = try FirmwareCatalog.load(from: LibraryFixtures.shippedCatalog)
         let iPod = try #require(catalog.entry(id: "n72ap-7E18"))
-        #expect(catalog.bundledEntry?.id == iPod.id && FirmwareJobs.bundledBlob(iPod, resources: resources) != nil, "the bundle has the built-in iPod's blob")
+        #expect(
+            catalog.bundledEntry?.id == iPod.id && FirmwareJobs.bundledBlob(iPod, resources: resources) != nil,
+            "the bundle has the built-in iPod's blob"
+        )
         return (try Harness(tmp, catalog: catalog, preparer: fk, resources: resources), iPod)
     }
 
@@ -254,18 +386,33 @@ import Testing
         }
         let lockData = try Data(contentsOf: base.appendingPathComponent("device.lock.json"))
         let lock = try JSONSerialization.jsonObject(with: lockData) as! [String: Any]
-        let identity = try JSONSerialization.jsonObject(with: Data(contentsOf: base.appendingPathComponent("identity.json"))) as! [String: String]
-        let locked = lock["identity"] as! [String: String], machine = lock["machine"] as! [String: String]
-        #expect(identity["seed"] == device.id.uuidString && locked["seed"] == device.id.uuidString, "seeded with the device id")
-        #expect(device.identity?.udid == identity["udid"] && locked["udid"] == identity["udid"], "the record's UDID is the identity's")
-        #expect(machine["wifi-mac"] == identity["wifi-mac"] && machine["bt-mac"] == identity["bt-mac"] && machine["ecid"] == identity["unique-chip-id"],
-                "the machine boots this unit")
+        let identity =
+            try JSONSerialization.jsonObject(with: Data(contentsOf: base.appendingPathComponent("identity.json")))
+            as! [String: String]
+        let locked = lock["identity"] as! [String: String]
+        let machine = lock["machine"] as! [String: String]
+        #expect(
+            identity["seed"] == device.id.uuidString && locked["seed"] == device.id.uuidString,
+            "seeded with the device id"
+        )
+        #expect(
+            device.identity?.udid == identity["udid"] && locked["udid"] == identity["udid"],
+            "the record's UDID is the identity's"
+        )
+        #expect(
+            machine["wifi-mac"] == identity["wifi-mac"] && machine["bt-mac"] == identity["bt-mac"]
+                && machine["ecid"] == identity["unique-chip-id"],
+            "the machine boots this unit"
+        )
         #expect(!String(decoding: lockData, as: UTF8.self).contains("/Users/"), "no build-machine path in the lock")
         #expect((try fm.attributesOfItem(atPath: base.path)[.immutable] as? Bool) == true, "the base is locked")
         let nor = try Data(contentsOf: base.appendingPathComponent("nor.bin"))
-        return ["udid": identity["udid"]!, "serial": identity["serial-number"]!, "wifi": identity["wifi-mac"]!, "bt": identity["bt-mac"]!,
-                "ecid": identity["unique-chip-id"]!, "seed": identity["seed"]!,
-                "syscfg": nor[0x4000..<0x4068].map { String(format: "%02x", $0) }.joined()]
+        return [
+            "udid": identity["udid"]!, "serial": identity["serial-number"]!, "wifi": identity["wifi-mac"]!,
+            "bt": identity["bt-mac"]!,
+            "ecid": identity["unique-chip-id"]!, "seed": identity["seed"]!,
+            "syscfg": nor[0x4000..<0x4068].map { String(format: "%02x", $0) }.joined(),
+        ]
     }
 
     @Test func aFreshInstallUnpacksTheBuiltInIPodWithItsOwnIdentityEachTime() async throws {
@@ -273,13 +420,23 @@ import Testing
             var identities: [[String: String]] = []
             for run in ["a", "b"] {
                 let (h, iPod) = try await builtIn(tmp.appendingPathComponent(run))
-                #expect(h.jobs.prepareBundledIfFresh(sidebarSaved: false)?.id == iPod.id, "a fresh install unpacks the built-in iPod")
-                #expect({ if case .preparing? = h.jobs.jobs[iPod.id] { true } else { false } }(), "a preparing job the sidebar shows")
+                #expect(
+                    h.jobs.prepareBundledIfFresh(sidebarSaved: false)?.id == iPod.id,
+                    "a fresh install unpacks the built-in iPod"
+                )
+                #expect(
+                    { if case .preparing? = h.jobs.jobs[iPod.id] { true } else { false } }(),
+                    "a preparing job the sidebar shows"
+                )
                 await h.settle(iPod.id)
                 #expect(h.devices(iPod.id).count == 1 && h.jobs.jobs[iPod.id] == nil, "published: \(h.seen)")
-                let steps = (h.seen[iPod.id] ?? []).compactMap { if case let .preparing(p) = $0 { p.name } else { nil } }
+                let steps = (h.seen[iPod.id] ?? []).compactMap {
+                    if case .preparing(let p) = $0 { p.name } else { nil }
+                }
                 #expect(steps.contains("Unpacking"))
-                let fractions = (h.seen[iPod.id] ?? []).compactMap { if case let .preparing(p) = $0, p.name == "Unpacking" { p.fraction } else { nil } }
+                let fractions = (h.seen[iPod.id] ?? []).compactMap {
+                    if case .preparing(let p) = $0, p.name == "Unpacking" { p.fraction } else { nil }
+                }
                 #expect(fractions == fractions.sorted() && fractions.count > 1, "a growing bar: \(fractions)")
                 identities.append(try published(h, iPod))
             }
@@ -291,17 +448,28 @@ import Testing
     @Test func aLibraryWithADeviceOrASavedSidebarGetsNothingNew() async throws {
         try await LibraryFixtures.withScratch { tmp in
             let (h, _) = try await builtIn(tmp.appendingPathComponent("saved"))
-            #expect(h.jobs.prepareBundledIfFresh(sidebarSaved: true) == nil && h.jobs.jobs.isEmpty && DeviceInstance.all(state: h.state).isEmpty)
+            #expect(
+                h.jobs.prepareBundledIfFresh(sidebarSaved: true) == nil && h.jobs.jobs.isEmpty
+                    && DeviceInstance.all(state: h.state).isEmpty
+            )
 
             let (e, _) = try await builtIn(tmp.appendingPathComponent("existing"))
             // An iPad prepared earlier: the Mac already has a library.
-            let iPad = try #require(try FirmwareCatalog.load(from: LibraryFixtures.shippedCatalog).entry(id: "k48ap-7B500"))
-            let staging = e.state.appendingPathComponent("Preparing/ipad"), fm = FileManager.default
+            let iPad = try #require(
+                try FirmwareCatalog.load(from: LibraryFixtures.shippedCatalog).entry(id: "k48ap-7B500")
+            )
+            let staging = e.state.appendingPathComponent("Preparing/ipad")
+            let fm = FileManager.default
             try fm.createDirectory(at: staging.appendingPathComponent("nand"), withIntermediateDirectories: true)
-            for name in ["iBoot.bin", "nor.bin", "gid-blobs.bin", "identity.json"] { fm.createFile(atPath: staging.appendingPathComponent(name).path, contents: Data("{}".utf8)) }
+            for name in ["iBoot.bin", "nor.bin", "gid-blobs.bin", "identity.json"] {
+                fm.createFile(atPath: staging.appendingPathComponent(name).path, contents: Data("{}".utf8))
+            }
             try Data(#"{"boot_strategy": "iboot"}"#.utf8).write(to: staging.appendingPathComponent("device.lock.json"))
             _ = try PreparationJob.publish(staging: staging, entry: iPad, id: UUID(), state: e.state)
-            #expect(e.jobs.prepareBundledIfFresh(sidebarSaved: false) == nil && e.jobs.jobs.isEmpty, "a Mac with a device gets no built-in iPod")
+            #expect(
+                e.jobs.prepareBundledIfFresh(sidebarSaved: false) == nil && e.jobs.jobs.isEmpty,
+                "a Mac with a device gets no built-in iPod"
+            )
             #expect(e.jobs.prepareBundledIfFresh(sidebarSaved: true) == nil && e.jobs.jobs.isEmpty)
             try await Task.sleep(for: .seconds(1))
             #expect(DeviceInstance.all(state: e.state).map(\.firmware) == ["k48ap-7B500"], "still only the iPad")
@@ -331,9 +499,17 @@ enum FirmwareKitTool {
         let package = LibraryFixtures.repo.appendingPathComponent("Packages/FirmwareKit").path
         let scratch = LibraryFixtures.repo.appendingPathComponent(".build/offline-firmwarekit").path
         let swift = "/usr/bin/xcrun"
-        try LibraryFixtures.run(swift, ["swift", "build", "--package-path", package, "--scratch-path", scratch, "--product", "firmwarekit"])
-        let bin = try LibraryFixtures.run(swift, ["swift", "build", "--package-path", package, "--scratch-path", scratch, "--show-bin-path"])
-        return URL(fileURLWithPath: bin.trimmingCharacters(in: .whitespacesAndNewlines)).appendingPathComponent("firmwarekit")
+        try LibraryFixtures.run(
+            swift,
+            ["swift", "build", "--package-path", package, "--scratch-path", scratch, "--product", "firmwarekit"]
+        )
+        let bin = try LibraryFixtures.run(
+            swift,
+            ["swift", "build", "--package-path", package, "--scratch-path", scratch, "--show-bin-path"]
+        )
+        return URL(fileURLWithPath: bin.trimmingCharacters(in: .whitespacesAndNewlines)).appendingPathComponent(
+            "firmwarekit"
+        )
     }
     /// Off the main actor: a no-op `swift build` still takes seconds, and the tests share the main actor.
     static func path() async throws -> URL { try await Task.detached { try built.get() }.value }
@@ -365,8 +541,12 @@ final class TestHTTPServer: @unchecked Sendable {
                 once.withLock {
                     guard !resumed else { return }
                     switch state {
-                    case .ready: resumed = true; continuation.resume(returning: listener.port!.rawValue)
-                    case let .failed(error): resumed = true; continuation.resume(throwing: error)
+                    case .ready:
+                        resumed = true
+                        continuation.resume(returning: listener.port!.rawValue)
+                    case .failed(let error):
+                        resumed = true
+                        continuation.resume(throwing: error)
                     default: break
                     }
                 }
@@ -385,12 +565,17 @@ final class TestHTTPServer: @unchecked Sendable {
                 if done || error != nil { connection.cancel() } else { receive(connection, buffer) }
                 return
             }
-            let words = String(decoding: buffer, as: UTF8.self).split(separator: "\r\n").first?.split(separator: " ") ?? []
+            let words =
+                String(decoding: buffer, as: UTF8.self).split(separator: "\r\n").first?.split(separator: " ") ?? []
             let path = words.count > 1 ? String(words[1]) : ""
             lock.withLock { requests.append(path) }
             let body = words.first == "GET" ? files[path] : nil
-            let head = "HTTP/1.1 \(body == nil ? "404 Not Found" : "200 OK")\r\nContent-Length: \((body ?? Data("gone".utf8)).count)\r\nConnection: close\r\n\r\n"
-            connection.send(content: Data(head.utf8) + (body ?? Data("gone".utf8)), completion: .contentProcessed { _ in connection.cancel() })
+            let head =
+                "HTTP/1.1 \(body == nil ? "404 Not Found" : "200 OK")\r\nContent-Length: \((body ?? Data("gone".utf8)).count)\r\nConnection: close\r\n\r\n"
+            connection.send(
+                content: Data(head.utf8) + (body ?? Data("gone".utf8)),
+                completion: .contentProcessed { _ in connection.cancel() }
+            )
         }
     }
 }

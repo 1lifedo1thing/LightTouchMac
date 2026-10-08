@@ -9,7 +9,9 @@ public enum MergeNative {
     /// The parts of a native root packaging reads: output path <- native-build.json key (+ the file within it).
     static let parts: [(part: String, key: String, member: String)] = [
         ("prefix", "deps_prefix", ""), ("static/prefix", "static_deps", ""),
-        ("qemu-build/libqemu-arm.dylib", "qemu_build", "libqemu-arm.dylib"), ("build/usbmuxd/src/usbmuxd", "usbmuxd_binary", "")]
+        ("qemu-build/libqemu-arm.dylib", "qemu_build", "libqemu-arm.dylib"),
+        ("build/usbmuxd/src/usbmuxd", "usbmuxd_binary", ""),
+    ]
 
     /// Build-time metadata for compiling against one slice: never packaged, and cross-compiled slices legitimately
     /// differ (how Meson found zlib).
@@ -18,9 +20,12 @@ public enum MergeNative {
     }
 
     static func isMachO(_ file: URL) -> Bool {
-        guard let handle = try? FileHandle(forReadingFrom: file), let head = try? handle.read(upToCount: 8) else { return false }
+        guard let handle = try? FileHandle(forReadingFrom: file), let head = try? handle.read(upToCount: 8) else {
+            return false
+        }
         try? handle.close()
-        return [Data([0xcf, 0xfa, 0xed, 0xfe]), Data([0xca, 0xfe, 0xba, 0xbe])].contains(head.prefix(4)) || head == Data("!<arch>\n".utf8)
+        return [Data([0xcf, 0xfa, 0xed, 0xfe]), Data([0xca, 0xfe, 0xba, 0xbe])].contains(head.prefix(4))
+            || head == Data("!<arch>\n".utf8)
     }
 
     typealias Pairs = [(old: String, new: String)]
@@ -34,7 +39,8 @@ public enum MergeNative {
             for s in [source, real(source)] { pairs.insert([s, output.appendingPathComponent(part).path]) }
         }
         for source in [root.path, record["reused_native_deps"] as? String].compactMap({ $0 }) {
-            pairs.insert([source, output.path]); pairs.insert([real(source), output.path])
+            pairs.insert([source, output.path])
+            pairs.insert([real(source), output.path])
         }
         return pairs.sorted { $0[0].count > $1[0].count }.map { ($0[0], $0[1]) }
     }
@@ -51,12 +57,16 @@ public enum MergeNative {
         for (old, new) in pairs { data.replace(Data(old.utf8), with: Data(new.utf8)) }
         return data
     }
-    static func relocated(_ text: String, _ pairs: Pairs) -> String { String(decoding: relocated(Data(text.utf8), pairs), as: UTF8.self) }
+    static func relocated(_ text: String, _ pairs: Pairs) -> String {
+        String(decoding: relocated(Data(text.utf8), pairs), as: UTF8.self)
+    }
 
     /// A copy of a Mach-O whose install name, dependencies and rpaths name the output, not the slice's build paths.
     static func relink(_ file: URL, _ pairs: Pairs, scratch: URL) throws -> URL {
         if (try? FileHandle(forReadingFrom: file).read(upToCount: 8)) == Data("!<arch>\n".utf8) { return file }
-        let copy = scratch.appendingPathComponent("\(try files.contentsOfDirectory(atPath: scratch.path).count)-\(file.lastPathComponent)")
+        let copy = scratch.appendingPathComponent(
+            "\(try files.contentsOfDirectory(atPath: scratch.path).count)-\(file.lastPathComponent)"
+        )
         try files.copyItem(at: file, to: copy)
         try files.setAttributes([.posixPermissions: 0o755], ofItemAtPath: copy.path)
         var edits: [String] = []
@@ -68,15 +78,26 @@ public enum MergeNative {
             if new != old { edits += line.hasPrefix("path ") ? ["-rpath", old, new] : ["-change", old, new] }
         }
         if let id = try output(["otool", "-D", copy.path]).split(separator: "\n").dropFirst().first.map(String.init),
-           relocated(id, pairs) != id {
+            relocated(id, pairs) != id
+        {
             edits += ["-id", relocated(id, pairs)]
         }
-        if !edits.isEmpty { try run(["/usr/bin/install_name_tool"] + edits + [copy.path], log: scratch.appendingPathComponent("tools.log")) }
+        if !edits.isEmpty {
+            try run(
+                ["/usr/bin/install_name_tool"] + edits + [copy.path],
+                log: scratch.appendingPathComponent("tools.log")
+            )
+        }
         return copy
     }
 
     /// One part of the output from every slice.
-    static func merge(output: URL, part: (part: String, key: String, member: String), slices: [(root: URL, record: [String: Any])], scratch: URL) throws {
+    static func merge(
+        output: URL,
+        part: (part: String, key: String, member: String),
+        slices: [(root: URL, record: [String: Any])],
+        scratch: URL
+    ) throws {
         let targetRoot = output.appendingPathComponent(part.part)
         var trees: [(pairs: Pairs, tree: [String: URL])] = []
         for (root, record) in slices {
@@ -87,7 +108,9 @@ public enum MergeNative {
             files.fileExists(atPath: source.path, isDirectory: &isDirectory)
             var tree: [String: URL] = [:]
             if isDirectory.boolValue {
-                for name in walk(source) where !skipped(name) { tree[relocated(name, pairs)] = source.appendingPathComponent(name) }
+                for name in walk(source) where !skipped(name) {
+                    tree[relocated(name, pairs)] = source.appendingPathComponent(name)
+                }
             } else {
                 tree[""] = source
             }
@@ -95,7 +118,9 @@ public enum MergeNative {
         }
         let names = Set(trees[0].tree.keys)
         for (_, tree) in trees.dropFirst() where Set(tree.keys) != names {
-            throw ToolError("\(part.part): file lists differ: \(names.symmetricDifference(tree.keys).sorted().prefix(5))")
+            throw ToolError(
+                "\(part.part): file lists differ: \(names.symmetricDifference(tree.keys).sorted().prefix(5))"
+            )
         }
         for name in names.sorted() {
             let inputs = trees.map { ($0.pairs, $0.tree[name]!) }
@@ -111,12 +136,17 @@ public enum MergeNative {
                 let thin = try inputs.map { try relink($0.1, $0.0, scratch: scratch) }
                 try run(["/usr/bin/lipo", "-create"] + thin.map(\.path) + ["-output", target.path])
                 try files.setAttributes([.posixPermissions: mode], ofItemAtPath: target.path)
-                if thin[0] != first {   // relinked, so arm64 needs a fresh ad-hoc signature
-                    try run(["/usr/bin/codesign", "-f", "-s", "-", target.path], log: scratch.appendingPathComponent("tools.log"))
+                if thin[0] != first {  // relinked, so arm64 needs a fresh ad-hoc signature
+                    try run(
+                        ["/usr/bin/codesign", "-f", "-s", "-", target.path],
+                        log: scratch.appendingPathComponent("tools.log")
+                    )
                 }
             } else {
                 let contents = Set(try inputs.map { relocated(try Data(contentsOf: $0.1), $0.0) })
-                guard contents.count == 1 else { throw ToolError("\(part.part)/\(name): differs between architectures and is not a Mach-O") }
+                guard contents.count == 1 else {
+                    throw ToolError("\(part.part)/\(name): differs between architectures and is not a Mach-O")
+                }
                 try contents.first!.write(to: target)
                 try files.setAttributes([.posixPermissions: mode], ofItemAtPath: target.path)
             }
@@ -130,7 +160,9 @@ public enum MergeNative {
         for root in roots {
             let record = try readJSON(root.appendingPathComponent("native-build.json"))
             let arch = record["architecture"] as? String ?? ""
-            if let other = slices[arch] { throw ToolError("Two native roots for \(arch): \(other.root.path) and \(root.path)") }
+            if let other = slices[arch] {
+                throw ToolError("Two native roots for \(arch): \(other.root.path) and \(root.path)")
+            }
             slices[arch] = (url(real(root.path)), record)
         }
         try files.createDirectory(at: output, withIntermediateDirectories: true)
@@ -145,8 +177,14 @@ public enum MergeNative {
             remove(output)
             throw error
         }
-        try writeJSON(["schema_version": 1, "architectures": slices.keys.sorted(), "static_deps": out.appendingPathComponent("static/prefix").path,
-                       "slices": slices.mapValues(\.record)], to: out.appendingPathComponent("native-build.json"))
+        try writeJSON(
+            [
+                "schema_version": 1, "architectures": slices.keys.sorted(),
+                "static_deps": out.appendingPathComponent("static/prefix").path,
+                "slices": slices.mapValues(\.record),
+            ],
+            to: out.appendingPathComponent("native-build.json")
+        )
         print("Universal native root (\(slices.keys.sorted().joined(separator: ", "))): \(output.path)")
     }
 }

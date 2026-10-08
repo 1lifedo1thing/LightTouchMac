@@ -15,7 +15,7 @@ extension SharedState {
         /// One line per item; "-" is a separator. The iPad's differs only in its name: every board lists every item
         /// (Compass Heading, Carrier…), and what its hardware lacks is dimmed by validation, never left out.
         static func bar(_ app: String) -> String { ipodBar.replacingOccurrences(of: "Light Touch", with: app) }
-    static let ipodBar = """
+        static let ipodBar = """
             Light Touch/About Light Touch
             Light Touch/-
             Light Touch/Settings…  ⌘,
@@ -175,10 +175,13 @@ extension SharedState {
                 if m.contains(.shift) { mods += "⇧" }
                 if m.contains(.command) { mods += "⌘" }
                 let arrows: [Int: String] = [
-                    NSLeftArrowFunctionKey: "←", NSRightArrowFunctionKey: "→", NSUpArrowFunctionKey: "↑", NSDownArrowFunctionKey: "↓", 0x1b: "⎋",
+                    NSLeftArrowFunctionKey: "←", NSRightArrowFunctionKey: "→", NSUpArrowFunctionKey: "↑",
+                    NSDownArrowFunctionKey: "↓", 0x1b: "⎋",
                 ]
-                let key = item.keyEquivalent.unicodeScalars.first.flatMap { arrows[Int($0.value)] } ?? item.keyEquivalent
-                var line = path + "/" + item.title + (item.submenu != nil ? " ▸" : "") + (key.isEmpty ? "" : "  " + mods + key)
+                let key =
+                    item.keyEquivalent.unicodeScalars.first.flatMap { arrows[Int($0.value)] } ?? item.keyEquivalent
+                var line =
+                    path + "/" + item.title + (item.submenu != nil ? " ▸" : "") + (key.isEmpty ? "" : "  " + mods + key)
                 if item.isHidden { line += " hidden" }
                 if item.isAlternate { line += " alternate" }
                 // AppKit fills Services and Help's search; their contents aren't ours.
@@ -190,26 +193,43 @@ extension SharedState {
         @Test func menuBar() {
             _ = NSApplication.shared
             MainMenuBuilder.install(profile: .k48)
-        // The application menu is named for the running process (xctest under Xcode, Light Touch in the app).
-        let appName = NSApp.mainMenu!.items[0].submenu!.items[0].title.replacingOccurrences(of: "About ", with: "")
+            // The application menu is named for the running process (xctest under Xcode, Light Touch in the app).
+            let appName = NSApp.mainMenu!.items[0].submenu!.items[0].title.replacingOccurrences(of: "About ", with: "")
             let ipad = NSApp.mainMenu!.items.flatMap { dump($0.submenu!, $0.title) }
-            let expectedIPad = Self.bar(appName).replacingOccurrences(of: "iPod", with: "iPad").components(separatedBy: "\n")
+            let expectedIPad = Self.bar(appName).replacingOccurrences(of: "iPod", with: "iPad").components(
+                separatedBy: "\n"
+            )
             #expect(ipad == expectedIPad, "iPad menu bar:\n\(ipad.joined(separator: "\n"))")
             MainMenuBuilder.install(profile: .n72)
             let root = NSApp.mainMenu!
             let bar = root.items.flatMap { dump($0.submenu!, $0.title) }
-            #expect(bar == Self.bar(appName).components(separatedBy: "\n"), "iPod menu bar:\n\(bar.joined(separator: "\n"))")
+            #expect(
+                bar == Self.bar(appName).components(separatedBy: "\n"),
+                "iPod menu bar:\n\(bar.joined(separator: "\n"))"
+            )
             // With no device the Apps menu still lists its commands, every one dimmed, and a
             // device's inspector leaving hands it back the same way (MainMenuBuilder.resetAppsMenu).
             let apps = root.item(withTitle: "Apps")!.submenu!
-            #expect(!apps.autoenablesItems && apps.delegate == nil && apps.items.count == 7 && apps.items.allSatisfy { !$0.isEnabled }, "Apps with no device")
+            #expect(
+                !apps.autoenablesItems && apps.delegate == nil && apps.items.count == 7
+                    && apps.items.allSatisfy { !$0.isEnabled },
+                "Apps with no device"
+            )
             apps.removeAllItems()
             apps.addItem(withTitle: "Open “Stale”", action: nil, keyEquivalent: "")
             MainMenuBuilder.resetAppsMenu()
             #expect(
-                apps.items.map(\.title) == ["Install App…", "Import Media…", "", "Open", "Uninstall…", "", "Refresh Apps"]
-                    && apps.items.allSatisfy { !$0.isEnabled }, "Apps reset")
-            #expect(root.item(withTitle: "View")!.submenu!.items[0].action == #selector(NSSplitViewController.toggleSidebar(_:)))
+                apps.items.map(\.title) == [
+                    "Install App…", "Import Media…", "", "Open", "Uninstall…", "", "Refresh Apps",
+                ]
+                    && apps.items.allSatisfy { !$0.isEnabled },
+                "Apps reset"
+            )
+            #expect(
+                root.item(withTitle: "View")!.submenu!.items[0].action == #selector(
+                    NSSplitViewController.toggleSidebar(_:)
+                )
+            )
             let app = root.items[0].submenu!
             #expect(app.item(withTitle: "Settings…") != nil)
             let device = root.item(withTitle: "Device")!.submenu!
@@ -224,7 +244,10 @@ extension SharedState {
             #expect(find("Reset Tilt", in: device) != nil && find("Upright", in: device) != nil)
             let motion = device.item(withTitle: "Motion")!.submenu!
             let input = device.item(withTitle: "Input")!.submenu!
-            #expect(find("Upright", in: motion) != nil && find("Flat", in: motion) != nil && find("Shake", in: motion) != nil)
+            #expect(
+                find("Upright", in: motion) != nil && find("Flat", in: motion) != nil
+                    && find("Shake", in: motion) != nil
+            )
             #expect(find("Upright", in: input) == nil && find("Reset Tilt", in: input) == nil)
             for name in ["Add Device…", "Start", "Import IPSW…", "Delete Device…", "Show in Finder"] {
                 #expect(find(name, in: device) == nil, "library command \(name) belongs to File")
@@ -239,21 +262,34 @@ extension SharedState {
                 #expect(find(name, in: file) != nil, "\(name)")
             }
             let capture = root.item(withTitle: "Capture")!.submenu!
-            #expect(capture.items.prefix(4).map(\.title) == ["Save Screenshot", "Save Screenshot As…", "Copy Screenshot", "Open Screenshot in Preview"])
+            #expect(
+                capture.items.prefix(4).map(\.title) == [
+                    "Save Screenshot", "Save Screenshot As…", "Copy Screenshot", "Open Screenshot in Preview",
+                ]
+            )
             #expect(find("Save Screenshot", in: capture)?.keyEquivalent == "s")
             #expect(find("Save Screenshot", in: capture)?.keyEquivalentModifierMask == [.command])
             #expect(capture.items.allSatisfy { $0.submenu == nil }, "Capture stays flat")
             #expect(
                 capture.items.filter { !$0.isSeparatorItem }.map(\.title) == [
-                    "Save Screenshot", "Save Screenshot As…", "Copy Screenshot", "Open Screenshot in Preview", "Start Recording", "Discard Recording…",
+                    "Save Screenshot", "Save Screenshot As…", "Copy Screenshot", "Open Screenshot in Preview",
+                    "Start Recording", "Discard Recording…",
                     "Capture Screen Only", "Show Unfinished Recordings",
-                ])
-            #expect(find("Open Screenshot in Preview", in: capture)?.keyEquivalent.isEmpty == true, "⌘O is Open’s, not a new screenshot’s")
+                ]
+            )
+            #expect(
+                find("Open Screenshot in Preview", in: capture)?.keyEquivalent.isEmpty == true,
+                "⌘O is Open’s, not a new screenshot’s"
+            )
             for (name, key, modifiers) in [
-                ("Save Screenshot As…", "s", NSEvent.ModifierFlags([.shift, .command])), ("Start Recording", "r", [.command]),
+                ("Save Screenshot As…", "s", NSEvent.ModifierFlags([.shift, .command])),
+                ("Start Recording", "r", [.command]),
                 ("Discard Recording…", "\u{1b}", []),
             ] {
-                #expect(find(name, in: capture)?.keyEquivalent == key && find(name, in: capture)?.keyEquivalentModifierMask == modifiers)
+                #expect(
+                    find(name, in: capture)?.keyEquivalent == key
+                        && find(name, in: capture)?.keyEquivalentModifierMask == modifiers
+                )
             }
             #expect(find("Copy Screenshot", in: capture)?.keyEquivalent.isEmpty == true)
             #expect(find("Copy", in: root.item(withTitle: "Edit")!.submenu!)?.keyEquivalent == "c")
@@ -261,18 +297,42 @@ extension SharedState {
             #expect(find("Discard Recording…", in: capture)?.isHidden == false)
             // Escape is Discard's only in the device window, with no sheet and no text being edited; else it passes on.
             let esc = NSEvent.keyEvent(
-                with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
-                characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53)!
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                characters: "\u{1b}",
+                charactersIgnoringModifiers: "\u{1b}",
+                isARepeat: false,
+                keyCode: 53
+            )!
             #expect(!capture.performKeyEquivalent(with: esc), "with no device window key, Escape passes on")
-            let deviceWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+            let deviceWindow = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 200, height: 200),
+                styleMask: [.titled],
+                backing: .buffered,
+                defer: false
+            )
             let owner = MainWindowController(window: deviceWindow)
-            #expect(CaptureMenu.escapeDiscards(in: deviceWindow) && !CaptureMenu.escapeDiscards(in: NSWindow()) && !CaptureMenu.escapeDiscards(in: nil))
+            #expect(
+                CaptureMenu.escapeDiscards(in: deviceWindow) && !CaptureMenu.escapeDiscards(in: NSWindow())
+                    && !CaptureMenu.escapeDiscards(in: nil)
+            )
             let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 100, height: 20))
             deviceWindow.contentView!.addSubview(field)
             #expect(deviceWindow.makeFirstResponder(field) && deviceWindow.firstResponder is NSText)
             #expect(!CaptureMenu.escapeDiscards(in: deviceWindow), "Escape stays the text field's")
             deviceWindow.makeFirstResponder(nil)
-            deviceWindow.beginSheet(NSWindow(contentRect: NSRect(x: 0, y: 0, width: 50, height: 50), styleMask: [.titled], backing: .buffered, defer: false))
+            deviceWindow.beginSheet(
+                NSWindow(
+                    contentRect: NSRect(x: 0, y: 0, width: 50, height: 50),
+                    styleMask: [.titled],
+                    backing: .buffered,
+                    defer: false
+                )
+            )
             #expect(!CaptureMenu.escapeDiscards(in: deviceWindow), "Escape stays the sheet's")
             withExtendedLifetime(owner) {}
             #expect(find("Save Screenshot As…", in: file) == nil)
@@ -289,13 +349,22 @@ extension SharedState {
                 let arrows = [NSLeftArrowFunctionKey, NSRightArrowFunctionKey].map { String(UnicodeScalar($0)!) }
                 // Command-arrows are rotation's (Sam, 0928c); nothing else may take them.
                 #expect(
-                    !(arrows.contains(item.keyEquivalent) && item.keyEquivalentModifierMask == [.command]) || item.title.hasPrefix("Rotate "),
-                    "Command-arrow is rotation's: \(item.title)")
+                    !(arrows.contains(item.keyEquivalent) && item.keyEquivalentModifierMask == [.command])
+                        || item.title.hasPrefix("Rotate "),
+                    "Command-arrow is rotation's: \(item.title)"
+                )
                 #expect(
-                    !(item.keyEquivalentModifierMask == [.command, .option] && ["+", "-", "="].contains(item.keyEquivalent)), "Reserved accessibility zoom")
+                    !(item.keyEquivalentModifierMask == [.command, .option]
+                        && ["+", "-", "="].contains(item.keyEquivalent)),
+                    "Reserved accessibility zoom"
+                )
             }
             let windows = root.item(withTitle: "Window")!.submenu!
-            #expect(windows.items.map(\.title) == ["Minimize", "Zoom", "", "Show Device", "Show iPod Files", "Device Logs", "", "Bring All to Front"])
+            #expect(
+                windows.items.map(\.title) == [
+                    "Minimize", "Zoom", "", "Show Device", "Show iPod Files", "Device Logs", "", "Bring All to Front",
+                ]
+            )
             #expect(windows.item(withTitle: "Show Device")?.keyEquivalent == "1")
             #expect(windows.item(withTitle: "Show iPod Files")?.keyEquivalent == "2")
             #expect(find("Show Capture Controls", in: root) == nil && find("Hide Capture Controls", in: root) == nil)
@@ -304,7 +373,10 @@ extension SharedState {
                     #expect(submenu.items.allSatisfy { $0.submenu == nil }, "Avoid nested submenus")
                 }
             }
-            for name in ["Volume Up", "Volume Down", "Shut Down…", "Force Stop…", "Rotate Automatically", "Connect to the Internet"] {
+            for name in [
+                "Volume Up", "Volume Down", "Shut Down…", "Force Stop…", "Rotate Automatically",
+                "Connect to the Internet",
+            ] {
                 #expect(find(name, in: device) != nil, "\(name)")
             }
             for name in ["Volume Up", "Volume Down"] {

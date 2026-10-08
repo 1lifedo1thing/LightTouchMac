@@ -19,9 +19,16 @@ public struct AppsDevice: Equatable {
     /// This device's transfer queue is paused after a transport failure.
     public var transfersPaused = false
 
-    public init(id: UUID, canQueueInstall: Bool = false, canReachDevice: Bool = false, installing: Bool = false,
-                preparingDevice: Bool = false, hasFileTransfer: Bool = false, isReconnecting: Bool = false,
-                transfersPaused: Bool = false) {
+    public init(
+        id: UUID,
+        canQueueInstall: Bool = false,
+        canReachDevice: Bool = false,
+        installing: Bool = false,
+        preparingDevice: Bool = false,
+        hasFileTransfer: Bool = false,
+        isReconnecting: Bool = false,
+        transfersPaused: Bool = false
+    ) {
         self.id = id
         self.canQueueInstall = canQueueInstall
         self.canReachDevice = canReachDevice
@@ -48,7 +55,9 @@ public enum CatalogRowState: Equatable {
 
 /// Which row is which: selection and unchanged views follow this, not the row's index.
 public enum AppRowIdentity: Hashable {
-    case job(ObjectIdentifier), app(String), catalog(Int)
+    case job(ObjectIdentifier)
+    case app(String)
+    case catalog(Int)
 }
 
 /// Only the values that affect a row's presentation. A device poll or unrelated transfer must not replace
@@ -62,7 +71,14 @@ public struct AppRowAppearance: Equatable {
     public var progress: Double?
     public var enabled = true
 
-    public init(title: String, subtitle: String, icon: ObjectIdentifier? = nil, kind: Kind = .app, progress: Double? = nil, enabled: Bool = true) {
+    public init(
+        title: String,
+        subtitle: String,
+        icon: ObjectIdentifier? = nil,
+        kind: Kind = .app,
+        progress: Double? = nil,
+        enabled: Bool = true
+    ) {
         self.title = title
         self.subtitle = subtitle
         self.icon = icon
@@ -79,9 +95,11 @@ public struct AppRowIcons {
     public var pending: (InstallJob) -> ObjectIdentifier?
     public var installed: (String) -> ObjectIdentifier?
 
-    public init(catalog: @escaping (CatalogApp) -> ObjectIdentifier? = { _ in nil },
-                pending: @escaping (InstallJob) -> ObjectIdentifier? = { _ in nil },
-                installed: @escaping (String) -> ObjectIdentifier? = { _ in nil }) {
+    public init(
+        catalog: @escaping (CatalogApp) -> ObjectIdentifier? = { _ in nil },
+        pending: @escaping (InstallJob) -> ObjectIdentifier? = { _ in nil },
+        installed: @escaping (String) -> ObjectIdentifier? = { _ in nil }
+    ) {
         self.catalog = catalog
         self.pending = pending
         self.installed = installed
@@ -112,9 +130,18 @@ public struct AppsInspectorRows {
     public var displayName: (InstalledApp) -> String
     public var icons: AppRowIcons
 
-    public init(searching: Bool, apps: [InstalledApp] = [], pending: [InstallJob] = [], installedQuery: String = "",
-                catalogResults: [CatalogApp] = [], uninstalling: Set<String> = [], removingApp: String? = nil,
-                device: AppsDevice, displayName: @escaping (InstalledApp) -> String = { $0.name }, icons: AppRowIcons = AppRowIcons()) {
+    public init(
+        searching: Bool,
+        apps: [InstalledApp] = [],
+        pending: [InstallJob] = [],
+        installedQuery: String = "",
+        catalogResults: [CatalogApp] = [],
+        uninstalling: Set<String> = [],
+        removingApp: String? = nil,
+        device: AppsDevice,
+        displayName: @escaping (InstalledApp) -> String = { $0.name },
+        icons: AppRowIcons = AppRowIcons()
+    ) {
         self.searching = searching
         self.apps = apps
         self.pending = pending
@@ -137,7 +164,11 @@ public struct AppsInspectorRows {
     public var visibleApps: [InstalledApp] {
         let replacing = Set(pending.compactMap { $0.isFinished ? nil : $0.bundleID })
         let query = installedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        return apps.filter { !replacing.contains($0.id) && (query.isEmpty || displayName($0).localizedStandardContains(query) || $0.id.localizedStandardContains(query)) }
+        return apps.filter {
+            !replacing.contains($0.id)
+                && (query.isEmpty || displayName($0).localizedStandardContains(query)
+                    || $0.id.localizedStandardContains(query))
+        }
     }
 
     public var rowCount: Int { searching ? catalogResults.count : pending.count + visibleApps.count }
@@ -186,7 +217,7 @@ public struct AppsInspectorRows {
             return .installing
         }
         if let id = app.bundleID, apps.contains(where: { $0.id == id }) { return .installed }
-        if app.incompatibility != nil { return .unavailable }   // grayed, with the server's reason
+        if app.incompatibility != nil { return .unavailable }  // grayed, with the server's reason
         // Busy with our own install means the device is fine, just serialized —
         // more jobs may queue behind it. (The poll deliberately parks
         // deviceReachable at nil while device work runs, so canReachDevice
@@ -197,7 +228,10 @@ public struct AppsInspectorRows {
 
     /// The failed job for a Store row (by copy or bundle id) that still offers Retry.
     private func failedJob(for app: CatalogApp) -> InstallJob? {
-        pending.last { $0.failed && !$0.dismissed && ($0.catalogIpaID == app.ipaID || ($0.bundleID != nil && $0.bundleID == app.bundleID)) }
+        pending.last {
+            $0.failed && !$0.dismissed
+                && ($0.catalogIpaID == app.ipaID || ($0.bundleID != nil && $0.bundleID == app.bundleID))
+        }
     }
 
     /// Whether the installed app a Store row stands for can open now.
@@ -208,11 +242,17 @@ public struct AppsInspectorRows {
     /// What a Store row draws. In-flight states use the same row the installed list uses for its own pending
     /// work, so the two modes can never drift apart visually.
     public func catalogRow(for app: CatalogApp) -> CatalogRowContent {
-        if let bundleID = app.bundleID, uninstalling.contains(bundleID) { return .progress(subtitle: removalStatus(for: bundleID)) }
+        if let bundleID = app.bundleID, uninstalling.contains(bundleID) {
+            return .progress(subtitle: removalStatus(for: bundleID))
+        }
         if let failed = failedJob(for: app) { return .progress(subtitle: failed.status, job: failed) }
         switch catalogState(of: app) {
         case .downloading(let fraction):
-            return .progress(subtitle: catalogJob(for: app)?.status ?? "Downloading…", fraction: fraction, job: catalogJob(for: app))
+            return .progress(
+                subtitle: catalogJob(for: app)?.status ?? "Downloading…",
+                fraction: fraction,
+                job: catalogJob(for: app)
+            )
         case .installing:
             return .progress(subtitle: catalogJob(for: app)?.status ?? "Installing…", job: catalogJob(for: app))
         case .installed: return .result(button: "Open", enabled: canOpen(app))
@@ -229,36 +269,57 @@ public struct AppsInspectorRows {
 
     public var appearances: [AppRowAppearance] {
         func transfer(_ job: InstallJob, icon: ObjectIdentifier?) -> AppRowAppearance {
-            AppRowAppearance(title: job.name, subtitle: job.isCancelled ? "Cancelling…" : job.status, icon: icon,
-                             kind: job.failed ? .failed : job.status == "Paused" ? .resume : .progress,
-                             progress: job.downloadProgress, enabled: job.failed || job.isCancellable)
+            AppRowAppearance(
+                title: job.name,
+                subtitle: job.isCancelled ? "Cancelling…" : job.status,
+                icon: icon,
+                kind: job.failed ? .failed : job.status == "Paused" ? .resume : .progress,
+                progress: job.downloadProgress,
+                enabled: job.failed || job.isCancellable
+            )
         }
         if searching {
             return catalogResults.map { app in
                 let icon = icons.catalog(app)
                 if let id = app.bundleID, uninstalling.contains(id) {
-                    return AppRowAppearance(title: app.name, subtitle: removalStatus(for: id), icon: icon, kind: .progress)
+                    return AppRowAppearance(
+                        title: app.name,
+                        subtitle: removalStatus(for: id),
+                        icon: icon,
+                        kind: .progress
+                    )
                 }
                 if let failed = failedJob(for: app) { return transfer(failed, icon: icon) }
                 let state = catalogState(of: app)
                 if let job = catalogJob(for: app), !job.isFinished { return transfer(job, icon: icon) }
-                return AppRowAppearance(title: app.name, subtitle: app.subtitle, icon: icon,
-                                        kind: state == .installed ? .open : .install,
-                                        enabled: state == .installed ? canOpen(app) : state == .installable)
+                return AppRowAppearance(
+                    title: app.name,
+                    subtitle: app.subtitle,
+                    icon: icon,
+                    kind: state == .installed ? .open : .install,
+                    enabled: state == .installed ? canOpen(app) : state == .installable
+                )
             }
         }
         let transfers = pending.map { job in
             if job.isFinished, !job.isCancelled, !job.failed {
-                return AppRowAppearance(title: job.name, subtitle: job.bundleID ?? job.status, icon: job.bundleID.flatMap(icons.installed))
+                return AppRowAppearance(
+                    title: job.name,
+                    subtitle: job.bundleID ?? job.status,
+                    icon: job.bundleID.flatMap(icons.installed)
+                )
             }
             return transfer(job, icon: icons.pending(job))
         }
-        return transfers + visibleApps.map { app in
-            AppRowAppearance(title: displayName(app),
-                             subtitle: uninstalling.contains(app.id) ? removalStatus(for: app.id) : app.version,
-                             icon: icons.installed(app.id),
-                             kind: uninstalling.contains(app.id) ? .progress : .app)
-        }
+        return transfers
+            + visibleApps.map { app in
+                AppRowAppearance(
+                    title: displayName(app),
+                    subtitle: uninstalling.contains(app.id) ? removalStatus(for: app.id) : app.version,
+                    icon: icons.installed(app.id),
+                    kind: uninstalling.contains(app.id) ? .progress : .app
+                )
+            }
     }
 
     /// What the installed list's placeholder should say right now — for
@@ -266,7 +327,8 @@ public struct AppsInspectorRows {
     /// tick if this guesses wrong.
     public func installedPlaceholder(haveLoaded: Bool) -> String? {
         if !haveLoaded { return pending.isEmpty ? "Waiting for the device…" : nil }
-        return visibleApps.isEmpty && pending.isEmpty ? (installedQuery.isEmpty ? "No apps installed" : "No matching apps") : nil
+        return visibleApps.isEmpty && pending.isEmpty
+            ? (installedQuery.isEmpty ? "No apps installed" : "No matching apps") : nil
     }
 }
 
@@ -285,11 +347,15 @@ public struct AppTableRows {
     public init() {}
 
     /// Show these rows; nil when nothing on screen changes. `selected` is the table's selection now.
-    public mutating func show(_ identities: [AppRowIdentity], _ appearances: [AppRowAppearance], selected: IndexSet) -> Reload? {
+    public mutating func show(_ identities: [AppRowIdentity], _ appearances: [AppRowAppearance], selected: IndexSet)
+        -> Reload?
+    {
         if identities == self.identities {
-            let changed = IndexSet(appearances.indices.filter {
-                !self.appearances.indices.contains($0) || appearances[$0] != self.appearances[$0]
-            })
+            let changed = IndexSet(
+                appearances.indices.filter {
+                    !self.appearances.indices.contains($0) || appearances[$0] != self.appearances[$0]
+                }
+            )
             self.appearances = appearances
             return changed.isEmpty ? nil : .rows(changed)
         }
@@ -313,7 +379,9 @@ public enum AppsInspector {
     /// Store's suggested list is empty for it by definition, which read as the store being broken; a search still
     /// runs and says why each app can't install); cached rows stay usable while their refresh is in flight.
     public static func searchStarting(query: String, iosVersion: String, haveResults: Bool) -> String? {
-        if query.isEmpty, iosVersion.compare("2.0", options: .numeric) == .orderedAscending { return "iPhone OS \(iosVersion) has no App Store." }
+        if query.isEmpty, iosVersion.compare("2.0", options: .numeric) == .orderedAscending {
+            return "iPhone OS \(iosVersion) has no App Store."
+        }
         return haveResults ? nil : query.isEmpty ? "Loading Legacy Store…" : "Searching Legacy Store…"
     }
 
@@ -324,15 +392,20 @@ public enum AppsInspector {
 
     /// The Store's placeholder once `fetched` arrived, of which `shown` pass the filter.
     public static func searchFinished(query: String, fetched: Int, shown: Int) -> String? {
-        if fetched == 0 { return query.isEmpty ? "Legacy Store is empty right now." : "No compatible apps found for “\(query)”." }
+        if fetched == 0 {
+            return query.isEmpty ? "Legacy Store is empty right now." : "No compatible apps found for “\(query)”."
+        }
         return shown == 0 ? "No apps match the filter." : nil
     }
 
     /// The Store's placeholder when the search failed: Legacy Store's own errors say it plainly; a network
     /// error needs the name.
     public static func searchFailed(_ error: Error, marketingName: String) -> String {
-        if case CatalogError.unsupportedDevice = error { return CatalogError.unsupportedDevice(name: marketingName).localizedDescription }
-        return error is CatalogError ? error.localizedDescription : "Couldn’t reach Legacy Store — \(error.localizedDescription)"
+        if case CatalogError.unsupportedDevice = error {
+            return CatalogError.unsupportedDevice(name: marketingName).localizedDescription
+        }
+        return error is CatalogError
+            ? error.localizedDescription : "Couldn’t reach Legacy Store — \(error.localizedDescription)"
     }
 
     /// Which of the placeholder's buttons show: Browse Store and Install App… under an empty installed list,
@@ -340,11 +413,19 @@ public enum AppsInspector {
     public struct PlaceholderActions: Equatable {
         public var browseAndInstall: Bool, retry: Bool, group: Bool
     }
-    public static func placeholderActions(message: String?, searching: Bool, haveLoaded: Bool, nothingListed: Bool,
-                                          catalogFailed: Bool) -> PlaceholderActions {
+    public static func placeholderActions(
+        message: String?,
+        searching: Bool,
+        haveLoaded: Bool,
+        nothingListed: Bool,
+        catalogFailed: Bool
+    ) -> PlaceholderActions {
         let empty = !searching && haveLoaded && nothingListed
-        return PlaceholderActions(browseAndInstall: empty, retry: catalogFailed && searching,
-                                  group: message != nil && (empty || (catalogFailed && searching)))
+        return PlaceholderActions(
+            browseAndInstall: empty,
+            retry: catalogFailed && searching,
+            group: message != nil && (empty || (catalogFailed && searching))
+        )
     }
 
     /// Files dropped on the canvas have no Store row to carry their progress: such a transfer is revealed in

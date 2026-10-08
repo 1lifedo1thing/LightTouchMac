@@ -9,9 +9,9 @@
 // nothing references it and Settings ▸ Storage removes it. The collection
 // is the point of this program.
 
-import Foundation
 import CryptoKit
 import Darwin
+import Foundation
 import HostRuntime
 
 @MainActor
@@ -20,7 +20,15 @@ public enum IPALibrary {
     /// One stored archive; the optional fields are what the install that
     /// stored it knew.
     public struct Entry: Codable, Equatable, Sendable {
-        nonisolated public init(bundleID: String, name: String? = nil, version: String? = nil, minOS: String? = nil, size: Int64, md5: String, catalogIpaID: Int? = nil) {
+        nonisolated public init(
+            bundleID: String,
+            name: String? = nil,
+            version: String? = nil,
+            minOS: String? = nil,
+            size: Int64,
+            md5: String,
+            catalogIpaID: Int? = nil
+        ) {
             self.bundleID = bundleID
             self.name = name
             self.version = version
@@ -41,7 +49,13 @@ public enum IPALibrary {
 
     /// What an install knows about the archive it just landed.
     public struct Metadata: Sendable {
-        nonisolated public init(bundleID: String, name: String? = nil, version: String? = nil, minOS: String? = nil, catalogIpaID: Int? = nil) {
+        nonisolated public init(
+            bundleID: String,
+            name: String? = nil,
+            version: String? = nil,
+            minOS: String? = nil,
+            catalogIpaID: Int? = nil
+        ) {
             self.bundleID = bundleID
             self.name = name
             self.version = version
@@ -79,8 +93,12 @@ public enum IPALibrary {
     /// sha256 → entry, read once per process (the app holds the library lock).
     public static var index: [String: Entry] {
         if let loaded, loaded.url == indexURL { return loaded.index }
-        let read = (try? PropertyListFile.read([String: Entry].self, from: indexURL,
-                                               legacyJSON: directory.appendingPathComponent("index.json"))) ?? [:]
+        let read =
+            (try? PropertyListFile.read(
+                [String: Entry].self,
+                from: indexURL,
+                legacyJSON: directory.appendingPathComponent("index.json")
+            )) ?? [:]
         loaded = (indexURL, read)
         return read
     }
@@ -98,9 +116,15 @@ public enum IPALibrary {
     private static func record(_ digests: Digests, _ metadata: Metadata) {
         var index = index
         let old = index[digests.sha256]
-        let new = Entry(bundleID: metadata.bundleID, name: metadata.name ?? old?.name,
-                        version: metadata.version ?? old?.version, minOS: metadata.minOS ?? old?.minOS,
-                        size: digests.size, md5: digests.md5, catalogIpaID: metadata.catalogIpaID ?? old?.catalogIpaID)
+        let new = Entry(
+            bundleID: metadata.bundleID,
+            name: metadata.name ?? old?.name,
+            version: metadata.version ?? old?.version,
+            minOS: metadata.minOS ?? old?.minOS,
+            size: digests.size,
+            md5: digests.md5,
+            catalogIpaID: metadata.catalogIpaID ?? old?.catalogIpaID
+        )
         guard new != old else { return }
         index[digests.sha256] = new
         save(index)
@@ -112,7 +136,8 @@ public enum IPALibrary {
     /// component, and an archive can claim anything as its identifier.
     private nonisolated static func safe(_ bundleID: String) -> String? {
         guard !bundleID.isEmpty, !bundleID.hasPrefix("."),
-              !bundleID.contains("/"), !bundleID.contains(":"), !bundleID.contains("\0") else { return nil }
+            !bundleID.contains("/"), !bundleID.contains(":"), !bundleID.contains("\0")
+        else { return nil }
         return bundleID
     }
 
@@ -224,7 +249,7 @@ public enum IPALibrary {
             return (index, stored)
         }.value
         if stored > 0 { logEvent("library: \(stored) copies kept from \(directory.path)") }
-        var index = index   // what the main actor recorded meanwhile, plus what was stored
+        var index = index  // what the main actor recorded meanwhile, plus what was stored
         for (sha256, entry) in after where before[sha256] != entry { index[sha256] = entry }
         if index != self.index { save(index) }
     }
@@ -238,7 +263,8 @@ public enum IPALibrary {
             let copy = directory.appendingPathComponent(name)
             let bundleID = String(name.dropLast(4))
             guard let size = size(of: copy),
-                  !index.values.contains(where: { $0.bundleID == bundleID && $0.size == size }) else { continue }
+                !index.values.contains(where: { $0.bundleID == bundleID && $0.size == size })
+            else { continue }
             do {
                 let digests = try digests(of: copy)
                 if !fm.fileExists(atPath: blob(digests.sha256).path) { try clone(copy, to: blob(digests.sha256)) }
@@ -261,7 +287,8 @@ public enum IPALibrary {
     public nonisolated static func digests(of url: URL) throws -> Digests {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
-        var sha256 = SHA256(), md5 = Insecure.MD5()
+        var sha256 = SHA256()
+        var md5 = Insecure.MD5()
         var size: Int64 = 0
         while let chunk = try handle.read(upToCount: 1 << 20), !chunk.isEmpty {
             sha256.update(data: chunk)

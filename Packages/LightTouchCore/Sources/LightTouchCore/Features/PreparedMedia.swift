@@ -1,12 +1,14 @@
-import HostRuntime
 import Foundation
+import HostRuntime
 
 public enum PreparedMedia: Sendable {
     case song(MediaSong)
     case photo(MediaPhoto)
     case video(MediaVideo)
 
-    public nonisolated static let extensions = MediaSong.extensions.union(MediaPhoto.extensions).union(MediaVideo.extensions)
+    public nonisolated static let extensions = MediaSong.extensions.union(MediaPhoto.extensions).union(
+        MediaVideo.extensions
+    )
 
     public var directory: URL {
         switch self {
@@ -35,7 +37,8 @@ public enum PreparedMedia: Sendable {
     /// The library a file would go to, by its extension, before it is read (MediaSupport's gate).
     public nonisolated static func destination(forExtension suffix: String) -> String {
         let suffix = suffix.lowercased()
-        return MediaSong.extensions.contains(suffix) ? "Music" : MediaVideo.extensions.contains(suffix) ? "Videos" : "Photos"
+        return MediaSong.extensions.contains(suffix)
+            ? "Music" : MediaVideo.extensions.contains(suffix) ? "Videos" : "Photos"
     }
 
     public nonisolated static func prepare(_ source: URL, profile: Board) async throws -> PreparedMedia {

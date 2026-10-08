@@ -4,7 +4,10 @@ import FirmwareKit
 import Foundation
 
 func fitCommand(_ argv: [String]) -> Never {
-    var root: String?, arch = "armv7", host: String?, files: [String] = []
+    var root: String?
+    var arch = "armv7"
+    var host: String?
+    var files: [String] = []
     var it = argv.makeIterator()
     while let a = it.next() {
         switch a {
@@ -14,13 +17,24 @@ func fitCommand(_ argv: [String]) -> Never {
         default: files.append(a)
         }
     }
-    guard let root else { FileHandle.standardError.write(Data("usage: firmwarekit fit --root DIR [--arch A] FILE...\n".utf8)); exit(64) }
+    guard let root else {
+        FileHandle.standardError.write(Data("usage: firmwarekit fit --root DIR [--arch A] FILE...\n".utf8))
+        exit(64)
+    }
     let fw = FitCheck.Firmware(root: URL(fileURLWithPath: root), arch: arch)
     var ok = true
     for f in files {
-        let fit = FitCheck.loads((f as NSString).lastPathComponent, (try? Data(contentsOf: URL(fileURLWithPath: f))) ?? Data(), on: fw, host: host)
+        let fit = FitCheck.loads(
+            (f as NSString).lastPathComponent,
+            (try? Data(contentsOf: URL(fileURLWithPath: f))) ?? Data(),
+            on: fw,
+            host: host
+        )
         ok = ok && fit.fits
-        let d = try! JSONSerialization.data(withJSONObject: fit.object, options: [.sortedKeys, .withoutEscapingSlashes])
+        let d = try! JSONSerialization.data(
+            withJSONObject: fit.object,
+            options: [.sortedKeys, .withoutEscapingSlashes]
+        )
         FileHandle.standardOutput.write(d + Data("\n".utf8))
     }
     exit(ok ? 0 : 1)

@@ -17,8 +17,9 @@ final class DeviceContentView: NSView {
         screen.translatesAutoresizingMaskIntoConstraints = false
         addSubview(screen)
         NSLayoutConstraint.activate([
-            screen.leadingAnchor.constraint(equalTo: leadingAnchor), screen.trailingAnchor.constraint(equalTo: trailingAnchor),
-            screen.topAnchor.constraint(equalTo: topAnchor), screen.bottomAnchor.constraint(equalTo: bottomAnchor)
+            screen.leadingAnchor.constraint(equalTo: leadingAnchor),
+            screen.trailingAnchor.constraint(equalTo: trailingAnchor),
+            screen.topAnchor.constraint(equalTo: topAnchor), screen.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
         statuses.orientation = .vertical
         statuses.alignment = .centerX
@@ -28,17 +29,25 @@ final class DeviceContentView: NSView {
         NSLayoutConstraint.activate([
             statuses.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
             statuses.bottomAnchor.constraint(equalTo: overlay.bottomAnchor, constant: -8),
-            statuses.widthAnchor.constraint(lessThanOrEqualTo: overlay.widthAnchor, constant: -16)
+            statuses.widthAnchor.constraint(lessThanOrEqualTo: overlay.widthAnchor, constant: -16),
         ])
     }
     required init?(coder: NSCoder) { fatalError("not used") }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         NotificationCenter.default.removeObserver(self)
-        if let panel { panel.parent?.removeChildWindow(panel); panel.orderOut(nil) }
+        if let panel {
+            panel.parent?.removeChildWindow(panel)
+            panel.orderOut(nil)
+        }
         guard let window else { return }
         if panel == nil {
-            let panel = CaptureOverlayPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            let panel = CaptureOverlayPanel(
+                contentRect: .zero,
+                styleMask: [.borderless, .nonactivatingPanel],
+                backing: .buffered,
+                defer: false
+            )
             WindowRestorationPolicy.configure(panel)
             panel.isOpaque = false
             panel.backgroundColor = .clear
@@ -50,12 +59,22 @@ final class DeviceContentView: NSView {
             panel.contentView = overlay
             self.panel = panel
         }
-        for name in [NSApplication.didBecomeActiveNotification, NSApplication.didUnhideNotification, NSApplication.didResignActiveNotification] {
+        for name in [
+            NSApplication.didBecomeActiveNotification, NSApplication.didUnhideNotification,
+            NSApplication.didResignActiveNotification,
+        ] {
             NotificationCenter.default.addObserver(self, selector: #selector(refreshOverlay), name: name, object: NSApp)
         }
-        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification, NSWindow.didDeminiaturizeNotification,
-                     NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
-            NotificationCenter.default.addObserver(self, selector: #selector(refreshOverlay), name: name, object: window)
+        for name in [
+            NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification, NSWindow.didDeminiaturizeNotification,
+            NSWindow.didMoveNotification, NSWindow.didResizeNotification,
+        ] {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(refreshOverlay),
+                name: name,
+                object: window
+            )
         }
         updateStatusVisibility()
     }
@@ -93,7 +112,10 @@ final class DeviceContentView: NSView {
         }
         // Leave room for the native glass shadow inside the transparent window.
         let width = min((visible.map { $0.intrinsicContentSize.width }.max() ?? 0) + 16, max(0, bounds.width - 8))
-        let height = 16 + visible.reduce(CGFloat.zero) { $0 + $1.intrinsicContentSize.height } + CGFloat(max(0, visible.count - 1)) * 6
+        let height =
+            16 + visible.reduce(CGFloat.zero) { $0 + $1.intrinsicContentSize.height } + CGFloat(
+                max(0, visible.count - 1)
+            ) * 6
         let canvas = window.convertToScreen(convert(bounds, to: nil))
         let frame = CGRect(x: canvas.midX - width / 2, y: canvas.minY + 4, width: width, height: height)
         if panel.frame != frame { panel.setFrame(frame, display: true) }

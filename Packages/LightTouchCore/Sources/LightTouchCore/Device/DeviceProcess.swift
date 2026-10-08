@@ -1,7 +1,7 @@
-import DeviceRuntime
-import HostRuntime
-import Foundation
 import CoreGraphics
+import DeviceRuntime
+import Foundation
+import HostRuntime
 
 /// GUI presentation and native-log capture around the shared session owner.
 /// Spawn, boot, cancellation, death ordering and exclusive reaping live in DeviceRuntime.
@@ -20,11 +20,16 @@ import CoreGraphics
     }
     public var onDeath: ((String) -> Void)?
 
-    public init(instance: UUID, profile: Board, log url: URL, lease: URL? = nil,
-         helper: URL? = nil, requirement: String? = nil) {
+    public init(
+        instance: UUID,
+        profile: Board,
+        log url: URL,
+        lease: URL? = nil,
+        helper: URL? = nil,
+        requirement: String? = nil
+    ) {
         self.profile = profile
-        do { log = try ProcessLogCapture(url: url) }
-        catch {
+        do { log = try ProcessLogCapture(url: url) } catch {
             logEvent("device helper: native.log unavailable at \(url.path): \(error.localizedDescription)")
             log = nil
         }
@@ -48,14 +53,19 @@ import CoreGraphics
         }
     }
 
-    public func start(_ configure: @escaping (HelperInfo) -> BootConfig?,
-               preparation: (@MainActor () async throws -> Void)? = nil,
-               completion: @escaping (Result<HelperInfo, DeviceLinkError>) -> Void) {
-        process.start({ [weak self] info in
-            self?.checkBoard(info)
-            return configure(info)
-        }, preparation: preparation) { result in
-            if case let .failure(error) = result { logEvent("device helper: didn’t start: \(error)") }
+    public func start(
+        _ configure: @escaping (HelperInfo) -> BootConfig?,
+        preparation: (@MainActor () async throws -> Void)? = nil,
+        completion: @escaping (Result<HelperInfo, DeviceLinkError>) -> Void
+    ) {
+        process.start(
+            { [weak self] info in
+                self?.checkBoard(info)
+                return configure(info)
+            },
+            preparation: preparation
+        ) { result in
+            if case .failure(let error) = result { logEvent("device helper: didn’t start: \(error)") }
             completion(result)
         }
     }
@@ -74,7 +84,9 @@ import CoreGraphics
     }
 
     private func checkBoard(_ info: HelperInfo) {
-        logEvent("emulator dylib: \(info.dylibPath) (built \(Date(timeIntervalSince1970: info.dylibModified)), build \(info.buildID ?? "unknown")) in helper \(info.pid)")
+        logEvent(
+            "emulator dylib: \(info.dylibPath) (built \(Date(timeIntervalSince1970: info.dylibModified)), build \(info.buildID ?? "unknown")) in helper \(info.pid)"
+        )
         if info.deviceInfo == nil { logEvent("display: libqemu-arm.dylib has no machine for \(profile.rawValue)") }
     }
 }

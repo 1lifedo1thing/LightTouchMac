@@ -1,5 +1,5 @@
-import Foundation
 import CryptoKit
+import Foundation
 
 public nonisolated struct CatalogCopy: Decodable, Sendable {
     public let ipa_id: String
@@ -20,7 +20,9 @@ public nonisolated struct CatalogCopy: Decodable, Sendable {
         /// cracked release that relabeled its armv7 slice); nil = not scanned.
         public let armv7_code: Bool?
 
-        public enum CodingKeys: String, CodingKey { case install_status, architectures, macho_min_os, device_family_macho, armv7_code }
+        public enum CodingKeys: String, CodingKey {
+            case install_status, architectures, macho_min_os, device_family_macho, armv7_code
+        }
 
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -46,7 +48,8 @@ public nonisolated struct CatalogCopy: Decodable, Sendable {
             return Int(part)
         }
         guard numbers.count == parts.count, !numbers.isEmpty, numbers.count <= 3,
-              numbers[0] > 0 else { return "The minimum iOS version couldn’t be verified." }
+            numbers[0] > 0
+        else { return "The minimum iOS version couldn’t be verified." }
         let padded = numbers + Array(repeating: 0, count: 3 - numbers.count)
         let device = deviceOS.split(separator: ".").compactMap { Int($0) }
         let devicePadded = device + Array(repeating: 0, count: max(0, 3 - device.count))
@@ -85,7 +88,8 @@ public nonisolated struct CatalogCopy: Decodable, Sendable {
     @concurrent public func verifyDownload(_ file: URL) async throws {
         let actual = try FileManager.default.attributesOfItem(atPath: file.path)[.size] as? NSNumber
         guard let actual, actual.int64Value > 0,
-              size == nil || size == actual.int64Value else {
+            size == nil || size == actual.int64Value
+        else {
             throw CatalogError.invalidCopy("The download is incomplete or its size differs from the archive.")
         }
         guard let md5 else { return }

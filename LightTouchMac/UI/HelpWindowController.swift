@@ -1,5 +1,5 @@
-import LightTouchCore
 import Cocoa
+import LightTouchCore
 
 /// Light Touch Help: Help.txt's task topics (HelpTopic) in a sidebar, the
 /// chosen topic beside it.
@@ -11,8 +11,12 @@ final class HelpWindowController: NSWindowController, NSTableViewDataSource, NST
 
     init(text helpText: String) {
         source = HelpTopic.topics(helpText)
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 780, height: 560),
-                              styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 780, height: 560),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
         window.title = "Light Touch Help"
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 520, height: 300)
@@ -45,8 +49,10 @@ final class HelpWindowController: NSWindowController, NSTableViewDataSource, NST
         textScroll.hasVerticalScroller = true
 
         let split = NSSplitViewController()
-        let sidebar = NSViewController(); sidebar.view = listScroll
-        let detail = NSViewController(); detail.view = textScroll
+        let sidebar = NSViewController()
+        sidebar.view = listScroll
+        let detail = NSViewController()
+        detail.view = textScroll
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
         sidebarItem.minimumThickness = 230
         sidebarItem.maximumThickness = 300
@@ -82,10 +88,22 @@ final class HelpWindowController: NSWindowController, NSTableViewDataSource, NST
         let topic = topics[list.selectedRow]
         let paragraph = NSMutableParagraphStyle()
         paragraph.paragraphSpacing = 10
-        let body = NSMutableAttributedString(string: topic.title + "\n", attributes: [.font: NSFont.preferredFont(forTextStyle: .title2),
-                                                                                    .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraph])
-        body.append(NSAttributedString(string: topic.shownBody, attributes: [.font: NSFont.systemFont(ofSize: 14), .foregroundColor: NSColor.labelColor,
-                                                                        .paragraphStyle: paragraph]))
+        let body = NSMutableAttributedString(
+            string: topic.title + "\n",
+            attributes: [
+                .font: NSFont.preferredFont(forTextStyle: .title2),
+                .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraph,
+            ]
+        )
+        body.append(
+            NSAttributedString(
+                string: topic.shownBody,
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 14), .foregroundColor: NSColor.labelColor,
+                    .paragraphStyle: paragraph,
+                ]
+            )
+        )
         text.textStorage?.setAttributedString(body)
         text.scrollToBeginningOfDocument(nil)
     }

@@ -14,7 +14,9 @@ let settings: [SwiftSetting] = [
 /// Where the libimobiledevice and libplist headers are (Homebrew's), for the modules that import the engine.
 let imobiledevice = ["-Xcc", "-I/opt/homebrew/include", "-Xcc", "-I/usr/local/include"]
 
-let package = Package(name: "OfflineChecks", platforms: [.macOS("14.4")],
+let package = Package(
+    name: "OfflineChecks",
+    platforms: [.macOS("14.4")],
     dependencies: [
         .package(path: "../../Packages/LightTouchCore"),
         .package(path: "../../Packages/HostRuntime"),
@@ -24,33 +26,85 @@ let package = Package(name: "OfflineChecks", platforms: [.macOS("14.4")],
     ],
     targets: [
         // The app's views and windows that stand alone: production files whole, with the stand-ins in StandIns.swift.
-        .target(name: "AppViews", dependencies: [.product(name: "LightTouchCore", package: "LightTouchCore"), .product(name: "HostRuntime", package: "HostRuntime"),
-                                                 .product(name: "HostServiceClient", package: "DeviceServices"), .product(name: "HostServiceWire", package: "DeviceServices")],
-                swiftSettings: settings),
+        .target(
+            name: "AppViews",
+            dependencies: [
+                .product(name: "LightTouchCore", package: "LightTouchCore"),
+                .product(name: "HostRuntime", package: "HostRuntime"),
+                .product(name: "HostServiceClient", package: "DeviceServices"),
+                .product(name: "HostServiceWire", package: "DeviceServices"),
+            ],
+            swiftSettings: settings
+        ),
         // The sidebar and the Add Device sheet over a stand-in session host, jobs and library.
-        .target(name: "Sidebar", dependencies: [.product(name: "LightTouchCore", package: "LightTouchCore"), .product(name: "HostRuntime", package: "HostRuntime")],
-                swiftSettings: settings),
+        .target(
+            name: "Sidebar",
+            dependencies: [
+                .product(name: "LightTouchCore", package: "LightTouchCore"),
+                .product(name: "HostRuntime", package: "HostRuntime"),
+            ],
+            swiftSettings: settings
+        ),
         // The real main menu over no-op action targets.
-        .target(name: "Menus", dependencies: [.product(name: "LightTouchCore", package: "LightTouchCore"), .product(name: "HostRuntime", package: "HostRuntime")],
-                swiftSettings: settings),
+        .target(
+            name: "Menus",
+            dependencies: [
+                .product(name: "LightTouchCore", package: "LightTouchCore"),
+                .product(name: "HostRuntime", package: "HostRuntime"),
+            ],
+            swiftSettings: settings
+        ),
         // DisplayView (the device screen) over a fake link and device, with a stand-in 3D model.
-        .target(name: "Display", dependencies: [.product(name: "LightTouchCore", package: "LightTouchCore"), .product(name: "HostRuntime", package: "HostRuntime"),
-                                                .product(name: "DeviceRuntime", package: "DeviceRuntime")],
-                swiftSettings: settings),
+        .target(
+            name: "Display",
+            dependencies: [
+                .product(name: "LightTouchCore", package: "LightTouchCore"),
+                .product(name: "HostRuntime", package: "HostRuntime"),
+                .product(name: "DeviceRuntime", package: "DeviceRuntime"),
+            ],
+            swiftSettings: settings
+        ),
         // The 3D model (RealityKit), for headless renders.
-        .target(name: "Model", dependencies: [.product(name: "LightTouchCore", package: "LightTouchCore"), .product(name: "HostRuntime", package: "HostRuntime")],
-                swiftSettings: settings),
+        .target(
+            name: "Model",
+            dependencies: [
+                .product(name: "LightTouchCore", package: "LightTouchCore"),
+                .product(name: "HostRuntime", package: "HostRuntime"),
+            ],
+            swiftSettings: settings
+        ),
         // The helper's (LightTouchDevice's) own code that stands alone: the libqemu binding.
-        .target(name: "Helper", dependencies: [.product(name: "DeviceRuntime", package: "DeviceRuntime"), .product(name: "HostRuntime", package: "HostRuntime")],
-                swiftSettings: settings),
+        .target(
+            name: "Helper",
+            dependencies: [
+                .product(name: "DeviceRuntime", package: "DeviceRuntime"),
+                .product(name: "HostRuntime", package: "HostRuntime"),
+            ],
+            swiftSettings: settings
+        ),
         // The services helper's engine (LightTouchServices/Engine) over a libimobiledevice of the tests' own
         // (tests/fixtures/imobiledevice-fake.swift), with the real headers from Homebrew's libimobiledevice.
-        .target(name: "CIMobileDevice", cSettings: [.unsafeFlags(["-I/opt/homebrew/include", "-I/usr/local/include"])]),
-        .target(name: "Engine", dependencies: ["CIMobileDevice", .product(name: "HostServiceWire", package: "DeviceServices")],
-                swiftSettings: settings + [.unsafeFlags(imobiledevice + ["-Xfrontend", "-import-module", "-Xfrontend", "CIMobileDevice"])]),
+        .target(
+            name: "CIMobileDevice",
+            cSettings: [.unsafeFlags(["-I/opt/homebrew/include", "-I/usr/local/include"])]
+        ),
+        .target(
+            name: "Engine",
+            dependencies: ["CIMobileDevice", .product(name: "HostServiceWire", package: "DeviceServices")],
+            swiftSettings: settings + [
+                .unsafeFlags(imobiledevice + ["-Xfrontend", "-import-module", "-Xfrontend", "CIMobileDevice"])
+            ]
+        ),
         // A private home and app state for the test process (LightTouchCore's own, Tests/TestIsolation).
         .target(name: "OfflineIsolation"),
-        .testTarget(name: "OfflineTests", dependencies: ["AppViews", "Display", "Engine", "Helper", "Menus", "Model", "Sidebar", "OfflineIsolation",
-                                                         .product(name: "DeviceRuntime", package: "DeviceRuntime")], swiftSettings: settings + [.unsafeFlags(imobiledevice)]),
+        .testTarget(
+            name: "OfflineTests",
+            dependencies: [
+                "AppViews", "Display", "Engine", "Helper", "Menus", "Model", "Sidebar", "OfflineIsolation",
+                .product(name: "DeviceRuntime", package: "DeviceRuntime"),
+            ],
+            swiftSettings: settings + [.unsafeFlags(imobiledevice)]
+        ),
     ],
-    swiftLanguageModes: [.v5])
+    swiftLanguageModes: [.v5]
+)

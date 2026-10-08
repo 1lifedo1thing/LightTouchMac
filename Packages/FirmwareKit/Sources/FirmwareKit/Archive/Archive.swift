@@ -14,13 +14,25 @@ import Foundation
 import ZIPFoundation
 
 public struct FirmwareError: Error, CustomStringConvertible, Sendable {
-    public enum Code: String, Sendable { case keyMissing = "key_missing", shaMismatch = "sha_mismatch", unsupported, activationFailed = "activation_failed",
-                                           oneshotFailed = "oneshot_failed", diskFull = "disk_full", `internal` }
+    public enum Code: String, Sendable {
+        case keyMissing = "key_missing"
+        case shaMismatch = "sha_mismatch"
+        case unsupported
+        case activationFailed = "activation_failed"
+        case
+            oneshotFailed = "oneshot_failed"
+        case diskFull = "disk_full"
+        case `internal`
+    }
     public var code: Code
     public var message: String
     /// The fit check's piece when a required one doesn't fit (the error event's "piece"): the app names it plainly.
     public var piece: String?
-    public init(_ code: Code, _ message: String, piece: String? = nil) { self.code = code; self.message = message; self.piece = piece }
+    public init(_ code: Code, _ message: String, piece: String? = nil) {
+        self.code = code
+        self.message = message
+        self.piece = piece
+    }
     public var description: String { "\(code.rawValue): \(message)" }
 }
 
@@ -56,13 +68,16 @@ public struct IPSWArchive: Sendable {
 
     /// Runs `body` with a handle reading `member` off a pipe (a thread inflates into it); `body` should read to EOF.
     public func stream<T>(_ member: String, _ body: (FileHandle) throws -> T) throws -> T {
-        let archive = try archive(), entry = try entry(member, in: archive)
+        let archive = try archive()
+        let entry = try entry(member, in: archive)
         let pipe = Pipe()
-        let failure = StreamFailure(), done = DispatchSemaphore(value: 0)
+        let failure = StreamFailure()
+        let done = DispatchSemaphore(value: 0)
         Thread.detachNewThread {
             let w = pipe.fileHandleForWriting
-            do { _ = try archive.extract(entry, bufferSize: Self.chunk, skipCRC32: true) { try w.write(contentsOf: $0) } }
-            catch { failure.error = error }   // EPIPE when body stopped reading: body's error wins below
+            do {
+                _ = try archive.extract(entry, bufferSize: Self.chunk, skipCRC32: true) { try w.write(contentsOf: $0) }
+            } catch { failure.error = error }  // EPIPE when body stopped reading: body's error wins below
             try? w.close()
             done.signal()
         }
@@ -70,23 +85,31 @@ public struct IPSWArchive: Sendable {
         try? pipe.fileHandleForReading.close()
         done.wait()
         let value = try result.get()
-        if let error = failure.error { throw FirmwareError(.unsupported, "\(url.lastPathComponent): could not read \(member): \(error)") }
+        if let error = failure.error {
+            throw FirmwareError(.unsupported, "\(url.lastPathComponent): could not read \(member): \(error)")
+        }
         return value
     }
 
     func each(_ member: String, _ consumer: (Data) throws -> Void) throws {
         let archive = try archive()
-        do { _ = try archive.extract(try entry(member, in: archive), bufferSize: Self.chunk, consumer: consumer) }
-        catch let e as Archive.ArchiveError { throw FirmwareError(.unsupported, "\(url.lastPathComponent): could not read \(member): \(e)") }
+        do {
+            _ = try archive.extract(try entry(member, in: archive), bufferSize: Self.chunk, consumer: consumer)
+        } catch let e as Archive.ArchiveError {
+            throw FirmwareError(.unsupported, "\(url.lastPathComponent): could not read \(member): \(e)")
+        }
     }
 
     func archive() throws -> Archive {
-        do { return try Archive(url: url, accessMode: .read) }
-        catch { throw FirmwareError(.unsupported, "\(url.lastPathComponent): not a zip archive (\(error))") }
+        do { return try Archive(url: url, accessMode: .read) } catch {
+            throw FirmwareError(.unsupported, "\(url.lastPathComponent): not a zip archive (\(error))")
+        }
     }
 
     func entry(_ member: String, in archive: Archive) throws -> Entry {
-        guard let e = archive[member] else { throw FirmwareError(.unsupported, "\(url.lastPathComponent): no member \(member)") }
+        guard let e = archive[member] else {
+            throw FirmwareError(.unsupported, "\(url.lastPathComponent): no member \(member)")
+        }
         return e
     }
 }

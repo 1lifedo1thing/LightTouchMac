@@ -25,30 +25,47 @@ struct StepPlan: Sendable {
         "Writing the identity and boot image": .init(seconds: 1, text: "Writing the boot image"),
         "Building the system and data volumes": .init(seconds: 12, text: "Building the system and data volumes"),
         "Writing the NAND": .init(seconds: 8, text: "Writing the flash image"),
-        "Creating the data-protection keybag": .init(seconds: 6, text: "Booting the restore ramdisk", milestones: [
-            .init(file: "keybag-", marker: "FTL_Open", at: 2, text: "Opening the flash"),
-            .init(file: "keybag-", marker: "it_keybag:", at: 4, text: "Creating the keybag"),
-        ]),
+        "Creating the data-protection keybag": .init(
+            seconds: 6,
+            text: "Booting the restore ramdisk",
+            milestones: [
+                .init(file: "keybag-", marker: "FTL_Open", at: 2, text: "Opening the flash"),
+                .init(file: "keybag-", marker: "it_keybag:", at: 4, text: "Creating the keybag"),
+            ]
+        ),
         // The seal one-shot (Recipe.sealStep): boot the new flash until it_seal halts, then a check boot. Each line is
         // one every release prints; a release that skips one moves on by time (fraction(elapsed:seen:)).
-        sealStep: .init(seconds: 72, text: "Starting iOS", milestones: [
-            .init(file: "seal.log", marker: "CXT is not valid", at: 1, text: "Indexing the flash"),
-            .init(file: "seal.log", marker: "FTL_Open", at: 6, text: "Opening the flash"),
-            .init(file: "seal.log", marker: "launchd[1] has started", at: 19, text: "Starting iOS"),
-            .init(file: "seal.log", marker: "SpringBoard[", at: 30, text: "Starting the Home screen"),
-            .init(file: "seal.log", marker: "it_prefs:", at: 41, text: "Starting the Home screen"),
-            .init(file: "seal.log", marker: "it_seal:", at: 65, text: "Shutting down"),
-            .init(file: "check.log", marker: "iBoot version", at: 68, text: "Checking the flash"),
-        ]),
+        sealStep: .init(
+            seconds: 72,
+            text: "Starting iOS",
+            milestones: [
+                .init(file: "seal.log", marker: "CXT is not valid", at: 1, text: "Indexing the flash"),
+                .init(file: "seal.log", marker: "FTL_Open", at: 6, text: "Opening the flash"),
+                .init(file: "seal.log", marker: "launchd[1] has started", at: 19, text: "Starting iOS"),
+                .init(file: "seal.log", marker: "SpringBoard[", at: 30, text: "Starting the Home screen"),
+                .init(file: "seal.log", marker: "it_prefs:", at: 41, text: "Starting the Home screen"),
+                .init(file: "seal.log", marker: "it_seal:", at: 65, text: "Shutting down"),
+                .init(file: "check.log", marker: "iBoot version", at: 68, text: "Checking the flash"),
+            ]
+        ),
         "Writing the lock": .init(seconds: 3, text: "Hashing the prepared flash"),
         // n72 (N72Recipe; ~35 s for 7E18)
         "Writing the identity, NOR and boot files": .init(seconds: 2, text: "Writing the NOR and boot files"),
         "Building the system volume": .init(seconds: 20, text: "Building the system volume"),
         // 4.x data protection (N72Keybag): iBoot, the kernel entry handoff, then the ramdisk's it_keybag
-        "Booting the restore ramdisk": .init(seconds: 40, text: "Booting the restore ramdisk", milestones: [
-            .init(file: "keybag.log", marker: "FTL_Open", at: 10, text: "Booting the restore ramdisk: opening the flash"),
-            .init(file: "keybag.log", marker: "it_keybag:", at: 30, text: "Creating the data-protection keybag"),
-        ]),
+        "Booting the restore ramdisk": .init(
+            seconds: 40,
+            text: "Booting the restore ramdisk",
+            milestones: [
+                .init(
+                    file: "keybag.log",
+                    marker: "FTL_Open",
+                    at: 10,
+                    text: "Booting the restore ramdisk: opening the flash"
+                ),
+                .init(file: "keybag.log", marker: "it_keybag:", at: 30, text: "Creating the data-protection keybag"),
+            ]
+        ),
     ]
 
     /// The step that boots the prepared flash once so its first boot is done (it_seal halts it).
@@ -57,15 +74,19 @@ struct StepPlan: Sendable {
     /// iOS 7's seal boot: launchd starts our daemons ~3 minutes in (K48Recipe.oneshotTimeout), so SpringBoard and
     /// the halt come late. n90ap-11D257 on an M4 Max under load, 2026-10-07: launchd 8 s, Wi-Fi 60 s, SpringBoard
     /// 204 s, lockdown 239 s, it_seal 328 s, the check boot done at 336 s.
-    static let seal7 = StepPlan(seconds: 336, text: "Starting iOS", milestones: [
-        .init(file: "seal.log", marker: "FTL_Open", at: 4, text: "Opening the flash"),
-        .init(file: "seal.log", marker: "launchd[1] has started", at: 8, text: "Starting iOS"),
-        .init(file: "seal.log", marker: "AirPort: Link Up", at: 60, text: "Starting iOS"),
-        .init(file: "seal.log", marker: "SpringBoard[", at: 204, text: "Starting the Home screen"),
-        .init(file: "seal.log", marker: "lockdown says", at: 239, text: "Starting the Home screen"),
-        .init(file: "seal.log", marker: "it_seal:", at: 328, text: "Shutting down"),
-        .init(file: "check.log", marker: "iBoot version", at: 331, text: "Checking the flash"),
-    ])
+    static let seal7 = StepPlan(
+        seconds: 336,
+        text: "Starting iOS",
+        milestones: [
+            .init(file: "seal.log", marker: "FTL_Open", at: 4, text: "Opening the flash"),
+            .init(file: "seal.log", marker: "launchd[1] has started", at: 8, text: "Starting iOS"),
+            .init(file: "seal.log", marker: "AirPort: Link Up", at: 60, text: "Starting iOS"),
+            .init(file: "seal.log", marker: "SpringBoard[", at: 204, text: "Starting the Home screen"),
+            .init(file: "seal.log", marker: "lockdown says", at: 239, text: "Starting the Home screen"),
+            .init(file: "seal.log", marker: "it_seal:", at: 328, text: "Shutting down"),
+            .init(file: "check.log", marker: "iBoot version", at: 331, text: "Checking the flash"),
+        ]
+    )
 
     /// `major`: the firmware's iOS major version (the seal boot of 7.x takes several times as long).
     static func plan(_ name: String, major: Int = 0) -> StepPlan {
@@ -78,8 +99,11 @@ struct StepPlan: Sendable {
     /// only the boot's own halt and check finish the step.
     func fraction(elapsed: Double, seen: [Double?]) -> Double {
         let reached = seen.lastIndex { $0 != nil }
-        let from = reached.map { milestones[$0].at } ?? 0, since = reached.map { seen[$0]! } ?? 0
-        let to = reached.map { $0 + 1 < milestones.count ? milestones.last!.at : seconds } ?? (milestones.last?.at ?? seconds)
+        let from = reached.map { milestones[$0].at } ?? 0
+        let since = reached.map { seen[$0]! } ?? 0
+        let to =
+            reached.map { $0 + 1 < milestones.count ? milestones.last!.at : seconds }
+            ?? (milestones.last?.at ?? seconds)
         let t = from + min(max(elapsed - since, 0), 0.95 * max(to - from, 0))
         return min(0.99, t / seconds)
     }
@@ -89,7 +113,8 @@ final class StepProgress: @unchecked Sendable {
     private let emit: @Sendable (PrepareEvent) -> Void
     private let work: URL?
     private let lock = NSLock(), done = DispatchSemaphore(value: 0), stopped = DispatchSemaphore(value: 0)
-    private var plan: StepPlan?, text = "", started = Date(), last = 0.0, seen: [Double?] = [], measured: (@Sendable () -> Double)?
+    private var plan: StepPlan?, text = "", started = Date(), last = 0.0, seen: [Double?] = [],
+        measured: (@Sendable () -> Double)?
 
     /// `work` holds the one-shots' serial logs.
     init(work: URL?, major: Int = 0, emit: @escaping @Sendable (PrepareEvent) -> Void) {
@@ -117,7 +142,11 @@ final class StepProgress: @unchecked Sendable {
             end()
             emit(.step(index: index, name: name))
             plan = StepPlan.plan(name, major: major)
-            text = plan!.text; started = Date(); last = 0; seen = Array(repeating: nil, count: plan!.milestones.count); measured = nil
+            text = plan!.text
+            started = Date()
+            last = 0
+            seen = Array(repeating: nil, count: plan!.milestones.count)
+            measured = nil
             tick()
         }
     }
@@ -163,8 +192,10 @@ final class StepProgress: @unchecked Sendable {
         var name = file
         if file.hasSuffix("-") {
             let names = (try? FileManager.default.contentsOfDirectory(atPath: work.path)) ?? []
-            guard let newest = names.filter({ $0.hasPrefix(file) && $0.hasSuffix(".log") })
-                .max(by: { $0.localizedStandardCompare($1) == .orderedAscending }) else { return "" }
+            guard
+                let newest = names.filter({ $0.hasPrefix(file) && $0.hasSuffix(".log") })
+                    .max(by: { $0.localizedStandardCompare($1) == .orderedAscending })
+            else { return "" }
             name = newest
         }
         return (try? String(contentsOf: work.appendingPathComponent(name), encoding: .isoLatin1)) ?? ""

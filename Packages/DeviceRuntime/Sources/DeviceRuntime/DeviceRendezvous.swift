@@ -22,12 +22,22 @@ import Security
 
 nonisolated public enum DeviceRendezvous {
     /// Helper side: send the status block (and the ring, once there is one).
-    public static func sendHello(service: String, token: String, generation: UInt64,
-                          surfaces: [IOSurface]) -> kern_return_t {
+    public static func sendHello(
+        service: String,
+        token: String,
+        generation: UInt64,
+        surfaces: [IOSurface]
+    ) -> kern_return_t {
         let ports = surfaces.map { IOSurfaceCreateMachPort($0) }
         return ports.withUnsafeBufferPointer {
-            ltm_send_hello(service, token, UInt32(DeviceLinkWire.protocolVersion), generation,
-                           $0.baseAddress, Int32($0.count))
+            ltm_send_hello(
+                service,
+                token,
+                UInt32(DeviceLinkWire.protocolVersion),
+                generation,
+                $0.baseAddress,
+                Int32($0.count)
+            )
         }
     }
 
@@ -41,8 +51,9 @@ nonisolated public enum DeviceRendezvous {
         var requirement: SecRequirement?
         var text: CFString?
         guard SecStaticCodeCreateWithPath(helper as CFURL, [], &staticCode) == errSecSuccess, let staticCode,
-              SecCodeCopyDesignatedRequirement(staticCode, [], &requirement) == errSecSuccess, let requirement,
-              SecRequirementCopyString(requirement, [], &text) == errSecSuccess, let text else { return nil }
+            SecCodeCopyDesignatedRequirement(staticCode, [], &requirement) == errSecSuccess, let requirement,
+            SecRequirementCopyString(requirement, [], &text) == errSecSuccess, let text
+        else { return nil }
         return text as String
     }
 
@@ -51,9 +62,11 @@ nonisolated public enum DeviceRendezvous {
         var staticCode: SecStaticCode?
         var info: CFDictionary?
         guard SecCodeCopySelf([], &code) == errSecSuccess, let code,
-              SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode,
-              SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
-              let dict = info as? [String: Any] else { return nil }
+            SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode,
+            SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info)
+                == errSecSuccess,
+            let dict = info as? [String: Any]
+        else { return nil }
         return dict[kSecCodeInfoTeamIdentifier as String] as? String
     }
 
@@ -63,7 +76,12 @@ nonisolated public enum DeviceRendezvous {
         let tokenData = withUnsafeBytes(of: &audit) { Data($0) }
         var code: SecCode?
         var req: SecRequirement?
-        var status = SecCodeCopyGuestWithAttributes(nil, [kSecGuestAttributeAudit: tokenData] as CFDictionary, [], &code)
+        var status = SecCodeCopyGuestWithAttributes(
+            nil,
+            [kSecGuestAttributeAudit: tokenData] as CFDictionary,
+            [],
+            &code
+        )
         guard status == errSecSuccess, let code else { return status }
         status = SecRequirementCreateWithString(requirement as CFString, [], &req)
         guard status == errSecSuccess, let req else { return status }
@@ -99,7 +117,8 @@ nonisolated final class DeviceRendezvousServer: @unchecked Sendable {
 
     /// Check in (once per process) and start the receive thread. Nonzero: the kern_return_t.
     func start() -> kern_return_t {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         if started { return checkInError }
         started = true
         checkInError = ltm_check_in(serviceName, &port)
@@ -114,21 +133,27 @@ nonisolated final class DeviceRendezvousServer: @unchecked Sendable {
     /// Spawn under the lock, so a hello that races the spawn waits for the
     /// registration instead of being rejected.
     func spawnAndRegister(_ spawn: () -> pid_t, registration: Registration) -> pid_t {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         let pid = spawn()
         if pid > 0 { registrations[pid] = registration }
         return pid
     }
 
     func unregister(_ pid: pid_t) {
-        lock.lock(); registrations[pid] = nil; lock.unlock()
+        lock.lock()
+        registrations[pid] = nil
+        lock.unlock()
     }
 
     private func receiveLoop() {
         while true {
             var hello = ltm_hello()
             let kr = ltm_recv_hello(port, -1, &hello)
-            if kr != 0 { usleep(10_000); continue }
+            if kr != 0 {
+                usleep(10_000)
+                continue
+            }
             let ports = withUnsafeBytes(of: hello.ports) {
                 Array($0.bindMemory(to: mach_port_t.self).prefix(Int(max(0, hello.nports))))
             }

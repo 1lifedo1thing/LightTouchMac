@@ -17,10 +17,11 @@ let fixtureMachines: Void = {
 @MainActor var touches: [(Double, Double)] = []
 /// Every command the display sent the link.
 @MainActor var sent: [LinkCommand] = []
-@MainActor var frameWidth: Int32 = 320, frameHeight: Int32 = 480
+@MainActor var frameWidth: Int32 = 320
+@MainActor var frameHeight: Int32 = 480
 /// A static screen: the link keeps answering with the frame it has.
 @MainActor var frozen = false
-@MainActor var frameColor: UInt32 = 0xff2080c0
+@MainActor var frameColor: UInt32 = 0xff20_80c0
 
 @MainActor final class FakeLink {
     var serial: UInt64 = 0
@@ -28,19 +29,31 @@ let fixtureMachines: Void = {
     func frontSurface() -> (surface: IOSurface, serial: UInt64, isNew: Bool)? {
         if !frozen { serial += 1 }
         let key = "\(frameWidth)x\(frameHeight)x\(frameColor)"
-        let surface = surfaces[key] ?? {
-            let s = IOSurface(properties: [.width: Int(frameWidth), .height: Int(frameHeight), .bytesPerElement: 4, .pixelFormat: 0x42475241])!
-            s.lock(options: [], seed: nil)
-            for y in 0..<Int(frameHeight) { for x in 0..<Int(frameWidth) { s.baseAddress.storeBytes(of: frameColor, toByteOffset: y * s.bytesPerRow + x * 4, as: UInt32.self) } }
-            s.unlock(options: [], seed: nil)
-            return s
-        }()
+        let surface =
+            surfaces[key]
+            ?? {
+                let s = IOSurface(properties: [
+                    .width: Int(frameWidth), .height: Int(frameHeight), .bytesPerElement: 4, .pixelFormat: 0x4247_5241,
+                ])!
+                s.lock(options: [], seed: nil)
+                for y in 0..<Int(frameHeight) {
+                    for x in 0..<Int(frameWidth) {
+                        s.baseAddress.storeBytes(
+                            of: frameColor,
+                            toByteOffset: y * s.bytesPerRow + x * 4,
+                            as: UInt32.self
+                        )
+                    }
+                }
+                s.unlock(options: [], seed: nil)
+                return s
+            }()
         surfaces[key] = surface
         return (surface, serial, true)
     }
     func send(_ command: LinkCommand) {
         sent.append(command)
-        if case let .touch(_, _, x, y) = command { touches.append((x, y)) }
+        if case .touch(_, _, let x, let y) = command { touches.append((x, y)) }
     }
 }
 
@@ -52,7 +65,8 @@ extension NSPasteboard.PasteboardType { static let ltmCatalogApp = Self("test.ca
 @MainActor final class EmulatorController {
     enum Pose { case flat, upright }
     var motionPose = Pose.upright, rotationDegrees = 0, acceptsInput = true, canQueueInstall = true
-    var keyboardInputEnabled = true, keyboardTiltRate = 90.0, isSleeping = false, isPoweredOff = false, shuttingDown = false
+    var keyboardInputEnabled = true, keyboardTiltRate = 90.0, isSleeping = false, isPoweredOff = false,
+        shuttingDown = false
     var preparingDevice = false
     var shakeGeneration: UInt64 = 0, homeCount = 0, lockCount = 0, volume = 0
     let link: FakeLink? = FakeLink()
@@ -90,12 +104,24 @@ extension NSPasteboard.PasteboardType { static let ltmCatalogApp = Self("test.ca
     required init?(coder: NSCoder) { fatalError() }
     func prepareFirstFrame() async -> Bool {
         await withCheckedContinuation { continuation in
-            Task { try? await Task.sleep(for: delay); continuation.resume() }
+            Task {
+                try? await Task.sleep(for: delay)
+                continuation.resume()
+            }
         }
         Self.framesPrepared += 1
         return true
     }
-    func pose(scale: CGFloat, rotation: Int, roll: CGFloat, pitch: CGFloat, yaw: CGFloat = 0, flat: Bool = false, animated: Bool, spring: Bool = false) {}
+    func pose(
+        scale: CGFloat,
+        rotation: Int,
+        roll: CGFloat,
+        pitch: CGFloat,
+        yaw: CGFloat = 0,
+        flat: Bool = false,
+        animated: Bool,
+        spring: Bool = false
+    ) {}
     func updateFrame(_ image: CGImage) {}
     func setScreenOff(_ off: Bool) {}
     var homeButtonRect: CGRect? { nil }

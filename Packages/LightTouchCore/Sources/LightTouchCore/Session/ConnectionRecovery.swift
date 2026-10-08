@@ -1,11 +1,11 @@
 // The device connection's health as the session sees it: the standing issue from failed service reads, the
 // recovery of an unresponsive management service, and the once-per-boot activation verdict.
 
+import DeviceRuntime
 import Foundation
-import Observation
 import HostRuntime
 import HostServiceWire
-import DeviceRuntime
+import Observation
 
 /// What connection recovery and the activation check read and change on the session.
 public protocol ConnectionHost: AnyObject {
@@ -51,7 +51,9 @@ public protocol ConnectionHost: AnyObject {
     }
 
     public func reportFailure(_ error: Error, operation: String) {
-        guard let issue = DeviceConnectionIssue(error: error, operation: operation, profile: host.profile) else { return }
+        guard let issue = DeviceConnectionIssue(error: error, operation: operation, profile: host.profile) else {
+            return
+        }
         // An unactivated guest stays that way for the boot; a transient failure doesn't replace the message.
         if self.issue?.persistent == true, !issue.persistent { return }
         if self.issue != issue {
@@ -82,13 +84,18 @@ public protocol ConnectionHost: AnyObject {
     /// Every reachability change: a second failed read in a row of the kind that a management restart fixes,
     /// with nothing using the device, an agent to do it, and none in the last minute.
     public func consider() {
-        if host.deviceReachable == true { failures = 0; return }
+        if host.deviceReachable == true {
+            failures = 0
+            return
+        }
         guard host.deviceReachable == false, host.isRunning, !host.preparingDevice,
-              issue?.reconnectManagement == true else { return }
+            issue?.reconnectManagement == true
+        else { return }
         failures += 1
         guard failures >= 2, task == nil,
-              !host.isInstalling, !host.hasFileTransfer, !host.installerUsesDevice, host.liveAgentStatus == 1,
-              Date().timeIntervalSince(lastRecovery) >= 60 else { return }
+            !host.isInstalling, !host.hasFileTransfer, !host.installerUsesDevice, host.liveAgentStatus == 1,
+            Date().timeIntervalSince(lastRecovery) >= 60
+        else { return }
         lastRecovery = Date()
         failures = 0
         isReconnecting = true
@@ -96,10 +103,17 @@ public protocol ConnectionHost: AnyObject {
         let settle = settle
         task = Task { [weak self] in
             guard let self else { return }
-            let host = host   // held for the attempt, as the session itself was
-            defer { if generation == host.bootScope.generation { task = nil; isReconnecting = false } }
+            let host = host  // held for the attempt, as the session itself was
+            defer {
+                if generation == host.bootScope.generation {
+                    task = nil
+                    isReconnecting = false
+                }
+            }
             do {
-                guard host.isRunning, !host.preparingDevice, !host.isInstalling, !host.hasFileTransfer, !host.installerUsesDevice else { return }
+                guard host.isRunning, !host.preparingDevice, !host.isInstalling, !host.hasFileTransfer,
+                    !host.installerUsesDevice
+                else { return }
                 // Not through the management transport that broke: the agent
                 // is independent of lockdown, and launchd relaunches lockdownd.
                 if host.guestAgentAlive {
@@ -136,8 +150,13 @@ public final class ActivationCheck {
     private let recovery: ConnectionRecovery
     private let readiness: ReadinessWatch
     private let notices: DeviceNotices
-    public init(host: ConnectionHost, services: ActivationServices, recovery: ConnectionRecovery,
-                readiness: ReadinessWatch, notices: DeviceNotices) {
+    public init(
+        host: ConnectionHost,
+        services: ActivationServices,
+        recovery: ConnectionRecovery,
+        readiness: ReadinessWatch,
+        notices: DeviceNotices
+    ) {
         self.host = host
         self.services = services
         self.recovery = recovery
@@ -165,7 +184,8 @@ public final class ActivationCheck {
             for attempt in 0..<3 {
                 if attempt > 0 { try? await Task.sleep(for: retryDelay) }
                 guard let self, generation == self.generation else { return }
-                let host = host, services = services   // held for this attempt, as the session itself was
+                let host = host
+                let services = services  // held for this attempt, as the session itself was
                 if let answer = await services.activationState() {
                     state = answer
                     if DeviceConnectionIssue.activation(state: answer, profile: host.profile) == nil {
@@ -185,8 +205,12 @@ public final class ActivationCheck {
                 }
             }
             guard let self, generation == self.generation else { return }
-            let host = host, services = services
-            guard let state else { checkedGeneration = nil; return }   // couldn't ask: again on the next answer
+            let host = host
+            let services = services
+            guard let state else {
+                checkedGeneration = nil
+                return
+            }  // couldn't ask: again on the next answer
             logEvent("activation: lockdown reports \(state)")
             guard let issue = DeviceConnectionIssue.activation(state: state, profile: host.profile) else {
                 notices.resolve(.activation)

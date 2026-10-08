@@ -1,16 +1,19 @@
-import Foundation
-import Testing
-import HostServiceWire
 import DeviceRuntime
+import Foundation
 import HostRuntime
+import HostServiceWire
+import Testing
+
 @testable import LightTouchCore
 
 /// BootSessionScope: retiring a boot cancels every task and observer it owns and refuses new ones; renew starts the next.
 struct BootSessionScopeTests {
     @Test func retirementCancelsEveryTaskAndObserverAndIsolatesTheNextBoot() async throws {
         let owner = BootSessionScope()
-        let oldID = owner.id, oldGeneration = owner.generation
-        var completions = 0, observations = 0
+        let oldID = owner.id
+        let oldGeneration = owner.generation
+        var completions = 0
+        var observations = 0
         for key in BootSessionScope.Work.allCases {
             owner[key] = Task {
                 do { try await Task.sleep(for: .milliseconds(80)) } catch { return }

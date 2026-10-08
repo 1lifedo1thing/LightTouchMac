@@ -6,8 +6,10 @@ let binDirectory = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymli
 
 /// Every pid the drivers report starting (helpers, usbmuxds), killed if still alive when a run ends; never a lookup by name.
 func killLeftovers(_ events: Events, pidFile: URL? = nil) {
-    var pids = Set(events.all.filter { ["hello", "booted", "usbmuxd", "connected", "hold"].contains($0.string("event") ?? "") }
-        .compactMap { $0.int("pid") ?? $0.int("helperPid") })
+    var pids = Set(
+        events.all.filter { ["hello", "booted", "usbmuxd", "connected", "hold"].contains($0.string("event") ?? "") }
+            .compactMap { $0.int("pid") ?? $0.int("helperPid") }
+    )
     if let pidFile, let text = try? String(contentsOf: pidFile, encoding: .utf8) {
         pids.formUnion(text.split(whereSeparator: \.isNewline).compactMap { Int($0) })
     }
@@ -65,11 +67,19 @@ final class DriverProcess {
 
 /// session-driver with `config` (written to work/config.json): its events and exit status. Leftover processes it
 /// started are killed.
-func sessionDriver(_ config: [String: Any], work: URL, timeout: Double, environment: [String: String] = [:]) -> (Events, Int32?) {
+func sessionDriver(_ config: [String: Any], work: URL, timeout: Double, environment: [String: String] = [:]) -> (
+    Events, Int32?
+) {
     let file = work.appendingPathComponent("config.json")
-    do { try JSONSerialization.data(withJSONObject: config, options: [.prettyPrinted, .sortedKeys]).write(to: file) }
-    catch { die("config: \(error)") }
-    let d = DriverProcess("session-driver", [file.path], out: work.appendingPathComponent("driver.jsonl"), environment: environment)
+    do {
+        try JSONSerialization.data(withJSONObject: config, options: [.prettyPrinted, .sortedKeys]).write(to: file)
+    } catch { die("config: \(error)") }
+    let d = DriverProcess(
+        "session-driver",
+        [file.path],
+        out: work.appendingPathComponent("driver.jsonl"),
+        environment: environment
+    )
     let status = d.wait(timeout + 10)
     let events = d.events
     killLeftovers(events, pidFile: work.appendingPathComponent("pids"))
@@ -91,7 +101,9 @@ func waitGone(_ pid: Int, _ seconds: Double) -> Double? {
 
 /// A fresh work directory: `--work`, or a temporary one.
 func workDirectory(_ args: Arguments, _ name: String) -> URL {
-    let work = args.path("work") ?? FileManager.default.temporaryDirectory
+    let work =
+        args.path("work")
+        ?? FileManager.default.temporaryDirectory
         .appendingPathComponent("ltm-\(name)-\(UUID().uuidString.prefix(8))")
     try? FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
     print("work: \(work.path)")
@@ -111,17 +123,21 @@ func finish(_ report: Report, work: URL) -> Never {
 
 /// The base fields every session-driver config carries.
 func driverConfig(_ tools: Tools, work: URL, ipa: URL? = nil) -> [String: Any] {
-    var config: [String: Any] = ["helper": tools.helper.path, "firmwarekit": tools.firmwarekit.path, "usbmuxd": tools.usbmuxd.path,
-                                 "ipa": ipa?.path ?? "", "bundleID": "com.qemuios.harness", "work": work.path,
-                                 "files": tools.files.path, "ipodBase": "", "ipadBase": ""]
+    var config: [String: Any] = [
+        "helper": tools.helper.path, "firmwarekit": tools.firmwarekit.path, "usbmuxd": tools.usbmuxd.path,
+        "ipa": ipa?.path ?? "", "bundleID": "com.qemuios.harness", "work": work.path,
+        "files": tools.files.path, "ipodBase": "", "ipadBase": "",
+    ]
     if let requirement = tools.requirement, !requirement.isEmpty { config["requirement"] = requirement }
     return config
 }
 
 /// What the drivers' children read: the dylib the helper loads and the services worker DeviceServices spawns.
 func driverEnvironment(_ tools: Tools) -> [String: String] {
-    ["LTM_QEMU_DYLIB": tools.dylib.path, "LTM_HOST_SERVICE_WORKER": tools.services.path,
-     "LTM_STATE_DIR": FileManager.default.temporaryDirectory.appendingPathComponent("ltm-sessions-state").path]
+    [
+        "LTM_QEMU_DYLIB": tools.dylib.path, "LTM_HOST_SERVICE_WORKER": tools.services.path,
+        "LTM_STATE_DIR": FileManager.default.temporaryDirectory.appendingPathComponent("ltm-sessions-state").path,
+    ]
 }
 
 func format(_ value: Double?, _ digits: Int = 1) -> String { String(format: "%.\(digits)f", value ?? -1) }

@@ -14,7 +14,7 @@
 import Foundation
 
 public struct N45FTL {
-    static let logs = 17                              // FTLCxt.pLog slots the FTL uses (the 18th is not)
+    static let logs = 17  // FTLCxt.pLog slots the FTL uses (the 18th is not)
     static let virtualBlocks = N45NAND.blocksPerBank - N45NAND.ftlStart
 
     public let banks: Int
@@ -27,7 +27,9 @@ public struct N45FTL {
         let fm = FileManager.default
         let banks = (try fm.contentsOfDirectory(atPath: base.path)).filter { $0.hasPrefix("bank") }.count
         guard banks > 0 else { throw FirmwareError(.unsupported, "\(base.path): no bank<N> page directories") }
-        self.banks = banks; self.base = base; self.overlay = overlay
+        self.banks = banks
+        self.base = base
+        self.overlay = overlay
         let sb = N45NAND.superblock(banks)
         let read = { (vpn: Int) in Self.page(base, overlay, N45NAND.location(vpn: vpn, banks: banks)) }
 
@@ -39,20 +41,29 @@ public struct N45FTL {
         }
         guard let vb = newest?.vb else { throw FirmwareError(.unsupported, "\(base.path): no FTL context") }
         guard let last = (1..<sb).reversed().lazy.compactMap({ read(vb * sb + $0) }).first, last.spare[9] == 0x43 else {
-            throw FirmwareError(.unsupported, "the 1.x FTL was not shut down cleanly (virtual block \(vb) does not end in its context); power the device off from the guest first")
+            throw FirmwareError(
+                .unsupported,
+                "the 1.x FTL was not shut down cleanly (virtual block \(vb) does not end in its context); power the device off from the guest first"
+            )
         }
         let cxt = last.data
         guard (0..<3).contains(where: { Int(Self.le16(cxt, 0x312 + 2 * $0)) == vb }) else {
-            throw FirmwareError(.unsupported, "FTL context in virtual block \(vb) does not list itself as a context block")
+            throw FirmwareError(
+                .unsupported,
+                "FTL context in virtual block \(vb) does not list itself as a context block"
+            )
         }
         var map: [UInt16] = []
         for i in 0..<N45NAND.mapTables {
-            guard let page = read(Int(Self.le32(cxt, 0x38 + 4 * i)))?.data else { throw FirmwareError(.unsupported, "FTL map page \(i) is missing") }
+            guard let page = read(Int(Self.le32(cxt, 0x38 + 4 * i)))?.data else {
+                throw FirmwareError(.unsupported, "FTL map page \(i) is missing")
+            }
             map += stride(from: 0, to: N45NAND.page, by: 2).map { Self.le16(page, $0) }
         }
         var table: [UInt16: (UInt16, Int)] = [:]
         for slot in 0..<Self.logs {
-            let vbn = Self.le16(cxt, 0x1A4 + 20 * slot + 4), lbn = Self.le16(cxt, 0x1A4 + 20 * slot + 6)
+            let vbn = Self.le16(cxt, 0x1A4 + 20 * slot + 4)
+            let lbn = Self.le16(cxt, 0x1A4 + 20 * slot + 6)
             if vbn != 0xFFFF { table[lbn] = (vbn, slot) }
         }
         var offsets: [UInt16] = []
@@ -60,12 +71,16 @@ public struct N45FTL {
             let pages = (Self.logs * sb * 2 + N45NAND.page - 1) / N45NAND.page
             var raw: [UInt8] = []
             for i in 0..<pages {
-                guard let page = read(Int(Self.le32(cxt, 0x110 + 4 * i)))?.data else { throw FirmwareError(.unsupported, "FTL log-offset page \(i) is missing") }
+                guard let page = read(Int(Self.le32(cxt, 0x110 + 4 * i)))?.data else {
+                    throw FirmwareError(.unsupported, "FTL log-offset page \(i) is missing")
+                }
                 raw += page
             }
             offsets = stride(from: 0, to: Self.logs * sb * 2, by: 2).map { Self.le16(raw, $0) }
         }
-        self.map = map; self.logTable = table; self.offsets = offsets
+        self.map = map
+        self.logTable = table
+        self.offsets = offsets
     }
 
     public var logBlocksInUse: Int { logTable.count }
@@ -89,13 +104,20 @@ public struct N45FTL {
         var bytes: Data?
         if let overlay {
             bytes = try? Data(contentsOf: overlay.appendingPathComponent(name))
-            if bytes == nil, FileManager.default.fileExists(atPath: overlay.appendingPathComponent("bank\(p.bank)/blk\(p.page / N45NAND.pagesPerBlock).erased").path) {
+            if bytes == nil,
+                FileManager.default.fileExists(
+                    atPath: overlay.appendingPathComponent("bank\(p.bank)/blk\(p.page / N45NAND.pagesPerBlock).erased")
+                        .path
+                )
+            {
                 return nil
             }
         }
         guard let d = bytes ?? (try? Data(contentsOf: base.appendingPathComponent(name))) else { return nil }
         var b = [UInt8](d)
-        if b.count < N45NAND.page + N45NAND.spare { b += [UInt8](repeating: 0, count: N45NAND.page + N45NAND.spare - b.count) }
+        if b.count < N45NAND.page + N45NAND.spare {
+            b += [UInt8](repeating: 0, count: N45NAND.page + N45NAND.spare - b.count)
+        }
         return (Array(b[0..<N45NAND.page]), Array(b[N45NAND.page..<N45NAND.page + N45NAND.spare]))
     }
 

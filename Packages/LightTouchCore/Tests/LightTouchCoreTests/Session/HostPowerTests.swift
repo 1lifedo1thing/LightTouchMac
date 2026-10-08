@@ -1,8 +1,9 @@
-import Foundation
-import Testing
-import HostServiceWire
-import HostRuntime
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import HostServiceWire
+import Testing
+
 @testable import LightTouchCore
 
 /// The app's side of host power: the screen's visibility reaches the helper once per change and paces the status
@@ -32,23 +33,37 @@ struct HostPowerTests {
             power.hostWillSleep()
             #expect(c.state == .paused && c.link.commands == [.machine(.pause)])
             power.hostDidWake()
-            #expect(c.state == .running && c.link.commands == [.machine(.pause), .machine(.resume)] && c.steps == ["resyncTimeZone"])
+            #expect(
+                c.state == .running && c.link.commands == [.machine(.pause), .machine(.resume)]
+                    && c.steps == ["resyncTimeZone"]
+            )
             power.hostDidWake()
             #expect(c.steps == ["resyncTimeZone"], "a second wake does nothing")
 
-            let paused = FakeSession(directory: directory); paused.state = .paused
+            let paused = FakeSession(directory: directory)
+            paused.state = .paused
             let pausedPower = HostPower(host: paused) {}
-            pausedPower.hostWillSleep(); pausedPower.hostDidWake()
-            #expect(paused.state == .paused && paused.link.commands.isEmpty && paused.steps.isEmpty, "the user's pause stays")
-            let off = FakeSession(directory: directory); off.state = .poweredOff
+            pausedPower.hostWillSleep()
+            pausedPower.hostDidWake()
+            #expect(
+                paused.state == .paused && paused.link.commands.isEmpty && paused.steps.isEmpty,
+                "the user's pause stays"
+            )
+            let off = FakeSession(directory: directory)
+            off.state = .poweredOff
             let offPower = HostPower(host: off) {}
-            offPower.hostWillSleep(); offPower.hostDidWake()
+            offPower.hostWillSleep()
+            offPower.hostDidWake()
             #expect(off.link.commands.isEmpty && off.steps.isEmpty, "a device not running is left alone")
-            let stopping = FakeSession(directory: directory); stopping.state = .running
+            let stopping = FakeSession(directory: directory)
+            stopping.state = .running
             stopping.ladder.halt { _ in }
             let stoppingPower = HostPower(host: stopping) {}
             stoppingPower.hostWillSleep()
-            #expect(stopping.state == .running && !stopping.link.commands.contains(.machine(.pause)), "a stopping device isn't paused")
+            #expect(
+                stopping.state == .running && !stopping.link.commands.contains(.machine(.pause)),
+                "a stopping device isn't paused"
+            )
         }
     }
 
@@ -57,7 +72,10 @@ struct HostPowerTests {
             let c = FakeSession(directory: directory)
             c.state = .booting
             c.pause()
-            #expect(c.state == .booting && c.link.commands == [.machine(.pause)], "a booting VM pauses but stays booting")
+            #expect(
+                c.state == .booting && c.link.commands == [.machine(.pause)],
+                "a booting VM pauses but stays booting"
+            )
             c.state = .paused
             c.storageFailed = true
             c.resume()
@@ -70,14 +88,17 @@ struct HostPowerTests {
 
     @Test func installsHoldOffIdleSleep() async throws {
         func holdsIdleSleep() throws -> Bool {
-            let process = Process(), out = Pipe()
+            let process = Process()
+            let out = Pipe()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
             process.arguments = ["-g", "assertions"]
             process.standardOutput = out
             try process.run()
             let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
             process.waitUntilExit()
-            return text.split(separator: "\n").contains { $0.contains("pid \(getpid())(") && $0.contains("PreventUserIdleSystemSleep") }
+            return text.split(separator: "\n").contains {
+                $0.contains("pid \(getpid())(") && $0.contains("PreventUserIdleSystemSleep")
+            }
         }
         let queue = InstallationQueue()
         #expect(try !holdsIdleSleep(), "no assertion before any work")

@@ -3,8 +3,8 @@
 // manifests/*.json.
 
 import FirmwareSchema
-import HostRuntime
 import Foundation
+import HostRuntime
 
 public nonisolated struct FirmwareCatalog: Codable, Sendable {
     public var format: Int
@@ -13,11 +13,19 @@ public nonisolated struct FirmwareCatalog: Codable, Sendable {
     public var firstRun: String?
     /// Entries the app ships prepared: entry id -> its packed base under the app's Resources (firmwarekit pack-base).
     public var bundled: [String: String]?
-    public enum CodingKeys: String, CodingKey { case format, entries, bundled, firstRun = "first_run" }
+    public enum CodingKeys: String, CodingKey {
+        case format, entries, bundled
+        case firstRun = "first_run"
+    }
 
     public struct Entry: Codable, Sendable, Identifiable, Equatable {
         /// `untested`: enumerated from Apple's list with public keys, never run through the pipeline.
-        public enum Status: String, Codable, Sendable { case available, experimental, comingSoon = "coming_soon", userIPSW = "user_ipsw", untested }
+        public enum Status: String, Codable, Sendable {
+            case available, experimental
+            case comingSoon = "coming_soon"
+            case userIPSW = "user_ipsw"
+            case untested
+        }
 
         public typealias Source = FirmwareWire.Entry.Source
         public typealias Key = FirmwareWire.Entry.Key
@@ -35,9 +43,14 @@ public nonisolated struct FirmwareCatalog: Codable, Sendable {
         public init(from decoder: Decoder) throws {
             wire = try FirmwareWire.Entry(from: decoder)
             guard Status(rawValue: wire.status) != nil, ["ipsw", "rar"].contains(wire.source.kind),
-                  wire.prerelease == nil || Prerelease(rawValue: wire.prerelease!) != nil else {
-                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath,
-                    debugDescription: "Unknown firmware presentation status, prerelease or source kind"))
+                wire.prerelease == nil || Prerelease(rawValue: wire.prerelease!) != nil
+            else {
+                throw DecodingError.dataCorrupted(
+                    .init(
+                        codingPath: decoder.codingPath,
+                        debugDescription: "Unknown firmware presentation status, prerelease or source kind"
+                    )
+                )
             }
         }
         public func encode(to encoder: Encoder) throws { try wire.encode(to: encoder) }
@@ -158,8 +171,13 @@ public nonisolated struct FirmwareCatalog: Codable, Sendable {
             var catalog = try load(from: url)
             // A build without the packed base (a development build) offers the entry as any other.
             for i in catalog.entries.indices {
-                guard let resource = catalog.entries[i].bundled, let url = Bundle.main.resourceURL?.appendingPathComponent(resource),
-                      FileManager.default.fileExists(atPath: url.path) else { catalog.entries[i].bundled = nil; continue }
+                guard let resource = catalog.entries[i].bundled,
+                    let url = Bundle.main.resourceURL?.appendingPathComponent(resource),
+                    FileManager.default.fileExists(atPath: url.path)
+                else {
+                    catalog.entries[i].bundled = nil
+                    continue
+                }
             }
             return catalog
         } catch { fatalError("firmware-catalog.json: \(error)") }
@@ -173,4 +191,3 @@ public nonisolated struct FirmwareCatalog: Codable, Sendable {
     /// The entry this app ships prepared (the iPod 3.1.3), if its base is here.
     public var bundledEntry: Entry? { entries.first { $0.bundled != nil } }
 }
-

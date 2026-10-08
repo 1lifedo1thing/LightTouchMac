@@ -3,14 +3,18 @@ import CoreGraphics
 import DeviceRuntime
 import Foundation
 import Testing
+
 @testable import LightTouchCore
 
 /// The guest's audio as the helper delivers it: 440 Hz left, 880 Hz right, 44.1 kHz S16LE in 10 ms packets on the
 /// capture's own clock, with a one-second pause (1 s to 2 s) and 3 s in all. `now` is the clock the test advances.
-nonisolated private final class ToneSource: @unchecked Sendable {   // lock-protected
+nonisolated private final class ToneSource: @unchecked Sendable {  // lock-protected
     private let lock = NSLock()
     private var now = 0.0, frame = 0
-    var time: Double { get { lock.withLock { now } } set { lock.withLock { now = newValue } } }
+    var time: Double {
+        get { lock.withLock { now } }
+        set { lock.withLock { now = newValue } }
+    }
 
     /// One packet, or 0 bytes when the clock hasn't reached the next one (or the source is done).
     func read(_ buffer: UnsafeMutableRawPointer, _ seconds: inout Double) -> Int {
@@ -31,9 +35,15 @@ nonisolated private final class ToneSource: @unchecked Sendable {   // lock-prot
     /// LightTouchDevice's AudioPump, in process: drains the source into the GuestAudioCapture the recorder reads,
     /// as the helper's `.audio` and `.audioEnded` events would.
     func capture() -> GuestAudioCapture {
-        nonisolated final class Flag: @unchecked Sendable { let lock = NSLock(); var stopped = false }   // lock-protected
+        nonisolated final class Flag: @unchecked Sendable {
+            let lock = NSLock()
+            var stopped = false
+        }  // lock-protected
         let flag = Flag()
-        let capture = GuestAudioCapture(clock: { [self] in time }, stop: { _ in flag.lock.withLock { flag.stopped = true } })
+        let capture = GuestAudioCapture(
+            clock: { [self] in time },
+            stop: { _ in flag.lock.withLock { flag.stopped = true } }
+        )
         capture.begin(generation: 1)
         Thread.detachNewThread { [self] in
             var buffer = [UInt8](repeating: 0, count: 16384)
@@ -44,7 +54,9 @@ nonisolated private final class ToneSource: @unchecked Sendable {   // lock-prot
                     capture.receive(.audio(generation: 1, seconds: seconds, pcm: Data(buffer[0..<n])))
                     if n > 0 { continue }
                 }
-                if flag.lock.withLock({ flag.stopped }) { return capture.receive(.audioEnded(generation: 1, failed: false)) }
+                if flag.lock.withLock({ flag.stopped }) {
+                    return capture.receive(.audioEnded(generation: 1, failed: false))
+                }
                 usleep(5000)
             }
         }
@@ -53,9 +65,17 @@ nonisolated private final class ToneSource: @unchecked Sendable {   // lock-prot
 }
 
 private func solid(_ width: Int, _ height: Int, _ r: CGFloat, _ g: CGFloat, _ b: CGFloat) -> CGImage {
-    let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
-                            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
-    context.setFillColor(CGColor(red: r, green: g, blue: b, alpha: 1)); context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+    let context = CGContext(
+        data: nil,
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: width * 4,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!,
+        bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+    )!
+    context.setFillColor(CGColor(red: r, green: g, blue: b, alpha: 1))
+    context.fill(CGRect(x: 0, y: 0, width: width, height: height))
     return context.makeImage()!
 }
 
@@ -67,34 +87,59 @@ private struct Movie {
     func audio() async throws -> [[Double]] {
         let track = try #require(try await asset.loadTracks(withMediaType: .audio).first)
         let reader = try AVAssetReader(asset: asset)
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
-            AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false,
-            AVLinearPCMIsBigEndianKey: false, AVLinearPCMIsNonInterleaved: false, AVSampleRateKey: 44100, AVNumberOfChannelsKey: 2])
+        let output = AVAssetReaderTrackOutput(
+            track: track,
+            outputSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false, AVLinearPCMIsNonInterleaved: false, AVSampleRateKey: 44100,
+                AVNumberOfChannelsKey: 2,
+            ]
+        )
         reader.add(output)
         #expect(reader.startReading())
         var channels: [[Double]] = [[], []]
         while let buffer = output.copyNextSampleBuffer() {
             let start = Int((buffer.presentationTimeStamp.seconds * 44100).rounded())
             let block = try #require(CMSampleBufferGetDataBuffer(buffer))
-            var length = 0, pointer: UnsafeMutablePointer<CChar>?
-            CMBlockBufferGetDataPointer(block, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &pointer)
+            var length = 0
+            var pointer: UnsafeMutablePointer<CChar>?
+            CMBlockBufferGetDataPointer(
+                block,
+                atOffset: 0,
+                lengthAtOffsetOut: nil,
+                totalLengthOut: &length,
+                dataPointerOut: &pointer
+            )
             let frames = length / 4
             let samples = UnsafeRawPointer(pointer!).assumingMemoryBound(to: Int16.self)
-            for c in 0..<2 where channels[c].count < start + frames { channels[c] += Array(repeating: 0, count: start + frames - channels[c].count) }
-            for i in 0..<frames where start + i >= 0 { for c in 0..<2 { channels[c][start + i] = Double(samples[i * 2 + c]) } }
+            for c in 0..<2 where channels[c].count < start + frames {
+                channels[c] += Array(repeating: 0, count: start + frames - channels[c].count)
+            }
+            for i in 0..<frames where start + i >= 0 {
+                for c in 0..<2 { channels[c][start + i] = Double(samples[i * 2 + c]) }
+            }
         }
         return channels
     }
 
     func frame(at seconds: Double) async throws -> (width: Int, height: Int, rgb: (Int, Int) -> [Int]) {
         let generator = AVAssetImageGenerator(asset: asset)
-        generator.requestedTimeToleranceBefore = .zero; generator.requestedTimeToleranceAfter = .zero
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
         let image = try await generator.image(at: CMTime(seconds: seconds, preferredTimescale: 600)).image
-        let width = image.width, height = image.height
+        let width = image.width
+        let height = image.height
         var bytes = [UInt8](repeating: 0, count: width * height * 4)
         bytes.withUnsafeMutableBytes { buffer in
-            let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
-                                    space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+            let context = CGContext(
+                data: buffer.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+            )!
             context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         }
         return (width, height, { x, y in (0..<3).map { Int(bytes[(y * width + x) * 4 + $0]) } })
@@ -103,12 +148,17 @@ private struct Movie {
 
 /// TestSupport's temporary directory, for async bodies.
 private func temporaryDirectory() throws -> URL {
-    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ltm-tests-" + UUID().uuidString, isDirectory: true)
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "ltm-tests-" + UUID().uuidString,
+        isDirectory: true
+    )
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory
 }
 
-private func rms(_ samples: ArraySlice<Double>) -> Double { (samples.reduce(0) { $0 + $1 * $1 } / Double(samples.count)).squareRoot() }
+private func rms(_ samples: ArraySlice<Double>) -> Double {
+    (samples.reduce(0) { $0 + $1 * $1 } / Double(samples.count)).squareRoot()
+}
 /// A tone's frequency from its rising zero crossings.
 private func frequency(_ samples: ArraySlice<Double>) -> Double {
     let s = Array(samples)
@@ -116,7 +166,9 @@ private func frequency(_ samples: ArraySlice<Double>) -> Double {
     guard let first = rising.first, let last = rising.last, last > first else { return 0 }
     return Double(rising.count - 1) * 44100 / Double(last - first)
 }
-private func near(_ a: [Int], _ b: [Int], _ tolerance: Int = 30) -> Bool { zip(a, b).allSatisfy { abs($0 - $1) < tolerance } }
+private func near(_ a: [Int], _ b: [Int], _ tolerance: Int = 30) -> Bool {
+    zip(a, b).allSatisfy { abs($0 - $1) < tolerance }
+}
 
 /// The production movie writer: native dimensions through portrait, landscape and rotation, the canvas background,
 /// stereo audio on the capture's clock with its pause kept, and a take that survives a crash.
@@ -125,15 +177,20 @@ struct ScreenMovieWriterTests {
     static let orange = [255, 64, 0], blue = [0, 128, 255]
 
     func record(_ mode: Mode, to url: URL) async throws {
-        let portrait = solid(320, 480, 1, 0.25, 0), landscape = solid(480, 320, 0, 0.5, 1)
+        let portrait = solid(320, 480, 1, 0.25, 0)
+        let landscape = solid(480, 320, 0, 0.5, 1)
         let tones = ToneSource()
         let writer = ScreenMovieWriter()
-        try await writer.start(url: url, audio: tones.capture(), canvasSize: mode == .canvas ? CGSize(width: 640, height: 400) : nil,
-                               background: mode == .canvas ? landscape : nil)
+        try await writer.start(
+            url: url,
+            audio: tones.capture(),
+            canvasSize: mode == .canvas ? CGSize(width: 640, height: 400) : nil,
+            background: mode == .canvas ? landscape : nil
+        )
         for tick in 0...30 {
             tones.time = Double(tick) / 10
             let turned = mode == .landscape || ((mode == .rotated || mode == .canvas) && tick > 15)
-            try await writer.append(turned ? landscape : portrait, seconds: 999)   // mixer and video share the capture clock
+            try await writer.append(turned ? landscape : portrait, seconds: 999)  // mixer and video share the capture clock
             try await Task.sleep(for: .milliseconds(10))
         }
         try await writer.finish(seconds: 999)
@@ -150,12 +207,13 @@ struct ScreenMovieWriterTests {
             #expect(try await movie.asset.loadTracks(withMediaType: .audio).count == 1)
             let video = try await movie.asset.loadTracks(withMediaType: .video)
             #expect(video.count == 1)
-            let expected = switch mode {
-            case .portrait: CGSize(width: 320, height: 480)
-            case .landscape: CGSize(width: 480, height: 320)
-            case .rotated: CGSize(width: 480, height: 480)   // the long side square: either orientation fits
-            case .canvas: CGSize(width: 640, height: 400)
-            }
+            let expected =
+                switch mode {
+                case .portrait: CGSize(width: 320, height: 480)
+                case .landscape: CGSize(width: 480, height: 320)
+                case .rotated: CGSize(width: 480, height: 480)  // the long side square: either orientation fits
+                case .canvas: CGSize(width: 640, height: 400)
+                }
             #expect(try await video[0].load(.naturalSize) == expected)
             #expect(abs(try await movie.asset.load(.duration).seconds - 3) < 0.1)
 
@@ -175,9 +233,12 @@ struct ScreenMovieWriterTests {
                 let frame = try await movie.frame(at: seconds)
                 let turned = mode == .landscape || ((mode == .rotated || mode == .canvas) && seconds > 1.5)
                 let color = turned ? Self.blue : Self.orange
-                #expect(near(frame.rgb(frame.width / 2, frame.height / 2), color), "\(mode) at \(seconds) s: \(frame.rgb(frame.width / 2, frame.height / 2))")
+                #expect(
+                    near(frame.rgb(frame.width / 2, frame.height / 2), color),
+                    "\(mode) at \(seconds) s: \(frame.rgb(frame.width / 2, frame.height / 2))"
+                )
                 switch mode {
-                case .portrait, .landscape:   // native crop reaches every corner: no padding, no scaling
+                case .portrait, .landscape:  // native crop reaches every corner: no padding, no scaling
                     #expect(near(frame.rgb(4, 4), color) && near(frame.rgb(frame.width - 5, frame.height - 5), color))
                 case .canvas:
                     #expect(near(frame.rgb(4, 4), Self.blue), "canvas lost its background")
@@ -194,12 +255,20 @@ struct ScreenMovieWriterTests {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         do {
-            let url = directory.appendingPathComponent("take.mov"), crashed = directory.appendingPathComponent("crashed.mov")
-            let context = CGContext(data: nil, width: 64, height: 96, bitsPerComponent: 8, bytesPerRow: 256,
-                                    space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+            let url = directory.appendingPathComponent("take.mov")
+            let crashed = directory.appendingPathComponent("crashed.mov")
+            let context = CGContext(
+                data: nil,
+                width: 64,
+                height: 96,
+                bitsPerComponent: 8,
+                bytesPerRow: 256,
+                space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+            )!
             let writer = ScreenMovieWriter()
             try await writer.start(url: url, canvasSize: CGSize(width: 64, height: 96))
-            for i in 0..<240 {   // 8 s at 30 fps, each frame different
+            for i in 0..<240 {  // 8 s at 30 fps, each frame different
                 context.setFillColor(CGColor(red: Double(i % 30) / 30, green: 0.5, blue: 0.2, alpha: 1))
                 context.fill(CGRect(x: 0, y: 0, width: 64, height: 96))
                 try await writer.append(context.makeImage()!, seconds: Double(i) / 30)
@@ -209,7 +278,8 @@ struct ScreenMovieWriterTests {
             try FileManager.default.copyItem(at: url, to: crashed)
             await writer.cancel()
             let asset = AVURLAsset(url: crashed)
-            let playable = try await asset.load(.isPlayable), seconds = try await asset.load(.duration).seconds
+            let playable = try await asset.load(.isPlayable)
+            let seconds = try await asset.load(.duration).seconds
             #expect(playable && seconds >= 4, "a crashed take: playable \(playable), \(seconds) s")
         }
     }

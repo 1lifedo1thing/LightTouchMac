@@ -1,6 +1,6 @@
-import LightTouchCore
-import FirmwareSchema
 import Cocoa
+import FirmwareSchema
+import LightTouchCore
 import SwiftUI
 
 /// Settings ▸ Storage: what each device and the app's stores take on disk
@@ -16,32 +16,51 @@ struct StorageSettingsView: View {
                 if usage.devices.isEmpty { Text("No devices").foregroundStyle(.secondary) }
                 ForEach(usage.devices, id: \.instance.id) { device in
                     let entry = model.catalog.entry(id: device.instance.firmware)
-                    StorageRow(title: model.name(device.instance.firmware),
-                               detail: "System \(size(device.base)) · Data \(size(device.data + device.snapshot))",
-                               action: "Delete Device…", enabled: entry.map(model.canDelete) ?? false) { entry.map(model.delete) }
+                    StorageRow(
+                        title: model.name(device.instance.firmware),
+                        detail: "System \(size(device.base)) · Data \(size(device.data + device.snapshot))",
+                        action: "Delete Device…",
+                        enabled: entry.map(model.canDelete) ?? false
+                    ) { entry.map(model.delete) }
                 }
             }
             Section("Firmware") {
                 if usage.ipsws.isEmpty { Text("No downloaded or imported IPSWs").foregroundStyle(.secondary) }
                 ForEach(usage.ipsws, id: \.url) { ipsw in
-                    let busy = FirmwareJobs.shared.jobs[ipsw.entry].map { if case .failed = $0 { false } else { true } } ?? false
+                    let busy =
+                        FirmwareJobs.shared.jobs[ipsw.entry].map { if case .failed = $0 { false } else { true } }
+                        ?? false
                     let kind = ipsw.url.path.hasPrefix(IPSWStore.shared.imports.path) ? "Imported" : "Downloaded"
-                    StorageRow(title: model.name(ipsw.entry), detail: "\(kind) · \(size(ipsw.bytes))",
-                               action: "Remove IPSW", enabled: !busy) { model.removeIPSW(ipsw.url) }
+                    StorageRow(
+                        title: model.name(ipsw.entry),
+                        detail: "\(kind) · \(size(ipsw.bytes))",
+                        action: "Remove IPSW",
+                        enabled: !busy
+                    ) { model.removeIPSW(ipsw.url) }
                 }
             }
             Section("Caches and Logs") {
-                let preparing = FirmwareJobs.shared.jobs.values.contains { if case .preparing = $0 { true } else { false } }
-                StorageRow(title: "Decrypted firmware", detail: size(usage.decrypted),
-                           action: "Clear Caches", enabled: usage.decrypted > 0 && !preparing) { model.clearCaches() }
+                let preparing = FirmwareJobs.shared.jobs.values.contains {
+                    if case .preparing = $0 { true } else { false }
+                }
+                StorageRow(
+                    title: "Decrypted firmware",
+                    detail: size(usage.decrypted),
+                    action: "Clear Caches",
+                    enabled: usage.decrypted > 0 && !preparing
+                ) { model.clearCaches() }
                 StorageRow(title: "Logs", detail: size(usage.logs))
             }
             Section("Apps") {
                 let unused = IPALibrary.unused(devices: DeviceLibrary.shared.instances)
                 let unusedBytes = unused.values.reduce(0) { $0 + $1.size }
-                StorageRow(title: "Library",
-                           detail: "\(IPALibrary.index.count) IPAs · \(size(usage.library))" + (unused.isEmpty ? "" : " · \(size(unusedBytes)) unused"),
-                           action: "Remove Unused Apps", enabled: !unused.isEmpty) { model.removeUnusedIPAs() }
+                StorageRow(
+                    title: "Library",
+                    detail: "\(IPALibrary.index.count) IPAs · \(size(usage.library))"
+                        + (unused.isEmpty ? "" : " · \(size(unusedBytes)) unused"),
+                    action: "Remove Unused Apps",
+                    enabled: !unused.isEmpty
+                ) { model.removeUnusedIPAs() }
             }
         }
     }
@@ -93,8 +112,11 @@ private struct StorageRow: View {
     /// Whether Storage is on screen: changes measure again only then (a download changes its job many times a second).
     @ObservationIgnored var isShown: () -> Bool = { false }
 
-    init(catalog: FirmwareCatalog = .bundled, delete: @escaping (FirmwareCatalog.Entry) -> Void,
-         canDelete: @escaping (FirmwareCatalog.Entry) -> Bool) {
+    init(
+        catalog: FirmwareCatalog = .bundled,
+        delete: @escaping (FirmwareCatalog.Entry) -> Void,
+        canDelete: @escaping (FirmwareCatalog.Entry) -> Bool
+    ) {
         self.catalog = catalog
         self.delete = delete
         self.canDelete = canDelete
@@ -112,7 +134,9 @@ private struct StorageRow: View {
 
     func reload() {
         loading?.cancel()
-        let instances = DeviceLibrary.shared.instances, catalog = catalog, store = IPSWStore.shared
+        let instances = DeviceLibrary.shared.instances
+        let catalog = catalog
+        let store = IPSWStore.shared
         loading = Task { [weak self] in
             let usage = await Task.detached { Self.measure(instances, catalog: catalog, store: store) }.value
             guard !Task.isCancelled else { return }
@@ -135,17 +159,28 @@ private struct StorageRow: View {
         return total
     }
 
-    nonisolated static func measure(_ instances: [DeviceInstance], catalog: FirmwareCatalog, store: IPSWStore) -> Usage {
+    nonisolated static func measure(_ instances: [DeviceInstance], catalog: FirmwareCatalog, store: IPSWStore) -> Usage
+    {
         var usage = Usage()
         for instance in instances {
             let paths = instance.paths
-            let nor = paths.writableNOR.flatMap { $0.path.hasPrefix(paths.overlay.path + "/") ? nil : allocated($0) } ?? 0
-            let snapshot = [paths.snapshot, paths.snapshotMeta, paths.snapshotTmp, paths.snapshotBad].map(allocated).reduce(0, +)
-            usage.devices.append(.init(instance: instance, base: allocated(paths.base), data: allocated(paths.overlay) + nor, snapshot: snapshot))
+            let nor =
+                paths.writableNOR.flatMap { $0.path.hasPrefix(paths.overlay.path + "/") ? nil : allocated($0) } ?? 0
+            let snapshot = [paths.snapshot, paths.snapshotMeta, paths.snapshotTmp, paths.snapshotBad].map(allocated)
+                .reduce(0, +)
+            usage.devices.append(
+                .init(
+                    instance: instance,
+                    base: allocated(paths.base),
+                    data: allocated(paths.overlay) + nor,
+                    snapshot: snapshot
+                )
+            )
         }
         for entry in catalog.entries {
             guard let sha1 = entry.source.sha1 else { continue }
-            for url in [store.download(sha1), store.imported(sha1)] where FileManager.default.fileExists(atPath: url.path) {
+            for url in [store.download(sha1), store.imported(sha1)]
+            where FileManager.default.fileExists(atPath: url.path) {
                 usage.ipsws.append((entry.id, url, allocated(url)))
             }
         }
@@ -179,7 +214,10 @@ private struct StorageRow: View {
         guard let executable = FirmwareJobs.preparer else { return }
         Task {
             do {
-                _ = try await FirmwareTool.run(["cache-prune", "--root", IPSWStore.cachesDirectory.appendingPathComponent("Decrypted").path], executable: executable)
+                _ = try await FirmwareTool.run(
+                    ["cache-prune", "--root", IPSWStore.cachesDirectory.appendingPathComponent("Decrypted").path],
+                    executable: executable
+                )
                 logEvent("storage: cleared unused decrypt cache")
             } catch { NSApp.presentError(error) }
             reload()

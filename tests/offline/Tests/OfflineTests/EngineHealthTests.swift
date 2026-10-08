@@ -1,5 +1,5 @@
-import Foundation
 import CIMobileDevice
+import Foundation
 import HostServiceWire
 import Testing
 
@@ -12,7 +12,10 @@ nonisolated enum Attachment {
     static func set(attached value: Bool) { lock.withLock { attached = value } }
     static func install() {
         IMDFake.ideviceNew = { device, _ in
-            precondition(String(cString: getenv("USBMUXD_SOCKET_ADDRESS")) == "fixture", "gate did not select the endpoint before the attachment call")
+            precondition(
+                String(cString: getenv("USBMUXD_SOCKET_ADDRESS")) == "fixture",
+                "gate did not select the endpoint before the attachment call"
+            )
             guard lock.withLock({ attached }) else { return IDEVICE_E_NO_DEVICE }
             device?.pointee = OpaquePointer(bitPattern: 1)
             return IDEVICE_E_SUCCESS

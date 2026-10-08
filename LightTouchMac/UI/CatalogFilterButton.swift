@@ -1,5 +1,5 @@
-import LightTouchCore
 import Cocoa
+import LightTouchCore
 
 /// The standard filter pull-down beside Installed/Store, over CatalogFilter.
 /// The family choice applies only on an iPad; an iPod's is dimmed. Each choice is saved as it's made.
@@ -19,7 +19,7 @@ final class CatalogFilterButton: NSPopUpButton {
         setAccessibilityLabel("Filter")
         toolTip = "Filter"
         (cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
-        menu!.addItem(withTitle: "", action: nil, keyEquivalent: "")   // a pull-down's first item is its face
+        menu!.addItem(withTitle: "", action: nil, keyEquivalent: "")  // a pull-down's first item is its face
         for (title, tag) in [("iPhone and iPad Apps", 0), ("iPad Apps Only", 1)] {
             menu!.addItem(withTitle: title, action: #selector(familyChosen(_:)), keyEquivalent: "").tag = tag
         }
@@ -35,7 +35,9 @@ final class CatalogFilterButton: NSPopUpButton {
 
     private func update() {
         let items = menu!.items
-        let symbol = filter.isActive(iPad: isIPad) ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+        let symbol =
+            filter.isActive(iPad: isIPad)
+            ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
         items[0].image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Filter")?
             .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))
         items[1].state = filter.iPadOnly ? .off : .on

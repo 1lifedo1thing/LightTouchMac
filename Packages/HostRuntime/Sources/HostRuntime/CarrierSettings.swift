@@ -26,8 +26,10 @@ public struct CarrierSettings: Codable, Equatable, Sendable {
 
     /// The modem's properties for these settings, in the order a boot applies them.
     public var properties: [(name: String, value: String)] {
-        [("carrier", carrier), ("mcc-mnc", mccMNC), ("registered", registered ? "on" : "off"),
-         ("sim-present", simPresent ? "on" : "off"), ("signal-dbm", String(signalDBM))]
+        [
+            ("carrier", carrier), ("mcc-mnc", mccMNC), ("registered", registered ? "on" : "off"),
+            ("sim-present", simPresent ? "on" : "off"), ("signal-dbm", String(signalDBM)),
+        ]
     }
 
     /// `-global` arguments that start the modem with these settings (any board's: M68's, N88's, N90's).

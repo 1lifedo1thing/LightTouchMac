@@ -20,19 +20,26 @@ public enum VFDecrypt {
     }
 
     public static func decrypt(from fd: Int32, output: URL, key: Data) throws {
-        guard key.count == 36 else { throw FirmwareError(.keyMissing, "vfdecrypt key must be 36 bytes, got \(key.count)") }
-        let aesKey = [UInt8](key.prefix(16)), hmacKey = [UInt8](key.dropFirst(16))
+        guard key.count == 36 else {
+            throw FirmwareError(.keyMissing, "vfdecrypt key must be 36 bytes, got \(key.count)")
+        }
+        let aesKey = [UInt8](key.prefix(16))
+        let hmacKey = [UInt8](key.dropFirst(16))
         var header = [UInt8](repeating: 0, count: 0x100)
         guard readFully(fd, &header, 0, 0x100) == 0x100, header[0..<8].elementsEqual("encrcdsa".utf8) else {
             throw FirmwareError(.unsupported, "not encrcdsa")
         }
         let be = { (o: Int, n: Int) in header[o..<o + n].reduce(UInt64(0)) { $0 << 8 | UInt64($1) } }
-        let bs = Int(be(52, 4)), dataOffset = Int(be(64, 8))
+        let bs = Int(be(52, 4))
+        let dataOffset = Int(be(64, 8))
         var left = be(56, 8)
-        guard bs > 0, bs % 16 == 0, bs <= 1 << 24 else { throw FirmwareError(.unsupported, "encrcdsa block size \(bs)") }
+        guard bs > 0, bs % 16 == 0, bs <= 1 << 24 else {
+            throw FirmwareError(.unsupported, "encrcdsa block size \(bs)")
+        }
 
         // Position at the data: header bytes already read count toward it; skip forward, never back.
-        var ct = [UInt8](repeating: 0, count: bs), pt = [UInt8](repeating: 0, count: bs)
+        var ct = [UInt8](repeating: 0, count: bs)
+        var pt = [UInt8](repeating: 0, count: bs)
         var carried = 0
         if dataOffset < 0x100 {
             carried = 0x100 - dataOffset
@@ -47,7 +54,8 @@ public enum VFDecrypt {
         }
 
         guard FileManager.default.createFile(atPath: output.path, contents: nil),
-              let out = FileHandle(forWritingAtPath: output.path) else {
+            let out = FileHandle(forWritingAtPath: output.path)
+        else {
             throw FirmwareError(.internal, "cannot create \(output.path)")
         }
         defer { try? out.close() }
@@ -57,18 +65,34 @@ public enum VFDecrypt {
             let r = carried + readFully(fd, &ct, carried, bs - carried)
             carried = 0
             guard r > 0 else { throw FirmwareError(.unsupported, "short image") }
-            guard r % 16 == 0 else { throw FirmwareError(.unsupported, "encrcdsa chunk \(n) is \(r) bytes, not whole AES blocks") }
+            guard r % 16 == 0 else {
+                throw FirmwareError(.unsupported, "encrcdsa chunk \(n) is \(r) bytes, not whole AES blocks")
+            }
             var nb = [UInt8(n >> 24 & 0xFF), UInt8(n >> 16 & 0xFF), UInt8(n >> 8 & 0xFF), UInt8(n & 0xFF)]
             var iv = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))
             CCHmac(CCHmacAlgorithm(kCCHmacAlgSHA1), hmacKey, hmacKey.count, &nb, 4, &iv)
             var got = 0
-            let status = CCCrypt(CCOperation(kCCDecrypt), CCAlgorithm(kCCAlgorithmAES), 0, aesKey, 16, iv,
-                                 ct, r, &pt, bs, &got)
+            let status = CCCrypt(
+                CCOperation(kCCDecrypt),
+                CCAlgorithm(kCCAlgorithmAES),
+                0,
+                aesKey,
+                16,
+                iv,
+                ct,
+                r,
+                &pt,
+                bs,
+                &got
+            )
             guard status == kCCSuccess else { throw FirmwareError(.internal, "CCCrypt failed (\(status))") }
             let take = min(UInt64(got), left)
             pending.append(contentsOf: pt[0..<Int(take)])
             left -= take
-            if pending.count >= 1 << 22 { try out.write(contentsOf: pending); pending.removeAll(keepingCapacity: true) }
+            if pending.count >= 1 << 22 {
+                try out.write(contentsOf: pending)
+                pending.removeAll(keepingCapacity: true)
+            }
             n += 1
         }
         try out.write(contentsOf: pending)

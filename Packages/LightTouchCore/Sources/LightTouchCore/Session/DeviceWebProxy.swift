@@ -3,11 +3,11 @@
 // writes the routing and forwards the guest to the helper's proxy; the foreground watch applies a change to the
 // guest once it answers.
 
+import DeviceRuntime
 import Foundation
-import Observation
 import HostRuntime
 import HostServiceWire
-import DeviceRuntime
+import Observation
 
 @Observable public final class DeviceWebProxy {
     @ObservationIgnored private let directoryNow: () -> URL
@@ -31,7 +31,11 @@ import DeviceRuntime
     @ObservationIgnored public private(set) var endpoint: WebProxyEndpoint?
 
     public func configure(_ value: WebProxyConfiguration) throws {
-        guard available else { throw DeviceToolsError.failed("The proxy is unavailable. Start the \(shortName) and connect it to the internet.") }
+        guard available else {
+            throw DeviceToolsError.failed(
+                "The proxy is unavailable. Start the \(shortName) and connect it to the internet."
+            )
+        }
         try value.save(in: directory)
         configuration = value
         revision += 1
@@ -60,8 +64,11 @@ import DeviceRuntime
     /// One pass of the foreground watch: when the routing changed since `applied` (the revision this boot last
     /// applied), sets the guest's proxy through `setUp` (on or off) and returns the revision applied now. Throws
     /// CancellationError when the watch should end: cancelled, or `isCurrent` says a later boot took over.
-    public func apply(since applied: Int?, isCurrent: () -> Bool,
-                      setUp: (_ enabled: Bool) async throws -> WebProxyStatus) async throws -> Int? {
+    public func apply(
+        since applied: Int?,
+        isCurrent: () -> Bool,
+        setUp: (_ enabled: Bool) async throws -> WebProxyStatus
+    ) async throws -> Int? {
         guard available, applied != revision else { return applied }
         let revision = self.revision
         if status == .waiting { status = .applying }

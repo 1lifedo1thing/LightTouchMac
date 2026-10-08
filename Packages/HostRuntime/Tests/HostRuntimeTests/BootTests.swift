@@ -1,22 +1,42 @@
 import Foundation
-import Testing
 import HostRuntime
+import Testing
 
 struct BootTests {
     /// The radio boards boot with their modem (baseband=on) reporting the seed's IMEI, and its data netdev is
     /// Wi-Fi's under id=cell0; No SIM and No Service keep the modem. The iPad gets none of it.
     @Test func radioBoardsGetModemIMEIAndCellNetdev() throws {
-        let identity: [String: Any] = ["serial-number": "ABCDEFGHJKL", "wifi-mac": "02:11:22:33:44:66",
-                                       "bt-mac": "02:11:22:33:44:67", "seed": "iphone4-test"]
+        let identity: [String: Any] = [
+            "serial-number": "ABCDEFGHJKL", "wifi-mac": "02:11:22:33:44:66",
+            "bt-mac": "02:11:22:33:44:67", "seed": "iphone4-test",
+        ]
         let imei = IPhoneIdentity.imei(seed: "iphone4-test")
-        #expect(imei.count == 15 && imei.hasPrefix("00000000") && IPhoneIdentity.luhn(String(imei.prefix(14))) == Int(String(imei.last!)))
-        #expect(IPhoneIdentity.upgraded(identity)?.udid == IPhoneIdentity.udid(serial: "ABCDEFGHJKL", imei: imei,
-                                                                              wifiMAC: "02:11:22:33:44:66", btMAC: "02:11:22:33:44:67"))
+        #expect(
+            imei.count == 15 && imei.hasPrefix("00000000")
+                && IPhoneIdentity.luhn(String(imei.prefix(14))) == Int(String(imei.last!))
+        )
+        #expect(
+            IPhoneIdentity.upgraded(identity)?.udid
+                == IPhoneIdentity.udid(
+                    serial: "ABCDEFGHJKL",
+                    imei: imei,
+                    wifiMAC: "02:11:22:33:44:66",
+                    btMAC: "02:11:22:33:44:67"
+                )
+        )
         for (board, machine) in [(Board.n90, "iPhone-4"), (.n88, "n88"), (.k48, "ipad1")] {
             let f = try Fixture(board: board, strategy: "kboot", identity: identity)
             defer { try? FileManager.default.removeItem(at: f.root) }
-            let config = try f.prepare(board).configuration(bootArgs: "", usbAddress: nil, wifi: true, guestPackage: nil,
-                serial: "null", audio: [], netdev: "user,id=wifi0,guestfwd=tcp:10.0.2.100:3128-cmd:nc", cellular: .noSIM)
+            let config = try f.prepare(board).configuration(
+                bootArgs: "",
+                usbAddress: nil,
+                wifi: true,
+                guestPackage: nil,
+                serial: "null",
+                audio: [],
+                netdev: "user,id=wifi0,guestfwd=tcp:10.0.2.100:3128-cmd:nc",
+                cellular: .noSIM
+            )
             let m = config.argv[config.argv.firstIndex(of: "-M")! + 1]
             let radio = board != .k48
             #expect(m.hasPrefix(machine + ","))
@@ -33,14 +53,25 @@ struct BootTests {
         for board in [Board.n90, .n88, .m68, .k48, .n81] {
             let f = try Fixture(board: board, strategy: board == .m68 ? "iboot" : "kboot")
             defer { try? FileManager.default.removeItem(at: f.root) }
-            let config = try f.prepare(board).configuration(bootArgs: "", usbAddress: nil, wifi: true, guestPackage: nil,
-                serial: "null", audio: [], netdev: "user,id=wifi0", carrier: carrier)
+            let config = try f.prepare(board).configuration(
+                bootArgs: "",
+                usbAddress: nil,
+                wifi: true,
+                guestPackage: nil,
+                serial: "null",
+                audio: [],
+                netdev: "user,id=wifi0",
+                carrier: carrier
+            )
             #expect(config.argv.contains("ios-baseband.carrier=Panel") == board.hardware!.hasCellular)
         }
     }
 
     @Test func legacyWireDefaults() throws {
-        let boot = try JSONDecoder().decode(BootConfig.self, from: Data(#"{"argv":["LightTouchMac"],"machine":"ipad1"}"#.utf8))
+        let boot = try JSONDecoder().decode(
+            BootConfig.self,
+            from: Data(#"{"argv":["LightTouchMac"],"machine":"ipad1"}"#.utf8)
+        )
         #expect(boot.environment == [:])
         #expect(boot.webProxy == nil)
     }
@@ -62,12 +93,24 @@ private final class Fixture {
         var lock: [String: Any] = ["board": board.rawValue, "machine": ["aes-uid": "engine"]]
         if let strategy { lock["boot_strategy"] = strategy }
         try JSONSerialization.data(withJSONObject: lock).write(to: base.appendingPathComponent("device.lock.json"))
-        try JSONSerialization.data(withJSONObject: identity ?? ["die-id": ["0x123", "0x456"], "unique-chip-id": "0x234", "wifi-mac": "02:11:22:33:44:66"])
-            .write(to: base.appendingPathComponent("identity.json"))
+        try JSONSerialization.data(
+            withJSONObject: identity ?? [
+                "die-id": ["0x123", "0x456"], "unique-chip-id": "0x234", "wifi-mac": "02:11:22:33:44:66",
+            ]
+        )
+        .write(to: base.appendingPathComponent("identity.json"))
     }
     deinit { try? FileManager.default.removeItem(at: root) }
     func prepare(_ board: Board, key: String? = "base-A", panel: String? = nil) throws -> PreparedDeviceBoot {
-        try .prepare(board: board, base: base, overlay: overlay, writableNOR: nor, storageKey: key, bootrom: "rom", panel: panel)
+        try .prepare(
+            board: board,
+            base: base,
+            overlay: overlay,
+            writableNOR: nor,
+            storageKey: key,
+            bootrom: "rom",
+            panel: panel
+        )
     }
 }
 
@@ -76,8 +119,15 @@ extension BootTests {
     func sharedAssembly(board: Board) throws {
         let f = try Fixture(board: board, strategy: "iboot")
         let prepared = try f.prepare(board)
-        let config = try prepared.configuration(bootArgs: "args", usbAddress: "127.0.0.1:1234", wifi: true,
-            guestPackage: "offer", serial: "null", audio: ["-audio", "driver=none"], netdev: "user,id=wifi0")
+        let config = try prepared.configuration(
+            bootArgs: "args",
+            usbAddress: "127.0.0.1:1234",
+            wifi: true,
+            guestPackage: "offer",
+            serial: "null",
+            audio: ["-audio", "driver=none"],
+            netdev: "user,id=wifi0"
+        )
         let machine = config.argv[2]
         #expect(machine.contains(BootRecipe.escape(f.overlay.path)))
         #expect(config.argv.joined(separator: " ").contains(BootRecipe.escape(f.nor.path)))
@@ -93,26 +143,68 @@ extension BootTests {
         let expected: BootConfig
         switch board {
         case .n45, .m68:
-            expected = BootRecipe.iPod1G(.init(bootrom: "rom", iBoot: f.base.appendingPathComponent("iBoot.bin").path,
-                nand: f.base.appendingPathComponent("nand").path, writableNOR: f.nor.path, overlay: f.overlay.path,
-                usbAddress: "127.0.0.1:1234", guestPackage: "offer", machineOptions: ["aes-uid": "engine"]),
-                hardware: board.hardware!, serial: "null", audio: ["-audio", "driver=none"], netdev: "user,id=wifi0")
+            expected = BootRecipe.iPod1G(
+                .init(
+                    bootrom: "rom",
+                    iBoot: f.base.appendingPathComponent("iBoot.bin").path,
+                    nand: f.base.appendingPathComponent("nand").path,
+                    writableNOR: f.nor.path,
+                    overlay: f.overlay.path,
+                    usbAddress: "127.0.0.1:1234",
+                    guestPackage: "offer",
+                    machineOptions: ["aes-uid": "engine"]
+                ),
+                hardware: board.hardware!,
+                serial: "null",
+                audio: ["-audio", "driver=none"],
+                netdev: "user,id=wifi0"
+            )
         case .n72:
-            expected = BootRecipe.iPod(.init(bootArgs: "args", iBoot: f.base.appendingPathComponent("iBoot.bin").path,
-                bootrom: "rom", nand: f.base.appendingPathComponent("nand").path, nor: f.base.appendingPathComponent("nor.bin").path,
-                writableNOR: f.nor.path, overlay: f.overlay.path, usbAddress: "127.0.0.1:1234", wifi: true,
-                gidBlobs: f.base.appendingPathComponent("gid-blobs.bin").path, guestPackage: "offer",
-                machineOptions: ["aes-uid": "engine", "ecid": "0x234", "wifi-mac": "02:11:22:33:44:66"]),
-                hardware: board.hardware!, serial: "null", audio: ["-audio", "driver=none"], netdev: "user,id=wifi0", restore: [])
+            expected = BootRecipe.iPod(
+                .init(
+                    bootArgs: "args",
+                    iBoot: f.base.appendingPathComponent("iBoot.bin").path,
+                    bootrom: "rom",
+                    nand: f.base.appendingPathComponent("nand").path,
+                    nor: f.base.appendingPathComponent("nor.bin").path,
+                    writableNOR: f.nor.path,
+                    overlay: f.overlay.path,
+                    usbAddress: "127.0.0.1:1234",
+                    wifi: true,
+                    gidBlobs: f.base.appendingPathComponent("gid-blobs.bin").path,
+                    guestPackage: "offer",
+                    machineOptions: ["aes-uid": "engine", "ecid": "0x234", "wifi-mac": "02:11:22:33:44:66"]
+                ),
+                hardware: board.hardware!,
+                serial: "null",
+                audio: ["-audio", "driver=none"],
+                netdev: "user,id=wifi0",
+                restore: []
+            )
         case .k48:
-            expected = BootRecipe.iPad(.init(boot: .iBoot(image: f.base.appendingPathComponent("iBoot.bin").path,
-                writableNOR: f.nor.path, gidBlobs: f.base.appendingPathComponent("gid-blobs.bin").path),
-                nand: f.base.appendingPathComponent("nand").path, overlay: f.overlay.path, dieID: "0x123:0x456",
-                usbAddress: "127.0.0.1:1234", wifi: true, guestPackage: "offer",
-                machineOptions: ["aes-uid": "engine", "wifi-mac": "02:11:22:33:44:66"]),
-                hardware: board.hardware!, serial: "null", audio: ["-audio", "driver=none"], netdev: "user,id=wifi0", restore: [])
+            expected = BootRecipe.iPad(
+                .init(
+                    boot: .iBoot(
+                        image: f.base.appendingPathComponent("iBoot.bin").path,
+                        writableNOR: f.nor.path,
+                        gidBlobs: f.base.appendingPathComponent("gid-blobs.bin").path
+                    ),
+                    nand: f.base.appendingPathComponent("nand").path,
+                    overlay: f.overlay.path,
+                    dieID: "0x123:0x456",
+                    usbAddress: "127.0.0.1:1234",
+                    wifi: true,
+                    guestPackage: "offer",
+                    machineOptions: ["aes-uid": "engine", "wifi-mac": "02:11:22:33:44:66"]
+                ),
+                hardware: board.hardware!,
+                serial: "null",
+                audio: ["-audio", "driver=none"],
+                netdev: "user,id=wifi0",
+                restore: []
+            )
         case .n81, .n90, .n88, .n18:
-            return   // kboot only: missingLegacyStrategyKeepsBoardDefault covers it
+            return  // kboot only: missingLegacyStrategyKeepsBoardDefault covers it
         }
         #expect(config == expected)
     }
@@ -122,8 +214,15 @@ extension BootTests {
     func panelOption(board: Board) throws {
         let f = try Fixture(board: board, strategy: "iboot")
         func machine(_ panel: String?) throws -> String {
-            try f.prepare(board, panel: panel).configuration(bootArgs: "", usbAddress: nil, wifi: false,
-                guestPackage: nil, serial: "null", audio: [], netdev: nil).argv[2]
+            try f.prepare(board, panel: panel).configuration(
+                bootArgs: "",
+                usbAddress: nil,
+                wifi: false,
+                guestPackage: nil,
+                serial: "null",
+                audio: [],
+                netdev: nil
+            ).argv[2]
         }
         #expect(!(try machine(nil)).contains("panel="))
         #expect(try machine("320x504").contains(",panel=320x504"))
@@ -158,8 +257,15 @@ extension BootTests {
     @Test(arguments: ["bootrom", "iboot", "kboot"])
     func iPadStrategies(strategy: String) throws {
         let f = try Fixture(board: .k48, strategy: strategy)
-        let c = try f.prepare(.k48).configuration(bootArgs: "", usbAddress: nil, wifi: false,
-            guestPackage: nil, serial: "null", audio: [], netdev: nil)
+        let c = try f.prepare(.k48).configuration(
+            bootArgs: "",
+            usbAddress: nil,
+            wifi: false,
+            guestPackage: nil,
+            serial: "null",
+            audio: [],
+            netdev: nil
+        )
         let option = strategy == "kboot" ? "kboot=" : strategy == "iboot" ? "iboot=" : "bootrom="
         #expect(c.argv[2].contains(option))
         if strategy == "bootrom" { #expect(c.argv[2].contains("development-fuses=off")) }
@@ -176,15 +282,23 @@ extension BootTests {
     @Test func missingBootInputAndLegacyOverlayRefused() throws {
         let f = try Fixture(board: .k48, strategy: "iboot")
         try FileManager.default.removeItem(at: f.base.appendingPathComponent("gid-blobs.bin"))
-        do { _ = try f.prepare(.k48); Issue.record("accepted missing key data") }
-        catch let error as CocoaError { #expect((error.userInfo[NSFilePathErrorKey] as? String)?.hasSuffix("gid-blobs.bin") == true) }
+        do {
+            _ = try f.prepare(.k48)
+            Issue.record("accepted missing key data")
+        } catch let error as CocoaError {
+            #expect((error.userInfo[NSFilePathErrorKey] as? String)?.hasSuffix("gid-blobs.bin") == true)
+        }
         try FileManager.default.createDirectory(at: f.overlay, withIntermediateDirectories: true)
         try Data([1]).write(to: f.overlay.appendingPathComponent("dirty-page"))
         #expect(try PreparedDeviceBoot.pinOverlay(f.overlay, toBase: "base-A") == false)
     }
 
     @Test func wireRoundTripAndExactKeys() throws {
-        var boot = BootConfig(argv: ["LightTouchMac", "-netdev", "user,id=wifi0,restrict=on"], environment: ["KEY": "value"], machine: "ipad1")
+        var boot = BootConfig(
+            argv: ["LightTouchMac", "-netdev", "user,id=wifi0,restrict=on"],
+            environment: ["KEY": "value"],
+            machine: "ipad1"
+        )
         boot.webProxy = .init(config: "routing", socket: "socket")
         let data = try JSONEncoder().encode(boot)
         #expect(try JSONDecoder().decode(BootConfig.self, from: data) == boot)
@@ -198,24 +312,44 @@ extension BootTests {
     @Test func n72ROMDoesNotRequireDirectIBoot() throws {
         let f = try Fixture(board: .n72, strategy: "bootrom")
         try FileManager.default.removeItem(at: f.base.appendingPathComponent("iBoot.bin"))
-        let config = try f.prepare(.n72).configuration(bootArgs: "", usbAddress: nil, wifi: false,
-            guestPackage: nil, serial: "null", audio: [], netdev: nil)
+        let config = try f.prepare(.n72).configuration(
+            bootArgs: "",
+            usbAddress: nil,
+            wifi: false,
+            guestPackage: nil,
+            serial: "null",
+            audio: [],
+            netdev: nil
+        )
         #expect(config.argv[2].contains(",direct-iboot=,direct-llb="))
         #expect(config.argv[2].contains("gid-blobs="))
     }
 
     @Test func legacyIPadStrategyAndRecordIdentityPrecedence() throws {
         let f = try Fixture(board: .k48, strategy: nil)
-        let prepared = try PreparedDeviceBoot.prepare(board: .k48, base: f.base, overlay: f.overlay,
-            writableNOR: f.nor, storageKey: "base-A", bootrom: "rom", dieID: "record:identity")
-        let config = try prepared.configuration(bootArgs: "", usbAddress: nil, wifi: false,
-            guestPackage: nil, serial: "null", audio: [], netdev: nil)
+        let prepared = try PreparedDeviceBoot.prepare(
+            board: .k48,
+            base: f.base,
+            overlay: f.overlay,
+            writableNOR: f.nor,
+            storageKey: "base-A",
+            bootrom: "rom",
+            dieID: "record:identity"
+        )
+        let config = try prepared.configuration(
+            bootArgs: "",
+            usbAddress: nil,
+            wifi: false,
+            guestPackage: nil,
+            serial: "null",
+            audio: [],
+            netdev: nil
+        )
         #expect(config.argv[2].contains("kboot="))
         #expect(config.argv[2].contains("iboot=") == false)
         #expect(config.argv[2].contains("die-id=record:identity"))
     }
 }
-
 
 extension BootTests {
     @Test func explicitPathsDoNotImplyManagedOwnership() throws {
@@ -226,8 +360,14 @@ extension BootTests {
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
         let overlay = link.appendingPathComponent("overlay")
         let nor = link.appendingPathComponent("nor.bin")
-        _ = try PreparedDeviceBoot.prepare(board: .n72, base: f.base, overlay: overlay,
-            writableNOR: nor, storageKey: "base-A", bootrom: "rom")
+        _ = try PreparedDeviceBoot.prepare(
+            board: .n72,
+            base: f.base,
+            overlay: overlay,
+            writableNOR: nor,
+            storageKey: "base-A",
+            bootrom: "rom"
+        )
         #expect(FileManager.default.fileExists(atPath: outside.appendingPathComponent("overlay/.base-identity").path))
         #expect(try Data(contentsOf: outside.appendingPathComponent("nor.bin")).count == 1_048_576)
         // Runtime supports explicit URLs; application managed-record authorization
@@ -236,19 +376,24 @@ extension BootTests {
 }
 
 extension BootTests {
-    @Test(arguments: Board.allCases, [
-        "{", "[]", "true", "42", "null", "\"iboot\"",
-        "{\"boot_strategy\":null}", "{\"boot_strategy\":true}",
-        "{\"boot_strategy\":17}", "{\"boot_strategy\":[]}", "{\"boot_strategy\":{}}"
-    ])
+    @Test(
+        arguments: Board.allCases,
+        [
+            "{", "[]", "true", "42", "null", "\"iboot\"",
+            "{\"boot_strategy\":null}", "{\"boot_strategy\":true}",
+            "{\"boot_strategy\":17}", "{\"boot_strategy\":[]}", "{\"boot_strategy\":{}}",
+        ]
+    )
     func invalidPresentLockRejectedBeforeStorage(board: Board, json: String) throws {
         let f = try Fixture(board: board, strategy: nil)
         let lock = f.base.appendingPathComponent("device.lock.json")
         let data = Data(json.utf8)
         try data.write(to: lock)
         let norBefore = try Data(contentsOf: f.base.appendingPathComponent("nor.bin"))
-        do { _ = try f.prepare(board); Issue.record("accepted invalid present boot lock: \(json)") }
-        catch let error as CocoaError {
+        do {
+            _ = try f.prepare(board)
+            Issue.record("accepted invalid present boot lock: \(json)")
+        } catch let error as CocoaError {
             #expect(error.code == .fileReadCorruptFile)
             #expect(error.userInfo[NSFilePathErrorKey] as? String == lock.path)
         }
@@ -265,8 +410,15 @@ extension BootTests {
         let lock = f.base.appendingPathComponent("device.lock.json")
         if missingLock { try FileManager.default.removeItem(at: lock) }
         #expect(try DeviceLock.read(lock)?.bootStrategy == nil)
-        let c = try f.prepare(board).configuration(bootArgs: "", usbAddress: nil, wifi: false,
-            guestPackage: nil, serial: "null", audio: [], netdev: nil)
+        let c = try f.prepare(board).configuration(
+            bootArgs: "",
+            usbAddress: nil,
+            wifi: false,
+            guestPackage: nil,
+            serial: "null",
+            audio: [],
+            netdev: nil
+        )
         switch board {
         case .k48: #expect(c.argv[2].hasPrefix("ipad1,kboot="))
         case .n81, .n90:
@@ -278,15 +430,27 @@ extension BootTests {
             let m = board == .n88 ? "n88" : "n18"
             #expect(c.argv[2].hasPrefix(m + ",kboot=") && c.argv[2].contains(",nor-rw=") && c.machine == m)
             #expect(c.argv[2].contains(",wifi=off") && !c.argv.contains { $0.hasPrefix("usb-kbd") })
-        case .n72: #expect(c.argv[2].contains(",direct-iboot=" + BootRecipe.escape(f.base.appendingPathComponent("iBoot.bin").path)))
+        case .n72:
+            #expect(
+                c.argv[2].contains(
+                    ",direct-iboot=" + BootRecipe.escape(f.base.appendingPathComponent("iBoot.bin").path)
+                )
+            )
         case .n45, .m68:
             #expect(c.argv[2].hasPrefix(board == .m68 ? "iPhone-2G," : "iPod-Touch-1G,"))
             #expect(c.argv[2].contains(",iboot=" + BootRecipe.escape(f.base.appendingPathComponent("iBoot.bin").path)))
             // only the iPhone has a modem, whose cellular data needs its cell0 slirp (off the LAN, like the default wifi0)
             #expect(c.argv.contains("user,id=cell0,lan=off") == (board == .m68))
             // with the web proxy's forward on Wi-Fi, cellular gets the same one
-            let proxied = try f.prepare(board).configuration(bootArgs: "", usbAddress: nil, wifi: true,
-                guestPackage: nil, serial: "null", audio: [], netdev: "user,id=wifi0,guestfwd=tcp:10.0.2.100:3128-cmd:x")
+            let proxied = try f.prepare(board).configuration(
+                bootArgs: "",
+                usbAddress: nil,
+                wifi: true,
+                guestPackage: nil,
+                serial: "null",
+                audio: [],
+                netdev: "user,id=wifi0,guestfwd=tcp:10.0.2.100:3128-cmd:x"
+            )
             #expect(proxied.argv.contains("user,id=cell0,guestfwd=tcp:10.0.2.100:3128-cmd:x") == (board == .m68))
         }
     }

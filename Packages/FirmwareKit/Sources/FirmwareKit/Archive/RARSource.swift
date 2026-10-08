@@ -13,19 +13,31 @@ import Foundation
 import Unrar
 
 public enum RARSource {
-    public static func unwrap(_ archive: URL, source: FirmwareWire.Entry.Source, to ipsw: URL,
-                              progress: ((Double) -> Void)? = nil) throws {
-        guard source.isArchive, let member = source.member, let sha1 = source.sha1, let archiveSHA1 = source.archiveSHA1 else {
+    public static func unwrap(
+        _ archive: URL,
+        source: FirmwareWire.Entry.Source,
+        to ipsw: URL,
+        progress: ((Double) -> Void)? = nil
+    ) throws {
+        guard source.isArchive, let member = source.member, let sha1 = source.sha1, let archiveSHA1 = source.archiveSHA1
+        else {
             throw FirmwareError(.unsupported, "not a rar source with member, sha1 and archive_sha1")
         }
         if let bytes = source.archiveBytes, size(archive) != bytes {
-            throw FirmwareError(.shaMismatch, "\(archive.lastPathComponent): \(size(archive)) bytes, not the archive's \(bytes)")
+            throw FirmwareError(
+                .shaMismatch,
+                "\(archive.lastPathComponent): \(size(archive)) bytes, not the archive's \(bytes)"
+            )
         }
         let got = try Preparer.digest(archive, Insecure.SHA1())
         guard got == archiveSHA1 else {
-            throw FirmwareError(.shaMismatch, "\(archive.lastPathComponent): SHA-1 \(got), not the archive's \(archiveSHA1)")
+            throw FirmwareError(
+                .shaMismatch,
+                "\(archive.lastPathComponent): SHA-1 \(got), not the archive's \(archiveSHA1)"
+            )
         }
-        let rar: Archive, entries: [Entry]
+        let rar: Archive
+        let entries: [Entry]
         do {
             rar = try Archive(fileURL: archive)
             entries = try rar.entries()
@@ -33,7 +45,11 @@ public enum RARSource {
             throw FirmwareError(.unsupported, "\(archive.lastPathComponent): not a readable RAR archive (\(error))")
         }
         // RAR names use the archiver's separator (BetaArchive's are Windows paths: media_ipsw\iPod4,1_….ipsw).
-        guard let entry = entries.first(where: { $0.fileName.replacingOccurrences(of: "\\", with: "/").hasSuffix(member) && !$0.directory }) else {
+        guard
+            let entry = entries.first(where: {
+                $0.fileName.replacingOccurrences(of: "\\", with: "/").hasSuffix(member) && !$0.directory
+            })
+        else {
             throw FirmwareError(.unsupported, "\(archive.lastPathComponent) has no \(member)")
         }
         let partial = ipsw.deletingLastPathComponent().appendingPathComponent(".\(ipsw.lastPathComponent).unrar")
@@ -43,12 +59,20 @@ public enum RARSource {
         }
         defer { try? FileManager.default.removeItem(at: partial) }
         let out = try FileHandle(forWritingTo: partial)
-        var hash = Insecure.SHA1(), written: Int64 = 0
+        var hash = Insecure.SHA1()
+        var written: Int64 = 0
         var failure: Error?
         do {
             try rar.extract(entry) { data, p in
-                guard failure == nil else { p.cancel(); return }
-                do { try out.write(contentsOf: data) } catch { failure = error; p.cancel(); return }
+                guard failure == nil else {
+                    p.cancel()
+                    return
+                }
+                do { try out.write(contentsOf: data) } catch {
+                    failure = error
+                    p.cancel()
+                    return
+                }
                 hash.update(data: data)
                 written += Int64(data.count)
                 progress?(p.fractionCompleted)
@@ -61,7 +85,10 @@ public enum RARSource {
         if let failure { throw failure }
         let inner = hash.finalize().map { String(format: "%02x", $0) }.joined()
         guard source.bytes.map({ $0 == written }) ?? true, inner == sha1 else {
-            throw FirmwareError(.shaMismatch, "\(member): \(written) bytes, SHA-1 \(inner); the catalog's IPSW is \(source.bytes.map(String.init) ?? "?") bytes, \(sha1)")
+            throw FirmwareError(
+                .shaMismatch,
+                "\(member): \(written) bytes, SHA-1 \(inner); the catalog's IPSW is \(source.bytes.map(String.init) ?? "?") bytes, \(sha1)"
+            )
         }
         try? FileManager.default.removeItem(at: ipsw)
         try FileManager.default.moveItem(at: partial, to: ipsw)

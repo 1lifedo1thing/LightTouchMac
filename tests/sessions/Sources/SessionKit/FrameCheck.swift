@@ -23,22 +23,38 @@ public enum FrameCheck {
     /// Block means, row by row.
     public struct Signature: Equatable, Sendable {
         public var width: Int, height: Int
-        public var pixels: [[Int]]   // [r, g, b]
-        public init(width: Int, height: Int, pixels: [[Int]]) { self.width = width; self.height = height; self.pixels = pixels }
+        public var pixels: [[Int]]  // [r, g, b]
+        public init(width: Int, height: Int, pixels: [[Int]]) {
+            self.width = width
+            self.height = height
+            self.pixels = pixels
+        }
     }
 
     /// An image's RGBX bytes.
     static func rgb(_ url: URL) throws -> (width: Int, height: Int, bytes: [UInt8]) {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else {
             throw CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: url.path])
         }
-        let w = image.width, h = image.height
+        let w = image.width
+        let h = image.height
         var rgba = [UInt8](repeating: 0, count: w * h * 4)
         let drawn = rgba.withUnsafeMutableBytes { buffer -> Bool in
-            guard let context = CGContext(data: buffer.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
-                                          space: image.colorSpace.flatMap { $0.model == .rgb ? $0 : nil } ?? CGColorSpace(name: CGColorSpace.sRGB)!,
-                                          bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return false }
+            guard
+                let context = CGContext(
+                    data: buffer.baseAddress,
+                    width: w,
+                    height: h,
+                    bitsPerComponent: 8,
+                    bytesPerRow: w * 4,
+                    space: image.colorSpace.flatMap { $0.model == .rgb ? $0 : nil } ?? CGColorSpace(
+                        name: CGColorSpace.sRGB
+                    )!,
+                    bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+                )
+            else { return false }
             context.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
             return true
         }
@@ -52,21 +68,31 @@ public enum FrameCheck {
         return signature(width: w, height: h, rgbx: px, gridWidth: gw)
     }
 
-    public static func signature(width w: Int, height h: Int, rgbx px: [UInt8], gridWidth gw: Int = width) -> Signature {
+    public static func signature(width w: Int, height h: Int, rgbx px: [UInt8], gridWidth gw: Int = width) -> Signature
+    {
         let gh = max(1, Int((Double(gw) * Double(h) / Double(w)).rounded()))
-        let sx = Double(w) / Double(gw), sy = Double(h) / Double(gh)
+        let sx = Double(w) / Double(gw)
+        let sy = Double(h) / Double(gh)
         var out: [[Int]] = []
         out.reserveCapacity(gw * gh)
         for oy in 0..<gh {
-            let y0 = Double(oy) * sy, y1 = y0 + sy
+            let y0 = Double(oy) * sy
+            let y1 = y0 + sy
             for ox in 0..<gw {
-                let x0 = Double(ox) * sx, x1 = x0 + sx
-                var r = 0.0, g = 0.0, b = 0.0, weight = 0.0
+                let x0 = Double(ox) * sx
+                let x1 = x0 + sx
+                var r = 0.0
+                var g = 0.0
+                var b = 0.0
+                var weight = 0.0
                 for y in Int(y0)..<min(h, Int(y1.rounded(.up))) {
                     let wy = min(Double(y + 1), y1) - max(Double(y), y0)
                     for x in Int(x0)..<min(w, Int(x1.rounded(.up))) {
-                        let k = (min(Double(x + 1), x1) - max(Double(x), x0)) * wy, i = (y * w + x) * 4
-                        r += Double(px[i]) * k; g += Double(px[i + 1]) * k; b += Double(px[i + 2]) * k
+                        let k = (min(Double(x + 1), x1) - max(Double(x), x0)) * wy
+                        let i = (y * w + x) * 4
+                        r += Double(px[i]) * k
+                        g += Double(px[i + 1]) * k
+                        b += Double(px[i + 2]) * k
                         weight += k
                     }
                 }
@@ -77,16 +103,27 @@ public enum FrameCheck {
     }
 
     /// The fraction of unmasked blocks whose largest channel drift exceeds `tolerance`.
-    public static func fractionDiffering(_ capture: Signature, _ reference: Signature, tolerance: Int = tolerance,
-                                         maskTop: Double = maskTop) throws -> Double {
+    public static func fractionDiffering(
+        _ capture: Signature,
+        _ reference: Signature,
+        tolerance: Int = tolerance,
+        maskTop: Double = maskTop
+    ) throws -> Double {
         guard capture.width == reference.width, capture.height == reference.height else {
-            throw CocoaError(.formatting, userInfo: [NSLocalizedDescriptionKey:
-                "grid mismatch: capture \(capture.width)x\(capture.height) vs reference \(reference.width)x\(reference.height)"])
+            throw CocoaError(
+                .formatting,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "grid mismatch: capture \(capture.width)x\(capture.height) vs reference \(reference.width)x\(reference.height)"
+                ]
+            )
         }
         let first = Int(Double(capture.height) * maskTop) * capture.width
-        var differ = 0, total = 0
+        var differ = 0
+        var total = 0
         for i in first..<capture.pixels.count {
-            let a = capture.pixels[i], b = reference.pixels[i]
+            let a = capture.pixels[i]
+            let b = reference.pixels[i]
             if max(abs(a[0] - b[0]), abs(a[1] - b[1]), abs(a[2] - b[2])) > tolerance { differ += 1 }
             total += 1
         }
@@ -123,11 +160,25 @@ public enum FrameCheck {
             let gain = exposure(cap, ref)
             let fraction = try fractionDiffering(normalize(cap, gain: gain), ref)
             let ok = fraction <= threshold
-            return Verdict(ok: ok, fraction: fraction, exposure: gain, why: ok
-                ? String(format: "matches the reference (%.3f <= %.2f)", fraction, threshold)
-                : String(format: "differs from the reference (%.3f > %.2f): flip / color swap / stale surface", fraction, threshold))
+            return Verdict(
+                ok: ok,
+                fraction: fraction,
+                exposure: gain,
+                why: ok
+                    ? String(format: "matches the reference (%.3f <= %.2f)", fraction, threshold)
+                    : String(
+                        format: "differs from the reference (%.3f > %.2f): flip / color swap / stale surface",
+                        fraction,
+                        threshold
+                    )
+            )
         } catch {
-            return Verdict(ok: false, fraction: nil, exposure: nil, why: "could not compare: \(error.localizedDescription)")
+            return Verdict(
+                ok: false,
+                fraction: nil,
+                exposure: nil,
+                why: "could not compare: \(error.localizedDescription)"
+            )
         }
     }
 }

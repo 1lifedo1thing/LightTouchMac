@@ -28,17 +28,27 @@ let package = Package(
     targets: [
         .target(name: "FirmwareSchema"),
         .target(name: "CActivation", cSettings: [.define("LT_ACTIVATION_LIBRARY")]),
-        .target(name: "FirmwareKit", dependencies: [
-            "CActivation", "FirmwareSchema",
-            .product(name: "HostRuntime", package: "HostRuntime"),
-            .product(name: "ZIPFoundation", package: "ZIPFoundation"),
-            .product(name: "MachOKit", package: "MachOKit"),
-            .product(name: "Subprocess", package: "swift-subprocess"),
-            .product(name: "Unrar", package: "Unrar.swift"),
-        ]),
-        .executableTarget(name: "FirmwareKitCLI", dependencies: ["FirmwareKit",
-            .product(name: "HostRuntime", package: "HostRuntime"),
-        ]),
-        .testTarget(name: "FirmwareKitTests", dependencies: ["FirmwareKit", "FirmwareSchema", .product(name: "HostRuntime", package: "HostRuntime")]),
+        .target(
+            name: "FirmwareKit",
+            dependencies: [
+                "CActivation", "FirmwareSchema",
+                .product(name: "HostRuntime", package: "HostRuntime"),
+                .product(name: "ZIPFoundation", package: "ZIPFoundation"),
+                .product(name: "MachOKit", package: "MachOKit"),
+                .product(name: "Subprocess", package: "swift-subprocess"),
+                .product(name: "Unrar", package: "Unrar.swift"),
+            ]
+        ),
+        .executableTarget(
+            name: "FirmwareKitCLI",
+            dependencies: [
+                "FirmwareKit",
+                .product(name: "HostRuntime", package: "HostRuntime"),
+            ]
+        ),
+        .testTarget(
+            name: "FirmwareKitTests",
+            dependencies: ["FirmwareKit", "FirmwareSchema", .product(name: "HostRuntime", package: "HostRuntime")]
+        ),
     ]
 )

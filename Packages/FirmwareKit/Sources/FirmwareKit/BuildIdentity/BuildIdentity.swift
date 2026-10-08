@@ -11,8 +11,8 @@
 // "UpdateRamDisk"; 2.x IPSWs have no BuildManifest, so the paths come from Restore.plist and the board's
 // all_flash/dfu naming) and device.py's verify step.
 
-import Foundation
 public import FirmwareSchema
+import Foundation
 
 /// One entry of the app's Resources/firmware-catalog.json (the app's FirmwareCatalog.Entry schema).
 public typealias FirmwareEntry = FirmwareWire.Entry
@@ -24,11 +24,16 @@ extension FirmwareEntry {
 
     /// Resolve one entry from the shared catalog, rejecting ambiguous or unknown ids.
     public static func load(id: String, fromCatalog url: URL) throws -> FirmwareEntry {
-        struct Catalog: Decodable { var format: Int; var entries: [FirmwareEntry] }
+        struct Catalog: Decodable {
+            var format: Int
+            var entries: [FirmwareEntry]
+        }
         let catalog = try JSONDecoder().decode(Catalog.self, from: Data(contentsOf: url))
         guard catalog.format == 1 else { throw FirmwareError(.unsupported, "unknown catalog format \(catalog.format)") }
         let matches = catalog.entries.filter { $0.id == id }
-        guard matches.count == 1 else { throw FirmwareError(.unsupported, "catalog must contain exactly one entry named \(id)") }
+        guard matches.count == 1 else {
+            throw FirmwareError(.unsupported, "catalog must contain exactly one entry named \(id)")
+        }
         return matches[0]
     }
 
@@ -61,24 +66,33 @@ public struct RestoreInfo: Sendable, Equatable {
 
     public init(plistData: Data) throws {
         guard let p = try PropertyListSerialization.propertyList(from: plistData, format: nil) as? [String: Any],
-              let type = p["ProductType"] as? String, let build = p["ProductBuildVersion"] as? String,
-              let version = p["ProductVersion"] as? String,
-              let maps = p["DeviceMap"] as? [[String: Any]],
-              // 1.x lists the platform's DFU-only "s5l8900xall" first; the device's own board follows
-              let map = maps.first(where: { !($0["BoardConfig"] as? String ?? "").hasSuffix("xall") }) ?? maps.first,
-              let board = map["BoardConfig"] as? String else {
+            let type = p["ProductType"] as? String, let build = p["ProductBuildVersion"] as? String,
+            let version = p["ProductVersion"] as? String,
+            let maps = p["DeviceMap"] as? [[String: Any]],
+            // 1.x lists the platform's DFU-only "s5l8900xall" first; the device's own board follows
+            let map = maps.first(where: { !($0["BoardConfig"] as? String ?? "").hasSuffix("xall") }) ?? maps.first,
+            let board = map["BoardConfig"] as? String
+        else {
             throw FirmwareError(.unsupported, "Restore.plist lacks ProductType/ProductBuildVersion/DeviceMap")
         }
-        kernelCache = ((p["KernelCachesByPlatform"] as? [String: Any])?[map["Platform"] as? String ?? ""] as? [String: Any])?["Release"] as? String
-            ?? (p["RestoreKernelCaches"] as? [String: Any])?["Release"] as? String   // 1.x
+        kernelCache =
+            ((p["KernelCachesByPlatform"] as? [String: Any])?[map["Platform"] as? String ?? ""] as? [String: Any])?[
+                "Release"
+            ] as? String
+            ?? (p["RestoreKernelCaches"] as? [String: Any])?["Release"] as? String  // 1.x
         systemImage = (p["SystemRestoreImages"] as? [String: Any])?["User"] as? String
         restoreRamDisk = (p["RestoreRamDisks"] as? [String: Any])?["User"] as? String
         updateRamDisk = (p["RestoreRamDisks"] as? [String: Any])?["Update"] as? String
-        productType = type; productBuildVersion = build; productVersion = version
-        boardConfig = board; platform = map["Platform"] as? String ?? ""
-        minimumSystemMiB = ((p["MinimumSystemPartition"] as? [String: Any])?.values.first as? NSNumber)?.intValue
+        productType = type
+        productBuildVersion = build
+        productVersion = version
+        boardConfig = board
+        platform = map["Platform"] as? String ?? ""
+        minimumSystemMiB =
+            ((p["MinimumSystemPartition"] as? [String: Any])?.values.first as? NSNumber)?.intValue
             ?? (p["MinimumSystemPartition"] as? NSNumber)?.intValue
-        let padding = (p["SystemPartitionPadding"] as? [String: Any])?[String(board.dropLast(2))] as? [String: Any] ?? [:]
+        let padding =
+            (p["SystemPartitionPadding"] as? [String: Any])?[String(board.dropLast(2))] as? [String: Any] ?? [:]
         systemPaddingMiB = padding.compactMapValues { ($0 as? NSNumber)?.intValue }
     }
 
@@ -91,9 +105,13 @@ public struct RestoreInfo: Sendable, Equatable {
     /// (3B48b) gives ProductType as the board name ("N45AP"), which stands for the entry's product type.
     public func verify(against entry: FirmwareEntry) throws {
         let type = productType.caseInsensitiveCompare(entry.board) == .orderedSame ? entry.productType : productType
-        let found = [productType, productBuildVersion, boardConfig], want = [entry.productType, entry.build, entry.board]
+        let found = [productType, productBuildVersion, boardConfig]
+        let want = [entry.productType, entry.build, entry.board]
         guard [type, productBuildVersion, boardConfig] == want else {
-            throw FirmwareError(.unsupported, "IPSW is \(found.joined(separator: " ")), \(entry.id) wants \(want.joined(separator: " "))")
+            throw FirmwareError(
+                .unsupported,
+                "IPSW is \(found.joined(separator: " ")), \(entry.id) wants \(want.joined(separator: " "))"
+            )
         }
     }
 }
@@ -106,11 +124,15 @@ public enum BuildComponents {
         if names.contains("BuildManifest.plist") {
             return try fromBuildManifest(ipsw.read("BuildManifest.plist"), board: board)
         }
-        let r = try RestoreInfo(ipsw), af = "Firmware/all_flash/all_flash.\(r.boardConfig).production/"
+        let r = try RestoreInfo(ipsw)
+        let af = "Firmware/all_flash/all_flash.\(r.boardConfig).production/"
         let comp = try fromRestore(r, img2: names.contains(af + "iBoot.\(r.boardConfig).RELEASE.img2"))
         let missing = comp.values.filter { !names.contains($0) }.sorted()
         guard missing.isEmpty else {
-            throw FirmwareError(.unsupported, "no BuildManifest.plist, and Restore.plist-derived paths are missing: \(missing)")
+            throw FirmwareError(
+                .unsupported,
+                "no BuildManifest.plist, and Restore.plist-derived paths are missing: \(missing)"
+            )
         }
         return comp
     }
@@ -118,19 +140,23 @@ public enum BuildComponents {
     /// Only `board`'s identities (Info.DeviceClass): the 4.3 betas list the k48dev development board's first.
     public static func fromBuildManifest(_ data: Data, board: String) throws -> [String: String] {
         guard let p = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
-              let all = p["BuildIdentities"] as? [[String: Any]] else {
+            let all = p["BuildIdentities"] as? [[String: Any]]
+        else {
             throw FirmwareError(.unsupported, "BuildManifest.plist has no BuildIdentities")
         }
         func info(_ bi: [String: Any], _ k: String) -> String? { (bi["Info"] as? [String: Any])?[k] as? String }
         let ids = all.filter { info($0, "DeviceClass")?.lowercased() == board.lowercased() }
         guard let first = ids.first(where: { info($0, "RestoreBehavior") != "Update" }) ?? ids.first,
-              let manifest = first["Manifest"] as? [String: [String: Any]] else {
+            let manifest = first["Manifest"] as? [String: [String: Any]]
+        else {
             throw FirmwareError(.unsupported, "BuildManifest.plist has no \(board) identity")
         }
         func path(_ v: [String: Any]?) -> String? { (v?["Info"] as? [String: Any])?["Path"] as? String }
         var comp = manifest.compactMapValues { path($0) }
         for bi in ids where info(bi, "RestoreBehavior") == "Update" {
-            if let rd = path((bi["Manifest"] as? [String: [String: Any]])?["RestoreRamDisk"]) { comp["UpdateRamDisk"] = rd }
+            if let rd = path((bi["Manifest"] as? [String: [String: Any]])?["RestoreRamDisk"]) {
+                comp["UpdateRamDisk"] = rd
+            }
         }
         return comp
     }
@@ -138,18 +164,27 @@ public enum BuildComponents {
     /// 1.x/2.x: Restore.plist names the kernelcache, rootfs and ramdisks; the rest follow the board's names
     /// (1.x: `.img2` all_flash members, and the logo carries no platform).
     public static func fromRestore(_ r: RestoreInfo, img2: Bool = false) throws -> [String: String] {
-        let board = r.boardConfig, plat = r.platform
+        let board = r.boardConfig
+        let plat = r.platform
         let af = "Firmware/all_flash/all_flash.\(board).production/"
         // 1.0 (1A543a) has no update ramdisk and no iBEC: a restore was the only install path
-        guard let kc = r.kernelCache, let os = r.systemImage, let user = r.restoreRamDisk, img2 || r.updateRamDisk != nil else {
+        guard let kc = r.kernelCache, let os = r.systemImage, let user = r.restoreRamDisk,
+            img2 || r.updateRamDisk != nil
+        else {
             throw FirmwareError(.unsupported, "no BuildManifest.plist, and Restore.plist lacks the 2.x component keys")
         }
         let x = img2 ? "img2" : "img3"
-        var comp = ["iBSS": "Firmware/dfu/iBSS.\(board).RELEASE.dfu",
-                "iBoot": af + "iBoot.\(board).RELEASE.\(x)", "LLB": af + "LLB.\(board).RELEASE.\(x)",
-                "DeviceTree": af + "DeviceTree.\(board).\(x)", "AppleLogo": af + (img2 ? "applelogo.img2" : "applelogo.\(plat).img3"),
-                "KernelCache": kc, "OS": os, "RestoreRamDisk": user]
-        if let update = r.updateRamDisk { comp["UpdateRamDisk"] = update; comp["iBEC"] = "Firmware/dfu/iBEC.\(board).RELEASE.dfu" }
+        var comp = [
+            "iBSS": "Firmware/dfu/iBSS.\(board).RELEASE.dfu",
+            "iBoot": af + "iBoot.\(board).RELEASE.\(x)", "LLB": af + "LLB.\(board).RELEASE.\(x)",
+            "DeviceTree": af + "DeviceTree.\(board).\(x)",
+            "AppleLogo": af + (img2 ? "applelogo.img2" : "applelogo.\(plat).img3"),
+            "KernelCache": kc, "OS": os, "RestoreRamDisk": user,
+        ]
+        if let update = r.updateRamDisk {
+            comp["UpdateRamDisk"] = update
+            comp["iBEC"] = "Firmware/dfu/iBEC.\(board).RELEASE.dfu"
+        }
         return comp
     }
 }

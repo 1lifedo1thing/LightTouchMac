@@ -13,7 +13,7 @@ public enum SetupPages {
         if b1 > 0.85, gap > 0.7, left > 0.8, frame > 0.9, mid > 0.8 { return "list" }
         if b1 > 0.85, b2 < 0.1, gap > 0.85 { return "location" }
         if b1 < 0.1, b2 < 0.1, left > 0.9, frame > 0.15, frame < 0.45 { return "diagnostics" }
-        if b1 < 0.1, b2 < 0.1, left < 0.2, frame < 0.1, mid < 0.1, list > 0.9 { return "diagnostics" }   // 5.0 beta 1
+        if b1 < 0.1, b2 < 0.1, left < 0.2, frame < 0.1, mid < 0.1, list > 0.9 { return "diagnostics" }  // 5.0 beta 1
         if b1 < 0.1, b2 > 0.7 { return "thank you" }
         if b1 < 0.1, b2 < 0.1, gap < 0.1, left > 0.15, left < 0.45, frame < 0.1, mid < 0.1 { return "wi-fi" }
         return nil
@@ -21,8 +21,10 @@ public enum SetupPages {
 
     /// The page kind each walk step shows (Terms has no fingerprint of its own).
     public static func kind(of page: String) -> String? {
-        ["language": "list", "country": "list", "location": "location", "wi-fi": "wi-fi", "set up": "set up",
-         "apple id": "apple id", "diagnostics": "diagnostics", "thank you": "thank you"][page]
+        [
+            "language": "list", "country": "list", "location": "location", "wi-fi": "wi-fi", "set up": "set up",
+            "apple id": "apple id", "diagnostics": "diagnostics", "thank you": "thank you",
+        ][page]
     }
 
     /// Taps until `answered` holds on `hold` consecutive polls (one per `unit` seconds), or `budget` runs out, tapping
@@ -30,9 +32,17 @@ public enum SetupPages {
     /// to deliver) is retried instead of failing the walk; a pressed button's flash (the title bar changes for a moment,
     /// the page stays: 9B176's Set Up Next) is not an answer; a tap that did land is not repeated. `budget` and `every`
     /// are in units (seconds in the walk; the tests shrink the unit).
-    public static func tapUntil(budget: Double, every: Double, hold: Int = 3, unit: Double = 1,
-                                tap: () async -> Void, answered: () -> Bool) async -> Bool {
-        let t0 = Date(), budget = budget * unit, every = every * unit
+    public static func tapUntil(
+        budget: Double,
+        every: Double,
+        hold: Int = 3,
+        unit: Double = 1,
+        tap: () async -> Void,
+        answered: () -> Bool
+    ) async -> Bool {
+        let t0 = Date()
+        let budget = budget * unit
+        let every = every * unit
         var streak = 0
         while Date().timeIntervalSince(t0) < budget {
             await tap()
@@ -51,10 +61,12 @@ public enum SetupPages {
 /// to tap on a page, from the labels Vision read off it. An alert's button labeled exactly as one of `alertYes` goes
 /// first, then the first of `picks` the page shows, then its Next (the language page's is an arrow, top right).
 public enum SetupPlan {
-    public static let picks = ["Start Using iPod touch", "Start Using iPod", "Start Using iPhone", "Get Started",
-                               "Set Up as New iPod touch", "Set Up as New iPod", "Set Up as New iPhone",
-                               "Disable Location Services", "Skip This Step", "Agree", "Don't Add Passcode",
-                               "Don't Use iCloud", "Don't Send", "Australia", "United States"]
+    public static let picks = [
+        "Start Using iPod touch", "Start Using iPod", "Start Using iPhone", "Get Started",
+        "Set Up as New iPod touch", "Set Up as New iPod", "Set Up as New iPhone",
+        "Disable Location Services", "Skip This Step", "Agree", "Don't Add Passcode",
+        "Don't Use iCloud", "Don't Send", "Australia", "United States",
+    ]
     public static let alertYes = ["OK", "Skip", "Agree", "Continue", "Don't Use", "Don't Add"]
     public static let nextArrow = (x: 587.0 / 640, y: 84.0 / 960)
 
@@ -77,8 +89,11 @@ public enum SetupPlan {
         // last country heading in its top 60 %. Next stays disabled until one is chosen.
         let headings = found.filter { $0.key.localizedCaseInsensitiveContains("countr") && $0.value.y < 0.6 }
         if pick == nil, let below = headings.map({ $0.value.y }).max(),
-           let first = found.filter({ $0.value.y > max(below, 0.15) && $0.value.y < 0.9 && !["Next", "Back"].contains($0.key) })
-                            .min(by: { $0.value.y < $1.value.y }) {
+            let first = found.filter({
+                $0.value.y > max(below, 0.15) && $0.value.y < 0.9 && !["Next", "Back"].contains($0.key)
+            })
+            .min(by: { $0.value.y < $1.value.y })
+        {
             pick = first.key
         }
         if let pick, let p = found[pick] {
@@ -93,7 +108,14 @@ public enum SetupPlan {
             steps += [.tap(english.x, english.y, "English"), .pause(1.5)]
         }
         if let next = found["Next"] ?? (found["English"] != nil ? nextArrow : nil) {
-            steps.append(.tap(next.x, next.y, pick == nil ? (found.filter { $0.value.y < 130.0 / 960 && $0.key != "Next" }.keys.first ?? "?") : nil))
+            steps.append(
+                .tap(
+                    next.x,
+                    next.y,
+                    pick == nil
+                        ? (found.filter { $0.value.y < 130.0 / 960 && $0.key != "Next" }.keys.first ?? "?") : nil
+                )
+            )
         } else if pick == nil {
             steps.append(.slideIfLockScreen)
         }

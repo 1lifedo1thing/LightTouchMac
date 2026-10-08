@@ -12,9 +12,12 @@ import Observation
     func modemStatus(_ done: @escaping @MainActor (ModemStatus?) -> Void)
 }
 
-
 @MainActor @Observable public final class CarrierPanelModel {
-    public struct SentSMS: Identifiable, Equatable { public let id: Int; public let number: String; public let text: String }
+    public struct SentSMS: Identifiable, Equatable {
+        public let id: Int
+        public let number: String
+        public let text: String
+    }
 
     @ObservationIgnored private let backend: CarrierBackend
     public var settings: CarrierSettings
@@ -40,7 +43,9 @@ import Observation
     }
 
     public var typedPLMN: String { mcc + mnc }
-    public var networkValid: Bool { CarrierSettings.carrierOK(carrierName) && mcc.count == 3 && CarrierSettings.plmnOK(typedPLMN) }
+    public var networkValid: Bool {
+        CarrierSettings.carrierOK(carrierName) && mcc.count == 3 && CarrierSettings.plmnOK(typedPLMN)
+    }
     public var networkEdited: Bool { carrierName != settings.carrier || typedPLMN != settings.mccMNC }
     /// An applied carrier or PLMN the modem doesn't report yet.
     public var applyingNetwork: Bool {
@@ -49,19 +54,37 @@ import Observation
     }
 
     public func applyNetwork() {
-        guard networkValid else { return message = "Carrier names are 1–32 characters without quotes; MCC is 3 digits and MNC 2 or 3." }
+        guard networkValid else {
+            message = "Carrier names are 1–32 characters without quotes; MCC is 3 digits and MNC 2 or 3."
+            return
+        }
         var s = settings
         s.carrier = carrierName
         s.mccMNC = typedPLMN
         save(s)
     }
 
-    public func set(registered: Bool) { var s = settings; s.registered = registered; save(s) }
-    public func set(simPresent: Bool) { var s = settings; s.simPresent = simPresent; save(s) }
-    public func set(bars: Int) { var s = settings; s.bars = bars; save(s) }
+    public func set(registered: Bool) {
+        var s = settings
+        s.registered = registered
+        save(s)
+    }
+    public func set(simPresent: Bool) {
+        var s = settings
+        s.simPresent = simPresent
+        save(s)
+    }
+    public func set(bars: Int) {
+        var s = settings
+        s.bars = bars
+        save(s)
+    }
 
     private func save(_ s: CarrierSettings) {
-        if backend.setCarrierSettings(s) { settings = s; message = nil }
+        if backend.setCarrierSettings(s) {
+            settings = s
+            message = nil
+        }
     }
 
     public var callNumberValid: Bool { CarrierSettings.numberOK(callNumber) }
@@ -72,15 +95,23 @@ import Observation
     public var canHangUp: Bool { callState != "idle" }
 
     public func ring() {
-        guard callNumberValid else { return message = "A caller is 1–20 digits, optionally after a +." }
-        backend.modem("incoming-call", callNumber) { [weak self] ok in if !ok { self?.message = "The modem isn’t available." } }
+        guard callNumberValid else {
+            message = "A caller is 1–20 digits, optionally after a +."
+            return
+        }
+        backend.modem("incoming-call", callNumber) { [weak self] ok in
+            if !ok { self?.message = "The modem isn’t available." }
+        }
     }
 
     public func answer() { backend.modem("remote-answer", "1") { _ in } }
     public func hangUp() { backend.modem("remote-hangup", "1") { _ in } }
 
     public func sendSMS() {
-        guard smsValid else { return message = "A sender is 1–20 digits, optionally after a +; the text 1–160 characters." }
+        guard smsValid else {
+            message = "A sender is 1–20 digits, optionally after a +; the text 1–160 characters."
+            return
+        }
         backend.modem("incoming-sms", "\(smsNumber)|\(smsText)") { [weak self] ok in
             if ok { self?.smsText = "" } else { self?.message = "The modem isn’t available." }
         }
@@ -100,4 +131,3 @@ import Observation
         }
     }
 }
-

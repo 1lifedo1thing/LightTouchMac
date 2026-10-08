@@ -38,7 +38,8 @@ public nonisolated struct BootConfig: Codable, Sendable, Equatable {
     public var wifiLocalNetwork: Bool { !wifiOptions.contains("lan=off") }
 
     private var wifiOptions: [Substring] {
-        zip(argv, argv.dropFirst()).first { $0 == "-netdev" && $1.hasPrefix("user,id=wifi0,") }?.1.split(separator: ",") ?? []
+        zip(argv, argv.dropFirst()).first { $0 == "-netdev" && $1.hasPrefix("user,id=wifi0,") }?.1.split(separator: ",")
+            ?? []
     }
 }
 
@@ -47,5 +48,8 @@ public nonisolated struct WebProxyEndpoint: Codable, Sendable, Equatable {
     public var config: String
     /// The Unix socket the guestfwd's `nc -U` reaches.
     public var socket: String
-    public init(config: String, socket: String) { self.config = config; self.socket = socket }
+    public init(config: String, socket: String) {
+        self.config = config
+        self.socket = socket
+    }
 }

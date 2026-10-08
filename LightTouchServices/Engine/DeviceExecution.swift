@@ -19,8 +19,11 @@ import HostServiceWire
 /// and a wedged guest held the serial gate forever (every later device op
 /// queued behind it with no error, looking like "buttons do nothing").
 /// Resume-once + a detached worker is what genuinely leaves the thread behind.
-func withDeadline<T: Sendable>(_ seconds: Double, _ operation: String,
-                               _ work: @escaping @Sendable () throws -> T) async throws -> T {
+func withDeadline<T: Sendable>(
+    _ seconds: Double,
+    _ operation: String,
+    _ work: @escaping @Sendable () throws -> T
+) async throws -> T {
     try Task.checkCancellation()
     let once = ResumeOnce<T>()
     let worker = Task.detached {
@@ -35,10 +38,13 @@ func withDeadline<T: Sendable>(_ seconds: Double, _ operation: String,
     }
     let watchdog = Task.detached {
         do { try await Task.sleep(for: .seconds(seconds)) } catch { return }
-        once.resume(.failure(DeviceError.timedOut(operation: operation)), onWin: {
-            AbandonedWork.abandoned(operation)
-            worker.cancel()
-        })
+        once.resume(
+            .failure(DeviceError.timedOut(operation: operation)),
+            onWin: {
+                AbandonedWork.abandoned(operation)
+                worker.cancel()
+            }
+        )
     }
     defer { watchdog.cancel() }
     return try await withTaskCancellationHandler {
@@ -47,10 +53,13 @@ func withDeadline<T: Sendable>(_ seconds: Double, _ operation: String,
         // C handles remain owned by the worker. Stop waiting promptly, count
         // the still-live session against the cap, and let cooperative upload
         // loops unwind between C calls. A blocked call is never freed under it.
-        once.resume(.failure(CancellationError()), onWin: {
-            AbandonedWork.abandoned(operation)
-            worker.cancel()
-        })
+        once.resume(
+            .failure(CancellationError()),
+            onWin: {
+                AbandonedWork.abandoned(operation)
+                worker.cancel()
+            }
+        )
     }
 }
 
@@ -76,7 +85,10 @@ nonisolated enum AbandonedWork {
     static var count: Int { lock.withLock { outstanding } }
 
     static func abandoned(_ operation: String) {
-        let n = lock.withLock { outstanding += 1; return outstanding }
+        let n = lock.withLock {
+            outstanding += 1
+            return outstanding
+        }
         logEvent("device: abandoned a blocked thread in \(operation) (\(n) outstanding)")
     }
 
@@ -95,8 +107,11 @@ nonisolated protocol OpenedHandles: AnyObject, Sendable { func free() }
 /// discards the race's loser, so an open that lands after the deadline (or the
 /// caller's cancellation) has nobody to take its handles: they are freed here
 /// instead, never under a live library thread. nil when `open` produced none.
-func openBeforeDeadline<H: OpenedHandles>(_ seconds: Double, _ operation: String,
-                                          _ open: @escaping @Sendable () throws -> H?) async throws -> H? {
+func openBeforeDeadline<H: OpenedHandles>(
+    _ seconds: Double,
+    _ operation: String,
+    _ open: @escaping @Sendable () throws -> H?
+) async throws -> H? {
     let late = LateHandles<H>()
     do {
         try await withDeadline(seconds, operation) { if let opened = try open() { late.store(opened) } }
@@ -145,19 +160,33 @@ nonisolated private final class LateHandles<H: OpenedHandles>: @unchecked Sendab
 /// has gone quiet for `idle` seconds — the watchdog that bounds the otherwise
 /// unbounded installd wait. NSCondition, because both sides are plain threads.
 nonisolated final class SyncBox: @unchecked Sendable {
-    enum Terminal { case done, failed(InstproxyError, String) }
+    enum Terminal {
+        case done
+        case failed(InstproxyError, String)
+    }
     private let cond = NSCondition()
     private var lastActivity = Date()
     private var terminal: Terminal?
 
-    func touch() { cond.lock(); lastActivity = Date(); cond.signal(); cond.unlock() }
-    func finish(_ t: Terminal) { cond.lock(); terminal = t; cond.signal(); cond.unlock() }
+    func touch() {
+        cond.lock()
+        lastActivity = Date()
+        cond.signal()
+        cond.unlock()
+    }
+    func finish(_ t: Terminal) {
+        cond.lock()
+        terminal = t
+        cond.signal()
+        cond.unlock()
+    }
 
     /// Terminal result, or nil if the callback fell silent for `idle` seconds
     /// or the whole thing ran past `absolute`.
     func wait(idle: TimeInterval, absolute: TimeInterval) -> Terminal? {
         let hardDeadline = Date().addingTimeInterval(absolute)
-        cond.lock(); defer { cond.unlock() }
+        cond.lock()
+        defer { cond.unlock() }
         while terminal == nil {
             let wake = min(lastActivity.addingTimeInterval(idle), hardDeadline)
             if wake <= Date() { return nil }
@@ -197,7 +226,10 @@ actor DeviceGate {
 
     private func acquire() async throws {
         try Task.checkCancellation()
-        if !busy { busy = true; return }
+        if !busy {
+            busy = true
+            return
+        }
         let id = UUID()
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -230,6 +262,9 @@ actor DeviceGate {
             let r = try await body()
             release()
             return r
-        } catch { release(); throw error }
+        } catch {
+            release()
+            throw error
+        }
     }
 }

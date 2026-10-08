@@ -20,9 +20,11 @@ enum WindowRestorationPolicy {
 /// survives an upgrade or a launch request explicitly asks to restore it.
 @objc(LightTouchApplication)
 final class LightTouchApplication: NSApplication {
-    override func restoreWindow(withIdentifier identifier: NSUserInterfaceItemIdentifier,
-                                state: NSCoder,
-                                completionHandler: @escaping (NSWindow?, (any Error)?) -> Void) -> Bool {
+    override func restoreWindow(
+        withIdentifier identifier: NSUserInterfaceItemIdentifier,
+        state: NSCoder,
+        completionHandler: @escaping (NSWindow?, (any Error)?) -> Void
+    ) -> Bool {
         completionHandler(nil, nil)
         return true
     }

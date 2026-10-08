@@ -18,8 +18,10 @@ import Foundation
 
 public enum FirmwareDecryptor {
     /// Output name -> BuildManifest component.
-    public static let components = [("iBSS", "iBSS"), ("iBEC", "iBEC"), ("iBoot", "iBoot"), ("LLB", "LLB"),
-                                    ("DeviceTree", "DeviceTree"), ("AppleLogo", "AppleLogo"), ("Kernelcache", "KernelCache")]
+    public static let components = [
+        ("iBSS", "iBSS"), ("iBEC", "iBEC"), ("iBoot", "iBoot"), ("LLB", "LLB"),
+        ("DeviceTree", "DeviceTree"), ("AppleLogo", "AppleLogo"), ("Kernelcache", "KernelCache"),
+    ]
 
     public struct Result: Sendable {
         public var plainTail: Bool
@@ -29,7 +31,8 @@ public enum FirmwareDecryptor {
         public var files: [String]
     }
 
-    public static func decrypt(ipsw url: URL, entry: FirmwareEntry, into dir: URL, rootfs: Bool = true) throws -> Result {
+    public static func decrypt(ipsw url: URL, entry: FirmwareEntry, into dir: URL, rootfs: Bool = true) throws -> Result
+    {
         let ipsw = IPSWArchive(url)
         let comp = try BuildComponents.load(ipsw, board: entry.board)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -88,7 +91,7 @@ public enum FirmwareDecryptor {
                 try kernel.write(to: dir.appendingPathComponent("kernelcache.mach"))
                 files.append("kernelcache.mach")
             } else if c == "iBEC", comp[c] == nil {
-                continue   // 1.0: no iBEC (no update path)
+                continue  // 1.0: no iBEC (no update path)
             } else {
                 let p = try path(c)
                 if ["iBSS", "iBEC", "AppleLogo"].contains(c), !keyed(p), try IMG3.tags(ipsw.read(p))["KBAG"] != nil {
@@ -112,7 +115,9 @@ public enum FirmwareDecryptor {
         if rootfs {
             let os = try path("OS")
             let k = try entry.key(forPath: os)
-            guard let key = Data(hex: k.key), key.count == 36 else { throw FirmwareError(.keyMissing, "\(entry.id): no key for the root filesystem \(os)") }
+            guard let key = Data(hex: k.key), key.count == 36 else {
+                throw FirmwareError(.keyMissing, "\(entry.id): no key for the root filesystem \(os)")
+            }
             let out = dir.appendingPathComponent("rootfs.dmg")
             try ipsw.stream(os) { try VFDecrypt.decrypt(from: $0.fileDescriptor, output: out, key: key) }
             files.append("rootfs.dmg")

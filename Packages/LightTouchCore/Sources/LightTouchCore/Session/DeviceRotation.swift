@@ -26,10 +26,10 @@
 // loses their manual angle when the front app actually changes what it wants,
 // which is the moment they asked us to follow.
 
-import Foundation
-import Observation
-import HostRuntime
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import Observation
 
 /// What the rotation reads of the session, and the guest's two orientation sources.
 public protocol RotationHost: AnyObject {
@@ -69,7 +69,7 @@ public protocol RotationHost: AnyObject {
     public private(set) var degrees = 0
     public var isLandscape: Bool { degrees == 90 || degrees == 270 }
 
-    public func rotateLeft()  { host.helperLink?.send(.rotate(clockwise: false)) }
+    public func rotateLeft() { host.helperLink?.send(.rotate(clockwise: false)) }
     public func rotateRight() { host.helperLink?.send(.rotate(clockwise: true)) }
 
     /// Toggle between portrait and landscape: enter counter-clockwise (home
@@ -114,7 +114,7 @@ public protocol RotationHost: AnyObject {
         while true {
             let delta = (target - degrees + 360) % 360
             guard delta != 0 else { return }
-            rotate(clockwise: delta != 270)   // 90 and 180 go clockwise, 270 back
+            rotate(clockwise: delta != 270)  // 90 and 180 go clockwise, 270 back
         }
     }
 
@@ -149,11 +149,11 @@ public protocol RotationHost: AnyObject {
     /// on the RIGHT, which is the device turned 270° clockwise — hence the flip.
     static func hostDegrees(forGuest degrees: Int) -> Int? {
         switch degrees {
-        case 0:          return 0
-        case 180:        return 180
-        case 90:         return 270   // LandscapeLeft:  home button right
-        case -90, 270:   return 90    // LandscapeRight: home button left
-        default:         return nil   // a torn line, or a value we don't know
+        case 0: return 0
+        case 180: return 180
+        case 90: return 270  // LandscapeLeft:  home button right
+        case -90, 270: return 90  // LandscapeRight: home button left
+        default: return nil  // a torn line, or a value we don't know
         }
     }
 
@@ -179,10 +179,11 @@ public protocol RotationHost: AnyObject {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(3))
                 guard let self else { return }
-                if host.state == .booting { last = nil }   // a restart: adopt again
+                if host.state == .booting { last = nil }  // a restart: adopt again
                 // Only once lockdown has answered: before that every try is "not reachable over USB yet", every 3 s in the log.
                 guard host.canReachDevice, !host.isSleeping, !host.isInstalling,
-                      let reading = try? await host.interfaceOrientation() else { continue }
+                    let reading = try? await host.interfaceOrientation()
+                else { continue }
                 last = interfaceRead(reading, last: last)
             }
         }

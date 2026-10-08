@@ -13,10 +13,16 @@ import Foundation
 public enum FitCheck {
     public struct Fit: Sendable, Equatable {
         public var piece: String, fits: Bool, proof: String
-        public init(_ piece: String, fits: Bool, _ proof: String) { self.piece = piece; self.fits = fits; self.proof = proof }
+        public init(_ piece: String, fits: Bool, _ proof: String) {
+            self.piece = piece
+            self.fits = fits
+            self.proof = proof
+        }
         public var object: [String: Any] { ["piece": piece, "fits": fits, "proof": proof] }
         /// The warning event's text: the misfit and what the preparer did about it.
-        public func warning(_ outcome: String) -> String { "\(piece) does not fit this firmware (\(outcome)): \(proof)" }
+        public func warning(_ outcome: String) -> String {
+            "\(piece) does not fit this firmware (\(outcome)): \(proof)"
+        }
     }
 
     /// The prepare's record of every check (the lock's "fit"). A required piece that does not fit throws; an
@@ -31,12 +37,16 @@ public enum FitCheck {
         public func check(_ f: Fit, required: Bool, outcome: String = "left out") throws -> Bool {
             fits.append(f)
             if f.fits { return true }
-            if required { throw FirmwareError(.unsupported, "\(f.piece) does not fit this firmware: \(f.proof)", piece: f.piece) }
+            if required {
+                throw FirmwareError(.unsupported, "\(f.piece) does not fit this firmware: \(f.proof)", piece: f.piece)
+            }
             warn(f.warning(outcome))
             return false
         }
         /// A piece the preparer did not install, recorded as such (nothing proven, so not a fit; no warning).
-        public func notInstalled(_ piece: String, _ why: String) { fits.append(Fit(piece, fits: false, "not installed (\(why))")) }
+        public func notInstalled(_ piece: String, _ why: String) {
+            fits.append(Fit(piece, fits: false, "not installed (\(why))"))
+        }
         public var object: [[String: Any]] { fits.map(\.object) }
     }
 
@@ -44,9 +54,15 @@ public enum FitCheck {
     /// never on the host), its dyld shared cache, and the decrypted kernelcache when the recipe has one.
     public final class Firmware {
         public let root: URL, arch: String, kernelcache: Data?
-        public init(root: URL, arch: String, kernelcache: Data? = nil) { self.root = root; self.arch = arch; self.kernelcache = kernelcache }
+        public init(root: URL, arch: String, kernelcache: Data? = nil) {
+            self.root = root
+            self.arch = arch
+            self.kernelcache = kernelcache
+        }
 
-        public lazy var cache: DyldSharedCache? = resolve(SystemEdits.dyldCache(arch)).flatMap { try? DyldSharedCache(contentsOf: $0) }
+        public lazy var cache: DyldSharedCache? = resolve(SystemEdits.dyldCache(arch)).flatMap {
+            try? DyldSharedCache(contentsOf: $0)
+        }
 
         /// `rel` (volume-relative, with or without a leading "/") with every symlink followed inside the volume;
         /// nil when it is not there.
@@ -58,11 +74,16 @@ public enum FitCheck {
         /// (the path with symlinks followed, whether it exists).
         func follow(_ rel: String) -> (String, Bool) {
             let fm = FileManager.default
-            var parts = rel.split(separator: "/").map(String.init), out: [String] = [], hops = 0
+            var parts = rel.split(separator: "/").map(String.init)
+            var out: [String] = []
+            var hops = 0
             while !parts.isEmpty {
                 let p = parts.removeFirst()
                 if p == "." { continue }
-                if p == ".." { _ = out.popLast(); continue }
+                if p == ".." {
+                    _ = out.popLast()
+                    continue
+                }
                 let here = root.appendingPathComponent((out + [p]).joined(separator: "/")).path
                 if let dest = try? fm.destinationOfSymbolicLink(atPath: here) {
                     hops += 1
@@ -77,7 +98,9 @@ public enum FitCheck {
             return (path, fm.fileExists(atPath: root.appendingPathComponent(path).path))
         }
 
-        public func data(_ rel: String) -> Data? { resolve(rel).flatMap { try? Data(contentsOf: $0, options: .alwaysMapped) } }
+        public func data(_ rel: String) -> Data? {
+            resolve(rel).flatMap { try? Data(contentsOf: $0, options: .alwaysMapped) }
+        }
 
         /// Does the file at `rel` contain `bytes`?
         public func file(_ rel: String, contains bytes: Data) -> Bool { data(rel)?.range(of: bytes) != nil }
@@ -88,11 +111,15 @@ public enum FitCheck {
             var out: [UInt32: String] = [:]
             for rel in Self.precedentBinaries {
                 guard let d = data(rel), let m = MachO32.slice(d, arch: arch)?.image else { continue }
-                for c in m.commands where c.cmd & MachO32.reqDyld != 0 && out[c.cmd] == nil { out[c.cmd] = (rel as NSString).lastPathComponent }
+                for c in m.commands where c.cmd & MachO32.reqDyld != 0 && out[c.cmd] == nil {
+                    out[c.cmd] = (rel as NSString).lastPathComponent
+                }
             }
             return out
         }()
-        static let precedentBinaries = ["sbin/launchd", "System/Library/CoreServices/SpringBoard.app/SpringBoard", "usr/libexec/lockdownd"]
+        static let precedentBinaries = [
+            "sbin/launchd", "System/Library/CoreServices/SpringBoard.app/SpringBoard", "usr/libexec/lockdownd",
+        ]
 
         private var exportMemo: [String: Set<String>?] = [:]
 
@@ -100,7 +127,7 @@ public enum FitCheck {
         /// has no such image (on disk or in the shared cache).
         public func exports(_ install: String) -> Set<String>? {
             if let hit = exportMemo[install] { return hit }
-            exportMemo[install] = .some(nil)   // a re-export cycle ends here
+            exportMemo[install] = .some(nil)  // a re-export cycle ends here
             let found = loadExports(install)
             exportMemo[install] = .some(found)
             return found
@@ -126,9 +153,13 @@ public enum FitCheck {
 
         /// Every image a process of `executable` has loaded before anything is inserted: it and its links, transitively.
         public func loaded(_ executable: String) -> [String] {
-            var seen = ["/" + executable.drop { $0 == "/" }], queue = seen
+            var seen = ["/" + executable.drop { $0 == "/" }]
+            var queue = seen
             while let next = queue.popLast() {
-                for l in links(next) where !seen.contains(l) { seen.append(l); queue.append(l) }
+                for l in links(next) where !seen.contains(l) {
+                    seen.append(l)
+                    queue.append(l)
+                }
             }
             return seen
         }
@@ -158,7 +189,8 @@ public enum FitCheck {
         private func loadExports(_ install: String) -> Set<String>? {
             let (followed, onDisk) = follow(install)
             if let cache, let img = cache.image(install) ?? cache.image("/" + followed) {
-                var out = Set<String>(), reexports: [String] = []
+                var out = Set<String>()
+                var reexports: [String] = []
                 cache.forEachSymbol(in: img) { s in
                     if MachO32.isExport(s.type) { out.insert(s.name) }
                     return true
@@ -167,7 +199,9 @@ public enum FitCheck {
                     if cmd == MachO32.lcReexportDylib { reexports.append(b.latin1(off + Int(b.u32le(off + 8)))) }
                     // a cache image's export trie offset is a cache file offset
                     if cmd == MachO32.lcDyldInfo || cmd == MachO32.lcDyldInfoOnly {
-                        out.formUnion(MachO32.trieReexports(b, at: Int(b.u32le(off + 40)), size: Int(b.u32le(off + 44))))
+                        out.formUnion(
+                            MachO32.trieReexports(b, at: Int(b.u32le(off + 40)), size: Int(b.u32le(off + 44)))
+                        )
                     }
                 }
                 for r in reexports { out.formUnion(exports(r) ?? []) }
@@ -176,9 +210,12 @@ public enum FitCheck {
             guard onDisk, let d = data(followed), let m = MachO32.slice(d, arch: arch)?.image else { return nil }
             var out = Set(m.symbols().filter { MachO32.isExport($0.type) }.map(\.name))
             for r in m.reexported() { out.formUnion(exports(r) ?? []) }
-            if let info = m.commands.first(where: { $0.cmd == MachO32.lcDyldInfo || $0.cmd == MachO32.lcDyldInfoOnly }) {
+            if let info = m.commands.first(where: { $0.cmd == MachO32.lcDyldInfo || $0.cmd == MachO32.lcDyldInfoOnly })
+            {
                 m.b.withUnsafeBytes { b in
-                    out.formUnion(MachO32.trieReexports(b, at: Int(u32(m.b, info.off + 40)), size: Int(u32(m.b, info.off + 44))))
+                    out.formUnion(
+                        MachO32.trieReexports(b, at: Int(u32(m.b, info.off + 40)), size: Int(u32(m.b, info.off + 44)))
+                    )
                 }
             }
             return out
@@ -195,10 +232,12 @@ public enum FitCheck {
     /// The stock executable whose launchd job inserts `dylib` (DYLD_INSERT_LIBRARIES), as the volume's jobs say now.
     static func host(of dylib: String, on fw: Firmware) -> String? {
         let dir = fw.root.appendingPathComponent(SystemEdits.daemons)
-        for n in ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).sorted() where n.hasSuffix(".plist") {
+        for n in ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).sorted()
+        where n.hasSuffix(".plist") {
             guard let d = NSDictionary(contentsOf: dir.appendingPathComponent(n)),
-                  let inserted = (d["EnvironmentVariables"] as? [String: Any])?["DYLD_INSERT_LIBRARIES"] as? String,
-                  inserted.split(separator: ":").contains(Substring(dylib)) else { continue }
+                let inserted = (d["EnvironmentVariables"] as? [String: Any])?["DYLD_INSERT_LIBRARIES"] as? String,
+                inserted.split(separator: ":").contains(Substring(dylib))
+            else { continue }
             return (d["ProgramArguments"] as? [String])?.first ?? d["Program"] as? String
         }
         return nil
@@ -221,10 +260,12 @@ public enum FitCheck {
         let required = m.commands.map(\.cmd).filter { $0 & MachO32.reqDyld != 0 }
         let unknown = Set(required.filter { fw.precedent[$0] == nil })
         if !unknown.isEmpty {
-            why.append("load command \(unknown.sorted().map { hex($0) }.joined(separator: ", ")) is in none of this firmware's own executables (its dyld refuses what it does not know)")
+            why.append(
+                "load command \(unknown.sorted().map { hex($0) }.joined(separator: ", ")) is in none of this firmware's own executables (its dyld refuses what it does not know)"
+            )
         }
         let linked = m.dylibs()
-        var exports: [[String]?] = []   // by ordinal - 1
+        var exports: [[String]?] = []  // by ordinal - 1
         var lost: [String] = []
         for l in linked {
             let e = fw.exports(l.name)
@@ -232,25 +273,43 @@ public enum FitCheck {
             if e == nil, !l.weak { lost.append(l.name) }
         }
         if !lost.isEmpty { why.append("links \(lost.joined(separator: ", ")), which this firmware does not have") }
-        var missing: [String] = [], resolved = 0
+        var missing: [String] = []
+        var resolved = 0
         let twoLevel = m.flags & 0x80 != 0
         for s in m.symbols() where s.type & 0xE0 == 0 && s.type & 0x01 != 0 && s.type & 0x0E == 0 && !s.name.isEmpty {
-            if s.desc & 0x40 != 0 { continue }   // N_WEAK_REF: dyld leaves it NULL
+            if s.desc & 0x40 != 0 { continue }  // N_WEAK_REF: dyld leaves it NULL
             let ordinal = Int(s.desc >> 8)
             let candidates: [String]
-            if twoLevel && ordinal >= 1 && ordinal <= linked.count { candidates = [linked[ordinal - 1].name] }
-            else if twoLevel && ordinal == 0 { continue }   // SELF_LIBRARY
-            else if twoLevel && ordinal == 0xFF { candidates = host.map { ["/" + $0.drop { $0 == "/" }] } ?? [] }   // EXECUTABLE_ORDINAL
-            else { candidates = linked.map(\.name) + (host.map(fw.loaded) ?? []) }   // flat namespace, or DYNAMIC_LOOKUP
-            if candidates.contains(where: { fw.exports($0)?.contains(s.name) == true }) { resolved += 1 } else { missing.append(s.name) }
+            if twoLevel && ordinal >= 1 && ordinal <= linked.count {
+                candidates = [linked[ordinal - 1].name]
+            } else if twoLevel && ordinal == 0 {
+                continue
+            }  // SELF_LIBRARY
+            else if twoLevel && ordinal == 0xFF {
+                candidates = host.map { ["/" + $0.drop { $0 == "/" }] } ?? []
+            }  // EXECUTABLE_ORDINAL
+            else {
+                candidates = linked.map(\.name) + (host.map(fw.loaded) ?? [])
+            }  // flat namespace, or DYNAMIC_LOOKUP
+            if candidates.contains(where: { fw.exports($0)?.contains(s.name) == true }) {
+                resolved += 1
+            } else {
+                missing.append(s.name)
+            }
         }
         if !missing.isEmpty {
-            why.append("imports \(missing.prefix(6).joined(separator: ", "))\(missing.count > 6 ? " (+\(missing.count - 6))" : "") that no linked image of this firmware exports")
+            why.append(
+                "imports \(missing.prefix(6).joined(separator: ", "))\(missing.count > 6 ? " (+\(missing.count - 6))" : "") that no linked image of this firmware exports"
+            )
         }
         if !why.isEmpty { return Fit(piece, fits: false, why.joined(separator: "; ")) }
         let cmds = Set(required).sorted().map { "\(hex($0)) as \(fw.precedent[$0]!)" }
-        return Fit(piece, fits: true, "\(sliceArch) slice\(host.map { " in " + ($0 as NSString).lastPathComponent } ?? ""); \(cmds.isEmpty ? "no dyld-required load commands" : "load commands " + cmds.joined(separator: ", ")); "
-                   + "\(linked.count) linked images present; \(resolved) imports resolved")
+        return Fit(
+            piece,
+            fits: true,
+            "\(sliceArch) slice\(host.map { " in " + ($0 as NSString).lastPathComponent } ?? ""); \(cmds.isEmpty ? "no dyld-required load commands" : "load commands " + cmds.joined(separator: ", ")); "
+                + "\(linked.count) linked images present; \(resolved) imports resolved"
+        )
     }
 }
 
@@ -269,17 +328,22 @@ struct MachO32 {
         guard start > 0, size > 0, start + size <= b.count else { return [] }
         let end = start + size
         func uleb(_ p: inout Int) -> Int? {
-            var r = 0, shift = 0
+            var r = 0
+            var shift = 0
             while p < end, shift < 63 {
-                let x = b[p]; p += 1
-                r |= Int(x & 0x7F) << shift; shift += 7
+                let x = b[p]
+                p += 1
+                r |= Int(x & 0x7F) << shift
+                shift += 7
                 if x < 0x80 { return r }
             }
             return nil
         }
-        var out: [String] = [], stack: [(Int, [UInt8])] = [(0, [])], seen = Set<Int>()
+        var out: [String] = []
+        var stack: [(Int, [UInt8])] = [(0, [])]
+        var seen = Set<Int>()
         while let (node, prefix) = stack.popLast() {
-            guard seen.insert(node).inserted else { continue }   // a malformed trie cannot loop
+            guard seen.insert(node).inserted else { continue }  // a malformed trie cannot loop
             var p = start + node
             guard p < end, let info = uleb(&p) else { continue }
             if info > 0 {
@@ -288,10 +352,12 @@ struct MachO32 {
             }
             p += info
             guard p < end else { continue }
-            let children = Int(b[p]); p += 1
+            let children = Int(b[p])
+            p += 1
             for _ in 0..<children {
                 guard let nul = b[p..<end].firstIndex(of: 0) else { break }
-                let label = Array(b[p..<nul]); p = nul + 1
+                let label = Array(b[p..<nul])
+                p = nul + 1
                 guard let child = uleb(&p) else { break }
                 stack.append((child, prefix + label))
             }
@@ -306,8 +372,10 @@ struct MachO32 {
     init?(_ b: [UInt8]) {
         guard b.count >= 28, u32(b, 0) == 0xFEED_FACE, u32(b, 4) == 12 else { return nil }
         self.b = b
-        filetype = u32(b, 12); flags = u32(b, 24)
-        var cmds: [(UInt32, Int)] = [], off = 28
+        filetype = u32(b, 12)
+        flags = u32(b, 24)
+        var cmds: [(UInt32, Int)] = []
+        var off = 28
         for _ in 0..<u32(b, 16) {
             guard off + 8 <= b.count else { return nil }
             cmds.append((u32(b, off), off))
@@ -327,7 +395,8 @@ struct MachO32 {
             for i in 0..<Int(be32(b, 4)) {
                 let o = 8 + 20 * i
                 guard o + 20 <= b.count, be32(b, o) == 12 else { continue }
-                let off = Int(be32(b, o + 8)), size = Int(be32(b, o + 12))
+                let off = Int(be32(b, o + 8))
+                let size = Int(be32(b, o + 12))
                 guard off + size <= b.count else { continue }
                 slices.append((Int32(bitPattern: be32(b, o + 4)), Array(b[off..<off + size])))
             }
@@ -345,9 +414,13 @@ struct MachO32 {
 
     /// A defined external symbol: N_EXT and a defined type (N_ABS, N_SECT, N_INDR), not N_UNDF nor N_PBUD (a prebound
     /// 1.x/2.x image's imports are N_PBUD, 0xC: counting them made every name a prebound framework imports its export).
-    static func isExport(_ type: UInt8) -> Bool { type & 0xE0 == 0 && type & 0x01 != 0 && type & 0x0E != 0 && type & 0x0E != 0x0C }
+    static func isExport(_ type: UInt8) -> Bool {
+        type & 0xE0 == 0 && type & 0x01 != 0 && type & 0x0E != 0 && type & 0x0E != 0x0C
+    }
     /// N_UNDF, or N_PBUD (a prebound import: 2.x and 3.0 executables).
-    static func isImport(_ type: UInt8) -> Bool { type & 0xE0 == 0 && type & 0x01 != 0 && (type & 0x0E == 0 || type & 0x0E == 0x0C) }
+    static func isImport(_ type: UInt8) -> Bool {
+        type & 0xE0 == 0 && type & 0x01 != 0 && (type & 0x0E == 0 || type & 0x0E == 0x0C)
+    }
 
     func name(_ off: Int) -> String {
         let start = off + Int(u32(b, off + 8))
@@ -366,7 +439,9 @@ struct MachO32 {
     /// (LC_SUB_UMBRELLA / LC_SUB_LIBRARY naming one of its linked images).
     func reexported() -> [String] {
         var out = commands.filter { $0.cmd == Self.lcReexportDylib }.map { name($0.off) }
-        let subs = Set(commands.filter { $0.cmd == Self.lcSubUmbrella || $0.cmd == Self.lcSubLibrary }.map { name($0.off) })
+        let subs = Set(
+            commands.filter { $0.cmd == Self.lcSubUmbrella || $0.cmd == Self.lcSubLibrary }.map { name($0.off) }
+        )
         if !subs.isEmpty {
             for d in dylibs() {
                 let leaf = (d.name as NSString).lastPathComponent
@@ -379,7 +454,9 @@ struct MachO32 {
 
     func symbols() -> [(name: String, type: UInt8, desc: UInt16)] {
         guard let st = commands.first(where: { $0.cmd == 2 }) else { return [] }
-        let symoff = Int(u32(b, st.off + 8)), nsyms = Int(u32(b, st.off + 12)), stroff = Int(u32(b, st.off + 16))
+        let symoff = Int(u32(b, st.off + 8))
+        let nsyms = Int(u32(b, st.off + 12))
+        let stroff = Int(u32(b, st.off + 16))
         var out: [(String, UInt8, UInt16)] = []
         for i in 0..<nsyms {
             let e = symoff + 12 * i
@@ -387,11 +464,17 @@ struct MachO32 {
             let s = stroff + Int(u32(b, e))
             guard s < b.count else { continue }
             let end = b[s...].firstIndex(of: 0) ?? b.count
-            out.append((String(decoding: b[s..<end], as: UTF8.self), b[e + 4], UInt16(b[e + 6]) | UInt16(b[e + 7]) << 8))
+            out.append(
+                (String(decoding: b[s..<end], as: UTF8.self), b[e + 4], UInt16(b[e + 6]) | UInt16(b[e + 7]) << 8)
+            )
         }
         return out
     }
 }
 
-private func u32(_ b: [UInt8], _ o: Int) -> UInt32 { UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24 }
-private func be32(_ b: [UInt8], _ o: Int) -> UInt32 { UInt32(b[o]) << 24 | UInt32(b[o + 1]) << 16 | UInt32(b[o + 2]) << 8 | UInt32(b[o + 3]) }
+private func u32(_ b: [UInt8], _ o: Int) -> UInt32 {
+    UInt32(b[o]) | UInt32(b[o + 1]) << 8 | UInt32(b[o + 2]) << 16 | UInt32(b[o + 3]) << 24
+}
+private func be32(_ b: [UInt8], _ o: Int) -> UInt32 {
+    UInt32(b[o]) << 24 | UInt32(b[o + 1]) << 16 | UInt32(b[o + 2]) << 8 | UInt32(b[o + 3])
+}

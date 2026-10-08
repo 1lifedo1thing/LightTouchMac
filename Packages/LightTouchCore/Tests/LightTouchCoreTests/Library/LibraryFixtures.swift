@@ -21,8 +21,11 @@ nonisolated enum LibraryFixtures {
         let folder = url.deletingLastPathComponent().appendingPathComponent(url.lastPathComponent + ".d")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let plist = folder.appendingPathComponent("Restore.plist")
-        try PropertyListSerialization.data(fromPropertyList: ["ProductType": product, "ProductBuildVersion": build],
-                                           format: .xml, options: 0).write(to: plist)
+        try PropertyListSerialization.data(
+            fromPropertyList: ["ProductType": product, "ProductBuildVersion": build],
+            format: .xml,
+            options: 0
+        ).write(to: plist)
         try run("/usr/bin/zip", ["-q", "-j", url.path, plist.path])
     }
 
@@ -34,8 +37,10 @@ nonisolated enum LibraryFixtures {
 
     /// Runs `executable` to its exit; its stdout. Throws on a non-zero status.
     @discardableResult
-    static func run(_ executable: String, _ arguments: [String], environment: [String: String]? = nil) throws -> String {
-        let process = Process(), out = Pipe()
+    static func run(_ executable: String, _ arguments: [String], environment: [String: String]? = nil) throws -> String
+    {
+        let process = Process()
+        let out = Pipe()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         if let environment { process.environment = ProcessInfo.processInfo.environment.merging(environment) { $1 } }
@@ -45,7 +50,10 @@ nonisolated enum LibraryFixtures {
         let data = out.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
-            throw CocoaError(.executableLoad, userInfo: [NSLocalizedDescriptionKey: "\(executable) \(arguments) exited \(process.terminationStatus)"])
+            throw CocoaError(
+                .executableLoad,
+                userInfo: [NSLocalizedDescriptionKey: "\(executable) \(arguments) exited \(process.terminationStatus)"]
+            )
         }
         return String(decoding: data, as: UTF8.self)
     }
@@ -59,7 +67,8 @@ nonisolated enum LibraryFixtures {
 
     /// The fake preparer (tests/fixtures/fake-firmwarekit) in `mode`, writing its argv to `argv`, as its own
     /// executable: the mode and argv path travel in the script, not this process's shared environment.
-    static func fakePreparer(in directory: URL, mode: String = "ok", argv: URL? = nil, unwrap: URL? = nil) throws -> URL {
+    static func fakePreparer(in directory: URL, mode: String = "ok", argv: URL? = nil, unwrap: URL? = nil) throws -> URL
+    {
         let name = "preparer-\(mode)-\(UUID().uuidString.prefix(8))"
         var body = ""
         if let unwrap { body += "[ \"$1\" = unwrap ] && exec '\(unwrap.path)' \"$@\"\n" }
@@ -76,7 +85,10 @@ nonisolated enum LibraryFixtures {
 
     /// Like withTemporaryDirectory, for trees with read-only or locked parts.
     static func withScratch<T>(_ body: (URL) async throws -> T) async throws -> T {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ltm-tests-" + UUID().uuidString, isDirectory: true)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "ltm-tests-" + UUID().uuidString,
+            isDirectory: true
+        )
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { forceRemove(directory) }
         return try await body(directory.resolvingSymlinksInPath())

@@ -4,7 +4,6 @@
 import Foundation
 import HostServiceWire
 
-
 extension DeviceServices {
     // MARK: - List
 
@@ -32,9 +31,11 @@ extension DeviceServices {
             let apps = (IMobileDevice.decode(result) as? [[String: Any]] ?? []).compactMap {
                 (dict: [String: Any]) -> InstalledApp? in
                 guard let id = dict["CFBundleIdentifier"] as? String else { return nil }
-                let name = (dict["CFBundleDisplayName"] as? String)
+                let name =
+                    (dict["CFBundleDisplayName"] as? String)
                     ?? (dict["CFBundleName"] as? String) ?? id
-                let version = (dict["CFBundleVersion"] as? String)
+                let version =
+                    (dict["CFBundleVersion"] as? String)
                     ?? (dict["CFBundleShortVersionString"] as? String) ?? ""
                 return InstalledApp(id: id, name: name, version: version)
             }
@@ -66,13 +67,21 @@ extension DeviceServices {
     /// and installed `replacing` the old app, which keeps the app's data.
     /// On 2.x, data a failed replacement left in the device's archive comes
     /// back with the next install of the app that succeeds.
-    func install(_ ipa: URL, staged: String, bundleID: String,
-                 progress: @escaping @Sendable (Int, String) -> Void) async throws {
+    func install(
+        _ ipa: URL,
+        staged: String,
+        bundleID: String,
+        progress: @escaping @Sendable (Int, String) -> Void
+    ) async throws {
         var restoring: String?
         if (try? await lockdownValue("ProductVersion"))?.hasPrefix("2.") == true,
-           (try? await archivedApps())?.contains(bundleID) == true { restoring = bundleID }
-        do { try await install(stagedPath: staged, restoring: restoring, progress: progress) }
-        catch DeviceError.instproxy(.alreadyInstalled, _) {
+            (try? await archivedApps())?.contains(bundleID) == true
+        {
+            restoring = bundleID
+        }
+        do {
+            try await install(stagedPath: staged, restoring: restoring, progress: progress)
+        } catch DeviceError.instproxy(.alreadyInstalled, _) {
             let again = try await stage(ipa) { _ in }
             defer { Task { await removeStaged(again) } }
             try await install(stagedPath: again, replacing: bundleID, progress: progress)
@@ -84,7 +93,7 @@ extension DeviceServices {
         return try await run(Timeouts.browse, "list archives") { device in
             let client = try IMobileDevice.startInstallationProxy(device: device)
             defer { _ = instproxy_client_free(client) }
-            let options = IMobileDevice.encode([String: String]())   // 2.x drops a request without ClientOptions
+            let options = IMobileDevice.encode([String: String]())  // 2.x drops a request without ClientOptions
             defer { if let options { plist_free(options) } }
             var result: plist_t?
             let lr = instproxy_lookup_archives(client, options, &result)
@@ -105,17 +114,24 @@ extension DeviceServices {
     /// removes the app), Install, then Restore into the new app's container
     /// (which consumes the archive). If the Install fails the archive stays.
     /// `restoring`: after the Install, Restore that app's archive.
-    func install(stagedPath: String, replacing: String? = nil, restoring: String? = nil,
-                 progress: @escaping @Sendable (Int, String) -> Void) async throws {
+    func install(
+        stagedPath: String,
+        replacing: String? = nil,
+        restoring: String? = nil,
+        progress: @escaping @Sendable (Int, String) -> Void
+    ) async throws {
         let socket = self.clientSocket
         try await DeviceGate.shared.serialized(socket: socket) {
             let cancellation = InstallCancellation()
             try await withTaskCancellationHandler {
                 if let id = replacing { try await Self.perform(.archiveData(id), cancellation, progress) }
-                do { try await Self.perform(.install(stagedPath), cancellation, progress) }
-                catch let error as DeviceError where replacing != nil && !error.isTransient {
-                    throw DeviceError.failed("The new version didn’t install (\(error.localizedDescription)). "
-                        + "The app’s data is kept on the device and comes back the next time this app installs.")
+                do { try await Self.perform(.install(stagedPath), cancellation, progress) } catch let error
+                    as DeviceError where replacing != nil && !error.isTransient
+                {
+                    throw DeviceError.failed(
+                        "The new version didn’t install (\(error.localizedDescription)). "
+                            + "The app’s data is kept on the device and comes back the next time this app installs."
+                    )
                 }
                 if let id = replacing ?? restoring { try await Self.perform(.restore(id), cancellation, progress) }
             } onCancel: {
@@ -126,18 +142,27 @@ extension DeviceServices {
 
     /// One installation_proxy command with a status callback.
     nonisolated private enum Command: Sendable {
-        case install(String), archiveData(String), restore(String)
+        case install(String)
+        case archiveData(String)
+        case restore(String)
     }
 
-    private nonisolated static func perform(_ command: Command, _ cancellation: InstallCancellation,
-                                            _ progress: @escaping @Sendable (Int, String) -> Void) async throws {
+    private nonisolated static func perform(
+        _ command: Command,
+        _ cancellation: InstallCancellation,
+        _ progress: @escaping @Sendable (Int, String) -> Void
+    ) async throws {
         let connection = try await installConnection()
         // Once the guest mutation begins, retain the gate until its
         // existing callback watchdog finishes. Cancelling before that
         // point closes the connection without submitting an install.
         try await Task.detached {
-            try blockingInstall(connection: connection, cancellation: cancellation,
-                                command: command, progress: progress)
+            try blockingInstall(
+                connection: connection,
+                cancellation: cancellation,
+                command: command,
+                progress: progress
+            )
         }.value
     }
 
@@ -156,7 +181,8 @@ extension DeviceServices {
         let device: OpaquePointer
         let client: OpaquePointer
         init(device: OpaquePointer, client: OpaquePointer) {
-            self.device = device; self.client = client
+            self.device = device
+            self.client = client
         }
         func free() {
             _ = instproxy_client_free(client)
@@ -168,9 +194,15 @@ extension DeviceServices {
     /// frees the late handles then.
     private nonisolated static func installConnection() async throws -> InstallConnection {
         // A successful startup always stores before completing the deadline.
-        guard let connection = try await openBeforeDeadline(Timeouts.serviceProbe * 2, "install connection", {
-            try openInstallConnection()
-        }) else { throw DeviceError.unavailable }
+        guard
+            let connection = try await openBeforeDeadline(
+                Timeouts.serviceProbe * 2,
+                "install connection",
+                {
+                    try openInstallConnection()
+                }
+            )
+        else { throw DeviceError.unavailable }
         return connection
     }
 
@@ -186,8 +218,10 @@ extension DeviceServices {
             throw error
         }
         let connection = InstallConnection(device: device, client: client)
-        do { try Task.checkCancellation() }
-        catch { connection.free(); throw error }
+        do { try Task.checkCancellation() } catch {
+            connection.free()
+            throw error
+        }
         return connection
     }
 
@@ -195,7 +229,8 @@ extension DeviceServices {
         let box: SyncBox
         let progress: @Sendable (Int, String) -> Void
         init(_ box: SyncBox, _ progress: @escaping @Sendable (Int, String) -> Void) {
-            self.box = box; self.progress = progress
+            self.box = box
+            self.progress = progress
         }
     }
 
@@ -211,9 +246,11 @@ extension DeviceServices {
         var errCode: UInt64 = 0
         let er = instproxy_status_get_error(status, &errName, &errDesc, &errCode)
         if !er.ok || errName != nil {
-            let desc = errDesc.map { String(cString: $0) }
+            let desc =
+                errDesc.map { String(cString: $0) }
                 ?? errName.map { String(cString: $0) } ?? "install failed"
-            errName.map { free($0) }; errDesc.map { free($0) }
+            errName.map { free($0) }
+            errDesc.map { free($0) }
             ctx.box.finish(.failed(InstproxyError(code: er.ok ? -5 : er.code), desc))
             return
         }
@@ -223,24 +260,35 @@ extension DeviceServices {
         let name = namePtr.map { String(cString: $0) } ?? ""
         namePtr.map { free($0) }
 
-        if name == "Complete" { ctx.box.finish(.done); return }
+        if name == "Complete" {
+            ctx.box.finish(.done)
+            return
+        }
 
         var percent: Int32 = -1
         instproxy_status_get_percent_complete(status, &percent)
         ctx.progress(Int(percent), name)
     }
 
-    nonisolated private static func blockingInstall(connection: InstallConnection,
-                                                    cancellation: InstallCancellation, command: Command,
-                                                    progress: @escaping @Sendable (Int, String) -> Void) throws {
-        typealias Operation = (instproxy_client_t?, UnsafePointer<CChar>?, plist_t?, instproxy_status_cb_t?, UnsafeMutableRawPointer?) -> instproxy_error_t
-        let (installFn, target, clientOptions): (Operation, String, [String: String]) = switch command {
-        case .install(let path): ({ instproxy_install($0, $1, $2, $3, $4) }, path, [:])
-        case .archiveData(let id): ({ instproxy_archive($0, $1, $2, $3, $4) }, id, ["ArchiveType": "DocumentsOnly"])
-        case .restore(let id): ({ instproxy_restore($0, $1, $2, $3, $4) }, id, ["ArchiveType": "DocumentsOnly"])
+    nonisolated private static func blockingInstall(
+        connection: InstallConnection,
+        cancellation: InstallCancellation,
+        command: Command,
+        progress: @escaping @Sendable (Int, String) -> Void
+    ) throws {
+        typealias Operation = (
+            instproxy_client_t?, UnsafePointer<CChar>?, plist_t?, instproxy_status_cb_t?, UnsafeMutableRawPointer?
+        ) -> instproxy_error_t
+        let (installFn, target, clientOptions): (Operation, String, [String: String]) =
+            switch command {
+            case .install(let path): ({ instproxy_install($0, $1, $2, $3, $4) }, path, [:])
+            case .archiveData(let id): ({ instproxy_archive($0, $1, $2, $3, $4) }, id, ["ArchiveType": "DocumentsOnly"])
+            case .restore(let id): ({ instproxy_restore($0, $1, $2, $3, $4) }, id, ["ArchiveType": "DocumentsOnly"])
+            }
+        do { try cancellation.beginMutation() } catch {
+            connection.free()
+            throw error
         }
-        do { try cancellation.beginMutation() }
-        catch { connection.free(); throw error }
         let box = SyncBox()
         let ctx = InstallContext(box, progress)
         let ctxPtr = Unmanaged.passRetained(ctx).toOpaque()
@@ -298,10 +346,11 @@ extension DeviceServices {
     /// Does installation_proxy answer right now? A fresh boot brings lockdownd
     /// up ~40s before its services, so "lockdown replies" ≠ "installd is ready".
     func installProxyReady() async -> Bool {
-        return (try? await run(Timeouts.serviceProbe, "installd probe") { device in
-            let client = try IMobileDevice.startInstallationProxy(device: device)
-            _ = instproxy_client_free(client)
-            return true
-        }) ?? false
+        return
+            (try? await run(Timeouts.serviceProbe, "installd probe") { device in
+                let client = try IMobileDevice.startInstallationProxy(device: device)
+                _ = instproxy_client_free(client)
+                return true
+            }) ?? false
     }
 }

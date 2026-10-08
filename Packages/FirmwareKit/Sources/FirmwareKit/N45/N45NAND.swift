@@ -47,23 +47,35 @@ public enum N45NAND {
 
     /// A virtual page (FTL numbering, virtual block 0 = physical block 201) on its bank and physical page.
     static func location(vpn: Int, banks: Int = banks) -> Page {
-        let sb = superblock(banks), v = vpn + ftlStart * sb
+        let sb = superblock(banks)
+        let v = vpn + ftlStart * sb
         return Page(bank: v % banks, page: v / sb * pagesPerBlock + (v / banks) % pagesPerBlock)
     }
 
-    public static func location(lpn: Int, banks: Int = banks) -> Page { location(vpn: dataStart * superblock(banks) + lpn, banks: banks) }
+    public static func location(lpn: Int, banks: Int = banks) -> Page {
+        location(vpn: dataStart * superblock(banks) + lpn, banks: banks)
+    }
 
     static func dataSpare(_ lpn: Int) -> [UInt8] {
         var s = [UInt8](repeating: 0, count: spare)
         put(&s, 0, UInt64(lpn), 4)
-        s[8] = 0xFF; s[9] = 0x40; s[10] = 0xFF; s[11] = 0xFF
+        s[8] = 0xFF
+        s[9] = 0x40
+        s[10] = 0xFF
+        s[11] = 0xFF
         return s
     }
 
     static func cxtSpare(type: UInt8, index: Int, age: UInt32 = 0xFFFF_FFFF) -> [UInt8] {
         var s = [UInt8](repeating: 0, count: spare)
-        put(&s, 0, UInt64(age), 4); put(&s, 4, UInt64(index), 2)
-        s[6] = 0xFF; s[7] = 0xFF; s[8] = 0xFF; s[9] = type; s[10] = 0xFF; s[11] = 0xFF
+        put(&s, 0, UInt64(age), 4)
+        put(&s, 4, UInt64(index), 2)
+        s[6] = 0xFF
+        s[7] = 0xFF
+        s[8] = 0xFF
+        s[9] = type
+        s[10] = 0xFF
+        s[11] = 0xFF
         return s
     }
 
@@ -71,7 +83,9 @@ public enum N45NAND {
         for k in 0..<n { b[o + k] = UInt8(truncatingIfNeeded: v >> (8 * k)) }
     }
 
-    static func crc(_ b: ArraySlice<UInt8>) -> UInt32 { UInt32(b.withUnsafeBufferPointer { zlib.crc32(0, $0.baseAddress, uInt($0.count)) }) }
+    static func crc(_ b: ArraySlice<UInt8>) -> UInt32 {
+        UInt32(b.withUnsafeBufferPointer { zlib.crc32(0, $0.baseAddress, uInt($0.count)) })
+    }
 
     /// VFLMeta (Whimory VFLTypes.h: VFLCxt, then the version and two checksums) as VFL_Format leaves bank `bank`:
     /// the FTL context blocks, the four info blocks (35-38, the context in the first, eight copies on pages 0-7,
@@ -80,43 +94,49 @@ public enum N45NAND {
     /// whose virtual block 3894 it is, finds that erased block and never the table.
     static func vflContext(bank: Int) -> [UInt8] {
         var d = [UInt8](repeating: 0, count: page)
-        put(&d, 0, UInt64(bank), 4)                                            // dwGlobalCxtAge
-        for i in 0..<cxtBlocks { put(&d, 4 + 2 * i, UInt64(i), 2) }            // aFTLCxtVbn
-        put(&d, 0xC, 0xFFFF_FFFF, 4)                                           // dwCxtAge: 0, less the one store
-        put(&d, 0x12, UInt64(vflCxtCopies), 2)                                 // wNextCxtPOffset (wCxtLocation 0)
-        put(&d, 0x14, 1, 2)                                                    // wNumOfInitBadBlk: the BBT block
-        put(&d, 0x1A, 1, 2)                                                    // wBadMapTableMaxIdx
-        put(&d, 0x1C, UInt64(reservedStart), 2)                                // wReservedSecStart
-        put(&d, 0x1E, UInt64(ftlStart - reservedStart), 2)                     // wReservedSecSize
-        put(&d, 0x20, UInt64(blocksPerBank - 1), 2)                            // aBadMapTable[0]: 4095 -> 39
-        for i in 0x688..<0x7A2 { d[i] = 0xFF }                                 // aBadMark, one bit per 8 blocks
+        put(&d, 0, UInt64(bank), 4)  // dwGlobalCxtAge
+        for i in 0..<cxtBlocks { put(&d, 4 + 2 * i, UInt64(i), 2) }  // aFTLCxtVbn
+        put(&d, 0xC, 0xFFFF_FFFF, 4)  // dwCxtAge: 0, less the one store
+        put(&d, 0x12, UInt64(vflCxtCopies), 2)  // wNextCxtPOffset (wCxtLocation 0)
+        put(&d, 0x14, 1, 2)  // wNumOfInitBadBlk: the BBT block
+        put(&d, 0x1A, 1, 2)  // wBadMapTableMaxIdx
+        put(&d, 0x1C, UInt64(reservedStart), 2)  // wReservedSecStart
+        put(&d, 0x1E, UInt64(ftlStart - reservedStart), 2)  // wReservedSecSize
+        put(&d, 0x20, UInt64(blocksPerBank - 1), 2)  // aBadMapTable[0]: 4095 -> 39
+        for i in 0x688..<0x7A2 { d[i] = 0xFF }  // aBadMark, one bit per 8 blocks
         d[0x688 + (blocksPerBank - 1) / 64] &= ~UInt8(1 << (7 - ((blocksPerBank - 1) / 8) % 8))
         for i in 0..<4 { put(&d, 0x7A2 + 2 * i, UInt64(vflCxtBlock + i), 2) }  // awInfoBlk
-        put(&d, 0x7AA, UInt64(maxReserved), 2)                                 // wBadMapTableScrubIdx
-        var sum: UInt32 = 0, xor: UInt32 = 0
+        put(&d, 0x7AA, UInt64(maxReserved), 2)  // wBadMapTableScrubIdx
+        var sum: UInt32 = 0
+        var xor: UInt32 = 0
         for o in stride(from: 0, to: 0x7F8, by: 4) {
             let w = UInt32(d[o]) | UInt32(d[o + 1]) << 8 | UInt32(d[o + 2]) << 16 | UInt32(d[o + 3]) << 24
-            sum &+= w; xor ^= w
+            sum &+= w
+            xor ^= w
         }
-        put(&d, 0x7F8, UInt64(sum &+ 0xAABB_CCDD), 4); put(&d, 0x7FC, UInt64(xor ^ 0xAABB_CCDD), 4)
+        put(&d, 0x7F8, UInt64(sum &+ 0xAABB_CCDD), 4)
+        put(&d, 0x7FC, UInt64(xor ^ 0xAABB_CCDD), 4)
         return d
     }
 
     /// VFLSpare as the VFL writes its context pages: dwCxtAge, dwReserved, status mark 0 (valid), type 0x80.
-    static let vflSpare: [UInt8] = [UInt8](repeating: 0xFF, count: 8) + [0x00, 0x80] + [UInt8](repeating: 0xFF, count: spare - 10)
+    static let vflSpare: [UInt8] =
+        [UInt8](repeating: 0xFF, count: 8) + [0x00, 0x80] + [UInt8](repeating: 0xFF, count: spare - 10)
 
     /// FTLMeta (ftl.h, FTLCxt2): a flushed, valid context with an empty log and the free pool 3-22.
     static func ftlMeta(banks: Int = banks) -> [UInt8] {
         var d = [UInt8](repeating: 0, count: page)
-        put(&d, 0, 0xFFFF_FFFE, 4); put(&d, 4, 1, 4)                          // dwAge, dwWriteAge (data pages are 0)
-        put(&d, 8, UInt64(freeBlocks), 2)                                      // wNumOfFreeVb
+        put(&d, 0, 0xFFFF_FFFE, 4)
+        put(&d, 4, 1, 4)  // dwAge, dwWriteAge (data pages are 0)
+        put(&d, 8, UInt64(freeBlocks), 2)  // wNumOfFreeVb
         for i in 0..<freeBlocks { put(&d, 14 + 2 * i, UInt64(cxtBlocks + i), 2) }
-        for i in 0..<mapTables { put(&d, 56 + 4 * i, UInt64(1 + i), 4) }       // adwMapTablePtrs: pages 1-4 of block 0
-        for i in 0..<logCxts { put(&d, 420 + 20 * i + 4, 0xFFFF, 2) }          // aLOGCxtTable[].wVbn: no log
-        for i in 0..<cxtBlocks { put(&d, 786 + 2 * i, UInt64(i), 2) }          // awMapCxtVbn
-        put(&d, 792, UInt64(superblock(banks) - 1), 4)                         // dwCurrMapCxtPage: this page
-        put(&d, 796, 1, 4)                                                     // boolFlashCxtIsValid
-        put(&d, 2040, 0x4656_0000, 4); put(&d, 2044, UInt64(~UInt32(0x4656_0000)), 4)
+        for i in 0..<mapTables { put(&d, 56 + 4 * i, UInt64(1 + i), 4) }  // adwMapTablePtrs: pages 1-4 of block 0
+        for i in 0..<logCxts { put(&d, 420 + 20 * i + 4, 0xFFFF, 2) }  // aLOGCxtTable[].wVbn: no log
+        for i in 0..<cxtBlocks { put(&d, 786 + 2 * i, UInt64(i), 2) }  // awMapCxtVbn
+        put(&d, 792, UInt64(superblock(banks) - 1), 4)  // dwCurrMapCxtPage: this page
+        put(&d, 796, 1, 4)  // boolFlashCxtIsValid
+        put(&d, 2040, 0x4656_0000, 4)
+        put(&d, 2044, UInt64(~UInt32(0x4656_0000)), 4)
         return d
     }
 
@@ -125,19 +145,28 @@ public enum N45NAND {
     static func partitionPages(_ fsPages: Int) -> [[UInt8]] {
         var mbr = [UInt8](repeating: 0, count: page)
         mbr[0x1BE + 4] = 0xEE
-        put(&mbr, 0x1BE + 8, UInt64(firstLBA), 4); put(&mbr, 0x1BE + 12, UInt64(fsPages), 4)
-        mbr[0x1FE] = 0x55; mbr[0x1FF] = 0xAA
+        put(&mbr, 0x1BE + 8, UInt64(firstLBA), 4)
+        put(&mbr, 0x1BE + 12, UInt64(fsPages), 4)
+        mbr[0x1FE] = 0x55
+        mbr[0x1FF] = 0xAA
         var ent = [UInt8](repeating: 0, count: page)
         ent.replaceSubrange(0..<16, with: N72NAND.hfsType)
         ent.replaceSubrange(16..<32, with: [UInt8](Data(hex: "3c1f8e52067d4b0a9b612f0e8814c35d")!))
-        put(&ent, 0x20, UInt64(firstLBA), 8); put(&ent, 0x28, UInt64(firstLBA + fsPages - 1), 8)
+        put(&ent, 0x20, UInt64(firstLBA), 8)
+        put(&ent, 0x28, UInt64(firstLBA + fsPages - 1), 8)
         for (i, c) in "System".utf16.enumerated() { put(&ent, 0x38 + 2 * i, UInt64(c), 2) }
         var hdr = [UInt8](repeating: 0, count: page)
         hdr.replaceSubrange(0..<8, with: Array("EFI PART".utf8))
-        put(&hdr, 8, 0x00010000, 4); put(&hdr, 12, 0x5C, 4)
-        put(&hdr, 0x18, 1, 8); put(&hdr, 0x28, UInt64(firstLBA), 8); put(&hdr, 0x30, UInt64(firstLBA + fsPages - 1), 8)
+        put(&hdr, 8, 0x0001_0000, 4)
+        put(&hdr, 12, 0x5C, 4)
+        put(&hdr, 0x18, 1, 8)
+        put(&hdr, 0x28, UInt64(firstLBA), 8)
+        put(&hdr, 0x30, UInt64(firstLBA + fsPages - 1), 8)
         hdr.replaceSubrange(0x38..<0x48, with: [UInt8](Data(hex: "6a2e5c109f3b4e418d271c44a510e701")!))
-        put(&hdr, 0x48, 2, 8); put(&hdr, 0x50, 1, 4); put(&hdr, 0x54, 0x80, 4); put(&hdr, 0x58, UInt64(crc(ent[0..<0x80])), 4)
+        put(&hdr, 0x48, 2, 8)
+        put(&hdr, 0x50, 1, 4)
+        put(&hdr, 0x54, 0x80, 4)
+        put(&hdr, 0x58, UInt64(crc(ent[0..<0x80])), 4)
         put(&hdr, 0x10, UInt64(crc(hdr[0..<0x5C])), 4)
         return [mbr, hdr, ent]
     }
@@ -147,10 +176,14 @@ public enum N45NAND {
     /// format" without it). 'C00N' little-endian; the one such literal in the iBoot (the kernel's FTL carries the
     /// same one): C002 in 3A101a-3B48b, C003 in 4A93-4B1.
     public static func filID(iBoot: Data) throws -> UInt32 {
-        let ids = Set(stride(from: iBoot.startIndex, to: iBoot.endIndex - 3, by: 4).compactMap { o -> UInt32? in
-            let w = UInt32(iBoot[o]) | UInt32(iBoot[o + 1]) << 8 | UInt32(iBoot[o + 2]) << 16 | UInt32(iBoot[o + 3]) << 24
-            return w & 0xFFFF_FFF0 == 0x4330_3030 && w & 0xF <= 9 ? w : nil
-        })
+        let ids = Set(
+            stride(from: iBoot.startIndex, to: iBoot.endIndex - 3, by: 4).compactMap { o -> UInt32? in
+                let w =
+                    UInt32(iBoot[o]) | UInt32(iBoot[o + 1]) << 8 | UInt32(iBoot[o + 2]) << 16 | UInt32(iBoot[o + 3])
+                    << 24
+                return w & 0xFFFF_FFF0 == 0x4330_3030 && w & 0xF <= 9 ? w : nil
+            }
+        )
         guard ids.count == 1, let id = ids.first else {
             throw FirmwareError(.unsupported, "iBoot: \(ids.count) NAND driver versions ('C00N' literals), wanted one")
         }
@@ -162,7 +195,9 @@ public enum N45NAND {
     /// `bbtMap`: the factory table carries its good-block bitmap (length at 0x34, one bit per block from 0x38, LSB first,
     /// set = good; the BBT's own block 4095 bad). iBoot-159 (C000) scans for the VFL context only in blocks the bitmap
     /// marks good; the C002/C003 iBoots read no bitmap, and devos50's table has none.
-    public static func metadataPages(fsPages: Int, filID: UInt32, banks: Int = banks, bbtMap: Bool = false) -> [Page: [UInt8]] {
+    public static func metadataPages(fsPages: Int, filID: UInt32, banks: Int = banks, bbtMap: Bool = false) -> [Page:
+        [UInt8]]
+    {
         let zero = [UInt8](repeating: 0, count: spare)
         var fil = [UInt8](repeating: 0, count: page)
         put(&fil, 0, UInt64(filID), 4)
@@ -180,13 +215,19 @@ public enum N45NAND {
         }
         pages[location(vpn: 0, banks: banks)] = [UInt8](repeating: 0, count: page) + cxtSpare(type: 0x43, index: 0)
         for i in 0..<mapTables {
-            let map = (0..<page / 2).map { j -> Int in let lbn = i * page / 2 + j; return lbn < mappedLBNs ? lbn + dataStart : 0xFFFF }
+            let map = (0..<page / 2).map { j -> Int in
+                let lbn = i * page / 2 + j
+                return lbn < mappedLBNs ? lbn + dataStart : 0xFFFF
+            }
             var d = [UInt8](repeating: 0, count: page)
             for (j, v) in map.enumerated() { put(&d, 2 * j, UInt64(v), 2) }
             pages[location(vpn: 1 + i, banks: banks)] = d + cxtSpare(type: 0x46, index: i)
         }
-        pages[location(vpn: superblock(banks) - 1, banks: banks)] = ftlMeta(banks: banks) + cxtSpare(type: 0x43, index: 0, age: 0xFFFF_FFFE)
-        for (lba, d) in partitionPages(fsPages).enumerated() { pages[location(lpn: lba, banks: banks)] = d + dataSpare(lba) }
+        pages[location(vpn: superblock(banks) - 1, banks: banks)] =
+            ftlMeta(banks: banks) + cxtSpare(type: 0x43, index: 0, age: 0xFFFF_FFFE)
+        for (lba, d) in partitionPages(fsPages).enumerated() {
+            pages[location(lpn: lba, banks: banks)] = d + dataSpare(lba)
+        }
         return pages
     }
 
@@ -197,28 +238,36 @@ public enum N45NAND {
     /// programmed as erased, and the FTL fails the read of an erased page it maps (the kernel probes the
     /// volume's last pages, zeros in a fresh image).
     @discardableResult
-    public static func write(volume: URL, out: URL, filID: UInt32, banks: Int = banks, bbtMap: Bool = false) throws -> (volume: Int, metadata: Int) {
-        let fm = FileManager.default, pagesPerSuperblock = superblock(banks)
+    public static func write(volume: URL, out: URL, filID: UInt32, banks: Int = banks, bbtMap: Bool = false) throws -> (
+        volume: Int, metadata: Int
+    ) {
+        let fm = FileManager.default
+        let pagesPerSuperblock = superblock(banks)
         let size = try fm.attributesOfItem(atPath: volume.path)[.size] as? Int ?? 0
         let fsPages = (size + page - 1) / page
         let blocks = (firstLBA + fsPages + pagesPerSuperblock - 1) / pagesPerSuperblock
         guard blocks <= mappedLBNs else {
             throw FirmwareError(.unsupported, "a \(size)-byte volume is larger than the NAND's mapped logical blocks")
         }
-        for b in 0..<banks { try fm.createDirectory(at: out.appendingPathComponent("bank\(b)"), withIntermediateDirectories: true) }
+        for b in 0..<banks {
+            try fm.createDirectory(at: out.appendingPathComponent("bank\(b)"), withIntermediateDirectories: true)
+        }
         let meta = metadataPages(fsPages: fsPages, filID: filID, banks: banks, bbtMap: bbtMap)
         for (p, d) in meta { try Data(d).write(to: path(out, p)) }
         let f = try FileHandle(forReadingFrom: volume)
         defer { try? f.close() }
         var written = 0
-        for lbn in 0..<blocks {   // logical block 0 starts with the partition pages (LBA 0-2), written above
-            let first = lbn * pagesPerSuperblock, skip = max(0, firstLBA - first)
+        for lbn in 0..<blocks {  // logical block 0 starts with the partition pages (LBA 0-2), written above
+            let first = lbn * pagesPerSuperblock
+            let skip = max(0, firstLBA - first)
             try f.seek(toOffset: UInt64((first + skip - firstLBA) * page))
             var data = try f.read(upToCount: (pagesPerSuperblock - skip) * page) ?? Data()
             data.append(Data(count: (pagesPerSuperblock - skip) * page - data.count))
             for i in 0..<pagesPerSuperblock - skip {
                 let lpn = first + skip + i
-                try (data[data.startIndex + i * page..<data.startIndex + (i + 1) * page] + dataSpare(lpn)).write(to: path(out, location(lpn: lpn, banks: banks)))
+                try (data[data.startIndex + i * page..<data.startIndex + (i + 1) * page] + dataSpare(lpn)).write(
+                    to: path(out, location(lpn: lpn, banks: banks))
+                )
                 written += 1
             }
         }

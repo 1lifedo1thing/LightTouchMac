@@ -1,8 +1,9 @@
-import Foundation
-import Testing
 import DeviceRuntime
+import Foundation
 import HostRuntime
 import HostServiceWire
+import Testing
+
 @testable import LightTouchCore
 
 /// Opening an app wakes a sleeping display and nothing else, keeps the guest's lock and typed errors; the boot's
@@ -67,7 +68,9 @@ struct GuestLaunchTests {
 
     @Test func messagesNameTheDevice() {
         #expect(AppLaunchError.locked.message(for: .n72) == "Unlock the iPod, then try again.")
-        #expect(AppLaunchError.unavailable.message(for: .k48) == "Wait for the iPad to finish starting, then try again.")
+        #expect(
+            AppLaunchError.unavailable.message(for: .k48) == "Wait for the iPad to finish starting, then try again."
+        )
         #expect(AppLaunchError.failed.message(for: .n72) == "Try opening the app on the iPod.")
     }
 
@@ -98,10 +101,16 @@ struct GuestLaunchTests {
 
     @Test func anInvalidRequiredPackageFailsClosed() {
         var calls = 0
-        let none = GuestOfferComposition.offer(augmentation: String?.none) { _ -> GuestPackage.Offer? in calls += 1; throw Corrupt() }
+        let none = GuestOfferComposition.offer(augmentation: String?.none) { _ -> GuestPackage.Offer? in
+            calls += 1
+            throw Corrupt()
+        }
         #expect(none == nil && calls == 1)
         calls = 0
-        let both = GuestOfferComposition.offer(augmentation: "developer tools") { _ -> GuestPackage.Offer? in calls += 1; throw Corrupt() }
+        let both = GuestOfferComposition.offer(augmentation: "developer tools") { _ -> GuestPackage.Offer? in
+            calls += 1
+            throw Corrupt()
+        }
         #expect(both == nil && calls == 2)
     }
 }

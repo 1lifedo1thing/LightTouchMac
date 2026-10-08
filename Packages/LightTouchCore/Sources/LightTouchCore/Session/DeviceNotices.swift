@@ -1,10 +1,10 @@
 // A device's settings file as the session holds it, and the notice the window shows for it (kept there, so a
 // notice survives a relaunch until it is resolved or dismissed).
 
-import Foundation
-import Observation
-import HostRuntime
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import Observation
 
 /// This device's settings.plist (DeviceSettings), read once and written on every change. Observable: whatever
 /// reads a setting through it (the keyboard, the notice, the menus' toggles) updates with it.
@@ -45,7 +45,8 @@ public final class DeviceNotices {
 
     public func report(_ message: String, for operation: Operation) {
         let failed = storageFailed()
-        let value = failed
+        let value =
+            failed
             ? "Couldn’t save to disk, so the \(shortName) stopped and recent changes were lost. Free up space, then reopen Light Touch."
             : message
         logEvent(value)

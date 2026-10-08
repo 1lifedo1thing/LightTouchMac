@@ -2,9 +2,9 @@
 // the battery menu. The emulator can't be asked for these, so what the app last set is the menu's state, and
 // every boot starts from it.
 
+import DeviceRuntime
 import Foundation
 import HostRuntime
-import DeviceRuntime
 
 /// A control request for the running boot: `done(true)` when the machine applied it (BootSessionScope.control).
 public typealias MachineControl = (LinkRequest, @escaping @MainActor (Bool) -> Void) -> Void
@@ -19,8 +19,13 @@ public final class KeyboardInput {
     /// The guest takes key presses now: running, accepting input, display awake.
     private let canPress: () -> Bool
 
-    public init(settings: DeviceSettingsFile, canToggleHardwareKeyboard: Bool, control: @escaping MachineControl,
-                send: @escaping (LinkCommand) -> Void, canPress: @escaping () -> Bool) {
+    public init(
+        settings: DeviceSettingsFile,
+        canToggleHardwareKeyboard: Bool,
+        control: @escaping MachineControl,
+        send: @escaping (LinkCommand) -> Void,
+        canPress: @escaping () -> Bool
+    ) {
         self.settings = settings
         self.canToggleHardwareKeyboard = canToggleHardwareKeyboard
         self.control = control

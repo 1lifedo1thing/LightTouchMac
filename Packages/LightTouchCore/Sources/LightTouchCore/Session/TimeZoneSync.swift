@@ -50,16 +50,22 @@ public final class TimeZoneSync {
         stop()
         let generation = host.bootScope.generation
         let scope = scope
-        host.bootScope.timeZoneObserver = NotificationCenter.default.addObserver(forName: .NSSystemTimeZoneDidChange,
-                                               object: nil, queue: nil) { [weak self] _ in
+        host.bootScope.timeZoneObserver = NotificationCenter.default.addObserver(
+            forName: .NSSystemTimeZoneDidChange,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
             Task { @MainActor in
                 guard let self, generation == self.host.bootScope.generation, scope == self.scope else { return }
                 self.schedule(generation: generation)
             }
         }
         // The region and the 24-hour setting follow the Mac's too.
-        host.bootScope.localeObserver = NotificationCenter.default.addObserver(forName: NSLocale.currentLocaleDidChangeNotification,
-                                                                              object: nil, queue: nil) { [weak self] _ in
+        host.bootScope.localeObserver = NotificationCenter.default.addObserver(
+            forName: NSLocale.currentLocaleDidChangeNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
             Task { @MainActor in
                 guard let self, generation == self.host.bootScope.generation, scope == self.scope else { return }
                 self.schedule(generation: generation)
@@ -84,7 +90,9 @@ public final class TimeZoneSync {
     /// A new timezone notification replaces the pending operation for this boot.
     private func syncWhenReady(generation: Int) async {
         while !Task.isCancelled {
-            guard generation == host.bootScope.generation, !host.shuttingDown, !host.isDead, !host.isPoweredOff else { return }
+            guard generation == host.bootScope.generation, !host.shuttingDown, !host.isDead, !host.isPoweredOff else {
+                return
+            }
             if host.state == .running, !host.preparingDevice, host.canManageApps, await host.deviceReady() {
                 guard generation == host.bootScope.generation, !Task.isCancelled else { return }
                 do {

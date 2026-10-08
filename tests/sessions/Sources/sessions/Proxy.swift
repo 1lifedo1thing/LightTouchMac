@@ -4,7 +4,9 @@ import SessionKit
 /// contrib/it-proxy/httpget of the pinned qemu-ios checkout (armv6; the guest's own CFNetwork client), or --httpget.
 func httpget(_ args: Arguments) -> URL {
     let url = args.path("httpget") ?? checkout("qemu-ios").appendingPathComponent("contrib/it-proxy/httpget")
-    guard FileManager.default.fileExists(atPath: url.path) else { die("no httpget at \(url.path) (contrib/it-proxy/build.sh, or --httpget)") }
+    guard FileManager.default.fileExists(atPath: url.path) else {
+        die("no httpget at \(url.path) (contrib/it-proxy/build.sh, or --httpget)")
+    }
     return url
 }
 
@@ -16,55 +18,97 @@ func proxyTrust(_ args: Arguments) -> Never {
     guard let path = args.positional.first else { die("proxy-trust needs a prepared n72 or k48 base") }
     let base = Base(path)
     guard ["n72ap", "k48ap"].contains(base.board) else { die("proxy-trust boots an n72ap or k48ap base") }
-    let b = base.driverBoard, ipad = b == "ipad"
+    let b = base.driverBoard
+    let ipad = b == "ipad"
     let work = workDirectory(args, "proxy-trust")
     let tools = Tools.resolve(args, work: work)
     let packs = tools.guest.appendingPathComponent("guest-tools")
     let url = args["url"] ?? "https://example.com/"
     var config = driverConfig(tools, work: work)
     config["timeout"] = 900
-    if ipad { config["ipadItpack"] = packs.appendingPathComponent("armv7.itpack").path; config["ipadBase"] = base.url.path }
-    config["proxy"] = ["board": b, "base": base.url.path, "itpack": packs.appendingPathComponent("armv6.itpack").path,
-                       "httpget": httpget(args).path, "url": url]
-    let (e, status) = sessionDriver(config, work: work, timeout: 900,
-                                    environment: driverEnvironment(tools).merging(["LTM_WEB_PROXY_TRACE": "1"]) { $1 })
+    if ipad {
+        config["ipadItpack"] = packs.appendingPathComponent("armv7.itpack").path
+        config["ipadBase"] = base.url.path
+    }
+    config["proxy"] = [
+        "board": b, "base": base.url.path, "itpack": packs.appendingPathComponent("armv6.itpack").path,
+        "httpget": httpget(args).path, "url": url,
+    ]
+    let (e, status) = sessionDriver(
+        config,
+        work: work,
+        timeout: 900,
+        environment: driverEnvironment(tools).merging(["LTM_WEB_PROXY_TRACE": "1"]) { $1 }
+    )
     let r = Report()
     r.check(!e.one("lit").isEmpty, "\(b): lit in \(format(e.one("lit").double("seconds"))) s")
-    r.check(e.one("usb").string("productType") == base.productType, "\(b): lockdown over its usbmuxd: \(e.one("usb").string("productType") ?? "none")")
+    r.check(
+        e.one("usb").string("productType") == base.productType,
+        "\(b): lockdown over its usbmuxd: \(e.one("usb").string("productType") ?? "none")"
+    )
     let agent = e.one("agent", ["generation": 1])
-    r.check(agent.bool("alive"), "\(b): the guest agent is up (packaged \(agent.bool("packaged")), ActivationState \(agent.string("state") ?? ""))")
+    r.check(
+        agent.bool("alive"),
+        "\(b): the guest agent is up (packaged \(agent.bool("packaged")), ActivationState \(agent.string("state") ?? ""))"
+    )
     let route = e.one("route")
-    r.check(route.bool("ok"), "\(b): the guest routed through the proxy" + (route.bool("ok") ? "" : ": \(route.string("error") ?? "")"))
+    r.check(
+        route.bool("ok"),
+        "\(b): the guest routed through the proxy" + (route.bool("ok") ? "" : ": \(route.string("error") ?? "")")
+    )
     let http = e.one("httpget", ["label": "http"])
-    r.check(http.bool("ok"), "\(b): plain HTTP through the proxy (Wi-Fi up, the proxy answers): \(clip(http.string("output") ?? "", 60))")
+    r.check(
+        http.bool("ok"),
+        "\(b): plain HTTP through the proxy (Wi-Fi up, the proxy answers): \(clip(http.string("output") ?? "", 60))"
+    )
     // Refused before the trust: through the PAC the guest takes its DIRECT fallback and the .invalid host has no origin
     // (-1003), or -1202 "untrusted server certificate" / -1200 where a guest fails the tunnel without falling back.
-    let untrusted = e.one("httpget", ["label": "untrusted"]), before = untrusted.string("output") ?? ""
-    r.check(!untrusted.isEmpty && !untrusted.bool("ok") && before.hasPrefix("ERROR") && ["-1200", "-1202", "-1003"].contains { before.contains($0) },
-            "\(b): HTTPS through the proxy refused before the trust: \(clip(before, 90))")
+    let untrusted = e.one("httpget", ["label": "untrusted"])
+    let before = untrusted.string("output") ?? ""
+    r.check(
+        !untrusted.isEmpty && !untrusted.bool("ok") && before.hasPrefix("ERROR")
+            && ["-1200", "-1202", "-1003"].contains { before.contains($0) },
+        "\(b): HTTPS through the proxy refused before the trust: \(clip(before, 90))"
+    )
     let trust = e.one("trust", ["generation": 1])
-    r.check(trust.bool("ok"), "\(b): certificate trusted through the agent in \(format(trust.double("seconds"))) s"
-            + (trust.bool("ok") ? "" : ": \(trust.string("error") ?? "")"))
-    r.check(e.one("httpget", ["label": "trusted"]).bool("ok"),
-            "\(b): HTTPS through the proxy answers after the trust: \(clip(e.one("httpget", ["label": "trusted"]).string("output") ?? "", 40))")
+    r.check(
+        trust.bool("ok"),
+        "\(b): certificate trusted through the agent in \(format(trust.double("seconds"))) s"
+            + (trust.bool("ok") ? "" : ": \(trust.string("error") ?? "")")
+    )
+    r.check(
+        e.one("httpget", ["label": "trusted"]).bool("ok"),
+        "\(b): HTTPS through the proxy answers after the trust: \(clip(e.one("httpget", ["label": "trusted"]).string("output") ?? "", 40))"
+    )
     let afterTrust = e.one("front", ["label": "after-trust"])
-    r.check(afterTrust.string("bundleID") == "com.apple.springboard", "\(b): no screen took over after the trust (front: \(afterTrust.string("bundleID") ?? ""))")
+    r.check(
+        afterTrust.string("bundleID") == "com.apple.springboard",
+        "\(b): no screen took over after the trust (front: \(afterTrust.string("bundleID") ?? ""))"
+    )
     r.check(e.one("safari").string("launched") == "Safari", "\(b): Safari launched")
     let safari = e.one("front", ["label": "safari"])
-    r.check(safari.string("bundleID") == "com.apple.mobilesafari", "\(b): Safari still in front after the page load (front: \(safari.string("bundleID") ?? ""))")
+    r.check(
+        safari.string("bundleID") == "com.apple.mobilesafari",
+        "\(b): Safari still in front after the page load (front: \(safari.string("bundleID") ?? ""))"
+    )
     // Safari's own page request in the helper's LTM_WEB_PROXY_TRACE lines (nothing else asks for that host). 4.x's
     // MobileSafari is sandboxed: with the PAC under /usr/local it went DIRECT while unsandboxed clients used the proxy.
     let host = ipad ? URL(string: url)?.host ?? "" : "www.apple.com"
     let native = (try? String(contentsOf: work.appendingPathComponent("\(b)/native.log"), encoding: .utf8)) ?? ""
     let seen = native.split(separator: "\n").first { $0.contains("web-proxy: ") && $0.contains(host) }
     r.check(seen != nil, "\(b): Safari's page (\(host)) came through the proxy")
-    r.check(e.one("quit").bool("exited"), "\(b): clean halt, helper exited in \(format(e.one("quit").double("seconds"))) s")
+    r.check(
+        e.one("quit").bool("exited"),
+        "\(b): clean halt, helper exited in \(format(e.one("quit").double("seconds"))) s"
+    )
     r.check(e.one("agent", ["generation": 2]).bool("alive"), "\(b): restarted on the same overlay, agent up")
     r.check(e.one("trust", ["generation": 2]).bool("ok"), "\(b): the trust runs again after the restart, silently")
     // The lock screen is SpringBoard too (it_agent answers `com.apple.springboard / Lock Screen`).
     let rebooted = e.one("front", ["label": "rebooted"])
-    r.check(rebooted.string("bundleID") == "com.apple.springboard" && rebooted.string("name") == "Home Screen",
-            "\(b): unlocked after the restart: the Home screen, no profile screen (front: \(rebooted.string("bundleID") ?? "") / \(rebooted.string("name") ?? ""))")
+    r.check(
+        rebooted.string("bundleID") == "com.apple.springboard" && rebooted.string("name") == "Home Screen",
+        "\(b): unlocked after the restart: the Home screen, no profile screen (front: \(rebooted.string("bundleID") ?? "") / \(rebooted.string("name") ?? ""))"
+    )
     r.check(e.one("httpget", ["label": "rebooted"]).bool("ok"), "\(b): HTTPS still answers after the restart")
     r.check(e.any("done") && status == 0, "driver finished (exit \(status.map(String.init) ?? "timeout"))")
     finish(r, work: work)
@@ -74,52 +118,57 @@ func proxyTrust(_ args: Arguments) -> Never {
 
 /// The socket shim: every connect/sendto/sendmsg/connectx destination of a process it is inserted into, to LTM_SOCKET_LOG.
 let socketShim = #"""
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <unistd.h>
-#define INTERPOSE(n, o) __attribute__((used)) static struct { const void *a, *b; } i_##o \
-    __attribute__((section("__DATA,__interpose"))) = { (const void *)n, (const void *)o };
-static void note(const char *kind, const struct sockaddr *a) {
-    char host[INET6_ADDRSTRLEN] = "", line[200]; int port; struct timeval tv; const char *path = getenv("LTM_SOCKET_LOG");
-    if (!a || !path) return;
-    if (a->sa_family == AF_INET) { const struct sockaddr_in *s = (const void *)a; inet_ntop(AF_INET, &s->sin_addr, host, sizeof host); port = ntohs(s->sin_port); }
-    else if (a->sa_family == AF_INET6) { const struct sockaddr_in6 *s = (const void *)a; inet_ntop(AF_INET6, &s->sin6_addr, host, sizeof host); port = ntohs(s->sin6_port); }
-    else return;
-    gettimeofday(&tv, NULL);
-    int fd = open(path, O_WRONLY | O_APPEND | O_CREAT, 0644);
-    if (fd < 0) return;
-    write(fd, line, snprintf(line, sizeof line, "%ld.%06d %s %s %s %d\n", (long)tv.tv_sec, (int)tv.tv_usec, getprogname(), kind, host, port));
-    close(fd);
-}
-static int c(int fd, const struct sockaddr *a, socklen_t l) { note("connect", a); return connect(fd, a, l); }
-static ssize_t st(int fd, const void *b, size_t n, int f, const struct sockaddr *a, socklen_t l) { note("sendto", a); return sendto(fd, b, n, f, a, l); }
-static ssize_t sm(int fd, const struct msghdr *m, int f) { note("sendmsg", m ? m->msg_name : NULL); return sendmsg(fd, m, f); }
-static int cx(int fd, const sa_endpoints_t *e, sae_associd_t as, unsigned int fl, const struct iovec *v, unsigned int vc, size_t *len, sae_connid_t *id)
-    { note("connectx", e ? e->sae_dstaddr : NULL); return connectx(fd, e, as, fl, v, vc, len, id); }
-INTERPOSE(c, connect) INTERPOSE(st, sendto) INTERPOSE(sm, sendmsg) INTERPOSE(cx, connectx)
-"""#
+    #include <arpa/inet.h>
+    #include <fcntl.h>
+    #include <stdio.h>
+    #include <stdlib.h>
+    #include <sys/socket.h>
+    #include <sys/time.h>
+    #include <unistd.h>
+    #define INTERPOSE(n, o) __attribute__((used)) static struct { const void *a, *b; } i_##o \
+        __attribute__((section("__DATA,__interpose"))) = { (const void *)n, (const void *)o };
+    static void note(const char *kind, const struct sockaddr *a) {
+        char host[INET6_ADDRSTRLEN] = "", line[200]; int port; struct timeval tv; const char *path = getenv("LTM_SOCKET_LOG");
+        if (!a || !path) return;
+        if (a->sa_family == AF_INET) { const struct sockaddr_in *s = (const void *)a; inet_ntop(AF_INET, &s->sin_addr, host, sizeof host); port = ntohs(s->sin_port); }
+        else if (a->sa_family == AF_INET6) { const struct sockaddr_in6 *s = (const void *)a; inet_ntop(AF_INET6, &s->sin6_addr, host, sizeof host); port = ntohs(s->sin6_port); }
+        else return;
+        gettimeofday(&tv, NULL);
+        int fd = open(path, O_WRONLY | O_APPEND | O_CREAT, 0644);
+        if (fd < 0) return;
+        write(fd, line, snprintf(line, sizeof line, "%ld.%06d %s %s %s %d\n", (long)tv.tv_sec, (int)tv.tv_usec, getprogname(), kind, host, port));
+        close(fd);
+    }
+    static int c(int fd, const struct sockaddr *a, socklen_t l) { note("connect", a); return connect(fd, a, l); }
+    static ssize_t st(int fd, const void *b, size_t n, int f, const struct sockaddr *a, socklen_t l) { note("sendto", a); return sendto(fd, b, n, f, a, l); }
+    static ssize_t sm(int fd, const struct msghdr *m, int f) { note("sendmsg", m ? m->msg_name : NULL); return sendmsg(fd, m, f); }
+    static int cx(int fd, const sa_endpoints_t *e, sae_associd_t as, unsigned int fl, const struct iovec *v, unsigned int vc, size_t *len, sae_connid_t *id)
+        { note("connectx", e ? e->sae_dstaddr : NULL); return connectx(fd, e, as, fl, v, vc, len, id); }
+    INTERPOSE(c, connect) INTERPOSE(st, sendto) INTERPOSE(sm, sendmsg) INTERPOSE(cx, connectx)
+    """#
 
 /// A destination macOS counts as the local network (and asks the user about): private, link-local, multicast or
 /// broadcast, or one of this Mac's DNS servers. Loopback is not.
 func localNetwork(_ host: String, dnsServers: Set<String>) -> Bool {
     let host = String(host.split(separator: "%").first ?? "")
     if dnsServers.contains(host) { return true }
-    var v4 = in_addr(), v6 = in6_addr()
+    var v4 = in_addr()
+    var v6 = in6_addr()
     var bytes: [UInt8]
     if inet_pton(AF_INET, host, &v4) == 1 {
         bytes = withUnsafeBytes(of: v4) { Array($0) }
     } else if inet_pton(AF_INET6, host, &v6) == 1 {
         let b6 = withUnsafeBytes(of: v6) { Array($0) }
-        if b6[0..<10].allSatisfy({ $0 == 0 }) && b6[10] == 0xff && b6[11] == 0xff { bytes = Array(b6[12...]) }   // v4-mapped
+        if b6[0..<10].allSatisfy({ $0 == 0 }) && b6[10] == 0xff && b6[11] == 0xff {
+            bytes = Array(b6[12...])
+        }  // v4-mapped
         else {
-            if b6 == [UInt8](repeating: 0, count: 15) + [1] { return false }   // ::1
+            if b6 == [UInt8](repeating: 0, count: 15) + [1] { return false }  // ::1
             return b6[0] & 0xfe == 0xfc || (b6[0] == 0xfe && b6[1] & 0xc0 == 0x80) || b6[0] == 0xff
         }
-    } else { return false }
+    } else {
+        return false
+    }
     let (a, b) = (bytes[0], bytes[1])
     if a == 127 { return false }
     return a == 0 || a == 10 || (a == 100 && b & 0xc0 == 64) || (a == 169 && b == 254) || (a == 172 && b & 0xf0 == 16)
@@ -142,16 +191,22 @@ final class LANProbe: @unchecked Sendable {
         inet_pton(AF_INET, address, &addr.sin_addr)
         var size = socklen_t(MemoryLayout<sockaddr_in>.size)
         let bound = withUnsafeMutablePointer(to: &addr) { p in
-            p.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, size) == 0 && listen(fd, 8) == 0 && getsockname(fd, $0, &size) == 0 }
+            p.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                bind(fd, $0, size) == 0 && listen(fd, 8) == 0 && getsockname(fd, $0, &size) == 0
+            }
         }
-        guard bound else { close(fd); return nil }
+        guard bound else {
+            close(fd)
+            return nil
+        }
         self.fd = fd
         port = Int(UInt16(bigEndian: addr.sin_port))
         Thread.detachNewThread { [self] in
             while true {
                 let client = accept(fd, nil, nil)
                 if client < 0 { return }
-                var buffer = [UInt8](repeating: 0, count: 4096), request = Data()
+                var buffer = [UInt8](repeating: 0, count: 4096)
+                var request = Data()
                 while !request.contains(Data("\r\n\r\n".utf8)) {
                     let n = read(client, &buffer, buffer.count)
                     if n <= 0 { break }
@@ -159,7 +214,10 @@ final class LANProbe: @unchecked Sendable {
                 }
                 let line = String(decoding: request, as: UTF8.self).split(separator: "\r\n").first ?? ""
                 let parts = line.split(separator: " ")
-                if parts.count > 1 { let p = String(parts[1]); lock.withLock { paths.append(p) } }
+                if parts.count > 1 {
+                    let p = String(parts[1])
+                    lock.withLock { paths.append(p) }
+                }
                 let reply = "HTTP/1.0 200 OK\r\nContent-Length: 9\r\n\r\nlan probe"
                 _ = reply.withCString { write(client, $0, strlen($0)) }
                 close(client)
@@ -179,9 +237,14 @@ func localNetworkCheck(_ args: Arguments) -> Never {
     guard let path = args.positional.first else { die("local-network needs a prepared n72 base") }
     let base = Base(path)
     guard base.board == "n72ap" else { die("local-network boots an n72ap base") }
-    guard let lanIP = ["en0", "en1"].lazy.map({ output("/usr/sbin/ipconfig", ["getifaddr", $0]).trimmingCharacters(in: .whitespacesAndNewlines) })
-            .first(where: { !$0.isEmpty }) else {
-        print("SKIP: this Mac has no en0/en1 address to stand in for a LAN host"); exit(0)
+    guard
+        let lanIP = ["en0", "en1"].lazy.map({
+            output("/usr/sbin/ipconfig", ["getifaddr", $0]).trimmingCharacters(in: .whitespacesAndNewlines)
+        })
+        .first(where: { !$0.isEmpty })
+    else {
+        print("SKIP: this Mac has no en0/en1 address to stand in for a LAN host")
+        exit(0)
     }
     let work = workDirectory(args, "local-network")
     let tools = Tools.resolve(args, work: work)
@@ -189,48 +252,94 @@ func localNetworkCheck(_ args: Arguments) -> Never {
     let lanURL = "http://\(lanIP):\(probe.port)/lan-probe"
 
     // The shim, for every architecture a child may be (system tools are arm64e), and a helper copy it can load into.
-    let source = work.appendingPathComponent("socket-log.c"), shim = work.appendingPathComponent("socket-log.dylib")
+    let source = work.appendingPathComponent("socket-log.c")
+    let shim = work.appendingPathComponent("socket-log.dylib")
     try? socketShim.write(to: source, atomically: true, encoding: .utf8)
-    guard run("/usr/bin/clang", ["-dynamiclib", "-arch", "arm64", "-arch", "arm64e", "-arch", "x86_64", "-o", shim.path, source.path],
-              log: work.appendingPathComponent("shim.log")) == 0 else { die("could not build the socket shim") }
-    let observed = work.appendingPathComponent("LightTouchDevice-observed"), entitlements = work.appendingPathComponent("helper.entitlements")
+    guard
+        run(
+            "/usr/bin/clang",
+            ["-dynamiclib", "-arch", "arm64", "-arch", "arm64e", "-arch", "x86_64", "-o", shim.path, source.path],
+            log: work.appendingPathComponent("shim.log")
+        ) == 0
+    else { die("could not build the socket shim") }
+    let observed = work.appendingPathComponent("LightTouchDevice-observed")
+    let entitlements = work.appendingPathComponent("helper.entitlements")
     try? FileManager.default.copyItem(at: tools.helper, to: observed)
-    try? output("/usr/bin/codesign", ["-d", "--entitlements", "-", "--xml", tools.helper.path]).write(to: entitlements, atomically: true, encoding: .utf8)
-    guard run("/usr/bin/codesign", ["-f", "-s", "-", "--entitlements", entitlements.path, observed.path]) == 0 else { die("could not sign the helper copy") }
+    try? output("/usr/bin/codesign", ["-d", "--entitlements", "-", "--xml", tools.helper.path]).write(
+        to: entitlements,
+        atomically: true,
+        encoding: .utf8
+    )
+    guard run("/usr/bin/codesign", ["-f", "-s", "-", "--entitlements", entitlements.path, observed.path]) == 0 else {
+        die("could not sign the helper copy")
+    }
     var t = tools
     t.helper = observed
     t.requirement = nil
-    let dnsServers = Set(output("/usr/sbin/scutil", ["--dns"]).split(separator: "\n").compactMap { line -> String? in
-        guard line.contains("nameserver["), let value = line.split(separator: ":", maxSplits: 1).last else { return nil }
-        return value.trimmingCharacters(in: .whitespaces)
-    })
+    let dnsServers = Set(
+        output("/usr/sbin/scutil", ["--dns"]).split(separator: "\n").compactMap { line -> String? in
+            guard line.contains("nameserver["), let value = line.split(separator: ":", maxSplits: 1).last else {
+                return nil
+            }
+            return value.trimmingCharacters(in: .whitespaces)
+        }
+    )
 
     var config = driverConfig(t, work: work)
     config["timeout"] = 600
-    config["proxy"] = ["board": "ipod", "base": base.url.path, "itpack": tools.guest.appendingPathComponent("guest-tools/armv6.itpack").path,
-                       "httpget": httpget(args).path, "url": "", "lan": lanURL, "internet": args["internet"] ?? "http://example.com/",
-                       "dns": args["dns"] ?? "http://example/", "domain": args["domain"] ?? "com"]
+    config["proxy"] = [
+        "board": "ipod", "base": base.url.path,
+        "itpack": tools.guest.appendingPathComponent("guest-tools/armv6.itpack").path,
+        "httpget": httpget(args).path, "url": "", "lan": lanURL, "internet": args["internet"] ?? "http://example.com/",
+        "dns": args["dns"] ?? "http://example/", "domain": args["domain"] ?? "com",
+    ]
     let sockets = work.appendingPathComponent("sockets.log")
-    let (e, status) = sessionDriver(config, work: work, timeout: 600, environment: driverEnvironment(t).merging(
-        ["DYLD_INSERT_LIBRARIES": shim.path, "LTM_SOCKET_LOG": sockets.path]) { $1 })
+    let (e, status) = sessionDriver(
+        config,
+        work: work,
+        timeout: 600,
+        environment: driverEnvironment(t).merging(
+            ["DYLD_INSERT_LIBRARIES": shim.path, "LTM_SOCKET_LOG": sockets.path]) { $1 }
+    )
     probe.stop()
 
     func got(_ label: String) -> String { e.find("get", ["label": label]).first?.string("output") ?? "" }
     let r = Report()
-    let off = got("lan-off"), on = got("lan-on")
+    let off = got("lan-off")
+    let on = got("lan-on")
     r.check(got("internet").hasPrefix("HTTP 200"), "internet through the proxy: \(clip(got("internet"), 60))")
     r.check(off.hasPrefix("ERROR"), "the LAN refused while off: \(clip(off, 60))")
-    r.check(on.hasPrefix("HTTP 200") && probe.hits == ["/lan-probe"], "the LAN reached once turned on: \(clip(on, 60)), the listener saw \(probe.hits)")
-    r.check(got("dns").hasPrefix("HTTP "), "the guest's own DNS while off (\(args["dns"] ?? "http://example/") DIRECT): \(clip(got("dns"), 60))")
-    let lines = ((try? String(contentsOf: sockets, encoding: .utf8)) ?? "").split(separator: "\n").map { $0.split(separator: " ").map(String.init) }
-        .filter { $0.count >= 5 }
+    r.check(
+        on.hasPrefix("HTTP 200") && probe.hits == ["/lan-probe"],
+        "the LAN reached once turned on: \(clip(on, 60)), the listener saw \(probe.hits)"
+    )
+    r.check(
+        got("dns").hasPrefix("HTTP "),
+        "the guest's own DNS while off (\(args["dns"] ?? "http://example/") DIRECT): \(clip(got("dns"), 60))"
+    )
+    let lines = ((try? String(contentsOf: sockets, encoding: .utf8)) ?? "").split(separator: "\n").map {
+        $0.split(separator: " ").map(String.init)
+    }
+    .filter { $0.count >= 5 }
     let flip = e.one("lan-on").double("at")
-    r.check(flip != nil && lines.contains { $0[1].hasPrefix("LightTouchDevice") }, "the helper's sockets observed (\(lines.count) in \(sockets.path))")
-    let leaks = Set(lines.filter { flip != nil && (Double($0[0]) ?? 0) < flip! && localNetwork($0[3], dnsServers: dnsServers) }
-        .map { $0[1...].joined(separator: " ") }).sorted()
-    r.check(leaks.isEmpty, "nothing sent to the local network while off: \(leaks.isEmpty ? "none" : leaks.joined(separator: "; "))")
-    r.check(lines.contains { flip != nil && (Double($0[0]) ?? 0) >= flip! && $0[3] == lanIP && $0[4] == String(probe.port) },
-            "the helper connected to the LAN listener once turned on")
+    r.check(
+        flip != nil && lines.contains { $0[1].hasPrefix("LightTouchDevice") },
+        "the helper's sockets observed (\(lines.count) in \(sockets.path))"
+    )
+    let leaks = Set(
+        lines.filter { flip != nil && (Double($0[0]) ?? 0) < flip! && localNetwork($0[3], dnsServers: dnsServers) }
+            .map { $0[1...].joined(separator: " ") }
+    ).sorted()
+    r.check(
+        leaks.isEmpty,
+        "nothing sent to the local network while off: \(leaks.isEmpty ? "none" : leaks.joined(separator: "; "))"
+    )
+    r.check(
+        lines.contains {
+            flip != nil && (Double($0[0]) ?? 0) >= flip! && $0[3] == lanIP && $0[4] == String(probe.port)
+        },
+        "the helper connected to the LAN listener once turned on"
+    )
     r.check(e.any("done") && status == 0, "driver finished (exit \(status.map(String.init) ?? "timeout"))")
     finish(r, work: work)
 }

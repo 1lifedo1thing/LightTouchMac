@@ -6,7 +6,8 @@ import ObjectiveC
 /// `body` runs. Tests run one at a time (SharedState), so nothing else sees it.
 enum MainBundle {
     static let repository = URL(fileURLWithPath: #filePath).resolvingSymlinksInPath()
-        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent()
 
     /// `resources`: path under Contents/Resources -> path in the repository.
     static func with<T>(_ resources: [String: String], _ body: @MainActor () async throws -> T) async throws -> T {
@@ -15,17 +16,29 @@ enum MainBundle {
         defer { try? FileManager.default.removeItem(at: app) }
         for (name, source) in resources {
             let link = contents.appendingPathComponent("Resources/" + name)
-            try FileManager.default.createDirectory(at: link.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try FileManager.default.createSymbolicLink(at: link, withDestinationURL: repository.appendingPathComponent(source))
+            try FileManager.default.createDirectory(
+                at: link.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try FileManager.default.createSymbolicLink(
+                at: link,
+                withDestinationURL: repository.appendingPathComponent(source)
+            )
         }
-        try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": "app.lighttouch.check", "CFBundlePackageType": "APPL"],
-                                           format: .xml, options: 0).write(to: contents.appendingPathComponent("Info.plist"))
+        try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "app.lighttouch.check", "CFBundlePackageType": "APPL"],
+            format: .xml,
+            options: 0
+        ).write(to: contents.appendingPathComponent("Info.plist"))
         nonisolated(unsafe) let bundle = Bundle(url: app)!
         let method = class_getClassMethod(Bundle.self, #selector(getter: Bundle.main))!
         let block: @convention(block) (AnyObject) -> Bundle = { _ in bundle }
         let replacement = imp_implementationWithBlock(block)
         let previous = method_setImplementation(method, replacement)
-        defer { method_setImplementation(method, previous); imp_removeBlock(replacement) }
+        defer {
+            method_setImplementation(method, previous)
+            imp_removeBlock(replacement)
+        }
         return try await body()
     }
 }

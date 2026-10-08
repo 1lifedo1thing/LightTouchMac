@@ -26,10 +26,14 @@ public nonisolated enum DeviceRecord {
     /// device.json → device.plist: JSON nulls dropped (a plist has none), `created` (ISO 8601) a date. Atomic; the
     /// JSON goes only once the plist is in place. False when there is nothing to convert.
     @discardableResult public static func migrate(_ device: URL) throws -> Bool {
-        let json = device.appendingPathComponent(legacyName), plist = device.appendingPathComponent(name)
+        let json = device.appendingPathComponent(legacyName)
+        let plist = device.appendingPathComponent(name)
         let fm = FileManager.default
         guard fm.fileExists(atPath: json.path) else { return false }
-        if fm.fileExists(atPath: plist.path) { try? fm.removeItem(at: json); return false }
+        if fm.fileExists(atPath: plist.path) {
+            try? fm.removeItem(at: json)
+            return false
+        }
         guard var object = try JSONSerialization.jsonObject(with: Data(contentsOf: json)) as? [String: Any] else {
             throw CocoaError(.propertyListReadCorrupt)
         }

@@ -1,6 +1,7 @@
 import Foundation
 import HostRuntime
 import Testing
+
 @testable import LightTouchCore
 
 /// Per-device settings: what earlier builds kept in user defaults ("<name>.<uuid>", and the app-wide keyboard and
@@ -8,11 +9,21 @@ import Testing
 struct DeviceSettingsTests {
     @Test func defaultsMoveIntoEachDevicesSettingsAndTheKeysGo() throws {
         try withTemporaryDirectory { state in
-            let suite = "ltm-device-settings-\(UUID().uuidString)", defaults = UserDefaults(suiteName: suite)!
+            let suite = "ltm-device-settings-\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suite)!
             defer { defaults.removePersistentDomain(forName: suite) }
-            let a = UUID(), b = UUID(), gone = UUID()
-            for id in [a, b] { try FileManager.default.createDirectory(at: DeviceInstance.directory(id, state: state), withIntermediateDirectories: true) }
-            var carrier = CarrierSettings(); carrier.carrier = "Test Net"; carrier.bars = 2
+            let a = UUID()
+            let b = UUID()
+            let gone = UUID()
+            for id in [a, b] {
+                try FileManager.default.createDirectory(
+                    at: DeviceInstance.directory(id, state: state),
+                    withIntermediateDirectories: true
+                )
+            }
+            var carrier = CarrierSettings()
+            carrier.carrier = "Test Net"
+            carrier.bars = 2
             defaults.set(["message": "Couldn't erase", "operation": "erase"], forKey: "deviceNotice.\(a.uuidString)")
             defaults.set(1, forKey: "motionPose.\(a.uuidString)")
             defaults.set(false, forKey: "keyboardInputEnabled.\(a.uuidString)")
@@ -25,16 +36,29 @@ struct DeviceSettingsTests {
 
             DeviceSettings.migrateDefaults(defaults, state: state, devices: [a, b])
 
-            #expect(DeviceSettings.load(DeviceInstance.directory(a, state: state))
-                    == DeviceSettings(deviceNotice: .init(message: "Couldn't erase", operation: "erase"), motionPose: 1,
-                                      keyboardInputEnabled: false, autoRotateWithGuest: false, debugPort: true, carrier: carrier),
-                    "A's keys, the app-wide auto-rotate under them")
-            #expect(DeviceSettings.load(DeviceInstance.directory(b, state: state)) == DeviceSettings(keyboardInputEnabled: true, autoRotateWithGuest: false),
-                    "B takes the app-wide keys")
+            #expect(
+                DeviceSettings.load(DeviceInstance.directory(a, state: state))
+                    == DeviceSettings(
+                        deviceNotice: .init(message: "Couldn't erase", operation: "erase"),
+                        motionPose: 1,
+                        keyboardInputEnabled: false,
+                        autoRotateWithGuest: false,
+                        debugPort: true,
+                        carrier: carrier
+                    ),
+                "A's keys, the app-wide auto-rotate under them"
+            )
+            #expect(
+                DeviceSettings.load(DeviceInstance.directory(b, state: state))
+                    == DeviceSettings(keyboardInputEnabled: true, autoRotateWithGuest: false),
+                "B takes the app-wide keys"
+            )
             let bytes = try Data(contentsOf: DeviceSettings.url(DeviceInstance.directory(a, state: state)))
             #expect(String(decoding: bytes.prefix(5), as: UTF8.self) == "<?xml", "an XML property list")
-            #expect((defaults.persistentDomain(forName: suite) ?? [:]).keys.sorted() == ["captureFolder"],
-                    "every per-device and app-wide key went, a deleted device's too")
+            #expect(
+                (defaults.persistentDomain(forName: suite) ?? [:]).keys.sorted() == ["captureFolder"],
+                "every per-device and app-wide key went, a deleted device's too"
+            )
         }
     }
 
@@ -51,6 +75,9 @@ struct DeviceSettingsTests {
 
     @Test func keyboardToggleBoards() {
         _ = ShippedResources.machines
-        #expect(Board.n90.canToggleHardwareKeyboard && !Board.n88.canToggleHardwareKeyboard && !Board.n72.canToggleHardwareKeyboard)
+        #expect(
+            Board.n90.canToggleHardwareKeyboard && !Board.n88.canToggleHardwareKeyboard
+                && !Board.n72.canToggleHardwareKeyboard
+        )
     }
 }

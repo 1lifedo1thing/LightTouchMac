@@ -51,9 +51,11 @@ nonisolated enum NotificationEngine {
 
     /// Opens one session and blocks until it dies. Returns whether it ever got
     /// as far as observing, so the caller can back off sensibly.
-    nonisolated static func observeOnce(socket: String,
-                                                attachAllowed: @escaping @Sendable () async -> Bool,
-                                                onChange: @escaping @Sendable () -> Void) async -> Bool {
+    nonisolated static func observeOnce(
+        socket: String,
+        attachAllowed: @escaping @Sendable () async -> Bool,
+        onChange: @escaping @Sendable () -> Void
+    ) async -> Bool {
         // np_client_start_service does a full lockdown handshake and start_service
         // internally, so it goes through the gate like every other service
         // connect. Its factory then closes lockdown; the lasting subscription
@@ -82,7 +84,7 @@ nonisolated enum NotificationEngine {
         // Cancellation ends the stream wait as well. A busy install is not a
         // disconnected notification socket, and an attached USB device is not
         // proof that this reader thread is still alive.
-        for await _ in handles.closed { }
+        for await _ in handles.closed {}
         // np_client_free sends Shutdown and joins the C reader. A partial
         // packet can leave that reader blocked; never perform the join on the
         // main actor or release its callback context until the join completes.
@@ -126,7 +128,8 @@ nonisolated enum NotificationEngine {
         let ctx: UnsafeMutableRawPointer
         let closed: AsyncStream<Void>
         init(client: OpaquePointer, ctx: UnsafeMutableRawPointer, closed: AsyncStream<Void>) {
-            self.client = client; self.ctx = ctx
+            self.client = client
+            self.ctx = ctx
             self.closed = closed
         }
         func free() {

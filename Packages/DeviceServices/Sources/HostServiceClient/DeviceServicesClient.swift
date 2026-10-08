@@ -26,7 +26,9 @@ extension DeviceServices {
 
     /// Stock lockdown reads share the same endpoint, timeout and error contract.
     public func lockdownValue(_ key: String) async throws -> String? {
-        guard case .string(let state) = try await remote(.lockdownValue(key), seconds: Timeouts.query) else { return nil }
+        guard case .string(let state) = try await remote(.lockdownValue(key), seconds: Timeouts.query) else {
+            return nil
+        }
         return state
     }
 
@@ -34,7 +36,9 @@ extension DeviceServices {
 
     /// Installed third-party apps (instproxy_browse, ApplicationType=User), sorted by name.
     public func installedApps() async throws -> [InstalledApp] {
-        guard case .apps(let apps) = try await remote(.apps, seconds: Timeouts.browse) else { throw DeviceError.unavailable }
+        guard case .apps(let apps) = try await remote(.apps, seconds: Timeouts.browse) else {
+            throw DeviceError.unavailable
+        }
         return apps
     }
 
@@ -45,11 +49,17 @@ extension DeviceServices {
     /// Install `ipa`, already staged at `staged`, as a new version of an installed `bundleID` too. The helper
     /// does the 2.x replacement (LightTouchServices/Engine/InstallationProxy.swift): at most a lockdown read, the
     /// archive list, a second upload and three guest commands, each under its own watchdog.
-    public func install(_ ipa: URL, staged: String, bundleID: String,
-                        progress: @escaping @Sendable (Int, String) -> Void) async throws {
-        _ = try await remote(.install(ipa: ipa.path, staged: staged, bundleID: bundleID),
-                             seconds: Timeouts.query + Timeouts.browse + Timeouts.stage
-                                 + 3 * Timeouts.installAbsolute + Timeouts.serviceProbe * 2) {
+    public func install(
+        _ ipa: URL,
+        staged: String,
+        bundleID: String,
+        progress: @escaping @Sendable (Int, String) -> Void
+    ) async throws {
+        _ = try await remote(
+            .install(ipa: ipa.path, staged: staged, bundleID: bundleID),
+            seconds: Timeouts.query + Timeouts.browse + Timeouts.stage
+                + 3 * Timeouts.installAbsolute + Timeouts.serviceProbe * 2
+        ) {
             if case .install(let percent, let phase) = $0 { progress(percent, phase) }
         }
     }
@@ -57,7 +67,9 @@ extension DeviceServices {
     /// Does installation_proxy answer right now? A fresh boot brings lockdownd
     /// up ~40s before its services, so "lockdown replies" ≠ "installd is ready".
     public func installProxyReady() async -> Bool {
-        guard case .boolean(let ready) = try? await remote(.installReady, seconds: Timeouts.serviceProbe) else { return false }
+        guard case .boolean(let ready) = try? await remote(.installReady, seconds: Timeouts.serviceProbe) else {
+            return false
+        }
         return ready
     }
 
@@ -66,7 +78,9 @@ extension DeviceServices {
     /// Bytes free on the media partition. The pre-flight that names a full
     /// device before installd fails opaquely with PackageExtractionFailed.
     public func freeSpaceBytes() async throws -> Int64 {
-        guard case .integer(let bytes) = try await remote(.freeSpace, seconds: Timeouts.query) else { throw DeviceError.unavailable }
+        guard case .integer(let bytes) = try await remote(.freeSpace, seconds: Timeouts.query) else {
+            throw DeviceError.unavailable
+        }
         return bytes
     }
 
@@ -76,8 +90,11 @@ extension DeviceServices {
         try await stageFile(ipa, remote: "PublicStaging/\(Self.stagingName(ipa))", progress: progress)
     }
 
-    public func uploadFile(_ source: URL, into directory: String,
-                           progress: @escaping @Sendable (Double) -> Void) async throws {
+    public func uploadFile(
+        _ source: URL,
+        into directory: String,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws {
         try Self.validateFilePath(directory)
         let path = directory.isEmpty ? source.lastPathComponent : directory + "/" + source.lastPathComponent
         try Self.validateFilePath(path)
@@ -87,11 +104,22 @@ extension DeviceServices {
 
     /// Callers supply a validated relative destination. The same chunked AFC
     /// upload, cancellation and incomplete-file cleanup serve apps and songs.
-    public func stageFile(_ ipa: URL, remote: String, reuseIdentical: Bool = false, allowEmpty: Bool = false,
-                          progress: @escaping @Sendable (Double) -> Void) async throws -> String {
-        guard case .string(let path) = try await self.remote(.upload(source: ipa.path, remote: remote, reuse: reuseIdentical, allowEmpty: allowEmpty), seconds: Timeouts.stage, progress: {
-            if case .fraction(let value) = $0 { progress(value) }
-        }), let path else { throw DeviceError.unavailable }
+    public func stageFile(
+        _ ipa: URL,
+        remote: String,
+        reuseIdentical: Bool = false,
+        allowEmpty: Bool = false,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> String {
+        guard
+            case .string(let path) = try await self.remote(
+                .upload(source: ipa.path, remote: remote, reuse: reuseIdentical, allowEmpty: allowEmpty),
+                seconds: Timeouts.stage,
+                progress: {
+                    if case .fraction(let value) = $0 { progress(value) }
+                }
+            ), let path
+        else { throw DeviceError.unavailable }
         return path
     }
 
@@ -106,17 +134,29 @@ extension DeviceServices {
     }
 
     public func files(in path: String) async throws -> [DeviceFile] {
-        guard case .files(let files) = try await remote(.files(path), seconds: Timeouts.browse) else { throw DeviceError.unavailable }
+        guard case .files(let files) = try await remote(.files(path), seconds: Timeouts.browse) else {
+            throw DeviceError.unavailable
+        }
         return files
     }
 
     /// Save to a private adjacent file, then publish only a completed transfer.
-    public func download(_ file: DeviceFile, to destination: URL,
-                         progress: @escaping @Sendable (Double) -> Void) async throws {
+    public func download(
+        _ file: DeviceFile,
+        to destination: URL,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws {
         // The GUI owns publication. A killed transfer leaves only this
         // private candidate, never a late replacement of the user's file.
-        let staging = destination.deletingLastPathComponent().appendingPathComponent(".LightTouch-host-" + UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        let staging = destination.deletingLastPathComponent().appendingPathComponent(
+            ".LightTouch-host-" + UUID().uuidString,
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: staging,
+            withIntermediateDirectories: false,
+            attributes: [.posixPermissions: 0o700]
+        )
         defer { try? FileManager.default.removeItem(at: staging) }
         let candidate = staging.appendingPathComponent("file")
         _ = try await remote(.download(file, destination: candidate.path), seconds: Timeouts.stage) {
@@ -135,7 +175,9 @@ extension DeviceServices {
     /// caller can tell "SpringBoard says there is nothing" from "we couldn't
     /// ask" — an empty list would silently reorder the sidebar to nothing.
     public func homeScreenOrder() async throws -> [String] {
-        guard case .strings(let ids) = try await remote(.homeOrder, seconds: Timeouts.query) else { throw DeviceError.unavailable }
+        guard case .strings(let ids) = try await remote(.homeOrder, seconds: Timeouts.query) else {
+            throw DeviceError.unavailable
+        }
         return ids
     }
 
@@ -143,8 +185,14 @@ extension DeviceServices {
     /// when `other` is nil. Returns the order SpringBoard ACCEPTED, which is not always the one asked for — the
     /// caller should adopt it rather than assume its own.
     @discardableResult
-    public func moveOnHomeScreen(_ bundleID: String, before other: String?, deviceName: String) async throws -> [String] {
-        guard case .strings(let ids) = try await remote(.move(bundle: bundleID, before: other, deviceName: deviceName), seconds: Timeouts.query) else { throw DeviceError.unavailable }
+    public func moveOnHomeScreen(_ bundleID: String, before other: String?, deviceName: String) async throws -> [String]
+    {
+        guard
+            case .strings(let ids) = try await remote(
+                .move(bundle: bundleID, before: other, deviceName: deviceName),
+                seconds: Timeouts.query
+            )
+        else { throw DeviceError.unavailable }
         return ids
     }
 
@@ -152,7 +200,9 @@ extension DeviceServices {
     /// 3 landscape right, 4 landscape left). 3.2's springboardservicesrelay
     /// answers it; 3.1.3's doesn't (see EmulatorController's auto-rotation).
     public func interfaceOrientation() async throws -> Int {
-        guard case .integer(let orientation) = try await remote(.orientation, seconds: Timeouts.query) else { throw DeviceError.unavailable }
+        guard case .integer(let orientation) = try await remote(.orientation, seconds: Timeouts.query) else {
+            throw DeviceError.unavailable
+        }
         return Int(orientation)
     }
 }

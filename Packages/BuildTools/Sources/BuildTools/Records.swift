@@ -3,7 +3,10 @@ import Foundation
 /// The provenance records build-static-deps.sh and build-package-native.sh leave in their roots.
 public enum Records {
     static func toolchain() throws -> [String: String] {
-        ["xcode": try output(["xcodebuild", "-version"]), "sdk": try output(["xcrun", "--sdk", "macosx", "--show-sdk-version"])]
+        [
+            "xcode": try output(["xcodebuild", "-version"]),
+            "sdk": try output(["xcrun", "--sdk", "macosx", "--show-sdk-version"]),
+        ]
     }
 
     /// static-build.json: the static prefix, its sources and the recipe's hash.
@@ -19,7 +22,9 @@ public enum Records {
     }
 
     /// native-build.json: where each part of a native root is (MergeNative reads these keys) and what built it.
-    public static func writeNative(source: URL, root: URL, staticPrefix: URL, qemu: URL, usbmuxd: URL, arch: String) throws {
+    public static func writeNative(source: URL, root: URL, staticPrefix: URL, qemu: URL, usbmuxd: URL, arch: String)
+        throws
+    {
         let usb = try readJSON(root.appendingPathComponent("usbmuxd-source.json"))
         var record: [String: Any] = try toolchain()
         record["schema_version"] = 1
@@ -36,13 +41,16 @@ public enum Records {
         record["usbmuxd_commit"] = usb["commit"]
         record["iboot32patcher"] = try readJSON(root.appendingPathComponent("build/iBoot32Patcher/build.json"))
         record["qemu_commit"] = try output(["git", "-C", qemu.path, "rev-parse", "HEAD"])
-        record["qemu_tracked_diff_sha256"] = sha256(Data(try output(["git", "-C", qemu.path, "diff", "--binary", "HEAD"]).utf8))
+        record["qemu_tracked_diff_sha256"] = sha256(
+            Data(try output(["git", "-C", qemu.path, "diff", "--binary", "HEAD"]).utf8)
+        )
         var recipes: [String: String] = [:]
         for name in recipeFiles { recipes[name] = try sha256(source.appendingPathComponent(name)) }
         record["recipes"] = recipes
         record["static_inputs"] = try walk(staticPrefix).filter { isFile(staticPrefix.appendingPathComponent($0)) }
             .map { ["path": $0, "sha256": try sha256(staticPrefix.appendingPathComponent($0))] }
-        let local = root.appendingPathComponent("static/static-build.json"), beside = staticPrefix.deletingLastPathComponent().appendingPathComponent("static-build.json")
+        let local = root.appendingPathComponent("static/static-build.json")
+        let beside = staticPrefix.deletingLastPathComponent().appendingPathComponent("static-build.json")
         if files.fileExists(atPath: local.path) {
             record["static_build"] = try readJSON(local)
         } else if files.fileExists(atPath: beside.path) {
@@ -56,11 +64,13 @@ public enum Records {
     }
 
     /// The recipe files whose hashes native-build.json records.
-    static let recipeFiles = ["scripts/build-package-native.sh", "scripts/build-static-deps.sh", "scripts/build-iboot32patcher.sh",
-                              "build-support/dependencies.json", "build-support/patches/glib-pipe2-availability.patch",
-                              "build-support/patches/iBoot32Patcher-ltm.patch", "build-support/patches/libimobiledevice-sslv3-ios1.patch",
-                              "Packages/BuildTools/Sources/BuildTools/DependencySources.swift",
-                              "Packages/ReleaseChecks/Sources/ReleaseChecks/MachOClosure.swift"]
+    static let recipeFiles = [
+        "scripts/build-package-native.sh", "scripts/build-static-deps.sh", "scripts/build-iboot32patcher.sh",
+        "build-support/dependencies.json", "build-support/patches/glib-pipe2-availability.patch",
+        "build-support/patches/iBoot32Patcher-ltm.patch", "build-support/patches/libimobiledevice-sslv3-ios1.patch",
+        "Packages/BuildTools/Sources/BuildTools/DependencySources.swift",
+        "Packages/ReleaseChecks/Sources/ReleaseChecks/MachOClosure.swift",
+    ]
 
     static func isFile(_ file: URL) -> Bool {
         var directory: ObjCBool = false

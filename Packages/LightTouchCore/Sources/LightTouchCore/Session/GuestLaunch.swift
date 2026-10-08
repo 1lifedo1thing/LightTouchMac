@@ -1,10 +1,10 @@
 // The session's guest-facing flows that need nothing but their inputs: opening an app (the wake before it) and
 // composing the boot's guest-package offer.
 
+import DeviceRuntime
 import Foundation
 import HostRuntime
 import HostServiceWire
-import DeviceRuntime
 
 /// What opening an app reads and does on the session.
 public protocol AppLaunchHost: AnyObject {
@@ -48,12 +48,14 @@ public enum GuestOfferComposition {
     /// This boot's offer: with the optional developer additions when `augmentation` has them, and without them when
     /// those fail (optional developer access must not suppress required additions). nil when even the required
     /// package can't be composed: the device keeps what it runs.
-    public static func offer<Augment>(augmentation: Augment?,
-                                      compose: (Augment?) throws -> GuestPackage.Offer?) -> GuestPackage.Offer? {
+    public static func offer<Augment>(
+        augmentation: Augment?,
+        compose: (Augment?) throws -> GuestPackage.Offer?
+    ) -> GuestPackage.Offer? {
         do {
             do {
                 return try compose(augmentation)
-            } catch where augmentation != nil {
+            } catch  where augmentation != nil {
                 logEvent("developer tools: not offered: \(error.localizedDescription)")
                 return try compose(nil)
             }

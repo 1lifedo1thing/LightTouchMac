@@ -24,7 +24,12 @@ public enum AboutCredits {
         Project("QEMU", "https://www.qemu.org", "GPL-2.0", "qemu"),
         Project("qemu-ios", "https://github.com/devos50/qemu-ios", "GPL-2.0", "qemu"),
         Project("libimobiledevice", "https://libimobiledevice.org", "LGPL-2.1", "libimobiledevice"),
-        Project("libimobiledevice-glue", "https://github.com/libimobiledevice/libimobiledevice-glue", "LGPL-2.1", "libimobiledevice-glue"),
+        Project(
+            "libimobiledevice-glue",
+            "https://github.com/libimobiledevice/libimobiledevice-glue",
+            "LGPL-2.1",
+            "libimobiledevice-glue"
+        ),
         Project("libusbmuxd", "https://github.com/libimobiledevice/libusbmuxd", "LGPL-2.1", "libusbmuxd"),
         Project("inetcat", "https://github.com/libimobiledevice/libusbmuxd", "GPL-2.0-or-later", "inetcat"),
         Project("libplist", "https://github.com/libimobiledevice/libplist", "LGPL-2.1", "libplist"),
@@ -37,7 +42,12 @@ public enum AboutCredits {
         Project("PCRE2", "https://github.com/PCRE2Project/pcre2", "BSD-3-Clause", "pcre2"),
         Project("pixman", "https://pixman.org", "MIT", "pixman"),
         Project("OpenSSL", "https://www.openssl.org", "Apache-2.0", "openssl"),
-        Project("Nettle", "https://www.lysator.liu.se/~nisse/nettle/", "LGPL-3.0-or-later or GPL-2.0-or-later", "nettle"),
+        Project(
+            "Nettle",
+            "https://www.lysator.liu.se/~nisse/nettle/",
+            "LGPL-3.0-or-later or GPL-2.0-or-later",
+            "nettle"
+        ),
         Project("PowerVR SDK", "https://github.com/powervr-graphics/Native_SDK", "MIT", "powervr"),
         Project("iBoot32Patcher", "https://github.com/LukeZGD/iBoot32Patcher", "GPL-3.0", "iBoot32Patcher"),
         Project("Unrar.swift", "https://github.com/mtgto/Unrar.swift", "MIT", "swift/Unrar.swift"),
@@ -47,7 +57,12 @@ public enum AboutCredits {
         Project("ObjectArchiveKit", "https://github.com/p-x9/ObjectArchiveKit", "MIT", "swift/ObjectArchiveKit"),
         Project("swift-fileio", "https://github.com/p-x9/swift-fileio", "MIT", "swift/swift-fileio"),
         Project("swift-fileio-extra", "https://github.com/p-x9/swift-fileio-extra", "MIT", "swift/swift-fileio-extra"),
-        Project("swift-binary-parse-support", "https://github.com/p-x9/swift-binary-parse-support", "MIT", "swift/swift-binary-parse-support"),
+        Project(
+            "swift-binary-parse-support",
+            "https://github.com/p-x9/swift-binary-parse-support",
+            "MIT",
+            "swift/swift-binary-parse-support"
+        ),
         Project("Swift Crypto", "https://github.com/apple/swift-crypto", "Apache-2.0", "swift/swift-crypto"),
         Project("SwiftASN1", "https://github.com/apple/swift-asn1", "Apache-2.0", "swift/swift-asn1"),
         Project("Swift System", "https://github.com/apple/swift-system", "Apache-2.0", "swift/swift-system"),
@@ -60,11 +75,16 @@ public enum AboutCredits {
     /// `licenses`: the bundle has its licenses/ (a release does; a development build may not), for Show Licenses.
     public static func runs(buildInputs: Data?, licenses: Bool) -> [Run] {
         var out: [Run] = []
-        let components = buildInputs.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["components"] as? [String: String] ?? [:]
+        let components =
+            buildInputs.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["components"]
+            as? [String: String] ?? [:]
         if !components.isEmpty {
             let first = ["qemu-ios", "usbmuxd", "guest tools"]
-            let names = first.filter { components[$0] != nil }
-                + components.keys.filter { !first.contains($0) }.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+            let names =
+                first.filter { components[$0] != nil }
+                + components.keys.filter { !first.contains($0) }.sorted {
+                    $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+                }
             out.append(Run(text: "Components\n", isHeading: true))
             out.append(Run(text: names.map { "\($0) \(components[$0]!)" }.joined(separator: "\n") + "\n\n"))
         }
@@ -95,10 +115,13 @@ public enum AboutCredits {
         func folders(_ url: URL) -> [String] {
             ((try? fm.contentsOfDirectory(atPath: url.path)) ?? []).filter {
                 var isDirectory: ObjCBool = false
-                return fm.fileExists(atPath: url.appendingPathComponent($0).path, isDirectory: &isDirectory) && isDirectory.boolValue
+                return fm.fileExists(atPath: url.appendingPathComponent($0).path, isDirectory: &isDirectory)
+                    && isDirectory.boolValue
             }
         }
-        let directories = folders(root).flatMap { $0 == "swift" ? folders(root.appendingPathComponent("swift")).map { "swift/" + $0 } : [$0] }
+        let directories = folders(root).flatMap {
+            $0 == "swift" ? folders(root.appendingPathComponent("swift")).map { "swift/" + $0 } : [$0]
+        }
         let code: Set = ["patch", "c", "h", "cpp", "sh", "swift"]
         return directories.compactMap { directory -> License? in
             let folder = root.appendingPathComponent(directory)
@@ -106,19 +129,24 @@ public enum AboutCredits {
                 .filter { !code.contains(($0 as NSString).pathExtension.lowercased()) && !$0.hasPrefix(".") }
                 .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
             let text = files.compactMap { name in
-                (try? String(contentsOf: folder.appendingPathComponent(name), encoding: .utf8)).map { "\(name)\n\n\($0)" }
+                (try? String(contentsOf: folder.appendingPathComponent(name), encoding: .utf8)).map {
+                    "\(name)\n\n\($0)"
+                }
             }.joined(separator: "\n\n")
             guard !text.isEmpty else { return nil }
             let names = projects.filter { $0.directory == directory }.map(\.name)
-            return License(name: names.isEmpty ? (directory as NSString).lastPathComponent : names.joined(separator: " and "),
-                           directory: directory, text: text)
+            return License(
+                name: names.isEmpty ? (directory as NSString).lastPathComponent : names.joined(separator: " and "),
+                directory: directory,
+                text: text
+            )
         }
         .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 }
 
-private extension AboutCredits.Project {
-    init(_ name: String, _ site: String, _ license: String, _ directory: String) {
+extension AboutCredits.Project {
+    fileprivate init(_ name: String, _ site: String, _ license: String, _ directory: String) {
         self.init(name: name, site: URL(string: site)!, license: license, directory: directory)
     }
 }

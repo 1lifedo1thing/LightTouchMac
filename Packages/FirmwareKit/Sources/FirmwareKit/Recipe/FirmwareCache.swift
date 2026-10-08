@@ -29,7 +29,9 @@ public enum FirmwareCache {
         let fm = FileManager.default
         let names = try fm.contentsOfDirectory(atPath: root.path)
         if let ipsw {
-            guard ipsw.count == 40, ipsw.allSatisfy({ $0.isHexDigit }) else { throw FirmwareError(.internal, "invalid cache IPSW digest") }
+            guard ipsw.count == 40, ipsw.allSatisfy({ $0.isHexDigit }) else {
+                throw FirmwareError(.internal, "invalid cache IPSW digest")
+            }
             for name in names where name == ipsw || name == ipsw + ".tmp" {
                 try fm.removeItem(at: root.appendingPathComponent(name))
             }

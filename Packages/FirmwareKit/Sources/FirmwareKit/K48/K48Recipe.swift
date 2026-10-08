@@ -18,7 +18,9 @@ import HostRuntime
 
 final class K48Board: Board {
     let arch = "armv7"
-    var seedPrefix: String { ["n81ap": "ipod4", "n90ap": "iphone4", "n88ap": "iphone3gs", "n18ap": "ipod3"][board] ?? "ipad1" }
+    var seedPrefix: String {
+        ["n81ap": "ipod4", "n90ap": "iphone4", "n88ap": "iphone3gs", "n18ap": "ipod3"][board] ?? "ipad1"
+    }
     let board: String
     /// The kboot-only A4 boards (iPod touch 4G, iPhone 4): same SoC and pipeline; their KBoot.Board carries the DT differences.
     var kbootBoard: Bool { a4 != .k48 }
@@ -34,7 +36,9 @@ final class K48Board: Board {
     let recipe: FirmwareEntry.Recipe, strategy: String, iboot: Bool, dataProtection: Bool
     var helper: URL!, patcher: URL!, mbr: URL!, vols: SystemEdits.Result!
     var gidComponents: [String] = [], ramdisk: String?
-    var shipped: [String] { iboot ? ["iBoot.bin", "nor.bin", "gid-blobs.bin"] : ["kboot.bin"] + (kbootNOR ? ["nor.bin"] : []) }
+    var shipped: [String] {
+        iboot ? ["iBoot.bin", "nor.bin", "gid-blobs.bin"] : ["kboot.bin"] + (kbootNOR ? ["nor.bin"] : [])
+    }
     /// A kboot device ships a writable NOR for 4.x data protection, and always on the N88, whose DT keeps its own
     /// NOR (blank on 3.x: NVRAM only).
     var kbootNOR: Bool { dataProtection || s5l8920 }
@@ -66,8 +70,15 @@ final class K48Board: Board {
         board = o.entry.board
         let kbootOnly = o.entry.board != "k48ap"
         strategy = recipe.boot ?? (kbootOnly ? "kboot" : "iboot")
-        guard strategy == "iboot" || strategy == "kboot" else { throw FirmwareError(.unsupported, "\(o.entry.id): unknown boot strategy \(strategy)") }
-        guard !(kbootOnly && strategy == "iboot") else { throw FirmwareError(.unsupported, "\(o.entry.id): the \(HostRuntime.Board(rawValue: o.entry.board)?.marketingName ?? o.entry.board) boots by kboot only (no NAND boot chain yet)") }
+        guard strategy == "iboot" || strategy == "kboot" else {
+            throw FirmwareError(.unsupported, "\(o.entry.id): unknown boot strategy \(strategy)")
+        }
+        guard !(kbootOnly && strategy == "iboot") else {
+            throw FirmwareError(
+                .unsupported,
+                "\(o.entry.id): the \(HostRuntime.Board(rawValue: o.entry.board)?.marketingName ?? o.entry.board) boots by kboot only (no NAND boot chain yet)"
+            )
+        }
         iboot = strategy == "iboot"
         dataProtection = recipe.options["writable_nor"] == true
     }
@@ -77,7 +88,10 @@ final class K48Board: Board {
             throw FirmwareError(.unsupported, "\(c.e.id): storage \(recipe.storage), data_size \(recipe.dataSize)")
         }
         guard let helper = c.o.helper, FileManager.default.isExecutableFile(atPath: helper.path) else {
-            throw FirmwareError(.internal, "the seal boots need --helper (LightTouchDevice); got \(c.o.helper?.path ?? "none")")
+            throw FirmwareError(
+                .internal,
+                "the seal boots need --helper (LightTouchDevice); got \(c.o.helper?.path ?? "none")"
+            )
         }
         self.helper = helper
         patcher = K48IBoot.patcher(helper: helper)
@@ -93,15 +107,23 @@ final class K48Board: Board {
         let piece = "kernelcache at the path iBoot loads"
         do {
             let path = try N72Board.kernelcachePath(iboot)
-            return FitCheck.Fit(piece, fits: path == SystemEdits.kernelcachePath,
-                                path == SystemEdits.kernelcachePath ? "iBoot names /\(path)" : "iBoot names /\(path), the bake installs /\(SystemEdits.kernelcachePath)")
+            return FitCheck.Fit(
+                piece,
+                fits: path == SystemEdits.kernelcachePath,
+                path == SystemEdits.kernelcachePath
+                    ? "iBoot names /\(path)" : "iBoot names /\(path), the bake installs /\(SystemEdits.kernelcachePath)"
+            )
         } catch {
             return FitCheck.Fit(piece, fits: false, "\(error)")
         }
     }
 
     func identity(seed: String) throws -> UnitIdentity {
-        ident = try UnitIdentity.synthesize(seed: seed, storage: recipe.storage, modelNumber: kbootBoard ? a4.modelNumber : nil)
+        ident = try UnitIdentity.synthesize(
+            seed: seed,
+            storage: recipe.storage,
+            modelNumber: kbootBoard ? a4.modelNumber : nil
+        )
         // The radio boards: the modem reports the IMEI, and lockdownd/MobileGestalt hash it into the UDID.
         if HostRuntime.Board(rawValue: board)?.kbootPhone == true { ident = ident.addingIMEI(seed: seed) }
         return ident
@@ -109,10 +131,12 @@ final class K48Board: Board {
 
     /// iboot: iBoot.bin, nor.bin, gid-blobs.bin; kboot: kboot.bin.
     func bootFiles(_ c: Recipe.Context) throws {
-        let e = c.e, ipsw = c.ipsw, bootArgs = KBoot.defaultBootArgs
+        let e = c.e
+        let ipsw = c.ipsw
+        let bootArgs = KBoot.defaultBootArgs
         let kernel = try Data(contentsOf: c.decFile("kernelcache.mach"), options: .alwaysMapped)
         try FitCheck.checkBootArgs(c.fit, kernel: kernel, args: bootArgs)
-        try c.fit.check(FitCheck.deviceTreeProperty(kernel, "arm-io/usb-complex", "hsic-enabled"), required: false)   // both chains add it
+        try c.fit.check(FitCheck.deviceTreeProperty(kernel, "arm-io/usb-complex", "hsic-enabled"), required: false)  // both chains add it
         if iboot {
             // fsboot: the kernelcache goes where this iBoot loads it from, which must be the path the volumes step installs to
             try c.fit.check(Self.kernelcacheFit(iboot: try Data(contentsOf: c.decFile("iBoot.bin"))), required: true)
@@ -124,17 +148,35 @@ final class K48Board: Board {
             let prefix = "Firmware/all_flash/all_flash.\(e.board).production/"
             var allFlash: [String: Data] = [:]
             for m in try ipsw.names() where m.hasPrefix(prefix) && m.hasSuffix(".img3") {
-                let d = try ipsw.read(m), t = try N72NOR.type(of: d)
-                guard allFlash[t] == nil else { throw FirmwareError(.unsupported, "duplicate img3 type \(t) in all_flash") }
+                let d = try ipsw.read(m)
+                let t = try N72NOR.type(of: d)
+                guard allFlash[t] == nil else {
+                    throw FirmwareError(.unsupported, "duplicate img3 type \(t) in all_flash")
+                }
                 allFlash[t] = d
             }
-            guard let dtImg3 = allFlash["dtre"] else { throw FirmwareError(.unsupported, "\(e.id): all_flash has no DeviceTree") }
-            allFlash["dtre"] = try K48IBoot.hostUSBDeviceTree(img3: dtImg3, plaintext: try Data(contentsOf: c.decFile("DeviceTree.bin")), gidBlobs: blobs)
-            let manifest = String(decoding: try ipsw.read(prefix + "manifest"), as: UTF8.self).split(whereSeparator: \.isWhitespace)
+            guard let dtImg3 = allFlash["dtre"] else {
+                throw FirmwareError(.unsupported, "\(e.id): all_flash has no DeviceTree")
+            }
+            allFlash["dtre"] = try K48IBoot.hostUSBDeviceTree(
+                img3: dtImg3,
+                plaintext: try Data(contentsOf: c.decFile("DeviceTree.bin")),
+                gidBlobs: blobs
+            )
+            let manifest = String(decoding: try ipsw.read(prefix + "manifest"), as: UTF8.self).split(
+                whereSeparator: \.isWhitespace
+            )
             let order = try manifest.map { try N72NOR.type(of: ipsw.read(prefix + String($0))) }
-            let patched = try K48IBoot.patchIBoot(try Data(contentsOf: c.decFile("iBoot.bin")), patcher: patcher, bootArgs: bootArgs, log: c.log)
+            let patched = try K48IBoot.patchIBoot(
+                try Data(contentsOf: c.decFile("iBoot.bin")),
+                patcher: patcher,
+                bootArgs: bootArgs,
+                log: c.log
+            )
             try patched.write(to: c.file("iBoot.bin"))
-            try K48IBoot.buildNOR(identity: ident, allFlash: allFlash, order: order, bootArgs: bootArgs).write(to: c.file("nor.bin"))
+            try K48IBoot.buildNOR(identity: ident, allFlash: allFlash, order: order, bootArgs: bootArgs).write(
+                to: c.file("nor.bin")
+            )
         } else {
             try KBoot.write(decrypted: c.dec, to: c.file("kboot.bin"), identity: ident, bootArgs: bootArgs)
             if kbootNOR && !dataProtection { try Data(repeating: 0xFF, count: 1 << 20).write(to: c.file("nor.bin")) }
@@ -157,33 +199,57 @@ final class K48Board: Board {
         let parts = K48NAND.partitions(mbr: [UInt8](try Data(contentsOf: mbr)))
         var kernelcacheImg3: Data?
         if iboot {
-            guard let kc = try BuildComponents.load(c.ipsw, board: c.e.board)["KernelCache"] else { throw FirmwareError(.unsupported, "\(c.e.id): the IPSW names no KernelCache") }
+            guard let kc = try BuildComponents.load(c.ipsw, board: c.e.board)["KernelCache"] else {
+                throw FirmwareError(.unsupported, "\(c.e.id): the IPSW names no KernelCache")
+            }
             kernelcacheImg3 = try c.ipsw.read(kc)
         }
-        vols = try await SystemEdits.buildK48(rootfs: c.decFile("rootfs.dmg"), work: c.work, systemBytes: parts[0].count * 4096,
-                                        dataBytes: Int64(parts[1].count) * 4096, options: .init(recipe: recipe),
-                                        helpers: c.o.guestTools, kernelcache: kernelcacheImg3,
-                                        kernel: try Data(contentsOf: c.decFile("kernelcache.mach"), options: .alwaysMapped),
-                                        dataVolumeUUID: Array(SHA256.hash(data: Data("k48 data volume \(c.seed)".utf8)).prefix(8)), fit: c.fit, log: c.log)
+        vols = try await SystemEdits.buildK48(
+            rootfs: c.decFile("rootfs.dmg"),
+            work: c.work,
+            systemBytes: parts[0].count * 4096,
+            dataBytes: Int64(parts[1].count) * 4096,
+            options: .init(recipe: recipe),
+            helpers: c.o.guestTools,
+            kernelcache: kernelcacheImg3,
+            kernel: try Data(contentsOf: c.decFile("kernelcache.mach"), options: .alwaysMapped),
+            dataVolumeUUID: Array(SHA256.hash(data: Data("k48 data volume \(c.seed)".utf8)).prefix(8)),
+            fit: c.fit,
+            log: c.log
+        )
         for n in vols.notes { c.emit(.warning(n)) }
-        c.activation = vols.activation; c.guestPackage = vols.guestPackage; c.engine = vols.engine
+        c.activation = vols.activation
+        c.guestPackage = vols.guestPackage
+        c.engine = vols.engine
     }
 
     nonisolated(nonsending) func store(_ c: Recipe.Context) async throws {
         var epoch = try K48NAND.signatureEpoch(kernelcache: c.decFile("kernelcache.mach"))
         // WMR refuses a whitened store on a board whose DT does not ask for one ("Metadata whitening not supported").
-        let whitening = try DeviceTree(Data(contentsOf: c.decFile("DeviceTree.bin"))).props.values.contains { $0["metadata-whitening"] != nil }
+        let whitening = try DeviceTree(Data(contentsOf: c.decFile("DeviceTree.bin"))).props.values.contains {
+            $0["metadata-whitening"] != nil
+        }
         c.log("NAND metadata whitening \(whitening ? "on" : "off") (the DT's)")
         if s5l8920, let scep = try K48NAND.restoreEpoch(c.ipsw, board: c.e.board) {
-            epoch = scep   // a store behind it waits for an epoch roll only restored performs
+            epoch = scep  // a store behind it waits for an epoch roll only restored performs
             c.log("NAND signature epoch \(epoch) (Restore.plist SCEP)")
         } else {
             c.log("NAND signature epoch \(epoch) (this kernel's FIL)")
         }
-        try await K48NAND.build(geometry: geometry, mbr: mbr, kernelVersion: K48NAND.kernelVersion(kernelcache: c.decFile("kernelcache.mach")),
-                          epoch: epoch, system: vols.system, data: .image(vols.data), out: c.nand, whitening: whitening,
-                          sigFlags: recipe.nandSigFlags.map(UInt32.init), log: c.log)
-        try? FileManager.default.removeItem(at: vols.system); try? FileManager.default.removeItem(at: vols.data)
+        try await K48NAND.build(
+            geometry: geometry,
+            mbr: mbr,
+            kernelVersion: K48NAND.kernelVersion(kernelcache: c.decFile("kernelcache.mach")),
+            epoch: epoch,
+            system: vols.system,
+            data: .image(vols.data),
+            out: c.nand,
+            whitening: whitening,
+            sigFlags: recipe.nandSigFlags.map(UInt32.init),
+            log: c.log
+        )
+        try? FileManager.default.removeItem(at: vols.system)
+        try? FileManager.default.removeItem(at: vols.data)
     }
 
     func norURL(_ c: Recipe.Context) -> URL? { iboot || kbootNOR ? c.file("nor.bin") : nil }
@@ -192,56 +258,102 @@ final class K48Board: Board {
     /// ramdisk with it_keybag as restored_external, booted once as md0 on the store + NOR; retried (from copies
     /// taken before the first) when it panics or does not halt.
     nonisolated(nonsending) func keybag(_ c: Recipe.Context) async throws {
-        let fm = FileManager.default, nor = norURL(c)!
-        if !iboot { try Data(repeating: 0xFF, count: 1 << 20).write(to: nor) }   // iboot already built the packed NOR
+        let fm = FileManager.default
+        let nor = norURL(c)!
+        if !iboot { try Data(repeating: 0xFF, count: 1 << 20).write(to: nor) }  // iboot already built the packed NOR
         let (source, name) = try await Recipe.keybagRamdisk(c)
         ramdisk = name
-        let work = c.work, store = c.nand
-        let rd = try await Preparer.ramdiskWithHelper(source, helper: c.o.guestTools.appendingPathComponent(SystemEdits.Helpers.name("it_keybag", arch)), work: work)
+        let work = c.work
+        let store = c.nand
+        let rd = try await Preparer.ramdiskWithHelper(
+            source,
+            helper: c.o.guestTools.appendingPathComponent(SystemEdits.Helpers.name("it_keybag", arch)),
+            work: work
+        )
         let kboot = work.appendingPathComponent("kboot-restore.bin")
         try KBoot.write(decrypted: c.dec, to: kboot, identity: ident, ramdisk: rd)
         let norBefore = try Data(contentsOf: nor)
         let pre = work.appendingPathComponent("store.pre")
-        try fm.copyItem(at: store, to: pre)   // ponytail: clonefile on APFS; a non-APFS staging volume copies in full
+        try fm.copyItem(at: store, to: pre)  // ponytail: clonefile on APFS; a non-APFS staging volume copies in full
         let attempts = 3
         for attempt in 1...attempts {
             let serial = work.appendingPathComponent("keybag-\(attempt).log")
-            let (r, text) = try oneshot(c, .kernel(image: kboot.path, writableNOR: nor.path), store: store, overlay: nil,
-                                        serial: serial, stop: "panic(", timeout: oneshotTimeout)
+            let (r, text) = try oneshot(
+                c,
+                .kernel(image: kboot.path, writableNOR: nor.path),
+                store: store,
+                overlay: nil,
+                serial: serial,
+                stop: "panic(",
+                timeout: oneshotTimeout
+            )
             for line in text.split(separator: "\n") where line.contains("it_keybag:") { c.log(String(line)) }
             if r.exited, text.contains(Preparer.keybagDone) { break }
-            let why = text.split(separator: "\n").first { $0.contains("panic(") }
-                .map { String($0[$0.range(of: "panic(")!.lowerBound...].prefix(160)) } ?? (r.exited ? "halted without the keybag" : "no halt")
+            let why =
+                text.split(separator: "\n").first { $0.contains("panic(") }
+                .map { String($0[$0.range(of: "panic(")!.lowerBound...].prefix(160)) }
+                ?? (r.exited ? "halted without the keybag" : "no halt")
             guard attempt < attempts else { throw FirmwareError(.oneshotFailed, "keybag boot: \(why)") }
-            c.emit(.warning("keybag boot attempt \(attempt)/\(attempts) failed after \(Int(r.seconds)) s: \(why); retrying"))
+            c.emit(
+                .warning(
+                    "keybag boot attempt \(attempt)/\(attempts) failed after \(Int(r.seconds)) s: \(why); retrying"
+                )
+            )
             try fm.removeItem(at: store)
             try fm.copyItem(at: pre, to: store)
             try norBefore.write(to: nor)
         }
-        guard try Data(contentsOf: nor) != norBefore else { throw FirmwareError(.oneshotFailed, "keybag boot: effaceable was not written to the NOR") }
+        guard try Data(contentsOf: nor) != norBefore else {
+            throw FirmwareError(.oneshotFailed, "keybag boot: effaceable was not written to the NOR")
+        }
         for u in [pre, rd, kboot] { try? fm.removeItem(at: u) }
     }
 
     /// ipad1_seal: boot the store until the guest halts (it_seal), then check a boot on an overlay opens the FTL
     /// without the full R/O restore.
     func seal(_ c: Recipe.Context) throws {
-        let work = c.work, store = c.nand, nor = norURL(c)
+        let work = c.work
+        let store = c.nand
+        let nor = norURL(c)
         // ipad1_seal --iboot: enter the patched iBoot with the catalog keys; the writable NOR is where this boot's
         // effaceable/NVRAM writes land (no base nor=). die-id must be non-zero or iBoot rejects it.
-        let boot: BootRecipe.IPadBoot = iboot
+        let boot: BootRecipe.IPadBoot =
+            iboot
             ? .iBoot(image: c.file("iBoot.bin").path, writableNOR: nor!.path, gidBlobs: c.file("gid-blobs.bin").path)
             : .kernel(image: c.file("kboot.bin").path, writableNOR: nor?.path)
         let serial = work.appendingPathComponent("seal.log")
-        let (r, text) = try oneshot(c, boot, store: store, overlay: nil, serial: serial, stop: nil, timeout: oneshotTimeout)
+        let (r, text) = try oneshot(
+            c,
+            boot,
+            store: store,
+            overlay: nil,
+            serial: serial,
+            stop: nil,
+            timeout: oneshotTimeout
+        )
         guard r.exited, text.contains(Preparer.halting) else {
-            throw FirmwareError(.oneshotFailed, "seal boot: \(r.exited ? "QEMU exited without it_seal" : "no clean halt") after \(Int(r.seconds)) s")
+            throw FirmwareError(
+                .oneshotFailed,
+                "seal boot: \(r.exited ? "QEMU exited without it_seal" : "no clean halt") after \(Int(r.seconds)) s"
+            )
         }
         let overlay = work.appendingPathComponent("seal-overlay")
         try FileManager.default.createDirectory(at: overlay, withIntermediateDirectories: true)
-        let (ck, check) = try oneshot(c, boot, store: store, overlay: overlay, serial: work.appendingPathComponent("check.log"),
-                                      stop: nil, stopPattern: Preparer.ftlOpen, timeout: 120)
+        let (ck, check) = try oneshot(
+            c,
+            boot,
+            store: store,
+            overlay: overlay,
+            serial: work.appendingPathComponent("check.log"),
+            stop: nil,
+            stopPattern: Preparer.ftlOpen,
+            timeout: 120
+        )
         guard ck.marker, Preparer.ftlOpened(check), !check.contains(Preparer.rescan) else {
-            throw FirmwareError(.oneshotFailed, "check boot: \(check.contains(Preparer.rescan) ? "the store still rescans" : "no FTL_Open")")
+            throw FirmwareError(
+                .oneshotFailed,
+                "check boot: \(check.contains(Preparer.rescan) ? "the store still rescans" : "no FTL_Open")"
+            )
         }
         try? FileManager.default.removeItem(at: overlay)
         c.log(check.split(separator: "\n").first { $0.contains("FTL_Open") }.map(String.init) ?? "FTL_Open [OK]")
@@ -251,21 +363,54 @@ final class K48Board: Board {
     /// options), with no keyboard and no reboot: the one-shot ends when the guest shuts down, and a restart is a
     /// shutdown too (4.3's launchd turns it_seal's reboot(RB_HALT) into its own clean reboot(RB_AUTOBOOT); 5.x's halt
     /// restarts through the PMU), as qemu-ios imgtools/ipad1_seal.py (8edc395979). `overlay` nil writes the store.
-    func oneshot(_ c: Recipe.Context, _ boot: BootRecipe.IPadBoot, store: URL, overlay: URL?, serial: URL, stop: String?,
-                 stopPattern: String? = nil, timeout: Double) throws -> (Preparer.OneShot, String) {
-        let ipad = BootRecipe.IPad(boot: boot, nand: store.path, overlay: overlay?.path, dieID: dieID, usbAddress: nil,
-                                   wifi: true, machineOptions: machineOptions, oneShot: true)
-        let config = BootRecipe.iPad(ipad, hardware: hardware, serial: "file:\(serial.path)", audio: ["-audio", "driver=none"],
-                                     netdev: nil, restore: [])
-        return try Preparer.oneshot(helper, argv: config.argv, machine: config.machine, serial: serial, stop: stop,
-                                    stopPattern: stopPattern, timeout: timeout, work: c.work, log: c.log)
+    func oneshot(
+        _ c: Recipe.Context,
+        _ boot: BootRecipe.IPadBoot,
+        store: URL,
+        overlay: URL?,
+        serial: URL,
+        stop: String?,
+        stopPattern: String? = nil,
+        timeout: Double
+    ) throws -> (Preparer.OneShot, String) {
+        let ipad = BootRecipe.IPad(
+            boot: boot,
+            nand: store.path,
+            overlay: overlay?.path,
+            dieID: dieID,
+            usbAddress: nil,
+            wifi: true,
+            machineOptions: machineOptions,
+            oneShot: true
+        )
+        let config = BootRecipe.iPad(
+            ipad,
+            hardware: hardware,
+            serial: "file:\(serial.path)",
+            audio: ["-audio", "driver=none"],
+            netdev: nil,
+            restore: []
+        )
+        return try Preparer.oneshot(
+            helper,
+            argv: config.argv,
+            machine: config.machine,
+            serial: serial,
+            stop: stop,
+            stopPattern: stopPattern,
+            timeout: timeout,
+            work: c.work,
+            log: c.log
+        )
     }
 
     func lock(_ c: Recipe.Context) throws -> [String: Any] {
         func opt(_ v: Any?) -> Any { v ?? NSNull() }
         var outputs: [String: Any] = ["nand": ["files": c.nandHashes]]
         if iboot {
-            for (k, n) in [("iboot", "iBoot.bin"), ("gid_blobs", "gid-blobs.bin"), ("nor", "nor.bin")] { outputs[k] = try Recipe.fileRecord(c, n) }
+            for (k, n) in [("iboot", "iBoot.bin"), ("gid_blobs", "gid-blobs.bin"), ("nor", "nor.bin")] {
+                outputs[k] = try Recipe.fileRecord(c, n)
+            }
         } else {
             outputs["kboot"] = try Recipe.fileRecord(c, "kboot.bin")
             outputs["nor"] = opt(kbootNOR ? try Recipe.fileRecord(c, "nor.bin") : nil)
@@ -274,11 +419,19 @@ final class K48Board: Board {
             "boot_strategy": strategy,
             "gid_components": iboot ? gidComponents : NSNull(),
             "iboot_signature_checks": iboot ? "pattern-patched" : NSNull(),
-            "tool": ["helper": helper.path, "helper_sha256": try Preparer.digest(helper, SHA256()),
-                     "iboot32patcher": opt(iboot ? ["path": patcher.path, "sha256": try Preparer.digest(patcher, SHA256())] as [String: Any] : nil),
-                     "built": ["OpenGLES": opt(vols.engine)]],
-            "inputs": ["kernelcache": "kernelcache.mach", "devicetree": "DeviceTree.bin", "restore_ramdisk": opt(ramdisk),
-                       "mbr": ["sha256": try Preparer.digest(mbr, SHA256())], "stash": NSNull()],
+            "tool": [
+                "helper": helper.path, "helper_sha256": try Preparer.digest(helper, SHA256()),
+                "iboot32patcher": opt(
+                    iboot
+                        ? ["path": patcher.path, "sha256": try Preparer.digest(patcher, SHA256())] as [String: Any]
+                        : nil
+                ),
+                "built": ["OpenGLES": opt(vols.engine)],
+            ],
+            "inputs": [
+                "kernelcache": "kernelcache.mach", "devicetree": "DeviceTree.bin", "restore_ramdisk": opt(ramdisk),
+                "mbr": ["sha256": try Preparer.digest(mbr, SHA256())], "stash": NSNull(),
+            ],
             "identity": ["die_id": dieID],
             "outputs": outputs,
             "gl_test": SystemEdits.Options(recipe: recipe).glTest,

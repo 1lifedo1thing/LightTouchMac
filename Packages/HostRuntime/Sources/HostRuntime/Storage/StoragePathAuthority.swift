@@ -13,10 +13,11 @@ public nonisolated enum StoragePathAuthority {
             tail.insert(head.lastPathComponent, at: 0)
             head.deleteLastPathComponent()
         }
-        let resolved = realpath(head.path, nil).map { pointer in
-            defer { free(pointer) }
-            return String(cString: pointer)
-        } ?? head.path
+        let resolved =
+            realpath(head.path, nil).map { pointer in
+                defer { free(pointer) }
+                return String(cString: pointer)
+            } ?? head.path
         return tail.reduce(URL(fileURLWithPath: resolved)) { $0.appendingPathComponent($1) }.path
     }
 
@@ -25,7 +26,9 @@ public nonisolated enum StoragePathAuthority {
         let devices = state.appendingPathComponent("Devices", isDirectory: true)
         return ((try? FileManager.default.contentsOfDirectory(atPath: devices.path)) ?? []).filter { name in
             UUID(uuidString: name) != nil && UUID(uuidString: name) != owner
-                && [DeviceRecord.name, DeviceRecord.legacyName].contains { FileManager.default.fileExists(atPath: devices.appendingPathComponent("\(name)/\($0)").path) }
+                && [DeviceRecord.name, DeviceRecord.legacyName].contains {
+                    FileManager.default.fileExists(atPath: devices.appendingPathComponent("\(name)/\($0)").path)
+                }
         }.map { canonicalPath(devices.appendingPathComponent($0)) }
     }
 
@@ -54,7 +57,8 @@ public nonisolated enum StoragePathAuthority {
         try checkRemovable(directory, state: state, owner: owner)
         let owned = canonicalPath(expected)
         guard canonicalPath(directory) == owned,
-              canonicalPath(directory.appendingPathComponent("work")).hasPrefix(owned + "/") else {
+            canonicalPath(directory.appendingPathComponent("work")).hasPrefix(owned + "/")
+        else {
             throw Failure.invalidPath(directory)
         }
         try checkRemovable(directory.appendingPathComponent("work"), state: state, owner: owner)
@@ -84,8 +88,9 @@ public nonisolated enum StoragePathAuthority {
             try checkRemovable(url, state: state, owner: owner)
             let path = canonicalPath(url)
             guard path.hasPrefix(owned + "/"),
-                  path != immutable, !path.hasPrefix(immutable + "/"),
-                  !immutable.hasPrefix(path + "/") else { throw invalid(url) }
+                path != immutable, !path.hasPrefix(immutable + "/"),
+                !immutable.hasPrefix(path + "/")
+            else { throw invalid(url) }
         }
     }
 
@@ -93,11 +98,13 @@ public nonisolated enum StoragePathAuthority {
     /// are neither the root, Devices/, nor inside another record's directory.
     /// A damaged or hand-edited record can't reach anything else.
     public static func checkRemovable(_ url: URL, state: URL, owner: UUID?) throws {
-        let root = canonicalPath(state), path = canonicalPath(url)
+        let root = canonicalPath(state)
+        let path = canonicalPath(url)
         let devices = root + "/Devices"
         let others = otherRecordDirectories(state: state, owner: owner)
         guard path.hasPrefix(root + "/"), path != devices,
-              !others.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) else {
+            !others.contains(where: { path == $0 || path.hasPrefix($0 + "/") })
+        else {
             throw Failure.invalidPath(url)
         }
     }

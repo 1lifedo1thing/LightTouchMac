@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import LightTouchCore
 
 /// Which libraries each catalog firmware may add media to (MediaSupport), against the builds the guest helpers have
@@ -18,22 +19,42 @@ struct MediaSupportTests {
     ]
     static let nouns = ["Music": "music", "Videos": "videos", "Photos": "photos"]
 
-    struct Entry: Decodable { let id: String; let version: String; let media: [String]?; let prerelease: String? }
+    struct Entry: Decodable {
+        let id: String
+        let version: String
+        let media: [String]?
+        let prerelease: String?
+    }
     struct Catalog: Decodable { let entries: [Entry] }
 
     @Test func everyCatalogFirmware() throws {
-        let entries = try JSONDecoder().decode(Catalog.self, from: Data(contentsOf: repositoryRoot.appendingPathComponent("LightTouchMac/Resources/firmware-catalog.json"))).entries
+        let entries = try JSONDecoder().decode(
+            Catalog.self,
+            from: Data(
+                contentsOf: repositoryRoot.appendingPathComponent("LightTouchMac/Resources/firmware-catalog.json")
+            )
+        ).entries
         #expect(entries.count > 10)
         #expect(Set(Self.verified.keys).isSubset(of: Set(entries.map(\.id))), "a verified firmware left the catalog")
         for entry in entries {
-            let firmware = MediaSupport.Firmware(version: entry.version, name: "iOS \(entry.version)", media: entry.media ?? [],
-                                                 prerelease: entry.prerelease != nil)
+            let firmware = MediaSupport.Firmware(
+                version: entry.version,
+                name: "iOS \(entry.version)",
+                media: entry.media ?? [],
+                prerelease: entry.prerelease != nil
+            )
             let want = Self.verified[entry.id] ?? []
             for destination in ["Music", "Videos", "Photos"] {
-                #expect(MediaSupport.supports(destination, on: firmware) == want.contains(destination), "\(entry.id) \(destination)")
-                #expect(MediaSupport.refusal(destination, on: firmware)
-                        == (want.contains(destination) ? nil : "Adding \(Self.nouns[destination]!) isn’t supported on iOS \(entry.version) yet."),
-                        "\(entry.id) \(destination)")
+                #expect(
+                    MediaSupport.supports(destination, on: firmware) == want.contains(destination),
+                    "\(entry.id) \(destination)"
+                )
+                #expect(
+                    MediaSupport.refusal(destination, on: firmware)
+                        == (want.contains(destination)
+                            ? nil : "Adding \(Self.nouns[destination]!) isn’t supported on iOS \(entry.version) yet."),
+                    "\(entry.id) \(destination)"
+                )
             }
             #expect(MediaSupport.supportsAny(firmware) == !want.isEmpty, "\(entry.id): Import Media…")
         }

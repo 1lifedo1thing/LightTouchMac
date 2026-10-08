@@ -7,9 +7,15 @@ import HostServiceWire
 public struct AppsMenuItem {
     public enum Action {
         case installApp, importMedia, resumeTransfers, refresh
-        case install(CatalogApp), installBatch([CatalogApp]), chooseVersion(CatalogApp), viewOnLegacyStore(CatalogApp)
-        case cancelInstall(InstallJob), dismissInstall(InstallJob)
-        case open(InstalledApp), uninstall([InstalledApp]), showInLegacyStore(InstalledApp)
+        case install(CatalogApp)
+        case installBatch([CatalogApp])
+        case chooseVersion(CatalogApp)
+        case viewOnLegacyStore(CatalogApp)
+        case cancelInstall(InstallJob)
+        case dismissInstall(InstallJob)
+        case open(InstalledApp)
+        case uninstall([InstalledApp])
+        case showInLegacyStore(InstalledApp)
         /// This device's retained copy, queued on another running device.
         case installOn(file: URL, device: AnyObject)
         /// A title with nothing behind it (dimmed placeholders, the Install on ▸ parent).
@@ -24,8 +30,14 @@ public struct AppsMenuItem {
     public var isEnabled = true
     public var submenu: [AppsMenuItem]?
 
-    public init(_ title: String, _ action: Action, keyEquivalent: String = "", shift: Bool = false, isEnabled: Bool = true,
-                submenu: [AppsMenuItem]? = nil) {
+    public init(
+        _ title: String,
+        _ action: Action,
+        keyEquivalent: String = "",
+        shift: Bool = false,
+        isEnabled: Bool = true,
+        submenu: [AppsMenuItem]? = nil
+    ) {
         self.title = title
         self.action = action
         self.keyEquivalent = keyEquivalent
@@ -67,8 +79,15 @@ public struct AppsMenu {
     /// Every running device's session.
     public var targets: [AppsMenuTarget] = []
 
-    public init(rows: AppsInspectorRows, isMainMenu: Bool, row: Int, selection: IndexSet, inFrontWindow: Bool = true,
-                retainedCopy: @escaping (String) -> URL? = { _ in nil }, targets: [AppsMenuTarget] = []) {
+    public init(
+        rows: AppsInspectorRows,
+        isMainMenu: Bool,
+        row: Int,
+        selection: IndexSet,
+        inFrontWindow: Bool = true,
+        retainedCopy: @escaping (String) -> URL? = { _ in nil },
+        targets: [AppsMenuTarget] = []
+    ) {
         self.rows = rows
         self.isMainMenu = isMainMenu
         self.row = row
@@ -82,7 +101,15 @@ public struct AppsMenu {
         var menu: [AppsMenuItem] = []
         let device = rows.device
         if isMainMenu {
-            menu.append(AppsMenuItem("Install App…", .installApp, keyEquivalent: "i", shift: true, isEnabled: device.canQueueInstall))
+            menu.append(
+                AppsMenuItem(
+                    "Install App…",
+                    .installApp,
+                    keyEquivalent: "i",
+                    shift: true,
+                    isEnabled: device.canQueueInstall
+                )
+            )
             menu.append(AppsMenuItem("Import Media…", .importMedia, isEnabled: device.canQueueInstall))
             menu.append(.separator)
         }
@@ -112,7 +139,8 @@ public struct AppsMenu {
             // whole queue machinery (independent downloads and serial installs,
             // per-row progress) already handles N jobs.
             if selection.count > 1, selection.contains(row) {
-                let installable = selection
+                let installable =
+                    selection
                     .compactMap { rows.catalogResults.indices.contains($0) ? rows.catalogResults[$0] : nil }
                     .filter { rows.catalogState(of: $0) == .installable }
                 if installable.count > 1 {
@@ -122,15 +150,30 @@ public struct AppsMenu {
             }
             let installedApp = rows.apps.first { $0.id == app.bundleID }
             if let job = rows.catalogJob(for: app), !job.isFinished {
-                menu.append(AppsMenuItem("Cancel Install", .cancelInstall(job), isEnabled: !job.isCancelled && job.isCancellable))
+                menu.append(
+                    AppsMenuItem(
+                        "Cancel Install",
+                        .cancelInstall(job),
+                        isEnabled: !job.isCancelled && job.isCancellable
+                    )
+                )
             } else if installedApp == nil {
-                menu.append(AppsMenuItem("Install", .install(app), isEnabled: rows.catalogState(of: app) == .installable))
+                menu.append(
+                    AppsMenuItem("Install", .install(app), isEnabled: rows.catalogState(of: app) == .installable)
+                )
             }
             if let installed = installedApp {
                 if menu.last?.isSeparator == false { menu.append(.separator) }
-                menu.append(AppsMenuItem("Open", .open(installed), isEnabled: !rows.busyWithDevice && device.canReachDevice))
-                menu.append(AppsMenuItem("Uninstall…", .uninstall([installed]),
-                                         isEnabled: rows.canUninstall([installed]) && rows.catalogJob(for: app)?.isFinished != false))
+                menu.append(
+                    AppsMenuItem("Open", .open(installed), isEnabled: !rows.busyWithDevice && device.canReachDevice)
+                )
+                menu.append(
+                    AppsMenuItem(
+                        "Uninstall…",
+                        .uninstall([installed]),
+                        isEnabled: rows.canUninstall([installed]) && rows.catalogJob(for: app)?.isFinished != false
+                    )
+                )
                 menu.append(.separator)
             }
             menu.append(AppsMenuItem("Choose Version…", .chooseVersion(app)))
@@ -146,23 +189,41 @@ public struct AppsMenu {
             menu.append(AppsMenuItem("Dismiss", .dismissInstall(pending[row])))
         } else if row >= 0, row < pending.count, !pending[row].isFinished {
             let job = pending[row]
-            menu.append(AppsMenuItem("Cancel Install", .cancelInstall(job), isEnabled: !job.isCancelled && job.isCancellable))
+            menu.append(
+                AppsMenuItem("Cancel Install", .cancelInstall(job), isEnabled: !job.isCancelled && job.isCancellable)
+            )
         } else if let app = rows.app(at: row) {
             // A right-click inside a multi-row selection acts on the batch.
             let selected = rows.selectedApps(selection)
             if selected.count > 1, selected.contains(where: { $0.id == app.id }) {
-                menu.append(AppsMenuItem("Uninstall \(selected.count) Apps…", .uninstall(selected), isEnabled: rows.canUninstall(selected)))
+                menu.append(
+                    AppsMenuItem(
+                        "Uninstall \(selected.count) Apps…",
+                        .uninstall(selected),
+                        isEnabled: rows.canUninstall(selected)
+                    )
+                )
                 return
             }
-            menu.append(AppsMenuItem("Open", .open(app),
-                                     isEnabled: !rows.busyWithDevice && device.canReachDevice && !rows.uninstalling.contains(app.id)))
+            menu.append(
+                AppsMenuItem(
+                    "Open",
+                    .open(app),
+                    isEnabled: !rows.busyWithDevice && device.canReachDevice && !rows.uninstalling.contains(app.id)
+                )
+            )
             menu.append(AppsMenuItem("Uninstall…", .uninstall([app]), isEnabled: rows.canUninstall([app])))
             // The retained copy can go to any other running device that takes installs.
             if let file = retainedCopy(app.id) {
                 let others = targets.filter { !$0.isThisDevice && $0.canQueueInstall }
                 if !others.isEmpty {
-                    menu.append(AppsMenuItem("Install on", .none,
-                                             submenu: others.map { AppsMenuItem($0.title, .installOn(file: file, device: $0.device)) }))
+                    menu.append(
+                        AppsMenuItem(
+                            "Install on",
+                            .none,
+                            submenu: others.map { AppsMenuItem($0.title, .installOn(file: file, device: $0.device)) }
+                        )
+                    )
                 }
             }
             menu.append(AppsMenuItem("View on Legacy Store", .showInLegacyStore(app)))

@@ -42,18 +42,24 @@ public nonisolated enum Bundled {
 
     /// Native helper executables share the standard executable directory.
     public static let hostToolsDirectory = hostToolsDirectory(of: .main)
-    public static func hostToolsDirectory(of bundle: Bundle) -> String? { bundle.executableURL?.deletingLastPathComponent().path }
+    public static func hostToolsDirectory(of bundle: Bundle) -> String? {
+        bundle.executableURL?.deletingLastPathComponent().path
+    }
 
     /// Dylibs shipped with the app (scripts/vendor sets their @rpath install names).
     public static let frameworksDirectory = Bundle.main.privateFrameworksPath
 
     /// The device assets (the iPod SecureROMs): LTM_FILES,
     /// then the bundle's Resources/Device, then the dev checkout's qemu-ios-files.
-    public static let filesRoot: String = filesRoot(environment: ProcessInfo.processInfo.environment, resources: Bundle.main.resourceURL)
+    public static let filesRoot: String = filesRoot(
+        environment: ProcessInfo.processInfo.environment,
+        resources: Bundle.main.resourceURL
+    )
     public static func filesRoot(environment: [String: String], resources: URL?) -> String {
         if let env = environment["LTM_FILES"] { return env }
         if let bundled = resources?.appendingPathComponent("Device").path,
-           FileManager.default.fileExists(atPath: bundled) {
+            FileManager.default.fileExists(atPath: bundled)
+        {
             return bundled
         }
         return "\(NSHomeDirectory())/Developer/qemu-ios-files"
@@ -69,7 +75,8 @@ public nonisolated enum Bundled {
             library: fm.urls(for: .libraryDirectory, in: .userDomainMask)[0],
             override: ProcessInfo.processInfo.environment["LTM_STATE_DIR"].map {
                 URL(fileURLWithPath: $0, isDirectory: true)
-            })
+            }
+        )
     }
 
     /// One app per library: State/.app-lock, held (flock) for the process's
@@ -94,8 +101,10 @@ public nonisolated enum Bundled {
         if case .success(let value) = layout { return value.state }
         return ProcessInfo.processInfo.environment["LTM_STATE_DIR"].map {
             URL(fileURLWithPath: $0, isDirectory: true)
-        } ?? StorageLocations.stateRoot(
-            applicationSupport: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0])
+        }
+            ?? StorageLocations.stateRoot(
+                applicationSupport: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            )
     }
 
     public static var preparedLogsDirectory: URL? {
@@ -107,7 +116,8 @@ public nonisolated enum Bundled {
         if let ready = preparedLogsDirectory { return ready }
         return ProcessInfo.processInfo.environment["LTM_STATE_DIR"].map {
             URL(fileURLWithPath: $0, isDirectory: true).appendingPathComponent("Logs", isDirectory: true)
-        } ?? FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+        }
+            ?? FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Logs/\(StorageLocations.bundleIdentifier)", isDirectory: true)
     }
 
@@ -123,7 +133,8 @@ public nonisolated enum Bundled {
     /// data file), or nil when this build has none.
     public static func resource(_ relativePath: String) -> String? {
         guard let base = Bundle.main.resourceURL?.appendingPathComponent(relativePath).path,
-              FileManager.default.fileExists(atPath: base) else { return nil }
+            FileManager.default.fileExists(atPath: base)
+        else { return nil }
         return base
     }
 

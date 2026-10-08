@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import HostRuntime
 
 /// The helper's lease hold against a stopped device's edit intent (was tests/offline/check-storage-edit-lease.py).
@@ -39,7 +40,8 @@ struct HeldLeaseTests {
         let work = FileManager.default.temporaryDirectory.appendingPathComponent("held-lease-\(UUID().uuidString)/work")
         defer { try? FileManager.default.removeItem(at: work.deletingLastPathComponent()) }
         let path = work.appendingPathComponent("lease").path
-        let first = HeldLease(), second = HeldLease()
+        let first = HeldLease()
+        let second = HeldLease()
         var logged: [String] = []
         #expect(first.take(path) { logged.append($0) })
         #expect(!second.take(path) { logged.append($0) })

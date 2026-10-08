@@ -60,11 +60,19 @@ enum LegacyPreparationGoldens {
         "3 134 6050b8f302ab045bd8cbaaabeba62a1f17508cc31ed4c92e1a6017bbb24f8750",
         "3 135 6050b8f302ab045bd8cbaaabeba62a1f17508cc31ed4c92e1a6017bbb24f8750",
         "3 255 43d923800461745b644ebabdde371a25639269a1b851032a88191f8c50af64e6",
-        "3 524161 5b786fda3624538a14788e8b3bf408f8d7b40a55266ba12bcabbfedad1506210"
-]
+        "3 524161 5b786fda3624538a14788e8b3bf408f8d7b40a55266ba12bcabbfedad1506210",
+    ]
     static let n72NOR = "26d64e0a9d0238c1e3e243832c9a5cbad5d9ab0c54c888a2571dda47dbf24f72"
     static let k48: [String: [String: String]] = [
-        "k48ap-7B500": ["iBoot.bin": "414d1e6da26b62a507e5961d49768ab7b831842c474053e1bab09b8638ae72dd", "nor.bin": "76deefe8d7476c05390138897cfc97c9100d5a80574c5a5e2e01fffeb5d252b6", "gid-blobs.bin": "235447077f673664c5012e9b01e2e0d424fa8673017b1f22fd8e2cf254782bb0"],
-        "k48ap-8C148": ["iBoot.bin": "c69c7425b3d204cbc0e92d1d38254d74a23120d2da7f88a2a81509134b24fd94", "nor.bin": "17e6a7a0c01dd86a856dc022dd04d0282b96f82b90faf18e7470db35ffc03606", "gid-blobs.bin": "895b3affcf9b25ec61dc2ce16c924f934e3d41adf6ee363bfb9287c9dcdb448b"],
+        "k48ap-7B500": [
+            "iBoot.bin": "414d1e6da26b62a507e5961d49768ab7b831842c474053e1bab09b8638ae72dd",
+            "nor.bin": "76deefe8d7476c05390138897cfc97c9100d5a80574c5a5e2e01fffeb5d252b6",
+            "gid-blobs.bin": "235447077f673664c5012e9b01e2e0d424fa8673017b1f22fd8e2cf254782bb0",
+        ],
+        "k48ap-8C148": [
+            "iBoot.bin": "c69c7425b3d204cbc0e92d1d38254d74a23120d2da7f88a2a81509134b24fd94",
+            "nor.bin": "17e6a7a0c01dd86a856dc022dd04d0282b96f82b90faf18e7470db35ffc03606",
+            "gid-blobs.bin": "895b3affcf9b25ec61dc2ce16c924f934e3d41adf6ee363bfb9287c9dcdb448b",
+        ],
     ]
 }

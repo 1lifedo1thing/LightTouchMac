@@ -31,12 +31,16 @@ func readJSON(_ file: URL) throws -> [String: Any] {
 
 func writeJSON(_ object: Any, to file: URL) throws {
     try files.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-    let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+    let data = try JSONSerialization.data(
+        withJSONObject: object,
+        options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+    )
     try (data + Data("\n".utf8)).write(to: file)
 }
 
 /// Runs a command to its exit, its output and error appended to `log` (or inherited); throws on a nonzero status.
-func run(_ arguments: [String], log: URL? = nil, environment: [String: String]? = nil, in directory: URL? = nil) throws {
+func run(_ arguments: [String], log: URL? = nil, environment: [String: String]? = nil, in directory: URL? = nil) throws
+{
     let process = Process()
     process.executableURL = url(arguments[0].hasPrefix("/") ? arguments[0] : "/usr/bin/env")
     process.arguments = arguments[0].hasPrefix("/") ? Array(arguments.dropFirst()) : arguments
@@ -61,7 +65,10 @@ func run(_ arguments: [String], log: URL? = nil, environment: [String: String]? 
     guard process.terminationStatus == 0 else {
         var message = "\(arguments[0]) failed (\(process.terminationStatus))"
         if let log {
-            let tail = ((try? String(contentsOf: log, encoding: .utf8)) ?? "").split(separator: "\n", omittingEmptySubsequences: false).suffix(25)
+            let tail = ((try? String(contentsOf: log, encoding: .utf8)) ?? "").split(
+                separator: "\n",
+                omittingEmptySubsequences: false
+            ).suffix(25)
             message = tail.joined(separator: "\n") + "\n\(message); see \(log.path)"
         }
         throw ToolError(message)
@@ -70,7 +77,8 @@ func run(_ arguments: [String], log: URL? = nil, environment: [String: String]? 
 
 /// A command's standard output, trimmed; throws on a nonzero status.
 func output(_ arguments: [String], environment: [String: String]? = nil) throws -> String {
-    let process = Process(), pipe = Pipe()
+    let process = Process()
+    let pipe = Pipe()
     process.executableURL = url("/usr/bin/env")
     process.arguments = arguments
     if let environment { process.environment = environment }
@@ -79,7 +87,9 @@ func output(_ arguments: [String], environment: [String: String]? = nil) throws 
     try process.run()
     let data = pipe.fileHandleForReading.readDataToEndOfFile()
     process.waitUntilExit()
-    guard process.terminationStatus == 0 else { throw ToolError("\(arguments.joined(separator: " ")) failed (\(process.terminationStatus))") }
+    guard process.terminationStatus == 0 else {
+        throw ToolError("\(arguments.joined(separator: " ")) failed (\(process.terminationStatus))")
+    }
     return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
 }
 

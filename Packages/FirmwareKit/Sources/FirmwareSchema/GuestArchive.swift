@@ -30,21 +30,31 @@ nonisolated public enum GuestArchive {
             throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: staging.path])
         }
         if fm.fileExists(atPath: target.path), !complete() { try fm.removeItem(at: target) }
-        do { try fm.moveItem(at: staging, to: target) } catch where complete() {}   // another process unpacked it first
+        do { try fm.moveItem(at: staging, to: target) } catch  where complete() {}  // another process unpacked it first
         return target
     }
 
     static func extract(_ archive: URL, to directory: URL) throws {
         let failed = CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: archive.path])
-        guard let file = ArchiveByteStream.fileStream(path: FilePath(archive.path), mode: .readOnly, options: [],
-                                                      permissions: FilePermissions(rawValue: 0o644)) else { throw failed }
+        guard
+            let file = ArchiveByteStream.fileStream(
+                path: FilePath(archive.path),
+                mode: .readOnly,
+                options: [],
+                permissions: FilePermissions(rawValue: 0o644)
+            )
+        else { throw failed }
         defer { try? file.close() }
         guard let decompressed = ArchiveByteStream.decompressionStream(readingFrom: file) else { throw failed }
         defer { try? decompressed.close() }
         guard let decoded = ArchiveStream.decodeStream(readingFrom: decompressed) else { throw failed }
         defer { try? decoded.close() }
-        guard let extracted = ArchiveStream.extractStream(extractingTo: FilePath(directory.path),
-                                                          flags: [.ignoreOperationNotPermitted]) else { throw failed }
+        guard
+            let extracted = ArchiveStream.extractStream(
+                extractingTo: FilePath(directory.path),
+                flags: [.ignoreOperationNotPermitted]
+            )
+        else { throw failed }
         defer { try? extracted.close() }
         _ = try ArchiveStream.process(readingFrom: decoded, writingTo: extracted)
     }

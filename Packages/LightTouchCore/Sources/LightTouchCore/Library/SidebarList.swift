@@ -12,11 +12,16 @@ public nonisolated struct SidebarList: Equatable {
     /// Custom names by entry id.
     public private(set) var names: [String: String]
 
-    public init(ids: [String] = [], names: [String: String] = [:]) { self.ids = ids; self.names = names }
+    public init(ids: [String] = [], names: [String: String] = [:]) {
+        self.ids = ids
+        self.names = names
+    }
 
     /// The saved list; the first launch after updating saves one from what the user already has (`owned`:
     /// a prepared device or a job in flight), and a fresh install starts with `first_run`.
-    public static func load(_ defaults: UserDefaults, catalog: FirmwareCatalog, owned: (FirmwareCatalog.Entry) -> Bool) -> SidebarList {
+    public static func load(_ defaults: UserDefaults, catalog: FirmwareCatalog, owned: (FirmwareCatalog.Entry) -> Bool)
+        -> SidebarList
+    {
         let known = Set(catalog.entries.map(\.id))
         if let saved = defaults.stringArray(forKey: entriesKey) {
             let names = defaults.dictionary(forKey: namesKey) as? [String: String] ?? [:]
@@ -37,7 +42,9 @@ public nonisolated struct SidebarList: Equatable {
     public func contains(_ id: String) -> Bool { ids.contains(id) }
 
     /// The sidebar's rows: in catalog order (per board, version order, prereleases before their release).
-    public func entries(in catalog: FirmwareCatalog) -> [FirmwareCatalog.Entry] { catalog.entries.filter { ids.contains($0.id) } }
+    public func entries(in catalog: FirmwareCatalog) -> [FirmwareCatalog.Entry] {
+        catalog.entries.filter { ids.contains($0.id) }
+    }
 
     /// Returns whether anything was added.
     @discardableResult public mutating func add(_ newIDs: some Sequence<String>) -> Bool {

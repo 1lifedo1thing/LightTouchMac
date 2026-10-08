@@ -25,7 +25,12 @@ func - (a: CGPoint, b: CGPoint) -> CGPoint { CGPoint(x: a.x - b.x, y: a.y - b.y)
     renderer.cameraSettings.colorBackground = .color(CGColor(gray: 0.5, alpha: 1))
     let w = Int(model.bounds.width) * 2
     let h = Int(model.bounds.height) * 2
-    let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm_srgb, width: w, height: h, mipmapped: false)
+    let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+        pixelFormat: .rgba8Unorm_srgb,
+        width: w,
+        height: h,
+        mipmapped: false
+    )
     descriptor.usage = [.renderTarget, .shaderRead]
     descriptor.storageMode = .shared
     let texture = MTLCreateSystemDefaultDevice()!.makeTexture(descriptor: descriptor)!
@@ -33,7 +38,13 @@ func - (a: CGPoint, b: CGPoint) -> CGPoint { CGPoint(x: a.x - b.x, y: a.y - b.y)
     // Twice: the first pass can precede material and texture uploads.
     for _ in 0..<2 {
         try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, Error>) in
-            do { try renderer.updateAndRender(deltaTime: 1.0 / 60, cameraOutput: output, onComplete: { _ in done.resume() }) } catch {
+            do {
+                try renderer.updateAndRender(
+                    deltaTime: 1.0 / 60,
+                    cameraOutput: output,
+                    onComplete: { _ in done.resume() }
+                )
+            } catch {
                 done.resume(throwing: error)
             }
         }
@@ -41,16 +52,31 @@ func - (a: CGPoint, b: CGPoint) -> CGPoint { CGPoint(x: a.x - b.x, y: a.y - b.y)
     var bytes = [UInt8](repeating: 0, count: w * h * 4)
     texture.getBytes(&bytes, bytesPerRow: w * 4, from: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0)
     let context = CGContext(
-        data: &bytes, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
-        space: CGColorSpace(name: CGColorSpace.displayP3)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        data: &bytes,
+        width: w,
+        height: h,
+        bitsPerComponent: 8,
+        bytesPerRow: w * 4,
+        space: CGColorSpace(name: CGColorSpace.displayP3)!,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )!
     return context.makeImage()!
 }
 /// RealityKit writes Display P3: compare raw P3 components with P3 references.
 func color(_ image: CGImage, _ p: CGPoint, in size: CGSize) -> NSColor {
     let rep = NSBitmapImageRep(cgImage: image)
     var pixel = [Int](repeating: 0, count: 4)
-    rep.getPixel(&pixel, atX: Int(p.x / size.width * CGFloat(rep.pixelsWide)), y: Int((1 - p.y / size.height) * CGFloat(rep.pixelsHigh)))
-    return NSColor(displayP3Red: CGFloat(pixel[0]) / 255, green: CGFloat(pixel[1]) / 255, blue: CGFloat(pixel[2]) / 255, alpha: 1)
+    rep.getPixel(
+        &pixel,
+        atX: Int(p.x / size.width * CGFloat(rep.pixelsWide)),
+        y: Int((1 - p.y / size.height) * CGFloat(rep.pixelsHigh))
+    )
+    return NSColor(
+        displayP3Red: CGFloat(pixel[0]) / 255,
+        green: CGFloat(pixel[1]) / 255,
+        blue: CGFloat(pixel[2]) / 255,
+        alpha: 1
+    )
 }
 /// Upright quadrants (red, green / blue, yellow), a center circle and TOP, then
 /// turned into the panel's own scan-out orientation (the iPad's is landscape).
@@ -61,8 +87,14 @@ func pattern(_ profile: Board, rotation: Int) -> CGImage {
     let w = Int(size.width)
     let h = Int(size.height)
     let context = CGContext(
-        data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(),
-        bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+        data: nil,
+        width: w,
+        height: h,
+        bitsPerComponent: 8,
+        bytesPerRow: w * 4,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+    )!
     // Draw in the upright frame: turn the context so its y-up upright picture lands turned back.
     context.translateBy(x: size.width / 2, y: size.height / 2)
     context.rotate(by: CGFloat(turnsBack) * .pi / 2)
@@ -71,13 +103,22 @@ func pattern(_ profile: Board, rotation: Int) -> CGImage {
     for i in 0..<4 {
         context.setFillColor(colors[i].cgColor)
         context.fill(
-            CGRect(x: CGFloat(i % 2) * upright.width / 2, y: CGFloat(1 - i / 2) * upright.height / 2, width: upright.width / 2, height: upright.height / 2))
+            CGRect(
+                x: CGFloat(i % 2) * upright.width / 2,
+                y: CGFloat(1 - i / 2) * upright.height / 2,
+                width: upright.width / 2,
+                height: upright.height / 2
+            )
+        )
     }
     let d = upright.width * 0.6
     context.setStrokeColor(.white)
     context.setLineWidth(upright.width * 0.02)
     context.strokeEllipse(in: CGRect(x: (upright.width - d) / 2, y: (upright.height - d) / 2, width: d, height: d))
-    let text = NSAttributedString(string: "TOP", attributes: [.font: NSFont.boldSystemFont(ofSize: upright.width * 0.12), .foregroundColor: NSColor.white])
+    let text = NSAttributedString(
+        string: "TOP",
+        attributes: [.font: NSFont.boldSystemFont(ofSize: upright.width * 0.12), .foregroundColor: NSColor.white]
+    )
     let line = CTLineCreateWithAttributedString(text)
     let bounds = CTLineGetBoundsWithOptions(line, [])
     context.textPosition = CGPoint(x: (upright.width - bounds.width) / 2, y: upright.height * 0.9)
@@ -101,26 +142,35 @@ extension SharedState {
 
         @Test(arguments: [("N72", Board.n72), ("K48", .k48), ("N45", .n45), ("N81", .n81), ("N88", .n88)])
         func model(_ name: String, _ profile: Board) async throws {
-            try await MainBundle.with(["Models/N72Studio.png": "Models/N72Studio.png", "Models/N45Rim.png": "Models/N45Rim.png"]) {
-                guard #available(macOS 15, *) else { return }   // RealityKit's texture rotation and RealityRenderer
-            try await check(name, profile)
+            try await MainBundle.with([
+                "Models/N72Studio.png": "Models/N72Studio.png", "Models/N45Rim.png": "Models/N45Rim.png",
+            ]) {
+                guard #available(macOS 15, *) else { return }  // RealityKit's texture rotation and RealityRenderer
+                try await check(name, profile)
             }
         }
 
         @available(macOS 15, *) func check(_ name: String, _ profile: Board) async throws {
-            let model = try await DeviceModelView(url: MainBundle.repository.appendingPathComponent("Models/\(name).usdz"), profile: profile)
+            let model = try await DeviceModelView(
+                url: MainBundle.repository.appendingPathComponent("Models/\(name).usdz"),
+                profile: profile
+            )
             model.frame = NSRect(x: 0, y: 0, width: 800, height: 800)
             let cutout = profile.screenCutout.size
             /// The upright LCD's on-screen box: the four panel corners' projections.
             func lcdBox() -> CGRect {
-                let points = [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 0, y: 1), CGPoint(x: 1, y: 1)].map(model.projectedPoint)
+                let points = [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 0, y: 1), CGPoint(x: 1, y: 1)].map(
+                    model.projectedPoint
+                )
                 let xs = points.map(\.x)
                 let ys = points.map(\.y)
                 return CGRect(x: xs.min()!, y: ys.min()!, width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!)
             }
             // Resize the actual ARView synchronously: the projection must keep the
             // LCD's physical aspect and size before an asynchronous layout catches up.
-            for size in [CGSize(width: 400, height: 1000), CGSize(width: 1200, height: 450), CGSize(width: 800, height: 800)] {
+            for size in [
+                CGSize(width: 400, height: 1000), CGSize(width: 1200, height: 450), CGSize(width: 800, height: 800),
+            ] {
                 model.setFrameSize(size)
                 model.pose(scale: 0.3, rotation: 0, roll: 0, pitch: 0, animated: false)
                 let renderer = model.subviews[0] as! ARView
@@ -128,8 +178,12 @@ extension SharedState {
                 let box = lcdBox()
                 #expect(
                     abs(box.width / box.height - cutout.width / cutout.height) < 0.003,
-                    "LCD stretched during resize to \(size): \(box.size)")
-                #expect(abs(box.width - 0.3 * cutout.width) < 0.1, "Display scale changed with viewport aspect: \(box.width)")
+                    "LCD stretched during resize to \(size): \(box.size)"
+                )
+                #expect(
+                    abs(box.width - 0.3 * cutout.width) < 0.1,
+                    "Display scale changed with viewport aspect: \(box.width)"
+                )
             }
             // The panel's own axes on the upright model: the iPad's landscape panel is
             // mounted a quarter-turn clockwise, so its left edge (portrait SpringBoard's
@@ -137,10 +191,16 @@ extension SharedState {
             let top = profile.panelRotation != 0 ? CGPoint(x: 0, y: 0.5) : CGPoint(x: 0.5, y: 0)
             let bottom = CGPoint(x: 1 - top.x, y: 1 - top.y)
             let (t, b) = (model.projectedPoint(top), model.projectedPoint(bottom))
-            #expect(t.y - b.y > 0.99 * lcdBox().height && abs(t.x - b.x) < 0.01, "Panel mounted the wrong way: top \(t) bottom \(b)")
+            #expect(
+                t.y - b.y > 0.99 * lcdBox().height && abs(t.x - b.x) < 0.01,
+                "Panel mounted the wrong way: top \(t) bottom \(b)"
+            )
             let shell = model.shellPixels
             #expect(shell.width > cutout.width && shell.height > cutout.height)
-            let points = [CGPoint(x: 0.25, y: 0.25), CGPoint(x: 0.75, y: 0.25), CGPoint(x: 0.25, y: 0.75), CGPoint(x: 0.75, y: 0.75)]
+            let points = [
+                CGPoint(x: 0.25, y: 0.25), CGPoint(x: 0.75, y: 0.25), CGPoint(x: 0.25, y: 0.75),
+                CGPoint(x: 0.75, y: 0.75),
+            ]
             var homeLevels: [CGFloat] = []
             // The iPod's surface arrives pre-rotated; the iPad's panel never turns.
             for rotation in [0, 90, 180, 270] {
@@ -155,11 +215,16 @@ extension SharedState {
                         let hit = model.panelPoint(screen)!
                         #expect(hypot(hit.x - p.x, hit.y - p.y) < 0.0001)
                         let pixel = color(snapshot, screen, in: model.bounds.size)
-                        let expected = reference.colorAt(x: Int(p.x * CGFloat(frame.width)), y: Int(p.y * CGFloat(frame.height)))!.usingColorSpace(.displayP3)!
+                        let expected = reference.colorAt(
+                            x: Int(p.x * CGFloat(frame.width)),
+                            y: Int(p.y * CGFloat(frame.height))
+                        )!.usingColorSpace(.displayP3)!
                         #expect(
-                            abs(pixel.redComponent - expected.redComponent) < 0.22 && abs(pixel.greenComponent - expected.greenComponent) < 0.22
+                            abs(pixel.redComponent - expected.redComponent) < 0.22
+                                && abs(pixel.greenComponent - expected.greenComponent) < 0.22
                                 && abs(pixel.blueComponent - expected.blueComponent) < 0.22,
-                            "Frame orientation mismatch rotation=\(rotation) tilt=\(tilt) point=\(p) pixel=\(pixel) reference=\(expected)")
+                            "Frame orientation mismatch rotation=\(rotation) tilt=\(tilt) point=\(p) pixel=\(pixel) reference=\(expected)"
+                        )
                     }
                     if tilt == 0 {
                         let rect = model.homeButtonRect!
@@ -170,9 +235,13 @@ extension SharedState {
                         let offset = CGVector(dx: rect.midX - lcd.midX, dy: rect.midY - lcd.midY)
                         #expect(
                             offset.dx * down.dx + offset.dy * down.dy > 0.5 * max(lcd.width, lcd.height),
-                            "Home is not below the LCD at \(rotation): \(rect) vs \(lcd)")
+                            "Home is not below the LCD at \(rotation): \(rect) vs \(lcd)"
+                        )
                         // The same spot on the cap in every orientation (the device's right of center).
-                        let p = CGPoint(x: rect.midX + rect.width * 0.3 * cos(rest), y: rect.midY - rect.width * 0.3 * sin(rest))
+                        let p = CGPoint(
+                            x: rect.midX + rect.width * 0.3 * cos(rest),
+                            y: rect.midY - rect.width * 0.3 * sin(rest)
+                        )
                         let level = color(snapshot, p, in: model.bounds.size)
                         homeLevels.append(level.redComponent)
                         #expect(level.redComponent < 0.35, "Home button washed out: \(rotation) \(level)")
@@ -182,13 +251,21 @@ extension SharedState {
                             var levels: [CGFloat] = []
                             for i in 0..<40 {
                                 for j in 0..<40 {
-                                    let q = CGPoint(x: rect.minX + rect.width * (CGFloat(i) + 0.5) / 40, y: rect.minY + rect.height * (CGFloat(j) + 0.5) / 40)
+                                    let q = CGPoint(
+                                        x: rect.minX + rect.width * (CGFloat(i) + 0.5) / 40,
+                                        y: rect.minY + rect.height * (CGFloat(j) + 0.5) / 40
+                                    )
                                     guard hypot(q.x - rect.midX, q.y - rect.midY) < rect.width * 0.4 else { continue }
                                     var px = [Int](repeating: 0, count: 4)
                                     rep.getPixel(
-                                        &px, atX: Int(q.x / model.bounds.width * CGFloat(rep.pixelsWide)),
-                                        y: Int((1 - q.y / model.bounds.height) * CGFloat(rep.pixelsHigh)))
-                                    levels.append((0.2126 * CGFloat(px[0]) + 0.7152 * CGFloat(px[1]) + 0.0722 * CGFloat(px[2])) / 255)
+                                        &px,
+                                        atX: Int(q.x / model.bounds.width * CGFloat(rep.pixelsWide)),
+                                        y: Int((1 - q.y / model.bounds.height) * CGFloat(rep.pixelsHigh))
+                                    )
+                                    levels.append(
+                                        (0.2126 * CGFloat(px[0]) + 0.7152 * CGFloat(px[1]) + 0.0722 * CGFloat(px[2]))
+                                            / 255
+                                    )
                                 }
                             }
                             levels.sort()
@@ -199,7 +276,10 @@ extension SharedState {
                     }
                 }
             }
-            #expect(homeLevels.max()! - homeLevels.min()! < 0.12, "Home lighting changes with orientation: \(homeLevels)")
+            #expect(
+                homeLevels.max()! - homeLevels.min()! < 0.12,
+                "Home lighting changes with orientation: \(homeLevels)"
+            )
             // Hardware controls: each named side control answers where it is drawn, and
             // the LCD and bezel are not controls.
             model.updateFrame(pattern(profile, rotation: 0))
@@ -218,15 +298,29 @@ extension SharedState {
                 guard let entity = names.lazy.compactMap({ view.scene.findEntity(named: $0) }).first else { continue }
                 found.append(entity.name)
                 if expected.count == 1 {
-                    #expect(model.control(at: projected(entity, [0.5, 0.5, 0.5])) == expected[0], "\(entity.name) does not press")
+                    #expect(
+                        model.control(at: projected(entity, [0.5, 0.5, 0.5])) == expected[0],
+                        "\(entity.name) does not press"
+                    )
                 } else {
-                    #expect(model.control(at: projected(entity, [0.5, 0.8, 0.5])) == .volumeUp, "\(entity.name) upper half is not volume up")
-                    #expect(model.control(at: projected(entity, [0.5, 0.2, 0.5])) == .volumeDown, "\(entity.name) lower half is not volume down")
+                    #expect(
+                        model.control(at: projected(entity, [0.5, 0.8, 0.5])) == .volumeUp,
+                        "\(entity.name) upper half is not volume up"
+                    )
+                    #expect(
+                        model.control(at: projected(entity, [0.5, 0.2, 0.5])) == .volumeDown,
+                        "\(entity.name) lower half is not volume down"
+                    )
                 }
             }
             #expect(model.control(at: model.projectedPoint(CGPoint(x: 0.5, y: 0.5))) == nil)
-            let bezel = model.projectedPoint(CGPoint(x: bottom.x + (bottom.x - 0.5) * 0.12, y: bottom.y + (bottom.y - 0.5) * 0.12))
-            #expect(model.isChassis(bezel) && model.control(at: bezel) == nil, "The bezel below the LCD must grab the chassis")
+            let bezel = model.projectedPoint(
+                CGPoint(x: bottom.x + (bottom.x - 0.5) * 0.12, y: bottom.y + (bottom.y - 0.5) * 0.12)
+            )
+            #expect(
+                model.isChassis(bezel) && model.control(at: bezel) == nil,
+                "The bezel below the LCD must grab the chassis"
+            )
             if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
                 model.pose(scale: 0.5, rotation: 0, roll: 0, pitch: 0, animated: false)
                 let rest = model.projectedPoint(top)
@@ -261,7 +355,8 @@ extension SharedState {
                     path.append(model.projectedPoint(corner))
                 }
                 let end = path.last!
-                let between = path.map { min(hypot($0.x - start.x, $0.y - start.y), hypot($0.x - end.x, $0.y - end.y)) }.max()!
+                let between = path.map { min(hypot($0.x - start.x, $0.y - start.y), hypot($0.x - end.x, $0.y - end.y)) }
+                    .max()!
                 #expect(between > 10, "Rotation/scale must interpolate: \(between)")
             }
             model.pose(scale: 0.4, rotation: 0, roll: 0, pitch: 0, animated: false)
@@ -277,7 +372,9 @@ extension SharedState {
             /// (The box width is no measure: a tilt widens it, backing away narrows it,
             /// and mid-shake the two cancel.)
             func skew() -> CGPoint {
-                let p = [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 0, y: 1), CGPoint(x: 1, y: 1)].map(model.projectedPoint)
+                let p = [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 0, y: 1), CGPoint(x: 1, y: 1)].map(
+                    model.projectedPoint
+                )
                 func length(_ a: CGPoint, _ b: CGPoint) -> CGFloat { hypot(a.x - b.x, a.y - b.y) }
                 return CGPoint(x: length(p[0], p[1]) - length(p[2], p[3]), y: length(p[0], p[2]) - length(p[1], p[3]))
             }
@@ -317,11 +414,19 @@ extension SharedState {
                 let shade = [CGPoint(x: 1.095, y: 0.8), CGPoint(x: 0.5, y: 1.217)].map(level)
                 let sheen = level(CGPoint(x: 0.85, y: -0.1))
                 let glass = [CGPoint(x: 0.05, y: -0.2), CGPoint(x: 0.15, y: 1.1)].map(level)
-                #expect(lit.allSatisfy { $0 > 0.27 && $0 < 0.42 }, "N45 frame's upper left is not a dark graphite (silver above 0.42): \(lit)")
-                #expect(shade.allSatisfy { $0 > 0.12 && $0 < 0.25 }, "N45 frame's lower right is not a darker graphite: \(shade)")
+                #expect(
+                    lit.allSatisfy { $0 > 0.27 && $0 < 0.42 },
+                    "N45 frame's upper left is not a dark graphite (silver above 0.42): \(lit)"
+                )
+                #expect(
+                    shade.allSatisfy { $0 > 0.12 && $0 < 0.25 },
+                    "N45 frame's lower right is not a darker graphite: \(shade)"
+                )
                 #expect(lit.min()! - shade.max()! > 0.1, "N45 frame has no upper-left light: \(lit) vs \(shade)")
                 #expect(
-                    glass.allSatisfy { $0 > 0.06 && $0 < 0.15 } && sheen - glass.max()! > 0.05, "N45 glass is not blue-black with a sheen: \(glass) \(sheen)")
+                    glass.allSatisfy { $0 > 0.06 && $0 < 0.15 } && sheen - glass.max()! > 0.05,
+                    "N45 glass is not blue-black with a sheen: \(glass) \(sheen)"
+                )
             }
             // Nearest-neighbor upscaling: a 4x6 black/white checker blown up to ~600 px must keep hard edges.
             // A linear mag filter ramps across each ~150 px cell, leaving a third or more of a scan mid-gray.
@@ -329,8 +434,14 @@ extension SharedState {
                 let cw = 4
                 let ch = 6
                 let checker = CGContext(
-                    data: nil, width: cw, height: ch, bitsPerComponent: 8, bytesPerRow: cw * 4,
-                    space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+                    data: nil,
+                    width: cw,
+                    height: ch,
+                    bitsPerComponent: 8,
+                    bytesPerRow: cw * 4,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+                )!
                 for y in 0..<ch {
                     for x in 0..<cw where (x + y) % 2 == 0 {
                         checker.setFillColor(.white)
@@ -351,7 +462,11 @@ extension SharedState {
                 model.updateFrame(pattern(profile, rotation: 0))
             }
             model.setScreenOff(true)
-            let dark = color(try await render(model), model.projectedPoint(CGPoint(x: 0.5, y: 0.5)), in: model.bounds.size)
+            let dark = color(
+                try await render(model),
+                model.projectedPoint(CGPoint(x: 0.5, y: 0.5)),
+                in: model.bounds.size
+            )
             #expect(dark.redComponent < 0.05 && dark.greenComponent < 0.05 && dark.blueComponent < 0.05)
         }
     }

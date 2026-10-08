@@ -1,7 +1,8 @@
-import Foundation
-import Testing
-import HostRuntime
 import DeviceRuntime
+import Foundation
+import HostRuntime
+import Testing
+
 @testable import LightTouchCore
 
 /// The shared session owner (DeviceRuntime's DeviceSessionProcess) and the app's adapter around it (DeviceProcess):
@@ -22,8 +23,15 @@ struct DeviceProcessTests {
             (nil, nil, true, .unknown, .unexpected),
         ]
         for (failure, code, requested, termination, expected) in cases {
-            #expect(DeviceProcessDeath.classify(startFailure: failure, qemuExitCode: code, stopRequested: requested,
-                                                termination: termination) == expected, "\(termination) requested=\(requested)")
+            #expect(
+                DeviceProcessDeath.classify(
+                    startFailure: failure,
+                    qemuExitCode: code,
+                    stopRequested: requested,
+                    termination: termination
+                ) == expected,
+                "\(termination) requested=\(requested)"
+            )
         }
     }
 
@@ -31,12 +39,20 @@ struct DeviceProcessTests {
     func theRowsThreeLabelsAndTheLeaseRefusal(_ profile: Board) {
         #expect(DeviceProcess.reason(.stopped, profile: profile) == profile.stoppedReason)
         #expect(DeviceProcess.reason(.unexpected, profile: profile) == "The \(profile.shortName) stopped unexpectedly.")
-        #expect(DeviceProcess.reason(.startFailed(.helperFailure("not booted")), profile: profile) == "The \(profile.shortName) didn’t start.")
-        #expect(DeviceProcess.reason(.startFailed(.helperFailure(DeviceLinkWire.leaseRefusal)), profile: profile) == DeviceLinkWire.leaseRefusal)
+        #expect(
+            DeviceProcess.reason(.startFailed(.helperFailure("not booted")), profile: profile)
+                == "The \(profile.shortName) didn’t start."
+        )
+        #expect(
+            DeviceProcess.reason(.startFailed(.helperFailure(DeviceLinkWire.leaseRefusal)), profile: profile)
+                == DeviceLinkWire.leaseRefusal
+        )
     }
 
     final class Received: @unchecked Sendable {
-        let lock = NSLock(); var got: [String] = []; var closedAfter = -1
+        let lock = NSLock()
+        var got: [String] = []
+        var closedAfter = -1
     }
 
     @Test func aReapedHelpersLastFrameIsDeliveredOnceBeforeClose() throws {
@@ -45,9 +61,16 @@ struct DeviceProcessTests {
             #expect(socketpair(AF_UNIX, SOCK_STREAM, 0, &sv) == 0)
             let queue = DispatchQueue(label: "link")
             let received = Received()
-            let channel = LinkChannel<HelperMessage, AppMessage>(fd: sv[0], queue: queue,
-                onMessage: { if case .event(.qemuExited(let rc)) = $0 { received.lock.withLock { received.got.append("exit \(rc)") } } },
-                onClose: { _ in received.lock.withLock { received.closedAfter = received.got.count } })
+            let channel = LinkChannel<HelperMessage, AppMessage>(
+                fd: sv[0],
+                queue: queue,
+                onMessage: {
+                    if case .event(.qemuExited(let rc)) = $0 {
+                        received.lock.withLock { received.got.append("exit \(rc)") }
+                    }
+                },
+                onClose: { _ in received.lock.withLock { received.closedAfter = received.got.count } }
+            )
             // The helper: its last message, then exit (the peer end closes).
             let frame = try LinkChannel<AppMessage, HelperMessage>.frame(.event(.qemuExited(0)))
             _ = frame.withUnsafeBytes { write(sv[1], $0.baseAddress, $0.count) }
@@ -69,19 +92,33 @@ struct DeviceProcessTests {
             var configuration = DeviceLink.Configuration(instance: UUID())
             configuration.helper = dir.appendingPathComponent("must-not-spawn")
             let failed = DeviceSessionProcess(configuration: configuration)
-            var completions = 0, deaths = 0, configured = false, wrongFailure = false
+            var completions = 0
+            var deaths = 0
+            var configured = false
+            var wrongFailure = false
             failed.onDeath = { _ in deaths += 1 }
-            failed.start({ _ in configured = true; return nil }, preparation: {
-                let lease = try StorageLease(leasePath); defer { lease.close() }
-                #expect(throws: StorageLease.Failure.inUse) { _ = try StorageLease(leasePath) }   // admission holds exclusion
-                throw Failure.controlled
-            }) { result in
+            failed.start(
+                { _ in
+                    configured = true
+                    return nil
+                },
+                preparation: {
+                    let lease = try StorageLease(leasePath)
+                    defer { lease.close() }
+                    #expect(throws: StorageLease.Failure.inUse) { _ = try StorageLease(leasePath) }  // admission holds exclusion
+                    throw Failure.controlled
+                }
+            ) { result in
                 completions += 1
-                guard case .failure(.helperFailure(let message)) = result, message.contains("controlled") else { wrongFailure = true; return }
+                guard case .failure(.helperFailure(let message)) = result, message.contains("controlled") else {
+                    wrongFailure = true
+                    return
+                }
             }
             #expect(await failed.waitForExit(timeout: 3))
             #expect(completions == 1 && deaths == 1 && !configured && !wrongFailure && failed.link.pid == 0)
-            let after = try StorageLease(leasePath); after.close()
+            let after = try StorageLease(leasePath)
+            after.close()
         }
     }
 
@@ -92,28 +129,44 @@ struct DeviceProcessTests {
             var configuration = DeviceLink.Configuration(instance: UUID())
             configuration.helper = dir.appendingPathComponent("must-not-spawn")
             let stopped = DeviceSessionProcess(configuration: configuration)
-            var release: CheckedContinuation<Void, Never>?, entered = false
-            var completions = 0, deaths: [DeviceProcessDeath] = [], configured = false, succeeded = false
+            var release: CheckedContinuation<Void, Never>?
+            var entered = false
+            var completions = 0
+            var deaths: [DeviceProcessDeath] = []
+            var configured = false
+            var succeeded = false
             stopped.onDeath = { deaths.append($0) }
-            stopped.start({ _ in configured = true; return nil }, preparation: {
-                let lease = try StorageLease(leasePath); defer { lease.close() }
-                entered = true
-                // Even an operation which returns after cancellation cannot spawn later.
-                await withCheckedContinuation { release = $0 }
-            }) { result in
+            stopped.start(
+                { _ in
+                    configured = true
+                    return nil
+                },
+                preparation: {
+                    let lease = try StorageLease(leasePath)
+                    defer { lease.close() }
+                    entered = true
+                    // Even an operation which returns after cancellation cannot spawn later.
+                    await withCheckedContinuation { release = $0 }
+                }
+            ) { result in
                 completions += 1
                 if case .failure(.closed) = result {} else { succeeded = true }
             }
             await eventually("admission entered") { entered }
             if kill { stopped.kill() } else { stopped.terminate() }
             #expect(stopped.link.pid == 0 && !stopped.isDead)
-            #expect(throws: StorageLease.Failure.inUse) { _ = try StorageLease(leasePath) }   // Stop can't abandon active ownership
+            #expect(throws: StorageLease.Failure.inUse) { _ = try StorageLease(leasePath) }  // Stop can't abandon active ownership
             release!.resume()
             #expect(await stopped.waitForExit(timeout: 3))
             #expect(completions == 1 && deaths == [.stopped] && !configured && !succeeded && stopped.link.pid == 0)
-            let after = try StorageLease(leasePath); after.close()
-            var duplicate = 0, duplicateConfigured = false
-            stopped.start({ _ in duplicateConfigured = true; return nil }) { result in
+            let after = try StorageLease(leasePath)
+            after.close()
+            var duplicate = 0
+            var duplicateConfigured = false
+            stopped.start({ _ in
+                duplicateConfigured = true
+                return nil
+            }) { result in
                 if case .failure(.closed) = result { duplicate += 1 }
             }
             #expect(duplicate == 1 && deaths.count == 1 && !duplicateConfigured, "no second start")

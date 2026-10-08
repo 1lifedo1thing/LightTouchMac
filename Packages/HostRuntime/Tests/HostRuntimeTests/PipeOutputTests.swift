@@ -1,16 +1,22 @@
 import Darwin
 import Foundation
 import Testing
+
 @testable import HostRuntime
 
 struct PipeOutputTests {
     @Test func orderedDeliveryAndClosedConsumerAreNativeErrors() async throws {
         var fds: [Int32] = [0, 0]
         #expect(pipe(&fds) == 0)
-        let reader = fds[0], writer = fds[1]
-        defer { _ = Darwin.close(reader); _ = Darwin.close(writer) }
+        let reader = fds[0]
+        let writer = fds[1]
+        defer {
+            _ = Darwin.close(reader)
+            _ = Darwin.close(writer)
+        }
         let output = PipeOutput(fileDescriptor: writer)
-        output.write(Data("first\n".utf8)); output.write(Data("second\n".utf8))
+        output.write(Data("first\n".utf8))
+        output.write(Data("second\n".utf8))
         #expect(await output.finish())
         var bytes = [UInt8](repeating: 0, count: 13)
         #expect(Darwin.read(reader, &bytes, bytes.count) == bytes.count)
@@ -31,7 +37,10 @@ struct PipeOutputTests {
     @Test func stopJoinsQueuedWriteWithoutReadingFullPipe() async throws {
         var fds: [Int32] = [0, 0]
         #expect(pipe(&fds) == 0)
-        defer { _ = Darwin.close(fds[0]); _ = Darwin.close(fds[1]) }
+        defer {
+            _ = Darwin.close(fds[0])
+            _ = Darwin.close(fds[1])
+        }
         let output = PipeOutput(fileDescriptor: fds[1])
         // This exceeds the native pipe capacity, with no reader consuming data.
         output.write(Data(repeating: 0x61, count: 2 << 20))
