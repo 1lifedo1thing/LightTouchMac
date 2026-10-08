@@ -318,6 +318,7 @@ enum MainMenuBuilder {
         menu.addItem(item("\(appName) Help", #selector(AppDelegate.showHelp(_:)), "?"))
         menu.addItem(.separator())
         menu.addItem(item("Export Diagnostics…", #selector(MainWindowController.exportDiagnostics(_:))))
+        menu.addItem(item(BugReportCopy.title, #selector(AppDelegate.copyBugReportInfo(_:))))
         return menu
     }
 

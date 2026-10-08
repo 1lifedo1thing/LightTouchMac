@@ -58,6 +58,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(command, forType: .string)
     }
+    @objc func copyBugReportInfo(_ sender: Any?) {
+        if let windowController { windowController.copyBugReportInfo() } else { BugReportCopy.copy(devices: []) }
+    }
     @objc func toggleInternetAccess(_ sender: Any?) { NetworkAccessPreference.toggle(running: emulator?.network) }
     @objc func toggleLocalNetwork(_ sender: Any?) {
         if let emulator { return emulator.toggleLocalNetwork() }

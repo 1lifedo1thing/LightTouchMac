@@ -24,6 +24,12 @@ body:
     validations:
       required: true
   - type: textarea
+    id: info
+    attributes:
+      label: Light Touch info
+      description: Choose Help ▸ Copy Bug Report Info in Light Touch, then paste here. It names the build, your Mac and the device's setup, with no personal details.
+      placeholder: Paste the block here.
+  - type: textarea
     id: what
     attributes:
       label: What happened

@@ -9,6 +9,7 @@ import LightTouchCore
     @objc func toggleLocalNetwork(_ sender: Any?) {}
     @objc func showDebugPort(_ sender: Any?) {}
     @objc func copyLLDBCommand(_ sender: Any?) {}
+    @objc func copyBugReportInfo(_ sender: Any?) {}
     @objc func showHelp(_ sender: Any?) {}
     @objc func showAbout(_ sender: Any?) {}
     @objc func showDeviceWindow(_ sender: Any?) {}

@@ -1,4 +1,5 @@
 import Cocoa
+import DeviceRuntime
 import FirmwareSchema
 import HostRuntime
 import HostServiceWire
@@ -26,6 +27,58 @@ extension MainWindowController {
             logInstance = diagnosticInstance?.id
         }
         logWindow?.showWindow(sender)
+    }
+
+    /// Help ▸ Copy Bug Report Info (AppDelegate's, so it works with the window closed): the selected device, then
+    /// every other one with a session.
+    func copyBugReportInfo() {
+        var instances = [selectedInstance].compactMap { $0 }
+        instances += host.sessions.map(\.instance).filter { s in !instances.contains { $0.id == s.id } }
+        var secrets: [String] = []
+        let devices = instances.compactMap { instance -> BugReportInfo.Device? in
+            guard let entry = host.catalog.entry(id: instance.firmware) else { return nil }
+            let emulator = host.sessions.first { $0.instance.id == instance.id }?.emulator
+            let settings = DeviceSettings.load(instance.paths.directory)
+            let lock = try? DeviceLock.read(base: instance.paths.base)
+            secrets += [instance.identity?.udid, instance.identity?.dieID, instance.identity?.seed].compactMap { $0 }
+            secrets += (lock?.machine ?? [:]).filter { $0.key.contains(/ecid|imei|iccid|meid|serial|mac|uid/) }
+                .compactMap(\.value.optionText)
+            var device = BugReportInfo.Device(
+                marketingName: entry.marketingName,
+                board: instance.board,
+                iosVersion: entry.version,
+                iosBuild: entry.build,
+                entryID: entry.id,
+                state: emulator?.statusLine ?? "Not running",
+                localNetwork: emulator?.localNetworkEnabled ?? settings.localNetwork ?? false
+            )
+            device.panel = instance.panel
+            device.internet = emulator?.network
+            device.recipeVersion = lock?.recipeVersion
+            device.skipSetup = lock?.entry?["content"]?["recipe"]?["options"]?["skip_setup"]?.bool
+            if instance.profile?.hasCellular == true {
+                device.carrier = emulator?.carrierSettings ?? settings.carrier ?? CarrierSettings()
+            }
+            if let emulator {
+                let state = emulator.guestToolsState
+                device.guestTools =
+                    "\(state.text) (\(state))"
+                    + (emulator.guestOffer.map { "; offered \($0.version), serial \($0.serial)" } ?? "")
+                device.emulatorBuild = emulator.process?.info?.buildID
+            } else if let guest = instance.guest {
+                device.guestTools = "last serial \(guest.active.map(String.init) ?? "unknown"), not running"
+            }
+            if emulator != nil, emulator === self.emulator {
+                if zoom != .fit { device.zoom = zoom.defaultsValue }
+                if let inspector = inspectorVC, inspector.haveLoaded { device.apps = inspector.apps }
+            }
+            return device
+        }
+        BugReportCopy.copy(
+            devices: devices,
+            bezel: DisplayView.bezel == .model ? nil : "\(DisplayView.bezel)",
+            secrets: secrets
+        )
     }
 
     @objc func exportDiagnostics(_ sender: Any?) {

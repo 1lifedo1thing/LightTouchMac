@@ -164,6 +164,7 @@ extension SharedState {
             Help/Light Touch Help  ⌘?
             Help/-
             Help/Export Diagnostics…
+            Help/Copy Bug Report Info
             """
 
         /// One line per item: its menu path, title, shortcut, and whether it starts hidden or is an Option alternate.
@@ -190,6 +191,22 @@ extension SharedState {
                 guard let sub = item.submenu, item.title != "Services" else { return [line] }
                 return [line] + dump(sub, path + "/" + item.title)
             }
+        }
+
+        /// Help ▸ Copy Bug Report Info goes to the app delegate (so it works with no window or device) and puts one
+        /// fenced, scrubbed block on the pasteboard.
+        @Test func copyBugReportInfo() throws {
+            _ = NSApplication.shared
+            MainMenuBuilder.install(profile: .n72)
+            let item = try #require(NSApp.mainMenu!.item(withTitle: "Help")!.submenu!.item(withTitle: BugReportCopy.title))
+            #expect(item.action == #selector(AppDelegate.copyBugReportInfo(_:)) && item.target == nil)
+            let pasteboard = NSPasteboard(name: .init("LightTouch-tests-" + UUID().uuidString))
+            defer { pasteboard.releaseGlobally() }
+            pasteboard.setString("stale", forType: .string)
+            let text = BugReportCopy.copy(devices: [], to: pasteboard)
+            let copied = try #require(pasteboard.string(forType: .string))
+            #expect(copied == text && copied.hasPrefix("```text\nLight Touch ") && copied.hasSuffix("\n```\n"))
+            #expect(copied.contains("No device") && !copied.contains(NSHomeDirectory()))
         }
 
         @Test func menuBar() {
