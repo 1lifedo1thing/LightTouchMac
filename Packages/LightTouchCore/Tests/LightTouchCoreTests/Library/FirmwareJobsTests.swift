@@ -223,7 +223,7 @@ import os
 
     /// iPad 4.3.1–4.3.5 boot 4.3's ramdisk (recipe.keybag_ramdisk_from); a catalog of 4.3 and 4.3.1 over small file:// IPSWs
     /// (4.3's from `baseURL` instead, if given).
-    @MainActor func siblings(_ tmp: URL, baseURL: String? = nil) throws -> (
+    @MainActor func siblings(_ tmp: URL, baseURL: String? = nil, mode: String = "ok") throws -> (
         Harness, point: FirmwareCatalog.Entry, base: FirmwareCatalog.Entry, argv: URL, pointIPSW: URL
     ) {
         var point = Self.entry("k48ap-8G4")
@@ -249,7 +249,11 @@ import os
         }
         let catalog = try Self.catalog([base, point], in: tmp)
         let argv = tmp.appendingPathComponent("argv.json")
-        let h = try Harness(tmp, catalog: catalog, preparer: try LibraryFixtures.fakePreparer(in: tmp, argv: argv))
+        let h = try Harness(
+            tmp,
+            catalog: catalog,
+            preparer: try LibraryFixtures.fakePreparer(in: tmp, mode: mode, argv: argv)
+        )
         return (
             h, catalog.entry(id: "k48ap-8G4")!, catalog.entry(id: "k48ap-8F190")!, argv,
             ipsws.appendingPathComponent("k48ap-8G4.ipsw")
@@ -271,7 +275,9 @@ import os
                 let data = LibraryFixtures.randomData(1 << 20)
                 let url = tmp.appendingPathComponent("\(id).ipsw")
                 try data.write(to: url)
-                e["source"] = ["kind": "ipsw", "url": url.absoluteString, "sha1": IPSWStoreTests.sha1Hex(data), "bytes": 1 << 20]
+                e["source"] = [
+                    "kind": "ipsw", "url": url.absoluteString, "sha1": IPSWStoreTests.sha1Hex(data), "bytes": 1 << 20,
+                ]
                 e["estimates"] = Self.smallEstimates
                 e.removeValue(forKey: "bundled")
                 entries.append(e)
@@ -336,6 +342,22 @@ import os
                 (try? FileManager.default.contentsOfDirectory(atPath: PreparationJob.preparing(h.state).path)) == [],
                 "nothing of the job is left in Preparing/, its sibling's entry file included"
             )
+        }
+    }
+
+    /// Remove IPSW leaves every IPSW a job under way reads or waits for, its keybag sibling's included (state audit
+    /// B-6): 4.3.1 preparing keeps 4.3's IPSW in use, and nothing is once the job ends.
+    @Test func aJobKeepsItsSiblingsIPSWInUse() async throws {
+        try await LibraryFixtures.withScratch { tmp in
+            let (h, point, base, _, _) = try siblings(tmp, mode: "slow")
+            let both: Set = [point.source.sha1!, base.source.sha1!]
+            h.jobs.downloadAndPrepare(point)
+            #expect(h.jobs.ipswsInUse == both, "while downloading")
+            await FirmwareJobLifecycleTests.until { FirmwareJobLifecycleTests.step(h.jobs.jobs[point.id]) == 2 }
+            #expect(h.jobs.ipswsInUse == both, "while preparing: \(h.seen)")
+            h.jobs.cancel(point)
+            await FirmwareJobLifecycleTests.until { h.jobs.jobs[point.id] == nil && h.jobs.ipswsInUse.isEmpty }
+            #expect(h.jobs.ipswsInUse.isEmpty)
         }
     }
 

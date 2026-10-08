@@ -26,10 +26,9 @@ struct StorageSettingsView: View {
             }
             Section("Firmware") {
                 if usage.ipsws.isEmpty { Text("No downloaded or imported IPSWs").foregroundStyle(.secondary) }
+                let inUse = FirmwareJobs.shared.ipswsInUse
                 ForEach(usage.ipsws, id: \.url) { ipsw in
-                    let busy =
-                        FirmwareJobs.shared.jobs[ipsw.entry].map { if case .failed = $0 { false } else { true } }
-                        ?? false
+                    let busy = inUse.contains(ipsw.url.deletingPathExtension().lastPathComponent)
                     let kind = ipsw.url.path.hasPrefix(IPSWStore.shared.imports.path) ? "Imported" : "Downloaded"
                     StorageRow(
                         title: model.name(ipsw.entry),
@@ -193,8 +192,10 @@ private struct StorageRow: View {
     // MARK: - Actions
 
     func removeIPSW(_ url: URL) {
+        let sha1 = url.deletingPathExtension().lastPathComponent
         do {
-            let sha1 = url.deletingPathExtension().lastPathComponent
+            // A job that started since the pane was drawn may read it.
+            guard !FirmwareJobs.shared.ipswsInUse.contains(sha1) else { return reload() }
             try IPSWStore.shared.remove(sha1)
             logEvent("storage: removed IPSW \(sha1)")
         } catch { NSApp.presentError(error) }

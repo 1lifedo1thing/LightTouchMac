@@ -25,6 +25,13 @@ import HostRuntime
     public var jobs: [String: FirmwareJob] { table.shown }
     /// Preparers at work, for Quit's question.
     public var preparing: Int { table.preparing }
+    /// The IPSWs a job under way reads or waits for, by sha1: each such entry's own and its keybag sibling's (4.3.x
+    /// boots 4.3's ramdisk). Remove IPSW leaves them alone.
+    public var ipswsInUse: Set<String> {
+        let busy = table.jobs.keys.filter { !table.isIdle($0) }.compactMap(catalog.entry(id:))
+        let sources = busy + busy.compactMap { $0.recipe?.keybagRamdiskFrom.flatMap(catalog.entry(id:)) }
+        return Set(sources.compactMap(\.source.sha1))
+    }
 
     private var table: FirmwareJobTable {
         didSet {
