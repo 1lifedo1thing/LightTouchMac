@@ -360,4 +360,27 @@ struct AppsInspectorRowsTests {
         #expect(AppsInspectorBanner.none.text == nil && AppsInspectorBanner.none.height == 0)
         #expect(AppsInspectorBanner.paused.text == "Transfers paused")
     }
+
+    /// A finished install whose app isn't listed yet asks the device again once, when its row is 20 s old, where
+    /// every successful read from then on spawned another for 40 s; its row still goes at 60 s or once listed.
+    @Test func aFinishedInstallAsksTheDeviceAgainOnce() {
+        let now = Date()
+        func finished(_ age: TimeInterval, bundleID: String? = "com.example.app") -> InstallJob {
+            let job = Apps.job(bundleID: bundleID, finished: true)
+            job.finishedAt = now.addingTimeInterval(-age)
+            return job
+        }
+        func row(_ job: InstallJob, listed: Bool = false, asked: Bool = false) -> AppsInspector.PendingRow {
+            AppsInspector.pendingRow(job, listed: { _ in listed }, rereadAsked: asked, now: now)
+        }
+        #expect(row(finished(5)) == .reread(after: 15), "one re-read, when the row is 20 s old")
+        #expect(row(finished(25)) == .reread(after: 0))
+        #expect(row(finished(25), asked: true) == .keep, "asked already: no read back to back")
+        #expect(row(finished(25), listed: true) == .drop)
+        #expect(row(finished(61), asked: true) == .drop)
+        #expect(row(finished(10, bundleID: nil)) == .keep && row(finished(16, bundleID: nil)) == .drop)
+        #expect(row(Apps.job(bundleID: "a", failed: true, finished: true)) == .keep)
+        #expect(row(Apps.job(bundleID: "a", finished: true, cancelled: true)) == .drop)
+        #expect(row(Apps.job(dismissed: true)) == .drop && row(Apps.job()) == .keep)
+    }
 }

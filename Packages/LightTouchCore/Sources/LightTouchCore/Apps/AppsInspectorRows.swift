@@ -395,6 +395,35 @@ public struct AppTableRows {
 
 /// The inspector's words that depend only on what it knows.
 public enum AppsInspector {
+    /// What a read does to a transfer's row (`pendingRow`).
+    public enum PendingRow: Equatable {
+        case keep
+        case drop
+        /// Keep it, and ask the device once more after this many seconds.
+        case reread(after: TimeInterval)
+    }
+
+    /// A finished install's row stays until the device lists its app: instproxy doesn't list a new app the instant
+    /// the install returns, and dropping the row then left the app looking vanished. Its age bounds it: from 20 s
+    /// the device is asked again, once per row (`rereadAsked`), where every read after that asked for another
+    /// back to back for the next 40 s; at 60 s it goes anyway. A failed row stays for its Retry; a cancelled or
+    /// dismissed one goes, as does one whose app was never named once 15 s have passed.
+    public static func pendingRow(
+        _ job: InstallJob,
+        listed: (String) -> Bool,
+        rereadAsked: Bool,
+        now: Date = Date()
+    ) -> PendingRow {
+        if job.dismissed { return .drop }
+        guard job.isFinished else { return .keep }
+        if job.failed { return .keep }
+        if job.isCancelled { return .drop }
+        let age = now.timeIntervalSince(job.finishedAt ?? now)
+        guard let id = job.bundleID else { return age > 15 ? .drop : .keep }
+        if listed(id) || age > 60 { return .drop }
+        return rereadAsked ? .keep : .reread(after: max(0, 20 - age))
+    }
+
     public static func freshnessText(since date: Date?, now: Date = Date()) -> String {
         guard let date else { return "not yet refreshed" }
         guard now.timeIntervalSince(date) >= 60 else { return "last updated just now" }

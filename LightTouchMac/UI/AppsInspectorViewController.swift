@@ -34,6 +34,8 @@ final class AppsInspectorViewController: NSViewController {
     var bannerHeight: NSLayoutConstraint?
     /// Why the list shown is stale (showStaleBanner); nil once a read succeeds.
     var staleReason: String?
+    /// Finished transfers whose app the device was asked to list once more (prunePending).
+    var rereads: Set<ObjectIdentifier> = []
     var lastLoaded: Date?
     var apps: [InstalledApp] = []
     var pending: [InstallJob] = []

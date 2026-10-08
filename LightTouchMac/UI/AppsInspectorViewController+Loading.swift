@@ -86,31 +86,28 @@ extension AppsInspectorViewController {
         }
     }
 
-    /// Drop finished install rows, but not before the device admits the app
-    /// exists. instproxy does not list a newly installed app the instant the
-    /// install call returns, so removing the row on completion left a window
-    /// with neither the pending row nor a real one — the app appeared to vanish
-    /// and only came back on a manual refresh. Bounded, so a failed install (or
-    /// one whose bundle id we never learned) cannot strand a row forever.
+    /// Drop finished install rows once the device lists their apps, asking it again once per row
+    /// (AppsInspector.pendingRow).
     private func prunePending() {
         pending.removeAll { job in
-            if job.dismissed { return true }
-            guard job.isFinished else { return false }
-            if job.failed { return false }
-            if job.isCancelled { return true }  // nothing will ever appear
-            guard let id = job.bundleID else {
-                return Date().timeIntervalSince(job.finishedAt ?? Date()) > 15
+            let key = ObjectIdentifier(job)
+            switch AppsInspector.pendingRow(
+                job,
+                listed: { id in apps.contains { $0.id == id } },
+                rereadAsked: rereads.contains(key)
+            ) {
+            case .keep: return false
+            case .drop:
+                rereads.remove(key)
+                return true
+            case .reread(let delay):
+                rereads.insert(key)
+                Task {
+                    try? await Task.sleep(for: .seconds(delay))
+                    await self.loadOnce()
+                }
+                return false
             }
-            if apps.contains(where: { $0.id == id }) { return true }
-            // Two bounds, not one. At 20s ask the device again rather than
-            // dropping the row blind — deleting it reopened the "app vanished
-            // from the sidebar" gap this row exists to close, just 20 seconds
-            // later. At 60s give up anyway, because a row that can never leave
-            // is its own bug.
-            let age = Date().timeIntervalSince(job.finishedAt ?? Date())
-            if age > 60 { return true }
-            if age > 20 { Task { await self.loadOnce() } }
-            return false
         }
     }
 
