@@ -326,8 +326,8 @@ public final class ScreenRecordingSession {
             options: .skipsHiddenFiles
         )
         var report = RecoveryReport()
-        for source in files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-            guard source.pathExtension.lowercased() == "mov" else { continue }
+        for source in files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+        where source.pathExtension.lowercased() == "mov" {
             let values = try? source.resourceValues(forKeys: keys)
             guard values?.isRegularFile == true, values?.isSymbolicLink != true,
                 let created = values?.creationDate, created < cutoff

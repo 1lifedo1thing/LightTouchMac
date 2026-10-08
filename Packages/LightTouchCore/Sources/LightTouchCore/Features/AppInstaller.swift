@@ -110,7 +110,6 @@ public final class InstallJob {
 /// pause or long install never touches another's.
 @MainActor
 public enum AppInstaller {
-
     /// Queued removals need the same quit/restart protection as installs.
     /// Any device's: the quit guard.
     public static var hasPendingWork: Bool { !jobs.isEmpty || !removals.isEmpty }

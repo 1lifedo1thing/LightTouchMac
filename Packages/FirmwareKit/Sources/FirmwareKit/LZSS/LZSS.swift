@@ -15,7 +15,7 @@ public enum LZSS {
         let s = Array(src)
         var ring = [UInt8](repeating: windowFill, count: 4096)
         var r = 4096 - 18
-        var out = [UInt8]()
+        var out: [UInt8] = []
         var flags = 0
         var i = 0
         out.reserveCapacity(s.count * 2)

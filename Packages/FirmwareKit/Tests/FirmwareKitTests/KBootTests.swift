@@ -101,7 +101,8 @@ struct KBootTests {
         )
         let r0 = Int(img.bootArgsPA - img.loadPA)
         let image = img.image
-        #expect([0x1C, 0x20, 0x24, 0x28].map { Self.u32(image, r0 + $0) } == [640 * 4, 640, 960, 32 | 1 << 16])  // rowbytes, w, h, depth | scale-1
+        // rowbytes, w, h, depth | scale-1
+        #expect([0x1C, 0x20, 0x24, 0x28].map { Self.u32(image, r0 + $0) } == [640 * 4, 640, 960, 32 | 1 << 16])
         let dtp = Int(Self.u32(image, r0 + 0x30)) - 0x8000_0000
         let dtlen = Int(Self.u32(image, r0 + 0x34))
         let dt = try DeviceTree(image[dtp..<dtp + dtlen])
@@ -213,7 +214,8 @@ struct KBootTests {
         )
         let r0 = Int(img.bootArgsPA - img.loadPA)
         let image = img.image
-        #expect([0x1C, 0x20, 0x24, 0x28].map { Self.u32(image, r0 + $0) } == [320 * 4, 320, 480, 32])  // rowbytes, w, h, depth | scale-1
+        // rowbytes, w, h, depth | scale-1
+        #expect([0x1C, 0x20, 0x24, 0x28].map { Self.u32(image, r0 + $0) } == [320 * 4, 320, 480, 32])
         let dtp = Int(Self.u32(image, r0 + 0x30)) - 0x8000_0000
         let dtlen = Int(Self.u32(image, r0 + 0x34))
         let dt = try DeviceTree(image[dtp..<dtp + dtlen])
@@ -337,7 +339,8 @@ struct KBootTests {
         let s = Data("pe_identify_machine: Epoch Mismatch\0".utf8)
         k.replaceSubrange(0x100..<0x100 + s.count, with: s)
         k.replaceSubrange(0x200..<0x204, with: Data([0x43, 0x88, 0x03, 0x2B]))  // ldrh r3, [r0, #2]; cmp r3, #3
-        k.replaceSubrange(0x210..<0x214, with: DeviceTree.Value.le([0x8000_1100]))  // the string's VA in the literal pool
+        // the string's VA in the literal pool
+        k.replaceSubrange(0x210..<0x214, with: DeviceTree.Value.le([0x8000_1100]))
         #expect(try MachO(k).bootArgsVersion() == 3)
         let img = try KBoot.build(kernel: k, deviceTree: Self.dtBlob, identity: Self.placeholder)
         #expect(
@@ -378,7 +381,8 @@ struct KBootTests {
         let delta = UInt32(0x8000_1100) &- pc
         let code =
             Data([0x43, 0x88, 0x03, 0x2B, 0x00, 0xBF])  // ldrh r3, [r0, #2]; cmp r3, #3; nop
-            + movw(false, 0, UInt16(delta & 0xFFFF)) + movw(true, 0, UInt16(delta >> 16)) + Data([0x78, 0x44])  // add r0, pc
+            // add r0, pc
+            + movw(false, 0, UInt16(delta & 0xFFFF)) + movw(true, 0, UInt16(delta >> 16)) + Data([0x78, 0x44])
         k.replaceSubrange(0x200..<0x200 + code.count, with: code)
         #expect(try MachO(k).bootArgsVersion() == 3)
         k[0x203] = 0x2C  // cmp r4: not the loaded register

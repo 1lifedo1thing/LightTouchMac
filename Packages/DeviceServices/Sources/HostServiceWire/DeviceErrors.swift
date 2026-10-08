@@ -171,6 +171,7 @@ public nonisolated enum Timeouts {
     public nonisolated(unsafe) static var uninstall: Double = 120
     public nonisolated(unsafe) static var query: Double = 15
     public nonisolated(unsafe) static var stage: Double = 300  // whole-.ipa AFC upload backstop
-    public nonisolated(unsafe) static var installIdle: Double = 300  // since the last status callback; installd goes quiet 2–3 min on big IPAs
+    // since the last status callback; installd goes quiet 2–3 min on big IPAs
+    public nonisolated(unsafe) static var installIdle: Double = 300
     public nonisolated(unsafe) static var installAbsolute: Double = 600
 }

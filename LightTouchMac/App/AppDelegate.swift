@@ -1,5 +1,3 @@
-// Created by Sam on 2026-08-05.
-
 import Cocoa
 import DeviceRuntime
 import HostRuntime
@@ -7,7 +5,6 @@ import LightTouchCore
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
-
     private var windowController: MainWindowController?
     private let dockProgress = DockProgress()
     private var host: DeviceSessionHost?

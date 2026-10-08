@@ -1,5 +1,3 @@
-// Created by Sam on 2026-08-06.
-//
 // Push instead of poll. iOS 3.1.3 already has notification_proxy, and it
 // publishes application_installed / application_uninstalled — so the sidebar
 // can be told the moment something changes on the device instead of asking
@@ -18,7 +16,6 @@ import HostServiceWire
 /// idempotent and the watcher re-establishes itself if the link drops.
 @MainActor
 public final class NotificationProxy {
-
     private var running = false
     private let endpoint: HostServiceEndpoint
     /// Held so the watcher can actually be stopped. This used to be

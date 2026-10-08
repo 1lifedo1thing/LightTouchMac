@@ -1,5 +1,3 @@
-// Created by Sam on 2026-08-05.
-
 import Cocoa
 import DeviceRuntime
 import FirmwareSchema
@@ -28,7 +26,6 @@ import Observation
 
 @MainActor @Observable
 final class EmulatorController {
-
     let profile: Board
     /// Emulated Wi-Fi with the Mac's networking (slirp); off is a device with no internet.
     let network: Bool
@@ -1116,7 +1113,6 @@ final class EmulatorController {
     static var verboseBoot: Bool { UserDefaults.standard.bool(forKey: verboseBootDefaultsKey) }
     static let kernelConsoleDefaultsKey = DeviceOptions.kernelConsoleDefaultsKey
     static var kernelConsole: Bool { UserDefaults.standard.bool(forKey: kernelConsoleDefaultsKey) }
-
 }
 
 // The session's state machines (LightTouchCore/Session) run against the controller through these.

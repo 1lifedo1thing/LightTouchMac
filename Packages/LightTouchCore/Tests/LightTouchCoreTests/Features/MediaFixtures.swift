@@ -142,7 +142,6 @@ enum MediaFixtures {
             let bytes = Data(bytes: pointer!, count: length)
             var offset = 0
             for index in 0..<CMSampleBufferGetNumSamples(buffer) {
-
                 let size = CMSampleBufferGetSampleSize(buffer, at: index)
                 let packet = bytes.subdata(in: offset..<offset + size)
                 offset += size

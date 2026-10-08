@@ -335,7 +335,7 @@ public enum Preparer {
 
     /// sha256 of each of `files` (relative to `nand`, in listing order) and the listing's sha256 over
     /// "path sha256\n" lines: what identifies a store. 16.5 GB of sparse files: one core each.
-    static func nandListing(_ nand: URL, files: [String], count: ((Int) -> Void)? = nil) throws -> (
+    static func nandListing(_ nand: URL, files: [String], count: (@Sendable (Int) -> Void)? = nil) throws -> (
         files: [String: String], sha256: String
     ) {
         final class Hashes: @unchecked Sendable {

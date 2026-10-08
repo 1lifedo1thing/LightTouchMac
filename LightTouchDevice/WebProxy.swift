@@ -7,7 +7,7 @@
 // `archive` and a yyyyMMdd date. Upstream is URLSession (HTTP/2, the Mac's
 // trust store and proxy settings, a 128 MiB per-device URLCache beside CONFIG);
 // the guest side speaks what a 2009-2010 client does: HTTP/1.0 replies with
-// Connection: close, and TLS 1.0 (SecureTransport, still able to) terminated
+// Connection: close, and TLS 1.0 (GuestTLS.c: SecureTransport, still able to) terminated
 // with a leaf per host from the device's own CA (WebProxyCA).
 //
 // direct   HTTP and HTTPS (CONNECT, terminated) through URLSession; the adapters
@@ -334,7 +334,7 @@ final class WebProxy: @unchecked Sendable {
 
     /// Request line and headers, a byte at a time (nothing past the blank line is consumed: TLS may follow a CONNECT).
     private func readHead(_ guest: Guest) throws -> (String, String, [(String, String)]) {
-        var head = [UInt8]()
+        var head: [UInt8] = []
         while !head.suffix(4).elementsEqual([13, 10, 13, 10]) {
             guard head.count < Self.headMax - 1 else { throw Reply(431, "Request headers too large") }
             let byte = guest.read(max: 1)
@@ -748,53 +748,21 @@ final class Upstream: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     }
 }
 
-/// The guest's end: plain, or TLS 1.0+ once a CONNECT is accepted (SecureTransport over the socket).
+/// The guest's end: plain, or TLS 1.0+ once a CONNECT is accepted (GuestTLS.c, SecureTransport over the socket).
 final class Guest {
     let fd: Int32
-    private var tls: SSLContext?
+    private var tls: OpaquePointer?
     init(fd: Int32) { self.fd = fd }
 
     func startTLS(_ identity: SecIdentity) -> Bool {
-        guard let context = SSLCreateContext(nil, .serverSide, .streamType) else { return false }
-        tls = context
-        SSLSetIOFuncs(
-            context,
-            { connection, data, length in
-                let fd = Int32(Int(bitPattern: connection) - 1)
-                var done = 0
-                while done < length.pointee {
-                    let n = Darwin.read(fd, data + done, length.pointee - done)
-                    if n < 0, errno == EINTR { continue }
-                    if n <= 0 {
-                        length.pointee = done
-                        return n == 0 ? errSSLClosedGraceful : errSSLClosedAbort
-                    }
-                    done += n
-                }
-                return noErr
-            },
-            { connection, data, length in
-                let fd = Int32(Int(bitPattern: connection) - 1)
-                let ok = Guest.writeAll(fd, UnsafeRawBufferPointer(start: data, count: length.pointee))
-                return ok ? noErr : errSSLClosedAbort
-            }
-        )
-        SSLSetConnection(context, UnsafeRawPointer(bitPattern: Int(fd) + 1))
-        SSLSetProtocolVersionMin(context, .tlsProtocol1)  // iOS 3's Safari and CFNetwork speak TLS 1.0
-        SSLSetCertificate(context, [identity] as CFArray)
-        var status: OSStatus
-        repeat { status = SSLHandshake(context) } while status == errSSLWouldBlock
-        return status == noErr
+        tls = guest_tls_start(fd, identity)
+        return tls != nil
     }
 
     /// Up to `max` bytes; empty at the end of input or on an error.
     func read(max: Int) -> Data {
         var buffer = [UInt8](repeating: 0, count: max)
-        if let tls {
-            var processed = 0
-            let status = SSLRead(tls, &buffer, max, &processed)
-            return status == noErr || processed > 0 ? Data(buffer[..<processed]) : Data()
-        }
+        if let tls { return Data(buffer[..<guest_tls_read(tls, &buffer, max)]) }
         while true {
             let n = Darwin.read(fd, &buffer, max)
             if n < 0, errno == EINTR { continue }
@@ -805,22 +773,12 @@ final class Guest {
     func write(_ text: String) -> Bool { write(Data(text.utf8)) }
     func write(_ data: Data) -> Bool {
         guard let tls else { return data.withUnsafeBytes { Self.writeAll(fd, $0) } }
-        return data.withUnsafeBytes { bytes in
-            var offset = 0
-            while offset < bytes.count {
-                var processed = 0
-                guard
-                    SSLWrite(tls, bytes.baseAddress! + offset, bytes.count - offset, &processed) == noErr
-                        || processed > 0
-                else { return false }
-                offset += processed
-            }
-            return true
-        }
+        return data.withUnsafeBytes { guest_tls_write(tls, $0.baseAddress!, $0.count) }
     }
 
     func finish() {
-        if let tls { SSLClose(tls) }
+        if let tls { guest_tls_close(tls) }
+        tls = nil
         close(fd)
     }
 

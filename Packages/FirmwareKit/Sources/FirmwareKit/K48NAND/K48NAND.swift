@@ -180,7 +180,8 @@ public enum K48NAND {
             "{\n \"page_bytes\": \(pageSize),\n \"spare_bytes\": \(spareBytes),\n \"pages_per_block\": \(pagesPerBlock),\n"
                 + " \"blocks_per_ce\": \(blocksPerCE),\n \"ce_per_bus\": \(cePerBus),\n \"buses\": \(buses),\n"
                 + " \"chip_id\": \"0x\(String(format: "%08X", chipID))\""
-                + (vendorType == 0x100014 ? "" : ",\n \"vendor_type\": \(vendorType)") + "\n}"  // only off the default, as ipad1_nand
+                // only off the default, as ipad1_nand
+                + (vendorType == 0x100014 ? "" : ",\n \"vendor_type\": \(vendorType)") + "\n}"
         }
     }
 

@@ -58,7 +58,8 @@ struct N45MigrationTests {
             N45Board.scPrefs,
             N45Board.scPrefs + "/preferences.plist", N45Board.wifiPrefs,
         ]
-        try HFSPlusVolume(image, writable: true).setOwner(dirs, uid: 0, gid: 0, mode: 0o755)  // root's, as the recipe leaves them
+        // root's, as the recipe leaves them
+        try HFSPlusVolume(image, writable: true).setOwner(dirs, uid: 0, gid: 0, mode: 0o755)
         try N45NAND.write(
             volume: image,
             out: base.appendingPathComponent("nand"),
@@ -67,7 +68,8 @@ struct N45MigrationTests {
         )
         let overlay = device.appendingPathComponent("overlay")
         try N45FTLTests.booted(overlay, base.appendingPathComponent("nand"), changeData: false)
-        try Data("old".utf8).write(to: overlay.appendingPathComponent(".base-identity"))  // the app pinned it at first boot
+        // the app pinned it at first boot
+        try Data("old".utf8).write(to: overlay.appendingPathComponent(".base-identity"))
         let lock: [String: Any] = [
             "board": "m68ap", "entry": ["id": "m68ap-1A543a", "content": ["recipe": ["name": "m68", "version": 1]]],
         ]
@@ -84,7 +86,8 @@ struct N45MigrationTests {
         let first = try Self.storage(device)
         #expect(first.key != "old")
         #expect(fm.fileExists(atPath: first.overlay.appendingPathComponent(N45Migration.stamp).path))
-        #expect(try PreparedDeviceBoot.pinOverlay(first.overlay, toBase: first.key))  // the app can boot the edited storage
+        // the app can boot the edited storage
+        #expect(try PreparedDeviceBoot.pinOverlay(first.overlay, toBase: first.key))
         let marker =
             try JSONSerialization.jsonObject(
                 with: Data(contentsOf: device.appendingPathComponent(FirmwareWire.migratedRecipeFile))

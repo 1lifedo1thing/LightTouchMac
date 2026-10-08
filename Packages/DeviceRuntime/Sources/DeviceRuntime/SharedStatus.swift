@@ -190,7 +190,8 @@ nonisolated public struct StatusBlock: @unchecked Sendable {
 nonisolated public func makeSurface(width: Int, height: Int, bytesPerElement: Int = 4) -> IOSurface {
     let surface = IOSurface(properties: [
         .width: width, .height: height, .bytesPerElement: bytesPerElement,
-        .pixelFormat: 0x4247_5241 /* 'BGRA' */,
+        // pixelFormat is 'BGRA'.
+        .pixelFormat: 0x4247_5241,
     ])!
     if let srgb = CGColorSpace(name: CGColorSpace.sRGB)?.copyICCData() {
         IOSurfaceSetValue(unsafeBitCast(surface, to: IOSurfaceRef.self), kIOSurfaceColorSpace, srgb)
@@ -266,7 +267,8 @@ nonisolated public final class FrameRingWriter: @unchecked Sendable {
             255,
             &buffer,
             &buffer,
-            0x1 /* the 4th byte */,
+            // The 4th byte.
+            0x1,
             vImage_Flags(kvImageNoFlags)
         )
     }

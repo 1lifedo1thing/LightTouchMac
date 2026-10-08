@@ -39,7 +39,8 @@ public enum BundleHygiene {
             ["libimobiledevice", "openssl", "libimobiledevice-glue", "libusbmuxd", "libtatsu"]
         ),
         ("Contents/Frameworks/libplist-2.0*.dylib", ["libplist"]),
-        ("Contents/Resources/Guest/guest.aar/guest-tools/*", ["qemu"]),  // the guest tools: qemu-ios contrib, built for the guest
+        // the guest tools: qemu-ios contrib, built for the guest
+        ("Contents/Resources/Guest/guest.aar/guest-tools/*", ["qemu"]),
         ("Contents/Resources/Guest/guest.aar/tools/*", ["qemu"]),
     ]
     public static let guest = "Contents/Resources/Guest/guest.aar"
@@ -91,7 +92,8 @@ public enum BundleHygiene {
             "ltm-hygiene-guest-\(UUID().uuidString)"
         )
         defer { try? FileManager.default.removeItem(at: unpacked) }
-        if FileManager.default.fileExists(atPath: app.appendingPathComponent(guest).path) {  // what the app unpacks at use, as if loose
+        // what the app unpacks at use, as if loose
+        if FileManager.default.fileExists(atPath: app.appendingPathComponent(guest).path) {
             try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
             let extracted = try Shell.run([
                 "aa", "extract", "-i", app.appendingPathComponent(guest).path, "-d", unpacked.path,

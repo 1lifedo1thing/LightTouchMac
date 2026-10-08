@@ -8,7 +8,6 @@ import LightTouchCore
 
 /// Fit the whole device in the window, or use an integer display-pixel scale.
 final class DisplayView: NSView {
-
     /// The device this view shows, fixed at init.
     private let profile: Board
     /// The panel at rest — iPod touch 2G: 320×480 at 163 ppi (3.5" panel).
@@ -214,11 +213,6 @@ final class DisplayView: NSView {
         // Ambient — no offset — on purpose: the shadow belongs to the shell
         // layer, so it rides the same transform, and any offset that fell
         // downwards in portrait would fall sideways once the shell rotates.
-        //
-        // ponytail: no shadowPath, so Core Animation derives the shape from the
-        // artwork's alpha — correct for a rounded, beveled device by
-        // construction. The layer's contents never change, so it renders once;
-        // give it a rounded-rect path if it ever shows up in a profile.
         shellLayer.shadowColor = NSColor.black.cgColor
         shellLayer.shadowOpacity = 0.4
         shellLayer.shadowRadius = 40
@@ -412,8 +406,10 @@ final class DisplayView: NSView {
             context.duration = duration
             model.animator().alphaValue = CGFloat(shellLayer.opacity)
         } completionHandler: { [weak self] in
-            self?.shellLayer.isHidden = true
-            self?.shellLayer.removeAnimation(forKey: "modelPresentation")
+            MainActor.assumeIsolated {
+                self?.shellLayer.isHidden = true
+                self?.shellLayer.removeAnimation(forKey: "modelPresentation")
+            }
         }
     }
 
@@ -1495,7 +1491,8 @@ final class DisplayView: NSView {
     /// A movement in view points expressed in content-layer points, un-rotated
     /// so directions match what the user sees in any orientation.
     private func rotatedPanelDelta(_ dx: CGFloat, _ dy: CGFloat) -> CGVector {
-        let a = -(Self.layerAngle(emulator?.rotationDegrees ?? 0) + tiltAngle + guestTurn)  // the scan stands a quarter turn from upright when the guest turned its UI
+        // the scan stands a quarter turn from upright when the guest turned its UI
+        let a = -(Self.layerAngle(emulator?.rotationDegrees ?? 0) + tiltAngle + guestTurn)
         let s = max(appliedScale * (contentLayer.bounds.width / max(framePixels.width, 1)), 0.01)
         let ux = dx / s
         let uy = dy / s
@@ -1762,8 +1759,6 @@ final class DisplayView: NSView {
         spring.duration = spring.settlingDuration
         shellLayer.add(spring, forKey: "tiltSnap")
         // Gravity snaps straight to rest; the spring is only visual.
-        // ponytail: sample the presentation layer from the display link if a
-        // game ever needs to see the settle.
         sendAttitude()
     }
 

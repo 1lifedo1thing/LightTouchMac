@@ -185,6 +185,5 @@ nonisolated public enum FirmwareWire {
                 estimates
             case productType = "product_type", statusNote = "status_note", prereleaseNumber = "prerelease_number"
         }
-
     }
 }

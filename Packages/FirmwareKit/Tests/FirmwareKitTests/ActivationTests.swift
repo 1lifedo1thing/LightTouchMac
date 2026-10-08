@@ -117,7 +117,8 @@ struct ActivationTests {
                 patch.strategy == "conditional-no-record-initializer" && patch.isa == "arm" && patch.offset == 0x90a4
             )
             #expect(patch.original == Data([0x01, 0xa0, 0xa0, 0x03, 0x3c, 0x53, 0x9f, 0x05]))
-            #expect(patch.replacement == Data([0x00, 0xa0, 0xa0, 0x03, 0x44, 0x53, 0x9f, 0x05]))  // moveq r10,#0; ldreq r5,=Activated
+            // moveq r10,#0; ldreq r5,=Activated
+            #expect(patch.replacement == Data([0x00, 0xa0, 0xa0, 0x03, 0x44, 0x53, 0x9f, 0x05]))
             let after = try Data(contentsOf: target)
             #expect(after.count == before.count && zip(before, after).filter { $0 != $1 }.count == 2)
             #expect(throws: ActivationFailure.self) { try Activation.run(on: target) }

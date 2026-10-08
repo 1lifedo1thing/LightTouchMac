@@ -190,7 +190,8 @@ struct ScreenMovieWriterTests {
         for tick in 0...30 {
             tones.time = Double(tick) / 10
             let turned = mode == .landscape || ((mode == .rotated || mode == .canvas) && tick > 15)
-            try await writer.append(turned ? landscape : portrait, seconds: 999)  // mixer and video share the capture clock
+            // mixer and video share the capture clock
+            try await writer.append(turned ? landscape : portrait, seconds: 999)
             try await Task.sleep(for: .milliseconds(10))
         }
         try await writer.finish(seconds: 999)

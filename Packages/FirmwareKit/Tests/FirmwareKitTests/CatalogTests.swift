@@ -49,5 +49,4 @@ struct CatalogTests {
             #expect(again == object as NSDictionary)
         }
     }
-
 }

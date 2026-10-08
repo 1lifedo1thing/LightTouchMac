@@ -379,7 +379,7 @@ enum FitFixture {
         try await Oracle.withTemp { dir in
             let recipe = try #require(try Oracle.entry("k48ap-9B206").recipe)
             let log = FitCheck.Log()
-            let parts = K48NAND.partitions(mbr: [UInt8](try K48NAND.makeMBR(systemMiB: recipe.systemMiB)))
+            let parts = K48NAND.partitions(mbr: [UInt8](K48NAND.makeMBR(systemMiB: recipe.systemMiB)))
             let kernel = try Data(
                 contentsOf: dmg.deletingLastPathComponent().appendingPathComponent("kernelcache.mach"),
                 options: .alwaysMapped

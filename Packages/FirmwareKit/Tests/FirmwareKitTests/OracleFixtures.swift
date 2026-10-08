@@ -1,3 +1,6 @@
+// swift-format-ignore-file: AmbiguousTrailingClosureOverload
+// (withTemp has a sync and an async form on purpose.)
+
 // Oracle fixtures. Inputs are read from ~/Downloads, ~/Developer and ~/Developer/qemu-ios-files and a test
 // skips when its input is absent; outputs go to temp dirs only. Expected values are sha256 digests of the
 // Python oracle's outputs (qemu-ios imgtools: ipad1_fw.py at ipod-ipsw e6de24c7fa, ipad1_kboot.py and
@@ -205,5 +208,4 @@ enum Oracle {
         defer { print("timing: \(label) \(ContinuousClock.now - t0)") }
         return try await body()
     }
-
 }

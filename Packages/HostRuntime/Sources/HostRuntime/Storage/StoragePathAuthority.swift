@@ -108,5 +108,4 @@ public nonisolated enum StoragePathAuthority {
             throw Failure.invalidPath(url)
         }
     }
-
 }

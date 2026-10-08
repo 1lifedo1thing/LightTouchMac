@@ -8,7 +8,7 @@ public nonisolated enum DeviceRecord {
 
     /// The record of `device`, converted from device.json first when that is all it has.
     public static func url(_ device: URL) -> URL {
-        try? migrate(device)
+        _ = try? migrate(device)
         return device.appendingPathComponent(name)
     }
 

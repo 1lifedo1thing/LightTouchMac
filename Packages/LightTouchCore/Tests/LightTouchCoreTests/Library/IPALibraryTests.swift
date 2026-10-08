@@ -19,7 +19,7 @@ extension SharedState {
 
         /// The fixture Legacy Store, whose archive route fails and records: every transfer the library should have
         /// skipped shows up.
-        final class Transfers: @unchecked Sendable {
+        nonisolated final class Transfers: @unchecked Sendable {
             private let lock = NSLock()
             private var paths: [String] = []
             func add(_ path: String) { lock.withLock { paths.append(path) } }

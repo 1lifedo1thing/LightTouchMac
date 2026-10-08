@@ -6,7 +6,7 @@ import Testing
 /// A published base is immutable until the app deletes it; a running device's files are watched, and only what the
 /// guest owns: the app's own boot-time writes under Devices/<uuid> fire nothing.
 struct DeviceFilesTests {
-    final class Seen: @unchecked Sendable {
+    nonisolated final class Seen: @unchecked Sendable {
         private let lock = NSLock()
         private var seen: [String] = []
         func add(_ path: String) { lock.withLock { seen.append(path) } }

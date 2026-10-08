@@ -1,5 +1,3 @@
-// Created by Sam Henri Gold on 2026-10-01.
-
 import Cocoa
 import UniformTypeIdentifiers
 

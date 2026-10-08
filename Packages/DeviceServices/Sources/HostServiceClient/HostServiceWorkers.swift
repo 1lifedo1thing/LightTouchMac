@@ -69,7 +69,6 @@ public actor HostServiceWorkers {
         subscriptions[endpoint]?[id] = nil
         return result
     }
-
 }
 
 actor HostServiceWorker {

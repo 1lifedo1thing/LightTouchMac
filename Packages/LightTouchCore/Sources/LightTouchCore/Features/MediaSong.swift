@@ -232,7 +232,6 @@ public struct MediaSong: Sendable {
         return id3Genres[index]
     }
 
-    // ponytail: the 80 standard ID3v1 genres; Winamp's extensions (80+) pass through as numbers.
     nonisolated private static let id3Genres = [
         "Blues", "Classic Rock", "Country", "Dance", "Disco", "Funk", "Grunge", "Hip-Hop", "Jazz", "Metal",
         "New Age", "Oldies", "Other", "Pop", "R&B", "Rap", "Reggae", "Rock", "Techno", "Industrial",
@@ -298,5 +297,4 @@ public struct MediaSong: Sendable {
             guard frames > 0 else { throw DeviceToolsError.failed("The AAC file contains no audio.") }
         }  // Release the audio file and finalize its M4A headers before inspection/upload.
     }
-
 }

@@ -42,7 +42,7 @@ enum WebProxyAdapters {
     static func httpLinks(_ body: Data) -> Data {
         let bytes = [UInt8](body)
         let pattern = Array("https://".utf8)
-        var out = [UInt8]()
+        var out: [UInt8] = []
         var i = 0
         out.reserveCapacity(bytes.count)
         while i < bytes.count {
@@ -337,7 +337,6 @@ enum WebProxyAdapters {
     static func clockTime(_ value: Any?) -> String? {
         date(value, "yyyy-MM-dd'T'HH:mm") != nil ? String((value as! String).dropFirst(11)) : nil
     }
-    /// ponytail: the mean lunar cycle for the stock icon; an ephemeris if exact phase timing matters.
     /// NASA's 2000-01-06 18:15 UTC new moon; USNO mean synodic month 29.53059 days.
     static func moon(_ timestamp: TimeInterval) -> [String: String] {
         var cycle = (timestamp - 947182500.0) / (29.53059 * 86400.0)

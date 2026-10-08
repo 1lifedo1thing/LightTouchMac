@@ -1,5 +1,3 @@
-// Created by Sam on 2026-08-05.
-//
 // Installed apps are always files we already have on disk (the .ipa passed to
 // Add). installation_proxy's browse is a lossy source of truth for the
 // display name (e.g. it reports Starbucks by bundle ID), so

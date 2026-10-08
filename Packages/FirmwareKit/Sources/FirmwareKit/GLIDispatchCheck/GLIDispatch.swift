@@ -4,7 +4,6 @@
 import Foundation
 
 public enum GLIDispatch {
-
     /// The dispatch_field list from the first `{__GLIFunctionDispatchRec=...}` @encode in `data`.
     public static func fields(in data: Data) -> [String]? {
         data.withUnsafeBytes { b -> [String]? in

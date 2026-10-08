@@ -106,5 +106,4 @@ struct OwnedStorageRecordTests {
         try await resumed.close()
         withExtendedLifetime(resumed) {}
     }
-
 }

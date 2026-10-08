@@ -1,5 +1,3 @@
-// Created by Sam on 2026-08-05.
-//
 // The home screen's icon order, read and written over com.apple.springboardservices.
 //
 // libimobiledevice implements sbservices_get_icon_state/set_icon_state but
@@ -23,7 +21,7 @@ extension DeviceServices {
     /// caller can tell "SpringBoard says there is nothing" from "we couldn't
     /// ask" — an empty list would silently reorder the sidebar to nothing.
     func homeScreenOrder() async throws -> [String] {
-        return try await withIconState { state, _ in HomeScreenLayout.flatten(state) }
+        try await withIconState { state, _ in HomeScreenLayout.flatten(state) }
     }
 
     /// Move `bundleID` into the slot `other` currently occupies, or to the end
@@ -37,7 +35,7 @@ extension DeviceServices {
     /// up one slot, exactly as dragging on the device does.
     @discardableResult
     func moveOnHomeScreen(_ bundleID: String, before other: String?, deviceName: String) async throws -> [String] {
-        return try await withIconState { state, client in
+        try await withIconState { state, client in
             var ids = HomeScreenLayout.flatten(state)
             // Not "return ids". Returning the unchanged order looked like a
             // successful move to the caller, which kept its optimistic row
@@ -62,7 +60,7 @@ extension DeviceServices {
     /// 3 landscape right, 4 landscape left). 3.2's springboardservicesrelay
     /// answers it; 3.1.3's doesn't (see EmulatorController's auto-rotation).
     func interfaceOrientation() async throws -> Int {
-        return try await withSpringBoard { client in
+        try await withSpringBoard { client in
             var orientation = SBSERVICES_INTERFACE_ORIENTATION_UNKNOWN
             guard sbservices_get_interface_orientation(client, &orientation).ok else {
                 throw DeviceToolsError.failed("The Home screen didn’t report its orientation. Try again.")
@@ -80,7 +78,7 @@ extension DeviceServices {
     private func withIconState<T: Sendable>(
         _ body: @Sendable @escaping ([Any], OpaquePointer) throws -> T
     ) async throws -> T {
-        return try await withSpringBoard { client in
+        try await withSpringBoard { client in
             var raw: plist_t?
             // "2" is the format version SpringBoard has spoken since iOS 3 —
             // the one that reports the dock as its own list.
@@ -106,7 +104,7 @@ extension DeviceServices {
     private func withSpringBoard<T: Sendable>(
         _ body: @Sendable @escaping (OpaquePointer) throws -> T
     ) async throws -> T {
-        return try await run(Timeouts.browse, "home-screen layout") { device in
+        try await run(Timeouts.browse, "home-screen layout") { device in
             var lockdown: OpaquePointer?
             guard lockdownd_client_new_with_handshake(device, &lockdown, "LightTouchMac").ok, let lockdown else {
                 throw DeviceToolsError.failed("The device refused the connection. Try again.")

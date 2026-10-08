@@ -212,7 +212,7 @@ enum N72Keybag {
 /// Just enough of the gdb remote protocol (QEMU's gdbstub): breakpoints, registers, memory, continue.
 final class GDBRemote {
     let fd: Int32
-    var buffer = [UInt8]()
+    var buffer: [UInt8] = []
 
     /// A port nothing listens on now.
     static func freePort() throws -> Int {

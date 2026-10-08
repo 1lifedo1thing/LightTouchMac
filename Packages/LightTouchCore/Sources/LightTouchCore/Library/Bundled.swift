@@ -1,5 +1,3 @@
-// Created by Sam on 2026-08-05.
-//
 // Where the things the app ships actually live.
 //
 // A packaged LightTouchMac is meant to be self-contained: someone who has never
@@ -22,7 +20,6 @@ import Foundation
 /// Nonisolated: the project defaults to MainActor, and these are read from the
 /// detached tasks that do the blocking device work as well as from the UI.
 public nonisolated enum Bundled {
-
     /// Resources/Guest/guest.aar unpacked (FirmwareKit GuestArchive): guest-tools/, developer-tools/ and tools/;
     /// nil in a build without it.
     public static let guestRoot: URL? = guestRoot(resources: Bundle.main.resourceURL)

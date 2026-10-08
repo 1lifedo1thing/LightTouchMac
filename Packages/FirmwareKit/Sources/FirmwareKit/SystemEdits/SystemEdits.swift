@@ -435,7 +435,6 @@ public enum SystemEdits {
         try dv.normalize(after: newest, to: newest, uuid: dataVolumeUUID)
         if productMajor >= 6 {
             // A restore formats the data volume with content protection; iOS 6 installd fails without protection classes.
-            // ponytail: earlier releases still boot without it, unmeasured with it (ipad1_rootfs.set_content_protection).
             try dv.setContentProtection()
             log("data volume: content protection on")
         }

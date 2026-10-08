@@ -10,7 +10,7 @@ extension DeviceServices {
     /// Installed third-party apps, via instproxy_browse with an
     /// ApplicationType=User filter. Replaces parsing `ideviceinstaller list`.
     func installedApps() async throws -> [InstalledApp] {
-        return try await run(Timeouts.browse, "list apps") { device in
+        try await run(Timeouts.browse, "list apps") { device in
             let client = try IMobileDevice.startInstallationProxy(device: device)
             defer { _ = instproxy_client_free(client) }
 
@@ -46,7 +46,7 @@ extension DeviceServices {
     // MARK: - Uninstall
 
     func uninstall(_ bundleID: String) async throws {
-        return try await run(Timeouts.uninstall, "uninstall \(bundleID)") { device in
+        try await run(Timeouts.uninstall, "uninstall \(bundleID)") { device in
             let client = try IMobileDevice.startInstallationProxy(device: device)
             defer { _ = instproxy_client_free(client) }
             // Synchronous form: no status callback, so the return code is the
@@ -90,7 +90,7 @@ extension DeviceServices {
 
     /// The bundle ids installd holds an archive for (instproxy_lookup_archives).
     func archivedApps() async throws -> [String] {
-        return try await run(Timeouts.browse, "list archives") { device in
+        try await run(Timeouts.browse, "list archives") { device in
             let client = try IMobileDevice.startInstallationProxy(device: device)
             defer { _ = instproxy_client_free(client) }
             let options = IMobileDevice.encode([String: String]())  // 2.x drops a request without ClientOptions
@@ -346,11 +346,10 @@ extension DeviceServices {
     /// Does installation_proxy answer right now? A fresh boot brings lockdownd
     /// up ~40s before its services, so "lockdown replies" ≠ "installd is ready".
     func installProxyReady() async -> Bool {
-        return
-            (try? await run(Timeouts.serviceProbe, "installd probe") { device in
-                let client = try IMobileDevice.startInstallationProxy(device: device)
-                _ = instproxy_client_free(client)
-                return true
-            }) ?? false
+        (try? await run(Timeouts.serviceProbe, "installd probe") { device in
+            let client = try IMobileDevice.startInstallationProxy(device: device)
+            _ = instproxy_client_free(client)
+            return true
+        }) ?? false
     }
 }

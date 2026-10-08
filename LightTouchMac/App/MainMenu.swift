@@ -1,5 +1,3 @@
-// Created by Sam on 2026-08-05.
-//
 // Programmatic rebuild of the app-template MainMenu.xib.
 
 import Cocoa
@@ -16,7 +14,6 @@ import HostRuntime
 
 @MainActor
 enum MainMenuBuilder {
-
     static func install(profile: Board) {
         let appName =
             Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
@@ -359,7 +356,6 @@ enum MainMenuBuilder {
         item.submenu = menu
         return item
     }
-
 }
 
 /// The Capture menu. Escape is Discard Recording's (which asks first) only while a recording can be discarded in the

@@ -409,6 +409,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = gold.samhenri.LightTouchMac.LightTouchDevice;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = LightTouchDevice/GuestTLS.h;
 				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
@@ -430,6 +431,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = gold.samhenri.LightTouchMac.LightTouchDevice;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = LightTouchDevice/GuestTLS.h;
 				SWIFT_VERSION = 6.0;
 			};
 			name = Release;

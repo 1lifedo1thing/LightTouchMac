@@ -275,5 +275,4 @@ nonisolated public enum DeveloperTools {
         task.waitUntilExit()
         guard task.terminationStatus == 0 else { throw fail("instance key generation failed") }
     }
-
 }

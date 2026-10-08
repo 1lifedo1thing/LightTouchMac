@@ -1,5 +1,3 @@
-// Created by Sam on 2026-08-05.
-//
 // The device window: device centered in the main column, an app-management
 // inspector on the trailing edge, and a toolbar whose items mirror the menu bar
 // (same selectors, same validation). Menu actions route here through the
@@ -34,7 +32,6 @@ extension NSToolbarItem.Identifier {
 }
 
 final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindowDelegate, DeviceLibraryDelegate {
-
     private let host: DeviceSessionHost
     /// The selected row's session, when it has one. Every device command,
     /// validation and toolbar item follows it.
@@ -980,8 +977,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     /// existing customization and subsequent choices to remove toolbar items.
     private func migrateCaptureToolbar(_ toolbar: NSToolbar) {
         guard !UserDefaults.standard.bool(forKey: "captureToolbarMigrated") else { return }
-        for id: NSToolbarItem.Identifier in [.home, .rotate, .openScreenshot, .screenshot, .copyScreen, .recording] {
-            guard !toolbar.items.contains(where: { $0.itemIdentifier == id }) else { continue }
+        for id: NSToolbarItem.Identifier in [.home, .rotate, .openScreenshot, .screenshot, .copyScreen, .recording]
+        where !toolbar.items.contains(where: { $0.itemIdentifier == id }) {
             let index =
                 toolbar.items.firstIndex { $0.itemIdentifier == .inspectorTrackingSeparator } ?? toolbar.items.count
             toolbar.insertItem(withItemIdentifier: id, at: index)

@@ -105,7 +105,8 @@ struct DeviceProcessTests {
                 preparation: {
                     let lease = try StorageLease(leasePath)
                     defer { lease.close() }
-                    #expect(throws: StorageLease.Failure.inUse) { _ = try StorageLease(leasePath) }  // admission holds exclusion
+                    // admission holds exclusion
+                    #expect(throws: StorageLease.Failure.inUse) { _ = try StorageLease(leasePath) }
                     throw Failure.controlled
                 }
             ) { result in
@@ -155,7 +156,8 @@ struct DeviceProcessTests {
             await eventually("admission entered") { entered }
             if kill { stopped.kill() } else { stopped.terminate() }
             #expect(stopped.link.pid == 0 && !stopped.isDead)
-            #expect(throws: StorageLease.Failure.inUse) { _ = try StorageLease(leasePath) }  // Stop can't abandon active ownership
+            // Stop can't abandon active ownership
+            #expect(throws: StorageLease.Failure.inUse) { _ = try StorageLease(leasePath) }
             release!.resume()
             #expect(await stopped.waitForExit(timeout: 3))
             #expect(completions == 1 && deaths == [.stopped] && !configured && !succeeded && stopped.link.pid == 0)

@@ -103,7 +103,7 @@ public nonisolated struct GuestServices: Sendable {
     /// the Wi-Fi service's HTTP and HTTPS proxies at the guestfwd through configd (idempotent; it keeps
     /// a backup of the keys it owns). The host's "off" mode passes those connections straight through.
     public func routeThroughProxy(localTool: (String) throws -> Data) async throws {
-        for pac in [Self.proxyPAC, Self.legacyProxyPAC] { if try await agent.get(pac) != nil { return } }
+        for pac in [Self.proxyPAC, Self.legacyProxyPAC] where try await agent.get(pac) != nil { return }
         let output = try await runTool("itproxy", ["on"], localTool: localTool)
         guard output.contains("Proxy enabled") else {
             throw DeviceToolsError.failed("The device didn’t accept the proxy setting: \(output)")

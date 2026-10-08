@@ -113,7 +113,8 @@ struct BoardArtTests {
         func tones(_ board: Board) throws -> [[Int]] {
             let pixels = try Pixels(Self.png(board.shellImageName))
             let c = board.screenCutout
-            return [pixels.rgb(Int(c.midX), Int(c.midY)), pixels.rgb(Int(c.midX), Int(c.minY / 2))]  // the screen-off LCD, the glass above it
+            // the screen-off LCD, the glass above it
+            return [pixels.rgb(Int(c.midX), Int(c.midY)), pixels.rgb(Int(c.midX), Int(c.minY / 2))]
         }
         for (a, b) in zip(try tones(.n45), try tones(.n72)) {
             #expect(zip(a, b).map { abs($0 - $1) }.max()! <= 6, "n45 \(a) vs n72 \(b)")

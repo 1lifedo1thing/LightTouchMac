@@ -160,8 +160,6 @@ public nonisolated final class FirmwareDownloads: NSObject, URLSessionDownloadDe
             try StorageLocations.privateDirectory(store.downloads)
             try? FileManager.default.removeItem(at: partial)
             try FileManager.default.moveItem(at: location, to: partial)
-            // ponytail: an archive's extraction (about 30 s for 900 MB) holds the delegate queue; a job of its own if
-            // several archive downloads ever finish together.
             onEvent(
                 sha1,
                 .finished(

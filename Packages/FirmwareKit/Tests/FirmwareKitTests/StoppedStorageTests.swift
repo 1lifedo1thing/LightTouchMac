@@ -25,7 +25,6 @@ struct StoppedStorageTests {
     @Test func releasedLeaseIsReusableAndPendingEditRefusesAccess() throws {
         let dir = try Fixtures.tempDir("storage-edit")
         defer { try? FileManager.default.removeItem(at: dir) }
-        let path = dir.appendingPathComponent("work/lease")
         do {
             let lease = try OwnedStorageRecord.acquire(device: dir, allowRaw: true)
             #expect(throws: FirmwareError.self) { try OwnedStorageRecord.acquire(device: dir, allowRaw: true) }

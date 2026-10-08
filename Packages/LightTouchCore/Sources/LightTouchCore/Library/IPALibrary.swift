@@ -1,5 +1,3 @@
-// Created by Sam on 2026-08-06.
-//
 // Every .ipa this app has installed, kept once: a content-addressed store
 // (State/Library/IPAs/<sha256>.ipa + index.plist) and, per device that has
 // the app, a clone of the blob at Devices/<uuid>/IPAs/<bundle-id>.ipa (APFS:
@@ -16,7 +14,6 @@ import HostRuntime
 
 @MainActor
 public enum IPALibrary {
-
     /// One stored archive; the optional fields are what the install that
     /// stored it knew.
     public struct Entry: Codable, Equatable, Sendable {
@@ -204,9 +201,6 @@ public enum IPALibrary {
 
     /// Blobs no device copy references. A reference is a copy named for the
     /// entry's bundle id with the entry's size.
-    // ponytail: size + bundle id, not a hash of every device copy on each
-    // Settings reload; a different build of the same size only keeps a blob
-    // longer, never removes a referenced one.
     public static func unused(devices: [DeviceInstance]) -> [String: Entry] {
         index.filter { _, entry in
             !devices.contains { device in

@@ -120,19 +120,22 @@ final class ConsoleSplitView: NSView {
         bar.isExpanded = !collapsed
         if !collapsed { log.isHidden = false }
         // Out of the key-view loop once it's gone, as a collapsed split pane is.
-        let hide = { [weak self] in if let self, collapsed, self.layout.isCollapsed { self.log.isHidden = true } }
         if animated {
             NSAnimationContext.runAnimationGroup {
                 $0.duration = 0.2
                 consoleHeight.animator().constant = target
-            } completionHandler: {
-                hide()
+            } completionHandler: { [weak self] in
+                MainActor.assumeIsolated { self?.hideLog(ifCollapsed: collapsed) }
             }
         } else {
             consoleHeight.constant = target
-            hide()
+            hideLog(ifCollapsed: collapsed)
         }
         updatePolling()
+    }
+
+    private func hideLog(ifCollapsed collapsed: Bool) {
+        if collapsed, layout.isCollapsed { log.isHidden = true }
     }
 
     private func commit() {

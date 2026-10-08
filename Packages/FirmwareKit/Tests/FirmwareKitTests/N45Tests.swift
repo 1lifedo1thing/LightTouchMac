@@ -296,7 +296,8 @@ import Testing
                 encoding: .utf8
             )
             #expect(try N72Board.frontEnd(gl, exports: short).0 == false)
-            #expect(try N72Board.frontEnd(gl, exports: it.appendingPathComponent("opengles-2x.exports")).0 == false)  // 2.x's list is not 1.x's
+            // 2.x's list is not 1.x's
+            #expect(try N72Board.frontEnd(gl, exports: it.appendingPathComponent("opengles-2x.exports")).0 == false)
 
             guard Oracle.exists(itpack) else {
                 try FixtureRequirements.missing(#"N45Tests.swift: Oracle.exists(itpack)"#)
@@ -387,7 +388,8 @@ import Testing
                 let baked = a.appendingPathComponent(N72Board.openGLES + ".baked")
                 if gles {
                     #expect(try Data(contentsOf: baked) == stockGL && hooked != stockGL)
-                    #expect(try N72Board.exportedSymbols(hooked) == names)  // the front end exports the firmware's own names
+                    // the front end exports the firmware's own names
+                    #expect(try N72Board.exportedSymbols(hooked) == names)
                 } else {
                     #expect(hooked == stockGL && !fm.fileExists(atPath: baked.path))
                 }

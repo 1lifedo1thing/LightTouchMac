@@ -1,5 +1,3 @@
-// Created by Sam on 2026-09-05.
-
 import AppKit
 
 final class SleepingAnimationView: NSView {

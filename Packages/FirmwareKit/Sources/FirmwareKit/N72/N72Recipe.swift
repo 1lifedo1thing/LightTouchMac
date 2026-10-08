@@ -275,7 +275,7 @@ final class N72Board: Board {
     }
 
     static func firstMatch(_ d: Data, _ r: Regex<Substring>) -> String? {
-        String(decoding: d, as: UTF8.self).firstMatch(of: r).map { String($0.output) }  // ponytail: lossy decode, ASCII targets only
+        String(decoding: d, as: UTF8.self).firstMatch(of: r).map { String($0.output) }
     }
 
     /// The volume path the decrypted iBoot loads the kernelcache from (its one kcPrefix string), without the "/".
@@ -449,7 +449,8 @@ final class N72Board: Board {
         } else {  // Older incompatible helper inputs: bake its keys into mobile’s SpringBoard preferences
             report["prefs"] = try Self.bakePrefs(m, dir: Self.prefs)
         }
-        if opt["web_proxy"] ?? true {  // install_web_proxy: the PAC, and the Wi-Fi service on the system volume's /private/var
+        // install_web_proxy: the PAC, and the Wi-Fi service on the system volume's /private/var
+        if opt["web_proxy"] ?? true {
             try c.fit.check(FitCheck.webProxy(fw), required: false, outcome: "kept: the PAC is unused")
             let sc = "private/var/preferences/SystemConfiguration"
             owners += try SystemEdits.installPAC(m, dirs: [sc]).map { (UInt32(0), $0) }

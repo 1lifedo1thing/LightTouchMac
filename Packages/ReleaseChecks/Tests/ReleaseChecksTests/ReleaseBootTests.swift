@@ -92,7 +92,8 @@ struct ReleaseBootTests {
                     "the unpacked iPod did not take its own identity"
                 )
             }
-            _ = try Shell.run(["find", out.path, "-type", "d", "-exec", "chflags", "uchg", "{}", "+"])  // as the app locks a base
+            // as the app locks a base
+            _ = try Shell.run(["find", out.path, "-type", "d", "-exec", "chflags", "uchg", "{}", "+"])
             // tests/sessions' command, built here, boots it through the bundle's helper, dylib, services worker,
             // usbmuxd, SecureROMs and guest package.
             let sessions = repository.appendingPathComponent("tests/sessions")

@@ -73,8 +73,6 @@ func withDeadline<T: Sendable>(
 /// what stops it from ever recovering. Past the cap, new work fails fast until
 /// the stuck threads drain, which they do the moment the guest comes back.
 nonisolated enum AbandonedWork {
-    /// ponytail: a plain counter under a lock. Fine at this scale — it is
-    /// touched once per timed-out device op, not per call.
     private static let lock = NSLock()
     nonisolated(unsafe) private static var outstanding = 0
 

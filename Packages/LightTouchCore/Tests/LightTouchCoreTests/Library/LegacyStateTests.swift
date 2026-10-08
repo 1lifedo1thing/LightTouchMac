@@ -326,8 +326,6 @@ import Testing
             heart.stop()
             let took = Date().timeIntervalSince(started)
             #expect(midway, "the erase finished before the shared IPA was adopted and 20 beats passed")
-            // ponytail: 1 s of main-thread CPU, not the 0.25 s a process of its own allowed: the suite's other tests share
-            // the main thread and add their own work to a gap (0.5 s seen). The erase on the main actor holds it for seconds.
             #expect(
                 took > 0.5 && heart.worstBusy < 1 && heart.beats > 20,
                 "the main actor kept running: worst gap \(heart.worstBusy) s of main-thread CPU (\(heart.worst) s wall) over \(took) s, \(heart.beats) beats"

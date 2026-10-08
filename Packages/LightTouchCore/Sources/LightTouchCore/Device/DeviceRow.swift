@@ -435,8 +435,6 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
         let migrated =
             device.flatMap { try? Data(contentsOf: $0.appendingPathComponent(FirmwareWire.migratedRecipeFile)) }
             .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["recipe"] as? Int
-        // ponytail: a migration admission later declines (a guest-rewritten GPT) still reads as done; a declined
-        // marker from admission would let this flag those few.
         return FirmwareWire.admittedRecipe(max(version, migrated ?? 0), board: lock?.entryBoard)
     }
 

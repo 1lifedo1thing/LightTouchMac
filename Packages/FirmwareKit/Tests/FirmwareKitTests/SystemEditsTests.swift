@@ -169,7 +169,8 @@ enum K48Oracle {
                 let v = dir.appendingPathComponent(name)
                 let sv = v.appendingPathComponent(GuestPackage.systemVersion)
                 try FileManager.default.copyItem(at: stock, to: v)
-                for rel in [FitCheck.openGLES, "usr/local/lib/it_msmquiet.dylib"] {  // the front end is installed before the seed
+                // the front end is installed before the seed
+                for rel in [FitCheck.openGLES, "usr/local/lib/it_msmquiet.dylib"] {
                     try SystemEdits.mkdirs(v.appendingPathComponent(rel).deletingLastPathComponent())
                     try SystemEdits.put(Data("stock".utf8), v.appendingPathComponent(rel), mode: 0o755)
                 }
@@ -202,7 +203,8 @@ enum K48Oracle {
             #expect(written == py["written"] as? [String])
             #expect(NSDictionary(dictionary: record.object) == py["record"] as? NSDictionary)
             #expect(record.gles == gles && record.hooks.contains("/" + FitCheck.openGLES) == gles)
-            if build.hasPrefix("9") { #expect(record.family == "k48-ios5" && record.seed >= 8) }  // "9*": 5.x's own family
+            // "9*": 5.x's own family
+            if build.hasPrefix("9") { #expect(record.family == "k48-ios5" && record.seed >= 8) }
             func tree(_ v: URL) throws -> [String: String] {
                 var t: [String: String] = [:]
                 try SystemEdits.walk(v) { rel in

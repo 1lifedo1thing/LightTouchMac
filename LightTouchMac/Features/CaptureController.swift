@@ -10,7 +10,7 @@ import HostRuntime
 import LightTouchCore
 import UniformTypeIdentifiers
 
-@MainActor class CaptureController: NSObject {
+@MainActor final class CaptureController: NSObject {
     let recording = ScreenRecordingSession()
     let captureStatus = CaptureStatusView()
     let capturePreferences: CapturePreferences

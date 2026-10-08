@@ -40,8 +40,6 @@ public struct WebProxySetup: Sendable {
     /// keeps it); only a guest without an agent gets the configuration profile through lockdown's stock
     /// MCInstall service (lockdown-mcinstall, a child process like lockdown-tz), once: an installed
     /// profile is never offered again, and the UI says to tap Install (`.needsTap`).
-    /// ponytail: turning it off leaves the trust in place (the CA is this device's own and its key
-    /// never leaves the Mac); add `ittrust remove` / RemoveProfile if asked.
     public func configure(enabled: Bool) async throws -> WebProxyStatus {
         guard enabled else { return .ready }
         let config = URL(fileURLWithPath: proxyFile)

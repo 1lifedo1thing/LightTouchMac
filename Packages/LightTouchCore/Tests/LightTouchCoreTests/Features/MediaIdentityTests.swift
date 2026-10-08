@@ -35,8 +35,10 @@ struct MediaIdentityTests {
 
     nonisolated static let malformed: [Data] = [
         Data([0, 0, 0, 4] as [UInt8]) + Data("mvhd".utf8),  // a size below the header
-        Data([0, 0, 0, 1] as [UInt8]) + Data("moov".utf8) + Data(repeating: 255, count: 8),  // a 64-bit size past the end
-        Data([0, 0, 0, 28] as [UInt8]) + Data("mvhd".utf8) + Data([2, 0, 0, 0] as [UInt8]) + Data(count: 16),  // an unknown version
+        // a 64-bit size past the end
+        Data([0, 0, 0, 1] as [UInt8]) + Data("moov".utf8) + Data(repeating: 255, count: 8),
+        // an unknown version
+        Data([0, 0, 0, 28] as [UInt8]) + Data("mvhd".utf8) + Data([2, 0, 0, 0] as [UInt8]) + Data(count: 16),
         Data([0, 0, 0] as [UInt8]),  // a truncated header
     ]
 

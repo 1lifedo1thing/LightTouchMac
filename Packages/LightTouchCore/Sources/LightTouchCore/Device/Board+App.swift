@@ -13,7 +13,6 @@ nonisolated extension Board {
     /// before the app gives up on it. The lock screen is normally there in 25 s
     /// (iPod) / 40 s (iPad) and lockdown ~40 s later; a first boot after an
     /// erase replays journals, rebuilds caches and re-enumerates USB for minutes.
-    // ponytail: fixed per board family; make it per firmware in the catalog if 4.x first boots need more.
     public var bootBudget: TimeInterval { (isKBoot ? 300 : 240) * Self.hostSlowdown }
 
     /// Emulation on an Intel Mac (this app's x86_64 slice, native or under Rosetta) takes several times the

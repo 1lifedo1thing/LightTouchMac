@@ -136,7 +136,8 @@ final class K48Board: Board {
         let bootArgs = KBoot.defaultBootArgs
         let kernel = try Data(contentsOf: c.decFile("kernelcache.mach"), options: .alwaysMapped)
         try FitCheck.checkBootArgs(c.fit, kernel: kernel, args: bootArgs)
-        try c.fit.check(FitCheck.deviceTreeProperty(kernel, "arm-io/usb-complex", "hsic-enabled"), required: false)  // both chains add it
+        // both chains add it
+        try c.fit.check(FitCheck.deviceTreeProperty(kernel, "arm-io/usb-complex", "hsic-enabled"), required: false)
         if iboot {
             // fsboot: the kernelcache goes where this iBoot loads it from, which must be the path the volumes step installs to
             try c.fit.check(Self.kernelcacheFit(iboot: try Data(contentsOf: c.decFile("iBoot.bin"))), required: true)
@@ -274,7 +275,7 @@ final class K48Board: Board {
         try KBoot.write(decrypted: c.dec, to: kboot, identity: ident, ramdisk: rd)
         let norBefore = try Data(contentsOf: nor)
         let pre = work.appendingPathComponent("store.pre")
-        try fm.copyItem(at: store, to: pre)  // ponytail: clonefile on APFS; a non-APFS staging volume copies in full
+        try fm.copyItem(at: store, to: pre)
         let attempts = 3
         for attempt in 1...attempts {
             let serial = work.appendingPathComponent("keybag-\(attempt).log")
