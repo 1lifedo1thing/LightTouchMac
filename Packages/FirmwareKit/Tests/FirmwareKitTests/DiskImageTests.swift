@@ -188,9 +188,13 @@ import Testing
             _ = try await DiskImage.attach(a)
             let kept = try await DiskImage.attach(b)
             try await DiskImage.detachAll(under: dir.appendingPathComponent("Preparing"))
+            // One hdiutil info read can leave an attached image out while others attach or detach: b is polled for.
             let attached = try await DiskImage.attachedImages().map(\.image)
+            let keptSeen = try await Self.eventually {
+                try await DiskImage.attachedImages().contains { $0.image == b.path }
+            }
             try await DiskImage.detach(kept.device)
-            #expect(!attached.contains(a.path) && attached.contains(b.path), "\(attached)")
+            #expect(!attached.contains(a.path) && keptSeen, "\(attached)")
         }
     }
 

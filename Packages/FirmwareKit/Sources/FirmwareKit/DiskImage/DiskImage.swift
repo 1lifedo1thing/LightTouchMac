@@ -125,7 +125,7 @@ public enum DiskImage {
             do {
                 try await Task.detached {
                     if let named { return try await detach(named, force: true, backend: backend) }
-                    for item in try await checkedAttachedImages() where isImage(item) && !prior.contains(item.device) {
+                    for item in try await attachedImagesSeen() where isImage(item) && !prior.contains(item.device) {
                         try await detach(item.device, force: true, backend: backend)
                     }
                 }.value
@@ -196,10 +196,22 @@ public enum DiskImage {
     /// Force-detaches every attached image whose file is under `root` (a killed preparer's leftovers).
     public static func detachAll(under root: URL) async throws {
         let prefix = root.resolvingSymlinksInPath().path + "/"
-        for (path, dev) in try await checkedAttachedImages()
+        for (path, dev) in try await attachedImagesSeen()
         where URL(fileURLWithPath: path).resolvingSymlinksInPath().path.hasPrefix(prefix) {
             try await detach(dev, force: true)
         }
+    }
+
+    /// What cleanup detaches from: the attached images over three `hdiutil info` reads 100 ms apart. While other
+    /// images attach or detach, one read can leave an attached image out ("cannot find IO media"); a device listed
+    /// again under another image keeps the latest.
+    static func attachedImagesSeen() async throws -> [(image: String, device: String)] {
+        var seen: [String: String] = [:]
+        for read in 0..<3 {
+            if read > 0 { try await Task.sleep(for: .milliseconds(100)) }
+            for item in try await checkedAttachedImages() { seen[item.device] = item.image }
+        }
+        return seen.map { (image: $0.value, device: $0.key) }
     }
 
     /// Cleanup must distinguish an empty attachment list from a failed query.
