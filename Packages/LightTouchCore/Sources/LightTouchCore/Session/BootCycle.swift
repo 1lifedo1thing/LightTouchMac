@@ -53,6 +53,8 @@ public final class BootCycle {
 
     /// A power-on waits for the machine before resuming it: no frame ends its boot until then.
     public private(set) var poweringOn = false
+    /// Bumped by each power-on: an ending power-on clears `poweringOn` unless a later one owns it.
+    private var powerOns = 0
     /// The guest agent's sync before a restart, at most.
     var syncBudget: Double = 20
     /// How long a power-on waits for the PMU reset to clear the shutdown latch.
@@ -141,6 +143,8 @@ public final class BootCycle {
         host.bootScope.renew()
         host.publishDeveloperConnection()
         poweringOn = true
+        powerOns += 1
+        let run = powerOns
         host.forgetConnectionWork()
         host.forgetGuestFacts()
         host.forgetReachability()
@@ -152,6 +156,9 @@ public final class BootCycle {
         let latchWait = latchWait
         host.bootScope[.powerOn] = Task { [weak self] in
             guard let self else { return }
+            // However it ends (resumed, given up, or cancelled by a Restart or a halt retiring the boot): a
+            // `poweringOn` left set kept frames from ending the next boot (state audit A-10).
+            defer { if run == powerOns { poweringOn = false } }
             let host = host
             await host.workers.task?.value
             guard !Task.isCancelled, generation == host.bootScope.generation else { return }
@@ -165,12 +172,10 @@ public final class BootCycle {
             guard !Task.isCancelled, generation == host.bootScope.generation else { return }
             guard host.status?.shutdownConfirmed == false, !host.state.isDead else {
                 host.retireBoot()
-                poweringOn = false
                 host.state = .poweredOff
                 return
             }
             host.helperLink?.send(.machine(.resume))
-            poweringOn = false
             host.readiness.start()
             host.startForegroundWatch()
             host.startGuestPackageWatch()

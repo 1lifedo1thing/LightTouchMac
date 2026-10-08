@@ -60,6 +60,8 @@ final class RecordingLink: HelperLink {
 /// A device helper: SIGTERM exits it a little later (unless hung); SIGKILL always does.
 final class FakeHelper: DeviceHelper {
     var hung = false, terms = 0, kills = 0, isDead = false
+    /// Outlives even SIGKILL (a wedged process, as far as the halt can tell).
+    var unkillable = false
     var onExit: (() -> Void)?
     func terminate() {
         terms += 1
@@ -71,7 +73,7 @@ final class FakeHelper: DeviceHelper {
     }
     func kill() {
         kills += 1
-        exit()
+        if !unkillable { exit() }
     }
     func exit() {
         guard !isDead else { return }

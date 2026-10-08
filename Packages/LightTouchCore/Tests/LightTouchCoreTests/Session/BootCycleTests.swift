@@ -130,6 +130,23 @@ struct BootCycleTests {
         }
     }
 
+    /// State audit A-10: a power-on whose task was cancelled (a Restart or a halt retiring the boot) left
+    /// `poweringOn` set, so frames never moved the next boot to running and a guest power-off went unnoticed.
+    @Test func aCancelledPowerOnEndsItsPoweringOn() async throws {
+        try await withScratchDirectory { directory in
+            let c = session(directory)
+            c.state = .poweredOff
+            c.status = helperStatus(shutdownConfirmed: true)
+            c.cycle.powerOn()
+            let task = c.bootScope[.powerOn]
+            #expect(c.cycle.poweringOn)
+            c.retireBoot()
+            await task?.value
+            #expect(!c.cycle.poweringOn)
+            #expect(c.state.runsAfterFrame(poweringOn: c.cycle.poweringOn), "the next frame ends the boot")
+        }
+    }
+
     @Test func powerOnGivesUpWhenTheLatchStays() async throws {
         try await withScratchDirectory { directory in
             let c = session(directory)

@@ -49,11 +49,20 @@ public protocol ShutdownHost: AnyObject {
     public var budgets = Budgets()
     public init(host: ShutdownHost) { self.host = host }
 
-    public private(set) var shuttingDown = false
+    /// Where the ladder is: idle, waiting for the guest to power off, or halting the helper (a Force Stop can take
+    /// over a Shut Down). Each step holds its task, so a second request joins it; a halt ends back at idle however
+    /// it ends, so a helper that outlived it can still be stopped, aborted and seen to crash (state audit A-10).
+    public enum Step {
+        case idle
+        case shuttingDown(Task<Bool, Never>)
+        case halting(Task<Bool, Never>)
+    }
+    public private(set) var step = Step.idle
+
+    public var shuttingDown: Bool { if case .idle = step { false } else { true } }
     /// Stop asked the helper to halt: its exit is Stopped, not a crash.
-    public private(set) var halting = false
-    private var haltTask: Task<Bool, Never>?
-    private var cleanShutdown: Task<Bool, Never>?
+    public var halting: Bool { haltTask != nil }
+    private var haltTask: Task<Bool, Never>? { if case .halting(let task) = step { task } else { nil } }
 
     private var isPoweredOff: Bool { host.state == .poweredOff }
     private var isDead: Bool { host.state.isDead }
@@ -63,19 +72,18 @@ public protocol ShutdownHost: AnyObject {
         !isDead && !isPoweredOff && !shuttingDown && !host.isErasing && host.state != .notStarted
     }
     /// Force Stop: Stop's hard halt, also while a Shut Down is under way (one the guest never finishes).
-    public var canForceStop: Bool { canStop || (cleanShutdown != nil && haltTask == nil && !isPoweredOff && !isDead) }
+    public var canForceStop: Bool { canStop || (isShuttingDownCleanly && !isPoweredOff && !isDead) }
     public var canShutDown: Bool {
         host.state == .running && !shuttingDown && !host.isErasing && !host.storageFailed
             && host.helper?.isDead == false
     }
-    public var isShuttingDownCleanly: Bool { cleanShutdown != nil && haltTask == nil }
+    public var isShuttingDownCleanly: Bool { if case .shuttingDown = step { true } else { false } }
 
     /// Asks the guest to power off, now. The task's value: true once the guest is off (or a Force Stop took over),
     /// false when it didn't get there in the shutdown budget (the device keeps running).
     @discardableResult public func shutDown() -> Task<Bool, Never> {
         guard canShutDown else { return Task { false } }
         host.willStop()
-        shuttingDown = true
         logEvent("shut down: asking the guest")
         host.helperLink?.send(.machine(.shutdown))
         let budget = budgets.shutdown
@@ -88,8 +96,7 @@ public protocol ShutdownHost: AnyObject {
             // A Force Stop that took over owns the flag until its halt ends, and counts as stopped.
             let forced = haltTask != nil
             let off = isPoweredOff || isDead
-            cleanShutdown = nil
-            if !forced { shuttingDown = false }
+            if !forced { step = .idle }
             logEvent(
                 off
                     ? "shut down: the guest powered off"
@@ -97,7 +104,7 @@ public protocol ShutdownHost: AnyObject {
             )
             return off || forced
         }
-        cleanShutdown = task
+        step = .shuttingDown(task)
         return task
     }
 
@@ -113,19 +120,9 @@ public protocol ShutdownHost: AnyObject {
     @discardableResult public func halt() -> Task<Bool, Never> {
         if isPoweredOff || host.helper?.isDead != false { return Task { true } }
         if let haltTask { return haltTask }
-        shuttingDown = true
-        halting = true
-        host.retireBoot()
         let process = host.helper
-        if host.filesMeddled {
-            // The overlay or NOR the helper has open is gone from disk: a flush would
-            // write into dead inodes, so quit QEMU outright (no pause first).
-            logEvent("stop: files were changed under the device; quitting without a flush")
-            host.helperLink?.send(.machine(.quit))
-        } else {
-            process?.terminate()
-        }
         let budgets = budgets
+        // Runs once this call returns: the step is .halting before the helper is told, so its exit reads as Stopped.
         let task = Task { [weak self] in
             var exited = await process?.waitForExit(timeout: budgets.halt) ?? true
             if !exited {
@@ -137,11 +134,19 @@ public protocol ShutdownHost: AnyObject {
             let host = host
             await host.workers.awaitTeardown(budget: budgets.serviceTeardown)
             if exited { logEvent("stop: device halted") }
-            haltTask = nil
-            shuttingDown = false
+            step = .idle
             return exited
         }
-        haltTask = task
+        step = .halting(task)
+        host.retireBoot()
+        if host.filesMeddled {
+            // The overlay or NOR the helper has open is gone from disk: a flush would
+            // write into dead inodes, so quit QEMU outright (no pause first).
+            logEvent("stop: files were changed under the device; quitting without a flush")
+            host.helperLink?.send(.machine(.quit))
+        } else {
+            process?.terminate()
+        }
         return task
     }
 }

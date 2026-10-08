@@ -53,6 +53,21 @@ struct ShutdownLadderTests {
         }
     }
 
+    /// State audit A-10: a halt the helper outlived used to leave `halting` set for good, so the boot watch could
+    /// never abort the device again and its later crash read as Stopped.
+    @Test func aHaltTheHelperOutlivedEndsItsHalting() async throws {
+        try await withScratchDirectory { directory in
+            let c = session(directory)
+            c.ladder.budgets.kill = 0.1
+            c.fakeHelper!.hung = true
+            c.fakeHelper!.unkillable = true
+            #expect(await !halt(c) && c.fakeHelper!.kills == 1)
+            #expect(!c.halting && !c.shuttingDown && c.ladder.canStop, "the helper is still there to stop")
+            c.bootWatch.helperDied("The iPod stopped unexpectedly.")
+            #expect(c.state == .dead(exitCode: nil), "its later death is a crash, not Stopped")
+        }
+    }
+
     @Test func meddledFilesQuitWithoutAFlush() async throws {
         try await withScratchDirectory { directory in
             let c = session(directory)
