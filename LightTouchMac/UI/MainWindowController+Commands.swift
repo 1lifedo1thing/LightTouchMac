@@ -143,25 +143,27 @@ extension MainWindowController {
 
     /// The toolbar's +, the Device menu and the empty sidebar: the catalog in a sheet.
     @objc func addDevice(_ sender: Any?) {
-        guard let window, window.attachedSheet == nil, let split = contentSplitViewController else { return }
+        guard let window, window.attachedSheet == nil else { return }
         let catalog = host.catalog
         let downloaded = Set(
             catalog.entries.filter { $0.source.sha1.map { IPSWStore.shared.existing($0) != nil } ?? false }.map(\.id)
         )
-        var sheet: NSViewController?
+        // Weak: the parent holds the sheet while it's up; the view's closures mustn't keep it after.
+        weak var sheet: NSWindow?
         let view = AddDeviceView(
             catalog: catalog,
             added: Set(library.entries.map(\.id)),
             downloaded: downloaded,
-            onAdd: { [weak self] ids in
-                sheet.map { split.dismiss($0) }
+            device: selectedEntry?.board,
+            onAdd: { [weak self, weak window] ids in
+                sheet.map { window?.endSheet($0) }
                 self?.library.add(ids)
             },
-            onCancel: { sheet.map { split.dismiss($0) } }
+            onCancel: { [weak window] in sheet.map { window?.endSheet($0) } }
         )
-        let hosting = NSHostingController(rootView: view)
-        sheet = hosting
-        split.presentAsSheet(hosting)
+        let made = view.makeSheet()
+        sheet = made
+        window.beginSheet(made)
     }
 
     private func chooseIPSW(for entry: FirmwareCatalog.Entry) {

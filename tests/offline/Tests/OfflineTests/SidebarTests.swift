@@ -568,6 +568,196 @@ extension SharedState {
             #expect(failures.isEmpty, "\(failures.joined(separator: "\n"))")
         }
 
+        /// The Add Device sheet's split, in its own window never ordered in: devices on the left (only those with a
+        /// shown build), the chosen device's versions on the right. Add, and Return in the versions list, hand over
+        /// the picks across devices in catalog order, never an entry already added or one hidden by Show experimental;
+        /// an added row can't be picked by keyboard; letters type-select a device; the sheet resizes, autosaves its
+        /// size and grows no toolbar. Renders (light and dark) go to the temporary directory.
+        @Test func addDeviceSheetSplitsByDevice() throws {
+            _ = NSApplication.shared
+            NSApp.setActivationPolicy(.prohibited)
+            let catalog = try FirmwareCatalog.load(
+                from: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+                    .appendingPathComponent("../../../../LightTouchMac/Resources/firmware-catalog.json")
+                    .standardizedFileURL
+            )
+            let experimentalKey = "addDeviceShowsExperimental"
+            defer {
+                UserDefaults.standard.removeObject(forKey: experimentalKey)
+                NSApp.appearance = nil
+            }
+            var failures: [String] = []
+            func fail(_ s: String) { failures.append(s) }
+            func all(_ v: NSView) -> [NSView] { v.subviews.flatMap { [$0] + all($0) } }
+            func key(_ characters: String, _ code: UInt16, in window: NSWindow) -> NSEvent {
+                NSEvent.keyEvent(
+                    with: .keyDown,
+                    location: .zero,
+                    modifierFlags: [],
+                    timestamp: 0,
+                    windowNumber: window.windowNumber,
+                    context: nil,
+                    characters: characters,
+                    charactersIgnoringModifiers: characters,
+                    isARepeat: false,
+                    keyCode: code
+                )!
+            }
+            var addedIDs: [[String]] = []
+            func sheet(
+                experimental: Bool,
+                selection: Set<String> = [],
+                device: String? = nil,
+                added: Set<String> = ["k48ap-7B500", "n72ap-8C148"],
+                appearance: NSAppearance.Name = .aqua,
+                size: NSSize = NSSize(width: 780, height: 540)
+            ) -> (NSWindow, [NSTableView]) {
+                UserDefaults.standard.set(experimental, forKey: experimentalKey)
+                // Before the view is made: SwiftUI outside the lists takes the appearance it starts with.
+                NSApp.appearance = NSAppearance(named: appearance)
+                let view = AddDeviceView(
+                    catalog: catalog,
+                    added: added,
+                    downloaded: ["n72ap-8B117", "k48ap-7B500", "n72ap-8C148", "k48ap-7B367"],
+                    selection: selection,
+                    device: device,
+                    onAdd: { addedIDs.append($0) },
+                    onCancel: {}
+                )
+                let window = view.makeSheet()
+                window.setFrameAutosaveName("")
+                window.appearance = NSAppearance(named: appearance)
+                window.setContentSize(size)
+                window.contentView?.layoutSubtreeIfNeeded()
+                RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+                window.contentView?.layoutSubtreeIfNeeded()
+                let tables = all(window.contentView!).compactMap { $0 as? NSTableView }
+                    .sorted { $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX }
+                return (window, tables)
+            }
+            func render(_ window: NSWindow, _ name: String) throws {
+                let content = window.contentView!
+                content.display()
+                RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+                let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds)!
+                content.cacheDisplay(in: content.bounds, to: bitmap)
+                // Over the window's background, which its frame view draws, not the content view.
+                let out = NSBitmapImageRep(
+                    bitmapDataPlanes: nil,
+                    pixelsWide: bitmap.pixelsWide,
+                    pixelsHigh: bitmap.pixelsHigh,
+                    bitsPerSample: 8,
+                    samplesPerPixel: 4,
+                    hasAlpha: true,
+                    isPlanar: false,
+                    colorSpaceName: .deviceRGB,
+                    bytesPerRow: 0,
+                    bitsPerPixel: 0
+                )!
+                out.size = content.bounds.size
+                NSGraphicsContext.saveGraphicsState()
+                NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: out)
+                window.effectiveAppearance.performAsCurrentDrawingAppearance {
+                    NSColor.windowBackgroundColor.setFill()
+                    content.bounds.fill()
+                }
+                bitmap.draw(
+                    in: content.bounds,
+                    from: .zero,
+                    operation: .sourceOver,
+                    fraction: 1,
+                    respectFlipped: true,
+                    hints: nil
+                )
+                NSGraphicsContext.restoreGraphicsState()
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent("ltm-add-device-\(name).png")
+                try out.representation(using: .png, properties: [:])?.write(to: url)
+                print("render: \(url.path)")
+            }
+            /// Return outside the lists: the Add button's default-action shortcut.
+            func pressAdd(_ window: NSWindow) {
+                window.makeFirstResponder(nil)
+                _ = window.performKeyEquivalent(with: key("\r", 36, in: window))
+            }
+
+            // Stable only: two devices, the first chosen; nothing picked, Add dims.
+            var (window, tables) = sheet(experimental: false)
+            if window.styleMask.contains(.resizable) == false || window.toolbar != nil
+                || makeSheetAutosaveName(catalog) != "AddDeviceSheet"
+            {
+                fail("sheet window: \(window.styleMask), toolbar \(String(describing: window.toolbar))")
+            }
+            if window.contentMinSize.width < 600 || window.contentMinSize.width > 780 {
+                fail("sheet minimum: \(window.contentMinSize)")
+            }
+            if tables.count != 2 || tables.first?.numberOfRows != 2 {
+                fail("stable split: \(tables.count) lists, \(tables.first?.numberOfRows ?? -1) devices")
+            }
+            pressAdd(window)
+            if !addedIDs.isEmpty { fail("Add with nothing picked handed over \(addedIDs)") }
+            try render(window, "stable-light")
+
+            // An added iPad version: Return on it adds nothing, the arrow skips it.
+            if let versions = tables.last {
+                window.makeFirstResponder(versions)
+                versions.keyDown(with: key(String(UnicodeScalar(NSDownArrowFunctionKey)!), 125, in: window))
+                versions.keyDown(with: key(String(UnicodeScalar(NSDownArrowFunctionKey)!), 125, in: window))
+                versions.keyDown(with: key("\r", 36, in: window))
+                if addedIDs.last.map({ $0.contains("k48ap-7B500") }) ?? false {
+                    fail("an added version was picked: \(addedIDs)")
+                }
+            }
+
+            // Picks across devices, an added one and a hidden experimental one: Add hands over the rest in order.
+            addedIDs = []
+            (window, tables) = sheet(
+                experimental: false,
+                selection: ["n72ap-5H11a", "k48ap-7B367", "k48ap-7B500", "n72ap-8C134"],
+                device: "n72ap",
+                appearance: .darkAqua
+            )
+            try render(window, "picked-ipod2g-dark")
+            pressAdd(window)
+            if addedIDs != [["k48ap-7B367", "n72ap-5H11a"]] { fail("Add handed over \(addedIDs)") }
+            addedIDs = []
+            if let versions = tables.last {
+                window.makeFirstResponder(versions)
+                versions.keyDown(with: key("\r", 36, in: window))
+            }
+            if addedIDs != [["k48ap-7B367", "n72ap-5H11a"]] { fail("Return handed over \(addedIDs)") }
+
+            // Experimental shown: every device; type-select reaches the iPhone 3GS.
+            (window, tables) = sheet(experimental: true, selection: ["n88ap-7E18"], device: "n88ap")
+            if tables.first?.numberOfRows != 8 { fail("experimental devices: \(tables.first?.numberOfRows ?? -1)") }
+            try render(window, "experimental-iphone3gs-light")
+            (window, tables) = sheet(
+                experimental: true,
+                selection: ["n88ap-7E18"],
+                device: "n88ap",
+                appearance: .darkAqua
+            )
+            try render(window, "experimental-iphone3gs-dark")
+            (window, tables) = sheet(experimental: true, device: "n45ap", appearance: .darkAqua)
+            try render(window, "experimental-ipod1g-dark")
+            (window, tables) = sheet(experimental: true, selection: ["n90ap-8A293"], device: "n90ap")
+            try render(window, "experimental-iphone4-long-light")
+            (window, tables) = sheet(experimental: true, device: "k48ap", size: NSSize(width: 660, height: 400))
+            try render(window, "experimental-ipad-minimum-light")
+            if let devices = tables.first {
+                window.makeFirstResponder(devices)
+                devices.selectRowIndexes([0], byExtendingSelection: false)
+                for c in "iphone 3" { devices.keyDown(with: key(String(c), 0, in: window)) }
+                RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+                if devices.selectedRow != 6 { fail("type-select: row \(devices.selectedRow)") }
+            }
+            #expect(failures.isEmpty, "\(failures.joined(separator: "\n"))")
+        }
+
+        private func makeSheetAutosaveName(_ catalog: FirmwareCatalog) -> String {
+            AddDeviceView(catalog: catalog, added: [], downloaded: [], onAdd: { _ in }, onCancel: {})
+                .makeSheet().frameAutosaveName
+        }
+
         /// A session replaced by another in the same phase (a restart that never shows as stopped) leaves every row
         /// as it was; the window is still told, so it never keeps the old session.
         @Test func aReplacedSessionReachesTheWindowWithNoRowChange() throws {

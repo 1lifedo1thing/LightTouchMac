@@ -41,6 +41,7 @@ let package = Package(
             name: "Sidebar",
             dependencies: [
                 .product(name: "LightTouchCore", package: "LightTouchCore"),
+                .product(name: "FirmwareSchema", package: "FirmwareKit"),
                 .product(name: "HostRuntime", package: "HostRuntime"),
             ],
             swiftSettings: settings
