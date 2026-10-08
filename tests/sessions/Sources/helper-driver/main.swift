@@ -209,6 +209,17 @@ case .failure(let error):
 if opts.expectReject { fail("an impostor was accepted") }
 if opts.expectFailure != nil { fail("the start was expected to fail") }
 display.resume()
+// `turn`/`shot`/`tapshown`: the app's rotation for this board (Rotation.swift); the scan is the hello's.
+let rotationDriver: RotationDriver? = MainActor.assumeIsolated {
+    guard let board = scenario.board.flatMap(Board.init(rawValue:)), let hardware else { return nil }
+    return RotationDriver(
+        link: link,
+        board: board,
+        scan: CGSize(width: hardware.screenWidth, height: hardware.screenHeight),
+        settings: URL(fileURLWithPath: dumpDir).appendingPathComponent("settings")
+    )
+}
+func onMain<T>(_ body: @MainActor () -> T) -> T { DispatchQueue.main.sync { MainActor.assumeIsolated { body() } } }
 
 Thread.detachNewThread {
     for step in scenario.steps {
@@ -252,7 +263,12 @@ Thread.detachNewThread {
             link.send(.touch(slot: 0, phase: 0, x: v[0], y: v[1]))
             usleep(80_000)
             link.send(.touch(slot: 0, phase: 2, x: v[0], y: v[1]))
-        case "drag":
+        case "drag", "dragshown":  // dragshown: from and to as the window shows the picture (tapshown's mapping)
+            var v = v
+            if p[0] == "dragshown", let r = rotationDriver {
+                let (a, b) = onMain { (r.touchPoint(shown: v[0], v[1]), r.touchPoint(shown: v[2], v[3])) }
+                v = [a.0, a.1, b.0, b.1]
+            }
             link.send(.touch(slot: 0, phase: 0, x: v[0], y: v[1]))
             usleep(150_000)
             for i in 1...30 {
@@ -281,11 +297,47 @@ Thread.detachNewThread {
             }
         case "rotate":  // rotate cw|ccw: the app's ⌘-arrow (LinkCommand.rotate)
             link.send(.rotate(clockwise: p[1] == "cw"))
+        case "turn":  // turn cw|ccw: the app's Rotate Right/Left (DeviceRotation.rotate(clockwise:))
+            guard let r = rotationDriver else { fail("turn: no board") }
+            let degrees = onMain {
+                r.rotation.rotate(clockwise: p[1] == "cw")
+                return r.rotation.degrees
+            }
+            emit("turned", ["degrees": degrees])
+        case "shot":  // shot NAME: the frame (NAME.png) and the picture as the window shows it (NAME-shown.png)
+            guard let r = rotationDriver else { fail("shot: no board") }
+            dump(p[1])
+            let source = URL(fileURLWithPath: "\(dumpDir)/\(p[1]).png")
+            let shown = URL(fileURLWithPath: "\(dumpDir)/\(p[1])-shown.png")
+            let (ok, turns, degrees) = onMain { (r.writeShown(source, to: shown), r.turns, r.rotation.degrees) }
+            emit("shot", ["name": p[1], "path": shown.path, "ok": ok, "turns": turns, "degrees": degrees])
+        case "tapshown":  // tapshown U V: a tap at (U, V) on the picture as the window shows it
+            guard let r = rotationDriver else { fail("tapshown: no board") }
+            let (x, y) = onMain { r.touchPoint(shown: v[0], v[1]) }
+            link.send(.touch(slot: 0, phase: 0, x: x, y: y))
+            usleep(80_000)
+            link.send(.touch(slot: 0, phase: 2, x: x, y: y))
+        case "tapword":  // tapword WORD [DY]: tap where Vision reads WORD on the window's picture, DY below it; else nothing
+            guard let r = rotationDriver else { fail("tapword: no board") }
+            dump("tapword")
+            let shown = URL(fileURLWithPath: "\(dumpDir)/tapword-shown.png")
+            _ = onMain { r.writeShown(URL(fileURLWithPath: "\(dumpDir)/tapword.png"), to: shown) }
+            let at = findWord(p[1], in: shown)
+            emit("tapword", ["word": p[1], "found": at != nil])
+            if let at {
+                let (x, y) = onMain { r.touchPoint(shown: at.x, at.y + (v.first ?? 0)) }
+                link.send(.touch(slot: 0, phase: 0, x: x, y: y))
+                usleep(80_000)
+                link.send(.touch(slot: 0, phase: 2, x: x, y: y))
+            }
         case "orientation":
             emit("reply", ["reply": "\(request(.orientation(Int(v[0]))))"])
-        case "agent":
-            let command = p.dropFirst().joined(separator: " ")
-            let r = request(.agent(request: "\(UUID().uuidString) exec \(command)\n", deadline: 20), timeout: 25)
+        case "agent", "agentop":  // agent COMMAND: exec in the guest; agentop OP [ARGS]: an agent operation
+            let command = (p[0] == "agent" ? ["exec"] : []) + p.dropFirst()
+            let r = request(
+                .agent(request: "\(UUID().uuidString) \(command.joined(separator: " "))\n", deadline: 20),
+                timeout: 25
+            )
             var output = "\(r)"
             if case .success(.agent(let wire?)) = r, let body = wire.split(separator: "\n", maxSplits: 1).last {
                 output = String(decoding: Data(base64Encoded: String(body)) ?? Data(), as: UTF8.self)

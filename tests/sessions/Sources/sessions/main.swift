@@ -48,7 +48,7 @@ struct Sessions: ParsableCommand {
             """,
         subcommands: [
             SingleCheck.self, PairCheck.self, ProxyTrustCheck.self, LocalNetworkCheck.self, HelperCheck.self,
-            HelperBootCheck.self, PhoneCheck.self,
+            HelperBootCheck.self, PhoneCheck.self, RotationCheck.self,
         ]
     )
 }
@@ -162,6 +162,18 @@ struct PhoneCheck: ParsableCommand {
     @OptionGroup var inputs: Inputs
 
     func run() { phone(self) }
+}
+
+struct RotationCheck: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "rotation",
+        abstract: "Rotate Right and Left with Safari in front: the picture as the window shows it is upright, a tap lands."
+    )
+    @Argument var base: String
+    @Option(help: "The overlay of a boot that walked Setup (5.x-7.x), cloned.", transform: path) var overlay: URL?
+    @OptionGroup var inputs: Inputs
+
+    func run() { rotationCheck(self) }
 }
 
 // App code in the drivers logs and keeps state under the run's own directories, never the user's library.
