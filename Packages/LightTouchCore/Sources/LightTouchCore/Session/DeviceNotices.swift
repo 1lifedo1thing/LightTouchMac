@@ -25,9 +25,15 @@ import Observation
     }
 }
 
-/// The device's one notice: what went wrong, and which operation's success resolves it.
+/// The device's notices, one per operation, each until its operation succeeds, it is dismissed or (a boot's own)
+/// a fresh helper starts. The window shows one at a time: the first in Operation's order.
 public final class DeviceNotices {
-    public enum Operation: String { case storage, preparation, erase, powerOff, lowSpace, activation, files }
+    /// In the order the window shows them. Erase and activation are the device's: their remedy is Erase All
+    /// Content and Settings, so they stay until an erase (or the guest's activation) clears them. The rest are a
+    /// boot's and end with it (`helperStarted`).
+    public enum Operation: String, CaseIterable {
+        case storage, erase, activation, powerOff, files, preparation, lowSpace
+    }
 
     private let settings: DeviceSettingsFile
     private let shortName: String
@@ -39,9 +45,25 @@ public final class DeviceNotices {
         self.storageFailed = storageFailed
     }
 
-    /// Kept in the settings file, so it is observable through it.
-    public var message: String? { settings.value.deviceNotice?.message }
-    private var operation: String? { settings.value.deviceNotice?.operation }
+    /// Kept in the settings file (an earlier build's single notice included), so they are observable through it.
+    private var notices: [DeviceSettings.Notice] {
+        settings.value.deviceNotices ?? settings.value.deviceNotice.map { [$0] } ?? []
+    }
+    private var shown: DeviceSettings.Notice? {
+        let notices = notices
+        return Operation.allCases.lazy.compactMap { op in notices.first { $0.operation == op.rawValue } }.first
+            ?? notices.first
+    }
+    public var message: String? { shown?.message }
+
+    private func update(_ change: (inout [DeviceSettings.Notice]) -> Void) {
+        var notices = notices
+        change(&notices)
+        settings.change {
+            $0.deviceNotice = nil
+            $0.deviceNotices = notices.isEmpty ? nil : notices
+        }
+    }
 
     public func report(_ message: String, for operation: Operation) {
         let failed = storageFailed()
@@ -51,21 +73,34 @@ public final class DeviceNotices {
             : message
         logEvent(value)
         let kind = (failed ? .storage : operation).rawValue
-        settings.change { $0.deviceNotice = .init(message: value, operation: kind) }
+        update { notices in
+            notices.removeAll { $0.operation == kind }
+            notices.append(.init(message: value, operation: kind))
+        }
     }
 
-    /// The notice's remedy is Erase All Content and Settings (a refused overlay, an unfinished or failed erase,
-    /// an unactivated guest).
+    /// The shown notice's remedy is Erase All Content and Settings (a refused overlay, an unfinished or failed
+    /// erase, an unactivated guest).
     public var offersErase: Bool {
-        [Operation.erase.rawValue, Operation.activation.rawValue].contains(operation) && !storageFailed()
+        [Operation.erase.rawValue, Operation.activation.rawValue].contains(shown?.operation) && !storageFailed()
     }
 
+    /// Dismisses the shown notice; the next one, if any, shows.
     public func dismiss() {
-        guard !storageFailed() else { return }
-        settings.change { $0.deviceNotice = nil }
+        guard !storageFailed(), let shown else { return }
+        update { $0.removeAll { $0 == shown } }
     }
 
     public func resolve(_ operation: Operation) {
-        if self.operation == operation.rawValue { dismiss() }
+        guard !storageFailed(), notices.contains(where: { $0.operation == operation.rawValue }) else { return }
+        update { $0.removeAll { $0.operation == operation.rawValue } }
+    }
+
+    /// A fresh helper starts: the last boot's notices (its storage, its stop, its files, its startup, its free
+    /// space) no longer hold; the device's own stay.
+    public func helperStarted() {
+        let device: Set = [Operation.erase.rawValue, Operation.activation.rawValue]
+        guard notices.contains(where: { !device.contains($0.operation ?? "") }) else { return }
+        update { $0.removeAll { !device.contains($0.operation ?? "") } }
     }
 }

@@ -15,7 +15,10 @@ public nonisolated struct DeviceSettings: Codable, Equatable {
         /// An EmulatorController.NoticeOperation.
         public var operation: String?
     }
+    /// An earlier build's one notice (DeviceNotices reads it as the list until the next change).
     public var deviceNotice: Notice?
+    /// The device's notices, one per operation (DeviceNotices).
+    public var deviceNotices: [Notice]?
     public var motionPose: Int?
     public var keyboardInputEnabled: Bool?
     public var autoRotateWithGuest: Bool?
