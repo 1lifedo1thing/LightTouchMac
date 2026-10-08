@@ -16,6 +16,7 @@ struct DebugPortView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
+            // FIXME: ugly.
             Toggle(
                 isOn: Binding(
                     get: { enabled },
@@ -28,22 +29,32 @@ struct DebugPortView: View {
                 Text("Debug Port").font(.headline)
             }
             .toggleStyle(.switch)
+
             Text(DebugPortText.state(shortName: shortName, enabled: enabled, port: port))
                 .foregroundStyle(.secondary)
+
             Text(
                 "The emulator’s GDB remote stub. A debugger attached to it runs the \(shortName)’s CPU: it pauses the whole device and reads or changes its kernel and apps. Only this Mac can reach it, and it has no password."
             )
             .fixedSize(horizontal: false, vertical: true)
+
             if let port {
+                // FIXME: ugly. `id: \.0` ?? jesus christ
                 ForEach(DebugPortText.commands(port: port, lldbWithSymbols: lldbWithSymbols), id: \.0) {
                     title,
                     command in
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(title).font(.subheadline).foregroundStyle(.secondary)
+                        Text(title)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+
                         HStack(alignment: .top) {
-                            Text(command).font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+                            Text(command)
+                                .font(.system(.callout, design: .monospaced))
+                                .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .fixedSize(horizontal: false, vertical: true)
+
                             Button("Copy") {
                                 NSPasteboard.general.clearContents()
                                 NSPasteboard.general.setString(command, forType: .string)
@@ -65,3 +76,5 @@ struct DebugPortView: View {
         .frame(width: 520)
     }
 }
+
+// TODO: Add preview

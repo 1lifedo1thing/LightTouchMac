@@ -1,3 +1,5 @@
+// Created by Sam on 2026-08-05.
+
 import Cocoa
 import DeviceRuntime
 import FirmwareSchema
@@ -7,8 +9,6 @@ import HostServiceWire
 import LightTouchCore
 import Observation
 
-// Created by Sam on 2026-08-05.
-//
 // Owns one device: builds its boot from the device record (a prepared base),
 // starts its usbmuxd (for app management), then runs it in its own
 // LightTouchDevice helper (DeviceProcess) and exposes input and app operations

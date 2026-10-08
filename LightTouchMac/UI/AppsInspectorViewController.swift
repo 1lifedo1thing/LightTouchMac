@@ -1,3 +1,5 @@
+// Created by Sam on 2026-08-05.
+
 import Cocoa
 import DeviceRuntime
 import HostRuntime
@@ -6,8 +8,6 @@ import HostServiceWire
 import LightTouchCore
 import UniformTypeIdentifiers
 
-// Created by Sam on 2026-08-05.
-//
 // The right-hand inspector: a plain AppKit table of the apps installed on the
 // device, in the order they sit on the home screen, with add (install an .ipa)
 // and remove (uninstall) controls beneath it, source-list style. Rows can be

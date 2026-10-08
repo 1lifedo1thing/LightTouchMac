@@ -10,6 +10,7 @@ import FirmwareKit
 import Foundation
 
 private func done(_ object: [String: Any], _ code: Int32) -> Never {
+    // FIXME: uglyyyyy
     FileHandle.standardOutput.write(
         try! JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes])
             + Data("\n".utf8)

@@ -36,15 +36,15 @@
  * first external zone: GuestServices.forgetExternalTimeZone). Finds the device
  * via USBMUXD_SOCKET_ADDRESS, like every other bundled tool.
  */
+#include "Lockdown.h"
+#include <libimobiledevice/libimobiledevice.h>
+#include <libimobiledevice/lockdown.h>
+#include <plist/plist.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include <libimobiledevice/libimobiledevice.h>
-#include <libimobiledevice/lockdown.h>
-#include <plist/plist.h>
-#include "Lockdown.h"
 
 /* Match the type the device reports (uint on old lockdownd, real on newer),
  * like idevicedate. */

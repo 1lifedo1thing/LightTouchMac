@@ -17,14 +17,14 @@
  * made in-process from the app have corrupted its heap. Finds the device via
  * USBMUXD_SOCKET_ADDRESS. Exits 0 when the device acknowledges the request.
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "Lockdown.h"
 #include <libimobiledevice/libimobiledevice.h>
 #include <libimobiledevice/lockdown.h>
 #include <libimobiledevice/property_list_service.h>
 #include <plist/plist.h>
-#include "Lockdown.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define PROFILE_ID "com.lighttouch.webproxy"
 

@@ -5,6 +5,7 @@ import LightTouchCore
 /// the main window's console. Selecting text (or `isPaused`) holds updates.
 @MainActor
 final class LogTextView: NSScrollView {
+    // FIXME: All of these `didSet` things are hideous.
     let text = NSTextView()
     var url: URL? {
         didSet {

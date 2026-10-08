@@ -9,6 +9,7 @@ func fitCommand(_ argv: [String]) -> Never {
     var host: String?
     var files: [String] = []
     var it = argv.makeIterator()
+    // FIXME: uglyyyyy. and swift arg parser.
     while let a = it.next() {
         switch a {
         case "--root": root = it.next()

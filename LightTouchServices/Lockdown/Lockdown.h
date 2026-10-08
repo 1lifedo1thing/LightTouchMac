@@ -4,10 +4,10 @@
 #pragma clang diagnostic ignored "-Wdocumentation"
 #pragma clang diagnostic ignored "-Wdocumentation-deprecated-sync"
 #pragma clang diagnostic ignored "-Wstrict-prototypes"
-#include <libimobiledevice/libimobiledevice.h>
-#include <libimobiledevice/lockdown.h>
 #include <libimobiledevice/afc.h>
 #include <libimobiledevice/installation_proxy.h>
+#include <libimobiledevice/libimobiledevice.h>
+#include <libimobiledevice/lockdown.h>
 #include <libimobiledevice/notification_proxy.h>
 #include <libimobiledevice/sbservices.h>
 #include <plist/plist.h>

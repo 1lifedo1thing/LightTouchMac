@@ -12,6 +12,7 @@ extension Board {
     var icon: NSImage {
         Self.icon(
             modelCode: productType,
+            // FIXME: ugly code
             fallbackSymbol: [.iPad: "ipad", .iPhone: "iphone"][facts.kind] ?? "ipodtouch"
         )
     }

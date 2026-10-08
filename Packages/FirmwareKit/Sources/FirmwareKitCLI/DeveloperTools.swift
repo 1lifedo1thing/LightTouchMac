@@ -2,6 +2,7 @@ import FirmwareKit
 import FirmwareSchema
 import Foundation
 
+// FIXME: Shouldn't we be using Swift argument parser here? This is a clusterfuck.
 func developerOfferCommand(_ argv: [String]) -> Never {
     do {
         var flags: [String: String] = [:]
