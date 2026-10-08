@@ -97,6 +97,9 @@ struct DeviceLibraryWatchTests {
         let fake: FakeSession
         let instance: DeviceInstance
         var releases = 0
+        var phase = SessionPhase.running
+        /// A helper that won't exit, even when killed.
+        var stuck = false
         init(_ instance: DeviceInstance, directory: URL) {
             self.instance = instance
             fake = FakeSession(directory: directory)
@@ -107,7 +110,38 @@ struct DeviceLibraryWatchTests {
         var ladder: ShutdownLadder { fake.ladder }
         func release() async -> Bool {
             releases += 1
+            if !stuck { fake.fakeHelper?.exit() }
             return fake.fakeHelper?.isDead ?? true
+        }
+    }
+
+    /// Delete and Prepare Again (state audit B-4, B-11): a shut-down or dead device's session lets go of its helper
+    /// first, so its storage goes without quitting the app; one running (started again while the question was up)
+    /// is refused with DeviceInUse and keeps its storage, where the host used to trap.
+    @Test func deleteReleasesAShutDownOrDeadSessionAndRefusesARunningOne() async throws {
+        _ = LibraryFixtures.isolatedAppState
+        try await LibraryFixtures.withScratch { scratch in
+            let state = scratch.appendingPathComponent("State", isDirectory: true)
+            let deletions = DeviceDeletions()
+            for phase in [SessionPhase.running, .stopping, .stopped, .dead("The iPod stopped.")] {
+                let instance = try record("\(phase)", state: state)
+                let directory = DeviceInstance.directory(instance.id, state: state)
+                let session = Started(instance, directory: scratch)
+                session.phase = phase
+                let deletion = deletions.run(instance.firmware, release: { await session.releaseIfStopped() }) {
+                    try DeviceStateStorage.removeDevice(instance.id, state: state)
+                }
+                let result = await deletion.result
+                let exists = FileManager.default.fileExists(atPath: directory.path)
+                if phase == .running || phase == .stopping {
+                    #expect(throws: DeviceInUse.self, "\(phase)") { try result.get() }
+                    #expect(exists && session.releases == 0, "\(phase): the storage stays, the helper runs on")
+                } else {
+                    #expect(throws: Never.self, "\(phase)") { try result.get() }
+                    #expect(!exists && session.releases == 1, "\(phase): released, then removed")
+                }
+                #expect(!deletions.contains(instance.firmware))
+            }
         }
     }
 

@@ -173,6 +173,13 @@ struct StaleBaseTests {
                     .allows(.prepareAgain, canDownload: true),
                 "Prepare Again while running"
             )
+            for session in [SessionPhase.stopped, .dead("This iPod’s data was made with an older system image.")] {
+                #expect(
+                    DeviceRow(entry: entry, instanceID: UUID(), session: session, job: nil, baseRecipe: 1)
+                        .allows(.prepareAgain, canDownload: true),
+                    "Prepare Again once \(session), without quitting (state audit B-4)"
+                )
+            }
             #expect(
                 !DeviceRow(entry: entry, instanceID: nil, session: nil, job: nil, baseRecipe: 1).preparedByOlderRecipe,
                 "flagged with no device"

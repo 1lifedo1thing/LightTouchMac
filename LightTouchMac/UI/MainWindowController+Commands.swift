@@ -195,7 +195,7 @@ extension MainWindowController {
 
     /// Delete, or with `thenPrepare` delete and prepare the entry again (a base from an older recipe): the same question.
     private func confirmDelete(_ entry: FirmwareCatalog.Entry, thenPrepare: Bool = false) {
-        guard let window, let instance = host.instance(for: entry) else { return }
+        guard let window, host.instance(for: entry) != nil else { return }
         let alert = NSAlert()
         alert.alertStyle = .critical
         alert.messageText = thenPrepare ? "Prepare \(name(entry)) again?" : "Delete \(name(entry))?"
@@ -204,7 +204,10 @@ extension MainWindowController {
         alert.addButton(withTitle: "Cancel")
         alert.buttons.first?.hasDestructiveAction = true
         alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn, let self else { return }
+            // Asked again on the answer: the device may have started (from the menu bar) while the question was up.
+            guard response == .alertFirstButtonReturn, let self,
+                canPerform(thenPrepare ? .prepareAgain : .delete, for: entry), let instance = host.instance(for: entry)
+            else { return }
             // Off the main actor; the row says Deleting until it's done.
             let deletion = host.delete(instance)
             Task {

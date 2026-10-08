@@ -261,8 +261,11 @@ extension MainWindowController {
         alert.addButton(withTitle: "Erase")
         alert.addButton(withTitle: "Cancel")
         alert.buttons.first?.hasDestructiveAction = true
-        alert.beginSheetModal(for: window) { response in
-            guard response == .alertFirstButtonReturn else { return }
+        alert.beginSheetModal(for: window) { [weak self] response in
+            // Asked again on the answer: the device may have started or stopped while the question was up.
+            guard response == .alertFirstButtonReturn, let self, canPerform(.erase, for: entry),
+                let emulator = host.session(for: entry)?.emulator ?? host.stoppedController(for: entry)
+            else { return }
             emulator.requestFactoryReset()
         }
     }

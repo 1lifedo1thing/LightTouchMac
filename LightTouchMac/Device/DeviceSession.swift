@@ -203,12 +203,11 @@ extension DeviceSession: LibrarySession {
             NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
         }
     }
-    /// Drop a stopped controller before offline editing; the next launch loads
-    /// the newly published record rather than its cached generation.
+    /// Drop a shut-down or dead session before its storage changes (offline editing, Delete, Prepare Again); the next
+    /// launch loads the newly published record rather than its cached generation. False while it runs.
     func releaseStopped(for entry: FirmwareCatalog.Entry) async -> Bool {
         guard let session = session(for: entry) else { return true }
-        guard session.emulator.isPoweredOff || session.emulator.isDead else { return false }
-        guard await session.emulator.release() else { return false }
+        guard await session.releaseIfStopped() else { return false }
         sessions.removeAll { $0 === session }
         library.reload()
         NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
@@ -239,14 +238,21 @@ extension DeviceSession: LibrarySession {
         return deletions
     }()
 
-    /// Removes a stopped device off the main actor: its directory (record, base, overlay, pairing), its logs and
-    /// its settings. Its row says Deleting from now until the task ends.
+    /// Removes a device off the main actor: its directory (record, base, overlay, pairing), its logs and its
+    /// settings. A shut-down or dead session is released first; a running one throws DeviceInUse. Its row says
+    /// Deleting from now until the task ends.
     @discardableResult
     func delete(_ instance: DeviceInstance) -> Task<Void, Error> {
-        precondition(!sessions.contains { $0.instance.id == instance.id })
         let state = library.state
         let logs = instance.paths.logs
-        return deletions.run(instance.firmware) {
+        let entry = catalog.entry(id: instance.firmware)
+        return deletions.run(
+            instance.firmware,
+            release: { [weak self] in
+                guard let self, let entry else { return true }
+                return await releaseStopped(for: entry)
+            }
+        ) {
             try DeviceStateStorage.removeDevice(instance.id, state: state)
             try? DeviceStateStorage.removeTree(logs)
         }

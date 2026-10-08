@@ -126,13 +126,12 @@ struct DeviceRowTests {
             r.state == .stopping && allowed(r) == ["forceStop", "showInFinder"],
             "a Shut Down the guest never finishes can be forced"
         )
+        // Shut down or dead: its session lets go of the storage for Delete (state audit B-4), no quit needed.
         r = row(iPad, instance: id, session: .stopped)
-        #expect(
-            r.state == .ready && allowed(r) == Self.recordCommands.subtracting(["delete"]),
-            "powered off starts again"
-        )
+        #expect(r.state == .ready && allowed(r) == Self.recordCommands, "powered off starts again, or is deleted")
         r = row(iPod, instance: id, session: .dead("The iPod stopped."))
         #expect(r.state == .error("The iPod stopped.") && r.stateDescription == "Error")
+        #expect(r.allows(.delete, canDownload: false) && r.canRemoveFromSidebar, "a dead device can be deleted")
         #expect(r.allows(.start, canDownload: false), "a dead session's Start restarts it")
         // A start failure: Try Again starts again.
         r = row(iPod, instance: id, session: .dead("These device files are missing: /x"))

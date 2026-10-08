@@ -10,8 +10,20 @@ import HostRuntime
 public protocol LibrarySession: AnyObject {
     var instance: DeviceInstance { get }
     var ladder: ShutdownLadder { get }
+    var phase: SessionPhase { get }
     /// Waits for the helper to be gone (killing one still running); false if it would not exit.
     func release() async -> Bool
+}
+
+extension LibrarySession {
+    /// Lets go of a shut-down or dead device's helper before its storage changes (Delete, Prepare Again, a file
+    /// system edit); false for one that is running or stopping, or whose helper would not exit.
+    public func releaseIfStopped() async -> Bool {
+        switch phase {
+        case .stopped, .dead: await release()
+        case .running, .stopping: false
+        }
+    }
 }
 
 public final class VanishedDevices {

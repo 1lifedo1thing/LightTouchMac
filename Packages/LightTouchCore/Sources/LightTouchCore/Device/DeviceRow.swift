@@ -381,7 +381,8 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
         case .openFilesystem, .commitFilesystem, .discardFilesystem, .recoverFilesystem:
             return instanceID != nil && !working && state != .running && state != .stopping
         case .showInFinder: return instanceID != nil && state != .deleting
-        case .delete: return instanceID != nil && !hasSession && !working
+        // Also with a shut-down or dead session: it lets go of the storage first (DeviceSessionHost.delete).
+        case .delete: return instanceID != nil && !working && state != .running
         case .prepareAgain: return preparedByOlderRecipe && canDownload && allows(.delete, canDownload: canDownload)
         }
     }

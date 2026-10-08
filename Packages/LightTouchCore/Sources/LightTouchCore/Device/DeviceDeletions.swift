@@ -12,9 +12,14 @@ import Foundation
 
     public func contains(_ id: String) -> Bool { ids.contains(id) }
 
-    /// Marks `id` deleting now and runs `work` on a background thread; the task finishes (or throws) when it has.
-    @discardableResult public func run(_ id: String, _ work: @escaping @Sendable () throws -> Void) -> Task<Void, Error>
-    {
+    /// Marks `id` deleting now, waits for `release` to let go of its session (a shut-down or dead one), then runs
+    /// `work` on a background thread; the task finishes (or throws) when it has. A device still running is refused
+    /// with DeviceInUse, its storage untouched.
+    @discardableResult public func run(
+        _ id: String,
+        release: @escaping @MainActor () async -> Bool = { true },
+        _ work: @escaping @Sendable () throws -> Void
+    ) -> Task<Void, Error> {
         ids.insert(id)
         onChange()
         return Task {
@@ -22,7 +27,14 @@ import Foundation
                 ids.remove(id)
                 onChange()
             }
+            guard await release() else { throw DeviceInUse() }
             try await Task.detached(priority: .userInitiated) { try work() }.value
         }
     }
+}
+
+/// A device started again before its storage could change.
+public struct DeviceInUse: LocalizedError {
+    public init() {}
+    public var errorDescription: String? { "This device is running. Shut it down, then try again." }
 }
