@@ -41,6 +41,22 @@ struct ReleaseBootTests {
         }
     }
 
+    /// A firmwarekit that crashed leaves its volumes attached: whatever is attached from under `dir` is detached.
+    func detachImages(under dir: URL) {
+        let plain = { (p: String) in p.hasPrefix("/private/") ? String(p.dropFirst("/private".count)) : p }
+        guard let info = try? Shell.run(["hdiutil", "info", "-plist"]),
+            let plist = try? PropertyListSerialization.propertyList(from: Data(info.output.utf8), format: nil)
+                as? [String: Any]
+        else { return }
+        for image in plist["images"] as? [[String: Any]] ?? []
+        where plain(image["image-path"] as? String ?? "").hasPrefix(plain(dir.path) + "/") {
+            let devices = (image["system-entities"] as? [[String: Any]] ?? []).compactMap { $0["dev-entry"] as? String }
+            if let device = devices.min(by: { $0.count < $1.count }) {
+                _ = try? Shell.run(["hdiutil", "detach", device, "-force"])
+            }
+        }
+    }
+
     func catalogEntry(_ id: String) throws -> [String: Any] {
         let catalog =
             try JSONSerialization.jsonObject(
@@ -85,6 +101,7 @@ struct ReleaseBootTests {
             try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
             try FileManager.default.createDirectory(at: frames, withIntermediateDirectories: true)
             defer {
+                detachImages(under: work)
                 _ = try? Shell.run(["chflags", "-R", "nouchg", work.path])
                 _ = try? Shell.run(["chmod", "-R", "u+w", work.path])
             }
