@@ -15,6 +15,8 @@ import UniformTypeIdentifiers
     func library(_ library: DeviceLibraryViewController, didSelect entry: FirmwareCatalog.Entry?)
     /// Row states changed; the selection didn't.
     func libraryRowsDidChange(_ library: DeviceLibraryViewController)
+    /// Sessions started, ended or were replaced, which can leave every row as it was.
+    func librarySessionsDidChange(_ library: DeviceLibraryViewController)
     func library(
         _ library: DeviceLibraryViewController,
         canPerform action: DeviceAction,
@@ -129,6 +131,7 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
     @objc private func sessionsDidChange() {
         sessionTracking?.rearm()
         stateDidChange()
+        delegate?.librarySessionsDidChange(self)
     }
 
     // MARK: - The list

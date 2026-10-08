@@ -24,6 +24,8 @@ extension SharedState {
                 selected.append(entry)
             }
             func libraryRowsDidChange(_ library: DeviceLibraryViewController) {}
+            var sessionChanges = 0
+            func librarySessionsDidChange(_ library: DeviceLibraryViewController) { sessionChanges += 1 }
             func library(
                 _ library: DeviceLibraryViewController,
                 canPerform action: DeviceAction,
@@ -563,6 +565,31 @@ extension SharedState {
                 fail("the sheet's tags: \(tags)")
             }
             #expect(failures.isEmpty, "\(failures.joined(separator: "\n"))")
+        }
+
+        /// A session replaced by another in the same phase (a restart that never shows as stopped) leaves every row
+        /// as it was; the window is still told, so it never keeps the old session.
+        @Test func aReplacedSessionReachesTheWindowWithNoRowChange() throws {
+            _ = NSApplication.shared
+            let catalog = try FirmwareCatalog.load(
+                from: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+                    .appendingPathComponent("../../../../LightTouchMac/Resources/firmware-catalog.json")
+                    .standardizedFileURL
+            )
+            let suite = "ltm-check-sidebar-sessions-\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suite)!
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let host = DeviceSessionHost(catalog: catalog)
+            host.prepared["n72ap-8C148"] = UUID()
+            host.running = ["n72ap-8C148"]
+            SidebarList(ids: ["n72ap-8C148"], names: [:]).save(defaults)
+            let vc = DeviceLibraryViewController(host: host, defaults: defaults)
+            let delegate = Delegate()
+            vc.delegate = delegate
+            _ = vc.view
+            host.sessions = [DeviceSession()]  // the restart's new session, running like the old one
+            NotificationCenter.default.post(name: DeviceSessionHost.didChangeNotification, object: host)
+            #expect(delegate.sessionChanges == 1)
         }
     }
 }

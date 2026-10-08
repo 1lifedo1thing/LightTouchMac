@@ -35,6 +35,8 @@ extension MainWindowController {
 
     func libraryRowsDidChange(_ library: DeviceLibraryViewController) { show(selectedEntry) }
 
+    func librarySessionsDidChange(_ library: DeviceLibraryViewController) { show(selectedEntry) }
+
     @objc func filesystemActivityDidChange() { show(selectedEntry) }
 
     func library(_ library: DeviceLibraryViewController, perform action: DeviceAction, for entry: FirmwareCatalog.Entry)
@@ -71,12 +73,11 @@ extension MainWindowController {
 
     func show(_ entry: FirmwareCatalog.Entry?) {
         selectedEntry = entry
-        let next = entry.flatMap(host.session(for:))
-        if next !== session {
+        if attachedSession !== session {
             // Recording captures the visible screen; it can't follow a switch.
             recording.stop()
-            deviceVC?.screen.endLiveText()
-            session = next
+            attachedSession?.workspace.deviceVC.screen.endLiveText()
+            attachedSession = session
             attachWorkspace()
         }
         noInspector.managesApps = entry?.managesApps ?? true

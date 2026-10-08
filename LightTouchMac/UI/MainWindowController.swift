@@ -13,9 +13,11 @@ import UniformTypeIdentifiers
 
 final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindowDelegate, DeviceLibraryDelegate {
     let host: DeviceSessionHost
-    /// The selected row's session, when it has one. Every device command,
-    /// validation and toolbar item follows it.
-    var session: DeviceSession?
+    /// The selected row's session, when it has one: always the host's current one, never a copy. Every device
+    /// command, validation and toolbar item follows it.
+    var session: DeviceSession? { selectedEntry.flatMap(host.session(for:)) }
+    /// The session whose workspace is in the window; show() swaps it when `session` changes.
+    var attachedSession: DeviceSession?
     var selectedEntry: FirmwareCatalog.Entry?
     /// The selected device's own directory and board, running or not (nil before it is prepared).
     var selectedInstance: DeviceInstance? { selectedEntry.flatMap(host.instance(for:)) }
