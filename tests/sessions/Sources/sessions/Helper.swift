@@ -396,8 +396,9 @@ private func describe(_ buzzes: [(start: Double, seconds: Double?)]) -> String {
 /// capture) and hung up, an unknown property refused, and the vibration motor buzzing for the SMS and while ringing, as
 /// the status block reports it (issue 38). `rotate`: a new frame within 1 s of the app's rotation request,
 /// different from portrait. `shutdown`: the guest confirms its own power-off. `keyboard` (A4): Connect Hardware Keyboard
-/// off and on. 6.x/7.x's first boot sits in Setup, which rejects calls: the carrier case then needs --overlay, the overlay
-/// of a boot that walked Setup (`sessions single` leaves one in its work directory), cloned, never changed.
+/// off and on. A 5.x+ first boot sits in Setup, which rejects calls and stays portrait: the carrier and rotate cases then
+/// need --overlay, the overlay of a boot that walked Setup (`sessions single` leaves one in its work directory), cloned,
+/// never changed.
 /// `emergency` (4.x and 7.x): 911 from the emergency dialer, which asks the modem first (issue 32).
 func phone(_ args: PhoneCheck) -> Never {
     let base = Base(args.base)
@@ -407,21 +408,26 @@ func phone(_ args: PhoneCheck) -> Never {
     var only = Set(args.only.split(separator: ",").map(String.init))
     if base.board != "n90ap" { only.remove("keyboard") }
     let r = Report()
+    // A 5.x+ first boot on these boards sits in Setup, which rejects calls and stays portrait (as Rotation.swift's
+    // guard): the carrier and rotate cases boot a clone of --overlay instead.
+    if base.armv7, base.major >= 5, args.overlay == nil, !only.isDisjoint(with: ["carrier", "rotate"]) {
+        die(
+            "a \(base.version) base is in Setup on its first boot, which rejects calls and does not turn: pass --overlay (or --only emergency,location,shutdown,keyboard)"
+        )
+    }
+    func cloneOverlay(_ name: String) {
+        guard let source = args.overlay else { return }
+        let overlay = work.appendingPathComponent("\(name)/overlay")
+        try? FileManager.default.createDirectory(
+            at: overlay.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        run("/bin/cp", ["-cR", source.path, overlay.path])  // a clone: the source stays as it was
+    }
 
     if only.contains("carrier") {
         print("carrier")
-        let overlay = work.appendingPathComponent("carrier/overlay")
-        if let source = args.overlay {
-            try? FileManager.default.createDirectory(
-                at: overlay.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            run("/bin/cp", ["-cR", source.path, overlay.path])  // a clone: the source stays as it was
-        } else if base.major >= 6 {
-            die(
-                "a \(base.version) base is in Setup on its first boot, which rejects calls: pass --overlay (or --only rotate,shutdown,keyboard)"
-            )
-        }
+        cloneOverlay("carrier")
         let saved: [String: Any] = [
             "carrier": "Saved, Carrier", "mccMNC": "00101", "registered": true, "simPresent": true, "bars": 4,
         ]
@@ -516,6 +522,7 @@ func phone(_ args: PhoneCheck) -> Never {
     }
     if only.contains("rotate") {
         print("rotate")
+        cloneOverlay("rotate")
         let d = HelperDriver(
             "rotate",
             tools: tools,
@@ -526,7 +533,9 @@ func phone(_ args: PhoneCheck) -> Never {
                 work: work,
                 name: "rotate",
                 steps: [
-                    "boot", "lit 0.03 300", "wait 8", "dump lock", unlockSlide, "wait 4", "tap 0.617 0.9", "wait 8",
+                    // Home wakes the lock screen first: 5.x+ puts the display to sleep within 8 s of lighting it.
+                    "boot", "lit 0.03 300", "wait 8", "button 0", "wait 2", "dump lock", unlockSlide, "wait 4",
+                    "tap 0.617 0.9", "wait 8",
                     "dump home", "status",
                     "orientation 4", "wait 1", "dump turned", "status", "wait 4", "dump turned5", "status", "quit",
                     "expectExit 60",

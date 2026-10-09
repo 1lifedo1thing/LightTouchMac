@@ -164,7 +164,7 @@ struct PhoneCheck: ParsableCommand {
     @Argument var base: String
     @Option(help: "The cases, comma-separated.") var only =
         "carrier,emergency,location,compass,rotate,shutdown,keyboard"
-    @Option(help: "The overlay of a boot that walked Setup (6.x/7.x carrier), cloned.", transform: path)
+    @Option(help: "The overlay of a boot that walked Setup (5.x-7.x carrier and rotate), cloned.", transform: path)
     var overlay: URL?
     @OptionGroup var inputs: Inputs
 
