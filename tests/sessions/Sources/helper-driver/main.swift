@@ -431,6 +431,39 @@ Thread.detachNewThread {
             link.send(.touch(slot: 0, phase: 0, x: x, y: y))
             usleep(80_000)
             link.send(.touch(slot: 0, phase: 2, x: x, y: y))
+        // flicks flick|slow N U V WIDTH: N trackpad gestures between the first Home page and the page left of it, after
+        // `dump page` and `dump left` of each: right from the first page, left from the other; each a "flick" event
+        // with the page before and after, by which reference the frame is nearer
+        case "flicks":
+            let page = URL(fileURLWithPath: "\(dumpDir)/page.png")
+            let left = URL(fileURLWithPath: "\(dumpDir)/left.png")
+            func onPage(_ name: String) -> (Bool, Double, Double) {
+                dump(name)
+                let url = URL(fileURLWithPath: "\(dumpDir)/\(name).png")
+                let (a, b) = (pictureDistance(url, page), pictureDistance(url, left))
+                return (a < b, a, b)
+            }
+            guard let r = rotationDriver else { fail("flicks: no board") }
+            for i in 0..<Int(v[0]) {
+                let (fromPage, fromPageD, fromLeftD) = onPage("flick\(i)a")
+                let sign = fromPage ? 1.0 : -1.0
+                let (a, b) = onMain { (r.touchPoint(shown: v[1], v[2]), r.touchPoint(shown: v[1] + sign / v[3], v[2])) }
+                let log = playTrackpad(
+                    trackpadGesture(p[1]),
+                    start: CGPoint(x: a.0, y: a.1),
+                    unit: CGVector(dx: b.0 - a.0, dy: b.1 - a.1),
+                    link: link
+                )
+                usleep(1_500_000)
+                let (toPage, dPage, dLeft) = onPage("flick\(i)b")
+                emit(
+                    "flick",
+                    [
+                        "kind": p[1], "from": fromPage ? "page" : "left", "to": toPage ? "page" : "left",
+                        "dPage": dPage, "dLeft": dLeft, "dStart": min(fromPageD, fromLeftD), "touches": log,
+                    ]
+                )
+            }
         // tapword WORD [DY]: tap where Vision reads WORD (_ for a space) on the window's picture, DY below it; else nothing
         case "tapword":
             guard let r = rotationDriver else { fail("tapword: no board") }

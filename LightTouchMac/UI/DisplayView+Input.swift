@@ -100,7 +100,8 @@ extension DisplayView {
     /// same gesture mean two things depending on a few pixels of cursor
     /// position. The window's zoom lives on the toolbar, the View menu and ⌘+/−.
     override func magnify(with event: NSEvent) {
-        guard pinchingGuest || (event.phase == .began && cursorOverPanel(event)) else { return }
+        // Not while a two-finger scroll is a finger: a swipe whose fingers spread a little would turn into a pinch.
+        guard pinchingGuest || (event.phase == .began && scrollPoint == nil && cursorOverPanel(event)) else { return }
         guestPinch(event)
     }
 
@@ -158,10 +159,9 @@ extension DisplayView {
     // MARK: - Scroll / swipe
 
     /// Over the panel, a two-finger scroll IS a finger dragging the content:
-    /// begin a touch where the cursor is and move it with the fingers, through
-    /// momentum too, so a flick keeps traveling and iOS's own inertia takes
-    /// over naturally. A two-finger swipe is the same stream at speed, so it
-    /// needs no separate case.
+    /// begin a touch where the cursor is, move it with the fingers and lift it
+    /// when they leave (ScrollDrag); iOS's own inertia takes over from there. A
+    /// two-finger swipe is the same stream at speed, so it needs no separate case.
     ///
     /// Off the panel, scrolls tilt the device's accelerometer. A two-finger
     /// twist also controls roll; letting go springs either gesture to rest.
@@ -201,39 +201,26 @@ extension DisplayView {
         // corrects a correction — which is what kept sending these gestures the
         // wrong way. That flag is for telling the user which way the hardware
         // went, not for undoing the system setting.
-        let dx = event.scrollingDeltaX
-        let dy = event.scrollingDeltaY
         let b = contentLayer.bounds
         guard b.width > 0, b.height > 0 else { return }
+        let d = rotatedPanelDelta(event.scrollingDeltaX, event.scrollingDeltaY)
+        let touches = scrollDrag.scroll(
+            phase: ScrollDrag.Phase(rawValue: event.phase.rawValue),
+            delta: CGVector(dx: d.dx / b.width, dy: d.dy / b.height),
+            start: event.phase == .began ? clampedPanelPoint(event) : nil
+        )
+        sendScrollTouches(touches)
+    }
 
-        switch event.phase {
-        case .began:
-            guard let p = clampedPanelPoint(event) else { return }
-            scrollPoint = p
-            sendVisualTouch(0, TouchPhase.begin, Double(p.x), Double(p.y))
-        case .changed:
-            guard var p = scrollPoint else { return }
-            let d = rotatedPanelDelta(dx, dy)
-            p.x = min(max(p.x + d.dx / b.width, 0), 1)
-            p.y = min(max(p.y + d.dy / b.height, 0), 1)
-            scrollPoint = p
-            sendVisualTouch(0, TouchPhase.update, Double(p.x), Double(p.y))
-        case .ended, .cancelled:
-            // Lift only if no momentum follows; otherwise ride it out below.
-            if event.momentumPhase == [] { endScrollDrag() }
-        default:
-            // Momentum: keep the contact down and moving so the flick reads as
-            // one continuous drag rather than a drag that stops and restarts.
-            guard var p = scrollPoint else { return }
-            if event.momentumPhase == .ended || event.momentumPhase == .cancelled {
-                endScrollDrag()
-                return
-            }
-            let d = rotatedPanelDelta(dx, dy)
-            p.x = min(max(p.x + d.dx / b.width, 0), 1)
-            p.y = min(max(p.y + d.dy / b.height, 0), 1)
-            scrollPoint = p
-            sendVisualTouch(0, TouchPhase.update, Double(p.x), Double(p.y))
+    private func sendScrollTouches(_ touches: [ScrollDrag.Touch]) {
+        for t in touches {
+            let phase =
+                switch t.phase {
+                case .begin: TouchPhase.begin
+                case .update: TouchPhase.update
+                case .end: TouchPhase.end
+                }
+            sendVisualTouch(0, phase, Double(t.point.x), Double(t.point.y))
         }
     }
 
@@ -252,18 +239,14 @@ extension DisplayView {
         sendVisualTouch(0, TouchPhase.end, Double(p.x), Double(p.y))
     }
 
-    private func endScrollDrag() {
-        guard let p = scrollPoint else { return }
-        sendVisualTouch(0, TouchPhase.end, Double(p.x), Double(p.y))
-        scrollPoint = nil
-    }
-
     /// A movement in view points expressed in content-layer points, un-rotated
-    /// so directions match what the user sees in any orientation.
+    /// so directions match what the user sees in any orientation. The content
+    /// layer is the cutout in shell pixels, shown at appliedScale points each,
+    /// so the content under the fingers moves with them, as macOS scrolls.
     private func rotatedPanelDelta(_ dx: CGFloat, _ dy: CGFloat) -> CGVector {
         // the scan stands a quarter turn from upright when the guest turned its UI
         let a = -(Self.layerAngle(emulator?.rotationDegrees ?? 0) + tiltAngle + guestTurn)
-        let s = max(appliedScale * (contentLayer.bounds.width / max(framePixels.width, 1)), 0.01)
+        let s = max(appliedScale, 0.01)
         let ux = dx / s
         let uy = dy / s
         return CGVector(dx: ux * cos(a) - uy * sin(a), dy: ux * sin(a) + uy * cos(a))

@@ -52,7 +52,8 @@ struct Sessions: ParsableCommand {
             """,
         subcommands: [
             SingleCheck.self, PairCheck.self, ProxyTrustCheck.self, LocalNetworkCheck.self, HelperCheck.self,
-            HelperBootCheck.self, PhoneCheck.self, RotationCheck.self, TweaksCheck.self,
+            HelperBootCheck.self, PhoneCheck.self, RotationCheck.self, FlickCheck.self,
+            TweaksCheck.self,
         ]
     )
 }
@@ -193,6 +194,21 @@ struct RotationCheck: ParsableCommand {
     @OptionGroup var inputs: Inputs
 
     func run() { rotationCheck(self) }
+}
+
+struct FlickCheck: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "flick",
+        abstract:
+            "Trackpad swipes on the Home screen: a quick short flick turns the page, a slow short drag snaps back."
+    )
+    @Argument var base: String
+    @Option(help: "The overlay of a boot that walked Setup (5.x-7.x), cloned.", transform: path) var overlay: URL?
+    @Option(help: "Gestures of each kind.") var runs = 10
+    @Option(help: "The kinds, comma-separated (helper-driver's trackpadGesture).") var kinds = "flick,slow"
+    @OptionGroup var inputs: Inputs
+
+    func run() { flickCheck(self) }
 }
 
 // App code in the drivers logs and keeps state under the run's own directories, never the user's library.

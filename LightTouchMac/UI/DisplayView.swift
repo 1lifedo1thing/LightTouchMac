@@ -421,8 +421,9 @@ final class DisplayView: NSView {
     /// Half the current pinch separation, panel-relative.
     var pinchSpread = 0.0
     var pinchingGuest = false
-    /// Live scroll-drag: the finger's current position, carried between events.
-    var scrollPoint: CGPoint?
+    /// Live scroll-drag: a two-finger scroll over the screen as a finger (ScrollDrag).
+    var scrollDrag = ScrollDrag()
+    var scrollPoint: CGPoint? { scrollDrag.point }
     /// Tilt driven by a two-finger scroll off the panel.
     /// Tilt's gesture state and math (ChassisTilt): drag, scroll and twist off the panel.
     var tilt = ChassisTilt()

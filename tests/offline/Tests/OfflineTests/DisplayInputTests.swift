@@ -435,8 +435,27 @@ extension SharedState {
             event.eventPhase = .began
             display.scrollWheel(with: event)
             #expect(untouched(), "scroll over the panel tilted")
+            // A finger (ScrollDrag): down where the cursor is and moved by the began event's own delta, then by each
+            // changed, up at the fingers' ended; the momentum phase after it moves nothing. A pinch the trackpad sees in
+            // the same fingers doesn't start while the finger is down.
+            display.magnify(with: event)
+            #expect(touchPhases() == [0, 1], "a pinch began mid-swipe: \(sent)")
+            event.eventPhase = .changed
+            display.scrollWheel(with: event)
             event.eventPhase = .ended
             display.scrollWheel(with: event)
+            event.eventPhase = []
+            for phase in [NSEvent.Phase.began, .changed, .ended] {
+                event.momentum = phase
+                display.scrollWheel(with: event)
+            }
+            event.momentum = []
+            #expect(touchPhases() == [0, 1, 1, 2], "\(sent)")
+            // The finger keeps up with the content under the fingers: 10 points of scroll move it 10 points of the
+            // screen as shown (the iPod's cutout is 594 shell pixels for a 320-pixel frame).
+            let shown = lcd.convert(lcd.bounds, to: display.layer!).width
+            let xs = sent.compactMap { if case .touch(_, _, let x, _) = $0 { x } else { nil } }
+            #expect(abs((xs[1] - xs[0]) * shown - 10) < 0.01, "moved \((xs[1] - xs[0]) * shown) of \(shown) points")
             sent = []
             event.option = true
             event.eventPhase = .began
