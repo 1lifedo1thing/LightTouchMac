@@ -160,8 +160,11 @@ func single(_ args: SingleCheck) -> Never {
         let steps = ["listed", "same", "renamed", "folder", "deleted"]
         let inside = files.bool("agent") ? ["agentRead", "agentRenamed", "agentDeleted"] : []
         let failed = (steps + inside + (args.jailbreak ? ["afc2"] : [])).filter { !files.bool($0) }
+        // From 5.0 installd makes Documents in every container it populates; a container without one is an
+        // install that failed part-way (issue 23: no protection classes on the data volume).
+        let documentsMissing = base.major >= 5 && files.bool("madeDocuments")
         r.check(
-            !files.has("error") && failed.isEmpty,
+            !files.has("error") && failed.isEmpty && !documentsMissing,
             "\(d): Files edits the app's container (\((files["top"] as? [String] ?? []).joined(separator: ", ")))"
                 + (files.bool("agent") ? ", the app reads the changes" : ", no guest agent")
                 + (files.bool("madeDocuments") ? ", Documents made" : "")
