@@ -215,6 +215,47 @@ extension SharedState {
             let delete = item(#selector(DeviceFilesViewController.deleteItems(_:)))
             let folder = item(#selector(DeviceFilesViewController.newFolder(_:)))
             #expect(!vc.validateMenuItem(rename) && vc.validateMenuItem(delete), "two files: delete, not rename")
+            // ⌘⌫ deletes the selection after asking, with Delete marked destructive; a bare Delete or Forward
+            // Delete deletes nothing, and Cancel leaves the files.
+            var questions: [NSAlert] = []
+            vc.presentAlert = { alert, _, done in
+                questions.append(alert)
+                done(.alertSecondButtonReturn)
+            }
+            func key(_ character: Int, _ code: UInt16, _ modifiers: NSEvent.ModifierFlags) -> NSEvent {
+                let text = String(UnicodeScalar(UInt16(character))!)
+                return NSEvent.keyEvent(
+                    with: .keyDown,
+                    location: .zero,
+                    modifierFlags: modifiers,
+                    timestamp: 0,
+                    windowNumber: window.windowNumber,
+                    context: nil,
+                    characters: text,
+                    charactersIgnoringModifiers: text,
+                    isARepeat: false,
+                    keyCode: code
+                )!
+            }
+            for (event, name) in [
+                (key(NSDeleteCharacter, 51, []), "Delete"),
+                (key(NSDeleteFunctionKey, 117, []), "Forward Delete"),
+                (key(NSDeleteCharacter, 51, [.shift, .command]), "Shift-Command-Delete"),
+            ] {
+                #expect(!vc.handleBrowserKey(event) && questions.isEmpty, "\(name) deletes nothing")
+            }
+            #expect(vc.handleBrowserKey(key(NSDeleteCharacter, 51, .command)), "⌘⌫ is the browser's")
+            #expect(
+                questions.map(\.messageText) == ["Delete 2 items?"]
+                    && questions.first?.buttons.map(\.title) == ["Delete", "Cancel"]
+                    && questions.first?.buttons.first?.hasDestructiveAction == true,
+                "⌘⌫ asks first: \(questions.map(\.messageText))"
+            )
+            #expect(
+                browser.menu?.items.first { $0.action == #selector(DeviceFilesViewController.deleteItems(_:)) }?
+                    .keyEquivalent == "\u{7f}",
+                "the context menu shows ⌘⌫"
+            )
             picker.selectItem(withTitle: "Game")
             picker.sendAction(picker.action!, to: picker.target)
             func first() -> String? { (browser.loadedCell(atRow: 0, column: 0) as? NSCell)?.stringValue }

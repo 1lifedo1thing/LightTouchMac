@@ -94,7 +94,8 @@ enum MainMenuBuilder {
         menu.addItem(item("Start", #selector(MainWindowController.toggleDeviceRunning(_:))))
         menu.addItem(.separator())
         menu.addItem(item("Show in Finder", #selector(MainWindowController.showDeviceInFinder(_:))))
-        menu.addItem(item("Delete Device…", #selector(MainWindowController.deleteDevice(_:))))
+        // ⌘⌫, the standard Delete shortcut; bare Delete in the sidebar does nothing (it was too easy to lose a device).
+        menu.addItem(item("Delete Device…", #selector(MainWindowController.deleteDevice(_:)), "\u{7f}"))
         menu.addItem(.separator())
         menu.addItem(item("Copy to \(profile.shortName)…", #selector(DeviceFilesViewController.importFile)))
         menu.addItem(item("Save to Mac…", #selector(DeviceFilesViewController.exportFile)))
@@ -373,4 +374,11 @@ nonisolated final class CaptureMenu: NSMenu {  // NSMenu's own initializers are 
         }
         return super.performKeyEquivalent(with: event)
     }
+}
+
+/// File ▸ Delete Device…'s ⌘⌫ reaches the menu before a text view's key bindings, and a menu takes a key equivalent
+/// it matches even when the item is dimmed. While text is being edited the text view answers the item (it is first in
+/// the responder chain) with what ⌘⌫ does there: delete to the beginning of the line.
+extension NSTextView {
+    @objc func deleteDevice(_ sender: Any?) { deleteToBeginningOfLine(sender) }
 }

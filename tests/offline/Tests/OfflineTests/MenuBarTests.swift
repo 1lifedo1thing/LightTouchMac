@@ -36,7 +36,7 @@ extension SharedState {
             File/Start
             File/-
             File/Show in Finder
-            File/Delete Device…
+            File/Delete Device…  ⌘⌫
             File/-
             File/Copy to iPod…
             File/Save to Mac…
@@ -170,7 +170,7 @@ extension SharedState {
                 if m.contains(.command) { mods += "⌘" }
                 let arrows: [Int: String] = [
                     NSLeftArrowFunctionKey: "←", NSRightArrowFunctionKey: "→", NSUpArrowFunctionKey: "↑",
-                    NSDownArrowFunctionKey: "↓", 0x1b: "⎋",
+                    NSDownArrowFunctionKey: "↓", 0x1b: "⎋", 0x7f: "⌫",
                 ]
                 let key =
                     item.keyEquivalent.unicodeScalars.first.flatMap { arrows[Int($0.value)] } ?? item.keyEquivalent
@@ -271,6 +271,16 @@ extension SharedState {
             }
             #expect(find("Device Logs", in: help) == nil)
             let file = root.item(withTitle: "File")!.submenu!
+            // Delete Device… is ⌘⌫; while text is being edited the text view answers it with its own ⌘⌫ (delete to
+            // the beginning of the line), so the menu never takes the key from the text.
+            let deleteDevice = find("Delete Device…", in: file)!
+            #expect(deleteDevice.keyEquivalent == "\u{7f}" && deleteDevice.keyEquivalentModifierMask == [.command])
+            let text = NSTextView()
+            text.string = "one two"
+            text.setSelectedRange(NSRange(location: 7, length: 0))
+            #expect(text.validateMenuItem(deleteDevice), "the text view takes ⌘⌫ while it's edited")
+            NSApp.sendAction(deleteDevice.action!, to: text, from: deleteDevice)
+            #expect(text.string.isEmpty, "⌘⌫ in text deletes to the line's start, got \(text.string)")
             for name in ["Copy to iPod…", "Save to Mac…", "Cancel Transfer", "Refresh Files", "Close"] {
                 #expect(find(name, in: file) != nil, "\(name)")
             }

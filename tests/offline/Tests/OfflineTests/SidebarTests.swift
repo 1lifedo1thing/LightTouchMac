@@ -11,7 +11,8 @@ extension SharedState {
     /// SidebarList, DeviceRow and DeviceStorageWork, in windows never ordered in. Every row is two lines (the marketing
     /// name over the version and its Beta/GM badge; a custom name over "iPad, iOS 3.2.2"); each board shows the artwork
     /// macOS declares for it; rename in place (menu, Return, during a preparation) saves; the context menu dims what a
-    /// row can't do; Delete removes an unprepared row and asks the delegate for a prepared one; a download joins the
+    /// row can't do; Delete (File ▸ Delete Device…'s ⌘⌫, Edit ▸ Delete) removes an unprepared row and asks the delegate
+    /// for a prepared one, and a bare Delete key removes nothing; a download joins the
     /// sidebar with a ring and no percentage; ⌘A and one Delete ask ONE question, and the prepared device says Deleting
     /// while a slow removal runs off the main actor (which answers the removal meanwhile); a failed removal keeps its row with
     /// one alert; an empty sidebar offers Add Device…; the sheet lists every catalog entry once, grouped by device.
@@ -348,12 +349,32 @@ extension SharedState {
                 keyCode: 51
             )!
             vc.select(catalog.entry(id: "n72ap-8C148")!)
+            // A bare Delete or Forward Delete key in the sidebar removes nothing; the menu's ⌘⌫ (removeTargets, as
+            // Edit ▸ Delete) does.
+            let forwardDelete = NSEvent.keyEvent(
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: w.windowNumber,
+                context: nil,
+                characters: String(UnicodeScalar(UInt16(NSDeleteFunctionKey))!),
+                charactersIgnoringModifiers: String(UnicodeScalar(UInt16(NSDeleteFunctionKey))!),
+                isARepeat: false,
+                keyCode: 117
+            )!
+            let before = vc.entries.map(\.id)
             outline.keyDown(with: delete)
+            outline.keyDown(with: forwardDelete)
+            if !delegate.deletes.isEmpty || vc.entries.map(\.id) != before {
+                fail("a bare Delete key removed \(delegate.deletes), left \(vc.entries.map(\.id))")
+            }
+            vc.delete(nil)
             if delegate.deletes != ["n72ap-8C148"] || !vc.entries.contains(where: { $0.id == "n72ap-8C148" }) {
                 fail("prepared delete: \(delegate.deletes)")
             }
             vc.select(catalog.entry(id: "n72ap-8B5080c")!)
-            outline.keyDown(with: delete)
+            vc.delete(nil)
             if vc.entries.contains(where: { $0.id == "n72ap-8B5080c" })
                 || defaults.stringArray(forKey: SidebarList.entriesKey)?.contains("n72ap-8B5080c") != false
             {
@@ -376,7 +397,7 @@ extension SharedState {
             // A failed download leaves with Delete and stays gone.
             FirmwareJobs.shared.jobs["n72ap-8B117"] = .failed("x")
             vc.select(catalog.entry(id: "n72ap-8B117")!)
-            outline.keyDown(with: delete)
+            vc.delete(nil)
             FirmwareJobs.shared.jobs["n72ap-8C148"] = nil  // the next state change
             if vc.entries.contains(where: { $0.id == "n72ap-8B117" }) { fail("a failed download's row came back") }
             if FirmwareJobs.shared.jobs["n72ap-8B117"] != nil { fail("the removed row's failure outlived it") }
@@ -408,7 +429,7 @@ extension SharedState {
             }
             if !vc.canRemoveTargets { fail("Delete dimmed over a removable selection") }
             // Offscreen, the selection's material draws black (as in sidebar-renamed's note): the rows' artwork shows on it.
-            multiOutline.keyDown(with: delete)  // Cancel
+            vc.delete(nil)  // Cancel
             if alerts.count != 1 { fail("a mixed batch asked \(alerts.count) questions") }
             if let alert = alerts.first {
                 if alert.messageText != "Delete 3 devices?" { fail("batch question: \(alert.messageText)") }
@@ -424,7 +445,7 @@ extension SharedState {
             }
             answer = .alertFirstButtonReturn
             multiOutline.selectAll(nil)
-            multiOutline.keyDown(with: delete)
+            vc.delete(nil)
             if alerts.count != 2 { fail("the second Delete asked \(alerts.count - 1) questions") }
             // The unprepared rows left at once; the prepared one is Deleting until its storage is gone.
             let doomed = catalog.entry(id: "n72ap-8C148")!
@@ -481,7 +502,7 @@ extension SharedState {
             }
             let brokenOutline = all(vc.view).compactMap { $0 as? NSOutlineView }.first!
             brokenOutline.selectAll(nil)
-            brokenOutline.keyDown(with: delete)
+            vc.delete(nil)
             let failStart = Date()
             while !broken.deletions.busy.isEmpty || failureAlerts.count < 2, Date().timeIntervalSince(failStart) < 60 {
                 try await Task.sleep(for: .milliseconds(10))
@@ -501,7 +522,7 @@ extension SharedState {
             }
             let plainOutline = all(vc.view).compactMap { $0 as? NSOutlineView }.first!
             plainOutline.selectRowIndexes([1, 2], byExtendingSelection: false)
-            plainOutline.keyDown(with: delete)
+            vc.delete(nil)
             if alerts.count != 2 || vc.entries.map(\.id) != ["k48ap-7B500"] {
                 fail("unprepared batch: \(alerts.count) questions, left \(vc.entries.map(\.id))")
             }

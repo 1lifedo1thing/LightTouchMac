@@ -42,7 +42,7 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
     private var previewItems: [URL] = []
     private var previewFolder: URL?
     // nonisolated(unsafe): set on the main actor in viewDidLoad and read again only by deinit, after the last use.
-    nonisolated(unsafe) private var spaceMonitor: Any?
+    nonisolated(unsafe) private var keyMonitor: Any?
     /// Drag-out promises run one after another (AFC transfers are serial anyway).
     private var promiseChain: Task<Void, Never>?
     private var idleStatusWidth: NSLayoutConstraint?
@@ -64,11 +64,11 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
         let look = hiddenMenu.addItem(withTitle: "Quick Look", action: #selector(quickLook(_:)), keyEquivalent: "")
         look.target = self
         hiddenMenu.addItem(.separator())
-        for (title, action) in [
-            ("New Folder…", #selector(newFolder(_:))), ("Rename…", #selector(renameItem(_:))),
-            ("Delete…", #selector(deleteItems(_:))),
+        for (title, action, key) in [
+            ("New Folder…", #selector(newFolder(_:)), ""), ("Rename…", #selector(renameItem(_:)), ""),
+            ("Delete…", #selector(deleteItems(_:)), "\u{7f}"),
         ] {
-            hiddenMenu.addItem(withTitle: title, action: action, keyEquivalent: "").target = self
+            hiddenMenu.addItem(withTitle: title, action: action, keyEquivalent: key).target = self
         }
         hiddenMenu.addItem(.separator())
         let hidden = hiddenMenu.addItem(
@@ -159,18 +159,30 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
         idleStatusWidth = status.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -12)
         activeStatusWidth = status.trailingAnchor.constraint(equalTo: progress.leadingAnchor, constant: -12)
         updateControls()
-        // Space toggles Quick Look while the browser has focus (its matrix takes the key otherwise).
-        spaceMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, event.window === view.window, event.charactersIgnoringModifiers == " ",
-                event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty,
+        // Space toggles Quick Look while the browser has focus (its matrix takes the key otherwise), and ⌘⌫ deletes
+        // the selection after asking, as in the Finder (a context menu's key equivalent isn't one the window sees).
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.window === view.window,
                 let responder = view.window?.firstResponder as? NSView, responder.isDescendant(of: browser)
             else { return event }
-            quickLook(nil)
-            return nil
+            return handleBrowserKey(event) ? nil : event
         }
     }
 
-    deinit { if let spaceMonitor { NSEvent.removeMonitor(spaceMonitor) } }
+    deinit { if let keyMonitor { NSEvent.removeMonitor(keyMonitor) } }
+
+    /// A key for the focused browser: Space is Quick Look, ⌘⌫ Delete… (a bare Delete deletes nothing). True when taken.
+    func handleBrowserKey(_ event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        if event.charactersIgnoringModifiers == " ", modifiers.isEmpty {
+            quickLook(nil)
+        } else if event.specialKey == .delete, modifiers == .command {
+            deleteItems(nil)
+        } else {
+            return false
+        }
+        return true
+    }
 
     func focusBrowser() {
         if view.window?.makeFirstResponder(browser) != true { view.window?.makeFirstResponder(view) }
@@ -449,6 +461,14 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
             then()
         }
         guard let window = view.window else { return }
+        presentAlert(alert, window, done)
+    }
+
+    /// Shows a question as a sheet; a check answers it without a window on screen.
+    var presentAlert: (NSAlert, NSWindow, @escaping (NSApplication.ModalResponse) -> Void) -> Void = {
+        alert,
+        window,
+        done in
         alert.beginSheetModal(for: window, completionHandler: done)
     }
 

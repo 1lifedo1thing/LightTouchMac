@@ -80,7 +80,6 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         outline.registerForDraggedTypes([.fileURL])
         outline.target = self
         outline.doubleAction = #selector(renameClicked(_:))
-        outline.onDelete = { [weak self] in self?.removeTargets() }
         outline.onRename = { [weak self] row in self?.beginRename(row: row) }
 
         let scroll = NSScrollView()
@@ -152,7 +151,7 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         customName(for: entry).map { "“\($0)”" } ?? "\(entry.marketingName) iOS \(entry.version)"
     }
 
-    /// Edit ▸ Delete while the sidebar has the focus (and its Delete key, SidebarOutlineView).
+    /// Edit ▸ Delete while the sidebar has the focus.
     @objc func delete(_ sender: Any?) { removeTargets() }
 
     /// Dims Edit ▸ Delete and the several-row Delete when none of the rows can go.
@@ -610,17 +609,12 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
 
 // MARK: - Outline
 
-/// Delete and Forward Delete remove the selected row (Remove Device, or Delete Device… for a prepared one).
+/// Return on one selected row renames it, as in the Finder's sidebar. Delete and Forward Delete do nothing: a row
+/// goes with File ▸ Delete Device… (⌘⌫), Edit ▸ Delete or the context menu.
 private final class SidebarOutlineView: NSOutlineView {
-    var onDelete: (() -> Void)?
-    /// Return on one selected row renames it, as in the Finder's sidebar.
     var onRename: ((Int) -> Void)?
     override func keyDown(with event: NSEvent) {
-        if [.delete, .deleteForward].contains(event.specialKey),
-            event.modifierFlags.isDisjoint(with: [.command, .option, .control])
-        {
-            onDelete?()
-        } else if [.carriageReturn, .enter].contains(event.specialKey),
+        if [.carriageReturn, .enter].contains(event.specialKey),
             event.modifierFlags.isDisjoint(with: [.command, .option, .control, .shift]), selectedRowIndexes.count == 1
         {
             onRename?(selectedRow)
