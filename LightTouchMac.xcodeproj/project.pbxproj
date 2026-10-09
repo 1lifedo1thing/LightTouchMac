@@ -16,7 +16,7 @@
 		A1D0C0DE3800000000000000071 /* iBoot32Patcher in Embed Vendor Tools */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3800000000000000051; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		A1D0C0DE3800000000000000072 /* inetcat in Embed Vendor Tools */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3800000000000000052; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		A1D0C0DE3800000000000000073 /* ipod-helper in Embed Vendor Tools */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3800000000000000053; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		A1D0C0DE3900000000000000010 /* Guest in Copy Vendor Resources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3800000000000000090; };
+		A1D0C0DE3900000000000000010 /* Guest in Copy Guest Tools */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3800000000000000090; };
 		A1D0C0DE3900000000000000011 /* Device in Copy Vendor Resources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3800000000000000091; };
 		A1D0C0DE3900000000000000012 /* licenses in Copy Vendor Resources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3800000000000000092; };
 		A1D0C0DE3900000000000000013 /* usbmuxd-conf in Copy Vendor Resources */ = {isa = PBXBuildFile; fileRef = A1D0C0DE3800000000000000093; };
@@ -73,9 +73,17 @@
 			isa = PBXCopyFilesBuildPhase;
 			dstPath = "";
 			dstSubfolder = Resources;
-			files = (A1D0C0DE3900000000000000010, A1D0C0DE3900000000000000011, A1D0C0DE3900000000000000012, A1D0C0DE3900000000000000013, A1D0C0DE3900000000000000014);
+			files = (A1D0C0DE3900000000000000011, A1D0C0DE3900000000000000012, A1D0C0DE3900000000000000013, A1D0C0DE3900000000000000014);
 			name = "Copy Vendor Resources";
 			runOnlyForDeploymentPostprocessing = 1;
+		};
+		A1D0C0DE39000000000000004 /* Copy Guest Tools */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = Resources;
+			files = (A1D0C0DE3900000000000000010);
+			name = "Copy Guest Tools";
+			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A1D0C0DE3100000000000003 /* Embed Device Helper */ = {
 			isa = PBXCopyFilesBuildPhase;
@@ -246,6 +254,7 @@
 				A1D0C0DE39000000000000001 /* Embed Vendor Frameworks */,
 				A1D0C0DE39000000000000002 /* Embed Vendor Tools */,
 				A1D0C0DE39000000000000003 /* Copy Vendor Resources */,
+				A1D0C0DE39000000000000004 /* Copy Guest Tools */,
 			);
 			buildRules = (
 			);

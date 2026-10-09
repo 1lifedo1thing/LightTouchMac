@@ -123,6 +123,24 @@ struct BundleHygieneTests {
         )
     }
 
+    /// Every build copies the guest tools (guest.aar), not only Archive: without them a Debug build couldn't prepare
+    /// any device ("guest helper it_agent missing from …/Resources/guest-tools").
+    @Test func everyBuildCopiesTheGuestTools() throws {
+        let project = try String(
+            contentsOf: repository.appendingPathComponent("LightTouchMac.xcodeproj/project.pbxproj"),
+            encoding: .utf8
+        )
+        let guestFile = try #require(project.firstMatch(of: /(\w+) \/\* Guest in [^*]+\*\/ = \{isa = PBXBuildFile/))
+        let phases = project.split(separator: "isa = PBXCopyFilesBuildPhase;").dropFirst()
+            .map { $0.prefix { $0 != "}" } }
+            .filter { $0.contains("files = (") && $0.split(separator: "files = (")[1].contains(guestFile.1) }
+        #expect(phases.count == 1, "one phase copies Guest")
+        #expect(
+            phases.first?.contains("runOnlyForDeploymentPostprocessing = 0;") == true,
+            "and not only when archiving"
+        )
+    }
+
     @Test func aCompleteBundlePassesAndEachBreakageIsNamed() throws {
         try withScratch { root in
             let f = try Fixture(root: root)
