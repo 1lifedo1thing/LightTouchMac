@@ -40,6 +40,18 @@ struct DeviceLockTests {
         )
     }
 
+    /// The recipe's options say how the base was prepared: Skip Setup boots to the Home screen, so the app doesn't wait
+    /// for Setup on it.
+    @Test func recipeOptions() throws {
+        func lock(_ options: [String: Any]) throws -> DeviceLock {
+            try DeviceLock(json: ["entry": ["content": ["recipe": ["version": 2, "options": options]]]])
+        }
+        #expect(try lock(["skip_setup": true]).skippedSetup)
+        #expect(try !lock(["skip_setup": false]).skippedSetup)
+        #expect(try !lock([:]).skippedSetup)
+        #expect(try lock(["jailbreak": true]).jailbroken && !lock(["jailbreak": true]).skippedSetup)
+    }
+
     /// Decoded once while the file is unchanged; a rewrite is read again.
     @Test func readIsCachedUntilTheFileChanges() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

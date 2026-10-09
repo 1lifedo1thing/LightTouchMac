@@ -228,6 +228,8 @@ public struct DeviceLock: Codable, Sendable, Equatable {
     public var recipeVersion: Int? { entry?["content"]?["recipe"]?["version"]?.int }
     /// Prepared jailbroken (firmwarekit create --jailbreak): afc2 serves the whole file system.
     public var jailbroken: Bool { entry?["content"]?["recipe"]?["options"]?["jailbreak"]?.bool == true }
+    /// Prepared past Setup Assistant (the Skip Setup option): it boots to the Home screen.
+    public var skippedSetup: Bool { entry?["content"]?["recipe"]?["options"]?["skip_setup"]?.bool == true }
     /// The entry content's board (the recipe's board, for admission steps).
     public var entryBoard: String? { entry?["content"]?["board"]?.string }
     /// Whether the preparer activated the volume (inputs.activation is a record).

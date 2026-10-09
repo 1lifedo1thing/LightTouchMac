@@ -61,7 +61,7 @@ extension MainWindowController {
             device.panel = instance.panel
             device.internet = emulator?.network
             device.recipeVersion = lock?.recipeVersion
-            device.skipSetup = lock?.entry?["content"]?["recipe"]?["options"]?["skip_setup"]?.bool
+            device.skipSetup = lock?.skippedSetup
             device.jailbreak = lock?.jailbroken
             if instance.profile?.hasCellular == true {
                 device.carrier = emulator?.carrierSettings ?? settings.carrier ?? CarrierSettings()

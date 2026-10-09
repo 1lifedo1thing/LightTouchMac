@@ -214,12 +214,12 @@ extension EmulatorController {
     }
     var nextStartChanged: Bool { bootSettings.map { $0 != nextBootSettings } ?? false }
 
-    /// Whether this boot ends in Setup: iOS 5 or later on an overlay that hasn't finished it (its mark), read at every
-    /// boot, so a Restart after Setup waits for the Home screen. Setup's end is watched on every boot that shows it
-    /// (the mark, the readiness text), networked or not.
+    /// Whether this boot ends in Setup: iOS 5 or later, prepared without Skip Setup, on an overlay that hasn't finished
+    /// it (its mark), read at every boot, so a Restart after Setup waits for the Home screen. Setup's end is watched on
+    /// every boot that shows it (the mark, the readiness text), networked or not.
     func readSetupExpectation() {
         let setupDone = FileManager.default.fileExists(atPath: BootRecipe.setupDoneMark(overlay: overlayURL).path)
-        expectsSetup = BootRecipe.setupPhonesHome(iosVersion: iosVersion) && !setupDone
+        expectsSetup = BootRecipe.setupPhonesHome(iosVersion: iosVersion) && !setupDone && lock?.skippedSetup != true
         foreground.setupGate = expectsSetup ? BootRecipe.SetupNetworkGate() : nil
     }
 
