@@ -511,6 +511,9 @@ func phone(_ args: PhoneCheck) -> Never {
     if only.contains("location") {
         location(base, tools: tools, work: work, r)
     }
+    if only.contains("compass") {
+        compass(base, tools: tools, work: work, r)
+    }
     if only.contains("rotate") {
         print("rotate")
         let d = HelperDriver(
@@ -727,6 +730,68 @@ func location(_ base: Base, tools: Tools, work: URL, _ r: Report) {
                 "location: speed \(fix.2) m/s, course \(fix.3) (\(last[3]), \(last[4]))"
             )
         }
+    }
+}
+
+/// The app's Compass Heading as CoreLocation reports it (contrib/it-heading's probe), face up and upright at two
+/// headings each: the 3GS's AK8973 sits turned against the iPad's (its DT compass node's orientation, which the
+/// driver undoes). The M68 has no magnetometer and refuses the heading. The iPhone 4 reads right only one of the two
+/// ways (qemu-ios docs/n90 debt 3) and iOS 4 reads headings unrelated to the one set, so neither is checked.
+func compass(_ base: Base, tools: Tools, work: URL, _ r: Report) {
+    print("compass")
+    if base.board == "n90ap" { return print("  (not checked on the iPhone 4: qemu-ios docs/n90/README.md debt 3)") }
+    if base.major == 4 {
+        // Open: 4.2.1's CoreLocation reads headings unrelated to the one set (90 reads 315, 200 reads 43) on the 3GS
+        // and the iPad alike, where 3.x and 6.x read right (overnight-10-09/app.md).
+        return print(
+            "  (not checked on iOS 4: its CoreLocation reads headings unrelated to the one set, an open finding)"
+        )
+    }
+    // (UIDeviceOrientation, heading): face up, the top edge's heading; portrait upright, the screen's.
+    let cases = [(5, 90), (5, 200), (1, 90), (1, 200)]
+    let probe = checkout("qemu-ios").appendingPathComponent("contrib/it-heading/it_heading")
+    let modeled = base.board == "n88ap"
+    guard !modeled || FileManager.default.fileExists(atPath: probe.path) else {
+        die("no it_heading at \(probe.path) (contrib/it-heading/build.sh)")
+    }
+    let steps =
+        modeled
+        ? ["boot", "lit 0.1 400", "wait 30", "agentput \(probe.path) /usr/local/bin/it_heading"]
+            + cases.flatMap { ["orientation \($0.0)", "compass \($0.1)", "spawn /usr/local/bin/it_heading"] }
+            + ["quit", "expectExit 60"]
+        : ["boot", "lit 0.1 400", "compass 90", "quit", "expectExit 60"]
+    let d = HelperDriver(
+        "compass",
+        tools: tools,
+        work: work,
+        scenario: preparedScenario(base, tools: tools, work: work, name: "compass", steps: steps)
+    )
+    r.check(d.finish(600) == 0, "compass: scenario completed")
+    let replies = d.events.find("reply").filter { $0.has("compass") }.map { $0.string("reply") ?? "" }
+    guard modeled else {
+        r.check(
+            replies.first?.contains("ok(false)") == true,
+            "compass: no magnetometer, the heading refused (\(replies))"
+        )
+        return
+    }
+    r.check(replies.allSatisfy { $0.contains("ok(true)") }, "compass: the heading taken (\(replies))")
+    let runs = d.events.find("agent").filter { $0.string("op") == "spawn" }.map { $0.string("output") ?? "" }
+    guard r.check(runs.count == cases.count, "compass: the probe ran \(cases.count) times (\(runs.count))") else {
+        return
+    }
+    for (run, (pose, heading)) in zip(runs, cases) {
+        // "magnetic 90.0 accuracy 25.0"; an accuracy below 0 is an invalid (uncalibrated) heading
+        let seen = run.matches(of: /it_heading: magnetic ([-0-9.]+) accuracy ([-0-9.]+)/).compactMap { m in
+            Double(m.1).flatMap { h in Double(m.2).map { (h, $0) } }
+        }
+        let off = seen.last.map { abs(($0.0 - Double(heading) + 540).truncatingRemainder(dividingBy: 360) - 180) }
+        let last = seen.last.map { "\($0.0), accuracy \($0.1)" } ?? "none"
+        r.check(
+            off.map { $0 < 5 } ?? false,
+            "compass: CoreLocation reads \(heading) degrees \(pose == 5 ? "face up" : "upright") "
+                + "(last of \(seen.count): \(last))" + (seen.isEmpty ? ": " + run.suffix(200) : "")
+        )
     }
 }
 

@@ -390,6 +390,10 @@ Thread.detachNewThread {
             }
         case "orientation":
             emit("reply", ["reply": "\(request(.orientation(Int(v[0]))))"])
+        case "compass":  // compass DEGREES: the app's Compass Heading (qemu_ios_ui_compass)
+            emit("reply", ["reply": "\(request(.compass(Int(v[0]))))", "compass": p[1]])
+        case "compass":  // compass DEGREES: the app's Compass Heading (qemu_ios_ui_compass)
+            emit("reply", ["reply": "\(request(.compass(Int(v[0]))))", "compass": p[1]])
         case "agent", "agentop":  // agent COMMAND: exec in the guest; agentop OP [ARGS]: an agent operation
             let command = (p[0] == "agent" ? ["exec"] : []) + p.dropFirst()
             let r = request(
