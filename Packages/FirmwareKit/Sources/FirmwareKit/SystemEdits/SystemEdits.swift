@@ -434,8 +434,9 @@ public enum SystemEdits {
             "owners from the skeleton, else root / mobile by rule: \(summary.joined(separator: ", ")) (\(patched) catalog records patched)"
         )
         try dv.normalize(after: newest, to: newest, uuid: dataVolumeUUID)
-        if productMajor >= 6 {
-            // A restore formats the data volume with content protection; iOS 6 installd fails without protection classes.
+        if productMajor >= 5 {
+            // A restore formats the data volume with content protection. From 5.0 installd gives each app's tmp
+            // protection class 4 and, refused, leaves the container without Documents (Library and tmp only).
             try dv.setContentProtection()
             log("data volume: content protection on")
         }
