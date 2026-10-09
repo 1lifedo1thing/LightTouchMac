@@ -442,10 +442,14 @@ func phone(_ args: PhoneCheck) -> Never {
                 name: "carrier",
                 steps: [
                     "boot", "lit 0.1 300", "wait 60", "modemSettle 80 240", "dump registered", "modemStatus",
-                    "modem carrier Cell Panel", "modem signal-dbm -97", "modem mcc-mnc 001", "wait 1", "modemStatus",
                     "modem incoming-sms +15555550100|hello from the panel", "audio 10", "modemStatus",
                     "modem incoming-call 15555550100", "audio 12", "modemStatus",
                     "modem remote-hangup 1", "wait 3", "modemStatus",
+                    // The panel's changes come after the SMS and the call: a rename re-registers (the model's
+                    // +CREG 2 then 1, so CommCenter re-reads the name), and on 6.x that new serving network has
+                    // imagent re-register iMessage and wait on Apple's servers, sometimes for minutes, taking no
+                    // SMS until it is done. No wait before the SMS covered that.
+                    "modem carrier Cell Panel", "modem signal-dbm -97", "modem mcc-mnc 001", "wait 1", "modemStatus",
                     "modem no-such-property x", "quit", "expectExit 60",
                 ],
                 carrier: saved
@@ -473,16 +477,16 @@ func phone(_ args: PhoneCheck) -> Never {
                 "carrier: booted registered with the saved settings (\(st[0]))"
             )
             r.check(
-                st[1].string("carrier") == "Cell Panel" && st[1].int("signal-dbm") == -97
-                    && st[1].string("mcc-mnc") == "00101"
-                    && (st[1].string("error") ?? "").contains("mcc-mnc"),
-                "carrier: renamed, signal moved, the bad MCC/MNC refused (\(st[1]))"
+                !st[1].has("error") && (replies["incoming-sms"] ?? "").contains("ok(true)"),
+                "carrier: the SMS delivered (\(st[1]))"
             )
+            r.check(st[2].string("call-state") == "incoming", "carrier: ringing: \(st[2].string("call-state") ?? "")")
             r.check(
-                !st[2].has("error") && (replies["incoming-sms"] ?? "").contains("ok(true)"),
-                "carrier: the SMS delivered (\(st[2]))"
+                st[4].string("carrier") == "Cell Panel" && st[4].int("signal-dbm") == -97
+                    && st[4].string("mcc-mnc") == "00101"
+                    && (st[4].string("error") ?? "").contains("mcc-mnc"),
+                "carrier: renamed, signal moved, the bad MCC/MNC refused (\(st[4]))"
             )
-            r.check(st[3].string("call-state") == "incoming", "carrier: ringing: \(st[3].string("call-state") ?? "")")
         }
         // The app's audio capture through each: the SMS tone, then the ringtone (AAC through the A4's AMC).
         let heard = e.find("audioEnded").map { $0.int("loud") ?? 0 }
@@ -490,7 +494,7 @@ func phone(_ args: PhoneCheck) -> Never {
             r.check(heard[0] > 2000, "carrier: the SMS tone is heard (\(heard[0]) loud samples)")
             r.check(heard[1] > 20000, "carrier: the ringtone is heard (\(heard[1]) loud samples in 12 s of ringing)")
             if st.count == 5 {
-                r.check(st[4].string("call-state") == "idle", "carrier: hung up: \(st[4].string("call-state") ?? "")")
+                r.check(st[3].string("call-state") == "idle", "carrier: hung up: \(st[3].string("call-state") ?? "")")
             }
         }
         r.check(
