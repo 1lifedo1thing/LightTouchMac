@@ -3,8 +3,8 @@
 // The device sits on top, the console below, and the bar between them is the
 // divider: drag it, double-click it, or use its toggle. With the console
 // hidden the bar floats, transparent, over the device's bottom edge, so the
-// device keeps the whole pane; only its toggle takes clicks, and a drag from the
-// toggle sizes the console as a drag of the divider does.
+// device keeps the whole pane: its toggle is a plain button, and the rest of
+// the strip is the divider's grab area except where the device is.
 
 import Cocoa
 import LightTouchCore
@@ -161,9 +161,10 @@ final class ConsoleSplitView: NSView {
 
 /// Xcode's debug bar: pinned at the divider, visible when the console isn't,
 /// and itself the divider's grab area (IDEBottomBar.additionalGrabRectsForSplitViewDivider).
-/// Collapsed it draws nothing but an opaque bordered toggle over the device and takes clicks only there: the rest
-/// of the strip is the device's (issue 33). The toggle is then also the divider's grab area: a click toggles, a
-/// drag sizes the console, and the pointer over it is the resize cursor.
+/// Collapsed it draws nothing but an opaque bordered toggle over the device. The toggle is a plain button (the
+/// arrow cursor, a click toggles); the rest of the strip is the grab area (the resize cursor, a drag sizes the
+/// console, a double-click shows it) except where the pane takes the press: its controls, such as the iPad's Home
+/// button, and whatever `paneTakesPress` claims, such as the device's chassis and screen (issue 33).
 @MainActor
 final class ConsoleBar: NSView {
     /// DVTControlBar.defaultBarHeight: 36 pt in the macOS 26 design, 27 before it.
@@ -184,8 +185,11 @@ final class ConsoleBar: NSView {
     var onDragBegan: ((CGFloat) -> Void)?
     var onDrag: ((CGFloat) -> Void)?
     var onDragEnded: (() -> Void)?
-    /// A press on the collapsed toggle: where it started, and whether it has moved far enough to be a drag.
-    private var togglePress: (y: CGFloat, isDrag: Bool)?
+    /// Whether the pane under the collapsed strip takes a press at a window point itself (the device does on its
+    /// screen and chassis).
+    var paneTakesPress: ((NSPoint) -> Bool)?
+    /// The collapsed strip set the resize cursor, and puts the arrow back when the pointer leaves the grab area.
+    private var showsResizeCursor = false
 
     /// Dark, whatever the system appearance, while it borders the device's gradient: just this strip, not
     /// the console under it. Otherwise (a placeholder above) it follows the system.
@@ -202,7 +206,7 @@ final class ConsoleBar: NSView {
             toggleButton.isBordered = !isExpanded
             toggleButton.contentTintColor = isExpanded ? .controlAccentColor : nil
             let label = isExpanded ? "Hide Console" : "Show Console"
-            toggleButton.toolTip = label + " (⇧⌘Y)" + (isExpanded ? "" : "\nDrag up to size the console.")
+            toggleButton.toolTip = label + " (⇧⌘Y)"
             toggleButton.setAccessibilityLabel(label)
             // The console's own controls go with it, as Xcode's console footer does.
             for control in [source, filter, clearButton] as [NSView] { control.isHidden = !isExpanded }
@@ -275,20 +279,61 @@ final class ConsoleBar: NSView {
         NSRect(x: 0, y: 0, width: bounds.width, height: 1).fill()
     }
 
-    /// Collapsed, only the toggle is the bar's, and the bar takes its press to tell a click from a drag;
-    /// elsewhere the click falls through to the device.
+    /// Collapsed, the toggle is its own and the grab area the bar's; the rest falls through to the pane.
     override func hitTest(_ point: NSPoint) -> NSView? {
         let hit = super.hitTest(point)
         guard !isExpanded, let hit else { return hit }
-        return hit.isDescendant(of: toggleButton) ? self : nil
+        if hit.isDescendant(of: toggleButton) { return toggleButton }
+        return grabs(convert(point, from: superview)) ? self : nil
     }
 
-    /// The resize cursor over the bar's empty stretches, not over its controls; collapsed, over the toggle.
-    override func resetCursorRects() {
-        guard isExpanded else {
-            addCursorRect(toggleButton.convert(toggleButton.bounds, to: self), cursor: .resizeUpDown)
-            return
+    /// Collapsed: whether a press at this point (the bar's own coordinates) is the divider's: in the strip, off
+    /// the toggle, and not the pane's (one of its controls, or what `paneTakesPress` claims).
+    func grabs(_ p: NSPoint) -> Bool {
+        guard !isExpanded, bounds.contains(p), !toggleButton.convert(toggleButton.bounds, to: self).contains(p),
+            let pane = superview
+        else {
+            return false
         }
+        let window = convert(p, to: nil)
+        let under = pane.subviews.reversed().lazy.filter { $0 !== self && !$0.isHidden }
+            .compactMap { $0.hitTest(pane.convert(window, from: nil)) }.first
+        return !(under is NSControl) && paneTakesPress?(window) != true
+    }
+
+    /// Collapsed, the pointer is the resize cursor over the grab area and the arrow elsewhere in the strip,
+    /// as the device under it can't be told apart by rectangles.
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if trackingAreas.isEmpty {
+            addTrackingArea(
+                NSTrackingArea(
+                    rect: .zero,
+                    options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                    owner: self
+                )
+            )
+        }
+    }
+
+    override func mouseMoved(with event: NSEvent) { updateCursor(event) }
+    override func mouseEntered(with event: NSEvent) { updateCursor(event) }
+    override func mouseExited(with event: NSEvent) { updateCursor(event) }
+
+    private func updateCursor(_ event: NSEvent) {
+        guard !isExpanded else { return }
+        let grab = event.type != .mouseExited && grabs(convert(event.locationInWindow, from: nil))
+        if grab {
+            NSCursor.resizeUpDown.set()
+        } else if showsResizeCursor {
+            NSCursor.arrow.set()
+        }
+        showsResizeCursor = grab
+    }
+
+    /// Expanded, the resize cursor over the bar's empty stretches, not over its controls.
+    override func resetCursorRects() {
+        guard isExpanded else { return }
         var x = bounds.minX
         for control in stack.arrangedSubviews where !control.isHidden && control !== spacer {
             let frame = control.convert(control.bounds, to: self)
@@ -308,36 +353,17 @@ final class ConsoleBar: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        let y = event.locationInWindow.y
-        if !isExpanded {
-            togglePress = (y, false)
-            toggleButton.highlight(true)
-        } else if event.clickCount == 2 {
+        if event.clickCount == 2 {
             // IDEEditorArea splitView:doubleClickedOnDividerAtIndex: shows or hides the debug area.
             onToggle?()
             return
         }
-        onDragBegan?(y)
+        onDragBegan?(event.locationInWindow.y)
     }
 
-    override func mouseDragged(with event: NSEvent) {
-        let y = event.locationInWindow.y
-        if let press = togglePress, !press.isDrag {
-            // A few points of travel, as NSSplitView's divider, before a press on the toggle becomes a drag.
-            guard abs(y - press.y) > 3 else { return }
-            togglePress?.isDrag = true
-            toggleButton.highlight(false)
-        }
-        onDrag?(y)
-    }
+    override func mouseDragged(with event: NSEvent) { onDrag?(event.locationInWindow.y) }
 
-    override func mouseUp(with event: NSEvent) {
-        onDragEnded?()
-        guard let press = togglePress else { return }
-        togglePress = nil
-        toggleButton.highlight(false)
-        if !press.isDrag { onToggle?() }
-    }
+    override func mouseUp(with event: NSEvent) { onDragEnded?() }
 
     @objc private func toggle() { onToggle?() }
     @objc private func clear() { onClear?() }

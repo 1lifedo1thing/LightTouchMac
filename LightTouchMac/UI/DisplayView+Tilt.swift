@@ -39,13 +39,15 @@ extension DisplayView {
     }
 
     /// Keep direct manipulation on the chassis and guest touches on the LCD.
-    func isChassisEvent(_ event: NSEvent) -> Bool {
+    func isChassisEvent(_ event: NSEvent) -> Bool { isChassis(windowPoint: event.locationInWindow) }
+
+    func isChassis(windowPoint: NSPoint) -> Bool {
         if let modelView {
-            return modelView.isChassis(modelView.convert(event.locationInWindow, from: nil))
+            return modelView.isChassis(modelView.convert(windowPoint, from: nil))
         }
         // Bare, there is no chassis to grab: the empty shell around the screen is the backdrop.
         guard modelPresentationFinished, !bare, let rootLayer = layer else { return false }
-        let p = convert(event.locationInWindow, from: nil)
+        let p = convert(windowPoint, from: nil)
         let sp = shellLayer.convert(p, from: rootLayer)
         return shellLayer.bounds.contains(sp) && !screenCutout.contains(sp)
     }

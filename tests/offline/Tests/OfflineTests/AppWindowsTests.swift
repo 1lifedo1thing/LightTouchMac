@@ -620,15 +620,18 @@ extension SharedState {
         }
 
         /// Collapsed, the bar floats over the device pane (issue 33): the pane keeps the whole height, the bar draws
-        /// nothing of its own so the pane shows through, the toggle has an opaque neutral bezel to stand on, and a
-        /// click anywhere in the strip but the toggle is the pane's; a click on the toggle shows the console and a
-        /// drag from it sizes the console as a drag of the divider does. Expanded, the bar is the divider between them as before. Renders go to the
-        /// temporary directory.
+        /// nothing of its own so the pane shows through, and the toggle has an opaque neutral bezel to stand on. The
+        /// toggle is a plain button: it takes its own press (no drag from it), the pointer over it is the arrow, and a
+        /// click shows the console. The rest of the strip is the divider's grab area, with the resize cursor: a drag
+        /// from it sizes the console and a click leaves it hidden; a control of the pane's there (the iPad's Home
+        /// button) and what the pane claims (the device) stay the pane's. Expanded, the bar is the divider between
+        /// them as before. Renders go to the temporary directory.
         @Test(arguments: [NSAppearance.Name.aqua, .darkAqua]) func collapsedConsoleBarOverlaysThePane(
             _ appearance: NSAppearance.Name
         ) throws {
             final class Fill: NSView {
                 var downs = 0
+                let button = NSButton(title: "Home", target: nil, action: nil)
                 override func mouseDown(with event: NSEvent) { downs += 1 }
                 override func draw(_ dirtyRect: NSRect) {
                     NSColor(srgbRed: 1, green: 0, blue: 1, alpha: 1).setFill()
@@ -639,7 +642,11 @@ extension SharedState {
             let defaults = UserDefaults(suiteName: suite)!
             defer { defaults.removePersistentDomain(forName: suite) }
             let top = Fill()
+            top.button.frame = NSRect(x: 150, y: 4, width: 40, height: 20)
+            top.addSubview(top.button)
             let split = ConsoleSplitView(top: top, autosaveName: "view", defaults: defaults)
+            // The pane claims the strip's right end, as the device claims its chassis.
+            split.bar.paneTakesPress = { $0.x > 360 }
             split.appearance = NSAppearance(named: appearance)
             // In a window, never ordered in. It doesn't dispatch events while hidden, so `press` does what its
             // sendEvent does: the mouse-down to the view hit-tested under it, the drags and the mouse-up to that view.
@@ -705,36 +712,45 @@ extension SharedState {
             for y in [ConsoleBar.height - 0.5, ConsoleBar.height / 2] {
                 #expect(pixel(NSPoint(x: 300, y: y)) == magenta, "collapsed bar is transparent at y \(y)")
             }
-            // Clicks in the strip away from the toggle reach the pane, through the window.
-            for p in [NSPoint(x: 300, y: 10), NSPoint(x: 200, y: ConsoleBar.height / 2), NSPoint(x: 4, y: 4)] {
-                let before = top.downs
+            // The strip's free area is the bar's, with the resize cursor; a click there leaves the console hidden.
+            for p in [NSPoint(x: 300, y: 10), NSPoint(x: 220, y: ConsoleBar.height / 2), NSPoint(x: 4, y: 4)] {
+                #expect(split.hitTest(p) === bar && bar.grabs(p), "the strip at \(p) is the grab area")
                 press([p])
-                #expect(top.downs == before + 1, "a click at \(p) in the strip reaches the pane")
             }
-            #expect(split.layout.isCollapsed, "and leaves the console hidden")
+            #expect(top.downs == 0 && split.layout.isCollapsed, "clicks in the grab area leave the console hidden")
+            // The pane's control in the strip and what the pane claims stay the pane's, without the resize cursor.
+            let home = NSPoint(x: 170, y: 14)
+            #expect(split.hitTest(home) === top.button && !bar.grabs(home), "the pane's button in the strip is its own")
+            let claimed = NSPoint(x: 380, y: 10)
+            #expect(split.hitTest(claimed) == nil || split.hitTest(claimed) === top, "the claimed strip is the pane's")
+            #expect(!bar.grabs(claimed), "no resize cursor where the pane claims the strip")
+            press([claimed])
+            #expect(top.downs == 1, "a click where the pane claims the strip reaches it")
+            // The toggle is a plain button: it takes its own press, the pointer over it is the arrow, a click shows.
             let toggle = bar.toggleButton
             let grip = toggle.convert(NSPoint(x: toggle.bounds.midX, y: toggle.bounds.midY), to: nil)
-            #expect(split.hitTest(grip) === bar, "the bar takes a press on the toggle, at \(grip)")
+            #expect(split.hitTest(grip) === toggle, "the toggle takes its own press, at \(grip)")
+            #expect(!bar.grabs(bar.convert(grip, from: nil)), "no resize cursor over the toggle")
             // Opaque and neutral: no magenta through it, and as gray as the bar's own background.
             let bezel = pixel(bar.toggleButton.convert(NSPoint(x: 8, y: bar.toggleButton.bounds.midY), to: nil))
             #expect(
                 bezel.max()! - bezel.min()! < 8,
                 "the toggle's bezel is opaque and neutral, got \(bezel) in \(bar.toggleButton.frame)"
             )
-            // A drag up from the toggle opens the console at the drag.
-            press([grip, NSPoint(x: grip.x, y: grip.y + 60), NSPoint(x: grip.x, y: grip.y + 150)])
+            // A drag up from the strip's free area opens the console at the drag.
+            let free = NSPoint(x: 300, y: 10)
+            press([free, NSPoint(x: free.x, y: free.y + 60), NSPoint(x: free.x, y: free.y + 150)])
             split.layoutSubtreeIfNeeded()
             #expect(
                 !split.layout.isCollapsed && split.log.frame.height == 150,
-                "drag up from the toggle opens at 150, got \(split.log.frame.height)"
+                "drag up from the strip opens at 150, got \(split.log.frame.height)"
             )
-            // A double-click on the expanded bar hides the console; a click on the toggle shows it again, and a
-            // press that moves only a point or two is still a click.
+            // A double-click on the expanded bar hides the console; a click on the toggle shows it again.
             let barAt = NSPoint(x: 300, y: bar.frame.midY)
             press([barAt], clicks: 2)
             split.layoutSubtreeIfNeeded()
             #expect(split.layout.isCollapsed && top.frame == split.bounds, "double-click on the bar hides")
-            press([grip, NSPoint(x: grip.x, y: grip.y + 2)])
+            toggle.performClick(nil)
             split.layoutSubtreeIfNeeded()
             #expect(!split.layout.isCollapsed, "a click on the toggle shows")
             #expect(

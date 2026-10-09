@@ -136,6 +136,10 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
             }
         )
         placeholder.onDropIPSW = { [weak self] url in self?.handOffIPSW(url, for: self?.selectedEntry) }
+        // The device keeps its screen, chassis and buttons where they reach under the collapsed console strip.
+        console.split.bar.paneTakesPress = { [weak self] point in
+            self?.attachedSession?.workspace.deviceVC.screen.takesPress(atWindowPoint: point) ?? false
+        }
         showDetail(placeholder)
         noInspector.shortName = profile.shortName
         inspectorContainer.show(noInspector)

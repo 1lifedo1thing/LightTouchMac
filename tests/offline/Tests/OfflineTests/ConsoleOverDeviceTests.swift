@@ -43,6 +43,7 @@ extension SharedState {
                 pane.addSubview(display)
                 let split = ConsoleSplitView(top: pane, autosaveName: "view", defaults: defaults)
                 split.bar.overGradient = true
+                split.bar.paneTakesPress = { display.takesPress(atWindowPoint: $0) }
                 let window = NSWindow(
                     contentRect: NSRect(x: 0, y: 0, width: 1000, height: 600),
                     styleMask: [.titled],
@@ -68,8 +69,16 @@ extension SharedState {
                     split.hitTest(center)?.isDescendant(of: home) == true,
                     "the Home button at \(center) is the device's, got \(String(describing: split.hitTest(center)))"
                 )
-                let bezel = NSPoint(x: homeRect.maxX + 30, y: 10)
+                // The bezel beside the Home button is the device's (its chassis, which a drag tilts); under the
+                // device's bottom edge and beside it, the strip is the console divider's grab area.
+                let shellRect = split.convert(display.shellLayer.frame, from: display)
+                let bezel = NSPoint(x: homeRect.maxX + 30, y: shellRect.minY + 8)
+                #expect(shellRect.minY + 8 < ConsoleBar.height, "the bezel reaches the strip: \(shellRect)")
                 #expect(split.hitTest(bezel) === display, "the strip beside the Home button is the device's")
+                #expect(!split.bar.grabs(bezel), "no resize cursor over the device")
+                for off in [NSPoint(x: bezel.x, y: shellRect.minY - 6), NSPoint(x: 100, y: 10)] {
+                    #expect(split.hitTest(off) === split.bar && split.bar.grabs(off), "the strip at \(off) grabs")
+                }
 
                 // The layer tree, not cacheDisplay: the device's scale and turn live in layer transforms. render(in:)
                 // skips a transform with perspective, so the shell's goes flat for the picture (at rest, no tilt, the

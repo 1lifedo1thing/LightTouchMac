@@ -162,7 +162,7 @@ extension DisplayView {
     }
 
     /// The edges a press on a handle grabs; nil off the handles, or when the screen can't be resized now.
-    private func panelEdges(at p: CGPoint) -> CGVector? {
+    func panelEdges(at p: CGPoint) -> CGVector? {
         guard isFreeForm, !restartingAtPanel, let r = screenRect else { return nil }
         return FreeFormResize.edges(at: p, screen: r, band: Self.handleBand)
     }

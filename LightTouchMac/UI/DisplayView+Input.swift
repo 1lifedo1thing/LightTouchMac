@@ -53,13 +53,23 @@ extension DisplayView {
     /// model, the flat shell and any rotation or zoom.
     func nearScreenEdge(_ event: NSEvent) -> (Double, Double)? {
         let point = event.locationInWindow
-        let m = Self.screenEdgeMargin
-        let probes = [(-m, 0), (m, 0), (0, -m), (0, m), (-m, -m), (m, -m), (-m, m), (m, m)]
-        guard normalized(windowPoint: point) == nil,
-            probes.contains(where: { normalized(windowPoint: NSPoint(x: point.x + $0.0, y: point.y + $0.1)) != nil }),
-            let p = clampedPanelPoint(event)
+        guard normalized(windowPoint: point) == nil, onOrNearScreen(point), let p = clampedPanelPoint(event)
         else { return nil }
         return (Double(p.x), Double(p.y))
+    }
+
+    private func onOrNearScreen(_ point: NSPoint) -> Bool {
+        let m = Self.screenEdgeMargin
+        let probes = [(0, 0), (-m, 0), (m, 0), (0, -m), (0, m), (-m, -m), (m, -m), (-m, m), (m, m)]
+        return probes.contains { normalized(windowPoint: NSPoint(x: point.x + $0.0, y: point.y + $0.1)) != nil }
+    }
+
+    /// Whether a press at this window point is the device's: on the screen or its edge, a resize handle, a side
+    /// button or the chassis (mouseDown's cases). The collapsed console strip leaves these to the device.
+    func takesPress(atWindowPoint point: NSPoint) -> Bool {
+        if onOrNearScreen(point) || panelEdges(at: convert(point, from: nil)) != nil { return true }
+        if let modelView, modelView.control(at: modelView.convert(point, from: nil)) != nil { return true }
+        return isChassis(windowPoint: point)
     }
 
     /// The panel-space point under the cursor, clamped into the panel. Unlike
