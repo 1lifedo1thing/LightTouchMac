@@ -49,8 +49,8 @@ extension SharedState {
                     #expect(model.selection == "207203", "the row's own copy selected")
                     let own = rows.first { $0.copy.ipaID == "207203" }!
                     let twin = rows.first { $0.copy.ipaID == "5635" }!
-                    #expect(model.title(own) == "1.1.51 · 65.6 MB")
-                    #expect(model.title(twin).hasSuffix(" · Copy 5635"), "twin copies are numbered")
+                    #expect(model.title(own) == "1.1.51, 65.6 MB")
+                    #expect(model.title(twin).hasSuffix(", Copy 5635"), "twin copies are numbered")
                     await model.check()
                     #expect(model.problem == nil && model.canInstallSelection, "\(model.problem ?? "")")
                     #expect(

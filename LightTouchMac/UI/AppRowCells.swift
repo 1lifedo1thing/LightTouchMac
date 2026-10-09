@@ -14,7 +14,7 @@ import LightTouchCore
         view?.layer?.backgroundColor = NSColor.systemFill.cgColor
     }
 
-    /// A Legacy Store result: icon, name, "developer · 66 MB" (or why it can't run here), and its button
+    /// A Legacy Store result: icon, name, "developer, 66 MB" (or why it can't run here), and its button
     /// (Install or Open), whose tag is the row it was built for. Built fresh each time: a page of results is small,
     /// and every state change reloads the row, so tags never go stale.
     static func catalogCell(

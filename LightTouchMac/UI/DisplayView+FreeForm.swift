@@ -33,7 +33,7 @@ extension DisplayView {
     var freeFormSize: String? { (freeFormTarget ?? freeFormPanel).map { FreeFormResize.text(onScreen($0)) } }
     /// The size, and why an edge stopped.
     var freeFormReadout: String? {
-        freeFormSize.map { ([$0] + [freeFormLimit].compactMap { $0 }).joined(separator: " · ") }
+        freeFormSize.map { ([$0] + [freeFormLimit].compactMap { $0 }).joined(separator: " — ") }
     }
 
     /// The width of the handles, just outside the screen's edges.

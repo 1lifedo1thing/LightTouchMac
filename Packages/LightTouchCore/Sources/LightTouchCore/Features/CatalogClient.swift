@@ -111,7 +111,7 @@ public nonisolated struct CatalogApp: Codable, Sendable {
         }
     }
 
-    /// "SEGA · 66 MB" — whichever parts the catalog knows; for an app the
+    /// "SEGA, 66 MB" — whichever parts the catalog knows; for an app the
     /// server excluded, its reason instead. The min-OS stayed out on purpose:
     /// the server already filtered to what runs here, so it was noise on
     /// every row.
@@ -122,7 +122,7 @@ public nonisolated struct CatalogApp: Codable, Sendable {
         if let size {
             parts.append(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
         }
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: ", ")
     }
 }
 

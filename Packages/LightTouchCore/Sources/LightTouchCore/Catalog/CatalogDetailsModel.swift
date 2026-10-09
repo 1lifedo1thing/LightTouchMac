@@ -49,7 +49,7 @@ import Observation
         // Two archived copies of one version need their copy number to tell apart.
         let twin = (rows ?? []).filter { $0.version.version == row.version.version }.count > 1
         return [row.version.version ?? "Unknown", size, twin ? "Copy \(row.copy.ipaID)" : nil]
-            .compactMap { $0 }.joined(separator: " · ")
+            .compactMap { $0 }.joined(separator: ", ")
     }
 
     /// Choosing an older version than the one installed: the only case where data is at risk.

@@ -534,7 +534,7 @@ extension SharedState {
             b = box(d)
             drag(d, from: CGPoint(x: b.maxX + 4, y: b.maxY + 4), by: CGVector(dx: 10.3, dy: 400))
             check(
-                d.freeFormReadout?.hasPrefix("370 × 511 · ") == true && d.freeFormLimit?.contains("511") == true,
+                d.freeFormReadout?.hasPrefix("370 × 511 — ") == true && d.freeFormLimit?.contains("511") == true,
                 "clamped readout \(d.freeFormReadout ?? "none")"
             )
             check(

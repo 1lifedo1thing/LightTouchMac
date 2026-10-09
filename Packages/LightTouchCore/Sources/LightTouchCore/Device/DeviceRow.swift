@@ -272,7 +272,7 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
     }
 
     /// The line under the bar: the percent, the time left and, for a slow or long download, its speed
-    /// ("43% · About 12 minutes remaining · 1.2 MB/s"); nil outside a job.
+    /// ("43% — About 12 minutes remaining — 1.2 MB/s"); nil outside a job.
     public var progressLine: String? {
         let remaining: TimeInterval?
         let speed: Double?
@@ -288,7 +288,7 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
             showSpeed
                 ? speed.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) + "/s" } : nil,
         ]
-        let line = parts.compactMap { $0 }.joined(separator: " · ")
+        let line = parts.compactMap { $0 }.joined(separator: " — ")
         return line.isEmpty ? nil : line
     }
 

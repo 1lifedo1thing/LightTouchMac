@@ -19,7 +19,7 @@ struct StorageSettingsView: View {
                 ForEach(usage.devices, id: \.instance.id) { device in
                     StorageRow(
                         title: model.name(device.instance.firmware),
-                        detail: "System \(size(device.base)) · Data \(size(device.data + device.snapshot))",
+                        detail: "System \(size(device.base)), Data \(size(device.data + device.snapshot))",
                         action: "Delete Device…",
                         enabled: model.canDelete(device.instance)
                     ) { model.delete(device.instance) }
@@ -33,7 +33,7 @@ struct StorageSettingsView: View {
                     let kind = ipsw.url.path.hasPrefix(IPSWStore.shared.imports.path) ? "Imported" : "Downloaded"
                     StorageRow(
                         title: model.name(ipsw.entry),
-                        detail: "\(kind) · \(size(ipsw.bytes))",
+                        detail: "\(kind), \(size(ipsw.bytes))",
                         action: "Remove IPSW",
                         enabled: !busy
                     ) { model.removeIPSW(ipsw.url) }
@@ -56,8 +56,8 @@ struct StorageSettingsView: View {
                 let unusedBytes = unused.values.reduce(0) { $0 + $1.size }
                 StorageRow(
                     title: "Library",
-                    detail: "\(IPALibrary.index.count) IPAs · \(size(usage.library))"
-                        + (unused.isEmpty ? "" : " · \(size(unusedBytes)) unused"),
+                    detail: "\(IPALibrary.index.count) IPAs, \(size(usage.library))"
+                        + (unused.isEmpty ? "" : ", \(size(unusedBytes)) unused"),
                     action: "Remove Unused Apps",
                     enabled: !unused.isEmpty
                 ) { model.removeUnusedIPAs() }

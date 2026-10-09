@@ -69,7 +69,7 @@ extension MainWindowController {
         let status =
             emulator.isRunning && !emulator.shuttingDown && !emulator.isSleeping
             ? (emulator.foregroundAppName ?? emulator.statusLine) : emulator.statusLine
-        window?.subtitle = ([status] + [deviceVC?.screen.freeFormReadout].compactMap { $0 }).joined(separator: " · ")
+        window?.subtitle = ([status] + [deviceVC?.screen.freeFormReadout].compactMap { $0 }).joined(separator: " — ")
     }
 
     private func updateStartupStatus() {
@@ -86,7 +86,7 @@ extension MainWindowController {
             title: emulator.isErasing
                 ? "Erasing \(emulator.profile.shortName)…"
                 : deviceVC?.screen.restartTitle ?? "Starting iOS…",
-            detail: (emulator.isErasing ? "" : emulator.bootStageText + " · ") + "\(elapsed) s",
+            detail: (emulator.isErasing ? "" : emulator.bootStageText + " — ") + "\(elapsed) s",
             busy: true,
             primary: elapsed >= Int(emulator.profile.bootBudget) ? "Show Logs" : nil
         )

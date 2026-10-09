@@ -196,7 +196,7 @@ extension SharedState {
                             found.count == 4
                                 && found.allSatisfy { $0.compat == nil && $0.md5 == nil && $0.incompatibility == nil }
                         )
-                        #expect(found.first?.subtitle == "Pangea Software, Inc. · 5.1 MB")
+                        #expect(found.first?.subtitle == "Pangea Software, Inc., 5.1 MB")
                     }
                     let enigmo = try await CatalogClient.compatibleCopy(195588, device: "iPod2,1", os: "3.1.3")
                     let file = try await CatalogClient.download(enigmo, device: "iPod2,1") { _ in }

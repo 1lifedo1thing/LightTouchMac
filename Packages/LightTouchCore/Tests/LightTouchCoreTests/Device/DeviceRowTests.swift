@@ -148,19 +148,19 @@ struct DeviceRowTests {
         #expect(r.progressLine == "21%")
         r = row(iPad32, job: .downloading(fraction: 0.5, remaining: 125))
         #expect(r.progressHeadline == "Downloading…" && r.progressSummary == "25%")
-        #expect(r.progressLine == "25% · About 2 minutes remaining")
+        #expect(r.progressLine == "25% — About 2 minutes remaining")
         // A slow download (under 2 MB/s) shows its speed; a fast, short one doesn't; a long one does.
         #expect(
             row(iPad32, job: .downloading(fraction: 0.5, remaining: 125, speed: 1_200_000)).progressLine
-                == "25% · About 2 minutes remaining · 1.2 MB/s"
+                == "25% — About 2 minutes remaining — 1.2 MB/s"
         )
         #expect(
             row(iPad32, job: .downloading(fraction: 0.5, remaining: 125, speed: 9_000_000)).progressLine
-                == "25% · About 2 minutes remaining"
+                == "25% — About 2 minutes remaining"
         )
         #expect(
             row(iPad32, job: .downloading(fraction: 0.5, remaining: 1800, speed: 9_000_000)).progressLine
-                == "25% · About 30 minutes remaining · 9 MB/s"
+                == "25% — About 30 minutes remaining — 9 MB/s"
         )
         // A build that boots its sibling's ramdisk: one job, both IPSWs, one bar.
         r = row(iPad32, job: .downloading(fraction: 0.25, files: 2))
@@ -197,7 +197,7 @@ struct DeviceRowTests {
         r = row(iPad32, job: .preparing(p))
         #expect(r.progressSummary == "60%")
         // The placeholder's headline is the time left, no percent; the preparer's step and its words are the bar's tooltip.
-        #expect(r.progressHeadline == "Finishing setup…" && r.progressLine == "60% · About 50 seconds remaining")
+        #expect(r.progressHeadline == "Finishing setup…" && r.progressLine == "60% — About 50 seconds remaining")
         #expect(r.progressDetail == ["Step 6 of 7: Finishing setup", "Starting iOS — 42 s"])
         var done = p
         done.step = 7
