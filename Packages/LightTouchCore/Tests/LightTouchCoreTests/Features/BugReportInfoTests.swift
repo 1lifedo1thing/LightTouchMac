@@ -130,7 +130,8 @@ struct BugReportInfoTests {
             identity: host
         )
         for leak in leaks { #expect(!text.localizedCaseInsensitiveContains(leak), "\(leak)") }
-        for kept in ["~/Library/Application Support", "Mac16,10", "11D257", "2026-10-08T04:23:41Z", "com.example.mail"] {
+        for kept in ["~/Library/Application Support", "Mac16,10", "11D257", "2026-10-08T04:23:41Z", "com.example.mail"]
+        {
             #expect(text.contains(kept), "\(kept)")
         }
     }
@@ -138,14 +139,25 @@ struct BugReportInfoTests {
     @Test func recentErrorsAreTheLastFailuresCut() throws {
         try withTemporaryDirectory { dir in
             let log = dir.appendingPathComponent("app.log")
-            let lines = (1...8).map { "t\($0) boot: readiness failed \($0)" } + [
-                "t9 guest package: serial 19 judged good", "t10 Couldn’t save to disk " + String(repeating: "x", count: 300),
-            ]
+            let lines =
+                (1...8).map { "t\($0) boot: readiness failed \($0)" } + [
+                    "t9 guest package: serial 19 judged good",
+                    "t10 Couldn’t save to disk " + String(repeating: "x", count: 300),
+                ]
             try lines.joined(separator: "\n").write(to: log, atomically: true, encoding: .utf8)
             let errors = BugReportInfo.recentErrors(log: log, limit: 3, width: 40)
             #expect(errors.count == 3 && errors[0].hasPrefix("t7 ") && errors[1].hasPrefix("t8 "))
             #expect(errors[2].hasPrefix("t10 ") && errors[2].count == 40 && errors[2].hasSuffix("…"))
             #expect(BugReportInfo.recentErrors(log: dir.appendingPathComponent("missing.log")).isEmpty)
+
+            // A device that died is the failure a bug report most needs (DeviceProcess.reason's .unexpected).
+            let died = "t11 device helper 93799: exited(1), QEMU exit none — The iPhone stopped unexpectedly."
+            try (lines + [died, "t12 stop: device halted"]).joined(separator: "\n").write(
+                to: log,
+                atomically: true,
+                encoding: .utf8
+            )
+            #expect(BugReportInfo.recentErrors(log: log, width: 200).last == died)
         }
     }
 }

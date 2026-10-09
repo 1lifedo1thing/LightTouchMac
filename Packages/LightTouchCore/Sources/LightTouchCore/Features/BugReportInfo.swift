@@ -108,7 +108,7 @@ public nonisolated enum BugReportInfo {
         let size = (try? handle.seekToEnd()) ?? 0
         try? handle.seek(toOffset: size > 262_144 ? size - 262_144 : 0)
         let text = String(decoding: (try? handle.readToEnd()) ?? Data(), as: UTF8.self)
-        let failure = /(?i)error|fail|couldn[’']t|can[’']t|crash|refused|didn[’']t/
+        let failure = /(?i)error|fail|couldn[’']t|can[’']t|crash|refused|didn[’']t|unexpected/
         return text.split(separator: "\n").filter { $0.contains(failure) }.suffix(limit).map {
             $0.count > width ? String($0.prefix(width - 1)) + "…" : String($0)
         }
