@@ -132,11 +132,20 @@ func finish(_ report: Report, work: URL) -> Never {
 func driverConfig(_ tools: Tools, work: URL, ipa: URL? = nil) -> [String: Any] {
     var config: [String: Any] = [
         "helper": tools.helper.path, "firmwarekit": tools.firmwarekit.path, "usbmuxd": tools.usbmuxd.path,
-        "ipa": ipa?.path ?? "", "bundleID": "com.qemuios.harness", "work": work.path,
+        "ipa": ipa?.path ?? "", "bundleID": ipa.flatMap(ipaBundleID) ?? "com.qemuios.harness", "work": work.path,
         "files": tools.files.path, "ipodBase": "", "ipadBase": "",
     ]
     if let requirement = tools.requirement, !requirement.isEmpty { config["requirement"] = requirement }
     return config
+}
+
+/// The IPA's CFBundleIdentifier, from its root app's Info.plist (the app's own archive readers).
+func ipaBundleID(_ ipa: URL) -> String? {
+    guard let root = IPAMembers.appRoot(ZipMembers.paths(ipa)),
+        let data = ZipMembers.data(ipa, root + "Info.plist"),
+        let info = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+    else { return nil }
+    return info["CFBundleIdentifier"] as? String
 }
 
 /// What the drivers' children read: the dylib the helper loads and the services worker DeviceServices spawns.

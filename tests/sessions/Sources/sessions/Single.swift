@@ -182,7 +182,7 @@ func single(_ args: SingleCheck) -> Never {
             !launches.isEmpty
                 && launches.allSatisfy {
                     $0.string("via") == "agent" && !$0.has("launchError")
-                        && $0.string("frontmost3") == "com.qemuios.harness"
+                        && $0.string("frontmost3") == $0.string("bundleID")
                 },
             "\(d): the installed app is frontmost after the agent's launch: \(launches.map { $0.string("frontmost3") ?? $0.string("launchError") ?? "?" })"
         )
