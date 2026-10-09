@@ -599,11 +599,16 @@ extension SharedState {
             var failures: [String] = []
             func fail(_ s: String) { failures.append(s) }
             func all(_ v: NSView) -> [NSView] { v.subviews.flatMap { [$0] + all($0) } }
-            func key(_ characters: String, _ code: UInt16, in window: NSWindow) -> NSEvent {
+            func key(
+                _ characters: String,
+                _ code: UInt16,
+                in window: NSWindow,
+                modifiers: NSEvent.ModifierFlags = []
+            ) -> NSEvent {
                 NSEvent.keyEvent(
                     with: .keyDown,
                     location: .zero,
-                    modifierFlags: [],
+                    modifierFlags: modifiers,
                     timestamp: 0,
                     windowNumber: window.windowNumber,
                     context: nil,
@@ -650,13 +655,13 @@ extension SharedState {
             /// The live sheet's lists are AppKit source-list and inset tables: a selected sidebar row's highlight is an
             /// NSVisualEffectView with the .selection material, which the window server composites (accent while the
             /// window is key and the list focused, gray otherwise) and which draws black in a window never ordered in.
-            /// For the render only, that material is swapped for the color it composites to, emphasized as when the
-            /// sheet is up with the device list focused, or not (another window is key).
+            /// For the render only, that material is swapped for the color it composites to, emphasized in the
+            /// focused list (the versions list when the sheet opens) while the sheet is key, or not (another window is).
             var emphasized = true
             func paintSelection(_ content: NSView) {
                 for table in all(content).compactMap({ $0 as? NSTableView }) {
-                    // The device list has the focus; the versions list's selection is then gray.
-                    let focused = emphasized && table.style == .sourceList
+                    // The focused list's selection is the accent color, the other's gray.
+                    let focused = emphasized && table.window?.firstResponder === table
                     for row in all(table).compactMap({ $0 as? NSTableRowView }) where row.isSelected {
                         row.isEmphasized = focused
                         for effect in row.subviews.compactMap({ $0 as? NSVisualEffectView })
@@ -745,6 +750,41 @@ extension SharedState {
                 if addedIDs.last.map({ $0.contains("k48ap-7B500") }) ?? false {
                     fail("an added version was picked: \(addedIDs)")
                 }
+            }
+
+            // The sheet opens with the versions list focused, not the devices: its selection is the active one and
+            // the arrow keys move through the versions and leave the device.
+            (window, tables) = sheet(experimental: false, selection: ["k48ap-7B367"], device: "k48ap")
+            if tables.count == 2, let devices = tables.first, let versions = tables.last {
+                func focused() -> String {
+                    let responder = window.firstResponder
+                    return responder === versions
+                        ? "versions"
+                        : responder === devices ? "devices" : "\(responder.map { "\(type(of: $0))" } ?? "nothing")"
+                }
+                // What AppKit does when the sheet becomes key (it is never ordered in here).
+                window.makeFirstResponder(window.initialFirstResponder)
+                if focused() != "versions" { fail("the sheet opens with \(focused()) focused, not the versions") }
+                try render(window, "focus-versions-light")
+                let device = devices.selectedRow
+                let version = versions.selectedRow
+                window.firstResponder?.keyDown(
+                    with: key(String(UnicodeScalar(NSDownArrowFunctionKey)!), 125, in: window)
+                )
+                RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+                if devices.selectedRow != device || versions.selectedRow == version {
+                    fail(
+                        "Down arrow: device row \(device) to \(devices.selectedRow), version \(version) to \(versions.selectedRow)"
+                    )
+                }
+                // Tab and Shift-Tab are SwiftUI's focus moves, which run only in a key window: both lists take it.
+                if !devices.acceptsFirstResponder || !versions.acceptsFirstResponder {
+                    fail(
+                        "a list that can't take the focus: \(devices.acceptsFirstResponder) \(versions.acceptsFirstResponder)"
+                    )
+                }
+            } else {
+                fail("focus: \(tables.count) lists")
             }
 
             // Picks across devices, an added one and a hidden experimental one: Add hands over the rest in order.

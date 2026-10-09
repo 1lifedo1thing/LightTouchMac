@@ -2,7 +2,8 @@
 // their versions are picked; the chosen device's versions on the right, in version order, each with its support
 // status and whether its IPSW is here (else its download size), and below them the picks (AddDeviceSummary). Versions
 // already in the sidebar are checked and can't be picked again. Only stable builds show until Show experimental is on
-// (remembered). Picks survive switching devices; Add adds them all.
+// (remembered). Picks survive switching devices; Add adds them all. The versions list has the keyboard focus when the
+// sheet opens, so the arrow keys move through versions; Tab and Shift-Tab go between it and the devices.
 // A sheet, not a window: it belongs to the one main window and is done before the user goes on (HIG, Sheets).
 
 import FirmwareSchema
@@ -124,6 +125,7 @@ struct AddDeviceView: View {
     }
 
     /// The sheet's window: resizable down to the view's minimum, at its last size (autosaved), else the ideal one.
+    /// It opens with the versions list focused; left to itself AppKit would focus its first key view, the devices.
     func makeSheet() -> NSWindow {
         let hosting = NSHostingController(rootView: self)
         hosting.sizingOptions = [.minSize]
@@ -131,6 +133,13 @@ struct AddDeviceView: View {
         sheet.styleMask = [.titled, .resizable]
         sheet.setContentSize(NSSize(width: 800, height: 620))
         sheet.setFrameAutosaveName("AddDeviceSheet")
+        hosting.view.layoutSubtreeIfNeeded()
+        func lists(_ view: NSView) -> [NSTableView] {
+            view.subviews.flatMap { ($0 as? NSTableView).map { [$0] } ?? lists($0) }
+        }
+        sheet.initialFirstResponder = lists(hosting.view).max {
+            $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX
+        }
         return sheet
     }
 
