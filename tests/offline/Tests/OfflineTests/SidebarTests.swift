@@ -293,14 +293,12 @@ extension SharedState {
             vc.menuNeedsUpdate(context)
             let commands = context.items.filter { !$0.isSeparatorItem && $0.title != "Rename" }
             let live = commands.filter { vc.validateMenuItem($0) }.map(\.title)
-            // Start/Shut Down is one item whose title follows the row (Force Stop beside it, dimmed while stopped); Cancel is there only while something can be cancelled.
-            if !["Start", "Show File System in Finder", "Erase All Content and Settings…"].allSatisfy({ t in
-                commands.contains { $0.title == t }
-            })
-                || commands.contains(where: {
-                    ["Shut Down…", "Cancel Download", "Cancel Preparation"].contains($0.title)
-                }) || !live.contains("Start")
-                || live.contains("Force Stop…")
+            // Start/Shut Down is one item whose title follows the row (Force Stop beside it, dimmed while stopped); Cancel
+            // is always there, dimmed while nothing can be cancelled (never hidden, only disabled).
+            if !["Start", "Cancel Download", "Show File System in Finder", "Erase All Content and Settings…"]
+                .allSatisfy({ t in commands.contains { $0.title == t } })
+                || commands.contains(where: { $0.title == "Shut Down…" }) || !live.contains("Start")
+                || live.contains("Force Stop…") || live.contains("Cancel Download")
             {
                 fail("context menu: \(commands.map(\.title)), enabled \(live)")
             }
@@ -310,7 +308,8 @@ extension SharedState {
             vc.menuNeedsUpdate(context)
             var titles = context.items.map(\.title)
             if !titles.contains("Shut Down…") || !titles.contains("Force Stop…") || titles.contains("Start")
-                || titles.contains("Cancel Download")
+                || !titles.contains("Cancel Download")
+                || context.items.contains(where: { $0.title == "Cancel Download" && vc.validateMenuItem($0) })
             {
                 fail("a running row's context menu: \(titles)")
             }
@@ -319,7 +318,9 @@ extension SharedState {
             FirmwareJobs.shared.jobs["n72ap-8C148"] = .preparing(Preparation(step: 1, steps: 2, name: "x"))
             vc.menuNeedsUpdate(context)
             titles = context.items.map(\.title)
-            if !titles.contains("Cancel Preparation") || !titles.contains("Start") {
+            if !titles.contains("Cancel Preparation") || !titles.contains("Start")
+                || !context.items.contains(where: { $0.title == "Cancel Preparation" && vc.validateMenuItem($0) })
+            {
                 fail("a preparing row's context menu: \(titles)")
             }
             FirmwareJobs.shared.jobs = [:]

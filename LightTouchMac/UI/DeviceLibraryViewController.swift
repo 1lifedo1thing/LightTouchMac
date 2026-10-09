@@ -469,7 +469,7 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
 
     // MARK: - Context menu
 
-    /// `.start` stands for the Start/Stop toggle; `.cancel` is listed only while there is something to cancel.
+    /// `.start` stands for the Start/Stop toggle; `.cancel` is always listed, dimmed while there is nothing to cancel.
     private static let menuActions: [(DeviceAction?, String)] = [
         (.start, "Start"), (.forceStop, "Force Stop…"), (nil, ""),
         (.downloadAndPrepare, "Download and Prepare"), (.importIPSW, "Import IPSW…"), (.cancel, "Cancel"), (nil, ""),
@@ -500,7 +500,6 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
                 if menu.items.last?.isSeparatorItem == false { menu.addItem(.separator()) }
                 continue
             }
-            if action == .cancel, delegate?.library(self, canPerform: .cancel, for: entry) != true { continue }
             // One item whose title follows the row: Shut Down while it runs, Start otherwise.
             let running = [.running, .stopping].contains(row(for: entry).state)
             let (command, label) =
@@ -529,7 +528,7 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
 
     @objc private func removeFromMenu(_ sender: Any?) { removeTargets() }
 
-    /// Every command is listed (Cancel only when there is something to cancel); what doesn't apply now is dimmed.
+    /// Every command is listed, Cancel too (never hidden, only disabled); what doesn’t apply now is dimmed.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(contextAction(_:)), let action = item.representedObject as? DeviceAction {
             return targetEntry.map { delegate?.library(self, canPerform: action, for: $0) == true } ?? false
