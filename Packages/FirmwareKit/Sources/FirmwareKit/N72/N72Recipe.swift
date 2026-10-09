@@ -441,7 +441,13 @@ final class N72Board: Board {
             }
         }
 
-        if opt["jailbreak"] == true { report["afc2"] = try SystemEdits.installAFC2(m) }
+        if opt["jailbreak"] == true {
+            report["afc2"] = try SystemEdits.installAFC2(m)
+            guard let bootstrap = c.cydia else { throw FirmwareError(.internal, "jailbreak: no Cydia bootstrap") }
+            let cydia = try SystemEdits.installCydia(m, bootstrap: bootstrap)
+            report["cydia"] = cydia.line
+            owners += cydia.root.map { (0, $0) } + cydia.mobile.map { (501, $0) }
+        }
         if opt["appsync"] == true {  // patch-appsync-dylib.sh
             let (line, job) = try SystemEdits.installAppSync(
                 m,

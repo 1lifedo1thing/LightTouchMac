@@ -34,35 +34,11 @@ func fetchCommand(_ command: FirmwareCommand.Fetch) -> Never {
         guard source.sha1 != nil, !source.urls.isEmpty else {
             throw FirmwareError(.unsupported, "the entry's source has no URL and SHA-1")
         }
-        let from = try SourceFetch.fetch(source, to: out, download: fetch) {
+        let from = try SourceFetch.fetch(source, to: out, download: SourceFetch.download) {
             FileHandle.standardError.write(Data("fetch: \($0)\n".utf8))
         }
         done(["ipsw": out.path, "sha1": source.sha1 ?? "", "bytes": source.bytes ?? 0, "from": from.absoluteString], 0)
     } catch {
         done(["error": "\(error)"], 1)
     }
-}
-
-/// One URL to `file`, synchronously (URLSession's download task; redirects followed).
-private func fetch(_ url: URL, to file: URL) throws {
-    let finished = DispatchSemaphore(value: 0)
-    nonisolated(unsafe) var result: Result<Void, Error> = .failure(FirmwareError(.internal, "no response"))
-    URLSession.shared.downloadTask(with: url) { location, response, error in
-        defer { finished.signal() }
-        if let error {
-            result = .failure(error)
-            return
-        }
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 200
-        guard let location, (200..<300).contains(status) else {
-            result = .failure(FirmwareError(.internal, "HTTP \(status)"))
-            return
-        }
-        result = Result {
-            try? FileManager.default.removeItem(at: file)
-            try FileManager.default.moveItem(at: location, to: file)
-        }
-    }.resume()
-    finished.wait()
-    try result.get()
 }

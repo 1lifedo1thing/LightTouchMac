@@ -209,12 +209,14 @@ final class K48Board: Board {
             }
             kernelcacheImg3 = try c.ipsw.read(kc)
         }
+        var options = SystemEdits.Options(recipe: recipe)
+        options.cydia = c.cydia
         let vols = try await SystemEdits.buildK48(
             rootfs: c.decFile("rootfs.dmg"),
             work: c.work,
             systemBytes: parts[0].count * 4096,
             dataBytes: Int64(parts[1].count) * 4096,
-            options: .init(recipe: recipe),
+            options: options,
             helpers: c.o.guestTools,
             kernelcache: kernelcacheImg3,
             kernel: try Data(contentsOf: c.decFile("kernelcache.mach"), options: .alwaysMapped),

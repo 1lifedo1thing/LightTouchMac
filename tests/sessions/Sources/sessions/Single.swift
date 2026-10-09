@@ -249,6 +249,17 @@ func single(_ args: SingleCheck) -> Never {
             "\(d): afc2 lists / (\(top.sorted().joined(separator: ", "))) and reads iOS \(afc2.string("version") ?? "none")"
                 + (afc2.string("error").map { ": \($0)" } ?? "")
         )
+        let cydia = events.one("cydia", ["device": d])
+        r.check(
+            cydia.bool("onHome"),
+            "\(d): Cydia on the Home screen" + (cydia.string("homeError").map { ": \($0)" } ?? "")
+        )
+        let fronts = (1...3).map { cydia.string("frontmost\($0)") ?? "" }
+        r.check(
+            fronts.allSatisfy { $0 == "com.saurik.Cydia" },
+            "\(d): Cydia launched and stayed frontmost (\(fronts.joined(separator: ", ")))"
+                + (cydia.string("launchError").map { ": \($0)" } ?? "")
+        )
     }
     if args.skipSetup {
         // Prepared past Setup: no Setup page on the first boot (a phone's lock screen slide is the only step the

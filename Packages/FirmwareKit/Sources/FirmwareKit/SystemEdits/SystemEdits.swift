@@ -50,8 +50,10 @@ public enum SystemEdits {
         /// is finished (seedFinishedSetup), so an iOS 5 or later device starts at the Home screen.
         public var skipSetup = false
         /// jailbreak (firmwarekit create --jailbreak, never set in the catalog): what a jailbreak of the time leaves on
-        /// the device, starting with afc2 (installAFC2), lockdown's AFC over the whole file system.
+        /// the device: afc2 (installAFC2), lockdown's AFC over the whole file system, and Cydia (installCydia) from
+        /// `cydia`, the bootstrap Cydia.bootstrap fetched.
         public var jailbreak = false
+        public var cydia: URL?
         public init() {}
         public init(recipe: FirmwareEntry.Recipe) {
             let o = recipe.options
@@ -227,6 +229,7 @@ public enum SystemEdits {
         let skeleton = work.appendingPathComponent("var-skeleton")
         try? fm.removeItem(at: skeleton)
         var rootOwned: [String] = []
+        var mobileOwned: [String] = []
         var productMajor = 0
         try await VolumeMount.withMounted(system, at: work.appendingPathComponent("mnt-system")) { m in
             let at = { (rel: String) in m.appendingPathComponent(rel) }
@@ -313,7 +316,14 @@ public enum SystemEdits {
                 d["StandardOutPath"] = "/dev/console"
                 d["StandardErrorPath"] = "/dev/console"
             }
-            if o.jailbreak { log(try installAFC2(m)) }
+            if o.jailbreak {
+                log(try installAFC2(m))
+                guard let bootstrap = o.cydia else { throw FirmwareError(.internal, "jailbreak: no Cydia bootstrap") }
+                let cydia = try installCydia(m, bootstrap: bootstrap)
+                log(cydia.line)
+                rootOwned += cydia.root
+                mobileOwned += cydia.mobile
+            }
             if o.appsync {
                 _ = try installAppSync(
                     m,
@@ -377,7 +387,7 @@ public enum SystemEdits {
             try copyTree(at("private/var"), skeleton)
         }
         let sys = try HFSPlusVolume(system, writable: true)
-        let n = try sys.setOwner(rootOwned, uid: 0, gid: 0)
+        let n = try sys.setOwner(rootOwned, uid: 0, gid: 0) + sys.setOwner(mobileOwned, uid: 501, gid: 501)
         let owners = try sys.owners(under: "private/var")
         let dated = try sys.normalize(after: newest, to: newest)
         log("system volume: \(n) catalog records set to root, \(dated) dated as of the IPSW's newest file")

@@ -83,7 +83,7 @@ import HostRuntime
         get { Set(defaults.stringArray(forKey: "jailbreakEntries") ?? []) }
         set { defaults.set(newValue.sorted(), forKey: "jailbreakEntries") }
     }
-    /// afc2 serves the whole file system from iPhone OS 2.0 on (FirmwareKit refuses the option on 1.x).
+    /// afc2 and Cydia from iPhone OS 2.0 on (FirmwareKit refuses the option on 1.x).
     public static func offersJailbreak(_ entry: FirmwareCatalog.Entry) -> Bool {
         (Int(entry.version.split(separator: ".").first ?? "") ?? 0) >= 2
     }

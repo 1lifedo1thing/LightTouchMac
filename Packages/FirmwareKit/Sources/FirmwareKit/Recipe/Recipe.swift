@@ -60,6 +60,8 @@ public enum Recipe {
         var ipsw: IPSWArchive { IPSWArchive(o.ipsw) }
         /// Filled by the verify, decrypt and identity steps.
         var sha1 = "", restore: RestoreInfo?, dec: URL?, seed = "", ident: UnitIdentity?
+        /// The Cydia bootstrap (recipe option jailbreak), fetched by the decrypt step.
+        var cydia: URL?
         /// Filled by `volumes`.
         var activation: Activation.Result?, guestPackage: GuestPackage.Record?, engine: String?
         /// Filled by the store and lock steps.
@@ -153,6 +155,13 @@ public enum Recipe {
             }
         )
         c.dec = dec
+        if recipe.options["jailbreak"] == true {
+            // Cydia's bootstrap beside the decrypt cache, as the app's caches keep IPSW and Decrypted
+            c.cydia = try SystemEdits.Cydia.bootstrap(
+                in: cacheRoot.deletingLastPathComponent().appendingPathComponent("Jailbreak"),
+                log: c.log
+            )
+        }
 
         step()  // identity.json + the board's boot files
         c.seed = o.seed ?? "\(board.seedPrefix)-\(e.build)-default"

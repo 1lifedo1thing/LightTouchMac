@@ -50,4 +50,28 @@ public enum SourceFetch {
         }
         throw last
     }
+
+    /// One URL to `file`, synchronously (URLSession's download task; redirects followed).
+    public static func download(_ url: URL, to file: URL) throws {
+        let finished = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var result: Result<Void, Error> = .failure(FirmwareError(.internal, "no response"))
+        URLSession.shared.downloadTask(with: url) { location, response, error in
+            defer { finished.signal() }
+            if let error {
+                result = .failure(error)
+                return
+            }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 200
+            guard let location, (200..<300).contains(status) else {
+                result = .failure(FirmwareError(.internal, "HTTP \(status)"))
+                return
+            }
+            result = Result {
+                try? FileManager.default.removeItem(at: file)
+                try FileManager.default.moveItem(at: location, to: file)
+            }
+        }.resume()
+        finished.wait()
+        try result.get()
+    }
 }

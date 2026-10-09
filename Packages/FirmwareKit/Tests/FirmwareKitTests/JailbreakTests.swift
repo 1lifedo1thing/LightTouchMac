@@ -78,3 +78,110 @@ struct JailbreakTests {
         #expect(try !options("").jailbreak)
     }
 }
+
+/// Cydia's bootstrap extracted into a system volume (SystemEdits.installCydia), from a small stand-in built here.
+struct CydiaInstallTests {
+    let fm = FileManager.default
+
+    /// A bootstrap laid out as freeze.tar is (the /etc link, mobile's SpringBoard preferences, a file the firmware
+    /// also has), gzipped by /usr/bin/tar.
+    func bootstrap(in dir: URL) throws -> URL {
+        let src = dir.appendingPathComponent("src")
+        for (rel, text) in [
+            ("Applications/Cydia.app/Cydia", "cydia"), ("bin/bash", "bash"), ("private/var/lib/dpkg/status", "s"),
+            ("usr/libexec/afcd", "not the firmware's"),
+        ] {
+            let u = src.appendingPathComponent(rel)
+            try fm.createDirectory(at: u.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(text.utf8).write(to: u)
+        }
+        let prefs = src.appendingPathComponent(SystemEdits.Cydia.springBoardPrefs)
+        try fm.createDirectory(at: prefs.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try PropertyListSerialization.data(
+            fromPropertyList: ["SBShowNonDefaultSystemApps": true],
+            format: .xml,
+            options: 0
+        ).write(to: prefs)
+        try fm.createSymbolicLink(atPath: src.appendingPathComponent("etc").path, withDestinationPath: "private/etc/")
+        let file = dir.appendingPathComponent("freeze.tar.gz")
+        let p = try Process.run(
+            URL(fileURLWithPath: "/usr/bin/tar"),
+            arguments: ["-czf", file.path, "-C", src.path, "."]
+        )
+        p.waitUntilExit()
+        #expect(p.terminationStatus == 0)
+        return file
+    }
+
+    /// A firmware root: /etc, afcd, /private/var/mobile and (with `prefs`) mobile's SpringBoard preferences.
+    func firmware(in dir: URL, prefs: [String: Any]?) throws -> URL {
+        let m = dir.appendingPathComponent("volume")
+        for rel in ["private/etc", "usr/libexec", "private/var/mobile"] {
+            try fm.createDirectory(at: m.appendingPathComponent(rel), withIntermediateDirectories: true)
+        }
+        try Data("stock afcd".utf8).write(to: m.appendingPathComponent("usr/libexec/afcd"))
+        try fm.createSymbolicLink(atPath: m.appendingPathComponent("etc").path, withDestinationPath: "private/etc")
+        if let prefs {
+            let u = m.appendingPathComponent(SystemEdits.Cydia.springBoardPrefs)
+            try fm.createDirectory(at: u.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try PropertyListSerialization.data(fromPropertyList: prefs, format: .binary, options: 0).write(to: u)
+        }
+        return m
+    }
+
+    func springBoard(_ m: URL) throws -> [String: Any] {
+        let data = try Data(contentsOf: m.appendingPathComponent(SystemEdits.Cydia.springBoardPrefs))
+        return try #require(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
+    }
+
+    @Test func cydiaLandsBesideTheFirmwaresOwnFiles() throws {
+        let dir = fm.temporaryDirectory.appendingPathComponent("ltm-cydia-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: dir) }
+        let m = try firmware(in: dir, prefs: nil)
+        let r = try SystemEdits.installCydia(m, bootstrap: try bootstrap(in: dir))
+        let cydia = m.appendingPathComponent("Applications/Cydia.app/Cydia")
+        #expect(try String(contentsOf: cydia, encoding: .utf8) == "cydia")
+        #expect(
+            try String(contentsOf: m.appendingPathComponent("usr/libexec/afcd"), encoding: .utf8) == "stock afcd",
+            "a file the firmware has is kept"
+        )
+        #expect(try springBoard(m)["SBShowNonDefaultSystemApps"] as? Bool == true)
+        #expect(fm.fileExists(atPath: m.appendingPathComponent(".cydia_no_stash").path), "no stash on first launch")
+        for rel in [
+            ".cydia_no_stash", "Applications", "Applications/Cydia.app/Cydia", "bin/bash",
+            "private/var/lib/dpkg/status",
+            "etc",
+        ] {
+            #expect(r.root.contains(rel), "\(rel) is root's")
+        }
+        for rel in ["usr/libexec", "usr/libexec/afcd", "private/var/mobile"] {
+            #expect(!r.root.contains(rel) && !r.mobile.contains(rel), "the firmware's \(rel) keeps its owner")
+        }
+        #expect(
+            Set(r.mobile) == [
+                "private/var/mobile/Library", "private/var/mobile/Library/Preferences",
+                SystemEdits.Cydia.springBoardPrefs,
+            ]
+        )
+    }
+
+    @Test func theFirmwaresSpringBoardPreferencesGainTheKey() throws {
+        let dir = fm.temporaryDirectory.appendingPathComponent("ltm-cydia-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: dir) }
+        let m = try firmware(in: dir, prefs: ["SBAutoLockTime": 60])
+        let r = try SystemEdits.installCydia(m, bootstrap: try bootstrap(in: dir))
+        let prefs = try springBoard(m)
+        #expect(prefs["SBShowNonDefaultSystemApps"] as? Bool == true)
+        #expect(prefs["SBAutoLockTime"] as? Int == 60)
+        #expect(r.mobile.isEmpty, "mobile's own preferences keep their owner")
+    }
+
+    @Test func aBootstrapOfOtherBytesIsRefused() throws {
+        let dir = fm.temporaryDirectory.appendingPathComponent("ltm-cydia-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: dir) }
+        #expect(throws: FirmwareError.self) {
+            try SystemEdits.Cydia.bootstrap(in: dir) { _, file in try Data("not freeze.tar".utf8).write(to: file) }
+        }
+        #expect((try? fm.contentsOfDirectory(atPath: dir.path)) == [], "nothing is left in the cache")
+    }
+}

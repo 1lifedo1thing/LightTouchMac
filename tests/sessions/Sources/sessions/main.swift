@@ -76,7 +76,9 @@ struct SingleCheck: ParsableCommand {
     var developerImage: URL?
     @Flag(help: "The base was prepared with --skip-setup: no Setup page, Setup's answers from the Mac.")
     var skipSetup = false
-    @Flag(help: "The base was prepared with --jailbreak: Files reads the whole file system through afc2.")
+    @Flag(
+        help: "The base was prepared with --jailbreak: Files reads the whole file system through afc2, Cydia launches."
+    )
     var jailbreak = false
     @Option(help: "Install a newer build of the same app over it; its data must stay.", transform: path)
     var upgradeIPA: URL?

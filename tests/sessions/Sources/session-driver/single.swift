@@ -637,6 +637,7 @@ nonisolated enum WiFiProbe {
         } catch {
             emit("afc2", ["device": d.name, "top": top, "error": "\(error)"])
         }
+        await cydia(d)
     }
     if s.install != false {
         await install(d)
@@ -1112,6 +1113,32 @@ enum DockBand {
         }
     } catch { event["error"] = "\(error)" }
     emit("appFiles", event)
+}
+
+/// Cydia on a jailbroken device: in SpringBoard's icon state, then launched through the guest agent and frontmost,
+/// and Home again. Emits `cydia`.
+@MainActor func cydia(_ d: Device) async {
+    let id = "com.saurik.Cydia"
+    var event: [String: Any] = ["device": d.name]
+    do { event["onHome"] = try await d.services.homeScreenOrder().contains(id) } catch {
+        event["homeError"] = "\(error)"
+    }
+    let agent = GuestAgent(link: d.process.link, cache: GuestAgentCache())
+    if await agent.waitAlive(seconds: 20) {
+        do { try await agent.launch(id) } catch { event["launchError"] = "\(error)" }
+        for (i, wait) in [8, 12, 20].enumerated() {
+            try? await Task.sleep(for: .seconds(wait))
+            if let path = d.screenshot("cydia\(i + 1)") { event["shot\(i + 1)"] = path }
+            event["frontmost\(i + 1)"] = (try? await agent.frontmost())?.bundleID ?? ""
+        }
+    } else {
+        event["launchError"] = "no guest agent"
+    }
+    emit("cydia", event)
+    d.process.link.send(.button(0, down: true))
+    try? await Task.sleep(for: .milliseconds(150))
+    d.process.link.send(.button(0, down: false))
+    try? await Task.sleep(for: .seconds(3))
 }
 
 /// installd's own record of where each app lives (iOS 2-5): the container an upgrade must keep.
