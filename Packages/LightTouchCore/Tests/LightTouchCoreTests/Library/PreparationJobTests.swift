@@ -55,8 +55,13 @@ import Testing
         #expect(
             PreparationJob.message(code: "disk_full", detail: "") == "Not enough disk space to prepare this device."
         )
-        #expect(PreparationJob.message(code: "internal", detail: "boom") == "Preparation failed: boom")
-        #expect(PreparationJob.message(code: "whatever", detail: "") == "Preparation failed.")
+        // Under the placeholder's "Couldn’t prepare", the reason is said once, as a sentence.
+        #expect(
+            PreparationJob.message(code: "internal", detail: "guest helper it_agent missing from /x")
+                == "Guest helper it_agent missing from /x."
+        )
+        #expect(PreparationJob.message(code: "internal", detail: "Boom!") == "Boom!")
+        #expect(PreparationJob.message(code: "whatever", detail: "") == "No reason was given.")
         #expect(
             PreparationJob.message(
                 code: "unsupported",

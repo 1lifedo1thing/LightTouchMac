@@ -127,8 +127,15 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
         case "activation_failed", "hook_failed": "Couldn’t activate this device."
         case "oneshot_failed": "The device’s first boot didn’t finish."
         case "disk_full": "Not enough disk space to prepare this device."
-        default: detail.isEmpty ? "Preparation failed." : "Preparation failed: \(detail)"
+        // The placeholder's headline already says "Couldn’t prepare": the reason alone, as a sentence.
+        default: detail.isEmpty ? "No reason was given." : sentence(detail)
         }
+    }
+
+    private static func sentence(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let capitalized = trimmed.prefix(1).uppercased() + trimmed.dropFirst()
+        return ".!?".contains(capitalized.last ?? ".") ? capitalized : capitalized + "."
     }
 
     /// A fit check's piece (FirmwareKit's FitCheck names) in the user's words.
