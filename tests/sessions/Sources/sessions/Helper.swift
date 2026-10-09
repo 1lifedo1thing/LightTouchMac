@@ -702,7 +702,8 @@ func location(_ base: Base, tools: Tools, work: URL, _ r: Report) {
             work: work,
             name: "location",
             steps: [
-                "boot", "lit 0.5 400", "wait 30", "modem gps-fix \(fixes[0].0),\(fixes[0].1),30,0,-1,5", "modemStatus",
+                // 0.1, as compass: 3.x's lock screen lights at about 0.36 and sleeps before ever reaching 0.5.
+                "boot", "lit 0.1 400", "wait 30", "modem gps-fix \(fixes[0].0),\(fixes[0].1),30,0,-1,5", "modemStatus",
                 "agentput \(probe.path) /usr/local/bin/it_location", "spawn /usr/local/bin/it_location 15",
                 "modem gps-fix \(fixes[1].0),\(fixes[1].1),20,\(fixes[1].2),\(fixes[1].3),10",
                 "spawn /usr/local/bin/it_location 15", "quit", "expectExit 60",
