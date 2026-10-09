@@ -161,6 +161,7 @@ struct KBootTests {
                 [("name", n("flash-controller0"))],
                 [Self.node([("name", n("disk")), ("boot-from-nand", DeviceTree.Value.le([1]))])]
             ),
+            Self.node([("name", n("audio-complex")), ("ncoref-frequency", Self.z(4))]),
         ]
         let bb = Self.node([
             ("name", n("baseband")), ("compatible", n("baseband,n88")), ("device_type", n("baseband")),
@@ -192,6 +193,7 @@ struct KBootTests {
         #expect(dt.value("nobb", "device-imei")?.prefix(16) == Data("004999010640000\0".utf8))
         #expect(dt.value("nobb", "snum") == Data("TESTSNUM0000".utf8))
         #expect(dt.value("", "model-number")?.prefix(5) == Data("MB715".utf8))
+        #expect(word("arm-io/audio-complex", "ncoref-frequency") == 162_000_000)  // PLL1, as iBoot fills it
     }
 
     /// N18 (S5L8922): its platform-name and chip-id, the 320x480 portrait panel at scale 1, and the NOR graft as on N81.

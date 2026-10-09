@@ -10,9 +10,8 @@ public struct DeviceFeatures: Sendable, Equatable {
     public var wifi = true
     /// A modem: calls, messages and cellular data (Board.hasCellular, the emulator's machine table).
     public var cellular: Bool
-    /// Sound out of the Mac: every boot gets Core Audio, and every board but the iPhone 3GS on iPhone OS 3 plays
-    /// through it (qemu-ios 90661c37b3: there AppleAMC decodes, but its I2S output never starts).
-    public var audio: Bool
+    /// Sound out of the Mac: every boot gets Core Audio, and every board plays through it.
+    public var audio = true
     /// Location from a GPS receiver (Board.hasGPS).
     public var location: Bool
     /// A magnetometer the emulator models (Board.hasCompass, the emulator's machine table).
@@ -38,8 +37,6 @@ public struct DeviceFeatures: Sendable, Equatable {
     /// `guestPackage`: the bundled itpack has a package for the entry's board and build (GuestPackage.packaged).
     public init(_ entry: FirmwareCatalog.Entry, guestPackage: Bool) {
         let board = entry.profile
-        let major = Int(entry.version.split(separator: ".").first ?? "") ?? 0
-        audio = !(board == .n88 && major < 4)
         cellular = board?.hasCellular ?? false
         location = board?.hasGPS ?? false
         compass = board?.hasCompass ?? false

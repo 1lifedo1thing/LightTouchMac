@@ -40,6 +40,10 @@ public enum KBoot {
     // Measured on a real iPad 1 running 7B500: cpu/memory 0, bus/peripheral 100 MHz, fixed/timebase 24 MHz.
     static let cpuHz: UInt32 = 0, memHz: UInt32 = 0, busHz: UInt32 = 100_000_000, periphHz: UInt32 = 100_000_000
     static let fixedHz: UInt32 = 24_000_000, timebaseHz: UInt32 = 24_000_000, usbphyHz: UInt32 = 24_000_000
+    /// /arm-io/audio-complex ncoref-frequency (S5L8920/8922 only): iBoot fills it with PLL1's frequency, which LLB sets
+    /// to 24 MHz x 81 / 6 / 2 = 162 MHz (7E18 n88ap and 8C148 n18ap LLB). The kernel's audio complex divides by its
+    /// NCO's registers with it to find each I2S port's MCLK; left 0, every port reads 0 Hz.
+    static let ncorefHz: UInt32 = 162_000_000
     static let clocks: [UInt32] = {
         var c = [UInt32](repeating: periphHz, count: 55)
         for (i, hz) in [0: timebaseHz, 5: cpuHz, 6: periphHz, 27: memHz, 32: busHz, 33: fixedHz] { c[i] = hz }
@@ -365,6 +369,9 @@ public enum KBoot {
         let slots = (dt.props["arm-io"]?["clock-frequencies"]?.length ?? clocks.count * 4) / 4
         try dt.set("arm-io", "clock-frequencies", .words(Array(clocks.prefix(slots))))
         try dt.set("arm-io", "usbphy-frequency", .u32(usbphyHz))
+        if dt.props["arm-io/audio-complex"]?["ncoref-frequency"] != nil {
+            try dt.set("arm-io/audio-complex", "ncoref-frequency", .u32(ncorefHz))
+        }
         if dt.contains("arm-io/sgx") { try dt.set("arm-io/sgx", "compatible", .string("none")) }  // no SGX model
         for (want, mac) in macs {
             let path = dt.props.keys.sorted().first { $0 == want || $0.hasSuffix("/" + want) } ?? want

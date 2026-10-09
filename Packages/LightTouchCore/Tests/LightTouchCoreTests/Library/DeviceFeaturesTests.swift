@@ -17,9 +17,9 @@ struct DeviceFeaturesTests {
         let n88 = Self.features("n88ap-10B500")
         #expect(n88.cellular && n88.location && n88.compass && n88.vibration && n88.audio && n88.skipSetup)
         #expect(n88.jailbreak && n88.appInstalls && n88.fileSystem && n88.freeFormScreen && !n88.guestTools)
-        // iPhone 3GS 3.1.3: GPS and compass as on 6.x, but no sound out (its I2S output never starts).
+        // iPhone 3GS 3.1.3: GPS, compass and sound as on 6.x, but no Skip Setup.
         let n88ios3 = Self.features("n88ap-7E18")
-        #expect(!n88ios3.audio && n88ios3.location && n88ios3.compass && !n88ios3.skipSetup)
+        #expect(n88ios3.audio && n88ios3.location && n88ios3.compass && !n88ios3.skipSetup)
         // iPhone 4 7.1.2: a modem, a compass and a motor but no GPS.
         let n90 = Self.features("n90ap-11D257", guestPackage: true)
         #expect(n90.cellular && !n90.location && n90.compass && n90.vibration && n90.guestTools && n90.fileSystem)
