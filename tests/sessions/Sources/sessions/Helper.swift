@@ -397,8 +397,8 @@ private func describe(_ buzzes: [(start: Double, seconds: Double?)]) -> String {
 /// the status block reports it (issue 38). `rotate`: a new frame within 1 s of the app's rotation request,
 /// different from portrait. `shutdown`: the guest confirms its own power-off. `keyboard` (A4): Connect Hardware Keyboard
 /// off and on. A 5.x+ first boot sits in Setup, which rejects calls and stays portrait: the carrier and rotate cases then
-/// need --overlay, the overlay of a boot that walked Setup (`sessions single` leaves one in its work directory), cloned,
-/// never changed.
+/// need --overlay, the overlay of a boot that walked Setup (`sessions single --keep` leaves one in its work
+/// directory), cloned, never changed.
 /// `emergency` (4.x and 7.x): 911 from the emergency dialer, which asks the modem first (issue 32).
 func phone(_ args: PhoneCheck) -> Never {
     let base = Base(args.base)

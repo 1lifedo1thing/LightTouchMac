@@ -29,7 +29,10 @@ let package = Package(
         .target(name: "SessionKit"),
         .executableTarget(
             name: "sessions",
-            dependencies: ["SessionKit", parser, .product(name: "ReleaseChecks", package: "ReleaseChecks")]
+            dependencies: [
+                "SessionKit", parser, .product(name: "ReleaseChecks", package: "ReleaseChecks"),
+                .product(name: "LightTouchCore", package: "LightTouchCore"),
+            ]
         ),
         .executableTarget(
             name: "session-driver",

@@ -20,8 +20,12 @@ struct Inputs: ParsableArguments {
     @Option(transform: path) var usbmuxd: URL?
     @Option(help: "The guest's HTTP client (default: the pinned qemu-ios's contrib/it-proxy/httpget).", transform: path)
     var httpget: URL?
-    @Option(help: "Keeps the logs, screenshots and events (default: a temporary directory).", transform: path)
+    @Option(
+        help: "Keeps the logs, screenshots and events (default: a temporary directory, deleted if the run passes).",
+        transform: path
+    )
     var work: URL?
+    @Flag(help: "Keeps the temporary work directory of a run that passes.") var keep = false
     @Option(help: "The signing requirement the driver pins the helper to.") var requirement: String?
 
     func validate() throws {

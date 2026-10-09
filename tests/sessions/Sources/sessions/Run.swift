@@ -1,4 +1,5 @@
 import Foundation
+import LightTouchCore
 import SessionKit
 
 /// The drivers built beside this executable.
@@ -99,12 +100,16 @@ func waitGone(_ pid: Int, _ seconds: Double) -> Double? {
     return nil
 }
 
+/// The temporary work directory `finish` deletes when the run passes: none with --work or --keep.
+nonisolated(unsafe) private var disposableWork: URL?
+
 /// A fresh work directory: `--work`, or a temporary one.
 func workDirectory(_ args: Inputs, _ name: String) -> URL {
     let work =
         args.work
         ?? FileManager.default.temporaryDirectory
         .appendingPathComponent("ltm-\(name)-\(UUID().uuidString.prefix(8))")
+    if args.work == nil, !args.keep { disposableWork = work }
     try? FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
     print("work: \(work.path)")
     return work
@@ -117,7 +122,9 @@ let realAppLog = URL(fileURLWithPath: getpwuid(getuid()).map { String(cString: $
 func finish(_ report: Report, work: URL) -> Never {
     let real = (try? String(contentsOf: realAppLog, encoding: .utf8)) ?? ""
     report.check(!real.contains(work.path), "the run left the real \(realAppLog.path) alone")
-    print("\n\(report.allPassed ? "PASS" : "FAIL"): \(report.summary); logs in \(work.path)")
+    // A base the drivers published under work is locked (uchg) and its NAND read only: removeTree unlocks first.
+    let removed = report.allPassed && work == disposableWork && (try? DeviceStateStorage.removeTree(work)) != nil
+    print("\n\(report.allPassed ? "PASS" : "FAIL"): \(report.summary)" + (removed ? "" : "; logs in \(work.path)"))
     exit(report.allPassed ? 0 : 1)
 }
 

@@ -25,6 +25,12 @@ static void cleanup(void) {
 }
 
 __attribute__((constructor)) static void isolate(void) {
+    // An exit test's child process (#expect(processExitsWith:)) inherits this environment and dies without atexit:
+    // it uses its parent's root, which the parent removes.
+    if (getenv("LTM_TEST_ROOT")) {
+        snprintf(home, sizeof home, "%s", getenv("HOME"));
+        return;
+    }
     const char *tmp = getenv("TMPDIR");
     snprintf(root, sizeof root, "%s/ltm-tests-XXXXXX", tmp && *tmp ? tmp : "/tmp");
     if (!mkdtemp(root)) {
@@ -42,6 +48,7 @@ __attribute__((constructor)) static void isolate(void) {
     setenv("CFFIXED_USER_HOME", home, 1);
     setenv("HOME", home, 1);
     setenv("LTM_STATE_DIR", state, 1);
+    setenv("LTM_TEST_ROOT", root, 1);
     atexit(cleanup);
 }
 
