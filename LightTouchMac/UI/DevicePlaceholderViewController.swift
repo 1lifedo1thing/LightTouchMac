@@ -108,6 +108,11 @@ final class DevicePlaceholderViewController: NSViewController {
         statusLine.spacing = 6
         statusLine.detachesHiddenViews = true
         let state = column([statusLine, progressSlot, progressLine, reason], spacing: 6)
+        // The state tier holds a line and a bar, or a line and a reason: the buttons stay put (a two-line reason adds
+        // one line). The minimum is the tier's, not the stack's: a stack taller than its views has no one place for them.
+        let stateTier = NSView()
+        state.translatesAutoresizingMaskIntoConstraints = false
+        stateTier.addSubview(state)
         let actions = NSStackView(views: [showLog, prepareAgain, showFiles, dontSave, primary])
         actions.spacing = 12
         // The row keeps its height with no button (running), so the lockup doesn't move between states.
@@ -116,11 +121,31 @@ final class DevicePlaceholderViewController: NSViewController {
         let options = column([skipSetup, jailbreak], spacing: 6)
         options.alignment = .leading
         options.detachesHiddenViews = true
-        let stack = column([art, identity, state, options, actions, space], spacing: 20)
+        let stack = column([art, identity, stateTier, options, actions, space], spacing: 20)
         stack.setCustomSpacing(28, after: art)
         stack.setCustomSpacing(12, after: actions)
         stack.detachesHiddenViews = true
         stack.translatesAutoresizingMaskIntoConstraints = false
+        // Every inner stack hugs what it shows, harder than the stack around it and below its labels' compression
+        // resistance. With the default (equal, low) hugging a narrower stack could as well stretch across its column
+        // as hug its views, so its width was whatever the solver had last: after a two-option build the options
+        // column stayed as wide as Skip Setup Assistant, and a lone Jailbreak sat at its left edge.
+        for (stacks, priority) in [
+            ([identity, state, options, actions], NSLayoutConstraint.Priority(700)),
+            ([versionLine, statusLine], NSLayoutConstraint.Priority(710)),
+        ] {
+            for stack in stacks {
+                stack.setHuggingPriority(priority, for: .horizontal)
+                stack.setHuggingPriority(priority, for: .vertical)
+            }
+        }
+        // And the views in them keep their own width: a label's or a button's hugging is low too, so a label could
+        // take a column's slack and draw its text at the left, or either of two buttons in a row take the row's.
+        for content in [
+            model, version, info, skipSetup, jailbreak, showLog, prepareAgain, showFiles, dontSave, primary,
+        ] {
+            content.setContentHuggingPriority(.required, for: .horizontal)
+        }
         view.addSubview(stack)
         let guide = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
@@ -132,8 +157,16 @@ final class DevicePlaceholderViewController: NSViewController {
             art.heightAnchor.constraint(lessThanOrEqualTo: guide.heightAnchor, multiplier: 0.45),
             progressSlot.widthAnchor.constraint(equalToConstant: 260),
             progressSlot.heightAnchor.constraint(equalToConstant: Self.makeBar().fittingSize.height),
-            // The state tier holds a line and a bar, or a line and a reason: the buttons stay put (a two-line reason adds one line).
-            state.heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
+            state.topAnchor.constraint(equalTo: stateTier.topAnchor),
+            state.leadingAnchor.constraint(equalTo: stateTier.leadingAnchor),
+            state.trailingAnchor.constraint(equalTo: stateTier.trailingAnchor),
+            state.bottomAnchor.constraint(lessThanOrEqualTo: stateTier.bottomAnchor),
+            stateTier.heightAnchor.constraint(greaterThanOrEqualToConstant: 52),
+            {
+                let fit = stateTier.heightAnchor.constraint(equalTo: state.heightAnchor)
+                fit.priority = .defaultLow
+                return fit
+            }(),
         ])
     }
 
