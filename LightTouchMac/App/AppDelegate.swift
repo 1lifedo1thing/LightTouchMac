@@ -291,6 +291,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         DeviceSettings.migrateDefaults(.standard, state: state, devices: records.map(\.id))
         IPALibrary.sweep(devices: records)
         for record in records { USBMux.secure(DeviceInstance.url(record.storage.usbmuxConf, state: state)) }
+        // A crashed or killed run's daemons, reparented to launchd: a device not started again kept its daemon.
+        USBMux.reapOrphans(records, state: state, logs: logs)
         // Bases published by earlier builds become immutable too (a development base, outside State, is left alone).
         for record in records where !record.base.path.hasPrefix("/") {
             DeviceStateStorage.lockBase(DeviceInstance.url(record.base.path, state: state))

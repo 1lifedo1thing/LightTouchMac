@@ -265,18 +265,34 @@ import System
     }
 
     private func reapStaleDaemon(_ pidFile: String?) {
-        guard let pidFile,
-            let text = try? String(contentsOfFile: pidFile, encoding: .utf8),
+        if let pidFile { Self.reapOrphan(pidFile: pidFile) }
+    }
+
+    /// Launch, with the library's lock held: every device's daemon left by a run that never stopped it. A daemon
+    /// whose parent is alive belongs to a running app and is left alone.
+    @discardableResult
+    public nonisolated static func reapOrphans(_ devices: [DeviceInstance], state: URL, logs: URL) -> [pid_t] {
+        devices.compactMap { reapOrphan(pidFile: $0.paths(state: state, logs: logs).usbmuxPID.path) }
+    }
+
+    /// The daemon a pid file names, killed if it is an orphan of a previous run (an app that crashed, or was
+    /// SIGKILLed, never ran stop()). Launch runs it over every device's pid file, so a device that isn't started
+    /// again doesn't keep its daemon forever. The pid that was signalled, if any.
+    @discardableResult
+    public nonisolated static func reapOrphan(pidFile: String) -> pid_t? {
+        guard let text = try? String(contentsOfFile: pidFile, encoding: .utf8),
             let pid = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)),
             pid > 0, kill(pid, 0) == 0
-        else { return }
+        else { return nil }
         // Only an orphan (reparented to launchd): a daemon with a live parent
         // belongs to another running Light Touch, never to this launch.
         guard let identity = StorageLocations.daemonIdentity(pid), identity.parent == 1,
             identity.uid == geteuid(), identity.path.hasSuffix("/usbmuxd")
-        else { return }
+        else { return nil }
         logEvent("usbmux: killing stale usbmuxd \(pid) from a previous run")
         kill(pid, SIGTERM)
+        try? FileManager.default.removeItem(atPath: pidFile)
+        return pid
     }
 
     public func stop() {
