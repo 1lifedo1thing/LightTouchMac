@@ -85,10 +85,11 @@ public protocol RotationHost: AnyObject {
         degrees = next
     }
 
-    /// A fresh boot starts portrait.
+    /// A fresh boot starts portrait. A helper still coming up can't take the accelerometer yet, and its machine
+    /// starts portrait anyway, so that refusal isn't logged (it read as an error at every iPad and 3GS start).
     public func reset() {
         degrees = 0
-        setAccelerometer(for: 0)
+        setAccelerometer(for: 0, logRefusal: false)
     }
 
     /// The iPad sets its accelerometer outright for the shell's angle rather
@@ -97,12 +98,12 @@ public protocol RotationHost: AnyObject {
     /// Values are UIDeviceOrientation: a clockwise turn from portrait (1) puts
     /// Home on the left (4), then upside down (2), then Home right (3).
     @discardableResult
-    private func setAccelerometer(for degrees: Int) -> Bool {
+    private func setAccelerometer(for degrees: Int, logRefusal: Bool = true) -> Bool {
         guard setsAccelerometer, let value = [0: 1, 90: 4, 180: 2, 270: 3][degrees] else { return false }
         // The machine answers asynchronously now; only an iPad takes this path,
         // and it always has the control, so a refusal is just logged.
         host.bootScope.control(.orientation(value), on: host.helperLink) { applied in
-            if !applied { logEvent("rotation: the device refused orientation \(value)") }
+            if !applied && logRefusal { logEvent("rotation: the device refused orientation \(value)") }
         }
         return true
     }

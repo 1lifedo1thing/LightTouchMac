@@ -71,6 +71,27 @@ struct DeviceRotationTests {
         }
     }
 
+    /// A boot's reset to portrait reaches a helper that can't take it yet: that refusal is no error (it filled Copy
+    /// Bug Report Info's Recent errors at every iPad and 3GS start). A turn the device refuses is still logged.
+    @Test func aBootsResetRefusedIsNotLoggedATurnRefusedIs() async throws {
+        try await withScratchDirectory { directory in
+            let (rotation, host) = rotation(directory, iPad: true)
+            host.link.answer = false
+            let log = Bundled.logsDirectory.appendingPathComponent("app.log")
+            func count(_ value: Int) async -> Int {
+                await AppEventLog.shared.flush()
+                let text = (try? String(contentsOf: log, encoding: .utf8)) ?? ""
+                return text.components(separatedBy: "rotation: the device refused orientation \(value)\n").count - 1
+            }
+            let (resets, turns) = (await count(1), await count(4))
+            rotation.reset()
+            rotation.rotate(clockwise: true)
+            #expect(host.link.requests == [.orientation(1), .orientation(4)])
+            #expect(await count(1) == resets, "the reset's refusal is quiet")
+            #expect(await count(4) == turns + 1, "a turn's refusal is logged")
+        }
+    }
+
     @Test func theGuestTurnsTheShellOnlyOnAChange() throws {
         try withTemporaryDirectory { directory in
             let (rotation, host) = rotation(directory)
