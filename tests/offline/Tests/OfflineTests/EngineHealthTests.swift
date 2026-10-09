@@ -52,6 +52,20 @@ extension SharedState {
     /// typed not-attached failure, a probe queued behind a long write times out as "USB connection" and leaves the gate
     /// without abandoning a C call, and cancellation is prompt. The inspector's read suppression is AppsInspectorRowsTests'.
     @Suite struct EngineHealthTests {
+        /// The app gone: the services helper's event and log pipes have no reader. A write there is dropped, not an
+        /// NSFileHandleOperationException (Broken pipe) that aborts the helper (SIGPIPE ignored, as libimobiledevice
+        /// callers commonly do).
+        @Test func outputToAPipeWithNoReader() throws {
+            signal(SIGPIPE, SIG_IGN)
+            let pipe = Pipe()
+            try pipe.fileHandleForReading.close()
+            EventWriter(handle: pipe.fileHandleForWriting).send(
+                HostServiceEvent(id: UUID(), session: UUID(), payload: .result(.none))
+            )
+            writeDroppingClosedPipe(Data("log\n".utf8), to: pipe.fileHandleForWriting)
+            try pipe.fileHandleForWriting.close()
+        }
+
         @Test func attachmentProbe() async throws {
             let probe = Timeouts.serviceProbe
             let newDevice = IMDFake.ideviceNew

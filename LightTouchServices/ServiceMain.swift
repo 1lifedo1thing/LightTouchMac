@@ -4,18 +4,7 @@ import HostServiceWire
 
 /// stdout is exclusively the typed service protocol; logs go to stderr.
 nonisolated func logEvent(_ message: String) {
-    FileHandle.standardError.write(Data((message + "\n").utf8))
-}
-
-// Synchronous C progress callbacks and the command task share stdout. The
-// lock serializes each entire encoded event, so callback bytes cannot interleave.
-nonisolated final class EventWriter: @unchecked Sendable {
-    private let lock = NSLock()
-    func send(_ event: HostServiceEvent) {
-        lock.withLock {
-            if let bytes = try? JSONEncoder().encode(event) { FileHandle.standardOutput.write(bytes + Data([10])) }
-        }
-    }
+    writeDroppingClosedPipe(Data((message + "\n").utf8), to: .standardError)
 }
 
 @main struct ServiceMain {
