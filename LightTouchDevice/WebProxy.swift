@@ -188,9 +188,7 @@ final class WebProxy: @unchecked Sendable {
         while true {
             let (method, target, headers) = try readHead(guest)
             if Self.trace {
-                FileHandle.standardError.write(
-                    Data("web-proxy: \(method) \(tunnel.map { "https://" + $0 } ?? "")\(target)\n".utf8)
-                )
+                writeStandardError("web-proxy: \(method) \(tunnel.map { "https://" + $0 } ?? "")\(target)\n")
             }
             if method == "CONNECT" {
                 guard tunnel == nil else { throw Reply(400, "Nested TLS tunnels are unsupported") }

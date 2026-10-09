@@ -53,6 +53,18 @@ extension SharedState {
             }
         }
 
+        /// The app gone (crashed or killed): the helper's stderr pipe has no reader, and its "link closed" log line
+        /// must not abort it before the shutdown that flushes the device's storage. FileHandle.write(_:) raised on
+        /// EPIPE there (SIGPIPE is ignored in the helper, as here).
+        @Test func logToAPipeWithNoReader() throws {
+            signal(SIGPIPE, SIG_IGN)
+            let pipe = Pipe()
+            try pipe.fileHandleForReading.close()
+            helperLog("link closed", to: pipe.fileHandleForWriting)
+            writeStandardError("web-proxy: GET /\n", to: pipe.fileHandleForWriting)
+            try pipe.fileHandleForWriting.close()
+        }
+
         /// The live LCD on a wide-gamut display: the helper's frame surface (makeSurface) holding pure red, composited by
         /// Core Animation into a Display P3 target as a P3 screen would, comes out as sRGB red in P3 (about 234, 51, 35),
         /// not P3's own oversaturated (255, 0, 0).

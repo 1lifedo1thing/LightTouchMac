@@ -555,12 +555,3 @@ final class AudioPump: @unchecked Sendable {
         stopAt = nil
     }
 }
-
-func helperLog(_ message: String) {
-    var tv = timeval()
-    gettimeofday(&tv, nil)
-    let line =
-        String(format: "[LightTouchDevice %d %.3f] ", getpid(), Double(tv.tv_sec) + Double(tv.tv_usec) / 1e6) + message
-        + "\n"
-    FileHandle.standardError.write(Data(line.utf8))
-}

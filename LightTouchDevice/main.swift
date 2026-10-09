@@ -16,7 +16,7 @@ setvbuf(stdout, nil, _IOLBF, 0)
 /// The launch, read once; read from the link, boot and main threads.
 let launch: HelperLaunch = {
     do { return try HelperLaunch(arguments: Array(CommandLine.arguments.dropFirst())) } catch {
-        FileHandle.standardError.write(Data("LightTouchDevice: \(error.localizedDescription)\n".utf8))
+        writeStandardError("LightTouchDevice: \(error.localizedDescription)\n")
         exit(64)
     }
 }()
@@ -55,12 +55,12 @@ func loadQemu() -> Qemu? {
 
 func emit(_ object: [String: Any]) {
     guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) else { return }
-    FileHandle.standardOutput.write(data + Data("\n".utf8))
+    try? FileHandle.standardOutput.write(contentsOf: data + Data("\n".utf8))
 }
 
 /// The device's lease, held until this process exits (HostRuntime HeldLease).
 let storageLease = HeldLease()
-func takeLease(_ path: String?) -> Bool { storageLease.take(path, log: helperLog) }
+func takeLease(_ path: String?) -> Bool { storageLease.take(path, log: { helperLog($0) }) }
 
 /// Every helper mode verifies managed boot records under the same held lease.
 func installBootStorageAuthority(_ host: DeviceHost) {
@@ -93,7 +93,7 @@ case .machines:
             try JSONEncoder().encode(Listing(dylibPath: qemu.path, machines: qemu.machines)) + Data("\n".utf8)
         )
     } catch {
-        FileHandle.standardError.write(Data("LightTouchDevice: \(error)\n".utf8))
+        writeStandardError("LightTouchDevice: \(error)\n")
         exit(1)
     }
     exit(0)
