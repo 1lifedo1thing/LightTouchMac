@@ -171,11 +171,11 @@ struct PhoneCheck: ParsableCommand {
         commandName: "phone",
         abstract:
             "An iPhone base: carrier (SMS tone, ringtone, vibration), emergency, location (GPS), compass, rotate, shutdown, "
-            + "keyboard."
+            + "keyboard, simpin."
     )
     @Argument var base: String
     @Option(help: "The cases, comma-separated.") var only =
-        "carrier,emergency,location,compass,rotate,shutdown,keyboard"
+        "carrier,emergency,location,compass,rotate,shutdown,keyboard,simpin"
     @Option(help: "The overlay of a boot that walked Setup (5.x-7.x carrier and rotate), cloned.", transform: path)
     var overlay: URL?
     @OptionGroup var inputs: Inputs

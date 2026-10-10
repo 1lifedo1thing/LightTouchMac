@@ -238,6 +238,10 @@ public struct PreparedDeviceBoot {
         }
         // The device's saved Carrier panel settings: the modem starts with them (radio boards only).
         if let carrier, hardware.hasCellular { config.argv += carrier.globals }
+        // The SIM keeps its PIN, PUK and tries left with the device's own state, as a card in the tray does.
+        if hardware.hasCellular {
+            config.argv += ["-global", "ios-baseband.sim-file=\(overlay.appendingPathComponent("sim").path)"]
+        }
         config.webProxy = webProxy
         return config
     }

@@ -518,6 +518,9 @@ func phone(_ args: PhoneCheck) -> Never {
     if only.contains("emergency") {
         emergencyCall(base, tools: tools, work: work, r)
     }
+    if only.contains("simpin") {
+        simPIN(base, tools: tools, work: work, r)
+    }
     if only.contains("location") {
         location(base, tools: tools, work: work, r)
     }
@@ -682,6 +685,107 @@ func emergencyCall(_ base: Base, tools: Tools, work: URL, _ r: Report) {
             "emergency: hung up (\(st[2].string("call-state") ?? ""))"
         )
     }
+}
+
+/// The SIM's PIN through Settings > Phone > SIM PIN (issue 49), 4.x: turned on (a wrong PIN first: refused, a try
+/// spent), a clean power-off, then the next boot's SIM Locked sheet (a wrong PIN refused, the right one unlocks and the
+/// phone registers), Change PIN, and off with the new PIN. The modem keeps the SIM in the overlay's sim file.
+func simPIN(_ base: Base, tools: Tools, work: URL, _ r: Report) {
+    print("simpin")
+    guard base.major == 4 else { return print("  skip: no SIM PIN route for \(base.version)") }
+    let keys: [Character: String] = [
+        "1": "0.165 0.59", "2": "0.5 0.59", "3": "0.835 0.59", "4": "0.165 0.70", "5": "0.5 0.70", "6": "0.835 0.70",
+        "7": "0.165 0.82", "8": "0.5 0.82", "9": "0.835 0.82", "0": "0.5 0.93",
+    ]
+    func type(_ code: String) -> [String] { code.flatMap { ["tap \(keys[$0]!)", "wait 0.6"] } }
+    let done = ["tap 0.9 0.145", "wait 5"]  // the Settings sheets' Done and Save
+    let toggle = ["tap 0.83 0.2", "wait 3"]
+    let simPINPage = [
+        "tap 0.385 0.68", "wait 4", "drag 0.5 0.85 0.5 0.35", "wait 3", "tapword Phone", "wait 4",
+        "drag 0.5 0.85 0.5 0.4", "wait 3", "tapword SIM_PIN", "wait 4",
+    ]
+    func boot(_ name: String, _ steps: [String]) -> HelperDriver {
+        let d = HelperDriver(
+            name,
+            tools: tools,
+            work: work,
+            scenario: preparedScenario(base, tools: tools, work: work, name: name, steps: ["boot"] + steps),
+            environment: ["IOS_BB_TRACE": "2"]
+        )
+        r.check(d.finish(600) == 0, "\(name): scenario completed")
+        return d
+    }
+    func read(_ d: HelperDriver) -> [String: String] {
+        var lines: [String: String] = [:]
+        for e in d.events.find("ocr") {
+            lines[e.string("name") ?? ""] = (e["lines"] as? [String] ?? []).joined(separator: " | ")
+        }
+        return lines
+    }
+    let on = boot(
+        "simpin",
+        ["lit 0.5 400", "keyboard off", "modemSettle 80 240", "button 0", "wait 2", unlockSlide, "wait 4"]
+            + simPINPage + toggle + type("1234") + done + ["ocr wrong"] + type("1111") + done
+            + ["button 0", "wait 3", "shutdown 120", "quit", "expectExit 60"]
+    )
+    var seen = read(on)
+    r.check(
+        (seen["wrong"] ?? "").contains("2 attempts remaining"),
+        "simpin: a wrong PIN is refused with the tries left (\(seen["wrong"] ?? ""))"
+    )
+    r.check(
+        on.nativeLog.contains(#"> at+clck="sc",1,"1234""#) && on.nativeLog.contains("+CME ERROR: 16")
+            && on.nativeLog.contains(#"> at+clck="sc",1,"1111""#),
+        "simpin: CommCenter turned the PIN on through +CLCK, and the modem refused the wrong one"
+    )
+    let first = work.appendingPathComponent("simpin/overlay")
+    r.check(
+        (try? String(contentsOf: first.appendingPathComponent("sim"), encoding: .utf8))
+            == "sim-pin 1 1111 12345678 3 10\n",
+        "simpin: the SIM keeps the PIN, on, in the overlay"
+    )
+    // The next power-on, on a clone of that overlay.
+    let second = work.appendingPathComponent("simpin2/overlay")
+    try? FileManager.default.createDirectory(at: second.deletingLastPathComponent(), withIntermediateDirectories: true)
+    run("/bin/cp", ["-cR", first.path, second.path])
+    let locked = boot(
+        "simpin2",
+        [
+            // Home again after the read: the lock screen may have gone dark meanwhile.
+            "lit 0.5 400", "keyboard off", "wait 60", "button 0", "wait 2", "ocr lock", "button 0", "wait 2",
+            unlockSlide, "wait 4",
+            "tapword Unlock", "wait 3",
+        ]
+            + type("2222") + ["tap 0.82 0.45", "wait 5", "ocr incorrect"]
+            + type("1111") + ["tap 0.82 0.45", "wait 20", "modemStatus"]
+            // Change PIN: Current, New, Confirm, Save; then off, with the new PIN.
+            + simPINPage + ["tap 0.5 0.29", "wait 3", "tap 0.6 0.258", "wait 2"] + type("1111")
+            + ["wait 2", "tap 0.6 0.348", "wait 2"] + type("4321") + ["wait 2", "tap 0.6 0.439", "wait 2"]
+            + type("4321") + ["wait 2"] + done
+            + toggle + type("4321") + done + ["ocr off", "quit", "expectExit 60"]
+    )
+    seen = read(locked)
+    r.check(
+        (seen["lock"] ?? "").contains("SIM Locked"),
+        "simpin: the next boot's SIM is locked (\(seen["lock"] ?? ""))"
+    )
+    r.check(
+        (seen["incorrect"] ?? "").contains("Incorrect PIN") && (seen["incorrect"] ?? "").contains("2 attempts"),
+        "simpin: a wrong PIN at the unlock sheet is refused (\(seen["incorrect"] ?? ""))"
+    )
+    let st = locked.events.find("modemStatus").first?.string("json") ?? ""
+    r.check(
+        st.contains(#""sim-lock": "ready""#) && st.contains(#""registered": true"#)
+            && locked.nativeLog.contains("+CREG: 1,"),
+        "simpin: the right PIN unlocks the SIM and the phone registers (\(st))"
+    )
+    r.check(
+        locked.nativeLog.contains(#"> at+cpwd="sc","1111","4321""#)
+            && locked.nativeLog.contains(#"> at+clck="sc",0,"4321""#) && (seen["off"] ?? "").contains("OFF")
+            && (try? String(contentsOf: second.appendingPathComponent("sim"), encoding: .utf8))
+                == "sim-pin 0 4321 12345678 3 10\n",
+        "simpin: changed to 4321, then off with it (\(seen["off"] ?? ""))"
+    )
 }
 
 /// The 3GS's GPS (issue 40): the modem's receiver (gps-fix through the link, as the Carrier panel's Location sets it)

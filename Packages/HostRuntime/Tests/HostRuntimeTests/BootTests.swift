@@ -64,6 +64,11 @@ struct BootTests {
                 carrier: carrier
             )
             #expect(config.argv.contains("ios-baseband.carrier=Panel") == board.hardware!.hasCellular)
+            // The SIM's PIN state lives in the overlay (issue 49).
+            #expect(
+                config.argv.contains("ios-baseband.sim-file=\(f.overlay.appendingPathComponent("sim").path)")
+                    == board.hardware!.hasCellular
+            )
         }
     }
 
@@ -140,7 +145,7 @@ extension BootTests {
         // (the 1.x/S5L8900 boards, N45 and M68, put wifi-mac in their lock when prepared; no identity fallback)
         if board != .n45 && board != .m68 { #expect(machine.contains(",wifi-mac=02:11:22:33:44:66")) }
         // Freeze the pre-extraction recipe output with matching caller dependencies.
-        let expected: BootConfig
+        var expected: BootConfig
         switch board {
         case .n45, .m68:
             expected = BootRecipe.iPod1G(
@@ -205,6 +210,9 @@ extension BootTests {
             )
         case .n81, .n90, .n88, .n18:
             return  // kboot only: missingLegacyStrategyKeepsBoardDefault covers it
+        }
+        if board.hardware!.hasCellular {
+            expected.argv += ["-global", "ios-baseband.sim-file=\(f.overlay.appendingPathComponent("sim").path)"]
         }
         #expect(config == expected)
     }
