@@ -79,8 +79,9 @@ struct SingleCheck: ParsableCommand {
     var skipSetup = false
     @Flag(
         help: """
-            The base was prepared with --jailbreak: Files reads the whole file system through afc2, Cydia launches, \
-            Substrate loads into SpringBoard (3.x to 5.x; idevicesyslog on PATH).
+            The base was prepared with --jailbreak: Files reads the whole file system through afc2, Cydia launches \
+            with the web proxy on (its front page through it, its sources refreshed, and on a phone bc installed \
+            through Cydia's pages), Substrate loads into SpringBoard (3.x to 6.x; idevicesyslog on PATH).
             """
     )
     var jailbreak = false

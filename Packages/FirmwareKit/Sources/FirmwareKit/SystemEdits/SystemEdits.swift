@@ -229,6 +229,7 @@ public enum SystemEdits {
         let skeleton = work.appendingPathComponent("var-skeleton")
         try? fm.removeItem(at: skeleton)
         var rootOwned: [String] = []
+        var rootModes: [(path: String, mode: UInt16)] = []
         var mobileOwned: [String] = []
         var productMajor = 0
         try await VolumeMount.withMounted(system, at: work.appendingPathComponent("mnt-system")) { m in
@@ -325,6 +326,7 @@ public enum SystemEdits {
                 log(cydia.line)
                 rootOwned += cydia.root
                 mobileOwned += cydia.mobile
+                rootModes += cydia.modes
             }
             if o.appsync {
                 _ = try installAppSync(
@@ -389,7 +391,8 @@ public enum SystemEdits {
             try copyTree(at("private/var"), skeleton)
         }
         let sys = try HFSPlusVolume(system, writable: true)
-        let n = try sys.setOwner(rootOwned, uid: 0, gid: 0) + sys.setOwner(mobileOwned, uid: 501, gid: 501)
+        var n = try sys.setOwner(rootOwned, uid: 0, gid: 0) + sys.setOwner(mobileOwned, uid: 501, gid: 501)
+        for (path, mode) in rootModes { n += try sys.setOwner([path], uid: 0, gid: 0, mode: mode) }
         let owners = try sys.owners(under: "private/var")
         let dated = try sys.normalize(after: newest, to: newest)
         log("system volume: \(n) catalog records set to root, \(dated) dated as of the IPSW's newest file")

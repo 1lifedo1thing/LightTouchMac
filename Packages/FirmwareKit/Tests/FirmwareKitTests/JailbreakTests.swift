@@ -197,7 +197,7 @@ struct CydiaInstallTests {
         for (rel, text) in [
             ("Applications/Cydia.app/Cydia", "cydia"), ("bin/bash", "bash"),
             ("private/var/lib/dpkg/status", Self.status), ("private/var/lib/dpkg/available", Self.status),
-            ("usr/libexec/afcd", "not the firmware's"),
+            ("usr/libexec/afcd", "not the firmware's"), ("private/var/Keychains/TrustStore.sqlite3", "roots"),
         ] + SystemEdits.Cydia.patcyh.map({ ($0, "patcyh") }) {
             let u = src.appendingPathComponent(rel)
             try fm.createDirectory(at: u.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -218,6 +218,11 @@ struct CydiaInstallTests {
             p.waitUntilExit()
             #expect(p.terminationStatus == 0)
         }
+        // cydo, set-user-ID and set-group-ID root as freeze.tar has it
+        let cydo = src.appendingPathComponent("usr/libexec/cydia/cydo")
+        try fm.createDirectory(at: cydo.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("cydo".utf8).write(to: cydo)
+        #expect(chmod(cydo.path, 0o6755) == 0)
         let prefs = src.appendingPathComponent(SystemEdits.Cydia.springBoardPrefs)
         try fm.createDirectory(at: prefs.deletingLastPathComponent(), withIntermediateDirectories: true)
         try PropertyListSerialization.data(
@@ -275,6 +280,8 @@ struct CydiaInstallTests {
         )
         #expect(try springBoard(m)["SBShowNonDefaultSystemApps"] as? Bool == true)
         #expect(fm.fileExists(atPath: m.appendingPathComponent(".cydia_no_stash").path), "no stash on first launch")
+        #expect(!fm.fileExists(atPath: m.appendingPathComponent("private/var/Keychains").path), "no trust store")
+        #expect(!r.root.contains { $0.hasPrefix("private/var/Keychains") })
         for rel in [
             ".cydia_no_stash", "Applications", "Applications/Cydia.app/Cydia", "bin/bash",
             "private/var/lib/dpkg/status",
@@ -291,6 +298,59 @@ struct CydiaInstallTests {
                 SystemEdits.Cydia.springBoardPrefs,
             ]
         )
+    }
+
+    /// cydo, which Cydia runs for every root operation (dpkg, the /etc/apt/sources.list.d/cydia.list link), keeps its
+    /// set-user-ID bit: tar, not root, drops it, so the catalog gets the archive's mode.
+    @Test func cydoKeepsItsSetUserIDMode() throws {
+        let dir = fm.temporaryDirectory.appendingPathComponent("ltm-cydia-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: dir) }
+        let m = try firmware(in: dir, prefs: nil)
+        let r = try SystemEdits.installCydia(m, bootstrap: try bootstrap(in: dir))
+        #expect(r.modes.map(\.path) == ["usr/libexec/cydia/cydo"])
+        #expect(r.modes.first?.mode == 0o6755)
+        #expect(r.root.contains("usr/libexec/cydia/cydo"))
+    }
+
+    @Test func setUserIDLinesOfATarListing() {
+        #expect(
+            SystemEdits.specialMode("-rwsr-sr-x  0 root   wheel  133808 Feb 15  2017 ./usr/libexec/cydia/cydo")! == (
+                "usr/libexec/cydia/cydo", 0o6755
+            )
+        )
+        #expect(
+            SystemEdits.specialMode("-r-sr-xr-x  0 root   wheel  105744 Oct 13  2015 ./bin/su")! == ("bin/su", 0o4555)
+        )
+        #expect(SystemEdits.specialMode("-rwxr-xr-x  0 root   wheel  1 Oct 13  2015 ./bin/bash") == nil)
+        #expect(SystemEdits.specialMode("drwxrwsr-x  0 root   authedusers  0 Oct 28  2006 ./private/var/local/") == nil)
+        #expect(SystemEdits.specialMode("-rwsr-xr-x  0 root  wheel  9 Oct 13  2015 ./a b")! == ("a b", 0o4755))
+    }
+
+    /// Cydia's first launch takes its sources from metadata.plist (Version 1: none of its 1.1.30 defaults added), so
+    /// none of the dead ones (apt.modmyi.com, cydia.zodttd.com, repo666.ultrasn0w.com) is ever refreshed.
+    @Test func cydiasSourcesAreTheOnesThatAnswerToday() throws {
+        let dir = fm.temporaryDirectory.appendingPathComponent("ltm-cydia-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: dir) }
+        let m = try firmware(in: dir, prefs: nil)
+        let r = try SystemEdits.installCydia(m, bootstrap: try bootstrap(in: dir))
+        let u = m.appendingPathComponent("private/var/lib/cydia/metadata.plist")
+        let plist = try #require(
+            PropertyListSerialization.propertyList(from: Data(contentsOf: u), format: nil) as? [String: Any]
+        )
+        #expect(plist["Version"] as? Int == 1)
+        let sources = try #require(plist["Sources"] as? [String: [String: Any]])
+        #expect(
+            Set(sources.keys) == [
+                "deb:http://apt.thebigboss.org/repofiles/cydia/:stable", "deb:http://modmyi.saurik.com/:stable",
+                "deb:http://zodttd.saurik.com/repo/cydia/:stable",
+            ]
+        )
+        for (key, source) in sources {
+            #expect(key == "deb:\(source["URI"] as? String ?? ""):stable" && source["Type"] as? String == "deb")
+            #expect(source["Sections"] as? [String] == ["main"] && source["Distribution"] as? String == "stable")
+        }
+        #expect(try fm.attributesOfItem(atPath: u.path)[.posixPermissions] as? Int == 0o644, "mobile reads it")
+        #expect(r.root.contains("private/var/lib/cydia/metadata.plist"))
     }
 
     @Test func theFirmwaresSpringBoardPreferencesGainTheKey() throws {

@@ -77,6 +77,9 @@ struct SingleConfig: Decodable {
     /// The base was prepared with firmwarekit create --jailbreak: Files through afc2 lists "/", reads the build's
     /// SystemVersion.plist and round-trips a file in root's home (`afc2`).
     var jailbreak: Bool?
+    /// The app's armv6.itpack: ittrust for a guest whose package lacks it (WebProxySetup.bundledGuestTool, which
+    /// the app runs on every board).
+    var proxyItpack: String?
     /// contrib/it-proxy/httpget (armv6): at the first Home the guest fetches `WiFiProbe.url`, which only wifi0's
     /// guestfwd answers, so the board's Wi-Fi joined (`wifi`).
     var httpget: String?
@@ -116,6 +119,21 @@ nonisolated enum WiFiProbe {
     let b = URL(fileURLWithPath: s.base)
     let d = Device(name: s.board, profile: profile, base: b)
     if s.httpget != nil { d.netdevExtra = WiFiProbe.guestForward }
+    // A jailbroken base boots with the app's web proxy on (Direct), its CA trusted at Home: Cydia's online check.
+    var proxyCA: Data?
+    if s.jailbreak == true {
+        let proxyDir = d.dir.appendingPathComponent("proxy")
+        do {
+            try WebProxyConfiguration(mode: .direct).save(in: proxyDir)
+            proxyCA =
+                SecCertificateCopyData(
+                    try WebProxyCA.prepare(config: WebProxyConfiguration.file(in: proxyDir)).certificate
+                ) as Data
+        } catch { fail("web proxy: \(error)") }
+        let endpoint = WebProxyConfiguration.endpoint(directory: proxyDir)
+        d.webProxy = endpoint
+        d.netdevExtra = (d.netdevExtra ?? "") + WebProxyConfiguration.guestForward(socket: endpoint.socket)
+    }
     // Composed per boot from the device's verdicts, as the app's GuestPackageWatch.compose (an iPad's in Device.boot);
     // `offered`: this boot carries one (compose gives none for a stub seed).
     var offered = a4 && config.ipadItpack != nil
@@ -652,7 +670,7 @@ nonisolated enum WiFiProbe {
         } catch {
             emit("afc2", ["device": d.name, "top": top, "error": "\(error)"])
         }
-        await cydia(d)
+        await cydia(d, proxyCA: proxyCA, itpack: s.proxyItpack)
         await substrate(d)
     }
     if s.install != false {
@@ -1132,21 +1150,131 @@ enum DockBand {
     emit("appFiles", event)
 }
 
+/// The hosts of the sources a jailbroken device's Cydia refreshes: Cydia/Telesphoreo and the defaults FirmwareKit seeds.
+nonisolated enum CydiaSources {
+    static let hosts = ["apt.saurik.com", "apt.thebigboss.org", "modmyi.saurik.com", "zodttd.saurik.com"]
+
+    /// Every label Vision reads on the screenshot, each at its center as a touch point (top-left origin, 0...1).
+    static func labels(_ path: String) -> [(text: String, x: Double, y: Double)] {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        guard (try? VNImageRequestHandler(url: URL(fileURLWithPath: path)).perform([request])) != nil else { return [] }
+        return (request.results ?? []).compactMap { o in
+            o.topCandidates(1).first.map {
+                ($0.string.trimmingCharacters(in: .whitespaces), o.boundingBox.midX, 1 - o.boundingBox.midY)
+            }
+        }
+    }
+}
+
 /// Cydia on a jailbroken device: in SpringBoard's icon state, then launched through the guest agent and frontmost,
-/// and Home again. Emits `cydia`.
-@MainActor func cydia(_ d: Device) async {
+/// and Home again. With `proxyCA` (the web proxy on, as the app turns it on: this CA trusted through the agent first)
+/// Cydia is online: its front page comes through the proxy (the CLI reads the proxy's trace), it refreshes its sources
+/// (the lists in its cache), and on a phone it installs a small package from Cydia's own repository through its own
+/// pages, which then runs. Emits `cydia`.
+@MainActor func cydia(_ d: Device, proxyCA: Data? = nil, itpack: String? = nil) async {
     let id = "com.saurik.Cydia"
     var event: [String: Any] = ["device": d.name]
     do { event["onHome"] = try await d.services.homeScreenOrder().contains(id) } catch {
         event["homeError"] = "\(error)"
     }
     let agent = GuestAgent(link: d.process.link, cache: GuestAgentCache())
+    /// A command's output, or what it said as it failed.
+    func run(_ argv: [String]) async -> String {
+        do { return String(decoding: try await agent.spawn(argv), as: UTF8.self) } catch let e as GuestAgentError {
+            return String(decoding: e.output, as: UTF8.self)
+        } catch { return "\(error)" }
+    }
     if await agent.waitAlive(seconds: 20) {
+        if let proxyCA {
+            let guest = GuestServices(agent: agent, packaged: d.process.status?.guestPackage != nil)
+            func localTool(_ name: String) throws -> Data {
+                guard let itpack,
+                    let tool = try GuestPackage.package(
+                        in: URL(fileURLWithPath: itpack),
+                        board: "n72ap",
+                        build: "7E18"
+                    )?
+                    .1["bin/\(name)"]
+                else { throw DeviceToolsError.toolMissing(name) }
+                return tool
+            }
+            do {
+                try await guest.routeThroughProxy(localTool: localTool)
+                try await guest.trustCertificate(proxyCA, localTool: localTool)
+                event["trusted"] = true
+            } catch { event["trustError"] = "\(error)" }
+        }
         do { try await agent.launch(id) } catch { event["launchError"] = "\(error)" }
         for (i, wait) in [8, 12, 20].enumerated() {
             try? await Task.sleep(for: .seconds(wait))
             if let path = d.screenshot("cydia\(i + 1)") { event["shot\(i + 1)"] = path }
             event["frontmost\(i + 1)"] = (try? await agent.frontmost())?.bundleID ?? ""
+        }
+        if proxyCA != nil {
+            // Cydia's refresh: its first launch's own, else (a phone) Changes, then Refresh, as a user asks for one.
+            // Done when each source (its cache's sources.list, which /etc/apt/sources.list.d/cydia.list links to)
+            // has a Packages list in its cache.
+            let cache = "/var/mobile/Library/Caches/com.saurik.Cydia"
+            var lists: [String] = []
+            var asked: [String] = []
+            for n in 0..<48 {
+                lists = (await run(["/bin/ls", cache + "/lists"])).split(separator: "\n").map(String.init)
+                if CydiaSources.hosts.allSatisfy({ host in
+                    lists.contains { $0.hasPrefix(host) && $0.hasSuffix("_Packages") }
+                }) {
+                    break
+                }
+                if n == 6 || n == 7, d.profile != .k48, let shot = d.screenshot("cydia-refresh-\(n)") {
+                    let label = n == 6 ? "Changes" : "Refresh"
+                    if let at = SetupPhone.labels(shot)[label] {
+                        await d.tap(at.x, at.y)
+                        asked.append(label)
+                    }
+                }
+                try? await Task.sleep(for: .seconds(10))
+            }
+            event["lists"] = lists
+            event["asked"] = asked
+            event["links"] = await run(["/bin/ls", "-l", "/etc/apt/sources.list.d", "/usr/libexec/cydia/cydo"])
+            if let path = d.screenshot("cydia-refreshed") { event["shotRefreshed"] = path }
+            event["sources"] = await run(["/bin/cat", cache + "/sources.list"])
+            // A package installed the way a user does it: Cydia's page for bc (no dependencies, Cydia/Telesphoreo),
+            // Install, Confirm (each button found by Vision on a screenshot), then bc runs. The phones' portrait
+            // Cydia only; the iPad's turns with SpringBoard.
+            if d.profile != .k48 {
+                event["open"] = await run(["/usr/bin/uiopen", "cydia://package/bc"])
+                var taps: [String] = []
+                for (n, label) in ["Install", "Confirm"].enumerated() {
+                    for _ in 0..<12 {
+                        try? await Task.sleep(for: .seconds(5))
+                        guard let shot = d.screenshot("cydia-install-\(n)") else { continue }
+                        let labels = CydiaSources.labels(shot)
+                        // After its first refresh Cydia offers the bootstrap's essential upgrades; a user can
+                        // put them off.
+                        if let later = labels.first(where: { $0.text.hasPrefix("Ignore") }) {
+                            await d.tap(later.x, later.y)
+                            taps.append("Ignore")
+                            continue
+                        }
+                        // The navigation bar's button, right of a title of the same word ("Confirm").
+                        guard let at = labels.filter({ $0.text == label }).max(by: { $0.x < $1.x }) else { continue }
+                        await d.tap(at.x, at.y)
+                        taps.append(label)
+                        break
+                    }
+                }
+                event["taps"] = taps
+                var status = ""
+                for _ in 0..<36 where !status.hasPrefix("install ok installed") {
+                    try? await Task.sleep(for: .seconds(5))
+                    status = await run(["/usr/bin/dpkg-query", "-W", "-f", "${Status}", "bc"])
+                }
+                event["bcStatus"] = status
+                if let path = d.screenshot("cydia-installed") { event["shotInstalled"] = path }
+                event["bc"] = (await run(["/bin/sh", "-c", "echo 6*7 | /usr/bin/bc"]))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
         }
     } else {
         event["launchError"] = "no guest agent"
@@ -1205,6 +1333,7 @@ enum DockBand {
     try? await Task.sleep(for: .seconds(5))
     await d.slideToUnlock(9, agent: agent)
     event["locked"] = (try? await agent.isLocked()) ?? true
+    if let path = d.screenshot("substrate-unlocked") { event["shot"] = path }
     try? await agent.launch("com.saurik.Cydia")
     try? await Task.sleep(for: .seconds(10))
     d.process.link.send(.button(0, down: true))

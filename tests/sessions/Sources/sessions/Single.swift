@@ -43,6 +43,9 @@ func single(_ args: SingleCheck) -> Never {
             single["itpack"] = (args.itpack ?? packs.appendingPathComponent("armv6.itpack")).path
         }
     }
+    if args.jailbreak {
+        single["proxyItpack"] = tools.guest.appendingPathComponent("guest-tools/armv6.itpack").path
+    }
     if base.board == "k48ap" { config["ipadBase"] = base.url.path }
     config["single"] = single
     // 6.x/7.x: the first boot walks the Setup Assistant; 7.x also boots and pairs far slower. Per boot.
@@ -55,10 +58,17 @@ func single(_ args: SingleCheck) -> Never {
     {
         timeout += 150 * Double(text.split(separator: "\n").count) + 60
     }
+    // --jailbreak: Cydia online (its refresh and an install) and the proxy's trace, which the check reads.
+    if args.jailbreak { timeout += 600 }
     config["timeout"] = timeout
 
     print("\(base.entryID): \(d) from \(base.url.path)")
-    let (events, status) = sessionDriver(config, work: work, timeout: timeout, environment: driverEnvironment(tools))
+    let (events, status) = sessionDriver(
+        config,
+        work: work,
+        timeout: timeout,
+        environment: driverEnvironment(tools).merging(args.jailbreak ? ["LTM_WEB_PROXY_TRACE": "1"] : [:]) { $1 }
+    )
     let r = Report()
     if let race {
         for e in events.find("race", ["device": d]) {
@@ -267,6 +277,31 @@ func single(_ args: SingleCheck) -> Never {
             "\(d): Cydia launched and stayed frontmost (\(fronts.joined(separator: ", ")))"
                 + (cydia.string("launchError").map { ": \($0)" } ?? "")
         )
+        // Online through the web proxy (on, its CA trusted): the front page and what it loads came through it
+        // (over http on 3.x, where Cydia HTTPatch points Cydia there).
+        let native = (try? String(contentsOf: work.appendingPathComponent("\(d)/native.log"), encoding: .utf8)) ?? ""
+        let front = native.split(separator: "\n").filter {
+            $0.contains("web-proxy: GET http") && $0.contains("://cydia.saurik.com")
+        }
+        r.check(
+            cydia.bool("trusted") && front.contains { $0.contains("/home/") } && front.count > 1,
+            "\(d): Cydia's front page and \(max(front.count - 1, 0)) of its resources through the web proxy"
+                + (cydia.string("trustError").map { ": \($0)" } ?? "")
+        )
+        let lists = cydia["lists"] as? [String] ?? []
+        r.check(
+            ["apt.saurik.com", "apt.thebigboss.org", "modmyi.saurik.com", "zodttd.saurik.com"].allSatisfy { host in
+                lists.contains { $0.hasPrefix(host) && $0.hasSuffix("_Packages") }
+            },
+            "\(d): Cydia refreshed its sources (\(lists.filter { $0.hasSuffix("_Packages") }.joined(separator: ", ")))"
+        )
+        if base.board != "k48ap" {
+            r.check(
+                (cydia.string("bcStatus") ?? "").hasPrefix("install ok installed") && cydia.string("bc") == "42",
+                "\(d): Cydia installs bc from Cydia/Telesphoreo (\((cydia["taps"] as? [String] ?? []).joined(separator: ", ")))"
+                    + " and it runs: 6*7 = \(cydia.string("bc") ?? "")"
+            )
+        }
         if (3...6).contains(base.major) {  // Substrate where FirmwareKit's jailbreak installs it
             let ms = events.one("substrate", ["device": d])
             let loaded = ms["loaded"] as? [String] ?? []

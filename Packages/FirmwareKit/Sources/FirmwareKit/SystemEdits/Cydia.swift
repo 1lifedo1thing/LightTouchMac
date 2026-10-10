@@ -20,6 +20,16 @@
 // Patcyh, a Substrate extension for lsd and installd that freeze.tar carries for iOS 8.3 and later, comes out, as
 // Legacy iOS Kit takes it out below 8.3.
 //
+// Cydia's default sources are seeded as its own migration reads them (/var/lib/cydia/metadata.plist, Version 1, so
+// its first launch adds none of its own): BigBoss, and ModMyi and ZodTTD at the archives SaurikIT serves them from
+// now (modmyi.saurik.com since 2024-11, zodttd.saurik.com), where Cydia 1.1.30 would add apt.modmyi.com (no DNS
+// record since 2023-11), cydia.zodttd.com (a redirect to https that never answers) and repo666.ultrasn0w.com (410
+// Gone), and each refresh would fail on them. Cydia/Telesphoreo (apt.saurik.com) Cydia always adds itself.
+//
+// freeze.tar's /private/var/Keychains (a TrustStore.sqlite3 of 32 present-day roots, ISRG and DigiCert G2 among them,
+// _securityd's in the archive) stays out: iOS's trust store is the firmware's own and the web proxy's trust only
+// (WebProxySetup). Extracted, it was root's and securityd couldn't open it, so every trust edit failed (-50).
+//
 //   let file = try SystemEdits.Cydia.bootstrap(in: caches.appendingPathComponent("Jailbreak"), log: log)
 //   let (line, root, mobile) = try SystemEdits.installCydia(m, bootstrap: file)
 
@@ -38,6 +48,15 @@ extension SystemEdits {
             (name: "cydiahttpatch.tar", sha1: "3a1302c6294fe290c6d52186dd4fe56cda7fd661"),
         ]
         static let name = files[0].name, noStash = ".cydia_no_stash"
+        static let metadata = "private/var/lib/cydia/metadata.plist"
+        /// What isn't extracted: the bootstrap's trust store.
+        static let excluded = "private/var/Keychains"
+        /// Cydia's default third-party sources as they are reachable today (its Sources dictionary, keyed as
+        /// CydiaAddSource keys them).
+        static let sources = [
+            "http://apt.thebigboss.org/repofiles/cydia/", "http://modmyi.saurik.com/",
+            "http://zodttd.saurik.com/repo/cydia/",
+        ]
         static let substrateMajors = 3...6
         static let springBoardPrefs = "private/var/mobile/Library/Preferences/com.apple.springboard.plist"
         static let patcyh = [
@@ -78,8 +97,12 @@ extension SystemEdits {
 
     /// The bootstrap extracted into the mounted system volume `m`, keeping every file the firmware already has (tar
     /// -k). Returns the log line and the volume paths to make root's and mobile's: what it added, mobile's under
-    /// /private/var/mobile, root's elsewhere (its symbolic links too, which tar replaces).
-    static func installCydia(_ m: URL, bootstrap: URL) throws -> (line: String, root: [String], mobile: [String]) {
+    /// /private/var/mobile, root's elsewhere (its symbolic links too, which tar replaces). `modes`: the set-user-ID
+    /// and set-group-ID files it added (cydo, su, login, passwd) with their archive modes, which tar, not run as root,
+    /// doesn't restore; the catalog takes them with the root owner (HFSPlusVolume.setOwner).
+    static func installCydia(_ m: URL, bootstrap: URL) throws -> (
+        line: String, root: [String], mobile: [String], modes: [(path: String, mode: UInt16)]
+    ) {
         let fm = FileManager.default
         func exists(_ rel: String) -> Bool {
             (try? fm.attributesOfItem(atPath: m.appendingPathComponent(rel).path)) != nil
@@ -99,14 +122,20 @@ extension SystemEdits {
             (Cydia.files[2].name, major == 3),
         ].filter(\.1).map { bootstrap.deletingLastPathComponent().appendingPathComponent($0.0) }
         var entries: [String] = []
+        var special: [(path: String, mode: UInt16)] = []
         for p in packages {
-            entries += try tar(["-tf", p.path]).split(separator: "\n").map {
-                String($0.hasPrefix("./") ? $0.dropFirst(2) : $0[...]).trimmingCharacters(in: ["/"])
+            entries += try tar(["-tf", p.path]).split(separator: "\n").map(Self.entryPath).filter {
+                $0 != Cydia.excluded && !$0.hasPrefix(Cydia.excluded + "/")
+            }
+            for line in try tar(["-tvf", p.path]).split(separator: "\n") {
+                if let entry = Self.specialMode(String(line)) { special.append(entry) }
             }
         }
         entries = entries.filter { !$0.isEmpty }
         let added = Set(entries.filter { !exists($0) })
-        for p in packages { _ = try tar(["-xkf", p.path, "-C", m.path]) }
+        for p in packages {
+            _ = try tar(["-xkf", p.path, "-C", m.path, "--exclude", "./" + Cydia.excluded, "--exclude", Cydia.excluded])
+        }
         guard exists("Applications/Cydia.app/Cydia") else {
             throw FirmwareError(.internal, "Cydia bootstrap: no Applications/Cydia.app/Cydia after extracting")
         }
@@ -129,13 +158,54 @@ extension SystemEdits {
         // ("Preparing Filesystem", then exit) to free a stock-sized root; this root is grown, so no stash, as Legacy
         // iOS Kit's own restores mark it.
         try put(Data(), m.appendingPathComponent(Cydia.noStash), mode: 0o644)
-        var root: [String] = [Cydia.noStash]
+        // Its sources: read once by Cydia (as mobile), which keeps them in its preferences and removes the file.
+        var sources: [String: Any] = [:]
+        for uri in Cydia.sources {
+            sources["deb:\(uri):stable"] = ["Type": "deb", "URI": uri, "Distribution": "stable", "Sections": ["main"]]
+        }
+        try mkdirs(m.appendingPathComponent(Cydia.metadata).deletingLastPathComponent())
+        try put(
+            PropertyListSerialization.data(
+                fromPropertyList: ["Version": 1, "Sources": sources] as [String: Any],
+                format: .xml,
+                options: 0
+            ),
+            m.appendingPathComponent(Cydia.metadata),
+            mode: 0o644
+        )
+        var root: [String] = [Cydia.noStash, Cydia.metadata]
         var mobile: [String] = []
         for rel in entries where added.contains(rel) || link(rel) {
             if rel.hasPrefix("private/var/mobile/") { mobile.append(rel) } else { root.append(rel) }
         }
         if !hadPrefs, !mobile.contains(Cydia.springBoardPrefs) { mobile.append(Cydia.springBoardPrefs) }
-        return ("Cydia: \(bootstrap.lastPathComponent), \(added.count) of \(entries.count) entries added", root, mobile)
+        // Under /private/var the data volume's copy keeps its own modes (only /private/var/local, a setgid folder).
+        let modes = special.filter { added.contains($0.path) && !$0.path.hasPrefix("private/var/") }
+        return (
+            "Cydia: \(bootstrap.lastPathComponent), \(added.count) of \(entries.count) entries added", root, mobile,
+            modes
+        )
+    }
+
+    /// A tar listing's member name as a volume path: no leading ./, no trailing /.
+    static func entryPath(_ name: Substring) -> String {
+        String(name.hasPrefix("./") ? name.dropFirst(2) : name).trimmingCharacters(in: ["/"])
+    }
+
+    /// A `tar -tv` line of a regular file with the set-user-ID or set-group-ID bit: its path and full permission
+    /// bits ("-rwsr-sr-x  0 root wheel 133808 Feb 15  2017 ./usr/libexec/cydia/cydo" is 0o6755).
+    static func specialMode(_ line: String) -> (path: String, mode: UInt16)? {
+        let fields = line.split(separator: " ", maxSplits: 8, omittingEmptySubsequences: true)
+        guard fields.count == 9, fields[0].count == 10, fields[0].first == "-" else { return nil }
+        let p = Array(fields[0].dropFirst())
+        var mode: UInt16 = 0
+        for (i, c) in p.enumerated() where c != "-" && c != "S" && c != "T" {
+            mode |= 1 << UInt16(8 - i)
+        }
+        if p[2] == "s" || p[2] == "S" { mode |= 0o4000 }
+        if p[5] == "s" || p[5] == "S" { mode |= 0o2000 }
+        guard mode & 0o6000 != 0 else { return nil }
+        return (entryPath(fields[8]), mode)
     }
 
     /// /usr/bin/tar `args`; its stdout, or an error with its stderr.
