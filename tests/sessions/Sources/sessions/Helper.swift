@@ -204,7 +204,8 @@ func helperChecks(_ args: HelperCheck) -> Never {
 /// hard halt. `meddle`: the app's DeviceFileWatch on the overlay sees its NOR unlinked under the
 /// running helper (the app's notice); SIGTERM halts the helper. `power`: the pump at 60 Hz before boot (30 with the host
 /// constrained); shown 60 Hz with an idle-sleep assertion, hidden at most 5 Hz and none, back to 60 Hz within 100 ms,
-/// the guest's display asleep at most 5 Hz, woken 60 Hz again. `--only a,b` picks cases.
+/// paused at most 5 Hz and none, resumed 60 Hz, the guest's display asleep at most 5 Hz, woken 60 Hz again. `--only a,b`
+/// picks cases.
 func helperBoot(_ args: HelperBootCheck) -> Never {
     let base = Base(args.base)
     guard base.board == "n72ap" else { die("helper-boot boots an n72ap base") }
@@ -318,6 +319,7 @@ func helperBoot(_ args: HelperBootCheck) -> Never {
         // Unlocked first: the lock screen's display sleeps within seconds, the Home screen's not for a minute.
         var steps = [
             "boot", "lit 0.03 300", "wait 2", "button 0", "wait 2", unlockSlide, "wait 3", "sample shown 5",
+            "pause", "wait 1", "sample paused 3", "unpause", "wait 1", "sample resumed 2",
             "visible off", "sample hidden 5",
         ]
         // Shown again 40-240 ms before the next 4 Hz tick (hidden starts its ticks when the command lands).
@@ -335,7 +337,7 @@ func helperBoot(_ args: HelperBootCheck) -> Never {
         r.check(d.finish(500) == 0, "power: scenario completed")
         var s: [String: Event] = [:]
         for x in d.events.find("sample") { s[x.string("label") ?? ""] = x }
-        for label in ["shown", "hidden", "asleep", "woken"] {
+        for label in ["shown", "hidden", "asleep", "woken", "paused", "resumed"] {
             let x = s[label] ?? [:]
             print(
                 "   \(label): \(format(x.double("hz"))) Hz, \(format(x.double("fps"))) fps, \(format(x.double("cpuPercent")))% CPU, "
@@ -354,6 +356,8 @@ func helperBoot(_ args: HelperBootCheck) -> Never {
             "power: the guest's display asleep, at most 5 Hz, lets the Mac idle-sleep"
         )
         r.check(rate("woken", 50, 65, holds: true), "power: woken by the power button, 60 Hz again")
+        r.check(rate("paused", 0.5, 5, holds: false), "power: paused, at most 5 Hz, lets the Mac idle-sleep")
+        r.check(rate("resumed", 50, 65, holds: true), "power: resumed, 60 Hz again")
         let ticks = d.events.find("visible").filter { $0.bool("on") }.prefix(5).compactMap { $0.double("tickMs") }
         r.check(
             ticks.count == 5 && ticks.allSatisfy { 0 <= $0 && $0 < 100 },

@@ -33,6 +33,7 @@ final class DeviceHost: @unchecked Sendable {
     // pumpQueue: what paces the pump (pace()).
     private var activityLive = false
     private var screenVisible = true
+    private var paused = false
     private var displayOn = true
     private var lastInput: UInt64 = 0
     private var constrained = DeviceHost.hostConstrained()
@@ -67,8 +68,8 @@ final class DeviceHost: @unchecked Sendable {
     // MARK: - Pump
 
     /// Frames at 60 Hz (30 under serious thermal pressure or Low Power Mode) while the app shows the screen
-    /// and the guest's display is on (or was just touched); otherwise 4 Hz, enough for the status block and a
-    /// hidden device's first frames. Status at 20 Hz live, every tick otherwise; the heartbeat on every tick
+    /// and the guest's display is on (or was just touched) and the machine isn't paused; otherwise 4 Hz, enough
+    /// for the status block and a hidden device's first frames. Status at 20 Hz live, every tick otherwise; the heartbeat on every tick
     /// (also before boot). A new rate starts with a tick at once, so a screen shown again gets its frame then.
     func startPump() {
         let timer = DispatchSource.makeTimerSource(queue: pumpQueue)
@@ -116,7 +117,7 @@ final class DeviceHost: @unchecked Sendable {
     /// pumpQueue: pick the pump's rate and the process activity for the current state.
     private func pace(force: Bool = false) {
         let now = DispatchTime.now().uptimeNanoseconds
-        let next = screenVisible && (displayOn || now &- lastInput < 2_000_000_000)
+        let next = screenVisible && !paused && (displayOn || now &- lastInput < 2_000_000_000)
         let interval = next ? (constrained ? 1.0 / 30 : 1.0 / 60) : 0.25
         holdActivity(live: next)
         guard force || interval != pumpInterval else { return }
@@ -296,8 +297,12 @@ final class DeviceHost: @unchecked Sendable {
             return
         }
         switch op {
-        case .pause: qemu.pause()
-        case .resume: qemu.resume()
+        case .pause, .resume:
+            if op == .pause { qemu.pause() } else { qemu.resume() }
+            pumpQueue.async { [self] in
+                paused = op == .pause
+                pace()
+            }
         case .reset: qemu.reset()
         case .powerdown: qemu.powerdown()
         case .shutdown:

@@ -618,6 +618,8 @@ Thread.detachNewThread {
             if code != 2 { fail("snapshot failed") }
         case "resume":
             link.send(.snapshotResume)
+        case "pause", "unpause":  // the app's Pause and Resume (MachineOp.pause, .resume)
+            link.send(.machine(p[0] == "pause" ? .pause : .resume))
         case "status":
             emit("status", statusFields())
         case "watch":
