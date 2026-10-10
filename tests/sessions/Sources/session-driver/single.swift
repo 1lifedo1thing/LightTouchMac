@@ -648,6 +648,7 @@ nonisolated enum WiFiProbe {
     await d.wakeForShot("installed")  // wake first: the panel may have slept during the install
     // launch() goes through the guest agent wherever it answers (judged on the frontmost app), else taps the icon.
     if s.launch == true { await launch(d, at: s.launchAt, tap: s.tapAfterLaunch) }
+    if let list = ProcessInfo.processInfo.environment["LTM_APPS_LIST"] { await appsSurvey(d, list: list) }
 
     // The persist marker: a file that must still be there after the clean shutdown and the second boot.
     let marker = "ltm-matrix-persist.bin"

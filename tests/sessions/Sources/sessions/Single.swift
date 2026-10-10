@@ -49,6 +49,12 @@ func single(_ args: SingleCheck) -> Never {
     var timeout = base.major >= 7 ? 1400.0 : base.major >= 6 ? 700 : 560
     if args.reboot || args.panel != nil { timeout *= 2 }
     if let race { timeout = 200 * Double(race) }
+    // The app survey (session-driver apps.swift): 150 s an app on top of the boot.
+    if let list = ProcessInfo.processInfo.environment["LTM_APPS_LIST"],
+        let text = try? String(contentsOfFile: list, encoding: .utf8)
+    {
+        timeout += 150 * Double(text.split(separator: "\n").count) + 60
+    }
     config["timeout"] = timeout
 
     print("\(base.entryID): \(d) from \(base.url.path)")
