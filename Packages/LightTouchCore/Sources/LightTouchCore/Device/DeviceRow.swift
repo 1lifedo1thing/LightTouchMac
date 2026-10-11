@@ -13,6 +13,8 @@ import HostRuntime
 public nonisolated enum DeviceAction: CaseIterable, Sendable {
     case start, stop, forceStop, downloadAndPrepare, importIPSW, cancel, erase, showInFinder, delete, prepareAgain
     case openFilesystem, commitFilesystem, discardFilesystem, recoverFilesystem
+    /// What the Jailbreak option adds, on a prepared device that is stopped (DeviceFilesystemEdits).
+    case jailbreak
 }
 
 /// A download or preparation in flight for a catalog entry (FirmwareJobs).
@@ -389,6 +391,8 @@ public nonisolated struct DeviceRow: Equatable, Sendable {
         case .erase: return instanceID != nil && !working
         case .openFilesystem, .commitFilesystem, .discardFilesystem, .recoverFilesystem:
             return instanceID != nil && !working && state != .running && state != .stopping
+        case .jailbreak:
+            return FirmwareJobs.offersJailbreak(entry) && allows(.openFilesystem, canDownload: canDownload)
         case .showInFinder: return instanceID != nil && state != .deleting
         // Also with a shut-down or dead session: it lets go of the storage first (DeviceSessionHost.delete).
         case .delete: return instanceID != nil && !working && state != .running

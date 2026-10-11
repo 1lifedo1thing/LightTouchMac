@@ -476,7 +476,7 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         (.openFilesystem, "Show File System in Finder"), (.commitFilesystem, "Save File System Changes"),
         (.discardFilesystem, "Discard File System Changes"), (.recoverFilesystem, "Finish File System Recovery"),
         (nil, ""),
-        (.erase, "Erase All Content and Settings…"),
+        (.jailbreak, "Jailbreak…"), (.erase, "Erase All Content and Settings…"),
     ]
 
     func menuNeedsUpdate(_ menu: NSMenu) {

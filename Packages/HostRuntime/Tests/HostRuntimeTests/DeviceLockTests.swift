@@ -50,6 +50,11 @@ struct DeviceLockTests {
         #expect(try !lock(["skip_setup": false]).skippedSetup)
         #expect(try !lock([:]).skippedSetup)
         #expect(try lock(["jailbreak": true]).jailbroken && !lock(["jailbreak": true]).skippedSetup)
+        #expect(try !lock([:]).jailbroken)
+        // Jailbroken since it was prepared (a stopped edit's generation lock)
+        #expect(
+            try DeviceLock(json: ["jailbroken": true, "entry": ["content": ["recipe": ["version": 2]]]]).jailbroken
+        )
     }
 
     /// Decoded once while the file is unchanged; a rewrite is read again.

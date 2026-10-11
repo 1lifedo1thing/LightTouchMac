@@ -107,11 +107,20 @@ public enum VolumeMount {
         try FileManager.default.createDirectory(at: mountPoint, withIntermediateDirectories: true)
         let dev = try await DiskImage.attach(image, readOnly: readOnly).device
         do {
-            try await run(
-                "/usr/sbin/diskutil",
-                ["mount"] + (readOnly ? ["readOnly"] : [])
-                    + ["-mountOptions", "nobrowse,noowners", "-mountPoint", mountPoint.path, dev]
-            )
+            do {
+                try await run(
+                    "/usr/sbin/diskutil",
+                    ["mount"] + (readOnly ? ["readOnly"] : [])
+                        + ["-mountOptions", "nobrowse,noowners", "-mountPoint", mountPoint.path, dev]
+                )
+            } catch {
+                // macOS 15's diskutil fails a mount point inside a volume mounted noowners (the data volume on the
+                // system volume's private/var: "Volume on diskN failed to mount"); mount(8) takes it.
+                try await run(
+                    "/sbin/mount",
+                    ["-t", "hfs", "-o", "nobrowse,noowners" + (readOnly ? ",rdonly" : ""), dev, mountPoint.path]
+                )
+            }
         } catch {
             await cleanupDetach(dev, force: true)
             throw error

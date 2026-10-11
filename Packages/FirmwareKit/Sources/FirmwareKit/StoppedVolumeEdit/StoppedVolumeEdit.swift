@@ -201,11 +201,14 @@ public enum StoppedVolumeEdit {
         }
     }
 
+    /// `amend`: after the volumes' metadata is settled and before the store is built, with the system volume's image
+    /// and the generation's (writable) base; the members it returns go into the generation's lock. YaFTL and N72 only.
     nonisolated(nonsending) public static func commit(
         device: URL,
         id: UUID,
         policy: StorageRecordPolicy = .standalone,
-        log: (String) -> Void = { _ in }
+        log: (String) -> Void = { _ in },
+        amend: ((_ system: URL, _ base: URL) throws -> [String: Any])? = nil
     ) async throws {
         try await StorageGeneration.withOwner(try StorageGeneration.resume(device: device, id: id, policy: policy)) {
             edit in
@@ -224,12 +227,17 @@ public enum StoppedVolumeEdit {
                 )
             }
             if fm.fileExists(atPath: edit.base.appendingPathComponent("nand/bank0").path) {
+                guard amend == nil else { throw FirmwareError(.unsupported, "this edit needs a YaFTL or N72 store") }
                 try await commitLegacy(edit: edit, image: session.image, log: log)
                 return
             }
             let lockURL = edit.base.appendingPathComponent("device.lock.json")
             let originalLockData = try Data(contentsOf: lockURL)
             var lock = try object(lockURL)
+            if let amend {
+                try makeWritable(edit.base)
+                lock.merge(try amend(session.image, edit.base)) { $1 }
+            }
             let nand = edit.base.appendingPathComponent("nand")
             let guestNAND = edit.root.appendingPathComponent("guest-nand")
             let yaftl = fm.fileExists(atPath: guestNAND.path)
@@ -289,8 +297,10 @@ public enum StoppedVolumeEdit {
             for (name, value) in outputs where name != "nand" {
                 guard var output = value as? [String: Any], let path = output["path"] as? String else { continue }
                 let filename = URL(fileURLWithPath: path).lastPathComponent
-                if fm.fileExists(atPath: edit.base.appendingPathComponent(filename).path) {
+                let file = edit.base.appendingPathComponent(filename)
+                if fm.fileExists(atPath: file.path) {
                     output["path"] = filename
+                    if output["sha256"] != nil { output["sha256"] = try Preparer.digest(file, SHA256()) }  // amend's
                     outputs[name] = output
                 }
             }

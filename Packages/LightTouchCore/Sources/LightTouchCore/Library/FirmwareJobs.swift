@@ -84,7 +84,7 @@ import HostRuntime
         set { defaults.set(newValue.sorted(), forKey: "jailbreakEntries") }
     }
     /// afc2 and Cydia from iPhone OS 2.0 on (FirmwareKit refuses the option on 1.x).
-    public static func offersJailbreak(_ entry: FirmwareCatalog.Entry) -> Bool {
+    public nonisolated static func offersJailbreak(_ entry: FirmwareCatalog.Entry) -> Bool {
         (Int(entry.version.split(separator: ".").first ?? "") ?? 0) >= 2
     }
     /// Setup Assistant runs on a fresh device from iOS 5 on; before that iTunes activated it.

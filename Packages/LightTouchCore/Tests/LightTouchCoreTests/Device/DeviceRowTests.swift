@@ -41,8 +41,17 @@ struct DeviceRowTests {
     }
     static let recordCommands: Set = [
         "start", "erase", "showInFinder", "delete", "openFilesystem", "commitFilesystem", "discardFilesystem",
-        "recoverFilesystem",
+        "recoverFilesystem", "jailbreak",
     ]
+
+    /// Jailbreak…: a prepared device of iPhone OS 2.0 or later while it is stopped, as the jailbreak option offers it.
+    @Test func jailbreakIsForAStoppedDeviceOf2OrLater() throws {
+        let m68 = try #require(catalog.entries.first { $0.board == "m68ap" })
+        #expect(row(iPod, instance: id).allows(.jailbreak, canDownload: false))
+        #expect(!row(m68, instance: id).allows(.jailbreak, canDownload: false), "1.x")
+        #expect(!row(iPod).allows(.jailbreak, canDownload: true), "not prepared")
+        #expect(!row(iPod, instance: id, session: .running).allows(.jailbreak, canDownload: false), "running")
+    }
 
     /// A first launch selects a build Apple still serves, ready to Download and Prepare: no device ships in the app.
     @Test func firstRunIsADownloadFromApple() throws {

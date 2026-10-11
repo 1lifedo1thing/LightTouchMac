@@ -12,6 +12,8 @@ public final class DeviceFilesystemEdits {
     private let preparer: URL?
     /// The state and log roots the devices' paths are under.
     private let state: URL, logs: URL
+    /// The decrypt cache, beside which firmwarekit keeps Cydia's bootstrap (Jailbreak).
+    private let cache: URL
     /// Shows a mounted volume (Finder), and an error with nowhere else to go.
     private let open: (URL) -> Void, presentError: (any Error) -> Void
     /// Whether a folder is a mount point now (the edit's volume is still mounted on it).
@@ -24,6 +26,7 @@ public final class DeviceFilesystemEdits {
         preparer: URL? = FirmwareJobs.preparer,
         state: URL = Bundled.stateDirectory,
         logs: URL = Bundled.logsDirectory,
+        cache: URL = IPSWStore.cachesDirectory.appendingPathComponent("Decrypted", isDirectory: true),
         open: @escaping (URL) -> Void,
         presentError: @escaping (any Error) -> Void,
         isMounted: @escaping (URL) -> Bool = DeviceFilesystemEdits.isMountPoint,
@@ -33,6 +36,7 @@ public final class DeviceFilesystemEdits {
         self.preparer = preparer
         self.state = state
         self.logs = logs
+        self.cache = cache
         self.open = open
         self.presentError = presentError
         self.isMounted = isMounted
@@ -97,6 +101,9 @@ public final class DeviceFilesystemEdits {
         case .commitFilesystem: return pending(instance)?.phase == "editing"
         case .recoverFilesystem: return pending(instance).map { $0.phase != "editing" } == true
         case .discardFilesystem: return pending(instance)?.phase == "editing"
+        case .jailbreak:
+            return pending(instance) == nil
+                && (try? DeviceLock.read(base: paths(instance).base))??.jailbroken != true
         default: return false
         }
     }
@@ -120,6 +127,7 @@ public final class DeviceFilesystemEdits {
             case .commitFilesystem: "Saving the file system…"
             case .discardFilesystem: "Discarding changes…"
             case .recoverFilesystem: "Recovering the file system…"
+            case .jailbreak: "Jailbreaking…"
             default: "Preparing to mount the file system…"
             }
         Task {
@@ -133,6 +141,18 @@ public final class DeviceFilesystemEdits {
                     throw DeviceToolsError.failed("Shut down the device before showing its file system.")
                 }
                 if action == .commitFilesystem { try await waitForCopies(instance) }
+                if action == .jailbreak {
+                    _ = try await FirmwareTool.run(
+                        FirmwareCommand.Edit(
+                            device: paths(instance).directory,
+                            action: .jailbreak,
+                            recordPolicy: .managed,
+                            cache: cache
+                        ),
+                        executable: executable
+                    )
+                    return
+                }
                 var intent = pending(instance)
                 if action == .openFilesystem, intent == nil {
                     let result = try await FirmwareTool.run(

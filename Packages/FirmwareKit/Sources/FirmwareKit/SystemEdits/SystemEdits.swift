@@ -317,15 +317,13 @@ public enum SystemEdits {
                 d["StandardErrorPath"] = "/dev/console"
             }
             if o.jailbreak {
-                let afc2 = try installAFC2(m)
-                log(afc2.line)
-                rootOwned += afc2.root
                 guard let bootstrap = o.cydia else { throw FirmwareError(.internal, "jailbreak: no Cydia bootstrap") }
-                let cydia = try installCydia(m, bootstrap: bootstrap)
-                log(cydia.line)
-                rootOwned += cydia.root
-                mobileOwned += cydia.mobile
-                rootModes += cydia.modes
+                let jb = try installJailbreak(m, bootstrap: bootstrap, typeinBySubstrate: false)
+                log(jb.afc2)
+                log(jb.cydia)
+                rootOwned += jb.root
+                mobileOwned += jb.mobile
+                rootModes += jb.modes
             }
             if o.appsync {
                 _ = try installAppSync(

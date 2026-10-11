@@ -346,4 +346,51 @@ import Testing
             #expect(!DeviceFilesystemEdits.isMountPoint(mountPoint))
         }
     }
+
+    /// Jailbreak…: one `edit --action jailbreak` with the decrypt cache, "Jailbreaking…" while it runs; not with an
+    /// edit open, nor once the device's lock says jailbroken.
+    @Test func jailbreakRunsOnceWithItsProgress() async throws {
+        try await LibraryFixtures.withScratch { dir in
+            let state = dir.appendingPathComponent("state")
+            let fm = FileManager.default
+            let cache = dir.appendingPathComponent("Caches/Decrypted")
+            var errors: [String] = []
+            let edits = DeviceFilesystemEdits(
+                preparer: try firmwarekit(dir),
+                state: state,
+                logs: dir.appendingPathComponent("logs"),
+                cache: cache,
+                open: { _ in },
+                presentError: { errors.append("\($0)") }
+            )
+            let library = DeviceLibrary(state: state)
+            let entry = try #require(
+                try FirmwareCatalog.load(from: LibraryFixtures.shippedCatalog).entry(id: "n90ap-8C148")
+            )
+            let phone = try device("n90ap", state: state)
+            #expect(edits.canPerform(.jailbreak, instance: phone))
+            fm.createFile(atPath: dir.appendingPathComponent("hold").path, contents: nil)
+            edits.perform(.jailbreak, entry: entry, instance: phone, library: library, releaseStopped: { true })
+            await wait { fm.fileExists(atPath: dir.appendingPathComponent("calls").path) }
+            #expect(edits.activity[phone.id] == "Jailbreaking…" && !edits.canPerform(.jailbreak, instance: phone))
+            fm.createFile(atPath: dir.appendingPathComponent("gate").path, contents: nil)
+            await wait { edits.activity[phone.id] == nil }
+            let calls = try String(contentsOf: dir.appendingPathComponent("calls"), encoding: .utf8)
+            #expect(
+                calls.contains("edit --device") && calls.contains("--action jailbreak")
+                    && calls.contains("--cache \(cache.path)") && errors.isEmpty,
+                "\(calls) \(errors)"
+            )
+            // The new generation's lock says jailbroken: nothing more to offer.
+            let base = phone.paths(state: state, logs: dir).base
+            try fm.createDirectory(at: base, withIntermediateDirectories: true)
+            try Data(#"{"jailbroken": true}"#.utf8).write(to: base.appendingPathComponent(DeviceLock.fileName))
+            #expect(!edits.canPerform(.jailbreak, instance: phone))
+            // An edit open in Finder holds it too.
+            let other = try device("n90ap", state: state)
+            edits.perform(.openFilesystem, entry: entry, instance: other, library: library, releaseStopped: { true })
+            await wait { edits.activity[other.id] == nil && edits.hasOpenEdit(other) }
+            #expect(!edits.canPerform(.jailbreak, instance: other))
+        }
+    }
 }

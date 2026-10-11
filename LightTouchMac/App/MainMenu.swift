@@ -273,6 +273,7 @@ enum MainMenuBuilder {
         menu.addItem(item("Force Stop…", #selector(MainWindowController.deviceForceStop(_:))))
         // Kept at the bottom, away from routine input.
         menu.addItem(.separator())
+        menu.addItem(item("Jailbreak…", #selector(MainWindowController.jailbreakDevice(_:))))
         menu.addItem(item("Erase All Content and Settings…", #selector(MainWindowController.eraseDevice(_:))))
         return menu
     }

@@ -410,35 +410,14 @@ final class N72Board: Board {
             required: false,
             outcome: "kept: a switch nothing reads is inert"
         )
-        // Jailbroken, it_typein loads into SpringBoard as a Substrate extension instead: 3.x hands SpringBoard's
-        // DYLD_INSERT_LIBRARIES on to the apps it launches, and cydo (Cydia's root helper) refuses a parent whose job
-        // has any DYLD_ variable, so Cydia could neither install nor link its sources.
-        let typeinBySubstrate = tools && opt["jailbreak"] == true
         try SystemEdits.editSpringBoardJob(m) { env, _ in
             for k in ["CA_ENABLE_OGL", "LK_ENABLE_OGL"] { env[k] = gles ? "1" : "0" }
             for k in ["CA_AUTO_ENABLE_OGL", "LK_AUTO_ENABLE_OGL", "CA_ENABLE_MBX2D", "LK_ENABLE_MBX2D"] { env[k] = "0" }
             let old = (env["DYLD_INSERT_LIBRARIES"] as? String ?? "").split(separator: ":").map(String.init)
             let libs =
                 old.filter { !["/usr/lib/it_kbd_agent.dylib", "/usr/lib/it_typein.dylib"].contains($0) }
-                + (tools && !typeinBySubstrate ? ["/usr/lib/it_typein.dylib"] : [])
+                + (tools ? ["/usr/lib/it_typein.dylib"] : [])
             env["DYLD_INSERT_LIBRARIES"] = libs.isEmpty ? nil : libs.joined(separator: ":")
-        }
-        if typeinBySubstrate {
-            let dir = "Library/MobileSubstrate/DynamicLibraries"
-            try SystemEdits.mkdirs(at(dir))
-            try? fm.removeItem(at: at(dir + "/it_typein.dylib"))
-            try fm.createSymbolicLink(
-                atPath: at(dir + "/it_typein.dylib").path,
-                withDestinationPath: "/usr/lib/it_typein.dylib"
-            )
-            try SystemEdits.put(
-                Data(#"{ Filter = { Bundles = ( "com.apple.springboard" ); }; }"#.utf8),
-                at(dir + "/it_typein.plist"),
-                mode: 0o644
-            )
-            owners += ["Library/MobileSubstrate", dir, dir + "/it_typein.dylib", dir + "/it_typein.plist"].map {
-                (UInt32(0), $0)
-            }
         }
         if tools { try SystemEdits.put(helper("com.qemu.it-agent.plist"), at(Self.agentJob), mode: 0o644) }
         try? fm.removeItem(at: at("System/Library/LaunchDaemons/com.qemu.it-pbd.plist"))
@@ -466,12 +445,12 @@ final class N72Board: Board {
         }
 
         if opt["jailbreak"] == true {
-            report["afc2"] = try SystemEdits.installAFC2(m).line
             guard let bootstrap = c.cydia else { throw FirmwareError(.internal, "jailbreak: no Cydia bootstrap") }
-            let cydia = try SystemEdits.installCydia(m, bootstrap: bootstrap)
-            report["cydia"] = cydia.line
-            report["cydia_modes"] = cydia.modes
-            owners += cydia.root.map { (0, $0) } + cydia.mobile.map { (501, $0) }
+            let jb = try SystemEdits.installJailbreak(m, bootstrap: bootstrap, typeinBySubstrate: tools)
+            report["afc2"] = jb.afc2
+            report["cydia"] = jb.cydia
+            report["cydia_modes"] = jb.modes
+            owners += jb.root.map { (0, $0) } + jb.mobile.map { (501, $0) }
         }
         if opt["appsync"] == true {  // patch-appsync-dylib.sh
             let (line, job) = try SystemEdits.installAppSync(

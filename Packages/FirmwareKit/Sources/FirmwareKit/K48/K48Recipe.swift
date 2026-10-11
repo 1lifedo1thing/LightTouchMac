@@ -68,7 +68,50 @@ final class K48Board: Board {
     /// jailbreaks' kernel patches did: with AMFI asking amfid about every ad hoc signed library, Substrate's launcher,
     /// once in launchd, puts its library into amfid too, amfid waits on itself and the boot stops before SpringBoard.
     static func bootArgs(jailbreak: Bool) -> String {
-        KBoot.defaultBootArgs + (jailbreak ? " amfi_get_out_of_my_way=1" : "")
+        KBoot.defaultBootArgs + (jailbreak ? " " + jailbreakBootArg : "")
+    }
+    static let jailbreakBootArg = "amfi_get_out_of_my_way=1"
+
+    /// A prepared base's boot files (in the writable `base`) given a jailbroken base's boot-args (bootArgs): kboot.bin's
+    /// boot_args command line, found through its trailer; or, on the iboot path, the string iBoot32Patcher wrote into
+    /// iBoot.bin, extended over the certificate text it put it in, as the patcher does for the longer one. Returns
+    /// the file it changed, nil when it already had them.
+    static func jailbreakBootFiles(base: URL) throws -> String? {
+        let fm = FileManager.default
+        let kboot = base.appendingPathComponent("kboot.bin")
+        if fm.fileExists(atPath: kboot.path) {
+            var b = [UInt8](try Data(contentsOf: kboot))
+            let t = b.count - 24
+            guard t > 0, Array(b[t..<t + 8]) == Array("K48KBOOT".utf8) else {
+                throw FirmwareError(.unsupported, "kboot.bin: no K48KBOOT trailer")
+            }
+            // boot_args: revision, version, 13 words, then the 256-byte command line (KBoot.build)
+            let at = Int(le32(b, t + 16)) - Int(le32(b, t + 8)) + 56
+            guard at > 0, at + 256 <= Int(le32(b, t + 20)) else {
+                throw FirmwareError(.unsupported, "kboot.bin: boot_args outside the image")
+            }
+            let line = String(decoding: b[at..<at + 256].prefix { $0 != 0 }, as: UTF8.self)
+            if line.split(separator: " ").contains(Substring(jailbreakBootArg)) { return nil }
+            let new = Array((line + " " + jailbreakBootArg).utf8)
+            guard new.count < 256 else { throw FirmwareError(.unsupported, "kboot.bin: boot-args too long") }
+            b.replaceSubrange(at..<at + 256, with: new + [UInt8](repeating: 0, count: 256 - new.count))
+            try Data(b).write(to: kboot)
+            return kboot.lastPathComponent
+        }
+        let iboot = base.appendingPathComponent("iBoot.bin")
+        var d = try Data(contentsOf: iboot)
+        if d.range(of: Data((bootArgs(jailbreak: true) + "\0").utf8)) != nil { return nil }
+        let old = Data((bootArgs(jailbreak: false) + "\0").utf8)
+        let new = Data((bootArgs(jailbreak: true) + "\0").utf8)
+        guard let r = d.range(of: old), d[r.upperBound...].range(of: old) == nil,
+            r.lowerBound + new.count <= d.endIndex,
+            d[r.upperBound..<r.lowerBound + new.count - 1].allSatisfy({ (0x20...0x7E).contains($0) })
+        else {
+            throw FirmwareError(.unsupported, "iBoot.bin: no boot-args string with room to grow")
+        }
+        d.replaceSubrange(r.lowerBound..<r.lowerBound + new.count, with: new)
+        try d.write(to: iboot)
+        return iboot.lastPathComponent
     }
 
     init(_ o: Preparer.Options) throws {

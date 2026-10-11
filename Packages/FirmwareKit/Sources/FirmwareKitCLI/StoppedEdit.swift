@@ -27,6 +27,20 @@ import Foundation
             try emit(["trusted": true, "changed": changed])
             return 0
         }
+        if command.action == .jailbreak {  // Cydia's bootstrap beside the decrypt cache, as create keeps it
+            guard let cache = command.cache else { throw FirmwareError(.internal, "jailbreak requires --cache DIR") }
+            try await StoppedVolumeEdit.jailbreak(
+                device: device,
+                bootstrap: SystemEdits.Cydia.bootstrap(
+                    in: fileURL(cache).deletingLastPathComponent().appendingPathComponent("Jailbreak"),
+                    log: log
+                ),
+                policy: policy,
+                log: log
+            )
+            try emit(["jailbroken": true])
+            return 0
+        }
         guard let session = command.session.flatMap(UUID.init(uuidString:)) else {
             throw FirmwareError(.internal, "edit requires its --session UUID")
         }
@@ -49,7 +63,7 @@ import Foundation
         case .recover:
             try await StoppedVolumeEdit.recover(device: device, id: session, policy: policy)
             try emit(["recovered": session.uuidString])
-        case .begin, .trustAnchor: break
+        case .begin, .trustAnchor, .jailbreak: break
         }
         return 0
     } catch {

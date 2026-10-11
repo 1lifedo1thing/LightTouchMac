@@ -296,8 +296,11 @@ extension SharedState {
             let live = commands.filter { vc.validateMenuItem($0) }.map(\.title)
             // Start/Shut Down is one item whose title follows the row (Force Stop beside it, dimmed while stopped); Cancel
             // is always there, dimmed while nothing can be cancelled (never hidden, only disabled).
-            if !["Start", "Cancel Download", "Show File System in Finder", "Erase All Content and Settings…"]
-                .allSatisfy({ t in commands.contains { $0.title == t } })
+            if ![
+                "Start", "Cancel Download", "Show File System in Finder", "Jailbreak…",
+                "Erase All Content and Settings…",
+            ]
+            .allSatisfy({ t in commands.contains { $0.title == t } })
                 || commands.contains(where: { $0.title == "Shut Down…" }) || !live.contains("Start")
                 || live.contains("Force Stop…") || live.contains("Cancel Download")
             {

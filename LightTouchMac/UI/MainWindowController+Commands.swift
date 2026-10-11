@@ -17,7 +17,7 @@ extension MainWindowController {
                 if DeviceFilesystemEdits.shared.blocksStart(instance) { return false }
             case .erase, .delete:
                 if DeviceFilesystemEdits.shared.blocked(instance) { return false }
-            case .openFilesystem, .commitFilesystem, .discardFilesystem, .recoverFilesystem:
+            case .openFilesystem, .commitFilesystem, .discardFilesystem, .recoverFilesystem, .jailbreak:
                 return DeviceFilesystemEdits.shared.canPerform(action, instance: instance)
             default: break
             }
@@ -39,6 +39,7 @@ extension MainWindowController {
         switch action {
         case .openFilesystem, .commitFilesystem, .discardFilesystem, .recoverFilesystem:
             DeviceFilesystemEdits.shared.perform(action, entry: entry, host: host)
+        case .jailbreak: confirmJailbreak(entry)
         case .start: start(entry)
         // The same questions as Device ▸ Shut Down… and Force Stop…, from the sidebar and File menu too.
         case .stop: if let emulator = host.session(for: entry)?.emulator { confirmShutDown(emulator) }
@@ -137,6 +138,18 @@ extension MainWindowController {
     @objc func importIPSW(_ sender: Any?) { selectedEntry.map { perform(.importIPSW, for: $0) } }
     @objc func cancelFirmwareJob(_ sender: Any?) { selectedEntry.map { perform(.cancel, for: $0) } }
     @objc func showDeviceInFinder(_ sender: Any?) { selectedEntry.map { perform(.showInFinder, for: $0) } }
+    @objc func jailbreakDevice(_ sender: Any?) { selectedEntry.map { perform(.jailbreak, for: $0) } }
+
+    /// Jailbreak…: asked, then the stopped device's edit, its progress in the device area (DeviceFilesystemEdits).
+    private func confirmJailbreak(_ entry: FirmwareCatalog.Entry) {
+        guard let window, window.attachedSheet == nil else { return }
+        JailbreakAlert.make(name: name(entry), version: entry.version).beginSheetModal(for: window) {
+            [weak self] response in
+            // Asked again on the answer: the device may have started while the question was up.
+            guard response == .alertFirstButtonReturn, let self, canPerform(.jailbreak, for: entry) else { return }
+            DeviceFilesystemEdits.shared.perform(.jailbreak, entry: entry, host: host)
+        }
+    }
     /// Delete Device… for a prepared device (asks, then leaves the sidebar), Remove Device for the rest; with several
     /// rows selected, one question for the lot (DeviceLibraryViewController.removeTargets).
     @objc func deleteDevice(_ sender: Any?) { library.removeTargets() }

@@ -12,6 +12,34 @@ extension SharedState {
             NSApp.setActivationPolicy(.prohibited)
         }
 
+        /// Device ▸ Jailbreak…'s question: Substrate named only where the jailbreak installs it (iOS 3 to 6), Jailbreak
+        /// first. Each is rendered to LTM_RENDER_DIR when it's set.
+        @Test func jailbreakAlertNamesWhatItAdds() throws {
+            for (version, name, substrate) in [
+                ("4.2.1", "iPhone 4 (4.2.1)", true), ("7.1.2", "iPhone 4 (7.1.2)", false),
+                ("2.2.1", "iPod touch (2.2.1)", false),
+            ] {
+                let alert = JailbreakAlert.make(name: name, version: version)
+                #expect(alert.messageText == "Jailbreak \(name)?")
+                #expect(
+                    alert.informativeText
+                        == "Adds Cydia\(substrate ? ", Substrate," : "") and afc2, which shows the whole file system "
+                        + "in Files. This can’t be undone.",
+                    "\(version)"
+                )
+                #expect(alert.buttons.map(\.title) == ["Jailbreak", "Cancel"])
+                alert.layout()
+                if let out = ProcessInfo.processInfo.environment["LTM_RENDER_DIR"], let view = alert.window.contentView
+                {
+                    let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+                    view.cacheDisplay(in: view.bounds, to: bitmap)
+                    try bitmap.representation(using: .png, properties: [:])?.write(
+                        to: URL(fileURLWithPath: out).appendingPathComponent("jailbreak-\(version).png")
+                    )
+                }
+            }
+        }
+
         /// The Apps pane keeps its width (280, 320, 400 pt, held like the inspector's split view) whatever its message
         /// says: the message wraps inside it, the caption truncates, Retry stays under the message.
         @Test func paneMessageKeepsThePaneWidth() {

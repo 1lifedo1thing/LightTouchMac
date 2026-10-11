@@ -42,6 +42,7 @@ import LightTouchCore
     @objc func discardRecording(_ sender: Any?) {}
     @objc func downloadAndPrepare(_ sender: Any?) {}
     @objc func eraseDevice(_ sender: Any?) {}
+    @objc func jailbreakDevice(_ sender: Any?) {}
     @objc func exportDiagnostics(_ sender: Any?) {}
     @objc func findCatalog(_ sender: Any?) {}
     @objc func importIPSW(_ sender: Any?) {}

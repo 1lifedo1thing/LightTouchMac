@@ -152,6 +152,9 @@ public enum FirmwareCommand {
             case begin, mount, commit, discard, recover
             /// 1.x: --cert as a system anchor (begin, mount, the anchor row, commit).
             case trustAnchor = "trust-anchor"
+            /// 2.0 and later: what the jailbreak option adds (begin, mount, the edits, commit), Cydia's bootstrap kept
+            /// beside the decrypt cache --cache.
+            case jailbreak
         }
         @Option public var device: String
         @Option public var action: Action
@@ -159,6 +162,7 @@ public enum FirmwareCommand {
         @Option public var recordPolicy: RecordPolicy = .standalone
         @Option(help: "A DER certificate, for trust-anchor.") public var cert: String? = nil
         @Option public var mountPoint: String? = nil
+        @Option(help: "The decrypt cache, for jailbreak.") public var cache: String? = nil
 
         public init() {}
         public init(
@@ -167,7 +171,8 @@ public enum FirmwareCommand {
             session: UUID? = nil,
             recordPolicy: RecordPolicy,
             cert: URL? = nil,
-            mountPoint: URL? = nil
+            mountPoint: URL? = nil,
+            cache: URL? = nil
         ) {
             self.device = device.path
             self.action = action
@@ -175,13 +180,14 @@ public enum FirmwareCommand {
             self.recordPolicy = recordPolicy
             self.cert = cert?.path
             self.mountPoint = mountPoint?.path
+            self.cache = cache?.path
         }
 
         public var arguments: [String] {
             ["edit"]
                 + options([
                     "device": device, "action": action.rawValue, "session": session,
-                    "record-policy": recordPolicy.rawValue, "cert": cert, "mount-point": mountPoint,
+                    "record-policy": recordPolicy.rawValue, "cert": cert, "mount-point": mountPoint, "cache": cache,
                 ])
         }
     }

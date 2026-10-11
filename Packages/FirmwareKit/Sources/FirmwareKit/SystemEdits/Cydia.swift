@@ -95,6 +95,43 @@ extension SystemEdits {
         }
     }
 
+    /// What the jailbreak option leaves on the mounted system volume `m` (its data volume, if any, on private/var):
+    /// afc2 (installAFC2) and Cydia with Substrate (installCydia from `bootstrap`). A preparation and a jailbreak of
+    /// an existing device (StoppedVolumeEdit.jailbreak) both make these edits. `typeinBySubstrate` (the iPod touch 2G's
+    /// guest helpers): it_typein, where the volume has it, loads into SpringBoard as a Substrate extension instead of
+    /// through SpringBoard's DYLD_INSERT_LIBRARIES: 3.x hands that variable on to the apps SpringBoard launches, and
+    /// cydo (Cydia's root helper) refuses a parent whose job has any DYLD_ variable, so Cydia could neither install
+    /// nor link its sources. Returns the log lines and the owners and modes to set, as installCydia's.
+    static func installJailbreak(_ m: URL, bootstrap: URL, typeinBySubstrate: Bool) throws -> (
+        afc2: String, cydia: String, root: [String], mobile: [String], modes: [(path: String, mode: UInt16)]
+    ) {
+        let afc2 = try installAFC2(m)
+        let cydia = try installCydia(m, bootstrap: bootstrap)
+        var root = afc2.root + cydia.root
+        let typein = "usr/lib/it_typein.dylib"
+        if typeinBySubstrate, FileManager.default.fileExists(atPath: m.appendingPathComponent(typein).path) {
+            try editSpringBoardJob(m) { env, _ in
+                let libs = (env["DYLD_INSERT_LIBRARIES"] as? String ?? "").split(separator: ":").map(String.init)
+                    .filter { $0 != "/" + typein }
+                env["DYLD_INSERT_LIBRARIES"] = libs.isEmpty ? nil : libs.joined(separator: ":")
+            }
+            let dir = "Library/MobileSubstrate/DynamicLibraries"
+            try mkdirs(m.appendingPathComponent(dir))
+            try? FileManager.default.removeItem(at: m.appendingPathComponent(dir + "/it_typein.dylib"))
+            try FileManager.default.createSymbolicLink(
+                atPath: m.appendingPathComponent(dir + "/it_typein.dylib").path,
+                withDestinationPath: "/" + typein
+            )
+            try put(
+                Data(#"{ Filter = { Bundles = ( "com.apple.springboard" ); }; }"#.utf8),
+                m.appendingPathComponent(dir + "/it_typein.plist"),
+                mode: 0o644
+            )
+            root += ["Library/MobileSubstrate", dir, dir + "/it_typein.dylib", dir + "/it_typein.plist"]
+        }
+        return (afc2.line, cydia.line, root, cydia.mobile, cydia.modes)
+    }
+
     /// The bootstrap extracted into the mounted system volume `m`, keeping every file the firmware already has (tar
     /// -k). Returns the log line and the volume paths to make root's and mobile's: what it added, mobile's under
     /// /private/var/mobile, root's elsewhere (its symbolic links too, which tar replaces). `modes`: the set-user-ID
