@@ -68,7 +68,8 @@ public nonisolated enum Tweak: String, Codable, CaseIterable, Sendable {
         // com.apple.webinspectord RemoteInspectorEnabled (webinspectord, 6.1.6 and 7.x).
         case .safariDebug: ("2.0", "7.1.2")
         // Preferences shows Developer while /Developer/Library/PreferenceBundles/Developer Settings.bundle exists
-        // (4.0 to 7.1.2); the Developer Disk Images carry that bundle from 4.2.
+        // (4.0 to 7.1.2); the Developer Disk Images carry that bundle from 4.2. DeviceTweaks also needs the app's
+        // image for the version (DeveloperDiskImage).
         case .developerSettings: ("4.2", "7.1.2")
         case .timeMachine: nil
         }
@@ -145,8 +146,6 @@ public nonisolated struct TweakSettings: Codable, Equatable, Sendable {
     public var coreAnimationColor = CoreAnimationColor.blendedLayers
     /// Time Machine's moment: each start begins there and the clock runs on.
     public var clock: Date = TweakSettings.macworld2007
-    /// The Developer Disk Image (its .dmg; the .signature beside it) Developer Settings mounts.
-    public var developerImage: String?
     /// The preference keys ("domain key") these settings have written into the device, so turning a tweak off removes
     /// only what it set.
     public var written: [String] = []
@@ -172,7 +171,6 @@ public nonisolated struct TweakSettings: Codable, Equatable, Sendable {
             (try c.decodeIfPresent(UInt32.self, forKey: .coreAnimationColor)).flatMap(CoreAnimationColor.init)
             ?? .blendedLayers
         clock = try c.decodeIfPresent(Date.self, forKey: .clock) ?? Self.macworld2007
-        developerImage = try c.decodeIfPresent(String.self, forKey: .developerImage)
         written = try c.decodeIfPresent([String].self, forKey: .written) ?? []
     }
 
@@ -181,12 +179,11 @@ public nonisolated struct TweakSettings: Codable, Equatable, Sendable {
         try c.encode(on.map(\.rawValue).sorted(), forKey: .on)
         try c.encode(coreAnimationColor.rawValue, forKey: .coreAnimationColor)
         try c.encode(clock, forKey: .clock)
-        try c.encodeIfPresent(developerImage, forKey: .developerImage)
         try c.encode(written, forKey: .written)
     }
 
     enum CodingKeys: String, CodingKey {
-        case on, coreAnimationColor, clock, developerImage, written
+        case on, coreAnimationColor, clock, written
     }
 
     /// Whether `tweak` is on and works on `version` (with the guest tools: the device is running them).
@@ -259,6 +256,21 @@ public nonisolated struct TweakSettings: Codable, Equatable, Sendable {
         var changes: [GuestDefault]
         var statusBar: Data?
         var colors: UInt32?
+    }
+}
+
+/// The Developer Disk Images the app ships (scripts/vendor, from build-support/developer-disk-images.json): one per
+/// iOS minor version, as Xcode's DeviceSupport folders had them, in the guest archive's
+/// developer-disk-images/<major.minor>/.
+public nonisolated enum DeveloperDiskImage {
+    /// The DeveloperDiskImage.dmg (its .signature beside it) for `version` under `guestRoot` (Bundled.guestRoot);
+    /// nil where none fits.
+    public static func image(version: String, in guestRoot: URL?) -> URL? {
+        guard let guestRoot else { return nil }
+        let minor = version.split(separator: ".").prefix(2).joined(separator: ".")
+        let dmg = guestRoot.appendingPathComponent("developer-disk-images/\(minor)/DeveloperDiskImage.dmg")
+        let fm = FileManager.default
+        return fm.fileExists(atPath: dmg.path) && fm.fileExists(atPath: dmg.path + ".signature") ? dmg : nil
     }
 }
 

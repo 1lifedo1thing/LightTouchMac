@@ -15,11 +15,22 @@ import Observation
     /// The base pins its own clock (a beta kept inside its release window): Time Machine stays off.
     public let clockPinned: Bool
 
-    public init(settings: DeviceSettingsFile, version: String, guestTools: Bool, clockPinned: Bool) {
+    /// The Developer Disk Image Developer Settings mounts: the app's for this version; nil where none fits.
+    public let developerImage: URL?
+
+    /// `guestRoot`: the unpacked guest archive, which holds the app's Developer Disk Images.
+    public init(
+        settings: DeviceSettingsFile,
+        version: String,
+        guestTools: Bool,
+        clockPinned: Bool,
+        guestRoot: URL? = Bundled.guestRoot
+    ) {
         settingsFile = settings
         self.version = version
         self.guestTools = guestTools
         self.clockPinned = clockPinned
+        developerImage = DeveloperDiskImage.image(version: version, in: guestRoot)
     }
 
     public var settings: TweakSettings { settingsFile.value.tweaks ?? TweakSettings() }
@@ -33,7 +44,8 @@ import Observation
     }
 
     public func isAvailable(_ tweak: Tweak) -> Bool {
-        tweak.isAvailable(version: version, guestTools: guestTools, clockPinned: clockPinned)
+        if tweak == .developerSettings, developerImage == nil { return false }
+        return tweak.isAvailable(version: version, guestTools: guestTools, clockPinned: clockPinned)
     }
 
     /// The next start's clock (Time Machine), as PreparedDeviceBoot takes it.
@@ -50,33 +62,35 @@ import Observation
 
     public func forgetBoot() {
         applied = nil
-        mountedImage = nil
+        mountedImage = false
+        mountFailure = nil
         needsNewerGuestTools = []
         failure = nil
     }
 
     // MARK: Developer Settings
 
-    /// The Developer Disk Image this boot mounted (or tried).
-    @ObservationIgnored private var mountedImage: String?
+    /// This boot mounted (or tried) the Developer Disk Image.
+    @ObservationIgnored private var mountedImage = false
 
-    /// Mounts the chosen Developer Disk Image once per boot while Developer Settings is on. A mounted image stays
+    /// Mounts the version's Developer Disk Image once per boot while Developer Settings is on. A mounted image stays
     /// until the device restarts: the mounter of these versions has no unmount.
     public func mountDeveloperImage(services: DeviceServices) async {
-        let settings = settings
-        guard settings.isOn(.developerSettings), isAvailable(.developerSettings),
-            let path = settings.developerImage, path != mountedImage
+        guard settings.isOn(.developerSettings), isAvailable(.developerSettings), let image = developerImage,
+            !mountedImage
         else { return }
-        mountedImage = path
+        mountedImage = true
         do {
-            let mounted = try await services.mountDeveloperImage(URL(fileURLWithPath: path))
-            logEvent("tweaks: Developer Disk Image \(mounted ? "mounted" : "already mounted"): \(path)")
-            failure = nil
+            let mounted = try await services.mountDeveloperImage(image)
+            logEvent("tweaks: Developer Disk Image \(mounted ? "mounted" : "already mounted"): \(image.path)")
+            mountFailure = nil
         } catch {
-            failure = error.localizedDescription
+            mountFailure = error.localizedDescription
             logEvent("tweaks: \(error)")
         }
     }
+    /// This boot's mount failure, for the panel (an apply after it doesn't clear it).
+    public private(set) var mountFailure: String?
 
     /// Brings the running guest to the saved settings when they changed since this boot's last apply (or at its
     /// first). `isCurrent` says the boot is still this one.

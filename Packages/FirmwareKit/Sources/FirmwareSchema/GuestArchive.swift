@@ -5,7 +5,8 @@ import System
 
 /// Resources/Guest/guest.aar (scripts/vendor): the guest binaries the app ships, packed so that codesign and the
 /// notary see no nested code in Resources. It holds guest-tools/ (firmwarekit's --guest-tools set), developer-tools/
-/// (the developer SSH payload) and tools/ (the iPod media helpers). The app and firmwarekit unpack it once per
+/// (the developer SSH payload), tools/ (the iPod media helpers) and developer-disk-images/ (Apple's Developer Disk
+/// Images, Tweaks' Developer Settings). The app and firmwarekit unpack it once per
 /// archive into the user's caches and read it there.
 nonisolated public enum GuestArchive {
     /// The unpacked archive under `resources` (an app's Contents/Resources), or nil when it ships none (a

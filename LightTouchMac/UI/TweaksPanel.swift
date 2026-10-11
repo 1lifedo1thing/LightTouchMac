@@ -5,12 +5,10 @@ import Cocoa
 import HostRuntime
 import LightTouchCore
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct TweaksPanel: View {
     @Bindable var model: TweaksPanelModel
     @State private var showsTouches = false
-    @State private var choosingImage = false
 
     var body: some View {
         Form {
@@ -58,9 +56,6 @@ struct TweaksPanel: View {
         .formStyle(.grouped)
         .frame(minWidth: 380, idealWidth: 420, minHeight: 560)
         .task(id: model.isRunning) { await model.listHiddenApps() }
-        .fileImporter(isPresented: $choosingImage, allowedContentTypes: [.diskImage]) { result in
-            if case .success(let url) = result { model.set(developerImage: url) }
-        }
     }
 
     @ViewBuilder
@@ -71,13 +66,7 @@ struct TweaksPanel: View {
             caption: model.caption(tweak),
             isOn: Binding(
                 get: { model.isOn(tweak) && available },
-                set: { on in
-                    if on, tweak == .developerSettings, model.settings.developerImage == nil {
-                        choosingImage = true
-                    } else {
-                        model.set(tweak, on: on)
-                    }
-                }
+                set: { model.set(tweak, on: $0) }
             )
         )
         .disabled(!available)
@@ -104,13 +93,6 @@ struct TweaksPanel: View {
                 in: Date(timeIntervalSince1970: 978_307_200)...Date(timeIntervalSince1970: 2_147_483_000)
             )
             Button("Macworld 2007") { model.set(clock: TweakSettings.macworld2007) }
-        case .developerSettings:
-            LabeledContent("Disk Image") {
-                HStack {
-                    Text(model.developerImageName ?? "None").foregroundStyle(.secondary)
-                    Button("Choose…") { choosingImage = true }
-                }
-            }
         default:
             EmptyView()
         }

@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define STAGED "/private/var/mobile/Media/PublicStaging/staging.dimage"
 
@@ -55,19 +56,39 @@ static ssize_t feed(void *buffer, size_t length, void *user) {
     return (ssize_t)n;
 }
 
-/* The mounter's answer: 0 for Status Complete, else its error printed. */
-static int complete(plist_t result) {
+/* The mounter's answer: NULL for Status Complete, else its error (the caller frees it). */
+static char *complete(plist_t result) {
     char *text = NULL;
     plist_t status = result ? plist_dict_get_item(result, "Status") : NULL;
     if (status) plist_get_string_val(status, &text);
-    if (text && !strcmp(text, "Complete")) return 0;
+    if (text && !strcmp(text, "Complete")) {
+        free(text);
+        return NULL;
+    }
     plist_t error = result ? plist_dict_get_item(result, "DetailedError") : NULL;
     if (!error && result) error = plist_dict_get_item(result, "Error");
     free(text);
     text = NULL;
     if (error) plist_get_string_val(error, &text);
-    printf("%s\n", text ? text : "the device didn't mount the image");
-    return 1;
+    return text ? text : strdup("the device didn't mount the image");
+}
+
+/* A mounted Developer image: ImagePresent (to 6.x) or a non-empty ImageSignature list (7.x). */
+static int mounted(idevice_t dev) {
+    mobile_image_mounter_client_t mim = NULL;
+    plist_t result = NULL;
+    uint8_t yes = 0;
+    if (mobile_image_mounter_start_service(dev, &mim, "lockdown-ddi") != MOBILE_IMAGE_MOUNTER_E_SUCCESS) return 0;
+    if (mobile_image_mounter_lookup_image(mim, "Developer", &result) == MOBILE_IMAGE_MOUNTER_E_SUCCESS && result) {
+        plist_t present = plist_dict_get_item(result, "ImagePresent");
+        plist_t signatures = plist_dict_get_item(result, "ImageSignature");
+        if (present && plist_get_node_type(present) == PLIST_BOOLEAN) plist_get_bool_val(present, &yes);
+        if (signatures && plist_get_node_type(signatures) == PLIST_ARRAY && plist_array_get_size(signatures)) yes = 1;
+    }
+    plist_free(result);
+    mobile_image_mounter_hangup(mim);
+    mobile_image_mounter_free(mim);
+    return yes;
 }
 
 int ltm_lockdown_ddi(int argc, char **argv) {
@@ -96,20 +117,13 @@ int ltm_lockdown_ddi(int argc, char **argv) {
     if (version) plist_get_string_val(version, &text);
     int major = text ? atoi(text) : 0;
     lockdownd_client_free(ld);
+    if (mounted(dev)) {
+        printf("already mounted\n");
+        return 0;
+    }
     if (mobile_image_mounter_start_service(dev, &mim, "lockdown-ddi") != MOBILE_IMAGE_MOUNTER_E_SUCCESS) {
         printf("can't reach the device's image mounter\n");
         return 1;
-    }
-    /* A mounted Developer image: ImagePresent (to 6.x) or a non-empty ImageSignature list (7.x). */
-    if (mobile_image_mounter_lookup_image(mim, "Developer", &result) == MOBILE_IMAGE_MOUNTER_E_SUCCESS && result) {
-        plist_t present = plist_dict_get_item(result, "ImagePresent");
-        plist_t signatures = plist_dict_get_item(result, "ImageSignature");
-        uint8_t yes = 0;
-        if (present && plist_get_node_type(present) == PLIST_BOOLEAN) plist_get_bool_val(present, &yes);
-        if (yes || (signatures && plist_get_node_type(signatures) == PLIST_ARRAY && plist_array_get_size(signatures))) {
-            printf("already mounted\n");
-            return 0;
-        }
     }
     if (major >= 7) {
         Reader r = {image, image_size, 0};
@@ -147,10 +161,21 @@ int ltm_lockdown_ddi(int argc, char **argv) {
         printf("the device didn't answer the mount\n");
         return 1;
     }
-    int status = complete(result);
-    if (!status) printf("mounted\n");
+    char *error = complete(result);
     mobile_image_mounter_hangup(mim);
     mobile_image_mounter_free(mim);
+    /* 4.2.1's mobile_storage_proxy stops waiting for MobileStorageMounter while it still checks the image (seconds on
+       the emulated iPad), answers ImageMountFailed, and the image mounts a little later: the lookup decides. */
+    for (int tries = 0; error && tries < 60; tries++) {
+        sleep(1);
+        if (mounted(dev)) {
+            free(error);
+            error = NULL;
+        }
+    }
+    int status = error ? 1 : 0;
+    printf("%s\n", error ? error : "mounted");
+    free(error);
     idevice_free(dev);
     return status;
 }

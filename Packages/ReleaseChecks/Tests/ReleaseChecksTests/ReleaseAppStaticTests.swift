@@ -206,6 +206,35 @@ struct ReleaseAppStaticTests {
         )
     }
 
+    /// Tweaks' Developer Settings: every pinned Developer Disk Image and signature (4.2 to 7.1) in the guest archive,
+    /// as pinned.
+    @Test func theDeveloperDiskImages() throws {
+        let unpacked = FileManager.default.temporaryDirectory.appendingPathComponent("ltm-ddi-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: unpacked) }
+        try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
+        let extracted = try run([
+            "aa", "extract", "-i", contents.appendingPathComponent("Resources/Guest/guest.aar").path, "-d",
+            unpacked.path, "-include-path", "developer-disk-images",
+        ])
+        #expect(extracted.succeeded, "\(extracted.error)")
+        let manifest =
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: repository.appendingPathComponent("build-support/developer-disk-images.json"))
+            ) as! [String: Any]
+        let pinned = manifest["packages"] as! [[String: Any]]
+        let versions = Set(pinned.map { $0["version"] as! String })
+        #expect(versions == ["4.2", "4.3", "5.0", "5.1", "6.0", "6.1", "7.0", "7.1"])
+        for image in pinned {
+            let version = image["version"] as! String
+            let name = (image["archive"] as! String).replacingOccurrences(of: "-\(version)", with: "")
+            let file = unpacked.appendingPathComponent("developer-disk-images/\(version)/\(name)")
+            #expect(
+                (try? sha256Hex(Data(contentsOf: file))) == image["sha256"] as? String,
+                "developer-disk-images/\(version)/\(name) is missing or not the pinned one"
+            )
+        }
+    }
+
     @Test func theBundleIsBuiltFromTheCurrentPins() throws {
         let inputs =
             try JSONSerialization.jsonObject(

@@ -23,6 +23,36 @@ import Testing
         #expect(!ok(.timeMachine, "6.0", pinned: true), "a beta's own pinned clock wins")
     }
 
+    /// A guest root holding a developer-disk-images/<minor>/ pair for each of `minors`.
+    func developerImages(in dir: URL, _ minors: [String]) throws -> URL {
+        let guest = dir.appendingPathComponent("guest")
+        for minor in minors {
+            let folder = guest.appendingPathComponent("developer-disk-images/\(minor)")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            for name in ["DeveloperDiskImage.dmg", "DeveloperDiskImage.dmg.signature"] {
+                try Data().write(to: folder.appendingPathComponent(name))
+            }
+        }
+        return guest
+    }
+
+    @Test func developerImagePicksTheVersionsMinor() throws {
+        try withTemporaryDirectory { dir in
+            let guest = try developerImages(in: dir, ["4.2", "5.1", "7.0", "7.1"])
+            func pick(_ version: String) -> String? {
+                DeveloperDiskImage.image(version: version, in: guest)?.deletingLastPathComponent().lastPathComponent
+            }
+            #expect(pick("4.2.1") == "4.2" && pick("4.2") == "4.2", "4.2.1 and the 4.2 betas")
+            #expect(pick("5.1.1") == "5.1" && pick("7.0") == "7.0" && pick("7.1.2") == "7.1")
+            #expect(pick("4.1") == nil && pick("6.1.6") == nil, "no image for the minor")
+            #expect(DeveloperDiskImage.image(version: "7.1.2", in: nil) == nil, "a build without the guest archive")
+            try FileManager.default.removeItem(
+                at: guest.appendingPathComponent("developer-disk-images/5.1/DeveloperDiskImage.dmg.signature")
+            )
+            #expect(pick("5.1.1") == nil, "no signature beside it")
+        }
+    }
+
     @Test func captionsAreTheKeys() {
         #expect(Tweak.signalNumbers.caption(version: "3.1.3") == "SBShowRSSI, SBShowGSMRSSI")
         #expect(Tweak.emojiEverywhere.caption(version: "6.1.6") == "KeyboardEmojiEverywhere", "the same when disabled")
@@ -124,7 +154,6 @@ import Testing
         t.on = [.timeMachine, .coreAnimationColors]
         t.clock = Date(timeIntervalSince1970: 1_183_100_400)
         t.coreAnimationColor = .offscreenRendered
-        t.developerImage = "/x/7.1/DeveloperDiskImage.dmg"
         t.written = ["com.apple.UIKit UIAnimationDragCoefficient"]
         s.tweaks = t
         try withTemporaryDirectory { dir in
@@ -134,7 +163,7 @@ import Testing
         let old = try PropertyListDecoder().decode(
             TweakSettings.self,
             from: PropertyListSerialization.data(
-                fromPropertyList: ["on": ["signalNumbers", "gone"]],
+                fromPropertyList: ["on": ["signalNumbers", "gone"], "developerImage": "/x/DeveloperDiskImage.dmg"],
                 format: .xml,
                 options: 0
             )
@@ -223,17 +252,28 @@ import Testing
     @Test func thePanelSavesPerDeviceAndRefusesWhatCantWork() throws {
         try withTemporaryDirectory { dir in
             let file = DeviceSettingsFile(directory: dir)
-            let tweaks = DeviceTweaks(settings: file, version: "6.1.6", guestTools: true, clockPinned: false)
+            let guest = try developerImages(in: dir, ["6.1"])
+            let tweaks = DeviceTweaks(
+                settings: file,
+                version: "6.1.6",
+                guestTools: true,
+                clockPinned: false,
+                guestRoot: guest
+            )
             let model = TweaksPanelModel(tweaks: tweaks, guest: nil)
             model.set(.signalNumbers, on: true)
             model.set(.emojiEverywhere, on: true)
-            #expect(DeviceSettings.load(dir).tweaks?.on == [.signalNumbers], "emoji isn't for 6.1.6")
-            let image = dir.appendingPathComponent("DeveloperDiskImage.dmg")
-            try Data().write(to: image)
-            #expect(!model.set(developerImage: image) && model.status != nil, "no signature beside it")
-            try Data().write(to: URL(fileURLWithPath: image.path + ".signature"))
-            #expect(model.set(developerImage: image) && model.isOn(.developerSettings))
-            #expect(DeviceSettings.load(dir).tweaks?.developerImage == image.path && model.status == nil)
+            model.set(.developerSettings, on: true)
+            #expect(DeviceSettings.load(dir).tweaks?.on == [.signalNumbers, .developerSettings], "no emoji on 6.1.6")
+            #expect(tweaks.developerImage?.path == guest.path + "/developer-disk-images/6.1/DeveloperDiskImage.dmg")
+            let none = DeviceTweaks(
+                settings: file,
+                version: "5.1.1",
+                guestTools: true,
+                clockPinned: false,
+                guestRoot: guest
+            )
+            #expect(!none.isAvailable(.developerSettings), "no 5.1 image: the row is disabled")
             #expect(tweaks.bootClock == nil)
             model.set(.timeMachine, on: true)
             #expect(tweaks.bootClock == TweakSettings.macworld2007)

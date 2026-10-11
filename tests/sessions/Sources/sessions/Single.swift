@@ -1,4 +1,5 @@
 import Foundation
+import LightTouchCore
 import SessionKit
 
 /// `sessions single BASE`: one prepared base booted as the app boots it (session-driver's single.swift): lit, lockdown
@@ -23,7 +24,12 @@ func single(_ args: SingleCheck) -> Never {
     if args.hostPowerGesture { single["hostPowerGesture"] = true }
     if let zone = args.secondZone { single["secondZone"] = zone }
     if let file = args.readFile { single["readFile"] = file }
-    if let image = args.developerImage { single["developerImage"] = image.path }
+    if args.developerImage {
+        guard let image = DeveloperDiskImage.image(version: base.version, in: tools.guest) else {
+            die("the guest archive has no Developer Disk Image for \(base.version)")
+        }
+        single["developerImage"] = image.path
+    }
     if args.skipSetup { single["skipSetup"] = true }
     if args.jailbreak { single["jailbreak"] = true }
     if let panel = args.panel { single["panel"] = panel }
@@ -346,7 +352,7 @@ func single(_ args: SingleCheck) -> Never {
         )
         r.check(seed.string("location") == "0", "\(d): Location Services off: \(seed.string("location") ?? "?")")
     }
-    if args.developerImage != nil {
+    if args.developerImage {
         let mount = events.one("developerImage", ["device": d])
         r.check(
             mount.string("mounted") == "mounted" && !mount.bool("before") && mount.bool("after"),

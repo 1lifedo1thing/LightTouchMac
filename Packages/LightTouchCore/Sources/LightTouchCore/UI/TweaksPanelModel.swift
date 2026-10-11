@@ -42,30 +42,10 @@ import Observation
     }
     public func set(clock: Date) { tweaks.change { $0.clock = clock } }
 
-    /// Developer Settings' image: a DeveloperDiskImage.dmg with its .signature beside it. False (and a message) for
-    /// one without its signature.
-    @discardableResult
-    public func set(developerImage: URL) -> Bool {
-        guard FileManager.default.fileExists(atPath: developerImage.path + ".signature") else {
-            message = "\(developerImage.lastPathComponent) has no .signature beside it."
-            return false
-        }
-        message = nil
-        tweaks.change {
-            $0.developerImage = developerImage.path
-            $0.on.insert(.developerSettings)
-        }
-        return true
-    }
-
-    public var developerImageName: String? {
-        settings.developerImage.map { URL(fileURLWithPath: $0).deletingLastPathComponent().lastPathComponent }
-    }
-
     /// What the panel says under the switches: why the session couldn't apply something.
     public var status: String? {
         if let message { return message }
-        if let failure = tweaks.failure { return failure }
+        if let failure = tweaks.failure ?? tweaks.mountFailure { return failure }
         let old = tweaks.needsNewerGuestTools.map(\.title)
         guard !old.isEmpty else { return nil }
         return "\(old.joined(separator: " and ")) needs newer guest tools. Restart the device to update them "

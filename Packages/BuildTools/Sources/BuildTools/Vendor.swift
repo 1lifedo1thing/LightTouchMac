@@ -9,17 +9,17 @@ public struct Vendor {
                                          Configuration/Vendor.xcconfig at it
             scripts/vendor --print       print the vendor directory for the current pins
 
-        The pin hash covers build-support/sources.json (qemu-ios and usbmuxd commits), dependencies.json, the patches, the
-        native recipes and these tools (Packages/BuildTools, ReleaseChecks' Mach-O check). A run with the vendor directory
-        complete does nothing; the built-in iPod is prepared again when FirmwareKit, the helper or the guest tools changed.
+        The pin hash covers build-support/sources.json (qemu-ios and usbmuxd commits), dependencies.json,
+        developer-disk-images.json, the patches, the native recipes and these tools (Packages/BuildTools, ReleaseChecks'
+        Mach-O check). A run with the vendor directory complete does nothing; the built-in iPod is prepared again when FirmwareKit, the helper or the guest tools changed.
         Nothing here deletes a vendor directory. One run at a time: a second run waits for the first (a flock on
         <vendor root>/.lock).
 
         <vendor>/Frameworks/   libqemu-arm.dylib and its closure, libimobiledevice-1.0 and libplist-2.0: universal,
                                @rpath install names, stripped, ad-hoc signed with the hardened runtime (Xcode re-signs)
         <vendor>/MacOS/        usbmuxd, iBoot32Patcher, inetcat, ipod-helper (the same)
-        <vendor>/Resources/    Guest/guest.aar (the guest binaries, packed: no nested code), Device/ (SecureROMs and
-                               the built-in iPod), licenses/, usbmuxd-conf/, build-inputs.json
+        <vendor>/Resources/    Guest/guest.aar (the guest binaries and Developer Disk Images, packed: no nested code),
+                               Device/ (SecureROMs and the built-in iPod), licenses/, usbmuxd-conf/, build-inputs.json
         <vendor>/include/      libimobiledevice and libplist headers (LightTouchServices links them)
         <vendor>/dSYMs/        symbols of what Frameworks and MacOS ship stripped
         <vendor>/work/         build trees and logs (reused by reruns)
@@ -49,6 +49,7 @@ public struct Vendor {
     var scripts: URL { root.appendingPathComponent("scripts") }
     static let archs = ["arm64", "x86_64"], minos = "14.4"
     static let bootROMs = ["bootrom_240_4", "ipod1g/bootrom_s5l8900"]  // the iPod touch 2G's and 1G's SecureROMs
+    static let developerImages = "build-support/developer-disk-images.json"
     static let builtIn = "n72ap-7E18", seed = "lighttouch-built-in"  // the unpack gives every copy its own identity
     // What the app and firmwarekit look for in the guest export (qemu-ios contrib/export-guest-artifacts.sh).
     static let ipodTools = ["itmedia", "itphoto"]
@@ -64,7 +65,7 @@ public struct Vendor {
     static let keyed =
         [
             "build-support/sources.json", "build-support/dependencies.json", "scripts/build-package-native.sh",
-            "scripts/build-static-deps.sh", "scripts/build-iboot32patcher.sh",
+            "scripts/build-static-deps.sh", "scripts/build-iboot32patcher.sh", developerImages,
         ] + tools
     static let staticKeyed = [
         "scripts/build-static-deps.sh", "build-support/dependencies.json",
@@ -515,6 +516,26 @@ public struct Vendor {
             try copy(
                 guestRoot.appendingPathComponent("guest-tools/\(name)"),
                 packed.appendingPathComponent("tools/\(name)")
+            )
+        }
+        // Apple's Developer Disk Images (Tweaks' Developer Settings), one per iOS minor version, by their SHA-256:
+        // packed too, since each holds iOS binaries.
+        let images = work.appendingPathComponent("developer-disk-images")
+        let imageManifest = root.appendingPathComponent(Self.developerImages)
+        try DependencySources.fetch(
+            manifest: imageManifest,
+            group: "developer-disk-images",
+            destination: images,
+            caches: [],
+            offline: false
+        )
+        for package in try DependencySources.packages(manifest: imageManifest, group: "developer-disk-images") {
+            let archive = package["archive"] as? String ?? ""
+            let version = package["version"] as? String ?? ""
+            let name = archive.replacingOccurrences(of: "-\(version)", with: "")
+            try copy(
+                images.appendingPathComponent(archive),
+                packed.appendingPathComponent("developer-disk-images/\(version)/\(name)")
             )
         }
         try files.createDirectory(at: res.appendingPathComponent("Guest"), withIntermediateDirectories: true)
