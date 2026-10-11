@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import HostRuntime
 import Testing
 
 @testable import LightTouchCore
@@ -116,6 +117,97 @@ struct DeviceStateStorageTests {
             chflags(doomed.appendingPathComponent("bus0-ce0.pages").path, 0)
             DeviceStateStorage.sweepDeleting(state: state)
             #expect(!fm.fileExists(atPath: doomed.path) && fm.fileExists(atPath: device.path))
+        }
+    }
+
+    /// Erase after saved file system edits (Save Changes, then Jailbreak…) returns the device to how it was prepared:
+    /// the record selects Devices/<uuid>/base and fresh storage again, the generations and the storage the first edit
+    /// left (the old overlay, NOR and saved state) are gone, and the record's own fields stay. The generations are laid
+    /// out as StorageGeneration publishes them (StoppedVolumeEditTests checks original-device.plist on a real commit).
+    @Test func eraseAfterSavedEditsReturnsToThePreparedBase() throws {
+        try withTemporaryDirectory { state in
+            let id = UUID()
+            let device = DeviceInstance.directory(id, state: state)
+            let relative = "Devices/\(id.uuidString)"
+            func lock(_ jailbroken: Bool) -> Data { Data(#"{"jailbroken": \#(jailbroken)}"#.utf8) }
+            func make(_ dir: String, files: [String: Data]) throws {
+                let url = device.appendingPathComponent(dir)
+                try fm.createDirectory(at: url, withIntermediateDirectories: true)
+                for (name, data) in files { try data.write(to: url.appendingPathComponent(name)) }
+            }
+            // Prepared, then used: the overlay and NOR hold the user's data.
+            try make("work", files: [:])
+            try make("base", files: ["device.lock.json": lock(false), "nand": Data("prepared".utf8)])
+            try make("overlay", files: ["app.page": Data("installed app".utf8)])
+            try Data("nvram".utf8).write(to: device.appendingPathComponent("nor.bin"))
+            try Data("state".utf8).write(to: device.appendingPathComponent("snapshot"))
+            var instance = DeviceInstance(
+                id: id,
+                name: "iPhone 4",
+                board: "n90ap",
+                firmware: "n90ap-8C148",
+                created: DeviceInstance.now,
+                base: .init(kind: .prepared, path: "\(relative)/base"),
+                storage: .init(
+                    key: "prepared-key",
+                    overlay: "\(relative)/overlay",
+                    writableNOR: "\(relative)/nor.bin",
+                    snapshot: "\(relative)/snapshot",
+                    usbmuxConf: "\(relative)/usbmuxd-conf"
+                ),
+                provenance: .init(lock: "\(relative)/base/device.lock.json", sha256: "prepared")
+            )
+            try instance.write(state: state)
+            let prepared = instance
+            // Two saved edits: a file added to the data volume, then a jailbreak. Each generation keeps the record it
+            // replaced and holds its own base (with the edited volumes), overlay and NOR.
+            for (generation, jailbroken) in [(UUID(), false), (UUID(), true)] {
+                let g = "generations/\(generation.uuidString)"
+                try make(g, files: [:])
+                try fm.copyItem(
+                    at: device.appendingPathComponent(DeviceInstance.recordName),
+                    to: device.appendingPathComponent("\(g)/original-\(DeviceInstance.recordName)")
+                )
+                try make("\(g)/base", files: ["device.lock.json": lock(jailbroken), "nand": Data("edited".utf8)])
+                try make("\(g)/overlay", files: ["app.page": Data("used since".utf8)])
+                try Data("nvram".utf8).write(to: device.appendingPathComponent("\(g)/nor.bin"))
+                instance.base.path = "\(relative)/\(g)/base"
+                instance.storage.key = generation.uuidString
+                instance.storage.overlay = "\(relative)/\(g)/overlay"
+                instance.storage.writableNOR = "\(relative)/\(g)/nor.bin"
+                instance.storage.snapshot = "\(relative)/\(g)/snapshot"
+                instance.provenance = .init(lock: "\(relative)/\(g)/base/device.lock.json", sha256: "edited")
+                try instance.write(state: state)
+            }
+            instance.name = "Renamed"
+            try instance.write(state: state)
+
+            func erase(_ instance: DeviceInstance) throws {
+                let paths = instance.paths(state: state, logs: state)
+                try DeviceErase.Targets(
+                    overlay: paths.overlay,
+                    snapshots: [paths.snapshot],
+                    preparedNOR: paths.writableNOR,
+                    state: state,
+                    owner: id
+                ).remove()
+            }
+            try erase(instance)
+
+            let erased = try DeviceInstance.read(device)
+            var expected = prepared
+            expected.name = "Renamed"
+            #expect(erased == expected)
+            let paths = erased.paths(state: state, logs: state)
+            #expect(try Data(contentsOf: paths.base.appendingPathComponent("nand")) == Data("prepared".utf8))
+            #expect(try DeviceLock.read(base: paths.base)?.jailbroken == false)
+            for gone in [paths.overlay, paths.snapshot, device.appendingPathComponent("nor.bin")] {
+                #expect(!fm.fileExists(atPath: gone.path), "\(gone.lastPathComponent)")
+            }
+            #expect(try fm.contentsOfDirectory(atPath: device.path).sorted() == ["base", "device.plist", "work"])
+            // Erase again: nothing more to do.
+            try erase(erased)
+            #expect(try DeviceInstance.read(device) == expected)
         }
     }
 

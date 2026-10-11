@@ -297,7 +297,7 @@ extension MainWindowController {
         alert.alertStyle = .critical
         alert.messageText = "Erase all content and settings?"
         alert.informativeText =
-            "This permanently removes all apps, settings, and saved state from this \(entry.profile?.shortName ?? "device")."
+            "This permanently removes all apps, settings, and saved state from this \(entry.profile?.shortName ?? "device") and returns it to how it was prepared."
             + (AppInstaller.hasPendingWork(for: instance.id) ? " Installs in progress are cancelled." : "")
         alert.addButton(withTitle: "Erase")
         alert.addButton(withTitle: "Cancel")

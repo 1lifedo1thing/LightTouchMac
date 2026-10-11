@@ -90,6 +90,7 @@ import Testing
             let released = try OwnedStorageRecord.acquire(device: device)
             withExtendedLifetime((selection, released)) {}
         }
+        let preparedRecord = try Data(contentsOf: device.appendingPathComponent(DeviceRecord.name))
         let session = try await StoppedVolumeEdit.begin(device: device)
         try await VolumeMount.withMounted(session.image, at: root.appendingPathComponent("edit")) { mount in
             try Data("after-atomic-save".utf8).write(
@@ -123,6 +124,14 @@ import Testing
         #expect(try volume.record(at: ".file").mode & 0o7777 == 0)
         #expect(!fm.fileExists(atPath: device.appendingPathComponent("work/edit.json").path))
         #expect(fm.fileExists(atPath: base.appendingPathComponent("nand").path))
+        // What Erase returns to (DeviceStateStorage.returnToPrepared): the replaced record, kept by the generation.
+        #expect(
+            try Data(
+                contentsOf: device.appendingPathComponent(
+                    "generations/\(session.id.uuidString)/original-\(DeviceRecord.name)"
+                )
+            ) == preparedRecord
+        )
     }
 }
 

@@ -20,21 +20,72 @@ public nonisolated enum DeviceStateStorage {
     ) throws {
         let lease = try stoppedLease(owner, state: state)
         defer { withExtendedLifetime(lease) {} }
+        try removeAside(
+            overlay,
+            with: snapshots.flatMap { [$0, $0.appendingPathExtension("meta")] } + [preparedNOR].compactMap { $0 },
+            state: state,
+            owner: owner
+        )
+        if let owner { try returnToPrepared(owner, state: state) }
+    }
+
+    /// `tree` renamed to .erasing-<name> beside it, then `files` and it removed; every path checked first.
+    private static func removeAside(_ tree: URL, with files: [URL], state: URL, owner: UUID?) throws {
         let fm = FileManager.default
-        let doomed = overlay.deletingLastPathComponent().appendingPathComponent(".erasing-" + overlay.lastPathComponent)
-        let paths = snapshots.flatMap { [$0, $0.appendingPathExtension("meta")] } + [preparedNOR].compactMap { $0 }
-        for path in paths + [overlay, doomed] { try checkRemovable(path, state: state, owner: owner) }
-        if fm.fileExists(atPath: overlay.path) {
+        let doomed = tree.deletingLastPathComponent().appendingPathComponent(".erasing-" + tree.lastPathComponent)
+        for path in files + [tree, doomed] { try checkRemovable(path, state: state, owner: owner) }
+        if fm.fileExists(atPath: tree.path) {
             try removeTree(doomed)
-            guard rename(overlay.path, doomed.path) == 0 else {
+            guard rename(tree.path, doomed.path) == 0 else {
                 throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
             }
         }
-        for path in paths where fm.fileExists(atPath: path.path) {
+        for path in files where fm.fileExists(atPath: path.path) {
             try fm.removeItem(at: path)
         }
         // Erased once renamed; what can't go now goes at the next launch.
         try? removeTree(doomed)
+    }
+
+    /// A saved file system edit (Save Changes, Jailbreak…) publishes a generation whose base holds the edited
+    /// volumes, the device's data at that time included, so erasing its overlay isn't enough: the record goes back to
+    /// the prepared base, Devices/<uuid>/base, which every edit clones and none writes, and to fresh storage beside
+    /// it. Each generation keeps the record it replaced (original-device.plist); the first of the chain is the
+    /// prepared one. The record's other fields (name, guest, panel) stay. Then generations/ goes, renamed aside like
+    /// the overlay. A crash before the record is written leaves an erased overlay on the edited base (Erase again
+    /// finishes); after it, at worst a .erasing- directory the launch sweep removes.
+    static func returnToPrepared(_ owner: UUID, state: URL) throws {
+        let fm = FileManager.default
+        let device = DeviceInstance.directory(owner, state: state)
+        let generations = device.appendingPathComponent("generations")
+        guard fm.fileExists(atPath: generations.path) else { return }
+        let recordURL = device.appendingPathComponent(DeviceRecord.name)
+        var record = try DeviceRecord.object(Data(contentsOf: recordURL))
+        var prepared = record
+        var seen: Set<String> = []
+        while let key = (prepared["storage"] as? [String: Any])?["key"] as? String, seen.insert(key).inserted,
+            let data = try? Data(contentsOf: generations.appendingPathComponent("\(key)/original-\(DeviceRecord.name)"))
+        {
+            prepared = try DeviceRecord.object(data)
+        }
+        if (prepared["storage"] as? [String: Any])?["key"] as? String
+            != (record["storage"] as? [String: Any])?["key"] as? String
+        {
+            // The prepared storage as the device last left it, before its first edit.
+            let paths = try StorageRecordPaths(bytes: DeviceRecord.data(prepared), relativeRoot: state)
+            let snapshots = [paths.snapshot].compactMap { $0 }.flatMap { s in
+                ["", ".meta", ".tmp", ".bad"].map { URL(fileURLWithPath: s.path + $0) }
+            }
+            try removeAside(
+                paths.overlay,
+                with: snapshots + [paths.writableNOR].compactMap { $0 },
+                state: state,
+                owner: owner
+            )
+            for key in ["base", "storage", "provenance"] { record[key] = prepared[key] }
+            try DeviceRecord.data(record).write(to: recordURL, options: .atomic)
+        }
+        try removeAside(generations, with: [], state: state, owner: owner)
     }
 
     /// The helper/export/edit lock is the authority, including external CLI

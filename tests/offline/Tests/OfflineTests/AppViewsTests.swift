@@ -24,7 +24,7 @@ extension SharedState {
                 #expect(
                     alert.informativeText
                         == "Adds Cydia\(substrate ? ", Substrate," : "") and afc2, which shows the whole file system "
-                        + "in Files. This can’t be undone.",
+                        + "in Files. Erase All Content and Settings removes them.",
                     "\(version)"
                 )
                 #expect(alert.buttons.map(\.title) == ["Jailbreak", "Cancel"])
