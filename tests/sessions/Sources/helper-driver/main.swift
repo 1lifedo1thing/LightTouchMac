@@ -464,13 +464,18 @@ Thread.detachNewThread {
                     ]
                 )
             }
-        // tapword WORD [DY]: tap where Vision reads WORD (_ for a space) on the window's picture, DY below it; else nothing
+        // tapword WORD [DY]: tap where Vision reads WORD (_ for a space) on the window's picture, DY below it, looking
+        // again for up to 10 s (a page still sliding in, a loaded host); else nothing
         case "tapword":
             guard let r = rotationDriver else { fail("tapword: no board") }
-            dump("tapword")
             let shown = URL(fileURLWithPath: "\(dumpDir)/tapword-shown.png")
-            _ = onMain { r.writeShown(URL(fileURLWithPath: "\(dumpDir)/tapword.png"), to: shown) }
-            let at = findWord(p[1].replacingOccurrences(of: "_", with: " "), in: shown)
+            var at: (x: Double, y: Double)?
+            for attempt in 0..<6 where at == nil {
+                if attempt > 0 { usleep(2_000_000) }
+                dump("tapword")
+                _ = onMain { r.writeShown(URL(fileURLWithPath: "\(dumpDir)/tapword.png"), to: shown) }
+                at = findWord(p[1].replacingOccurrences(of: "_", with: " "), in: shown)
+            }
             emit("tapword", ["word": p[1], "found": at != nil])
             if let at {
                 let (x, y) = onMain { r.touchPoint(shown: at.x, at.y + (v.first ?? 0)) }

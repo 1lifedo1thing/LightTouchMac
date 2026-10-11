@@ -626,14 +626,15 @@ func emergencyCall(_ base: Base, tools: Tools, work: URL, _ r: Report) {
         let code = Array([[String]](repeating: one, count: 4).joined())
         dialing =
             ["boot", "lit 0.5 400", "wait 40", "button 0", "wait 2", unlockSlide, "wait 4"]
-            // Settings, General, Passcode Lock (the last row, unscrolled), Turn Passcode On, 1111 twice.
+            // Settings, General, Passcode Lock (at the end of the list: scrolled there), Turn Passcode On, 1111
+            // twice; each row by its label, which 4.0, 4.2 and 4.3 put in different places.
             + [
-                "tap 0.385 0.68", "wait 4", "tap 0.5 0.84", "wait 3", "tap 0.5 0.972", "wait 3", "tap 0.5 0.21",
-                "wait 3",
+                "tapword Settings -0.06", "wait 4", "tapword General", "wait 3", "drag 0.5 0.85 0.5 0.3", "wait 3",
+                "tapword Passcode_Lock", "wait 3", "tapword Turn_Passcode_On", "wait 3",
             ]
             + code + ["wait 2"] + code + ["wait 3"]
-            // Lock, wake, slide: the passcode screen, then its Emergency Call button.
-            + ["button 1", "wait 3", "button 0", "wait 2", unlockSlide, "wait 3", "tap 0.165 0.94", "wait 4"]
+            // Lock, wake, slide: the passcode screen, then its Emergency Call key (two lines: found by "Emergency").
+            + ["button 1", "wait 3", "button 0", "wait 2", unlockSlide, "wait 3", "tapword Emergency", "wait 4"]
             + [
                 "tap 0.784 0.556", "wait 0.5", "tap 0.207 0.33", "wait 0.5", "tap 0.207 0.33", "wait 1",
                 "tap 0.728 0.906",
