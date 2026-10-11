@@ -29,10 +29,7 @@ import Testing
         #expect(Tweak.safariDebug.caption(version: "5.1.1") == "com.apple.mobilesafari ConsoleEnabled")
         #expect(Tweak.safariDebug.caption(version: "6.1.6") == "com.apple.webinspectord RemoteInspectorEnabled")
         #expect(Tweak.timeMachine.caption(version: "4.2.1") == "rtc-epoch")
-        #expect(
-            Tweak.timeMachine.caption(version: "5.1.1")
-                == "rtc-epoch, com.apple.timed TMAutomaticTimeEnabled, com.apple.timed DisableAutomaticTime"
-        )
+        #expect(Tweak.timeMachine.caption(version: "7.1.2") == "rtc-epoch")
     }
 
     @Test func theKeysFollowTheFirmware() {
@@ -59,24 +56,36 @@ import Testing
         )
     }
 
-    @Test func timeMachineTurnsNetworkTimeOffFromIOS5() async throws {
+    @Test func timeMachineLeavesNetworkTimeOn() async throws {
+        // The machine's network answers NTP in its clock: timed keeps automatic time and zone, so the zone follows.
         var s = TweakSettings()
         s.on = [.timeMachine]
-        #expect(s.defaults(version: "4.3.3").isEmpty, "no timed before 5.0: the agent's sync holds the clock")
-        #expect(
-            s.defaults(version: "5.1.1").map(\.key) == ["TMAutomaticTimeEnabled", "DisableAutomaticTime"],
-            "5.x timed has no TMAutomaticTimeOnlyEnabled"
-        )
+        for version in ["4.3.3", "5.1.1", "6.1.6", "7.1.2"] {
+            #expect(s.defaults(version: version).isEmpty, "\(version)")
+        }
+        // What an earlier Time Machine wrote goes, and timed restarts to read it.
+        s.written = [
+            "com.apple.timed TMAutomaticTimeEnabled", "com.apple.timed TMAutomaticTimeOnlyEnabled",
+            "com.apple.timed DisableAutomaticTime",
+        ]
+        let changes = s.changes(version: "7.1.2")
+        #expect(changes.map(\.id) == s.written && changes.allSatisfy { $0.value == nil })
         let link = FakeGuestLink()
+        let timed = "/var/mobile/Library/Preferences/com.apple.timed.plist"
+        link.files[timed] = try PropertyListSerialization.data(
+            fromPropertyList: [
+                "TMAutomaticTimeEnabled": false, "TMAutomaticTimeOnlyEnabled": false, "DisableAutomaticTime": true,
+                "TMAutomaticTimeZoneEnabled": true,
+            ],
+            format: .binary,
+            options: 0
+        )
         let guest = GuestServices(agent: GuestAgent(link: link, cache: GuestAgentCache()))
         let applied = try await TweakApplier.apply(s, version: "7.1.2", guest: guest, again: false)
-        #expect(!applied.resprung && link.spawns == [["/bin/launchctl", "stop", "com.apple.timed"]], "timed rereads")
-        #expect(
-            s.defaults(version: "7.1.2").map(\.id) == [
-                "com.apple.timed TMAutomaticTimeEnabled", "com.apple.timed TMAutomaticTimeOnlyEnabled",
-                "com.apple.timed DisableAutomaticTime",
-            ]
-        )
+        #expect(applied.written.isEmpty && !applied.resprung)
+        let left = try PropertyListSerialization.propertyList(from: link.files[timed]!, format: nil) as? [String: Bool]
+        #expect(left == ["TMAutomaticTimeZoneEnabled": true], "only Time Machine's keys go")
+        #expect(link.spawns == [["/bin/launchctl", "stop", "com.apple.timed"]], "timed rereads")
     }
 
     @Test func turningOffRemovesOnlyWhatItWrote() {

@@ -109,11 +109,10 @@ func tweaksCheck(_ args: TweaksCheck) -> Never {
             "clock",
             [
                 "boot", "lit 0.1 400", "wait 20", "button 0", "wait 2", unlock, "wait 3", "waitagent 240",
-                // Time Machine turns 5.x to 7.x network time off for the next start (timed took the network's in
-                // the boot that turned it off on 7.1.2): the app's Restart, then the clock
-                "tweaks timeMachine", "wait 3",
-            ] + (base.major >= 5 ? ["agentop sync", "wait 2", "reset", "wait 90", "waitagent 240"] + wake : [])
-                + ["wait 15", "ocr clock", "quit", "expectExit 60"],
+                // Time Machine writes no keys: network time stays on and the machine's network answers NTP in its
+                // clock, so 5.x to 7.x timed keeps the pinned time all the boot
+                "tweaks timeMachine", "wait 30", "ocr clock", "quit", "expectExit 60",
+            ],
             clock: 1_168_364_460  // 9:41 AM in San Francisco, January 9, 2007
         )
     )

@@ -70,7 +70,25 @@ enum K48Oracle {
         #expect(SystemEdits.fstabRO == "/dev/disk0s1 / hfs ro 0 1\n/dev/disk0s2 /private/var hfs rw,nosuid,nodev 0 2\n")
     }
 
-    /// A pinned clock (recipe rtc_epoch, a developer beta) makes the build dated: timed's NTP off, ark unbricked.
+    /// A dated build's data volume leaves timed alone (its network answers NTP in the device's time): no
+    /// com.apple.timed switches, which on 6.x and 7.x would drop lockdown's zone; its ark says unbricked.
+    @Test func datedLeavesTimedAlone() throws {
+        let skeleton = FileManager.default.temporaryDirectory.appendingPathComponent("ltm-dated-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: skeleton) }
+        var o = SystemEdits.Options()
+        o.dated = true
+        try SystemEdits.seedData(skeleton, o, productMajor: 7, dataArk: ["-ActivationState": "Unactivated"]) { _ in }
+        let timed = skeleton.appendingPathComponent("mobile/Library/Preferences/com.apple.timed.plist")
+        #expect(!FileManager.default.fileExists(atPath: timed.path), "timed keeps automatic time and zone on")
+        let ark =
+            try PropertyListSerialization.propertyList(
+                from: Data(contentsOf: skeleton.appendingPathComponent("root/Library/Lockdown/data_ark.plist")),
+                format: nil
+            ) as? [String: Any]
+        #expect(ark?["-BrickState"] as? Bool == false)
+    }
+
+    /// A pinned clock (recipe rtc_epoch, a developer beta) makes the build dated.
     @Test func datedFromRTCEpoch() throws {
         func recipe(_ extra: String) throws -> FirmwareEntry.Recipe {
             try JSONDecoder().decode(

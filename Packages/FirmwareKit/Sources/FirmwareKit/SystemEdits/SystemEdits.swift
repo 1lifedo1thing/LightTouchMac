@@ -42,9 +42,8 @@ public enum SystemEdits {
         /// Bake the guest helpers, their jobs and the guest-package seed. Off for firmware whose dyld predates
         /// LC_DYLD_INFO (3.0, as the iPod 2G's 7A341): such a device gets no it_seal either, so no seal boot.
         public var guestTools = true
-        /// A dated build (recipe rtc_epoch: a developer beta pinned inside its release window). Date & Time's
-        /// "Set Automatically" starts off, so timed's NTP over Wi-Fi cannot move the clock past the expiry, and
-        /// the data ark says unbricked (see bake).
+        /// A dated build (recipe rtc_epoch: a developer beta pinned inside its release window): the data ark says
+        /// unbricked (seedData). Its clock holds because the machine's network tells its time (seedData).
         public var dated = false
         /// skip_setup (firmwarekit create --skip-setup, never set in the catalog): the data volume says Setup Assistant
         /// is finished (seedFinishedSetup), so an iOS 5 or later device starts at the Home screen.
@@ -399,32 +398,7 @@ public enum SystemEdits {
 
         log("data volume (\(dataBytes / 1_000_000) MB, sparse) seeded from /private/var")
         defer { try? fm.removeItem(at: skeleton) }
-        let sc = skeleton.appendingPathComponent("preferences/SystemConfiguration")
-        if o.webProxy { try seedPlist(sc.appendingPathComponent("preferences.plist"), wifiProxyPrefs) }
-        if o.dated {  // timed's own domain (it runs as mobile)
-            try seedPlist(skeleton.appendingPathComponent("mobile/Library/Preferences/com.apple.timed.plist")) { d in
-                // Settings' "Set Automatically" (6.x's key; 7.x's). timed honors it only once the clock has been set
-                // (its cache's TMSystemTimeSet): a fresh unit takes NTP whatever the switch says.
-                d["TMAutomaticTimeEnabled"] = false
-                d["TMAutomaticTimeOnlyEnabled"] = false
-                // What timed checks before every system-time change, set or not (6.0b1 CoreTime-77: the switch only
-                // when TMSystemTimeSet, then !DisableAutomaticTime). Without it a fresh unit's timed took 2026 from NTP.
-                d["DisableAutomaticTime"] = true
-            }
-        }
-        if o.skipSetup, productMajor >= 5 {
-            try seedFinishedSetup(skeleton, major: productMajor)
-            log("Setup Assistant: seeded as finished (iOS \(productMajor))")
-        }
-        if let ark = result.activation?.dataArk {
-            // 7.0 beta 1's lockdownd turns the brick state on for an ark without one and lifts it only for a valid
-            // activation record, which this route has none of (Setup then insists on activating online). A dated
-            // build says unbricked, as lockdownd's own "factoryactivation unbricks by default".
-            try seedPlist(skeleton.appendingPathComponent("root/Library/Lockdown/data_ark.plist")) { d in
-                d.addEntries(from: ark)
-                if o.dated { d["-BrickState"] = false }
-            }
-        }
+        try seedData(skeleton, o, productMajor: productMajor, dataArk: result.activation?.dataArk, log: log)
         try? fm.removeItem(at: data)
         try await VolumeMount.makeHFS(data, size: dataBytes, journaled: o.dataJournal)
         var byOwner: [[UInt32]: [String]] = [:]
@@ -748,6 +722,34 @@ public enum SystemEdits {
             "ProxyAutoConfigURLString": "file:///" + pacPath,
         ]
     }
+    /// What the /private/var skeleton gets before it becomes the data volume: the web proxy, Setup finished, the data
+    /// ark. Nothing for timed, dated or not: a dated machine's network answers NTP in the device's own time (qemu-ios
+    /// net/slirp.c), so automatic time and zone stay on, as a real unit has them, and timed takes lockdown's zone
+    /// (with "Set Automatically" off, 6.x and 7.x timed drop every zone change, lockdown's included).
+    static func seedData(
+        _ skeleton: URL,
+        _ o: Options,
+        productMajor: Int,
+        dataArk: [String: String]?,
+        log: (String) -> Void
+    ) throws {
+        let sc = skeleton.appendingPathComponent("preferences/SystemConfiguration")
+        if o.webProxy { try seedPlist(sc.appendingPathComponent("preferences.plist"), wifiProxyPrefs) }
+        if o.skipSetup, productMajor >= 5 {
+            try seedFinishedSetup(skeleton, major: productMajor)
+            log("Setup Assistant: seeded as finished (iOS \(productMajor))")
+        }
+        if let dataArk {
+            // 7.0 beta 1's lockdownd turns the brick state on for an ark without one and lifts it only for a valid
+            // activation record, which this route has none of (Setup then insists on activating online). A dated
+            // build says unbricked, as lockdownd's own "factoryactivation unbricks by default".
+            try seedPlist(skeleton.appendingPathComponent("root/Library/Lockdown/data_ark.plist")) { d in
+                d.addEntries(from: dataArk)
+                if o.dated { d["-BrickState"] = false }
+            }
+        }
+    }
+
     static func wifiProxyPrefs(_ d: NSMutableDictionary) {
         let svc = dict(
             dict(d, "NetworkServices"),

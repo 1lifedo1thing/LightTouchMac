@@ -100,9 +100,8 @@ public nonisolated enum Tweak: String, Codable, CaseIterable, Sendable {
             TweakSettings.before(version, "6.0")
                 ? "com.apple.mobilesafari ConsoleEnabled" : "com.apple.webinspectord RemoteInspectorEnabled"
         case .developerSettings: "DeveloperDiskImage.dmg on /Developer"
-        case .timeMachine:
-            (["rtc-epoch"] + TweakSettings.timedKeys(version: version).map { "com.apple.timed \($0)" })
-                .joined(separator: ", ")
+        // The machine's clock, and its network's: qemu-ios answers NTP in it, so timed keeps it with network time on.
+        case .timeMachine: "rtc-epoch"
         }
     }
 
@@ -199,15 +198,6 @@ public nonisolated struct TweakSettings: Codable, Equatable, Sendable {
         version.compare(other, options: .numeric) == .orderedAscending
     }
 
-    /// The com.apple.timed switches Time Machine turns off network time with: timed (5.0 on) reads
-    /// TMAutomaticTimeEnabled and DisableAutomaticTime, and from 6.x TMAutomaticTimeOnlyEnabled (6.1.6, 7.x; not 5.1.1).
-    static func timedKeys(version: String) -> [String] {
-        before(version, "5.0")
-            ? []
-            : ["TMAutomaticTimeEnabled"] + (before(version, "6.0") ? [] : ["TMAutomaticTimeOnlyEnabled"])
-                + ["DisableAutomaticTime"]
-    }
-
     /// The preference keys the switches that are on (and work on `version`) set.
     public func defaults(version: String) -> [GuestDefault] {
         var keys: [GuestDefault] = []
@@ -227,13 +217,6 @@ public nonisolated struct TweakSettings: Codable, Equatable, Sendable {
         }
         if applies(.emojiEverywhere, version: version) {
             keys.append(GuestDefault("com.apple.Preferences", "KeyboardEmojiEverywhere", .bool(true)))
-        }
-        if isOn(.timeMachine) {
-            // timed would take the network's time over Wi-Fi (NTP) at each start: Settings' "Set Automatically" off,
-            // and the switch timed checks before every change, as dated betas are prepared (FirmwareKit SystemEdits).
-            keys += Self.timedKeys(version: version).map {
-                GuestDefault("com.apple.timed", $0, .bool($0 == "DisableAutomaticTime"))
-            }
         }
         if applies(.safariDebug, version: version) {
             // Settings' own switches (MobileSafariSettings' Developer.plist): 1.1 to 5.1.1, then 6.1.6 and 7.x.
@@ -305,8 +288,8 @@ public nonisolated enum TweakApplier {
             try await guest.respring()
             try await springBoardBack(guest)
         }
-        // timed reads its switches when it starts (7.1.2 took the network's time all the boot they were written in);
-        // launchd starts it again on demand.
+        // timed reads its switches when it starts: removing those an earlier Time Machine wrote (network time off,
+        // which also dropped every zone change) holds once launchd starts it again on demand.
         if changed.contains("com.apple.timed") {
             _ = try? await guest.agent.spawn([GuestServices.launchctl, "stop", "com.apple.timed"])
         }
