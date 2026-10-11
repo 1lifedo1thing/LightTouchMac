@@ -6,7 +6,8 @@ import Testing
 @testable import LightTouchCore
 
 /// The prepare screen's layout as the main window uses it: one DevicePlaceholderViewController, switched from device
-/// to device and state to state, in two window sizes. In every state no view's layout is ambiguous, and the Skip
+/// to device and state to state (the longest preparation steps among them), in two window sizes. In every state no
+/// view's layout is ambiguous, every line of text fits its label whole, and the Skip
 /// Setup Assistant and Jailbreak checkboxes (two, one or none) share one leading edge, sit as a group centered under
 /// the button row, and never overlap it. Each state is rendered to LTM_RENDER_DIR (else the temporary directory).
 extension SharedState {
@@ -25,7 +26,23 @@ extension SharedState {
             let none = entry("m68ap-1A543a")  // iPhone OS 1.0: neither
             let prep = Preparation(step: 3, steps: 7, name: "Decrypting", fraction: 0.4)
             let id = UUID()
-            let states: [(String, DeviceRow)] = [
+            // The longest step names (FirmwareKit's StepPlan.plans), which the headline shows whole.
+            let longSteps = [
+                "Writing the identity, NOR and boot files", "Building the system and data volumes",
+                "Creating the data-protection keybag",
+            ]
+            .map { name in
+                (
+                    "preparing-" + name.split(separator: " ")[0].lowercased(),
+                    DeviceRow(
+                        entry: both,
+                        instanceID: nil,
+                        session: nil,
+                        job: .preparing(Preparation(step: 4, steps: 7, name: name, fraction: 0.18))
+                    )
+                )
+            }
+            var states: [(String, DeviceRow)] = [
                 ("two-options", DeviceRow(entry: both, instanceID: nil, session: nil, job: nil)),
                 ("one-option", DeviceRow(entry: one, instanceID: nil, session: nil, job: nil, downloaded: true)),
                 ("no-options", DeviceRow(entry: none, instanceID: nil, session: nil, job: nil)),
@@ -36,6 +53,7 @@ extension SharedState {
                 ("ready", DeviceRow(entry: one, instanceID: id, session: nil, job: nil)),
                 ("two-options-last", DeviceRow(entry: both, instanceID: nil, session: nil, job: nil)),
             ]
+            states += longSteps
             let renders = URL(
                 fileURLWithPath: ProcessInfo.processInfo.environment["LTM_RENDER_DIR"]
                     ?? FileManager.default.temporaryDirectory.path
@@ -104,6 +122,15 @@ extension SharedState {
                     for text in all(view).compactMap({ $0 as? NSTextField })
                     where visible(text) && !text.stringValue.isEmpty {
                         let f = frame(text)
+                        // ...and whole: the text laid out at the label's width fits its frame.
+                        let needed = text.cell!.cellSize(
+                            forBounds: NSRect(x: 0, y: 0, width: text.frame.width, height: .greatestFiniteMagnitude)
+                        )
+                        if needed.width > text.frame.width + 0.5 || needed.height > text.frame.height + 0.5 {
+                            failures.append(
+                                "\(label): \(text.stringValue) needs \(needed), has \(text.frame.size)"
+                            )
+                        }
                         let width = min(f.width, text.attributedStringValue.size().width)
                         let x = text.alignment == .center ? f.midX : f.minX + width / 2
                         let slack: CGFloat = text.stringValue.hasPrefix("iOS ") && row.catalogNote != nil ? 14 : 1.5

@@ -66,6 +66,10 @@ final class DevicePlaceholderViewController: NSViewController {
         for label in [status, reason, space] {
             label.alignment = .center
             label.preferredMaxLayoutWidth = 340
+            // Its height is its text's at its own width (up to 340), so a column hugging harder than a wrapping
+            // label's low resistance must not narrow it: "Building the system and data volumes…" lost "data volumes…"
+            // at the bar's width.
+            label.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         }
         status.font = .preferredFont(forTextStyle: .headline)
         reason.textColor = .secondaryLabelColor
