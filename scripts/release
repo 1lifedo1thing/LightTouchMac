@@ -87,7 +87,8 @@ step "boots: the built-in iPod and the prepare matrix"
 [[ "$SKIP_PREPARE" == 1 ]] && echo "== prepare matrix: SKIPPED (LTM_RELEASE_SKIP_PREPARE=1, dry run)"
 release_tests boot ReleaseBootTests
 if (( ! DRY )); then
-    spctl -a -vv -t exec "$APP" 2>&1 | grep -q 'source=Notarized Developer ID' || fail "Gatekeeper: $(spctl -a -vv -t exec "$APP" 2>&1)"
+    GK=$(spctl -a -vv -t exec "$APP" 2>&1) || true  # read whole: grep -q closing the pipe early fails it under pipefail
+    [[ "$GK" == *'source=Notarized Developer ID'* ]] || fail "Gatekeeper: $GK"
 fi
 if (( AMORE )); then
     step "Amore"
