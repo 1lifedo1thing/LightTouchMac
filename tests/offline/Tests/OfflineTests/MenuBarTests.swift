@@ -17,6 +17,7 @@ extension SharedState {
         static func bar(_ app: String) -> String { ipodBar.replacingOccurrences(of: "Light Touch", with: app) }
         static let ipodBar = """
             Light Touch/About Light Touch
+            Light Touch/Check for Updates…
             Light Touch/-
             Light Touch/Settings…  ⌘,
             Light Touch/-

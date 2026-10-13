@@ -2,6 +2,7 @@ import Cocoa
 import DeviceRuntime
 import HostRuntime
 import LightTouchCore
+import Sparkle
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
@@ -21,6 +22,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// The selected device when it isn't running: its settings for its next start.
     private var stoppedSelection: DeviceInstance? { emulator == nil ? windowController?.selectedInstance : nil }
     private var helpController: HelpWindowController?
+    /// Light Touch ▸ Check for Updates… and Sparkle's scheduled checks.
+    let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
     private let quitting = QuitCoordinator(budget: EmulatorController.stopBudget, retry: AppDelegate.requestTermination)
     {
         NSApp.reply(toApplicationShouldTerminate: true)

@@ -37,6 +37,7 @@
 		A1D0C0DE35000000000000004 = {isa = PBXBuildFile; productRef = A1D0C0DE35000000000000002; };
 		A1D0C0DE36000000000000003 = {isa = PBXBuildFile; productRef = A1D0C0DE36000000000000002; };
 		A1D0C0DE37000000000000003 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = A1D0C0DE37000000000000002; };
+		A1D0C0DE3D000000000000003 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A1D0C0DE3D000000000000002; };
 		A1D0C0DE36000000000000004 = {isa = PBXBuildFile; productRef = A1D0C0DE36000000000000002; };
 /* End PBXBuildFile section */
 
@@ -159,6 +160,7 @@
 				A1D0C0DE3C000000000000012 /* LightTouchCore in Frameworks */,
 				EA17D84D3023A55900BDF83E /* Subprocess in Frameworks */,
 				A1D0C0DE37000000000000003 /* ZIPFoundation in Frameworks */,
+				A1D0C0DE3D000000000000003 /* Sparkle in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -276,6 +278,7 @@
 				A1D0C0DE3C000000000000002 /* LightTouchCore */,
 				EA17D84C3023A55900BDF83E /* Subprocess */,
 				A1D0C0DE37000000000000002 /* ZIPFoundation */,
+				A1D0C0DE3D000000000000002 /* Sparkle */,
 			);
 			productName = LightTouchMac;
 			productReference = EA17D83230239D9B00BDF83E /* Light Touch.app */;
@@ -316,6 +319,7 @@
 				A1D0C0DE3A000000000000010,
 				EA17D84B3023A55900BDF83E /* XCRemoteSwiftPackageReference "swift-subprocess" */,
 				A1D0C0DE37000000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */,
+				A1D0C0DE3D000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = EA17D83330239D9B00BDF83E /* Products */;
@@ -698,6 +702,14 @@
 				version = 0.9.20;
 			};
 		};
+		A1D0C0DE3D000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -726,6 +738,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A1D0C0DE37000000000000001 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
 			productName = ZIPFoundation;
+		};
+		A1D0C0DE3D000000000000002 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1D0C0DE3D000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

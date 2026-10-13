@@ -67,6 +67,7 @@ public enum AboutCredits {
         Project("SwiftASN1", "https://github.com/apple/swift-asn1", "Apache-2.0", "swift/swift-asn1"),
         Project("Swift System", "https://github.com/apple/swift-system", "Apache-2.0", "swift/swift-system"),
         Project("Subprocess", "https://github.com/swiftlang/swift-subprocess", "Apache-2.0", "swift/swift-subprocess"),
+        Project("Sparkle", "https://github.com/sparkle-project/Sparkle", "MIT", "swift/Sparkle"),
     ]
 
     /// The credits' last link: the app opens its Licenses window for it.

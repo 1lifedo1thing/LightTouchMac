@@ -275,8 +275,9 @@ public struct Vendor {
         return payload
     }
 
-    /// firmwarekit (host slice) and the Release helper it boots, staged as an app would hold them.
-    func firmwarekit(_ work: URL) throws -> (tool: URL, helper: URL, checkouts: URL) {
+    /// firmwarekit (host slice) and the Release helper it boots, staged as an app would hold them; the checkouts of
+    /// FirmwareKit's packages and of the project's (the app's own, Sparkle among them), for their licenses.
+    func firmwarekit(_ work: URL) throws -> (tool: URL, helper: URL, checkouts: [URL]) {
         let log = work.appendingPathComponent("logs/device.log")
         let scratch = work.appendingPathComponent("firmwarekit-build")
         let swift = [
@@ -290,7 +291,7 @@ public struct Vendor {
                 "xcodebuild", "-project", root.appendingPathComponent("LightTouchMac.xcodeproj").path, "-target",
                 "LightTouchDevice",
                 "-configuration", "Release", "SYMROOT=\(work.path)/xcode", "COMPILER_INDEX_STORE_ENABLE=NO",
-                "OBJROOT=\(work.path)/xcode/obj",
+                "OBJROOT=\(work.path)/xcode/obj", "-clonedSourcePackagesDirPath", "\(work.path)/xcode/packages",
                 "CODE_SIGNING_ALLOWED=NO", "build",
             ],
             log: log
@@ -298,7 +299,7 @@ public struct Vendor {
         return (
             url(bin).appendingPathComponent("firmwarekit"),
             work.appendingPathComponent("xcode/Release/LightTouchDevice"),
-            scratch.appendingPathComponent("checkouts")
+            [scratch.appendingPathComponent("checkouts"), work.appendingPathComponent("xcode/packages/checkouts")]
         )
     }
 
@@ -494,7 +495,7 @@ public struct Vendor {
         guestRoot: URL,
         manifest: [String: Any],
         developer: URL,
-        checkouts: URL
+        checkouts: [URL]
     ) throws {
         let res = vendor.appendingPathComponent("Resources")
         let toolsLog = work.appendingPathComponent("logs/tools.log")
@@ -594,7 +595,7 @@ public struct Vendor {
                 licenses.appendingPathComponent("iBoot32Patcher/\(name)")
             )
         }
-        for package in try entries(checkouts) {
+        for package in try checkouts.flatMap(entries) {
             let target = licenses.appendingPathComponent("swift/\(package.lastPathComponent)")
             try files.createDirectory(at: target, withIntermediateDirectories: true)
             for text in try entries(package)
