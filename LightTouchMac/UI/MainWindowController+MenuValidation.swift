@@ -89,6 +89,9 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(toggleCaptureScreenOnly(_:)):
             menuItem.state = captureMode == 1 ? .on : .off
             return !recording.isActive && !capture.screenshotBusy
+        case #selector(toggleRecordDeviceBezel(_:)):
+            menuItem.state = capturePreferences.recordsBezel ? .on : .off
+            return !recording.isActive
         case #selector(toggleVerboseBoot(_:)):
             menuItem.state = EmulatorController.verboseBoot ? .on : .off
             return true

@@ -50,6 +50,7 @@ extension MainWindowController {
     }
 
     @objc func toggleCaptureScreenOnly(_ sender: Any?) { capture.toggleCaptureScreenOnly() }
+    @objc func toggleRecordDeviceBezel(_ sender: Any?) { capture.toggleRecordDeviceBezel() }
     func installFileStatus() {
         fileStatus.isHidden = true
         startupStatus.isHidden = true

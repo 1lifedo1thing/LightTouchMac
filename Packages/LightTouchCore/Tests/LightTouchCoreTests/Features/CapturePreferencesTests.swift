@@ -21,19 +21,25 @@ struct CapturePreferencesTests {
             #expect(preferences.saveLocation == CapturePreferences.desktopDirectory)
             #expect(preferences.openFinderAfterCapture && preferences.soundEffectsEnabled)
             #expect(!preferences.copyOnCapture)
+            #expect(!preferences.recordsBezel, "recordings are the screen alone by default")
             _ = preferences.saveLocations
             _ = preferences.openInApplicationURL
             #expect(
                 defaults.dictionaryRepresentation().keys.filter {
                     $0.hasPrefix("capture")
                         || [
-                            "copyOnCapture",
+                            "copyOnCapture", "recordDeviceBezel",
                             "openFinderAfterCapture", "soundEffectsEnabled",
                             "openInApplicationPath",
                         ].contains($0)
                 }.isEmpty,
                 "reading writes nothing"
             )
+            // Screenshots with the bezel (an existing user's captureMode 0) don't put it in recordings.
+            defaults.set(0, forKey: "captureMode")
+            #expect(!preferences.recordsBezel)
+            preferences.recordsBezel = true
+            #expect(preferences.recordsBezel && defaults.integer(forKey: "captureMode") == 0)
         }
     }
 

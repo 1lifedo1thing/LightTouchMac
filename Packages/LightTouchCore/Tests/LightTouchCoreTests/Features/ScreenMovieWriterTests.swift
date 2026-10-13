@@ -185,7 +185,8 @@ struct ScreenMovieWriterTests {
             url: url,
             audio: tones.capture(),
             canvasSize: mode == .canvas ? CGSize(width: 640, height: 400) : nil,
-            background: mode == .canvas ? landscape : nil
+            background: mode == .canvas ? landscape : nil,
+            screenSize: mode == .landscape ? CGSize(width: 480, height: 320) : CGSize(width: 320, height: 480)
         )
         for tick in 0...30 {
             tones.time = Double(tick) / 10
@@ -212,7 +213,7 @@ struct ScreenMovieWriterTests {
                 switch mode {
                 case .portrait: CGSize(width: 320, height: 480)
                 case .landscape: CGSize(width: 480, height: 320)
-                case .rotated: CGSize(width: 480, height: 480)  // the long side square: either orientation fits
+                case .rotated: CGSize(width: 320, height: 480)  // the screen as it was at the start
                 case .canvas: CGSize(width: 640, height: 400)
                 }
             #expect(try await video[0].load(.naturalSize) == expected)
@@ -239,12 +240,15 @@ struct ScreenMovieWriterTests {
                     "\(mode) at \(seconds) s: \(frame.rgb(frame.width / 2, frame.height / 2))"
                 )
                 switch mode {
-                case .portrait, .landscape:  // native crop reaches every corner: no padding, no scaling
+                case .portrait, .landscape:  // the screen reaches every corner: no padding, no scaling
                     #expect(near(frame.rgb(4, 4), color) && near(frame.rgb(frame.width - 5, frame.height - 5), color))
                 case .canvas:
                     #expect(near(frame.rgb(4, 4), Self.blue), "canvas lost its background")
+                case .rotated where turned:  // fitted, centered on black
+                    #expect(frame.rgb(4, 4).max()! < 12, "turned screen lost its padding")
+                    #expect(near(frame.rgb(4, frame.height / 2), color), "turned screen not fitted to the width")
                 case .rotated:
-                    #expect(frame.rgb(4, 4).max()! < 12, "rotation canvas lost its padding")
+                    #expect(near(frame.rgb(4, 4), color) && near(frame.rgb(frame.width - 5, frame.height - 5), color))
                 }
             }
         }

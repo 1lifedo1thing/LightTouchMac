@@ -17,7 +17,7 @@ private actor FakeWriter: ScreenMovieRecording {
         if let failFrame { self.failFrame = failFrame }
     }
 
-    func start(url: URL, audio: GuestAudioCapture?, canvasSize: CGSize?, background: CGImage?, screenSide: CGFloat)
+    func start(url: URL, audio: GuestAudioCapture?, canvasSize: CGSize?, background: CGImage?, screenSize: CGSize)
         async throws
     {
         starts += 1

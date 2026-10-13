@@ -70,6 +70,7 @@ import LightTouchCore
     @objc func syncMedia(_ sender: Any?) {}
     @objc func toggleAppInspector(_ sender: Any?) {}
     @objc func toggleCaptureScreenOnly(_ sender: Any?) {}
+    @objc func toggleRecordDeviceBezel(_ sender: Any?) {}
     @objc func toggleConsole(_ sender: Any?) {}
     @objc func toggleDevicePause(_ sender: Any?) {}
     @objc func toggleDeviceRunning(_ sender: Any?) {}

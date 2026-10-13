@@ -3,7 +3,7 @@ import Foundation
 
 /// What a recording session writes its take with: ScreenMovieWriter.
 nonisolated public protocol ScreenMovieRecording: AnyObject, Sendable {
-    func start(url: URL, audio: GuestAudioCapture?, canvasSize: CGSize?, background: CGImage?, screenSide: CGFloat)
+    func start(url: URL, audio: GuestAudioCapture?, canvasSize: CGSize?, background: CGImage?, screenSize: CGSize)
         async throws
     func append(_ image: CGImage?, seconds: Double) async throws
     func finish(seconds: Double) async throws
@@ -96,7 +96,7 @@ public final class ScreenRecordingSession {
         prepare: @escaping () async throws -> CGSize? = { nil },
         cleanup: @escaping () async -> Void = {},
         background: CGImage? = nil,
-        screenSide: CGFloat = 480,
+        screenSize: CGSize = CGSize(width: 320, height: 480),
         destination: @escaping () throws -> URL
     ) {
         guard !isActive else { return }
@@ -106,7 +106,7 @@ public final class ScreenRecordingSession {
             prepare: prepare,
             cleanup: cleanup,
             background: background,
-            screenSide: screenSide,
+            screenSize: screenSize,
             destination: destination
         )
     }
@@ -117,7 +117,7 @@ public final class ScreenRecordingSession {
         prepare: @escaping () async throws -> CGSize?,
         cleanup: @escaping () async -> Void,
         background: CGImage?,
-        screenSide: CGFloat,
+        screenSize: CGSize,
         destination: @escaping () throws -> URL
     ) {
         failure = nil
@@ -145,7 +145,7 @@ public final class ScreenRecordingSession {
                         audio: capture,
                         canvasSize: canvasSize,
                         background: background,
-                        screenSide: screenSide
+                        screenSize: screenSize
                     )
                 } catch {
                     capture?.stop()

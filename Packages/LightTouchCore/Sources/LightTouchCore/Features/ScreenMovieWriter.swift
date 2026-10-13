@@ -10,9 +10,7 @@ public actor ScreenMovieWriter {
     public init() {}
     private var canvasSize: CGSize?
     private var background: CGImage?
-    /// The screen-only canvas: a square of the screen's long side, so either orientation fits.
-    private var side: CGFloat = 480
-    private var outputSize = CGSize(width: 480, height: 480)
+    private var outputSize = CGSize(width: 320, height: 480)
     private var writer: AVAssetWriter?
     private var input: AVAssetWriterInput?
     private var adaptor: AVAssetWriterInputPixelBufferAdaptor?
@@ -22,23 +20,21 @@ public actor ScreenMovieWriter {
     private var capture: GuestAudioCapture?
     private var finishing = false
     private var audioFrame: Int64 = 0
-    private var firstFrameSize: CGSize?
-    private var changedFrameSize = false
 
     /// `audio`: the device's capture (EmulatorController.startAudioCapture), or nil for a silent movie.
-    /// `screenSide`: the guest screen's long side in pixels (480 for the shipped iPod), for a screen-only movie.
+    /// `screenSize`: the screen's pixels as they're upright at the start (320×480 for the shipped iPod in portrait),
+    /// a screen-only movie's frame. A movie can't change size: a screen turned later is fitted inside it on black.
     public func start(
         url: URL,
         audio: GuestAudioCapture? = nil,
         canvasSize: CGSize? = nil,
         background: CGImage? = nil,
-        screenSide: CGFloat = 480
+        screenSize: CGSize = CGSize(width: 320, height: 480)
     ) throws {
         guard self.writer == nil, !finishing else { throw CaptureError.failed("A recording is already active.") }
         self.canvasSize = canvasSize
         self.background = background
-        side = screenSide
-        outputSize = canvasSize ?? CGSize(width: side, height: side)
+        outputSize = canvasSize ?? screenSize
         let width = Int(outputSize.width)
         let height = Int(outputSize.height)
         guard width > 0, height > 0 else { throw CaptureError.failed("Invalid recording size.") }
@@ -100,8 +96,6 @@ public actor ScreenMovieWriter {
         self.adaptor = adaptor
         count = 0
         audioFrame = 0
-        firstFrameSize = nil
-        changedFrameSize = false
     }
     public func append(_ image: CGImage?, seconds: Double) async throws {
         guard !finishing else { return }
@@ -160,31 +154,17 @@ public actor ScreenMovieWriter {
         let output = CGRect(origin: .zero, size: outputSize)
         context.setFillColor(CGColor(gray: 0, alpha: 1))
         context.fill(output)
-        if canvasSize != nil {
-            if let background {
-                let factor = max(
-                    outputSize.width / CGFloat(background.width),
-                    outputSize.height / CGFloat(background.height)
-                )
-                let size = CGSize(
-                    width: CGFloat(background.width) * factor,
-                    height: CGFloat(background.height) * factor
-                )
-                context.draw(
-                    background,
-                    in: CGRect(
-                        x: (output.width - size.width) / 2,
-                        y: (output.height - size.height) / 2,
-                        width: size.width,
-                        height: size.height
-                    )
-                )
-            }
-            let factor = min(outputSize.width / CGFloat(image.width), outputSize.height / CGFloat(image.height))
-            let size = CGSize(width: CGFloat(image.width) * factor, height: CGFloat(image.height) * factor)
-            context.interpolationQuality = .high
+        if canvasSize != nil, let background {
+            let factor = max(
+                outputSize.width / CGFloat(background.width),
+                outputSize.height / CGFloat(background.height)
+            )
+            let size = CGSize(
+                width: CGFloat(background.width) * factor,
+                height: CGFloat(background.height) * factor
+            )
             context.draw(
-                image,
+                background,
                 in: CGRect(
                     x: (output.width - size.width) / 2,
                     y: (output.height - size.height) / 2,
@@ -192,26 +172,24 @@ public actor ScreenMovieWriter {
                     height: size.height
                 )
             )
-        } else {
-            context.interpolationQuality = .none
-            context.draw(
-                image,
-                in: CGRect(
-                    x: (Int(side) - image.width) / 2,
-                    y: (Int(side) - image.height) / 2,
-                    width: image.width,
-                    height: image.height
-                )
-            )
         }
+        // Fitted and centered: the canvas in its frame, or a screen turned since the start on black. A screen
+        // at the frame's own size is drawn pixel for pixel.
+        let native = canvasSize == nil && CGSize(width: image.width, height: image.height) == outputSize
+        let factor = min(outputSize.width / CGFloat(image.width), outputSize.height / CGFloat(image.height))
+        let size = CGSize(width: CGFloat(image.width) * factor, height: CGFloat(image.height) * factor)
+        context.interpolationQuality = native ? .none : .high
+        context.draw(
+            image,
+            in: CGRect(
+                x: (output.width - size.width) / 2,
+                y: (output.height - size.height) / 2,
+                width: size.width,
+                height: size.height
+            )
+        )
         guard adaptor.append(buffer, withPresentationTime: CMTime(seconds: seconds, preferredTimescale: 600)) else {
             throw writer.error ?? CaptureError.failed("Couldn’t record the screen.")
-        }
-        let size = CGSize(width: image.width, height: image.height)
-        if let firstFrameSize {
-            changedFrameSize = changedFrameSize || firstFrameSize != size
-        } else {
-            firstFrameSize = size
         }
         count += 1
     }
@@ -333,58 +311,6 @@ public actor ScreenMovieWriter {
         audioFrame += Int64(frames)
     }
 
-    /// Capture keeps a fixed canvas so rotation never interrupts audio or video.
-    /// When every encoded frame has the same geometry, remove only its padding.
-    private func cropFinishedMovie(at url: URL, to size: CGSize) async throws {
-        guard size != CGSize(width: side, height: side) else { return }
-        let asset = AVURLAsset(url: url)
-        guard let track = try await asset.loadTracks(withMediaType: .video).first else {
-            throw CaptureError.failed("The recording has no video track.")
-        }
-        let duration = try await asset.load(.duration)
-        let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
-        layer.setTransform(
-            CGAffineTransform(
-                translationX: -(side - size.width) / 2,
-                y: -(side - size.height) / 2
-            ),
-            at: .zero
-        )
-        let instruction = AVMutableVideoCompositionInstruction()
-        instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
-        instruction.layerInstructions = [layer]
-        let composition = AVMutableVideoComposition()
-        composition.instructions = [instruction]
-        composition.renderSize = size
-        composition.frameDuration = CMTime(value: 1, timescale: 30)
-        composition.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
-        if #available(macOS 15.0, *) {
-            composition.colorTransferFunction = AVVideoTransferFunction_IEC_sRGB
-        } else {
-            composition.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
-        }
-        composition.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
-        guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else {
-            throw CaptureError.failed("Couldn’t prepare the recording for export.")
-        }
-        export.videoComposition = composition
-        let cropped = url.deletingLastPathComponent().appendingPathComponent(".capture-\(UUID().uuidString).mov")
-        defer { try? FileManager.default.removeItem(at: cropped) }
-        if #available(macOS 15.0, *) {
-            try await export.export(to: cropped, as: .mov)
-        } else {
-            export.outputURL = cropped
-            export.outputFileType = .mov
-            await export.export()
-            guard export.status == .completed else {
-                throw export.error ?? CaptureError.failed("Couldn’t export the recording.")
-            }
-        }
-        // Keep the complete original until the replacement is ready. The asset
-        // includes its audio track, preserving silence and the capture timeline.
-        _ = try FileManager.default.replaceItemAt(url, withItemAt: cropped)
-    }
-
     public func cancel() {
         capture?.stop()
         writer?.cancelWriting()
@@ -432,9 +358,6 @@ public actor ScreenMovieWriter {
             await writer.finishWriting()
             guard writer.status == .completed else {
                 throw writer.error ?? CaptureError.failed("Couldn’t finish recording.")
-            }
-            if canvasSize == nil, let firstFrameSize, !changedFrameSize {
-                try await cropFinishedMovie(at: writer.outputURL, to: firstFrameSize)
             }
         } catch {
             writer.cancelWriting()
