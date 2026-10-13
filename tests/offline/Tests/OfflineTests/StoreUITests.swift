@@ -8,10 +8,10 @@ import Testing
 extension SharedState {
     /// The Store's filter pull-down and the version sheet as AppKit draws them, over the recorded Legacy Store responses
     /// in tests/fixtures/store-filter (LegacyStoreStub). The rules are CatalogFilterTests' and CatalogDetailsModelTests'.
-    /// Filter (real CatalogFilterButton through its menu, a throwaway defaults suite): the iPod offers Show Unavailable
-    /// Apps alone, live and checked; a toggle reports and checks off; the iPad offers both families, checks iPad Apps Only
-    /// when chosen, and a new button reads the saved choices back; the iPod's button, open all along, follows the iPad's
-    /// choices without showing its family one. Sheet (real
+    /// Filter (real CatalogFilterButton through its menu, a throwaway defaults suite): the iPod shows the family choice
+    /// dimmed and unchecked and Show Unavailable Apps live and checked; a toggle reports and checks off; the iPad offers
+    /// both families, checks iPad Apps Only when chosen, and a new button reads the saved choices back; the iPod's button,
+    /// open all along, follows the iPad's choices without checking its family one. Sheet (real
     /// CatalogDetailsView): fits its content for a compatible and an incompatible copy.
     @Suite struct StoreUITests {
         nonisolated static func server(_ request: URLComponents) -> LegacyStoreStub.Reply {
@@ -109,23 +109,26 @@ extension SharedState {
             let defaults = UserDefaults(suiteName: suite)!
             defer { defaults.removePersistentDomain(forName: suite) }
 
-            // iPod: no family choice; the default shows unavailable apps grayed, the toggle hides them.
+            // iPod: the family choice shown (never hidden), dimmed and unchecked, the toggle live, checked by `showing`.
+            func podMenu(_ items: [NSMenuItem], showing: Bool) -> Bool {
+                items.count == 5 && items[1...4].allSatisfy { !$0.isHidden }
+                    && items[1...2].allSatisfy { !$0.isEnabled && $0.state == .off }
+                    && items[4].isEnabled && items[4].title == "Show Unavailable Apps"
+                    && items[4].state == (showing ? .on : .off)
+            }
             let podButton = CatalogFilterButton(isIPad: false, defaults: defaults)
             let items = podButton.menu!.items
+            check(podMenu(items, showing: true), "iPod: family dimmed and unchecked, the toggle live and checked")
             check(
-                items.count == 2 && items[1].isEnabled && items[1].title == "Show Unavailable Apps",
-                "iPod: the toggle alone, live"
-            )
-            check(
-                items[1].state == .on && podButton.apply(ipod).count == 4 && podButton.contentTintColor == nil,
+                podButton.apply(ipod).count == 4 && podButton.contentTintColor == nil,
                 "default: every app, unavailable ones grayed, the button untinted"
             )
             let normal = try render(podButton, "default")
             var changes = 0
             podButton.onChange = { changes += 1 }
-            podButton.menu!.performActionForItem(at: 1)
+            podButton.menu!.performActionForItem(at: 4)
             check(
-                changes == 1 && items[1].state == .off && podButton.apply(ipod).count == 2,
+                changes == 1 && podMenu(items, showing: false) && podButton.apply(ipod).count == 2,
                 "toggle reports, checks off and filters"
             )
             check(podButton.contentTintColor == .controlAccentColor, "a narrower filter tints the button")
@@ -162,14 +165,13 @@ extension SharedState {
             // Back on the iPod: its button followed the iPad's choices, and iPad Apps Only neither shows nor narrows it.
             check(changes == 3, "the iPod's list refiltered for each choice saved on the iPad")
             check(
-                items.count == 2 && items[1].isEnabled && items[1].state == .on && podButton.filter.showUnavailable
+                podMenu(items, showing: true) && podButton.filter.showUnavailable
                     && podButton.apply(ipod).count == 4 && podButton.contentTintColor == nil,
-                "iPod after the iPad's iPad Apps Only: the toggle live and checked, every app, the button untinted"
+                "iPod after the iPad's iPad Apps Only: the same menu, every app, the button untinted"
             )
             let podAgain = CatalogFilterButton(isIPad: false, defaults: defaults)
             check(
-                podAgain.menu!.items.count == 2 && podAgain.menu!.items[1].state == .on
-                    && podAgain.contentTintColor == nil,
+                podMenu(podAgain.menu!.items, showing: true) && podAgain.contentTintColor == nil,
                 "a new iPod button: the same"
             )
             try renderMenu(podButton.menu!, "ipod")

@@ -2,8 +2,8 @@ import Cocoa
 import LightTouchCore
 
 /// The standard filter pull-down beside Installed/Store, over CatalogFilter.
-/// The family choice exists only on an iPad: an iPhone or iPod touch can't run iPad-only apps, so its menu
-/// offers Show Unavailable Apps alone. Each choice is saved as it's made, and every device's button follows
+/// The family choice applies only on an iPad: an iPhone or iPod touch can't run iPad-only apps, so its menu
+/// shows the choice dimmed and unchecked. Each choice is saved as it's made, and every device's button follows
 /// the saved choices, so a choice made on another device never leaves this menu stale.
 /// A filter narrower than the default shows filled and in the accent color, as Finder and Mail show theirs.
 final class CatalogFilterButton: NSPopUpButton {
@@ -30,14 +30,13 @@ final class CatalogFilterButton: NSPopUpButton {
         (cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
         let menu = NSMenu()
         menu.addItem(withTitle: "", action: nil, keyEquivalent: "")  // a pull-down's first item is its face
-        if isIPad {
-            for (title, tag) in [("iPhone and iPad Apps", 0), ("iPad Apps Only", 1)] {
-                let item = menu.addItem(withTitle: title, action: #selector(familyChosen(_:)), keyEquivalent: "")
-                item.tag = tag
-                familyItems.append(item)
-            }
-            menu.addItem(.separator())
+        for (title, tag) in [("iPhone and iPad Apps", 0), ("iPad Apps Only", 1)] {
+            let item = menu.addItem(withTitle: title, action: #selector(familyChosen(_:)), keyEquivalent: "")
+            item.tag = tag
+            item.isEnabled = isIPad
+            familyItems.append(item)
         }
+        menu.addItem(.separator())
         menu.addItem(unavailableItem)
         for item in menu.items { item.target = self }
         menu.autoenablesItems = false
@@ -66,7 +65,8 @@ final class CatalogFilterButton: NSPopUpButton {
         contentTintColor = isActive ? .controlAccentColor : nil
         itemArray[0].image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Filter")?
             .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))
-        for item in familyItems { item.state = (item.tag == 1) == filter.iPadOnly ? .on : .off }
+        // Off an iPad neither is checked: a disabled item never shows a choice saved on an iPad.
+        for item in familyItems { item.state = isIPad && (item.tag == 1) == filter.iPadOnly ? .on : .off }
         unavailableItem.state = filter.showUnavailable ? .on : .off
     }
 
