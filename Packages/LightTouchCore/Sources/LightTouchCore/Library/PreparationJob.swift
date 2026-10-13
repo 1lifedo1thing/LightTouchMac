@@ -244,7 +244,7 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
                 finish(.failed("Couldn’t save the prepared device: \(error.localizedDescription)"))
             }
         case .error(let code, let detail, let piece)?:
-            // A cached or imported IPSW that fails its SHA is never used again.
+            // A cached or imported IPSW that fails its SHA is never used again (a reference: the link, not the file).
             if code == "sha_mismatch" { try? FileManager.default.removeItem(at: request.ipsw) }
             finish(
                 .failed(Self.message(code: code, detail: detail, piece: piece, beta: request.entry.prerelease != nil))

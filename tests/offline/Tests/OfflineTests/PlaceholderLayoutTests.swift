@@ -9,7 +9,8 @@ import Testing
 /// to device and state to state (the longest preparation steps among them), in two window sizes. In every state no
 /// view's layout is ambiguous, every line of text fits its label whole, and the Skip
 /// Setup Assistant and Jailbreak checkboxes (two, one or none) share one leading edge, sit as a group centered under
-/// the button row, and never overlap it. Each state is rendered to LTM_RENDER_DIR (else the temporary directory).
+/// the button row, and never overlap it. Import IPSW… shows wherever the row's Import IPSW… does (a device not
+/// downloaded yet among them), just before the primary button on its row, the row centered. Each state is rendered to LTM_RENDER_DIR (else the temporary directory).
 extension SharedState {
     @Suite struct PlaceholderLayoutTests {
         @Test func optionsStayAlignedAcrossSwitches() throws {
@@ -138,6 +139,22 @@ extension SharedState {
                             failures.append(
                                 "\(label): \(text.stringValue) drawn centered at \(x), view at \(view.bounds.midX)"
                             )
+                        }
+                    }
+                    let importButton = buttons.first { $0.title == "Import IPSW…" }
+                    let wantImport = row.allows(.importIPSW, canDownload: true) && row.primaryAction != .importIPSW
+                    if (importButton != nil) != wantImport {
+                        failures.append("\(label): Import IPSW… shown \(importButton != nil), want \(wantImport)")
+                    }
+                    if let importButton, let primary = buttons.first(where: { $0.title == row.primaryTitle }) {
+                        let i = frame(importButton)
+                        let p = frame(primary)
+                        if abs(i.midY - p.midY) > 0.5 || i.maxX > p.minX || p.minX - i.maxX > 20 {
+                            failures.append("\(label): Import IPSW… at \(i), not just before \(primary.title) at \(p)")
+                        }
+                        let row = buttons.map(frame).reduce(p) { $0.union($1) }
+                        if abs(row.midX - view.bounds.midX) > 1 || !view.bounds.contains(row) {
+                            failures.append("\(label): buttons at \(row), view \(view.bounds)")
                         }
                     }
                     if !boxes.isEmpty, let primary = buttons.first(where: { $0.title == row.primaryTitle }) {

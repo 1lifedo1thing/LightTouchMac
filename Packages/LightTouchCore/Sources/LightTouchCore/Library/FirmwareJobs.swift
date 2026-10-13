@@ -6,7 +6,8 @@
 //
 // Download and Prepare: an IPSW either store already has, else a CDN download;
 // then `firmwarekit create` (PreparationJob), then a device in the library.
-// Import: hash, match, clone into State/IPSW, then the same preparation.
+// Import: hash, match, clone into State/IPSW (or refer to a file on another
+// volume), then the same preparation.
 // The built-in device (the catalog's `bundled`): its packed base unpacked by
 // `firmwarekit unpack-base` with an identity of its own, published the same way.
 

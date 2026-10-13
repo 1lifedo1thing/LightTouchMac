@@ -31,9 +31,11 @@ struct StorageSettingsView: View {
                 ForEach(usage.ipsws, id: \.url) { ipsw in
                     let busy = inUse.contains(ipsw.url.deletingPathExtension().lastPathComponent)
                     let kind = ipsw.url.path.hasPrefix(IPSWStore.shared.imports.path) ? "Imported" : "Downloaded"
+                    // A referenced IPSW takes no space here; Remove IPSW leaves its file.
+                    let file = ipsw.referenced.map { ($0.path as NSString).abbreviatingWithTildeInPath }
                     StorageRow(
                         title: model.name(ipsw.entry),
-                        detail: "\(kind), \(size(ipsw.bytes))",
+                        detail: file.map { "Not copied, \($0)" } ?? "\(kind), \(size(ipsw.bytes))",
                         action: "Remove IPSW",
                         enabled: !busy
                     ) { model.removeIPSW(ipsw.url) }
@@ -95,8 +97,8 @@ private struct StorageRow: View {
     }
     nonisolated struct Usage: Sendable {
         var devices: [DeviceUsage] = []
-        /// Entry id, file, allocated bytes.
-        var ipsws: [(entry: String, url: URL, bytes: Int64)] = []
+        /// Entry id, file, allocated bytes, and the user's file an import from another volume refers to.
+        var ipsws: [(entry: String, url: URL, bytes: Int64, referenced: URL?)] = []
         var decrypted: Int64 = 0
         var logs: Int64 = 0
         /// The IPA store's blobs (the device copies are clones of them).
@@ -186,9 +188,11 @@ private struct StorageRow: View {
         }
         for entry in catalog.entries {
             guard let sha1 = entry.source.sha1 else { continue }
+            _ = store.existing(sha1)  // drops a reference whose file is gone or changed
             for url in [store.download(sha1), store.imported(sha1)]
             where FileManager.default.fileExists(atPath: url.path) {
-                usage.ipsws.append((entry.id, url, allocated(url)))
+                let referenced = url == store.imported(sha1) ? store.referenced(sha1) : nil
+                usage.ipsws.append((entry.id, url, referenced == nil ? allocated(url) : 0, referenced))
             }
         }
         usage.decrypted = allocated(IPSWStore.cachesDirectory.appendingPathComponent("Decrypted", isDirectory: true))

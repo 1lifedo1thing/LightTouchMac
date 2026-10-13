@@ -31,6 +31,8 @@ final class DevicePlaceholderViewController: NSViewController {
     private let showLog = NSButton(title: "Show Logs", target: nil, action: nil)
     private let primary = NSButton(title: "", target: nil, action: nil)
     private let prepareAgain = NSButton(title: "Prepare Again…", target: nil, action: nil)
+    /// Beside the primary button wherever the row's Import IPSW… is (and isn't the primary button itself).
+    private let importIPSW = NSButton(title: "Import IPSW…", target: nil, action: nil)
     /// An edit open in Finder (DeviceFilesystemEdits.hasOpenEdit): Show in Finder and Don't Save beside Save Changes.
     private let showFiles = NSButton(title: "Show in Finder", target: nil, action: nil)
     private let dontSave = NSButton(title: "Don’t Save", target: nil, action: nil)
@@ -85,7 +87,7 @@ final class DevicePlaceholderViewController: NSViewController {
             weight: .regular
         )
         progressLine.alignment = .center
-        for button in [showLog, prepareAgain, showFiles, dontSave, primary] {
+        for button in [showLog, prepareAgain, showFiles, dontSave, importIPSW, primary] {
             button.bezelStyle = .push
             button.controlSize = .large
             button.target = self
@@ -93,6 +95,7 @@ final class DevicePlaceholderViewController: NSViewController {
         showLog.action = #selector(showLogClicked(_:))
         primary.action = #selector(primaryClicked(_:))
         prepareAgain.action = #selector(prepareAgainClicked(_:))
+        importIPSW.action = #selector(importIPSWClicked(_:))
         showFiles.action = #selector(showFilesClicked(_:))
         dontSave.action = #selector(dontSaveClicked(_:))
         skipSetup.target = self
@@ -117,7 +120,7 @@ final class DevicePlaceholderViewController: NSViewController {
         let stateTier = NSView()
         state.translatesAutoresizingMaskIntoConstraints = false
         stateTier.addSubview(state)
-        let actions = NSStackView(views: [showLog, prepareAgain, showFiles, dontSave, primary])
+        let actions = NSStackView(views: [showLog, prepareAgain, showFiles, dontSave, importIPSW, primary])
         actions.spacing = 12
         // The row keeps its height with no button (running), so the lockup doesn't move between states.
         actions.heightAnchor.constraint(greaterThanOrEqualTo: primary.heightAnchor).isActive = true
@@ -146,7 +149,7 @@ final class DevicePlaceholderViewController: NSViewController {
         // And the views in them keep their own width: a label's or a button's hugging is low too, so a label could
         // take a column's slack and draw its text at the left, or either of two buttons in a row take the row's.
         for content in [
-            model, version, info, skipSetup, jailbreak, showLog, prepareAgain, showFiles, dontSave, primary,
+            model, version, info, skipSetup, jailbreak, showLog, prepareAgain, showFiles, dontSave, importIPSW, primary,
         ] {
             content.setContentHuggingPriority(.required, for: .horizontal)
         }
@@ -293,6 +296,10 @@ final class DevicePlaceholderViewController: NSViewController {
         } else {
             primary.isHidden = true
         }
+        importIPSW.isHidden =
+            !row.allows(.importIPSW, canDownload: canDownload) || row.primaryAction == .importIPSW || editing != nil
+            || activity != nil
+        importIPSW.setAccessibilityLabel("Import IPSW for \(model.stringValue) iOS \(entry.version)")
 
         // Disk numbers only when they stop a download or preparation.
         // (spaceShortage(available: 0) is nil for a row that needs no space: skip the volume query on every progress tick.)
@@ -383,6 +390,7 @@ final class DevicePlaceholderViewController: NSViewController {
     @objc private func dontSaveClicked(_ sender: Any?) { onAction?(.discardFilesystem) }
 
     @objc private func prepareAgainClicked(_ sender: Any?) { onAction?(.prepareAgain) }
+    @objc private func importIPSWClicked(_ sender: Any?) { onAction?(.importIPSW) }
 
     @objc private func showLogClicked(_ sender: Any?) { onShowLog?() }
 
