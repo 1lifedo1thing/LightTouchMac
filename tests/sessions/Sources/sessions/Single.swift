@@ -328,6 +328,21 @@ func single(_ args: SingleCheck) -> Never {
             }
         }
     }
+    // The device's language and region: create --language's (`--language`), else the Mac's (its first preferred
+    // language the firmware has; English for one it has not).
+    func languageCode(_ tag: String) -> String { Locale(identifier: tag).language.languageCode?.identifier ?? "en" }
+    let language = languageCode(args.language ?? Locale.preferredLanguages.first ?? "en")
+    let expectedLocale =
+        (args.language.flatMap { Locale(identifier: $0).region } ?? Locale.current.region)
+        .map { "\(language)_\($0.identifier)" } ?? language
+    if args.language != nil {
+        let seen = events.one("language", ["device": d])
+        r.check(
+            seen.string("language").map(languageCode) == language && seen.string("locale") == expectedLocale,
+            "\(d): the language and region it was prepared with: \(seen.string("language") ?? "?") "
+                + "\(seen.string("locale") ?? "?") (expected \(language) \(expectedLocale))"
+        )
+    }
     if args.skipSetup {
         // Prepared past Setup: no Setup page on the first boot (a phone's lock screen slide is the only step the
         // walker may take), and Setup's answers as FirmwareKit seeded them: the Mac's region, Location Services off.
@@ -337,8 +352,7 @@ func single(_ args: SingleCheck) -> Never {
             "\(d): no Setup page came up: \(pages.isEmpty ? "no walk" : pages.joined(separator: "; "))"
         )
         let seed = events.one("setupSeed", ["device": d])
-        let language = Locale.autoupdatingCurrent.language.languageCode?.identifier ?? "en"
-        let mac = Locale.autoupdatingCurrent.region.map { "\(language)_\($0.identifier)" } ?? language
+        let mac = expectedLocale
         r.check(
             !(seed.string("firstFront") ?? "com.apple.purplebuddy").hasPrefix("com.apple.purplebuddy")
                 && seed.bool("setupDone"),
@@ -346,9 +360,9 @@ func single(_ args: SingleCheck) -> Never {
                 + "SetupDone \(seed.bool("setupDone")))"
         )
         r.check(
-            seed.string("locale") == mac && seed.string("language") == language,
-            "\(d): the Mac's region and language: \(seed.string("locale") ?? "?") \(seed.string("language") ?? "?") "
-                + "(the Mac's \(mac) \(language))"
+            seed.string("locale") == mac && seed.string("language").map(languageCode) == language,
+            "\(d): Setup's region and language: \(seed.string("locale") ?? "?") \(seed.string("language") ?? "?") "
+                + "(expected \(mac) \(language))"
         )
         r.check(seed.string("location") == "0", "\(d): Location Services off: \(seed.string("location") ?? "?")")
     }

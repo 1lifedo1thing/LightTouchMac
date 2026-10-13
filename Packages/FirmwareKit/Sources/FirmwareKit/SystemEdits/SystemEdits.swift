@@ -53,6 +53,9 @@ public enum SystemEdits {
         /// (installCydia) from `cydia`, the bootstrap Cydia.bootstrap fetched.
         public var jailbreak = false
         public var cydia: URL?
+        /// The device's language, a BCP 47 tag ("fr-FR", its region the device's too); nil: the Mac's preferred
+        /// languages and region (seedLanguage).
+        public var language: String?
         public init() {}
         public init(recipe: FirmwareEntry.Recipe) {
             let o = recipe.options
@@ -720,7 +723,7 @@ public enum SystemEdits {
             "ProxyAutoConfigURLString": "file:///" + pacPath,
         ]
     }
-    /// What the /private/var skeleton gets before it becomes the data volume: the web proxy, Setup finished, the data
+    /// What the /private/var skeleton gets before it becomes the data volume: the web proxy, the language, Setup finished, the data
     /// ark. Nothing for timed, dated or not: a dated machine's network answers NTP in the device's own time (qemu-ios
     /// net/slirp.c), so automatic time and zone stay on, as a real unit has them, and timed takes lockdown's zone
     /// (with "Set Automatically" off, 6.x and 7.x timed drop every zone change, lockdown's included).
@@ -733,8 +736,11 @@ public enum SystemEdits {
     ) throws {
         let sc = skeleton.appendingPathComponent("preferences/SystemConfiguration")
         if o.webProxy { try seedPlist(sc.appendingPathComponent("preferences.plist"), wifiProxyPrefs) }
+        let language = try seedLanguage(skeleton, tag: o.language)
+        if let language { log("language \(language.language), region \(language.locale)") }
         if o.skipSetup, productMajor >= 5 {
-            try seedFinishedSetup(skeleton, major: productMajor)
+            let (l, locale) = language ?? ("en", "en_US")
+            try seedFinishedSetup(skeleton, major: productMajor, language: l, locale: locale)
             log("Setup Assistant: seeded as finished (iOS \(productMajor))")
         }
         if let dataArk {

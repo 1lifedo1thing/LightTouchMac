@@ -335,6 +335,9 @@ final class N45Board: Board {
             derived["prefs"] =
                 try Self.bakeNoIdleSleep(m, prefs: sbPrefs) ? prefs + "; SBDisableIdleSleep (no deep sleep)" : prefs
             if fm.fileExists(atPath: at(sbPrefs).path) { owners.append((user.uid, sbPrefs)) }
+            if let l = try SystemEdits.seedLanguage(at("private/var"), tag: c.o.language) {
+                derived["language"] = "\(l.language), region \(l.locale)"
+            }
             let (report, record, owned) = try Self.bake(
                 m,
                 helpers: c.o.guestTools,

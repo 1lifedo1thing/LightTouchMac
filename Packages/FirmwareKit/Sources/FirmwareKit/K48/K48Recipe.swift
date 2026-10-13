@@ -261,6 +261,7 @@ final class K48Board: Board {
         }
         var options = SystemEdits.Options(recipe: recipe)
         options.cydia = c.cydia
+        options.language = c.o.language
         let vols = try await SystemEdits.buildK48(
             rootfs: c.decFile("rootfs.dmg"),
             work: c.work,

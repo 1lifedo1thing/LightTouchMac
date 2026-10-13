@@ -141,6 +141,7 @@ default:  // the root alone, or help
             }
         )
         options.stopAfterVolumes = command.stopAfter == .volumes
+        options.language = command.language
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
     } catch { await fail(error) }
     let selectedOptions = options

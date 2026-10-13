@@ -17,7 +17,8 @@ struct FirmwareCommandTests {
                 cache: url,
                 guestTools: url,
                 sibling: (url, url),
-                skipSetup: true
+                skipSetup: true,
+                language: "fr-FR"
             ),
             FirmwareCommand.UnpackBase(blob: url, out: url, seed: "S"),
             FirmwareCommand.PackBase(base: url, out: url),

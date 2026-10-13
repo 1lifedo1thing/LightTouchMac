@@ -131,7 +131,8 @@ enum K48Oracle {
             )
         }
         #expect(try options(#""skip_setup": true"#).skipSetup && !options("").skipSetup, "off unless asked for")
-        try SystemEdits.seedFinishedSetup(skeleton, major: major, locale: Locale(identifier: "fr_CA"))
+        let (language, locale) = try #require(try SystemEdits.seedLanguage(skeleton, tag: "fr-CA"))
+        try SystemEdits.seedFinishedSetup(skeleton, major: major, language: language, locale: locale)
         func plist(_ path: String) -> [String: Any] {
             (try? PropertyListSerialization.propertyList(
                 from: Data(contentsOf: skeleton.appendingPathComponent(path)),
@@ -141,7 +142,6 @@ enum K48Oracle {
         func keys(_ path: String) -> Set<String> { Set(plist(path).keys) }
         let mobile = "mobile/Library/Preferences/"
         if major < 5 {
-            #expect(plist(SystemEdits.globalPreferences)["AppleLocale"] as? String == "en_US")
             #expect(keys(mobile + "com.apple.purplebuddy.plist").isEmpty)
             return
         }
@@ -192,6 +192,60 @@ enum K48Oracle {
                         "com.apple.mobile.user_preferences-UserSetLocale",
                     ])
         )
+    }
+
+    /// Every prepared device gets the Mac's language (or `create --language`'s) as its firmware has it: the first
+    /// preferred language the firmware's own AppleLanguages lists, else the next, else English, with the region.
+    @Test func deviceLanguageIsTheFirstPreferredOneTheFirmwareHas() throws {
+        // AppleLanguages as each rootfs ships it in /private/var/mobile/Library/Preferences/.GlobalPreferences.plist.
+        let v114 = [
+            "en", "fr", "de", "ja", "nl", "it", "es", "pt-PT", "da", "fi", "nb", "sv", "ko", "zh-Hans", "zh-Hant", "ru",
+            "pl",
+        ]
+        let v313 =
+            v114.filter { $0 != "pt-PT" }
+            + ["pt", "pt-PT", "tr", "uk", "ar", "hr", "cs", "el", "he", "ro", "sk", "th", "id", "ms"]
+        let v421 = v313 + ["en-GB", "ca", "hu", "vi"]  // 4.2.1 and 6.1.3
+        let v712 = v421 + ["es-MX", "en-AU"]
+        func pick(_ list: [String], _ preferred: [String], _ region: String? = nil) -> String {
+            let l = SystemEdits.deviceLanguage(supported: list, preferred: preferred, region: region)
+            return region == nil ? l.language : "\(l.language) \(l.locale)"
+        }
+        #expect(pick(v421, ["de-DE"], "DE") == "de de_DE")
+        #expect(pick(v421, ["fr-CA"], "CA") == "fr fr_CA")
+        #expect(pick(v421, ["zh-Hans-CN"], "CN") == "zh-Hans zh_CN")
+        #expect(pick(v421, ["zh-Hant-TW"]) == "zh-Hant" && pick(v421, ["zh-HK"]) == "zh-Hant")
+        #expect(pick(v421, ["pt-BR"]) == "pt" && pick(v421, ["pt-PT"]) == "pt-PT" && pick(v114, ["pt-BR"]) == "pt-PT")
+        #expect(pick(v421, ["nb-NO"]) == "nb" && pick(v421, ["no"]) == "nb")
+        #expect(pick(v421, ["en-GB"], "GB") == "en-GB en_GB" && pick(v313, ["en-GB"]) == "en")
+        #expect(pick(v712, ["en-AU"]) == "en-AU" && pick(v421, ["en-AU"]) == "en-GB" && pick(v421, ["en-US"]) == "en")
+        #expect(pick(v712, ["es-MX"]) == "es-MX" && pick(v421, ["es-MX"]) == "es" && pick(v421, ["es-419"]) == "es")
+        #expect(pick(v421, ["vi-VN", "fr-FR"]) == "vi" && pick(v313, ["vi-VN", "fr-FR"]) == "fr", "down the list")
+        #expect(pick(v421, ["hi-IN"], "IN") == "en en_IN" && pick(v313, ["ca-ES"]) == "en", "else English")
+        #expect(SystemEdits.deviceLanguage(supported: v421, preferred: ["fr"], region: nil).locale == "fr")
+
+        // Every prepared device, Skip Setup or not: the firmware's list with the language first, and the region.
+        let skeleton = FileManager.default.temporaryDirectory.appendingPathComponent("ltm-lang-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: skeleton) }
+        let global = skeleton.appendingPathComponent(SystemEdits.globalPreferences)
+        try FileManager.default.createDirectory(
+            at: global.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try PropertyListSerialization.data(
+            fromPropertyList: ["AppleLanguages": v421, "AppleLocale": "en_US"],
+            format: .binary,
+            options: 0
+        ).write(to: global)
+        var o = SystemEdits.Options()
+        o.webProxy = false
+        o.language = "de-DE"
+        try SystemEdits.seedData(skeleton, o, productMajor: 4, dataArk: nil) { _ in }
+        let g = try #require(
+            try PropertyListSerialization.propertyList(from: Data(contentsOf: global), format: nil) as? [String: Any]
+        )
+        #expect(g["AppleLanguages"] as? [String] == ["de"] + v421.filter { $0 != "de" })
+        #expect(g["AppleLocale"] as? String == "de_DE")
     }
 
     @Test func plistEdits() throws {
