@@ -33,10 +33,16 @@ import os
         let state: URL, store: IPSWStore, jobs: FirmwareJobs, library: DeviceLibrary, catalog: FirmwareCatalog
         var seen: [String: [FirmwareJob]] = [:]
         var changes: [String: Int] = [:]
+        /// What FirmwareJobs asked the app to show in an alert.
+        var errors: [String] { alerts.messages }
+        private final class Alerts { var messages: [String] = [] }
+        private let alerts: Alerts
         private var observer: (any NSObjectProtocol)?
 
         init(_ root: URL, catalog: FirmwareCatalog, preparer: URL?, resources: URL? = nil) throws {
             self.catalog = catalog
+            let alerts = Alerts()
+            self.alerts = alerts
             state = root.appendingPathComponent("state")
             try StorageLocations.privateDirectory(state)
             store = IPSWStore(
@@ -56,7 +62,7 @@ import os
                 library: library,
                 sweep: false,
                 defaults: UserDefaults(suiteName: "ltm-tests-\(UUID().uuidString)")!,
-                presentError: { _ in }
+                presentError: { [alerts] in alerts.messages.append($0.localizedDescription) }
             )
             observer = NotificationCenter.default.addObserver(
                 forName: FirmwareJobs.didChangeNotification,

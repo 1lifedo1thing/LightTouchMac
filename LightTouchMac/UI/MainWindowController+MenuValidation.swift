@@ -68,7 +68,7 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(downloadAndPrepare(_:)):
             menuItem.title = selectedEntry.map { host.row(for: $0).prepareTitle } ?? "Download and Prepare"
             return selectedEntry.map { canPerform(.downloadAndPrepare, for: $0) } ?? false
-        case #selector(importIPSW(_:)): return selectedEntry.map { canPerform(.importIPSW, for: $0) } ?? false
+        case #selector(importIPSW(_:)): return window?.attachedSheet == nil
         case #selector(cancelFirmwareJob(_:)):
             menuItem.title = selectedEntry.map { host.row(for: $0).cancelTitle } ?? "Cancel Download"
             return selectedEntry.map { canPerform(.cancel, for: $0) } ?? false

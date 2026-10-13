@@ -56,8 +56,8 @@ extension MainWindowController {
         canPerform(action, for: entry)
     }
 
-    func library(_ library: DeviceLibraryViewController, importIPSW url: URL, for entry: FirmwareCatalog.Entry?) {
-        handOffIPSW(url, for: entry)
+    func library(_ library: DeviceLibraryViewController, importIPSWs urls: [URL], for entry: FirmwareCatalog.Entry?) {
+        handOffIPSWs(urls, for: entry)
     }
 
     private func trackState() {

@@ -23,8 +23,8 @@ import UniformTypeIdentifiers
         for entry: FirmwareCatalog.Entry
     ) -> Bool
     func library(_ library: DeviceLibraryViewController, perform action: DeviceAction, for entry: FirmwareCatalog.Entry)
-    /// A dropped IPSW, with the row it was dropped on.
-    func library(_ library: DeviceLibraryViewController, importIPSW url: URL, for entry: FirmwareCatalog.Entry?)
+    /// Dropped IPSWs or folders of them, with the row they were dropped on.
+    func library(_ library: DeviceLibraryViewController, importIPSWs urls: [URL], for entry: FirmwareCatalog.Entry?)
 }
 
 final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate,
@@ -602,8 +602,9 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
             return true
         }
         let urls = Self.ipsws(info)
-        for url in urls { delegate?.library(self, importIPSW: url, for: (item as? Entry)?.entry) }
-        return !urls.isEmpty
+        guard !urls.isEmpty else { return false }
+        delegate?.library(self, importIPSWs: urls, for: (item as? Entry)?.entry)
+        return true
     }
 }
 

@@ -12,6 +12,8 @@ public nonisolated enum FirmwareError: LocalizedError, Equatable {
     /// The IPSW's ProductType and build are a catalog entry's, its bytes aren't.
     case wrongFile(model: String, version: String)
     case unsupported
+    /// Several files dropped or chosen, and none an IPSW the catalog knows.
+    case noneSupported
     case failed(String)
 
     public var errorDescription: String? {
@@ -22,6 +24,7 @@ public nonisolated enum FirmwareError: LocalizedError, Equatable {
             "Not enough disk space: this needs \(format(required)), and \(format(available)) is available."
         case .wrongFile(let model, let version): "This isn’t the IPSW Light Touch knows for \(model) iOS \(version)."
         case .unsupported: "This IPSW isn’t supported."
+        case .noneSupported: "None of these files is a supported IPSW."
         case .failed(let message): message
         }
     }

@@ -41,8 +41,11 @@ extension SharedState {
             ) {
                 if action == .delete { deletes.append(entry.id) }
             }
-            func library(_ library: DeviceLibraryViewController, importIPSW url: URL, for entry: FirmwareCatalog.Entry?)
-            {}
+            func library(
+                _ library: DeviceLibraryViewController,
+                importIPSWs urls: [URL],
+                for entry: FirmwareCatalog.Entry?
+            ) {}
         }
 
         @Test func sidebarAndAddDeviceSheet() async throws {

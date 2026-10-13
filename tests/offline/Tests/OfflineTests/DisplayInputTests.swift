@@ -538,7 +538,7 @@ extension SharedState {
             var media: [String] = []
             var catalog: [Int] = []
             var ipsws: [String] = []
-            view.onDropIPSW = { ipsws.append($0.lastPathComponent) }
+            view.onDropIPSW = { ipsws += $0.map(\.lastPathComponent) }
             view.onDropIPA = { apps.append($0.lastPathComponent) }
             view.onDropMedia = { media.append($0.lastPathComponent) }
             view.onDropCatalogApp = { catalog.append($0.id) }

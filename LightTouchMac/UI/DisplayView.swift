@@ -32,7 +32,7 @@ final class DisplayView: NSView {
     /// Called when an .ipa is dropped on the screen.
     var onDropIPA: ((URL) -> Void)?
     /// An IPSW from outside: the library's, whatever this device is doing.
-    var onDropIPSW: ((URL) -> Void)?
+    var onDropIPSW: (([URL]) -> Void)?
     var onDropMedia: ((URL) -> Void)?
     /// Called when a Legacy Store row is dropped on the screen.
     var onDropCatalogApp: ((CatalogApp) -> Void)?

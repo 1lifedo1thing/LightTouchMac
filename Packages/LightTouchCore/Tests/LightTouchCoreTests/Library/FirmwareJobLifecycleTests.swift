@@ -137,6 +137,70 @@ import Testing
         }
     }
 
+    // MARK: - Folders of IPSWs
+
+    /// A folder of IPSWs (Import IPSW… or a drop) is stored, not prepared: the one the catalog knows, two levels down,
+    /// lands in the store and its row reads it again; the junk beside it is skipped without an alert; no job, no
+    /// device. A folder with nothing it knows says so once. Download and Prepare then uses the stored copy (its URL is
+    /// unreachable), and the folder again copies nothing more.
+    @Test func aFolderIsStoredNotPrepared() async throws {
+        try await LibraryFixtures.withScratch { tmp in
+            let (h, e, data) = try Self.single(
+                tmp,
+                preparer: try LibraryFixtures.fakePreparer(in: tmp),
+                url: "http://127.0.0.1:9/none.ipsw"
+            )
+            let fm = FileManager.default
+            func folder(_ name: String, _ files: [String: Data]) throws -> URL {
+                let root = tmp.appendingPathComponent(name)
+                for (path, contents) in files {
+                    let url = root.appendingPathComponent(path)
+                    try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try contents.write(to: url)
+                }
+                return root
+            }
+            let junk = Data("not an IPSW".utf8)
+            let mixed = try folder(
+                "mixed",
+                ["a/b/known.ipsw": data, "junk.ipsw": junk, "a/other.IPSW": junk + junk, "notes.txt": junk]
+            )
+            #expect(DroppedFiles(mixed) == .ipsw, "a dropped folder goes to the library")
+            #expect(
+                DroppedFiles.ipsws(in: [mixed]).map(\.lastPathComponent) == ["known.ipsw", "other.IPSW", "junk.ipsw"]
+            )
+            var storeChanges = 0
+            let observer = NotificationCenter.default.addObserver(
+                forName: IPSWStore.didChangeNotification,
+                object: nil,
+                queue: nil
+            ) { _ in storeChanges += 1 }
+            defer { NotificationCenter.default.removeObserver(observer) }
+            h.jobs.importIPSWs([mixed])
+            await Self.until { storeChanges > 0 }
+            try await Task.sleep(for: .milliseconds(500))
+            #expect(h.store.existing(e.source.sha1!) == h.store.imported(e.source.sha1!), "stored: the row says so")
+            #expect(storeChanges == 1, "the rows were told")
+            #expect(h.changes[e.id] == nil && h.devices(e.id).isEmpty, "nothing prepared: \(h.seen)")
+            #expect(h.errors.isEmpty, "the skipped files raised no alert: \(h.errors)")
+
+            let unknown = try folder("unknown", ["x.ipsw": junk, "deeper/y.ipsw": junk + junk])
+            h.jobs.importIPSWs([unknown])
+            await Self.until { !h.errors.isEmpty }
+            try await Task.sleep(for: .milliseconds(500))
+            #expect(h.errors == ["None of these files is a supported IPSW."], "one alert for the lot")
+
+            h.jobs.downloadAndPrepare(e)
+            await Self.until { h.devices(e.id).count == 1 && h.jobs.jobs[e.id] == nil }
+            #expect(h.devices(e.id).count == 1 && h.downloads(e.id).isEmpty, "prepared from the store: \(h.seen)")
+
+            h.jobs.importIPSWs([mixed, unknown])
+            await Self.until { storeChanges > 1 }
+            #expect(try fm.contentsOfDirectory(atPath: h.store.imports.path) == ["\(e.source.sha1!).ipsw"])
+            #expect(h.errors.count == 1 && h.devices(e.id).count == 1, "\(h.errors) \(h.seen)")
+        }
+    }
+
     // MARK: - B-12: Cancel while an import checks its IPSW
 
     /// 64 MiB of zeros: long enough to hash (a few seconds) that a Cancel lands while it does.

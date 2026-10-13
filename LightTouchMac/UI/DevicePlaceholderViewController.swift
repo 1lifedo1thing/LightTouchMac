@@ -8,7 +8,7 @@ import LightTouchCore
 final class DevicePlaceholderViewController: NSViewController {
     var onAction: ((DeviceAction) -> Void)?
     var onShowLog: (() -> Void)?
-    var onDropIPSW: ((URL) -> Void)?
+    var onDropIPSW: (([URL]) -> Void)?
     /// Each entry's Skip Setup Assistant choice (FirmwareJobs.skipsSetup); nil: no checkbox.
     var skipsSetup: (get: (String) -> Bool, set: (String, Bool) -> Void)?
     /// Each entry's Jailbreak choice (FirmwareJobs.jailbreaks); nil: no checkbox.
@@ -49,7 +49,7 @@ final class DevicePlaceholderViewController: NSViewController {
 
     override func loadView() {
         let drop = IPSWDropView()
-        drop.onDrop = { [weak self] url in self?.onDropIPSW?(url) }
+        drop.onDrop = { [weak self] urls in self?.onDropIPSW?(urls) }
         view = drop
 
         art.imageScaling = .scaleProportionallyDown
@@ -397,9 +397,9 @@ final class DevicePlaceholderViewController: NSViewController {
     }
 }
 
-/// Takes .ipsw files dropped anywhere on the placeholder.
+/// Takes .ipsw files and folders dropped anywhere on the placeholder.
 private final class IPSWDropView: NSView {
-    var onDrop: ((URL) -> Void)?
+    var onDrop: (([URL]) -> Void)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -427,7 +427,8 @@ private final class IPSWDropView: NSView {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         let urls = ipsws(sender)
-        urls.forEach { onDrop?($0) }
-        return !urls.isEmpty
+        guard !urls.isEmpty else { return false }
+        onDrop?(urls)
+        return true
     }
 }
