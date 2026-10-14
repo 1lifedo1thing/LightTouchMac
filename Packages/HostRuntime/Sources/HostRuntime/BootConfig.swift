@@ -27,6 +27,17 @@ public nonisolated struct BootConfig: Codable, Sendable, Equatable {
         storageProof = try c.decodeIfPresent(StorageBootProof.self, forKey: .storageProof)
     }
 
+    /// The panel's refresh, Hz: 60 as on the devices, or what argv's `refresh-hz` global asks for
+    /// (Board.refreshGlobals). The helper takes frames at this rate.
+    public var refreshHz: Int {
+        for (flag, value) in zip(argv, argv.dropFirst()) where flag == "-global" {
+            if let r = value.range(of: ",property=refresh-hz,value="), let hz = Int(value[r.upperBound...]), hz > 0 {
+                return hz
+            }
+        }
+        return 60
+    }
+
     /// argv's wifi0 user netdev boots restricted (BootRecipe.wifiNetdev): 5.x Setup runs offline. The
     /// helper's web proxy starts offline to match and opens with `.netRestrict(false)`.
     public var wifiRestricted: Bool {

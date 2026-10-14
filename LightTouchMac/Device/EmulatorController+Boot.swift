@@ -194,7 +194,8 @@ extension EmulatorController {
                 // had QEMU's default 4 (46 ms), and the iPod touch 4's sounds crackled on a slower Mac.
                 audio: ["-audio", "driver=coreaudio,out.buffer-count=16"],
                 netdev: netdev,
-                carrier: profile.hasCellular ? carrierSettings : nil
+                carrier: profile.hasCellular ? carrierSettings : nil,
+                refreshHz: DisplayRefresh.hz
             )
         } catch {
             failBoot(error)

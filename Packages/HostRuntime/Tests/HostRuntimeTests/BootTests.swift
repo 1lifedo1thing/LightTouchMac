@@ -47,6 +47,35 @@ struct BootTests {
     }
 
     /// The Carrier panel's saved settings start the modem on radio boards only.
+    /// Settings ▸ General's experimental 120 Hz: each board's own panel (and, but on the 1G, its touch) gets the rate,
+    /// in -global's long form (the type names have dots), the helper reads it back, and 60 adds nothing.
+    @Test func refreshReachesEachBoardsPanel() throws {
+        let panels: [Board: String] = [.m68: "ipodtouch.lcd", .n72: "ipodtouch.lcd", .n88: "s5l8930.display", .k48: "s5l8930.display"]
+        for (board, panel) in panels {
+            let f = try Fixture(board: board, strategy: board == .m68 ? "iboot" : board == .n72 ? "bootrom" : "kboot")
+            defer { try? FileManager.default.removeItem(at: f.root) }
+            func boot(_ hz: Int) throws -> BootConfig {
+                try f.prepare(board).configuration(
+                    bootArgs: "",
+                    usbAddress: nil,
+                    wifi: true,
+                    guestPackage: nil,
+                    serial: "null",
+                    audio: [],
+                    netdev: "user,id=wifi0",
+                    refreshHz: hz
+                )
+            }
+            let fast = try boot(120)
+            #expect(fast.argv.contains("driver=\(panel),property=refresh-hz,value=120"))
+            #expect(fast.argv.contains("driver=ipodtouch.multitouch,property=report-hz,value=120") == (board != .m68))
+            #expect(fast.refreshHz == 120)
+            let stock = try boot(60)
+            #expect(!stock.argv.contains { $0.contains("-hz=") || $0.contains("property=re") })
+            #expect(stock.refreshHz == 60)
+        }
+    }
+
     @Test func carrierSettingsReachRadioBoards() throws {
         var carrier = CarrierSettings()
         carrier.carrier = "Panel"

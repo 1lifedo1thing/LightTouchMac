@@ -122,6 +122,7 @@ struct GeneralSettingsView: View {
     /// Connect, Use Offline, or no saved answer (the device asks when it starts).
     @AppStorage(NetworkAccessPreference.key) private var internet: Bool?
     @AppStorage(VibrationSound.key) private var vibrationSound = true
+    @AppStorage(DisplayRefresh.key) private var refresh120 = false
 
     var body: some View {
         Form {
@@ -131,6 +132,10 @@ struct GeneralSettingsView: View {
                 Text("Ask When a Device Starts").tag(Bool?.none)
             }
             Toggle("Play vibration sound", isOn: $vibrationSound)
+            Toggle(isOn: $refresh120) {
+                Text("120 Hz refresh (experimental)")
+                Text("Takes effect when a device next starts. Games that count frames run too fast.")
+            }
         }
     }
 }

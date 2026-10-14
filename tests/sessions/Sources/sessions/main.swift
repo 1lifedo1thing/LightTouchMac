@@ -212,6 +212,7 @@ struct FlickCheck: ParsableCommand {
     @Option(help: "Gestures of each kind.") var runs = 10
     @Option(help: "The kinds, comma-separated (helper-driver's trackpadGesture).") var kinds = "flick,slow"
     @Option(help: "The least median frames/s of motion each kind's gestures may reach the app at.") var minFps = 45.0
+    @Option(help: "The panel's refresh, Hz, as Settings ▸ General's experimental 120 Hz boots it.") var refreshHz = 60
     @OptionGroup var inputs: Inputs
 
     func run() { flickCheck(self) }

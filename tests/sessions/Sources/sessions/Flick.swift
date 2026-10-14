@@ -24,24 +24,24 @@ func flickCheck(_ args: FlickCheck) -> Never {
     let slide = iPad ? "dragshown 0.36 0.935 0.8 0.935" : "dragshown 0.18 0.9 0.92 0.9"
     // The swipe starts mid-screen; the window shows the screen about 576 points wide (iPad) or 400 (iPhone, iPod).
     let at = iPad ? "0.5 0.45 576" : "0.5 0.45 400"
-    let d = HelperDriver(
-        "flick",
+    var scenario = preparedScenario(
+        base,
         tools: tools,
         work: work,
-        scenario: preparedScenario(
-            base,
-            tools: tools,
-            work: work,
-            name: "flick",
-            steps: [
+        name: "flick",
+        steps: [
                 // As `sessions rotation`: the second slide is a page swipe on the Home screen, so Home after it.
                 "boot", "lit 0.03 300", "wait 5", "button 0", "wait 2", slide, "wait 4", "button 0", "wait 2", slide,
                 "wait 4", "button 0", "wait 3",
                 // The first page, then Home on it shows the page left of it.
                 "dump page", "button 0", "wait 3", "dump left", "button 0", "wait 3",
             ] + args.kinds.split(separator: ",").map { "flicks \($0) \(args.runs) \(at)" } + ["quit", "expectExit 60"]
-        )
     )
+    if args.refreshHz != 60, var prepared = scenario["prepared"] as? [String: Any] {
+        prepared["refreshHz"] = args.refreshHz
+        scenario["prepared"] = prepared
+    }
+    let d = HelperDriver("flick", tools: tools, work: work, scenario: scenario)
     r.check(d.finish(1200) == 0, "flick: scenario completed")
     let flicks = d.events.find("flick")
     for kind in args.kinds.split(separator: ",").map(String.init) {

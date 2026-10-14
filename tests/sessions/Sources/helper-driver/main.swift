@@ -45,6 +45,8 @@ struct Scenario: Decodable {
         var clock: Double?
         /// An itpack whose package for the base is offered, as the app offers its bundled one.
         var itpack: String?
+        /// The panel's refresh, as Settings ▸ General's experimental 120 Hz boots it; default 60.
+        var refreshHz: Int?
     }
     var dylib: String?
     var board: String?
@@ -90,7 +92,8 @@ func preparedBoot(_ p: Scenario.Prepared, hardware: DeviceInfo?) throws -> BootC
         serial: "file:\(p.serial)",
         audio: ["-audio", "driver=none"],
         netdev: "user,id=wifi0",
-        carrier: p.carrier
+        carrier: p.carrier,
+        refreshHz: p.refreshHz ?? 60
     )
 }
 
