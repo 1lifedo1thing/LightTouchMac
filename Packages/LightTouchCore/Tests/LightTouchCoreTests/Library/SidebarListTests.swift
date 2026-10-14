@@ -18,7 +18,7 @@ struct SidebarListTests {
     }
 
     /// No saved list: a fresh install gets first_run, an updating user the entries they own; once saved (even empty)
-    /// the list rules, and ids the catalog dropped are skipped.
+    /// the list rules, and ids the catalog dropped or marks coming_soon are skipped.
     @Test func migrationAndPersistence() {
         withDefaults { defaults in
             var list = SidebarList.load(defaults, catalog: catalog) { _ in false }
@@ -37,9 +37,12 @@ struct SidebarListTests {
             #expect(Set(list.ids) == ["k48ap-8C148", "n72ap-8B117"], "a removed owned entry came back")
             SidebarList(ids: []).save(defaults)
             #expect(SidebarList.load(defaults, catalog: catalog) { _ in true }.ids.isEmpty, "empty list refilled")
-            SidebarList(ids: ["n72ap-gone", "n72ap-8C148"], names: ["n72ap-gone": "Old"]).save(defaults)
+            let soon = catalog.entries.first { $0.status == .comingSoon }!.id
+            SidebarList(ids: ["n72ap-gone", "n72ap-8C148", soon], names: ["n72ap-gone": "Old", soon: "Soon"]).save(
+                defaults
+            )
             list = SidebarList.load(defaults, catalog: catalog) { _ in false }
-            #expect(list.ids == ["n72ap-8C148"] && list.names.isEmpty, "stale ids")
+            #expect(list.ids == ["n72ap-8C148"] && list.names.isEmpty, "stale or coming_soon ids")
         }
     }
 
