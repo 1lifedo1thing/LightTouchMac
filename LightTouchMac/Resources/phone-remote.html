@@ -22,7 +22,7 @@
   #home:active { background: #222; }
   #status { text-align: center; padding: 24px; }
   #hint { color: #999; font-size: 15px; max-width: 300px; }
-  #start { font: inherit; padding: 12px 32px; border-radius: 12px; border: 0; background: #0a84ff; color: #fff; }
+  #status button { font: inherit; margin-top: 16px; padding: 12px 32px; border-radius: 12px; border: 0; background: #0a84ff; color: #fff; }
   #turn { display: none; position: fixed; inset: 0; background: #000; align-items: center; justify-content: center; text-align: center; padding: 24px; }
   @media (orientation: landscape) { #turn { display: flex; } }
 </style>
@@ -48,10 +48,16 @@ if (navigator.standalone === false) document.getElementById("hint").hidden = fal
 const token = location.hash.slice(1) || localStorage.getItem("token");
 if (token) localStorage.setItem("token", token);
 
-function show(text) {
+// A message in place of the screen; with `action`, a button that reloads the page (a Home Screen app has no reload).
+function show(text, action) {
   device.style.display = "none";
   statusView.style.display = "";
-  statusView.textContent = text;
+  statusView.replaceChildren(text);
+  if (!action) return;
+  const button = document.createElement("button");
+  button.textContent = action;
+  button.onclick = () => location.reload();
+  statusView.append(document.createElement("br"), button);
 }
 
 function send(message) {
@@ -62,7 +68,7 @@ function send(message) {
 document.getElementById("start").onclick = async () => {
   // iOS asks for motion on a tap; Android can keep the page upright, but only in full screen.
   if (typeof DeviceOrientationEvent?.requestPermission === "function" &&
-      await DeviceOrientationEvent.requestPermission() !== "granted") return show("Light Touch needs motion access to tilt the device. Reload to try again.");
+      await DeviceOrientationEvent.requestPermission() !== "granted") return show("Light Touch needs motion access to tilt the device.", "Try Again");
   await document.documentElement.requestFullscreen?.().catch(() => {});
   await screen.orientation?.lock?.("portrait").catch(() => {});
   await navigator.wakeLock?.request("screen").catch(() => {});
@@ -82,7 +88,7 @@ document.getElementById("start").onclick = async () => {
     device.style.display = "flex";
     statusView.style.display = "none";
   };
-  socket.onclose = () => show("Disconnected. Reload to connect again.");
+  socket.onclose = () => show("Disconnected.", "Reconnect");
   addEventListener("deviceorientation", (event) => {
     if (event.beta !== null) send({ tilt: [event.beta, event.gamma] });
   });
