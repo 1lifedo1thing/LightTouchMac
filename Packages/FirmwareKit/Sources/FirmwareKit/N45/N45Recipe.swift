@@ -187,7 +187,19 @@ final class N45Board: Board {
         bytes = recipe.systemMiB << 20
     }
 
+    /// The piece a 2.0-or-later entry is refused for (PreparationJob words it for the user).
+    static let onePiece = "iPhone OS 1.x boot chain"
+
     func check(_ c: Recipe.Context) throws {
+        // 2.0 and later boot an IMG3 chain (LLB, iBoot-385+, IMG3 all_flash) that qemu-ios's ipod_touch_1g doesn't
+        // model, nor their kernels' drivers: refused here, before the IPSW is hashed, instead of at N45NOR's IMG2 read.
+        guard (Int(c.e.version.prefix { $0 != "." }) ?? 1) < 2 else {
+            throw FirmwareError(
+                .unsupported,
+                "\(c.e.id): this machine boots iPhone OS 1.x only (\(c.e.version) is an IMG3 firmware)",
+                piece: Self.onePiece
+            )
+        }
         // 1.0's lockdownd starts an afc2 entry but its afcd answers no path (AFC object not found): no jailbreak on 1.x.
         guard recipe.options["jailbreak"] != true else {
             throw FirmwareError(.unsupported, "\(c.e.id): the jailbreak option needs iPhone OS 2.0 or later")

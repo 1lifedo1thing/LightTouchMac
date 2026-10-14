@@ -35,6 +35,22 @@ import Testing
         )
     }
 
+    /// 2.0 and later (IMG3 firmware) are refused by the board check, naming the piece, before the IPSW is read; 1.x passes.
+    @Test func refusesIMG3Firmware() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        func check(_ id: String) throws {
+            let o = Preparer.Options(entry: try Oracle.entry(id), ipsw: dir, out: dir, helper: nil, guestTools: dir)
+            try N45Board(o).check(Recipe.Context(o, recipe: o.entry.recipe!, emit: { _ in }))
+        }
+        for id in ["m68ap-5A345", "m68ap-7E18", "n45ap-5A347", "n45ap-7E18"] {
+            let error = #expect(throws: FirmwareError.self, "\(id)") { try check(id) }
+            #expect(error?.piece == N45Board.onePiece, "\(id)")
+        }
+        for id in ["m68ap-1A543a", "m68ap-4A102", "n45ap-4A102"] { try check(id) }
+    }
+
     /// iBoot-204 fills arm-io/sdio's local-mac-address only from nvram wifiaddr (its SysCfg fallback returns 0):
     /// the NOR's nvram carries the identity's Wi-Fi MAC, and none when the identity has none (devos50's set).
     @Test func nvramCarriesTheWiFiMAC() throws {

@@ -144,6 +144,7 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
         if piece.hasPrefix("kernelcache") || piece.hasPrefix("boot-arg") || piece.hasPrefix("DeviceTree") {
             return "the way it starts up isn’t supported"
         }
+        if piece.hasPrefix("iPhone OS 1") { return "only iPhone OS 1 runs on this device" }
         if piece.localizedCaseInsensitiveContains("appsync") { return "installing apps on it isn’t supported" }
         return "the guest tools don’t run on it"  // it_boot, the guest package's pieces, the helpers
     }
