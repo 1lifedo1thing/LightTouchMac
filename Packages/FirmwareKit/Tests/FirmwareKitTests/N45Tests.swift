@@ -335,10 +335,8 @@ import Testing
                 // the seed's loader proof and the LayerKit switches' readers are on the record
                 #expect(log.fits.contains { $0.piece.hasPrefix("it_boot") && $0.fits })
                 #expect(
-                    log.fits.contains {
-                        $0.piece
-                            == "SpringBoard environment (\(gles ? "LK_ENABLE_OGL, LK_AUTO_ENABLE_OGL, " : "")LK_ENABLE_MBX2D)"
-                    }
+                    log.fits.contains { $0.piece == "SpringBoard environment (LK_ENABLE_OGL, LK_AUTO_ENABLE_OGL)" }
+                        == gles
                 )
                 #expect(record.family == "n45-ios1" && record.hooks == (gles ? ["/" + N72Board.openGLES] : []))
                 #expect(record.itpackSHA256 == (try Oracle.sha256(file: itpack)))
@@ -355,7 +353,7 @@ import Testing
                 }
                 #expect(
                     env(a)["LK_ENABLE_OGL"] == (gles ? "1" : nil) && env(a)["LK_AUTO_ENABLE_OGL"] == (gles ? "0" : nil)
-                        && env(a)["LK_ENABLE_MBX2D"] == "0"
+                        && env(a)["LK_ENABLE_MBX2D"] == nil
                 )
                 let hooked = try Data(contentsOf: a.appendingPathComponent(N72Board.openGLES))
                 let baked = a.appendingPathComponent(N72Board.openGLES + ".baked")

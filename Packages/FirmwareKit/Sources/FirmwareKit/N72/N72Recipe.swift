@@ -414,7 +414,7 @@ final class N72Board: Board {
         )
         try SystemEdits.editSpringBoardJob(m) { env, _ in
             for k in ["CA_ENABLE_OGL", "LK_ENABLE_OGL"] { env[k] = gles ? "1" : "0" }
-            for k in ["CA_AUTO_ENABLE_OGL", "LK_AUTO_ENABLE_OGL", "CA_ENABLE_MBX2D", "LK_ENABLE_MBX2D"] { env[k] = "0" }
+            for k in ["CA_AUTO_ENABLE_OGL", "LK_AUTO_ENABLE_OGL"] { env[k] = "0" }
             let old = (env["DYLD_INSERT_LIBRARIES"] as? String ?? "").split(separator: ":").map(String.init)
             let libs =
                 old.filter { !["/usr/lib/it_kbd_agent.dylib", "/usr/lib/it_typein.dylib"].contains($0) }
@@ -522,7 +522,6 @@ extension N72Board {
     /// The switches the bake sets in SpringBoard's job, each under its 3.x+ (CoreAnimation) and 1.x/2.x (LayerKit) name.
     static let sbSwitches = [
         ["CA_ENABLE_OGL", "LK_ENABLE_OGL"], ["CA_AUTO_ENABLE_OGL", "LK_AUTO_ENABLE_OGL"],
-        ["CA_ENABLE_MBX2D", "LK_ENABLE_MBX2D"],
     ]
 
     /// The baked guest tools (and it_typein in SpringBoard) that must all load for any to be installed.
