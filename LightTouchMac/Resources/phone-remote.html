@@ -1,6 +1,7 @@
 <!doctype html>
 <!-- Play on Phone's page (PhoneRemoteController): the device's screen and Home button, its touches, and the phone's
-     orientation as the device's tilt. Served with its WebSocket from the Mac; the token is the address's fragment. -->
+     gravity as the device's. Served with its WebSocket from the Mac; the token is the address's fragment, offered to
+     the socket as its subprotocol. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -40,6 +41,8 @@ const canvas = document.getElementById("screen");
 const statusView = document.getElementById("status");
 const context = canvas.getContext("2d");
 let socket;
+// iOS asks for motion on a tap (and is the only one with requestPermission).
+const iOS = typeof DeviceMotionEvent?.requestPermission === "function";
 
 // Only iOS Safari has navigator.standalone: false in the browser, true once opened from the Home Screen.
 if (navigator.standalone === false) document.getElementById("hint").hidden = false;
@@ -61,50 +64,63 @@ function show(text, action) {
 }
 
 function send(message) {
-  // Drop tilts rather than queue them behind a slow network (only the newest matters); never a touch or Home.
-  if (socket?.readyState === WebSocket.OPEN && (!message.tilt || socket.bufferedAmount < 1024)) socket.send(JSON.stringify(message));
+  // Drop motion rather than queue it behind a slow network (only the newest matters); never a touch, Home or a drawn frame.
+  if (socket?.readyState === WebSocket.OPEN && (!message.gravity || socket.bufferedAmount < 1024)) socket.send(JSON.stringify(message));
 }
 
 document.getElementById("start").onclick = async () => {
-  // iOS asks for motion on a tap; Android can keep the page upright, but only in full screen.
-  if (typeof DeviceOrientationEvent?.requestPermission === "function" &&
-      await DeviceOrientationEvent.requestPermission() !== "granted") return show("Light Touch needs motion access to tilt the device.", "Try Again");
+  // Android can keep the page upright, but only in full screen.
+  if (iOS && await DeviceMotionEvent.requestPermission() !== "granted") return show("Light Touch needs motion access to tilt the device.", "Try Again");
   await document.documentElement.requestFullscreen?.().catch(() => {});
   await screen.orientation?.lock?.("portrait").catch(() => {});
   await navigator.wakeLock?.request("screen").catch(() => {});
 
   show("Connecting…");
-  socket = new WebSocket(`wss://${location.host}/ws?t=${token}`);
+  socket = new WebSocket(`wss://${location.host}/ws`, [token]);
   socket.binaryType = "blob";
+  // Ready for the first frame (and the Mac's sign that this socket is the phone).
+  socket.onopen = () => send({ drawn: true });
+  // The Mac sends the next frame once this one is drawn: none wait in the network, none draw out of order.
   socket.onmessage = async (event) => {
-    const frame = await createImageBitmap(event.data);
-    if (canvas.width !== frame.width || canvas.height !== frame.height) {
-      canvas.width = frame.width;
-      canvas.height = frame.height;
-      canvas.style.setProperty("--ratio", frame.width / frame.height);
+    try {
+      const frame = await createImageBitmap(event.data);
+      if (canvas.width !== frame.width || canvas.height !== frame.height) {
+        canvas.width = frame.width;
+        canvas.height = frame.height;
+        canvas.style.setProperty("--ratio", frame.width / frame.height);
+      }
+      context.drawImage(frame, 0, 0);
+      frame.close();
+      device.style.display = "flex";
+      statusView.style.display = "none";
+    } finally {
+      send({ drawn: true });
     }
-    context.drawImage(frame, 0, 0);
-    frame.close();
-    device.style.display = "flex";
-    statusView.style.display = "none";
   };
   socket.onclose = () => show("Disconnected.", "Reconnect");
-  addEventListener("deviceorientation", (event) => {
-    if (event.beta !== null) send({ tilt: [event.beta, event.gamma] });
+  addEventListener("devicemotion", ({ accelerationIncludingGravity: a }) => {
+    // iOS reports the pull of gravity (flat, face up: z < 0); others the push against it, the other way.
+    if (a?.x != null) send({ gravity: iOS ? [a.x, a.y, a.z] : [-a.x, -a.y, -a.z] });
   });
 };
 
 document.getElementById("home").onclick = () => send({ home: true });
 
-// One finger, normalized on the picture: 0 begins, 1 moves, 2 ends.
+// Two fingers, as the emulator has: the pointer each one is, by finger. Normalized on the picture: 0 begins, 1 moves,
+// 2 ends.
+const fingers = [null, null];
 function touch(phase) {
   return (event) => {
-    if (!event.isPrimary) return;
     event.preventDefault();
-    if (phase === 0) canvas.setPointerCapture(event.pointerId);
-    else if (!canvas.hasPointerCapture(event.pointerId) && phase === 1) return;
+    const finger = fingers.indexOf(phase === 0 ? null : event.pointerId);
+    if (finger < 0) return;
+    if (phase === 0) {
+      fingers[finger] = event.pointerId;
+      canvas.setPointerCapture(event.pointerId);
+    }
+    if (phase === 2) fingers[finger] = null;
     const box = canvas.getBoundingClientRect();
-    send({ touch: [phase, (event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height] });
+    send({ touch: [phase, (event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height, finger] });
   };
 }
 canvas.addEventListener("pointerdown", touch(0));

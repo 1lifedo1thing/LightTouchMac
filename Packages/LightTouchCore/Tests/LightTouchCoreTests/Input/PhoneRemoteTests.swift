@@ -5,7 +5,7 @@ import Testing
 
 @testable import LightTouchCore
 
-/// The phone remote's math: its orientation through qemu-ios's gravity model, and its touches back onto the surface.
+/// The phone remote's math: its gravity through qemu-ios's gravity model, and its touches back onto the surface.
 struct PhoneRemoteTests {
     /// qemu-ios's ipod_attitude_gravity (include/hw/arm/ipod-attitude.h): what the guest reads.
     func guestGravity(_ command: LinkCommand) -> [Double] {
@@ -15,27 +15,17 @@ struct PhoneRemoteTests {
         return [-sin(r) * cos(p), sin(p), -cos(r) * cos(p)]
     }
 
-    @Test(arguments: [
-        (0.0, 0.0, [0.0, 0, -1]),  // flat, face up
-        (90, 0, [0, -1, 0]),  // upright
-        (-90, 0, [0, 1, 0]),  // upside down
-        (0, 90, [1, 0, 0]),  // right edge down
-        (0, -90, [-1, 0, 0]),
-        (180, 0, [0, 0, 1]),  // face down
-    ])
-    func orientationIsTheGuestsGravity(beta: Double, gamma: Double, expected: [Double]) {
-        let g = guestGravity(PhoneRemote.attitude(beta: beta, gamma: gamma))
-        #expect(zip(g, expected).allSatisfy { abs($0 - $1) < 1e-9 })
-    }
-
-    @Test func everyOrientationIsAUnitGravity() {
-        for beta in stride(from: -180.0, through: 180, by: 15) {
-            for gamma in stride(from: -90.0, through: 90, by: 15) {
-                let b = beta * .pi / 180
-                let c = gamma * .pi / 180
-                let phone = [cos(b) * sin(c), -sin(b), -cos(b) * cos(c)]
-                let g = guestGravity(PhoneRemote.attitude(beta: beta, gamma: gamma))
-                #expect(zip(g, phone).allSatisfy { abs($0 - $1) < 1e-9 }, "beta \(beta), gamma \(gamma)")
+    /// Every direction the phone's gravity points, at the lengths accelerationIncludingGravity has (in m/s², shaken).
+    @Test(arguments: [9.81, 1, 23])
+    func theGuestReadsThePhonesGravity(length: Double) {
+        for a in stride(from: -180.0, through: 180, by: 15) {
+            for b in stride(from: -90.0, through: 90, by: 15) {
+                let (p, q) = (a * .pi / 180, b * .pi / 180)
+                let phone = [cos(q) * sin(p), sin(q), -cos(q) * cos(p)]
+                let g = guestGravity(
+                    PhoneRemote.attitude(x: phone[0] * length, y: phone[1] * length, z: phone[2] * length)
+                )
+                #expect(zip(g, phone).allSatisfy { abs($0 - $1) < 1e-9 }, "\(phone)")
             }
         }
     }
@@ -48,8 +38,11 @@ struct PhoneRemoteTests {
         tilt.drag(to: CGPoint(x: 20 * degree / ChassisTilt.dragGain, y: -10 * degree / ChassisTilt.dragGain))
         let dragged = tilt.attitude(rotation: 0, flat: true)
         let mouse = guestGravity(ChassisTilt.attitudeCommand(angle: dragged.angle, pitch: dragged.pitch, pose: 1))
-        // Right edge down 20° is gamma 20; top edge down 10° from flat is beta -10.
-        let phone = guestGravity(PhoneRemote.attitude(beta: -10, gamma: 20))
+        // Right edge down 20° and top edge down 10° from flat: gravity leans toward +x and +y.
+        let (right, away) = (20 * Double.pi / 180, 10 * Double.pi / 180)
+        let phone = guestGravity(
+            PhoneRemote.attitude(x: sin(right) * cos(away), y: sin(away), z: -cos(right) * cos(away))
+        )
         #expect(zip(mouse, phone).allSatisfy { abs($0 - $1) < 1e-9 }, "mouse \(mouse), phone \(phone)")
     }
 

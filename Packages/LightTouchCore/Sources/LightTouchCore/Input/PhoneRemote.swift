@@ -1,24 +1,18 @@
-// A phone's browser as the device (Device ▸ Play on Phone…): its orientation becomes the accelerometer's
-// gravity, its touches the panel's, and it shows the panel the way the device is held. The math, without the
-// server and page (PhoneRemoteController in the app).
+// A phone's browser as the device (Device ▸ Play on Phone…): its gravity becomes the accelerometer's, its touches
+// the panel's, and it shows the panel the way the device is held. The math, without the server and page
+// (PhoneRemoteController in the app; PhoneRemoteRequest reads its requests).
 
 import CoreGraphics
 import DeviceRuntime
 import Foundation
 
 public enum PhoneRemote {
-    /// The phone's `deviceorientation` beta and gamma (degrees, W3C axes: iOS's) as the emulator's flat-pose attitude.
-    /// The phone's gravity is (cos β sin γ, −sin β, −cos β cos γ); qemu-ios's ipod_attitude_gravity, flat, is
-    /// (−sin r cos p, sin p, −cos r cos p), which the guest reads as it is (the roll the chassis tilt sends is negated
-    /// for the same reason, ChassisTilt.attitudeCommand), so every way the phone is held is one roll and pitch, upright
-    /// and upside down included.
-    public static func attitude(beta: Double, gamma: Double) -> LinkCommand {
-        let b = beta * .pi / 180
-        let g = gamma * .pi / 180
-        let x = cos(b) * sin(g)
-        let y = -sin(b)
-        let z = -cos(b) * cos(g)
-        return .attitude(pitch: asin(y) * 180 / .pi, roll: atan2(-x, -z) * 180 / .pi, pose: 1)
+    /// The phone's gravity (DeviceMotionEvent's accelerationIncludingGravity, pointing down as iOS reports it: flat
+    /// and face up is (0, 0, -1), at any length) as the emulator's flat-pose attitude. qemu-ios's ipod_attitude_gravity,
+    /// flat, is (−sin r cos p, sin p, −cos r cos p), which the guest reads as it is (the roll the chassis tilt sends is
+    /// negated for the same reason, ChassisTilt.attitudeCommand); every direction is one roll and pitch.
+    public static func attitude(x: Double, y: Double, z: Double) -> LinkCommand {
+        .attitude(pitch: atan2(y, hypot(x, z)) * 180 / .pi, roll: atan2(-x, -z) * 180 / .pi, pose: 1)
     }
 
     /// Clockwise quarter-turns from the published surface to the panel as it sits in the upright device: the scan to

@@ -592,7 +592,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Light Touch";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "© Sam Henri Gold, 2026";
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "A device you attach to the local network can reach the computers and accessories on it.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "A device you attach to the local network can reach the computers and accessories on it, and Play on Phone shows a device on a phone there.";
 				INFOPLIST_KEY_NSLocationUsageDescription = "Puts a device’s GPS where this Mac is.";
 				INFOPLIST_KEY_NSPrincipalClass = LightTouchApplication;
 				INFOPLIST_KEY_NSViewGestureRecognizerIsExclusive = NO;
@@ -635,7 +635,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Light Touch";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "© Sam Henri Gold, 2026";
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "A device you attach to the local network can reach the computers and accessories on it.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "A device you attach to the local network can reach the computers and accessories on it, and Play on Phone shows a device on a phone there.";
 				INFOPLIST_KEY_NSLocationUsageDescription = "Puts a device’s GPS where this Mac is.";
 				INFOPLIST_KEY_NSPrincipalClass = LightTouchApplication;
 				INFOPLIST_KEY_NSViewGestureRecognizerIsExclusive = NO;

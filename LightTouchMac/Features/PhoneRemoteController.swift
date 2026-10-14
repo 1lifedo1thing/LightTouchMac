@@ -1,57 +1,75 @@
-// Device ▸ Play on Phone…: a phone's browser shows the selected device's screen, takes its touches and tilts
-// it with the phone's own orientation. One HTTPS port serves the page (phone-remote.html) and its WebSocket under a
-// self-signed certificate the phone accepts once (browsers give motion only to secure pages); the token in the QR
-// code's address keeps other browsers on the network out. The math is LightTouchCore's PhoneRemote.
+// Device ▸ Play on Phone…: a phone's browser shows the device's screen, takes its touches and Home button, and tilts
+// it with the phone's own gravity. One HTTPS port on the Mac's .local name serves the page (phone-remote.html) and its
+// WebSocket under a self-signed certificate the phone accepts once (browsers give motion only to secure pages). Under
+// Network.framework's WebSocket, a framer answers each connection's request (LightTouchCore's PhoneRemoteRequest, which
+// checks the token the QR code carries) and then steps aside. The math is LightTouchCore's PhoneRemote.
 
 import Cocoa
 import CoreImage
 import DeviceRuntime
 import LightTouchCore
 import Network
+import SystemConfiguration
 
 @MainActor final class PhoneRemoteController {
     /// The device window; the QR code and errors go on it as sheets.
     weak var window: NSWindow?
-    /// The selected device, nil when none runs.
-    var session: () -> DeviceSession? = { nil }
-    var isRunning: Bool { listener != nil }
+    var isRunning: Bool { listener != nil || starting }
 
     private static let port: NWEndpoint.Port = 9741
+    /// More than a phone and its page loads ever need at once.
+    private static let maxConnections = 8
+    private weak var device: DeviceSession?
+    /// The token the QR code showed: Settings' Reset Phone Access changes it, which stops serving.
+    private var token = ""
+    private var starting = false
     private var listener: NWListener?
+    private var connections = 0
     private var client: NWConnection?
     private var timer: Timer?
     /// The frame and turn last sent, so a still screen sends nothing.
     private var sent: (serial: UInt64, turns: Int)?
     private var sending = false
     private var turns = 0
-    /// The device whose screen the phone shows: it keeps its helper at full frame rate (phoneShowsScreen).
-    private weak var shownOn: DeviceViewController?
+    /// Where the fingers down are (0, and 1 for the emulator's second finger), to lift them if the phone goes away.
+    private var fingers: [Int: CGPoint] = [:]
 
-    private var screen: DisplayView? { session()?.workspace.deviceVC.screen }
+    private var screen: DisplayView? { device?.workspace.deviceVC.screen }
 
-    /// Play on Phone… starts serving and shows the QR code; Stop Playing on Phone stops.
-    func toggle() {
-        guard listener == nil else { return stop() }
-        guard let window else { return }
-        do {
-            makeAlert(url: try start()).beginSheetModal(for: window)
-        } catch {
-            show(error)
+    /// Play on Phone… starts serving `session`, the selected device, until it stops, and shows the QR code; Stop
+    /// Playing on Phone stops.
+    func toggle(_ session: DeviceSession?) {
+        guard !isRunning else { return stop() }
+        starting = true
+        Task { @MainActor in
+            defer { starting = false }
+            do {
+                let url = try await start(session)
+                if let window { makeAlert(url: url).beginSheetModal(for: window, completionHandler: nil) }
+            } catch {
+                show(error)
+            }
         }
     }
 
-    /// Kept across launches, so the page added to a phone's Home Screen keeps connecting.
-    private static let token: String = {
-        if let token = UserDefaults.standard.string(forKey: "phoneRemoteToken") { return token }
-        let token = UUID().uuidString
-        UserDefaults.standard.set(token, forKey: "phoneRemoteToken")
-        return token
-    }()
-
-    private func start() throws -> URL {
-        guard let address = Self.lanAddress(), let url = URL(string: "https://\(address):\(Self.port)/#\(Self.token)")
+    private func start(_ session: DeviceSession?) async throws -> URL {
+        guard let name = SCDynamicStoreCopyLocalHostName(nil) as String?,
+            let url = URL(string: "https://\(name).local:\(Self.port)/#\(PhoneRemoteRequest.token)")
         else { throw PhoneRemoteError.noNetwork }
-        let listener = try NWListener(using: NWParameters(tls: try Self.tlsOptions()), on: Self.port)
+        let parameters = NWParameters(tls: try await Self.tlsOptions(host: "\(name).local"))
+        // The WebSocket above the framer, its handshake skipped: the framer answers the request.
+        let webSocket = NWProtocolWebSocket.Options()
+        webSocket.skipHandshake = true
+        webSocket.autoReplyPing = true
+        parameters.defaultProtocolStack.applicationProtocols.insert(
+            NWProtocolFramer.Options(definition: PhoneRemoteFramer.definition),
+            at: 0
+        )
+        parameters.defaultProtocolStack.applicationProtocols.insert(webSocket, at: 0)
+        // Wi-Fi and Ethernet, where the phone is (and loopback, which only this Mac reaches): not VPNs or virtual
+        // machines' bridges.
+        parameters.prohibitedInterfaceTypes = [.cellular, .other]
+        let listener = try NWListener(using: parameters, on: Self.port)
         listener.newConnectionHandler = { [weak self] connection in
             MainActor.assumeIsolated { self?.accept(connection) }
         }
@@ -65,11 +83,21 @@ import Network
         }
         listener.start(queue: .main)
         self.listener = listener
+        device = session
+        token = PhoneRemoteRequest.token
+        // In the common modes, so an open menu or a live resize doesn't freeze the phone's picture.
+        let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
         return url
     }
 
     func stop() {
         disconnect()
+        timer?.invalidate()
+        timer = nil
         listener?.cancel()
         listener = nil
     }
@@ -79,221 +107,211 @@ import Network
         NSAlert(error: error).beginSheetModal(for: window)
     }
 
-    // MARK: - HTTP
+    // MARK: - Connections
 
     private func accept(_ connection: NWConnection) {
+        guard connections < Self.maxConnections else { return connection.cancel() }
+        connections += 1
+        connection.stateUpdateHandler = { [weak self] state in
+            if case .failed = state { connection.cancel() }
+            guard case .cancelled = state else { return }
+            MainActor.assumeIsolated { self?.connections -= 1 }
+        }
         connection.start(queue: .main)
-        receiveRequest(connection, Data())
-    }
-
-    /// Reads one request's head: `/` gets the page, `/ws?t=<token>` the WebSocket; anything else is closed.
-    private func receiveRequest(_ connection: NWConnection, _ buffer: Data) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { [weak self] data, _, done, error in
-            guard let self, let data, error == nil else { return connection.cancel() }
+        receive(connection)
+        // A request and its page take well under this; whatever hasn't become the phone by then is closed.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self, weak connection] in
             MainActor.assumeIsolated {
-                let buffer = buffer + data
-                guard let end = buffer.range(of: Data("\r\n\r\n".utf8)) else {
-                    return buffer.count < 16384 && !done ? receiveRequest(connection, buffer) : connection.cancel()
-                }
-                respond(connection, to: String(decoding: buffer[..<end.lowerBound], as: UTF8.self))
+                if let connection, connection !== self?.client { connection.cancel() }
             }
         }
     }
 
-    private func respond(_ connection: NWConnection, to head: String) {
-        let lines = head.components(separatedBy: "\r\n")
-        let path = lines.first?.split(separator: " ").dropFirst().first.map(String.init)
-        let key = lines.lazy.compactMap { line -> String? in
-            let field = line.split(separator: ":", maxSplits: 1)
-            guard field.count == 2, field[0].lowercased() == "sec-websocket-key" else { return nil }
-            return field[1].trimmingCharacters(in: .whitespaces)
-        }.first
-        if path == "/ws?t=\(Self.token)", let key {
-            let upgrade =
-                "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-                + "Sec-WebSocket-Accept: \(WebSocket.acceptKey(key))\r\n\r\n"
-            connection.send(content: Data(upgrade.utf8), completion: .idempotent)
-            // One phone at a time: the newest wins.
-            disconnect()
-            client = connection
-            receiveMessages(connection, Data())
-            // In the common modes, so an open menu or a live resize doesn't freeze the phone's picture.
-            let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.sendFrame() }
+    /// The phone's WebSocket messages: only a socket's arrive, the framer below answered everything else.
+    private func receive(_ connection: NWConnection) {
+        connection.receiveMessage { [weak self] content, context, _, error in
+            guard let self else { return connection.cancel() }
+            MainActor.assumeIsolated {
+                guard error == nil,
+                    let socket = context?.protocolMetadata(definition: NWProtocolWebSocket.definition)
+                        as? NWProtocolWebSocket.Metadata, socket.opcode != .close
+                else { return connection === client ? disconnect() : connection.cancel() }
+                // Pings are answered by the protocol (autoReplyPing) but still arrive here.
+                if socket.opcode == .text, let content {
+                    // The page's first message (it's ready for a frame) makes it the phone; the newest wins.
+                    if connection !== client {
+                        disconnect()
+                        client = connection
+                        device?.workspace.deviceVC.phoneShowsScreen = true
+                    }
+                    handle(content)
+                }
+                receive(connection)
             }
-            RunLoop.main.add(timer, forMode: .common)
-            self.timer = timer
-        } else if path == "/", let url = Bundle.main.url(forResource: "phone-remote", withExtension: "html"),
-            let page = try? Data(contentsOf: url)
-        {
-            let head =
-                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(page.count)\r\n"
-                + "Connection: close\r\n\r\n"
-            connection.send(content: Data(head.utf8) + page, completion: .contentProcessed { _ in connection.cancel() })
-        } else {
-            connection.cancel()
         }
     }
 
     // MARK: - The phone
 
-    private func receiveMessages(_ connection: NWConnection, _ buffer: Data) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, done, error in
-            guard let self else { return connection.cancel() }
-            MainActor.assumeIsolated {
-                guard connection === client else { return connection.cancel() }
-                var buffer = buffer + (data ?? Data())
-                do {
-                    while let frame = try WebSocket.nextFrame(&buffer) {
-                        switch frame.opcode {
-                        case .text: handle(frame.payload)
-                        case .close: return disconnect()
-                        case .binary: break
-                        }
-                    }
-                } catch {
-                    return disconnect()
-                }
-                guard error == nil, !done else { return disconnect() }
-                receiveMessages(connection, buffer)
-            }
-        }
-    }
-
-    /// `{"tilt":[beta,gamma]}` (deviceorientation's degrees), `{"touch":[phase,x,y]}` (TouchPhase; normalized on the
-    /// picture, y down) or `{"home":true}`.
+    /// `{"gravity":[x,y,z]}` (accelerationIncludingGravity, pointing down), `{"touch":[phase,x,y,finger]}`
+    /// (TouchPhase; normalized on the picture, y down; finger 0 or 1), `{"home":true}` or `{"drawn":true}` (the last frame is on the screen).
     private struct Message: Decodable {
-        var tilt: [Double]?
+        var gravity: [Double]?
         var touch: [Double]?
         var home: Bool?
+        var drawn: Bool?
     }
 
     private func handle(_ payload: Data) {
-        guard let message = try? JSONDecoder().decode(Message.self, from: payload), let emulator = session()?.emulator
+        guard let message = try? JSONDecoder().decode(Message.self, from: payload), let emulator = device?.emulator
         else { return }
-        if let tilt = message.tilt, tilt.count == 2, tilt.allSatisfy(\.isFinite), emulator.acceptsInput,
-            !emulator.isSleeping
+        if message.drawn == true { sending = false }
+        if let g = message.gravity, g.count == 3, g.allSatisfy(\.isFinite), emulator.acceptsInput, !emulator.isSleeping
         {
-            emulator.link?.send(PhoneRemote.attitude(beta: tilt[0], gamma: tilt[1]))
+            emulator.link?.send(PhoneRemote.attitude(x: g[0], y: g[1], z: g[2]))
         }
-        if let touch = message.touch, touch.count == 3, [0, 1, 2].contains(touch[0]), touch.allSatisfy(\.isFinite) {
+        if let touch = message.touch, touch.count == 4, [0, 1, 2].contains(touch[0]), [0, 1].contains(touch[3]),
+            touch.allSatisfy(\.isFinite)
+        {
             let p = PhoneRemote.surfacePoint(
                 CGPoint(x: min(max(touch[1], 0), 1), y: min(max(touch[2], 0), 1)),
                 turns: turns
             )
-            screen?.sendVisualTouch(0, Int32(touch[0]), p.x, p.y)
+            send(finger: Int(touch[3]), Int32(touch[0]), at: p)
         }
         if message.home == true { emulator.pressHome() }
     }
 
-    /// The newest frame, turned the way the device is held, when it changed and the last one has gone out.
-    /// JPEG on the main thread costs a few milliseconds at these panel sizes; H.264 (VideoToolbox) only if it shows.
-    private func sendFrame() {
-        let deviceVC = session()?.workspace.deviceVC
-        if deviceVC !== shownOn {
-            shownOn?.phoneShowsScreen = false
-            deviceVC?.phoneShowsScreen = true
-            shownOn = deviceVC
+    /// The first finger is the emulator's touch, the second qemu_ios_ui_touch2's, as the Mac's pinch sends them.
+    private func send(finger: Int, _ phase: Int32, at p: CGPoint) {
+        fingers[finger] = phase == TouchPhase.end ? nil : p
+        if finger == 0 {
+            screen?.sendVisualTouch(0, phase, p.x, p.y)
+        } else {
+            screen?.sendVisualTouch2(phase, p.x, p.y)
         }
-        guard let client, !sending, let emulator = session()?.emulator, let screen = deviceVC?.screen,
-            let surface = screen.currentFrame()
-        else { return }
+    }
+
+    /// Stops with the device or a reset token; otherwise sends the phone the newest frame, turned the way the device
+    /// is held, when it changed and the phone has drawn the last one.
+    private func tick() {
+        guard let emulator = device?.emulator, !emulator.isDead, emulator.state != .poweredOff,
+            token == PhoneRemoteRequest.token
+        else { return stop() }
+        guard let client, !sending, let screen, let surface = screen.currentFrame() else { return }
         turns = PhoneRemote.quarterTurns(
             guestTurn: screen.guestTurn,
             deviceDegrees: emulator.rotationDegrees,
             surfaceFollowsRotation: emulator.profile.surfaceFollowsRotation
         )
         guard sent?.serial != screen.shownSerial || sent?.turns != turns,
-            let image = DisplayView.image(surface, colorSpace: screen.colorSpace),
-            let turned = PanelCapture.rotated(image, clockwiseQuarterTurns: turns),
-            let jpeg = NSBitmapImageRep(cgImage: turned)
-                .representation(using: .jpeg, properties: [.compressionFactor: 0.7])
+            let image = DisplayView.image(surface, colorSpace: screen.colorSpace)
         else { return }
         sent = (screen.shownSerial, turns)
         sending = true
-        client.send(
-            content: WebSocket.frame(jpeg, .binary),
-            completion: .contentProcessed { [weak self] error in
-                guard let self else { return }
-                MainActor.assumeIsolated {
-                    guard client === self.client else { return }
-                    sending = false
-                    if error != nil { disconnect() }
-                }
+        let turns = turns
+        // Turning and encoding off the main thread; only the copy out of the surface stays on it.
+        Self.encoder.async { [weak self] in
+            guard let turned = PanelCapture.rotated(image, clockwiseQuarterTurns: turns),
+                let jpeg = NSBitmapImageRep(cgImage: turned)
+                    .representation(using: .jpeg, properties: [.compressionFactor: 0.7])
+            else {
+                // Nothing went out to be drawn.
+                Task { @MainActor in self?.sending = false }
+                return
             }
-        )
+            let frame = NWConnection.ContentContext(
+                identifier: "frame",
+                metadata: [NWProtocolWebSocket.Metadata(opcode: .binary)]
+            )
+            // A dead connection shows in receive(), not here.
+            client.send(content: jpeg, contentContext: frame, completion: .idempotent)
+        }
     }
 
-    /// Drops the phone; the device's gravity goes back to rest and its helper may slow down again.
+    private static let encoder = DispatchQueue(label: "PhoneRemote.encoder")
+
+    /// Drops the phone; its fingers lift, the device's gravity goes back to rest and its helper may slow down again.
     private func disconnect() {
         guard let client else { return }
+        // A touch that never ends leaves the guest believing a finger is down (DisplayView.emit).
+        for (finger, p) in fingers { send(finger: finger, TouchPhase.end, at: p) }
         client.cancel()
         self.client = nil
-        timer?.invalidate()
-        timer = nil
         sent = nil
         sending = false
-        shownOn?.phoneShowsScreen = false
-        shownOn = nil
+        device?.workspace.deviceVC.phoneShowsScreen = false
         screen?.resetMotion()
     }
 
     // MARK: - Setup
 
-    /// The sheet with the QR code.
+    /// The sheet: the QR code on a white tile (scannable in Dark Mode too) above the steps, centered in the alert.
     private func makeAlert(url: URL) -> NSAlert {
         let alert = NSAlert()
-        alert.messageText = "Scan with Your Phone"
-        alert.informativeText =
-            "Open \(url.absoluteString) on a phone on the same network. Continue past its warning that the "
-            + "connection isn’t private, then tap Start."
-        let qrCode = CIFilter(
+        alert.messageText = "Play on Your Phone"
+        alert.informativeText = "Use a phone on the same network as this Mac."
+
+        let code = NSImageView()
+        if let qrCode = CIFilter(
             name: "CIQRCodeGenerator",
             parameters: ["inputMessage": Data(url.absoluteString.utf8)]
         )?
-        .outputImage?.transformed(by: CGAffineTransform(scaleX: 6, y: 6))
-        if let qrCode {
-            let rep = NSCIImageRep(ciImage: qrCode)
-            let image = NSImage(size: rep.size)
-            image.addRepresentation(rep)
-            let view = NSImageView(image: image)
-            view.frame.size = rep.size
-            alert.accessoryView = view
+        .outputImage {
+            // Whole pixels per module keep its edges sharp.
+            let scale = (156 / qrCode.extent.width).rounded(.down)
+            let rep = NSCIImageRep(ciImage: qrCode.transformed(by: CGAffineTransform(scaleX: scale, y: scale)))
+            code.image = NSImage(size: rep.size)
+            code.image?.addRepresentation(rep)
         }
+        let tile = NSBox()
+        tile.boxType = .custom
+        tile.fillColor = .white
+        tile.borderWidth = 0
+        tile.cornerRadius = 16
+        tile.contentView = code
+
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.tabStops = [NSTextTab(textAlignment: .left, location: 16)]
+        paragraph.headIndent = 16
+        paragraph.paragraphSpacing = 4
+        let steps = NSTextField(
+            labelWithAttributedString: NSAttributedString(
+                string: "1.\tScan the code with the phone’s camera.\n"
+                    + "2.\tContinue past the warning that the connection isn’t private.\n"
+                    + "3.\tTap Start.",
+                attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize), .paragraphStyle: paragraph]
+            )
+        )
+        steps.maximumNumberOfLines = 0
+
+        // As wide as the alert, so what it centers is centered in the alert.
+        let stack = NSStackView(views: [tile, steps])
+        stack.orientation = .vertical
+        stack.spacing = 16
+        NSLayoutConstraint.activate([
+            stack.widthAnchor.constraint(equalToConstant: 380),
+            tile.widthAnchor.constraint(equalToConstant: 180),
+            tile.heightAnchor.constraint(equalToConstant: 180),
+            steps.widthAnchor.constraint(equalToConstant: 260),
+        ])
+        stack.frame.size = stack.fittingSize
+        alert.accessoryView = stack
         return alert
     }
 
-    /// The Mac's IPv4 address on Wi-Fi or Ethernet (the en interfaces): the one a phone shares a network with. Not a
-    /// self-assigned 169.254 one, which an interface without DHCP has and no phone reaches.
-    private static func lanAddress() -> String? {
-        var list: UnsafeMutablePointer<ifaddrs>?
-        guard getifaddrs(&list) == 0, let first = list else { return nil }
-        defer { freeifaddrs(list) }
-        for entry in sequence(first: first, next: { $0.pointee.ifa_next }) {
-            let interface = entry.pointee
-            guard let address = interface.ifa_addr, address.pointee.sa_family == UInt8(AF_INET),
-                interface.ifa_flags & UInt32(IFF_UP) != 0, String(cString: interface.ifa_name).hasPrefix("en")
-            else { continue }
-            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-            let length = socklen_t(address.pointee.sa_len)
-            guard getnameinfo(address, length, &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 else {
-                continue
-            }
-            let name = String(decoding: host.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
-            if !name.hasPrefix("169.254.") { return name }
-        }
-        return nil
-    }
+    nonisolated private static let passphrase = "light-touch"
 
-    private static let passphrase = "light-touch"
-
-    /// TLS with this Mac's self-signed identity, made with the system's openssl the first time and again before it
-    /// runs out: Apple's rules for server certificates (at most 825 days, serverAuth) are why it says what it says.
-    private static func tlsOptions() throws -> NWProtocolTLS.Options {
+    /// TLS with this Mac's self-signed identity for `host`, made with the system's openssl (off the main thread) the
+    /// first time and again before it runs out: Apple's rules for server certificates (at most 825 days, serverAuth)
+    /// are why it says what it says.
+    private static func tlsOptions(host: String) async throws -> NWProtocolTLS.Options {
         let folder = Bundled.stateDirectory.appendingPathComponent("phone-remote", isDirectory: true)
         let p12 = folder.appendingPathComponent("identity.p12")
         let created = try? p12.resourceValues(forKeys: [.creationDateKey]).creationDate
-        if created.map({ -$0.timeIntervalSinceNow > 800 * 86400 }) ?? true { try makeIdentity(p12) }
+        if created.map({ -$0.timeIntervalSinceNow > 800 * 86400 }) ?? true {
+            try await Task.detached { try makeIdentity(p12, host: host) }.value
+        }
         var options: [String: Any] = [kSecImportExportPassphrase as String: passphrase]
         // Before macOS 15 SecPKCS12Import can only add the identity to the login keychain.
         if #available(macOS 15, *) { options[kSecImportToMemoryOnly as String] = true }
@@ -308,18 +326,18 @@ import Network
         return tls
     }
 
-    /// Runs openssl on the main thread: once, on the first Play on Phone…, for about a tenth of a second. RSA, not EC:
-    /// macOS 27's SecPKCS12Import raises an exception (a NULL key in SecIdentityCreate) on LibreSSL's EC key bags.
-    private static func makeIdentity(_ p12: URL) throws {
+    /// RSA, not EC: macOS 27's SecPKCS12Import raises an exception (a NULL key in SecIdentityCreate) on LibreSSL's EC
+    /// key bags.
+    nonisolated private static func makeIdentity(_ p12: URL, host: String) throws {
         let folder = p12.deletingLastPathComponent()
         try StorageLocations.privateDirectory(folder)
         let key = folder.appendingPathComponent("key.pem").path
         let certificate = folder.appendingPathComponent("certificate.pem").path
         defer { for path in [key, certificate] { try? FileManager.default.removeItem(atPath: path) } }
         try openssl([
-            "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "825",
-            "-subj", "/CN=Light Touch", "-addext", "subjectAltName=DNS:lighttouch.local",
-            "-addext", "extendedKeyUsage=serverAuth", "-keyout", key, "-out", certificate,
+            "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "825", "-subj", "/CN=\(host)",
+            "-addext", "subjectAltName=DNS:\(host)", "-addext", "extendedKeyUsage=serverAuth",
+            "-keyout", key, "-out", certificate,
         ])
         try? FileManager.default.removeItem(at: p12)
         try openssl([
@@ -327,7 +345,7 @@ import Network
         ])
     }
 
-    private static func openssl(_ arguments: [String]) throws {
+    nonisolated private static func openssl(_ arguments: [String]) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/openssl")
         process.arguments = arguments
@@ -339,11 +357,68 @@ import Network
     }
 }
 
+/// Under the WebSocket on each connection: writes PhoneRemoteRequest's answer to the request (the page, or the socket's
+/// 101), then passes everything through to the WebSocket, whose handshake is skipped. Prepending the
+/// WebSocket once the request is read would be tidier, but prependApplicationProtocol refuses it (EINVAL, macOS 27).
+nonisolated final class PhoneRemoteFramer: NWProtocolFramerImplementation {
+    static let label = "PhoneRemote"
+    // nonisolated(unsafe): made once, then only read; Network.framework holds definitions across its own queues.
+    nonisolated(unsafe) static let definition = NWProtocolFramer.Definition(implementation: PhoneRemoteFramer.self)
+    static let page =
+        Bundle.main.url(forResource: "phone-remote", withExtension: "html").flatMap { try? Data(contentsOf: $0) }
+        ?? Data()
+
+    init(framer: NWProtocolFramer.Instance) {}
+    func start(framer: NWProtocolFramer.Instance) -> NWProtocolFramer.StartResult { .ready }
+    func wakeup(framer: NWProtocolFramer.Instance) {}
+    func stop(framer: NWProtocolFramer.Instance) -> Bool { true }
+    func cleanup(framer: NWProtocolFramer.Instance) {}
+
+    func handleInput(framer: NWProtocolFramer.Instance) -> Int {
+        var request = PhoneRemoteRequest.incomplete
+        var available = 0
+        // A peek: nothing is consumed until the request is known.
+        _ = framer.parseInput(minimumIncompleteLength: 1, maximumLength: PhoneRemoteRequest.maxLength) { buffer, _ in
+            if let buffer {
+                available = buffer.count
+                request = PhoneRemoteRequest(Data(buffer), token: PhoneRemoteRequest.token, page: Self.page)
+            }
+            return 0
+        }
+        switch request {
+        case .incomplete:
+            return available + 1
+        case .refused:
+            framer.markFailed(error: .posix(.EBADMSG))
+        case .page(let response):
+            framer.writeOutput(data: response)
+            // Closes the connection once the page is out.
+            framer.markFailed(error: nil)
+        case .socket(let length, let response):
+            _ = framer.parseInput(minimumIncompleteLength: length, maximumLength: length) { _, _ in length }
+            framer.writeOutput(data: response)
+            framer.passThroughInput()
+            framer.passThroughOutput()
+        }
+        return 0
+    }
+
+    /// Before the 101 the WebSocket above has nothing to send; after it, output passes through without this.
+    func handleOutput(
+        framer: NWProtocolFramer.Instance,
+        message: NWProtocolFramer.Message,
+        messageLength: Int,
+        isComplete: Bool
+    ) {
+        try? framer.writeOutputNoCopy(length: messageLength)
+    }
+}
+
 nonisolated enum PhoneRemoteError: LocalizedError {
     case noNetwork, noCertificate
     var errorDescription: String? {
         switch self {
-        case .noNetwork: "This Mac isn’t on a Wi-Fi or Ethernet network a phone could join."
+        case .noNetwork: "Light Touch couldn’t find this Mac’s name on the local network."
         case .noCertificate: "Light Touch couldn’t make the certificate the phone connects with."
         }
     }

@@ -177,7 +177,6 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         capture.onChange = { [weak self] in self?.validateCaptureToolbar() }
         capture.terminate = { AppDelegate.requestTermination() }
         phoneRemote.window = window
-        phoneRemote.session = { [weak self] in self?.session }
         DeviceFilesystemEdits.shared.onUncleanShutdown = { [weak self] entry in self?.offerShutDownFirst(entry) }
         CaptureNotifications.shared.onShowDevice = { [weak self] id in
             guard let self, let entry = host.catalog.entry(id: id) else { return }

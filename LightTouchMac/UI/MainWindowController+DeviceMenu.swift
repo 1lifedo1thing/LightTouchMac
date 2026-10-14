@@ -124,7 +124,7 @@ extension MainWindowController {
     @objc func resetMotion(_ sender: Any?) { deviceVC?.screen.resetMotion() }
 
     @objc func deviceShake(_ sender: Any?) { emulator?.shake() }
-    @objc func togglePhoneRemote(_ sender: Any?) { phoneRemote.toggle() }
+    @objc func togglePhoneRemote(_ sender: Any?) { phoneRemote.toggle(session) }
     @objc func setCompassHeading(_ sender: NSMenuItem) { emulator?.setCompassHeading(sender.tag) }
 
     @objc func showCarrier(_ sender: Any?) {

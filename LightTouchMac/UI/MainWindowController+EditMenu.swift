@@ -98,6 +98,7 @@ extension MainWindowController {
     @objc func toggleRecording(_ sender: Any?) { capture.toggleRecording() }
     @objc func discardRecording(_ sender: Any?) { capture.discardRecording() }
     func windowShouldClose(_ sender: NSWindow) -> Bool { capture.windowShouldClose() }
+    func windowWillClose(_ notification: Notification) { phoneRemote.stop() }
     func finishRecordingBeforeQuit() -> Bool { capture.finishRecordingBeforeQuit() }
 
     @objc func copyScreen(_ sender: Any?) { capture.copyScreen() }
