@@ -52,6 +52,18 @@ func flickCheck(_ args: FlickCheck) -> Never {
         }.count
         let turned = runs.filter { $0.string("from") != $0.string("to") }.count
         if lost > 0 { r.check(false, "flick: \(lost) of \(runs.count) \(kind) started or ended on neither page") }
+        // The frames each gesture brought, while it moved: under the floor, frames are lost on the way to the app
+        // (published on a 30 ms timer, they reached it at 33 fps although the guest drew every vsync).
+        let motion = runs.map { MotionFrames(times: ($0["frameTimes"] as? [NSNumber] ?? []).map(\.doubleValue)) }
+        let fps = motion.map(\.fps).sorted()
+        let median = fps.isEmpty ? 0 : fps[fps.count / 2]
+        let skipped = runs.reduce(0) { $0 + Int($1.double("framesSkipped") ?? 0) }
+        print(
+            "   \(kind): motion \(format(median)) fps median (\(fps.map { format($0) }.joined(separator: ", "))), "
+                + "p95 \(format(motion.map(\.p95).max())) ms, longest \(format(motion.map(\.longest).max())) ms, "
+                + "\(skipped) frames the ring skipped"
+        )
+        r.check(median >= args.minFps, "flick: \(kind) moved at \(format(median)) fps, at least \(format(args.minFps))")
         let slow = kind.hasPrefix("slow")
         r.check(
             runs.count == args.runs && turned == (slow ? 0 : runs.count),

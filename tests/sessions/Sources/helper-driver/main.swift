@@ -448,19 +448,23 @@ Thread.detachNewThread {
                 let (fromPage, fromPageD, fromLeftD) = onPage("flick\(i)a")
                 let sign = fromPage ? 1.0 : -1.0
                 let (a, b) = onMain { (r.touchPoint(shown: v[1], v[2]), r.touchPoint(shown: v[1] + sign / v[3], v[2])) }
-                let log = playTrackpad(
-                    trackpadGesture(p[1]),
-                    start: CGPoint(x: a.0, y: a.1),
-                    unit: CGVector(dx: b.0 - a.0, dy: b.1 - a.1),
-                    link: link
-                )
-                usleep(1_500_000)
+                var log: [String] = []
+                let frames = recordFrames {
+                    log = playTrackpad(
+                        trackpadGesture(p[1]),
+                        start: CGPoint(x: a.0, y: a.1),
+                        unit: CGVector(dx: b.0 - a.0, dy: b.1 - a.1),
+                        link: link
+                    )
+                    usleep(1_500_000)
+                }
                 let (toPage, dPage, dLeft) = onPage("flick\(i)b")
                 emit(
                     "flick",
                     [
                         "kind": p[1], "from": fromPage ? "page" : "left", "to": toPage ? "page" : "left",
                         "dPage": dPage, "dLeft": dLeft, "dStart": min(fromPageD, fromLeftD), "touches": log,
+                        "frameTimes": frames.times, "framesSkipped": frames.skipped,
                     ]
                 )
             }
@@ -741,6 +745,36 @@ func preventsIdleSleep(_ pid: Int32) -> Bool {
     return text.split(separator: "\n").contains {
         $0.contains("pid \(pid)(") && $0.contains("PreventUserIdleSystemSleep")
     }
+}
+
+/// While `body` runs: when each new frame reached the ring (s from the call), and how many of the emulator's frames
+/// it never took (the serial moving by more than one).
+func recordFrames(_ body: () -> Void) -> (times: [Double], skipped: UInt64) {
+    final class Box: @unchecked Sendable {
+        let lock = NSLock()
+        var times: [Double] = [], skipped: UInt64 = 0, done = false
+    }
+    let box = Box()
+    let start = DispatchTime.now().uptimeNanoseconds
+    let poller = Thread {
+        var last = link.status?.frameSerial ?? 0
+        while !box.lock.withLock({ box.done }) {
+            if let serial = link.status?.frameSerial, serial != last {
+                let t = Double(DispatchTime.now().uptimeNanoseconds - start) / 1e9
+                box.lock.withLock {
+                    box.times.append(t)
+                    box.skipped += serial &- last &- 1
+                }
+                last = serial
+            }
+            usleep(250)
+        }
+    }
+    poller.start()
+    body()
+    box.lock.withLock { box.done = true }
+    while poller.isExecuting { usleep(1000) }
+    return box.lock.withLock { (box.times, box.skipped) }
 }
 
 func dump(_ name: String) {
