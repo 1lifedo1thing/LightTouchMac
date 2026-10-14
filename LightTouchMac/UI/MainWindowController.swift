@@ -56,6 +56,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
     var canToggleRecording: Bool { capture.canToggleRecording }
     let fileStatus = CaptureStatusView()
     var captureMode: Int { capture.captureMode }
+    /// A phone's browser as the selected device (PhoneRemoteController).
+    let phoneRemote = PhoneRemoteController()
     var hasFileTransfer: Bool { filesVC?.hasTransfer == true }
     func cancelFileTransfer() { filesVC?.cancelTransfer() }
 
@@ -174,6 +176,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
         capture.session = { [weak self] in self?.session }
         capture.onChange = { [weak self] in self?.validateCaptureToolbar() }
         capture.terminate = { AppDelegate.requestTermination() }
+        phoneRemote.window = window
+        phoneRemote.session = { [weak self] in self?.session }
         DeviceFilesystemEdits.shared.onUncleanShutdown = { [weak self] entry in self?.offerShutDownFirst(entry) }
         CaptureNotifications.shared.onShowDevice = { [weak self] id in
             guard let self, let entry = host.catalog.entry(id: id) else { return }

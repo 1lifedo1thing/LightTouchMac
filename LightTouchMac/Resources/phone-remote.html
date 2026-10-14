@@ -1,0 +1,110 @@
+<!doctype html>
+<!-- Play on Phone's page (PhoneRemoteController): the device's screen and Home button, its touches, and the phone's
+     orientation as the device's tilt. Served with its WebSocket from the Mac; the token is the address's fragment. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- Added to the Home Screen, the page opens full screen, without Safari's bars. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Light Touch">
+<title>Light Touch</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #fff; font: 17px -apple-system, system-ui, sans-serif; }
+  body { display: flex; align-items: center; justify-content: center; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #device { display: none; flex-direction: column; align-items: center; }
+  /* The screen fills what the Home button and the safe area leave; --ratio is the frame's width over its height. */
+  canvas { width: min(100vw, calc((100dvh - 88px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) * var(--ratio, 0.6667))); }
+  #home { width: 56px; height: 56px; margin: 16px; border-radius: 50%; border: 2px solid #333; background: #111; padding: 0; }
+  #home::after { content: ""; display: block; width: 16px; height: 16px; margin: auto; border: 2px solid #555; border-radius: 5px; }
+  #home:active { background: #222; }
+  #status { text-align: center; padding: 24px; }
+  #hint { color: #999; font-size: 15px; max-width: 300px; }
+  #start { font: inherit; padding: 12px 32px; border-radius: 12px; border: 0; background: #0a84ff; color: #fff; }
+  #turn { display: none; position: fixed; inset: 0; background: #000; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+  @media (orientation: landscape) { #turn { display: flex; } }
+</style>
+</head>
+<body>
+<div id="device"><canvas id="screen"></canvas><button id="home" aria-label="Home"></button></div>
+<div id="status">
+  <button id="start">Start</button>
+  <p id="hint" hidden>For full screen, add this page to your Home Screen: Share, then Add to Home Screen.</p>
+</div>
+<div id="turn">Turn on your phone’s rotation lock, in portrait.</div>
+<script>
+const device = document.getElementById("device");
+const canvas = document.getElementById("screen");
+const statusView = document.getElementById("status");
+const context = canvas.getContext("2d");
+let socket;
+
+// Only iOS Safari has navigator.standalone: false in the browser, true once opened from the Home Screen.
+if (navigator.standalone === false) document.getElementById("hint").hidden = false;
+
+// The Home Screen may open the page without its fragment; the token from the scan is remembered.
+const token = location.hash.slice(1) || localStorage.getItem("token");
+if (token) localStorage.setItem("token", token);
+
+function show(text) {
+  device.style.display = "none";
+  statusView.style.display = "";
+  statusView.textContent = text;
+}
+
+function send(message) {
+  // Drop tilts rather than queue them behind a slow network (only the newest matters); never a touch or Home.
+  if (socket?.readyState === WebSocket.OPEN && (!message.tilt || socket.bufferedAmount < 1024)) socket.send(JSON.stringify(message));
+}
+
+document.getElementById("start").onclick = async () => {
+  // iOS asks for motion on a tap; Android can keep the page upright, but only in full screen.
+  if (typeof DeviceOrientationEvent?.requestPermission === "function" &&
+      await DeviceOrientationEvent.requestPermission() !== "granted") return show("Light Touch needs motion access to tilt the device. Reload to try again.");
+  await document.documentElement.requestFullscreen?.().catch(() => {});
+  await screen.orientation?.lock?.("portrait").catch(() => {});
+  await navigator.wakeLock?.request("screen").catch(() => {});
+
+  show("Connecting…");
+  socket = new WebSocket(`wss://${location.host}/ws?t=${token}`);
+  socket.binaryType = "blob";
+  socket.onmessage = async (event) => {
+    const frame = await createImageBitmap(event.data);
+    if (canvas.width !== frame.width || canvas.height !== frame.height) {
+      canvas.width = frame.width;
+      canvas.height = frame.height;
+      canvas.style.setProperty("--ratio", frame.width / frame.height);
+    }
+    context.drawImage(frame, 0, 0);
+    frame.close();
+    device.style.display = "flex";
+    statusView.style.display = "none";
+  };
+  socket.onclose = () => show("Disconnected. Reload to connect again.");
+  addEventListener("deviceorientation", (event) => {
+    if (event.beta !== null) send({ tilt: [event.beta, event.gamma] });
+  });
+};
+
+document.getElementById("home").onclick = () => send({ home: true });
+
+// One finger, normalized on the picture: 0 begins, 1 moves, 2 ends.
+function touch(phase) {
+  return (event) => {
+    if (!event.isPrimary) return;
+    event.preventDefault();
+    if (phase === 0) canvas.setPointerCapture(event.pointerId);
+    else if (!canvas.hasPointerCapture(event.pointerId) && phase === 1) return;
+    const box = canvas.getBoundingClientRect();
+    send({ touch: [phase, (event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height] });
+  };
+}
+canvas.addEventListener("pointerdown", touch(0));
+canvas.addEventListener("pointermove", touch(1));
+canvas.addEventListener("pointerup", touch(2));
+canvas.addEventListener("pointercancel", touch(2));
+</script>
+</body>
+</html>

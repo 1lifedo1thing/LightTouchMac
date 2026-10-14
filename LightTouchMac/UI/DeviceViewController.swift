@@ -78,13 +78,17 @@ final class DeviceViewController: NSViewController {
         super.viewDidDisappear()
         occlusion.map(NotificationCenter.default.removeObserver)
         occlusion = nil
-        emulator.screenVisible = false
+        emulator.screenVisible = phoneShowsScreen
     }
 
     /// EmulatorController.screenVisible: the helper paces itself by it.
     private var occlusion: NSObjectProtocol?
+    /// A phone shows this screen (PhoneRemoteController): it stays on show with the window covered or the display asleep.
+    var phoneShowsScreen = false {
+        didSet { updateScreenVisible() }
+    }
     private func updateScreenVisible() {
-        emulator.screenVisible = view.window?.occlusionState.contains(.visible) == true
+        emulator.screenVisible = view.window?.occlusionState.contains(.visible) == true || phoneShowsScreen
     }
 
     var screen: DisplayView { displayView }

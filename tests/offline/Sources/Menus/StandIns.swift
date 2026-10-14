@@ -72,6 +72,7 @@ import LightTouchCore
     @objc func freeFormNativeSize(_ sender: Any?) {}
     @objc func toggleHardwareKeyboard(_ sender: Any?) {}
     @objc func toggleKeyboardInput(_ sender: Any?) {}
+    @objc func togglePhoneRemote(_ sender: Any?) {}
     @objc func toggleRecording(_ sender: Any?) {}
     @objc func toggleTouchOverlay(_ sender: Any?) {}
     @objc func zoomIn(_ sender: Any?) {}
