@@ -4,6 +4,10 @@ import Cocoa
 import HostRuntime
 import LightTouchCore
 
+#if canImport(Sparkle)
+    import Sparkle
+#endif
+
 /// First-responder actions AppKit dispatches by selector but exposes no Swift
 /// symbol for. Declaring them here lets the menu use `#selector` (verified at
 /// compile time) instead of raw selector strings. Nothing implements this — the
@@ -49,6 +53,10 @@ enum MainMenuBuilder {
     private static func appMenu(_ appName: String) -> NSMenu {
         let menu = NSMenu(title: appName)
         menu.addItem(item("About \(appName)", #selector(AppDelegate.showAbout(_:))))
+        let updater = (NSApp.delegate as? AppDelegate)?.updaterController
+        menu.addItem(
+            item("Check for Updates…", #selector(SPUStandardUpdaterController.checkForUpdates(_:)), target: updater)
+        )
         menu.addItem(.separator())
         menu.addItem(item("Settings…", #selector(MainWindowController.showSettings(_:)), ","))
         menu.addItem(.separator())
@@ -77,6 +85,7 @@ enum MainMenuBuilder {
         menu.addItem(item("Discard Recording…", #selector(MainWindowController.discardRecording(_:)), "\u{1b}", []))
         menu.addItem(.separator())
         menu.addItem(item("Capture Screen Only", #selector(MainWindowController.toggleCaptureScreenOnly(_:))))
+        menu.addItem(item("Record Device Bezel", #selector(MainWindowController.toggleRecordDeviceBezel(_:))))
         return menu
     }
 

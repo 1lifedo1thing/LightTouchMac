@@ -36,7 +36,7 @@ final class DeviceViewController: NSViewController {
             onFreeFormChange?()
         }
         displayView.onDropIPA = { [weak self] url in self?.installDropped(url) }
-        displayView.onDropIPSW = { FirmwareJobs.shared.importIPSW($0, for: nil) }  // matched by its SHA1
+        displayView.onDropIPSW = { FirmwareJobs.shared.importIPSWs($0) }  // matched by their SHA1s
         // Media the firmware can't take is refused on its row, with why (MediaSupport), before anything runs.
         displayView.onDropMedia = { [weak self] url in
             guard let self, self.emulator.canQueueInstall else { return }

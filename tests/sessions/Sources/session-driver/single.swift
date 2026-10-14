@@ -425,6 +425,21 @@ nonisolated enum WiFiProbe {
                 ]
             )
         }
+        // The language, region and keyboards the base was prepared with (FirmwareKit seedLanguage), as the guest has
+        // them.
+        if asks, generation == 1,
+            let data = try? await guestAgent.get("/var/mobile/Library/Preferences/.GlobalPreferences.plist"),
+            let global = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        {
+            emit(
+                "language",
+                [
+                    "device": d.name, "language": (global["AppleLanguages"] as? [String])?.first ?? "",
+                    "locale": global["AppleLocale"] as? String ?? "",
+                    "keyboards": (global["AppleKeyboards"] as? [String] ?? []).joined(separator: ","),
+                ]
+            )
+        }
         if s.skipSetup == true, generation == 1 {
             var values: [String: Any] = [
                 "device": d.name, "agent": asks,

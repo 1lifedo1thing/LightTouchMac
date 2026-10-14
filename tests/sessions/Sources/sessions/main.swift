@@ -74,6 +74,10 @@ struct SingleCheck: ParsableCommand {
     var developerImage = false
     @Flag(help: "The base was prepared with --skip-setup: no Setup page, Setup's answers from the Mac.")
     var skipSetup = false
+    @Option(help: "The base was prepared with create --language TAG: the guest's language and region are TAG's.")
+    var language: String?
+    @Option(help: "The guest's AppleKeyboards, comma-separated, as create --keyboards should leave them (fr_FR,en_US).")
+    var keyboards: String?
     @Flag(
         help: """
             The base was prepared with --jailbreak: Files reads the whole file system through afc2, Cydia launches \

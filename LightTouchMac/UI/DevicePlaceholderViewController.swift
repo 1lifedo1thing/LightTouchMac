@@ -8,7 +8,7 @@ import LightTouchCore
 final class DevicePlaceholderViewController: NSViewController {
     var onAction: ((DeviceAction) -> Void)?
     var onShowLog: (() -> Void)?
-    var onDropIPSW: ((URL) -> Void)?
+    var onDropIPSW: (([URL]) -> Void)?
     /// Each entry's Skip Setup Assistant choice (FirmwareJobs.skipsSetup); nil: no checkbox.
     var skipsSetup: (get: (String) -> Bool, set: (String, Bool) -> Void)?
     /// Each entry's Jailbreak choice (FirmwareJobs.jailbreaks); nil: no checkbox.
@@ -31,6 +31,8 @@ final class DevicePlaceholderViewController: NSViewController {
     private let showLog = NSButton(title: "Show Logs", target: nil, action: nil)
     private let primary = NSButton(title: "", target: nil, action: nil)
     private let prepareAgain = NSButton(title: "Prepare Again…", target: nil, action: nil)
+    /// Beside the primary button wherever the row's Import IPSW… is (and isn't the primary button itself).
+    private let importIPSW = NSButton(title: "Import IPSW…", target: nil, action: nil)
     /// An edit open in Finder (DeviceFilesystemEdits.hasOpenEdit): Show in Finder and Don't Save beside Save Changes.
     private let showFiles = NSButton(title: "Show in Finder", target: nil, action: nil)
     private let dontSave = NSButton(title: "Don’t Save", target: nil, action: nil)
@@ -49,7 +51,7 @@ final class DevicePlaceholderViewController: NSViewController {
 
     override func loadView() {
         let drop = IPSWDropView()
-        drop.onDrop = { [weak self] url in self?.onDropIPSW?(url) }
+        drop.onDrop = { [weak self] urls in self?.onDropIPSW?(urls) }
         view = drop
 
         art.imageScaling = .scaleProportionallyDown
@@ -66,6 +68,10 @@ final class DevicePlaceholderViewController: NSViewController {
         for label in [status, reason, space] {
             label.alignment = .center
             label.preferredMaxLayoutWidth = 340
+            // Its height is its text's at its own width (up to 340), so a column hugging harder than a wrapping
+            // label's low resistance must not narrow it: "Building the system and data volumes…" lost "data volumes…"
+            // at the bar's width.
+            label.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         }
         status.font = .preferredFont(forTextStyle: .headline)
         reason.textColor = .secondaryLabelColor
@@ -81,7 +87,7 @@ final class DevicePlaceholderViewController: NSViewController {
             weight: .regular
         )
         progressLine.alignment = .center
-        for button in [showLog, prepareAgain, showFiles, dontSave, primary] {
+        for button in [showLog, prepareAgain, showFiles, dontSave, importIPSW, primary] {
             button.bezelStyle = .push
             button.controlSize = .large
             button.target = self
@@ -89,6 +95,7 @@ final class DevicePlaceholderViewController: NSViewController {
         showLog.action = #selector(showLogClicked(_:))
         primary.action = #selector(primaryClicked(_:))
         prepareAgain.action = #selector(prepareAgainClicked(_:))
+        importIPSW.action = #selector(importIPSWClicked(_:))
         showFiles.action = #selector(showFilesClicked(_:))
         dontSave.action = #selector(dontSaveClicked(_:))
         skipSetup.target = self
@@ -113,7 +120,7 @@ final class DevicePlaceholderViewController: NSViewController {
         let stateTier = NSView()
         state.translatesAutoresizingMaskIntoConstraints = false
         stateTier.addSubview(state)
-        let actions = NSStackView(views: [showLog, prepareAgain, showFiles, dontSave, primary])
+        let actions = NSStackView(views: [showLog, prepareAgain, showFiles, dontSave, importIPSW, primary])
         actions.spacing = 12
         // The row keeps its height with no button (running), so the lockup doesn't move between states.
         actions.heightAnchor.constraint(greaterThanOrEqualTo: primary.heightAnchor).isActive = true
@@ -142,7 +149,7 @@ final class DevicePlaceholderViewController: NSViewController {
         // And the views in them keep their own width: a label's or a button's hugging is low too, so a label could
         // take a column's slack and draw its text at the left, or either of two buttons in a row take the row's.
         for content in [
-            model, version, info, skipSetup, jailbreak, showLog, prepareAgain, showFiles, dontSave, primary,
+            model, version, info, skipSetup, jailbreak, showLog, prepareAgain, showFiles, dontSave, importIPSW, primary,
         ] {
             content.setContentHuggingPriority(.required, for: .horizontal)
         }
@@ -289,6 +296,10 @@ final class DevicePlaceholderViewController: NSViewController {
         } else {
             primary.isHidden = true
         }
+        importIPSW.isHidden =
+            !row.allows(.importIPSW, canDownload: canDownload) || row.primaryAction == .importIPSW || editing != nil
+            || activity != nil
+        importIPSW.setAccessibilityLabel("Import IPSW for \(model.stringValue) iOS \(entry.version)")
 
         // Disk numbers only when they stop a download or preparation.
         // (spaceShortage(available: 0) is nil for a row that needs no space: skip the volume query on every progress tick.)
@@ -379,6 +390,7 @@ final class DevicePlaceholderViewController: NSViewController {
     @objc private func dontSaveClicked(_ sender: Any?) { onAction?(.discardFilesystem) }
 
     @objc private func prepareAgainClicked(_ sender: Any?) { onAction?(.prepareAgain) }
+    @objc private func importIPSWClicked(_ sender: Any?) { onAction?(.importIPSW) }
 
     @objc private func showLogClicked(_ sender: Any?) { onShowLog?() }
 
@@ -393,9 +405,9 @@ final class DevicePlaceholderViewController: NSViewController {
     }
 }
 
-/// Takes .ipsw files dropped anywhere on the placeholder.
+/// Takes .ipsw files and folders dropped anywhere on the placeholder.
 private final class IPSWDropView: NSView {
-    var onDrop: ((URL) -> Void)?
+    var onDrop: (([URL]) -> Void)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -423,7 +435,8 @@ private final class IPSWDropView: NSView {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         let urls = ipsws(sender)
-        urls.forEach { onDrop?($0) }
-        return !urls.isEmpty
+        guard !urls.isEmpty else { return false }
+        onDrop?(urls)
+        return true
     }
 }

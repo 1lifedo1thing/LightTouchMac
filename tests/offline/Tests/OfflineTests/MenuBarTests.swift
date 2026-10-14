@@ -17,6 +17,7 @@ extension SharedState {
         static func bar(_ app: String) -> String { ipodBar.replacingOccurrences(of: "Light Touch", with: app) }
         static let ipodBar = """
             Light Touch/About Light Touch
+            Light Touch/Check for Updates…
             Light Touch/-
             Light Touch/Settings…  ⌘,
             Light Touch/-
@@ -146,6 +147,7 @@ extension SharedState {
             Capture/Discard Recording…  ⎋
             Capture/-
             Capture/Capture Screen Only
+            Capture/Record Device Bezel
             Window/Minimize  ⌘m
             Window/Zoom
             Window/-
@@ -299,7 +301,7 @@ extension SharedState {
                 capture.items.filter { !$0.isSeparatorItem }.map(\.title) == [
                     "Save Screenshot", "Save Screenshot As…", "Copy Screenshot", "Open Screenshot in Preview",
                     "Start Recording", "Discard Recording…",
-                    "Capture Screen Only",
+                    "Capture Screen Only", "Record Device Bezel",
                 ]
             )
             #expect(

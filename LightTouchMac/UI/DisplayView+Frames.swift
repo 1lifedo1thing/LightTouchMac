@@ -292,8 +292,10 @@ extension DisplayView {
         }
         return context.makeImage()
     }
-    /// The guest screen's long side in pixels: the screen-only recording's square canvas.
-    var screenSide: CGFloat { max(nativeScreenPixels.width, nativeScreenPixels.height) }
+    /// The screen's pixels as captured now, turned as the window shows them: a screen-only recording's frame.
+    var capturedScreenSize: CGSize {
+        captureFrame(includeTouches: false).map { CGSize(width: $0.width, height: $0.height) } ?? nativeScreenPixels
+    }
     var screenImage: NSImage? {
         get async {
             guard let cg = captureFrame() else { return nil }

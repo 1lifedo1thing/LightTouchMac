@@ -63,6 +63,10 @@ public enum Preparer {
         /// Stop after the volumes step and write fit.json (the fit checks, the seed record, the warnings) instead of a
         /// device: the offline survey of what each firmware gets (`create --stop-after volumes`); no boot, no store.
         public var stopAfterVolumes = false
+        /// The device's language (`create --language`, SystemEdits.Options.language); nil: the Mac's.
+        public var language: String?
+        /// The device's keyboards (`create --keyboards`, SystemEdits.Options.keyboards); nil: the Mac's.
+        public var keyboards: [String]?
         public init(
             entry: FirmwareEntry,
             ipsw: URL,

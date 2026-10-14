@@ -34,5 +34,12 @@
 	<!-- Intel Macs with two GPUs: stay on the integrated one; the device screen needs no discrete GPU. -->
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
+	<key>SUFeedURL</key>
+	<string>https://api.amore.computer/v1/apps/gold.samhenri.LightTouchMac/appcast.xml</string>
+	<!-- Check for updates daily without Sparkle's second-launch question. -->
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUPublicEDKey</key>
+	<string>hfdPdGOiDT3Mj4h+5nJ8mxSLCmjDOEh5u5Pi+bCMjKw=</string>
 </dict>
 </plist>

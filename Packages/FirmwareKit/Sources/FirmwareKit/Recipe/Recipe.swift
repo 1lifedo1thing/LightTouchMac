@@ -128,7 +128,10 @@ public enum Recipe {
         }
 
         step()  // verify
-        let ipswBytes = ByteCount(total: (try? fm.attributesOfItem(atPath: o.ipsw.path)[.size] as? Int) ?? 0)
+        // An IPSW imported from another volume is a symbolic link to the user's file (IPSWStore): the file's size.
+        let ipswBytes = ByteCount(
+            total: (try? fm.attributesOfItem(atPath: o.ipsw.resolvingSymlinksInPath().path)[.size] as? Int) ?? 0
+        )
         progress.measure = { ipswBytes.fraction }
         c.sha1 = try Preparer.digest(o.ipsw, Insecure.SHA1(), count: ipswBytes.add)
         guard c.sha1 == sha1.lowercased() else {

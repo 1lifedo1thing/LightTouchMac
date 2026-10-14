@@ -6,7 +6,8 @@
 //
 // Download and Prepare: an IPSW either store already has, else a CDN download;
 // then `firmwarekit create` (PreparationJob), then a device in the library.
-// Import: hash, match, clone into State/IPSW, then the same preparation.
+// Import: hash, match, clone into State/IPSW (or refer to a file on another
+// volume), then the same preparation.
 // The built-in device (the catalog's `bundled`): its packed base unpacked by
 // `firmwarekit unpack-base` with an identity of its own, published the same way.
 
@@ -270,6 +271,42 @@ import HostRuntime
         let inputs = inputs
         imports[token] = Task.detached {
             inputs.yield(.imported(token, entry?.id, Result { try store.importIPSW(url, catalog: catalog) }))
+        }
+    }
+
+    /// IPSWs and folders of them (Import IPSW… for no row, a drop, Finder's Open), matched by sha1 off the main
+    /// thread. One file is imported and prepared as above. Several, or a folder, are only stored, one after another,
+    /// so their rows say Downloaded and Download and Prepare uses them: one that matches no entry is skipped and
+    /// logged, and if none matches, one error says so.
+    public func importIPSWs(_ urls: [URL]) {
+        let catalog = catalog
+        let store = store
+        let inputs = inputs
+        Task.detached {
+            if urls.count == 1, !DroppedFiles.isFolder(urls[0]) {
+                inputs.yield(.imported(UUID(), nil, Result { try store.importIPSW(urls[0], catalog: catalog) }))
+                return
+            }
+            let found = DroppedFiles.ipsws(in: urls)
+            var matched = 0
+            for url in found {
+                do {
+                    let result = try store.importIPSW(url, catalog: catalog)
+                    matched += 1
+                    logEvent("firmware: import: stored \(url.lastPathComponent) for \(result.entry.id)")
+                } catch is CancellationError {
+                    return
+                } catch {
+                    logEvent("firmware: import: skipped \(url.lastPathComponent): \(error.localizedDescription)")
+                }
+            }
+            logEvent("firmware: import: \(matched) of \(found.count) IPSWs matched")
+            guard matched > 0 else {
+                inputs.yield(.imported(UUID(), nil, .failure(FirmwareError.noneSupported)))
+                return
+            }
+            // The rows (and Add Device, next opened) read the store again: the cue that the IPSWs are here.
+            await MainActor.run { NotificationCenter.default.post(name: IPSWStore.didChangeNotification, object: nil) }
         }
     }
 

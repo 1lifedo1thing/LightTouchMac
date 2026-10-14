@@ -51,6 +51,8 @@ struct ReleaseAppStaticTests {
                 switch binary.lastPathComponent {
                 case "LightTouchDevice": qemu
                 case "LightTouch": ["com.apple.security.personal-information.location": true]
+                // as Sparkle signs it; the export keeps it
+                case "Autoupdate": ["com.apple.application-identifier": "org.sparkle-project.Sparkle.Autoupdate"]
                 default: NSDictionary()
                 }
             #expect(granted == want, "\(name): entitlements \(granted), want \(want)")

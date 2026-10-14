@@ -15,6 +15,11 @@ import LightTouchCore
     @objc func showDeviceWindow(_ sender: Any?) {}
     @objc func showFilesWindow(_ sender: Any?) {}
     @objc func quit(_ sender: Any?) {}
+    let updaterController = SPUStandardUpdaterController()
+}
+/// Sparkle's, which the app menu's Check for Updates… targets.
+@MainActor final class SPUStandardUpdaterController: NSObject {
+    @objc func checkForUpdates(_ sender: Any?) {}
 }
 @MainActor final class DeviceFilesViewController: NSObject {
     @objc func importFile() {}
@@ -65,6 +70,7 @@ import LightTouchCore
     @objc func syncMedia(_ sender: Any?) {}
     @objc func toggleAppInspector(_ sender: Any?) {}
     @objc func toggleCaptureScreenOnly(_ sender: Any?) {}
+    @objc func toggleRecordDeviceBezel(_ sender: Any?) {}
     @objc func toggleConsole(_ sender: Any?) {}
     @objc func toggleDevicePause(_ sender: Any?) {}
     @objc func toggleDeviceRunning(_ sender: Any?) {}

@@ -8,8 +8,8 @@
 // chosen/memory-map RAMDisk (pa, len) in a spare MemoryMapReserved slot, an empty chosen/root-matching, and
 // topOfKernelData past the ramdisk and the one-shot command line. The 4.x DeviceTree's secure-root-prefix "md" makes md0 a SecureRoot.
 // Then the overlay's pages (stored at their logical homes) are folded into nand/ and the written NOR
-// replaces nor.bin. The boot uses aes-uid=engine, as the device's own boots do (the keybag's keys are
-// UID-derived).
+// replaces nor.bin. The boot uses the recipe's aes-uid, as the device's own boots do (the keybag's keys are
+// UID-derived, and iBoot unwraps the NOR's SHSH with a UID-derived key).
 
 import Foundation
 import HostRuntime
@@ -45,12 +45,14 @@ enum N72Keybag {
         guard let hardware = HostRuntime.Board.n72.hardware else {
             throw FirmwareError(.internal, "\(helper.lastPathComponent)'s emulator library has no machine for n72ap")
         }
-        let machine = [
-            "\(hardware.machine),bootrom=\(Preparer.esc(bootrom))", "nand=\(file("nand"))", "nor=\(file("nor.bin"))",
-            "nor-rw=\(Preparer.esc(nor))", "nandrw=\(Preparer.esc(ovl))", "direct-iboot=\(file("iBoot.bin"))",
-            "gid-blobs=\(file("gid-blobs.bin"))", "aes-uid=engine", "boot-args=",
-        ]
-        .joined(separator: ",")
+        let machine =
+            [
+                "\(hardware.machine),bootrom=\(Preparer.esc(bootrom))", "nand=\(file("nand"))",
+                "nor=\(file("nor.bin"))",
+                "nor-rw=\(Preparer.esc(nor))", "nandrw=\(Preparer.esc(ovl))", "direct-iboot=\(file("iBoot.bin"))",
+                "gid-blobs=\(file("gid-blobs.bin"))", "boot-args=",
+            ]
+            .joined(separator: ",") + BootRecipe.options(N72Board.machine)
         let argv = [
             "LightTouchDevice", "-M", machine, "-m", "128M", "-display", "none", "-audio", "driver=none", "-monitor",
             "none",

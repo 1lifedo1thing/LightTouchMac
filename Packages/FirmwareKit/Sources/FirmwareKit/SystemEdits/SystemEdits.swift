@@ -53,6 +53,12 @@ public enum SystemEdits {
         /// (installCydia) from `cydia`, the bootstrap Cydia.bootstrap fetched.
         public var jailbreak = false
         public var cydia: URL?
+        /// The device's language, a BCP 47 tag ("fr-FR", its region the device's too); nil: the Mac's preferred
+        /// languages and region (seedLanguage).
+        public var language: String?
+        /// The device's keyboards besides its language's, Mac input source IDs (com.apple.keylayout.French); nil: the
+        /// Mac's enabled ones (seedLanguage).
+        public var keyboards: [String]?
         public init() {}
         public init(recipe: FirmwareEntry.Recipe) {
             let o = recipe.options
@@ -231,8 +237,10 @@ public enum SystemEdits {
         var rootModes: [(path: String, mode: UInt16)] = []
         var mobileOwned: [String] = []
         var productMajor = 0
+        var keyboards: KeyboardCatalog?
         try await VolumeMount.withMounted(system, at: work.appendingPathComponent("mnt-system")) { m in
             let at = { (rel: String) in m.appendingPathComponent(rel) }
+            keyboards = KeyboardCatalog(at("System/Library/TextInput"))
             // every baked helper proven to load on this firmware (FitCheck.loads), read before any edit
             let fw = FitCheck.Firmware(root: m, arch: "armv7", kernelcache: kernel)
             // a dyld without LC_DYLD_INFO_ONLY (3.0's: none of its own executables carry one) takes the legacy builds
@@ -396,7 +404,14 @@ public enum SystemEdits {
 
         log("data volume (\(dataBytes / 1_000_000) MB, sparse) seeded from /private/var")
         defer { try? fm.removeItem(at: skeleton) }
-        try seedData(skeleton, o, productMajor: productMajor, dataArk: result.activation?.dataArk, log: log)
+        try seedData(
+            skeleton,
+            o,
+            productMajor: productMajor,
+            dataArk: result.activation?.dataArk,
+            keyboards: keyboards,
+            log: log
+        )
         try? fm.removeItem(at: data)
         try await VolumeMount.makeHFS(data, size: dataBytes, journaled: o.dataJournal)
         var byOwner: [[UInt32]: [String]] = [:]
@@ -720,7 +735,7 @@ public enum SystemEdits {
             "ProxyAutoConfigURLString": "file:///" + pacPath,
         ]
     }
-    /// What the /private/var skeleton gets before it becomes the data volume: the web proxy, Setup finished, the data
+    /// What the /private/var skeleton gets before it becomes the data volume: the web proxy, the language, Setup finished, the data
     /// ark. Nothing for timed, dated or not: a dated machine's network answers NTP in the device's own time (qemu-ios
     /// net/slirp.c), so automatic time and zone stay on, as a real unit has them, and timed takes lockdown's zone
     /// (with "Set Automatically" off, 6.x and 7.x timed drop every zone change, lockdown's included).
@@ -729,12 +744,18 @@ public enum SystemEdits {
         _ o: Options,
         productMajor: Int,
         dataArk: [String: String]?,
+        keyboards: KeyboardCatalog? = nil,
         log: (String) -> Void
     ) throws {
         let sc = skeleton.appendingPathComponent("preferences/SystemConfiguration")
         if o.webProxy { try seedPlist(sc.appendingPathComponent("preferences.plist"), wifiProxyPrefs) }
+        let language = try seedLanguage(skeleton, tag: o.language, keyboards: o.keyboards, catalog: keyboards)
+        if let language {
+            log("language \(language.language), region \(language.locale), keyboards \(language.keyboards)")
+        }
         if o.skipSetup, productMajor >= 5 {
-            try seedFinishedSetup(skeleton, major: productMajor)
+            let (l, locale) = language.map { ($0.language, $0.locale) } ?? ("en", "en_US")
+            try seedFinishedSetup(skeleton, major: productMajor, language: l, locale: locale)
             log("Setup Assistant: seeded as finished (iOS \(productMajor))")
         }
         if let dataArk {

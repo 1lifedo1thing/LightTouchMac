@@ -4,9 +4,9 @@
 // (N45NOR over the IPSW's all_flash IMG2s). The bootrom (bootrom_s5l8900) is a boot input, like the 2G's.
 // Volume: the IPSW rootfs grown to the recipe, then the 1.x bake of devos50's qemu-ios-generate-nand
 // changes through SystemEdits: fstab rw with no /private/var line (one partition), the kernelcache (the
-// IPSW's 8900 container, which the machine's 8900 engine decrypts) where iBoot loads it, SpringBoard's
-// LK_ENABLE_MBX2D=0 (no MBX 2D on this machine), the LaunchDaemons that changes.md keeps (and 1.1.3+'s lockbot), and the
-// /var/root/Library skeleton; then ipod1g_device.bake: when the stock OpenGLES exports exactly
+// IPSW's 8900 container, which the machine's 8900 engine decrypts) where iBoot loads it, the LaunchDaemons
+// that changes.md keeps (and 1.1.3+'s lockbot), and the /var/root/Library skeleton; then ipod1g_device.bake:
+// when the stock OpenGLES exports exactly
 // opengles-1x.exports (a guest helper), the seed package's n45-ios1 hook (OpenGLES-1x, the GL front end) replaces it
 // (the stock binary kept as OpenGLES.baked) and SpringBoard gets LK_ENABLE_OGL=1 LK_AUTO_ENABLE_OGL=0 (else
 // LK_ENABLE_OGL stays unset: software LayerKit); the loader and the seed package go in either way, as on every board
@@ -187,7 +187,19 @@ final class N45Board: Board {
         bytes = recipe.systemMiB << 20
     }
 
+    /// The piece a 2.0-or-later entry is refused for (PreparationJob words it for the user).
+    static let onePiece = "iPhone OS 1.x boot chain"
+
     func check(_ c: Recipe.Context) throws {
+        // 2.0 and later boot an IMG3 chain (LLB, iBoot-385+, IMG3 all_flash) that qemu-ios's ipod_touch_1g doesn't
+        // model, nor their kernels' drivers: refused here, before the IPSW is hashed, instead of at N45NOR's IMG2 read.
+        guard (Int(c.e.version.prefix { $0 != "." }) ?? 1) < 2 else {
+            throw FirmwareError(
+                .unsupported,
+                "\(c.e.id): this machine boots iPhone OS 1.x only (\(c.e.version) is an IMG3 firmware)",
+                piece: Self.onePiece
+            )
+        }
         // 1.0's lockdownd starts an afc2 entry but its afcd answers no path (AFC object not found): no jailbreak on 1.x.
         guard recipe.options["jailbreak"] != true else {
             throw FirmwareError(.unsupported, "\(c.e.id): the jailbreak option needs iPhone OS 2.0 or later")
@@ -335,6 +347,14 @@ final class N45Board: Board {
             derived["prefs"] =
                 try Self.bakeNoIdleSleep(m, prefs: sbPrefs) ? prefs + "; SBDisableIdleSleep (no deep sleep)" : prefs
             if fm.fileExists(atPath: at(sbPrefs).path) { owners.append((user.uid, sbPrefs)) }
+            if let l = try SystemEdits.seedLanguage(
+                at("private/var"),
+                tag: c.o.language,
+                keyboards: c.o.keyboards,
+                catalog: SystemEdits.KeyboardCatalog(at("System/Library/TextInput"))
+            ) {
+                derived["language"] = "\(l.language), region \(l.locale), keyboards \(l.keyboards)"
+            }
             let (report, record, owned) = try Self.bake(
                 m,
                 helpers: c.o.guestTools,
@@ -389,20 +409,23 @@ final class N45Board: Board {
             log: log
         )
         if front, !record.hooks.contains("/" + N72Board.openGLES) {
-            // LK_ENABLE_OGL=1 over the stock IMG driver drives the unemulated MBX: fail rather than wedge
+            // LK_ENABLE_OGL=1 over the stock IMG driver drives the MBX's tile accelerator, which qemu-ios doesn't
+            // model: fail rather than wedge
             throw FirmwareError(
                 .internal,
                 "\(SystemEdits.Helpers.itpack("armv6")) has no OpenGLES hook for this build; rebuild the guest package"
             )
         }
-        try fit.check(
-            FitCheck.environment(
-                FitCheck.Firmware(root: m, arch: "armv6"),
-                (front ? [["LK_ENABLE_OGL"], ["LK_AUTO_ENABLE_OGL"]] : []) + [["LK_ENABLE_MBX2D"]]
-            ),
-            required: false,
-            outcome: "kept: a switch nothing reads is inert"
-        )
+        if front {
+            try fit.check(
+                FitCheck.environment(
+                    FitCheck.Firmware(root: m, arch: "armv6"),
+                    [["LK_ENABLE_OGL"], ["LK_AUTO_ENABLE_OGL"]]
+                ),
+                required: false,
+                outcome: "kept: a switch nothing reads is inert"
+            )
+        }
         try SystemEdits.editSpringBoardJob(m) { env, _ in
             if front {
                 env["LK_ENABLE_OGL"] = "1"
@@ -410,7 +433,6 @@ final class N45Board: Board {
             } else {
                 env.removeObjects(forKeys: ["LK_ENABLE_OGL", "LK_AUTO_ENABLE_OGL"])
             }
-            env["LK_ENABLE_MBX2D"] = "0"  // never the unemulated MBX 2D path
         }
         report["gles_engine"] = front ? "OpenGLES" : NSNull()
         log("bake: \(report)")

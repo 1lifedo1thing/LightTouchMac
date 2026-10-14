@@ -217,10 +217,16 @@ import UniformTypeIdentifiers
         return await panel.beginSheetModal(for: window) == .OK ? panel.url : nil
     }
 
-    /// Screen Only / Canvas: which of the two a capture takes, not while one runs.
+    /// Screen Only / Canvas: which of the two a screenshot takes, not while one runs.
     func toggleCaptureScreenOnly() {
         guard !recording.isActive, !screenshotBusy else { return }
         UserDefaults.standard.set(captureMode == 0 ? 1 : 0, forKey: "captureMode")
+    }
+
+    /// Screen alone (the default) or the canvas with the bezel: which a recording takes, not while one runs.
+    func toggleRecordDeviceBezel() {
+        guard !recording.isActive else { return }
+        capturePreferences.recordsBezel.toggle()
     }
 
     // MARK: - Where captures go
@@ -282,7 +288,7 @@ import UniformTypeIdentifiers
         guard !recording.isActive, canStartRecording, let workspace = session()?.workspace else { return }
         let screen = workspace.deviceVC.screen
         screen.endLiveText()
-        let canvas = captureMode == 0
+        let canvas = capturePreferences.recordsBezel
         let source = workspace.canvasCapture
         let background = NSImage(named: "gradient")?.cgImage(forProposedRect: nil, context: nil, hints: nil)
         let emulator = workspace.deviceVC.emulator
@@ -308,7 +314,7 @@ import UniformTypeIdentifiers
                 }
             },
             background: background,
-            screenSide: screen.screenSide,
+            screenSize: screen.capturedScreenSize,
             destination: { [weak self] in
                 guard let self else { throw CaptureError.failed("The capture window was closed.") }
                 return try captureDestination("Recording", extension: "mov")

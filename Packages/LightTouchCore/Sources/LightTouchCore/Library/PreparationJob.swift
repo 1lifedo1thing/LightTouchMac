@@ -144,6 +144,7 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
         if piece.hasPrefix("kernelcache") || piece.hasPrefix("boot-arg") || piece.hasPrefix("DeviceTree") {
             return "the way it starts up isn’t supported"
         }
+        if piece.hasPrefix("iPhone OS 1") { return "only iPhone OS 1 runs on this device" }
         if piece.localizedCaseInsensitiveContains("appsync") { return "installing apps on it isn’t supported" }
         return "the guest tools don’t run on it"  // it_boot, the guest package's pieces, the helpers
     }
@@ -244,7 +245,7 @@ public nonisolated final class PreparationJob: @unchecked Sendable {
                 finish(.failed("Couldn’t save the prepared device: \(error.localizedDescription)"))
             }
         case .error(let code, let detail, let piece)?:
-            // A cached or imported IPSW that fails its SHA is never used again.
+            // A cached or imported IPSW that fails its SHA is never used again (a reference: the link, not the file).
             if code == "sha_mismatch" { try? FileManager.default.removeItem(at: request.ipsw) }
             finish(
                 .failed(Self.message(code: code, detail: detail, piece: piece, beta: request.entry.prerelease != nil))

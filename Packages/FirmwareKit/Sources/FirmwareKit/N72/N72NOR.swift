@@ -14,10 +14,16 @@ public enum N72NOR {
     static let size = 0x100000, sysCfg = 0x4000, nvram = 0xFC000, nvramBank = 0x2000, img3Header = 0x14
     /// The image types the stock 5F138 NOR carries, in its order (build_nor.DEFAULT_ORDER).
     public static let order = ["illb", "ibot", "dtre", "logo", "nsrv", "bat0", "bat1", "recm", "glyC", "glyP"]
-    /// What iBoot runs through the UID key to get the SHSH wrapping key.
+    /// What iBoot encrypts under the UID key to get the SHSH wrapping key (its first AES request: mode 6, | 1 for
+    /// encrypt, | 8; the machine's aes-uid=hardware honors that bit, which the recipe's machine option selects).
     static let kdfConst = Data(hexLiteral: "db1f5b33606c5f1c1934aa66589c0661")
     /// The emulated S5L8720's UID (key_uid in hw/arm/ipod_touch_aes.h).
     static let uidKey = Data(hexLiteral: "0123456789ABCDEF0123456789ABCDEF")
+
+    /// The SHSH wrapping key iBoot derives: kdfConst encrypted under the UID.
+    static func wrappingKey() throws -> Data {
+        try AESCBC.crypt(kdfConst, iv: Data(count: 16), key: uidKey, decrypt: false)
+    }
 
     /// An img3's type tag ("illb", ...), as the header stores it reversed at 0x10.
     public static func type(of img3: Data) throws -> String {
@@ -39,7 +45,7 @@ public enum N72NOR {
         if let w = wrapTypes, !Set(w).isSubset(of: types) {
             throw FirmwareError(.internal, "SHSH wrap types must belong to the selected image set")
         }
-        let key = try AESCBC.crypt(kdfConst, iv: Data(count: 16), key: uidKey, decrypt: true)
+        let key = try wrappingKey()
         var off = start
         for t in types {
             guard var img = images[t].map({ [UInt8]($0) }) else {

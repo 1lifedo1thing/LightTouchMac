@@ -1,7 +1,7 @@
 #!/bin/bash
 # An archive to the release download, the command-line route (Organizer's is Distribute, then scripts/check-export):
 #
-#     scripts/release path/to/X.xcarchive [--dry-run]
+#     scripts/release path/to/X.xcarchive [--dry-run | --amore]
 #
 # 1. export the app for Developer ID (Configuration/ExportOptions.plist)   2. zip it   3. notarize the zip
 # (notarytool, keychain profile ltm-notary; on Invalid, print the log)   4. staple the app and validate the ticket
@@ -9,11 +9,15 @@
 # 6. the Release plan's static checks on the stapled app (as an export: Gatekeeper and the ticket too)
 # 7. the Release plan's boots: the built-in iPod, and a fresh `firmwarekit create` of one firmware per preparation
 #    route, each booted (ReleaseBootTests; its IPSWs from the app's cache, a missing one fails the release).
+# 8. with --amore, upload the stapled app to Amore as a draft (`amore release --draft`: a DMG, notarized and uploaded;
+#    it doesn't re-sign the app); publishing it updates the appcast Sparkle reads. Without it, the zip is for the
+#    GitHub release as before.
 # --dry-run skips 3 and 4 (and the export-only checks); LTM_RELEASE_SKIP_PREPARE=1 with --dry-run also skips 7's
 # prepare matrix. Run from a shell that sees the ltm-notary profile.
 set -euo pipefail
-ARCHIVE="${1:?usage: scripts/release path/to/X.xcarchive [--dry-run]}"
+ARCHIVE="${1:?usage: scripts/release path/to/X.xcarchive [--dry-run | --amore]}"
 DRY=0; [[ "${2:-}" == "--dry-run" ]] && DRY=1
+AMORE=0; [[ "${2:-}" == "--amore" ]] && AMORE=1
 SKIP_PREPARE="${LTM_RELEASE_SKIP_PREPARE:-0}"
 if [[ "$SKIP_PREPARE" == 1 ]] && (( ! DRY )); then
     echo "FAILED: LTM_RELEASE_SKIP_PREPARE=1 is for --dry-run only; a release runs the prepare matrix" >&2; exit 1
@@ -83,7 +87,12 @@ step "boots: the built-in iPod and the prepare matrix"
 [[ "$SKIP_PREPARE" == 1 ]] && echo "== prepare matrix: SKIPPED (LTM_RELEASE_SKIP_PREPARE=1, dry run)"
 release_tests boot ReleaseBootTests
 if (( ! DRY )); then
-    spctl -a -vv -t exec "$APP" 2>&1 | grep -q 'source=Notarized Developer ID' || fail "Gatekeeper: $(spctl -a -vv -t exec "$APP" 2>&1)"
+    GK=$(spctl -a -vv -t exec "$APP" 2>&1) || true  # read whole: grep -q closing the pipe early fails it under pipefail
+    [[ "$GK" == *'source=Notarized Developer ID'* ]] || fail "Gatekeeper: $GK"
+fi
+if (( AMORE )); then
+    step "Amore"
+    amore release "$APP" --draft --non-interactive || fail "amore release"
 fi
 
 echo "$ZIP"

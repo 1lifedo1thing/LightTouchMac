@@ -135,7 +135,11 @@ extension MainWindowController {
         perform([.running, .stopping].contains(host.row(for: entry).state) ? .stop : .start, for: entry)
     }
     @objc func downloadAndPrepare(_ sender: Any?) { selectedEntry.map { perform(.downloadAndPrepare, for: $0) } }
-    @objc func importIPSW(_ sender: Any?) { selectedEntry.map { perform(.importIPSW, for: $0) } }
+    /// The selected row's IPSW when it takes one, else any number of IPSWs and folders, matched by checksum.
+    @objc func importIPSW(_ sender: Any?) {
+        guard let entry = selectedEntry, canPerform(.importIPSW, for: entry) else { return chooseIPSWs() }
+        perform(.importIPSW, for: entry)
+    }
     @objc func cancelFirmwareJob(_ sender: Any?) { selectedEntry.map { perform(.cancel, for: $0) } }
     @objc func showDeviceInFinder(_ sender: Any?) { selectedEntry.map { perform(.showInFinder, for: $0) } }
     @objc func jailbreakDevice(_ sender: Any?) { selectedEntry.map { perform(.jailbreak, for: $0) } }
@@ -189,7 +193,20 @@ extension MainWindowController {
         panel.message = "Choose the IPSW for \(name(entry))."
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
-            self?.handOffIPSW(url, for: entry)
+            self?.handOffIPSWs([url], for: entry)
+        }
+    }
+
+    private func chooseIPSWs() {
+        guard let window else { return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "ipsw")].compactMap { $0 }
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.message = "Choose IPSWs, or folders that contain them."
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK else { return }
+            FirmwareJobs.shared.importIPSWs(panel.urls)
         }
     }
 
@@ -197,7 +214,8 @@ extension MainWindowController {
     /// an IPSW to the library (the catalog names its entry), an .ipa to the device on screen.
     func open(_ urls: [URL]) {
         showWindow(nil)
-        DroppedFiles.files(urls, .ipsw).forEach { handOffIPSW($0, for: nil) }
+        let ipsws = DroppedFiles.files(urls, .ipsw)
+        if !ipsws.isEmpty { handOffIPSWs(ipsws, for: nil) }
         let ipas = DroppedFiles.files(urls, .ipa)
         guard !ipas.isEmpty else { return }
         guard let deviceVC else {
@@ -210,8 +228,13 @@ extension MainWindowController {
         ipas.forEach(deviceVC.installDropped)
     }
 
-    func handOffIPSW(_ url: URL, for entry: FirmwareCatalog.Entry?) {
-        FirmwareJobs.shared.importIPSW(url, for: entry)
+    /// One IPSW for a row is that row's; anything else is matched by checksum, folders searched.
+    func handOffIPSWs(_ urls: [URL], for entry: FirmwareCatalog.Entry?) {
+        if let entry, urls.count == 1, !DroppedFiles.isFolder(urls[0]) {
+            FirmwareJobs.shared.importIPSW(urls[0], for: entry)
+        } else {
+            FirmwareJobs.shared.importIPSWs(urls)
+        }
     }
 
     /// Delete, or with `thenPrepare` delete and prepare the entry again (a base from an older recipe): the same question.

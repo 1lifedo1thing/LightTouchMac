@@ -4,7 +4,8 @@
 // The keys are the ones Setup itself writes on a walk that picks English, the region, Location Services off, no Wi-Fi,
 // a new device, no Apple ID or passcode, the terms and Don't Send: the data volume of each base diffed before and
 // after the sessions harness's walk (n81ap/k48ap 9B206, n90ap 10B329, n90ap 11D257). What the boot's other parts
-// write anyway (lockdown's zone and clock, it_prefs, caches) is left to them. Setup's region is the Mac's.
+// write anyway (lockdown's zone and clock, it_prefs, caches) is left to them. The language and region are
+// seedLanguage's, which every prepared device gets.
 
 import Foundation
 
@@ -73,30 +74,61 @@ extension SystemEdits {
         }
         return [
             (purpleBuddy, buddy), (purpleBuddyLocal, buddyLocal), (locationd, off), (locationdLocal, off),
-            (globalPreferences, ["AppleLocale": locale]), (dataArk, ark),
+            (dataArk, ark),
         ] + extra
     }
 
-    /// The Mac's language and region as Setup records them ("en", "en_GB"), from `locale`.
-    static func setupLanguage(_ locale: Locale = .autoupdatingCurrent) -> (language: String, locale: String) {
-        let language = locale.language.languageCode?.identifier ?? "en"
-        return (language, locale.region.map { "\(language)_\($0.identifier)" } ?? language)
+    /// The device's language: the first of `preferred` (BCP 47 tags) that `supported`, the firmware's own
+    /// AppleLanguages, has, matched as a bundle picks its localization ("zh-Hans-CN" to "zh-Hans", "pt-BR" to "pt",
+    /// "en-AU" to "en-GB" where the firmware has it), else English; with `region`, its AppleLocale ("fr_FR").
+    static func deviceLanguage(
+        supported: [String],
+        preferred: [String],
+        region: String?
+    ) -> (language: String, locale: String) {
+        let language = Bundle.preferredLocalizations(from: supported, forPreferences: preferred).first ?? "en"
+        let code = Locale(identifier: language).language.languageCode?.identifier ?? "en"
+        return (language, region.map { "\(code)_\($0)" } ?? code)
     }
 
-    /// Seeds `finishedSetup` into `skeleton` (/private/var), merged into the plists already there. The firmware's
-    /// language list gets the Mac's language first where the firmware has it, as Setup's language page does.
-    static func seedFinishedSetup(_ skeleton: URL, major: Int, locale: Locale = .autoupdatingCurrent) throws {
-        let (language, region) = setupLanguage(locale)
-        for (path, keys) in finishedSetup(major: major, language: language, locale: region) {
-            try seedPlist(skeleton.appendingPathComponent(path)) { d in
-                d.addEntries(from: keys)
-                if path == globalPreferences, var list = d["AppleLanguages"] as? [String],
-                    let i = list.firstIndex(of: language)
-                {
-                    list.insert(list.remove(at: i), at: 0)
-                    d["AppleLanguages"] = list
-                }
+    /// Sets the device's language and region (`deviceLanguage`, from `tag`, else the Mac's) in each user's
+    /// .GlobalPreferences under `skeleton` (/private/var) that lists the firmware's languages: the language moved
+    /// first, AppleLocale set; with `catalog`, the firmware's keyboards, AppleKeyboards (KeyboardCatalog.keyboards)
+    /// for the language and `keyboards`, Mac input source IDs, else the Mac's enabled ones. Nil where the firmware
+    /// has no such list.
+    @discardableResult
+    static func seedLanguage(
+        _ skeleton: URL,
+        tag: String?,
+        keyboards: [String]? = nil,
+        catalog: KeyboardCatalog? = nil
+    ) throws -> (language: String, locale: String, keyboards: [String])? {
+        let preferred = tag.map { [$0] } ?? Locale.preferredLanguages
+        let region = tag.flatMap { Locale(identifier: $0).region?.identifier } ?? Locale.current.region?.identifier
+        let mac = catalog == nil ? [] : macKeyboards(keyboards)
+        var chosen: (language: String, locale: String, keyboards: [String])?
+        for path in [globalPreferences, "root/Library/Preferences/.GlobalPreferences.plist"] {
+            let url = skeleton.appendingPathComponent(path)
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            try rewritePlist(url) { d in
+                guard var list = d["AppleLanguages"] as? [String] else { return }
+                let pick = deviceLanguage(supported: list, preferred: preferred, region: region)
+                list.removeAll { $0 == pick.language }
+                d["AppleLanguages"] = [pick.language] + list
+                d["AppleLocale"] = pick.locale
+                let kb = catalog?.keyboards(language: pick.language, locale: pick.locale, mac: mac) ?? []
+                if !kb.isEmpty { d["AppleKeyboards"] = kb }
+                chosen = chosen ?? (pick.language, pick.locale, kb)
             }
+        }
+        return chosen
+    }
+
+    /// Seeds `finishedSetup` into `skeleton` (/private/var), merged into the plists already there, as Setup's walk in
+    /// `language` and `locale` (seedLanguage's) leaves it.
+    static func seedFinishedSetup(_ skeleton: URL, major: Int, language: String, locale: String) throws {
+        for (path, keys) in finishedSetup(major: major, language: language, locale: locale) {
+            try seedPlist(skeleton.appendingPathComponent(path)) { $0.addEntries(from: keys) }
         }
     }
 }

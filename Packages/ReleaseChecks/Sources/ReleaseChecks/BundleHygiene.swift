@@ -39,6 +39,8 @@ public enum BundleHygiene {
             ["libimobiledevice", "openssl", "libimobiledevice-glue", "libusbmuxd", "libtatsu"]
         ),
         ("Contents/Frameworks/libplist-2.0*.dylib", ["libplist"]),
+        // a Swift package (licensed through Package.resolved), with its helpers and XPC services
+        ("Contents/Frameworks/Sparkle.framework/*", []),
         // the guest tools: qemu-ios contrib, built for the guest
         ("Contents/Resources/Guest/guest.aar/guest-tools/*", ["qemu"]),
         ("Contents/Resources/Guest/guest.aar/tools/*", ["qemu"]),

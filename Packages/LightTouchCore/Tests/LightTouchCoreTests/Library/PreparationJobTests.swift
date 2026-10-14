@@ -75,6 +75,7 @@ import Testing
             ("kernelcache at the path iBoot loads", "the way it starts up isn’t supported"),
             ("boot-arg rd", "the way it starts up isn’t supported"),
             ("libappsync.dylib (in installd)", "installing apps on it isn’t supported"),
+            ("iPhone OS 1.x boot chain", "only iPhone OS 1 runs on this device"),
             ("it_boot (guest-package loader)", "the guest tools don’t run on it"),
         ] {
             #expect(

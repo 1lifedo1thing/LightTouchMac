@@ -141,6 +141,76 @@ struct IPSWStoreTests {
             #expect(try IPSWStore.sha1(of: imported.ipsw) == sha && fm.fileExists(atPath: known.path))
             #expect(try fresh.importIPSW(known, catalog: pinned).ipsw == fresh.imported(sha))
             #expect(try fm.contentsOfDirectory(atPath: fresh.imports.path) == ["\(sha).ipsw"], "no temp left")
+            #expect(
+                try fm.attributesOfItem(atPath: fresh.imported(sha).path)[.type] as? FileAttributeType == .typeRegular,
+                "the same volume: a clone, not a reference"
+            )
+        }
+    }
+
+    /// An IPSW on another volume (a disk image mounted for the test) isn't copied: State/IPSW holds a reference that
+    /// reads it in place, while it's there unchanged. A changed or deleted file drops the reference, and Remove IPSW
+    /// takes the reference, never the file.
+    @Test func importFromAnotherVolumeIsReferenced() throws {
+        func diskutil(_ arguments: [String]) throws {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/sbin/diskutil")
+            process.arguments = arguments
+            process.standardOutput = FileHandle.nullDevice
+            try process.run()
+            process.waitUntilExit()
+            try #require(process.terminationStatus == 0, "diskutil \(arguments.joined(separator: " "))")
+        }
+        try withTemporaryDirectory { tmp in
+            let image = tmp.appendingPathComponent("other.dmg")
+            let volume = tmp.appendingPathComponent("Other")
+            try diskutil(["image", "create", "blank", "--size", "20m", "--fs", "APFS", image.path])
+            try diskutil(["image", "attach", "--nobrowse", "--mountPoint", volume.path, image.path])
+            defer { try? diskutil(["eject", volume.path]) }
+            let known = volume.appendingPathComponent("known.ipsw")
+            try LibraryFixtures.restoreZip(known, product: "iPad1,1", build: "7B367")
+            let original = try Data(contentsOf: known)
+            var pinned = Self.catalog
+            let sha = try IPSWStore.sha1(of: known)
+            pinned.entries[pinned.entries.firstIndex { $0.id == iPad32.id }!].source.sha1 = sha
+            let store = store(tmp)
+            try StorageLocations.privateDirectory(store.imports)
+            #expect(!IPSWStore.sameVolume(known, store.imports))
+
+            func importKnown() throws {
+                let imported = try store.importIPSW(known, catalog: pinned)
+                #expect(imported.entry.id == iPad32.id && imported.ipsw == store.imported(sha))
+                #expect(store.referenced(sha)?.path == known.path, "a reference to the file")
+                #expect(try store.existing(sha) == store.imported(sha) && IPSWStore.sha1(of: imported.ipsw) == sha)
+                #expect(try fm.contentsOfDirectory(atPath: store.imports.path) == ["\(sha).ipsw"])
+                #expect(
+                    try fm.attributesOfItem(atPath: store.imported(sha).path)[.type] as? FileAttributeType
+                        == .typeSymbolicLink,
+                    "nothing copied"
+                )
+            }
+            try importKnown()
+            #expect(try store.importIPSW(known, catalog: pinned).ipsw == store.imported(sha), "a second import dedupes")
+
+            // Removed: the reference goes, the file stays.
+            try store.remove(sha)
+            #expect(store.existing(sha) == nil && store.referenced(sha) == nil && fm.fileExists(atPath: known.path))
+
+            // Changed: no longer the IPSW that was hashed; the reference goes, the file stays.
+            try importKnown()
+            let handle = try FileHandle(forWritingTo: known)
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data([0]))
+            try handle.close()
+            #expect(store.existing(sha) == nil, "a changed file isn't used")
+            #expect(store.referenced(sha) == nil && fm.fileExists(atPath: known.path), "the reference is dropped")
+
+            // Deleted: the entry isn't downloaded anymore.
+            try original.write(to: known)
+            try importKnown()
+            try fm.removeItem(at: known)
+            #expect(store.existing(sha) == nil && store.referenced(sha) == nil)
+            #expect(try fm.contentsOfDirectory(atPath: store.imports.path).isEmpty)
         }
     }
 

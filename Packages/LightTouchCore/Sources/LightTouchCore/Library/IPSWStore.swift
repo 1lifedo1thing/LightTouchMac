@@ -1,6 +1,8 @@
 // Where IPSWs live, and the checks every one passes before it is used:
 // downloads in Caches/<bundle>/IPSW, imports
 // in State/IPSW, both named by sha1, so either one satisfies an entry.
+// An import from another volume isn't copied: State/IPSW holds a symbolic
+// link to the user's file instead, read in place.
 
 import CryptoKit
 import FirmwareSchema
@@ -12,6 +14,8 @@ public nonisolated enum FirmwareError: LocalizedError, Equatable {
     /// The IPSW's ProductType and build are a catalog entry's, its bytes aren't.
     case wrongFile(model: String, version: String)
     case unsupported
+    /// Several files dropped or chosen, and none an IPSW the catalog knows.
+    case noneSupported
     case failed(String)
 
     public var errorDescription: String? {
@@ -22,6 +26,7 @@ public nonisolated enum FirmwareError: LocalizedError, Equatable {
             "Not enough disk space: this needs \(format(required)), and \(format(available)) is available."
         case .wrongFile(let model, let version): "This isn’t the IPSW Light Touch knows for \(model) iOS \(version)."
         case .unsupported: "This IPSW isn’t supported."
+        case .noneSupported: "None of these files is a supported IPSW."
         case .failed(let message): message
         }
     }
@@ -51,9 +56,40 @@ public nonisolated struct IPSWStore: Sendable {
     public func resumeData(_ sha1: String) -> URL { downloads.appendingPathComponent("\(sha1).resume") }
     public func imported(_ sha1: String) -> URL { imports.appendingPathComponent("\(sha1).ipsw") }
 
-    /// The IPSW with this sha1 if either store has it.
+    /// The IPSW with this sha1 if either store has it. A referenced IPSW counts only while its file is there with
+    /// the size and modification date it was hashed at; otherwise the reference goes, and the entry isn't downloaded.
     public func existing(_ sha1: String) -> URL? {
-        [download(sha1), imported(sha1)].first { FileManager.default.fileExists(atPath: $0.path) }
+        let fm = FileManager.default
+        if fm.fileExists(atPath: download(sha1).path) { return download(sha1) }
+        let link = imported(sha1)
+        guard let file = referenced(sha1) else { return fm.fileExists(atPath: link.path) ? link : nil }
+        if let stamp = Self.stamp(file), stamp == Self.recordedStamp(link) { return link }
+        try? fm.removeItem(at: link)
+        return nil
+    }
+
+    /// The user's file that State/IPSW/<sha1>.ipsw refers to, if it is a reference (whether or not it's still there).
+    public func referenced(_ sha1: String) -> URL? {
+        (try? FileManager.default.destinationOfSymbolicLink(atPath: imported(sha1).path)).map {
+            URL(fileURLWithPath: $0)
+        }
+    }
+
+    /// A reference's record of its file: size and modification date, an extended attribute on the link itself.
+    private static let stampAttribute = "\(StorageLocations.bundleIdentifier).ipsw-stamp"
+
+    private static func stamp(_ file: URL) -> String? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
+            attributes[.type] as? FileAttributeType == .typeRegular,
+            let size = attributes[.size] as? Int64, let date = attributes[.modificationDate] as? Date
+        else { return nil }
+        return "\(size) \(date.timeIntervalSince1970)"
+    }
+
+    private static func recordedStamp(_ link: URL) -> String? {
+        var buffer = [UInt8](repeating: 0, count: 128)
+        let count = getxattr(link.path, stampAttribute, &buffer, buffer.count, 0, XATTR_NOFOLLOW)
+        return count > 0 ? String(decoding: buffer.prefix(count), as: UTF8.self) : nil
     }
 
     // MARK: - Checks
@@ -187,7 +223,8 @@ public nonisolated struct IPSWStore: Sendable {
     }
 
     /// Hashes a user's IPSW, matches it to the catalog and clones it into
-    /// State/IPSW (APFS clonefile on the same volume, a copy otherwise).
+    /// State/IPSW (APFS clonefile on the same volume); from another volume it
+    /// records a reference instead of copying (`existing` checks it).
     /// Offline: nothing here touches the network. Cancelling its task stops it,
     /// and nothing it copied is kept.
     public func importIPSW(
@@ -195,19 +232,27 @@ public nonisolated struct IPSWStore: Sendable {
         catalog: FirmwareCatalog,
         progress: ((Double) -> Void)? = nil
     ) throws -> (entry: FirmwareCatalog.Entry, ipsw: URL) {
+        // A reference names the file itself, not a link to it.
+        let url = url.resolvingSymlinksInPath()
+        // Taken before hashing: a file changed while it's read doesn't match.
+        let stamp = Self.stamp(url)
         let sha1 = try Self.sha1(of: url, progress: progress)
         let entry = try Self.match(sha1: sha1, restore: Self.restoreInfo(url), in: catalog)
         if let existing = existing(sha1) { return (entry, existing) }
         try StorageLocations.privateDirectory(imports)
         StorageLocations.excludeFromBackup(imports)
-        // Another volume means a full copy, not a clone.
-        if !Self.sameVolume(url, imports) {
-            try Self.checkSpace(
-                (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0,
-                at: imports
-            )
-        }
         let destination = imported(sha1)
+        if !Self.sameVolume(url, imports), let stamp {
+            try? FileManager.default.removeItem(at: destination)
+            try FileManager.default.createSymbolicLink(at: destination, withDestinationURL: url.absoluteURL)
+            guard setxattr(destination.path, Self.stampAttribute, stamp, stamp.utf8.count, 0, XATTR_NOFOLLOW) == 0
+            else {
+                let reason = String(cString: strerror(errno))
+                try? FileManager.default.removeItem(at: destination)
+                throw FirmwareError.failed(reason)
+            }
+            return (entry, destination)
+        }
         let temporary = imports.appendingPathComponent(".\(sha1).importing")
         try? FileManager.default.removeItem(at: temporary)
         try FileManager.default.copyItem(at: url, to: temporary)
@@ -224,11 +269,11 @@ public nonisolated struct IPSWStore: Sendable {
     /// Posted after Remove IPSW: rows that said Downloaded read the store again.
     public static let didChangeNotification = Notification.Name("IPSWStoreDidChange")
 
-    /// Remove IPSW: the download, its .partial and .resume, and the import.
+    /// Remove IPSW: the download, its .partial and .resume, and the import (a reference only, never the user's file).
     public func remove(_ sha1: String) throws {
         defer { NotificationCenter.default.post(name: Self.didChangeNotification, object: nil) }
         for url in [download(sha1), partial(sha1), resumeData(sha1), imported(sha1)]
-        where FileManager.default.fileExists(atPath: url.path) {
+        where (try? FileManager.default.attributesOfItem(atPath: url.path)) != nil {
             try FileManager.default.removeItem(at: url)
         }
     }

@@ -35,6 +35,22 @@ import Testing
         )
     }
 
+    /// 2.0 and later (IMG3 firmware) are refused by the board check, naming the piece, before the IPSW is read; 1.x passes.
+    @Test func refusesIMG3Firmware() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        func check(_ id: String) throws {
+            let o = Preparer.Options(entry: try Oracle.entry(id), ipsw: dir, out: dir, helper: nil, guestTools: dir)
+            try N45Board(o).check(Recipe.Context(o, recipe: o.entry.recipe!, emit: { _ in }))
+        }
+        for id in ["m68ap-5A345", "m68ap-7E18", "n45ap-5A347", "n45ap-7E18"] {
+            let error = #expect(throws: FirmwareError.self, "\(id)") { try check(id) }
+            #expect(error?.piece == N45Board.onePiece, "\(id)")
+        }
+        for id in ["m68ap-1A543a", "m68ap-4A102", "n45ap-4A102"] { try check(id) }
+    }
+
     /// iBoot-204 fills arm-io/sdio's local-mac-address only from nvram wifiaddr (its SysCfg fallback returns 0):
     /// the NOR's nvram carries the identity's Wi-Fi MAC, and none when the identity has none (devos50's set).
     @Test func nvramCarriesTheWiFiMAC() throws {
@@ -319,10 +335,8 @@ import Testing
                 // the seed's loader proof and the LayerKit switches' readers are on the record
                 #expect(log.fits.contains { $0.piece.hasPrefix("it_boot") && $0.fits })
                 #expect(
-                    log.fits.contains {
-                        $0.piece
-                            == "SpringBoard environment (\(gles ? "LK_ENABLE_OGL, LK_AUTO_ENABLE_OGL, " : "")LK_ENABLE_MBX2D)"
-                    }
+                    log.fits.contains { $0.piece == "SpringBoard environment (LK_ENABLE_OGL, LK_AUTO_ENABLE_OGL)" }
+                        == gles
                 )
                 #expect(record.family == "n45-ios1" && record.hooks == (gles ? ["/" + N72Board.openGLES] : []))
                 #expect(record.itpackSHA256 == (try Oracle.sha256(file: itpack)))
@@ -339,7 +353,7 @@ import Testing
                 }
                 #expect(
                     env(a)["LK_ENABLE_OGL"] == (gles ? "1" : nil) && env(a)["LK_AUTO_ENABLE_OGL"] == (gles ? "0" : nil)
-                        && env(a)["LK_ENABLE_MBX2D"] == "0"
+                        && env(a)["LK_ENABLE_MBX2D"] == nil
                 )
                 let hooked = try Data(contentsOf: a.appendingPathComponent(N72Board.openGLES))
                 let baked = a.appendingPathComponent(N72Board.openGLES + ".baked")

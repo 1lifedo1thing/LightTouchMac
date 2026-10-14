@@ -40,6 +40,13 @@ public enum FirmwareCommand {
         @Option(help: "recipe.keybag_ramdisk_from's entry.") public var siblingEntry: String? = nil
         @Option public var siblingIpsw: String? = nil
         @Option public var stopAfter: Stop? = nil
+        @Option(help: "The device's language and region, as a BCP 47 tag (fr-FR) (default: the Mac's).")
+        public var language: String? = nil
+        @Option(
+            help:
+                "The device's keyboards besides its language's, as Mac input source IDs (default: the Mac's enabled ones)."
+        )
+        public var keyboards: String? = nil
         @Flag(help: "Adds the GL fixture job to a test device.") public var glTest = false
         @Flag(help: "Seeds Setup Assistant's finished state (iOS 5 and later): the device starts at the Home screen.")
         public var skipSetup = false
@@ -57,7 +64,9 @@ public enum FirmwareCommand {
             guestTools: URL? = nil,
             sibling: (entry: URL, ipsw: URL)? = nil,
             skipSetup: Bool = false,
-            jailbreak: Bool = false
+            jailbreak: Bool = false,
+            language: String? = nil,
+            keyboards: String? = nil
         ) {
             self.entry = entry.path
             self.ipsw = ipsw.path
@@ -74,6 +83,8 @@ public enum FirmwareCommand {
             glTest = false
             self.skipSetup = skipSetup
             self.jailbreak = jailbreak
+            self.language = language
+            self.keyboards = keyboards
         }
 
         public func validate() throws {
@@ -88,6 +99,7 @@ public enum FirmwareCommand {
                     "entry": entry, "catalog": catalog, "id": id, "ipsw": ipsw, "out": out, "seed": seed,
                     "helper": helper, "cache": cache, "guest-tools": guestTools, "sibling-entry": siblingEntry,
                     "sibling-ipsw": siblingIpsw, "stop-after": stopAfter?.rawValue,
+                    "language": language, "keyboards": keyboards,
                 ]) + (glTest ? ["--gl-test"] : []) + (skipSetup ? ["--skip-setup"] : [])
                 + (jailbreak ? ["--jailbreak"] : [])
         }

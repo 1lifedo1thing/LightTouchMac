@@ -48,7 +48,7 @@ extension DisplayView {
         guard dropOperation(sender) == .copy else { return false }
         let ipsws = dropped(sender, .ipsw)
         if sender.draggingSource == nil, let onDropIPSW, !ipsws.isEmpty {
-            ipsws.forEach(onDropIPSW)
+            onDropIPSW(ipsws)
             return true
         }
         let catalog = droppedCatalogApps(sender)
