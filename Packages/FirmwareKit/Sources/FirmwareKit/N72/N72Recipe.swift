@@ -432,8 +432,13 @@ final class N72Board: Board {
         for (name, changes) in Self.soundDefaults {
             try SystemEdits.seedPlist(at(Self.prefs + "/" + name)) { $0.addEntries(from: changes) }
         }
-        if let l = try SystemEdits.seedLanguage(at("private/var"), tag: c.o.language) {
-            report["language"] = "\(l.language), region \(l.locale)"
+        if let l = try SystemEdits.seedLanguage(
+            at("private/var"),
+            tag: c.o.language,
+            keyboards: c.o.keyboards,
+            catalog: SystemEdits.KeyboardCatalog(at("System/Library/TextInput"))
+        ) {
+            report["language"] = "\(l.language), region \(l.locale), keyboards \(l.keyboards)"
         }
         let media = at("private/var/mobile/Media")
         if tools {

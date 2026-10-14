@@ -65,6 +65,8 @@ public enum Preparer {
         public var stopAfterVolumes = false
         /// The device's language (`create --language`, SystemEdits.Options.language); nil: the Mac's.
         public var language: String?
+        /// The device's keyboards (`create --keyboards`, SystemEdits.Options.keyboards); nil: the Mac's.
+        public var keyboards: [String]?
         public init(
             entry: FirmwareEntry,
             ipsw: URL,

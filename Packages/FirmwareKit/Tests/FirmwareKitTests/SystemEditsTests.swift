@@ -131,7 +131,7 @@ enum K48Oracle {
             )
         }
         #expect(try options(#""skip_setup": true"#).skipSetup && !options("").skipSetup, "off unless asked for")
-        let (language, locale) = try #require(try SystemEdits.seedLanguage(skeleton, tag: "fr-CA"))
+        let (language, locale, _) = try #require(try SystemEdits.seedLanguage(skeleton, tag: "fr-CA"))
         try SystemEdits.seedFinishedSetup(skeleton, major: major, language: language, locale: locale)
         func plist(_ path: String) -> [String: Any] {
             (try? PropertyListSerialization.propertyList(
@@ -246,6 +246,129 @@ enum K48Oracle {
         )
         #expect(g["AppleLanguages"] as? [String] == ["de"] + v421.filter { $0 != "de" })
         #expect(g["AppleLocale"] as? String == "de_DE")
+    }
+
+    /// AppleKeyboards: the device language's keyboard first, then the Mac's keyboards as the firmware names them (its
+    /// TextInput bundles), named as its own defaults name them, and nothing it lacks.
+    @Test func keyboardsAreTheLanguagesThenTheMacsTheFirmwareHas() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("ltm-kb-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: root) }
+        /// A TextInput directory of `bundles` (name: supported modes) and 5.x+'s language defaults.
+        func catalog(
+            _ name: String,
+            _ bundles: [String: [String: [String: Any]]],
+            defaults: [String: [String]] = [:]
+        ) throws -> SystemEdits.KeyboardCatalog {
+            let dir = root.appendingPathComponent(name)
+            for (bundle, modes) in bundles {
+                let b = dir.appendingPathComponent("TextInput_\(bundle).bundle")
+                try fm.createDirectory(at: b, withIntermediateDirectories: true)
+                let info: [String: Any] = [
+                    "UIKeyboardSupportedInputModes": modes,
+                    "UIKeyboardDefaultLanguageInputModes": defaults.filter { $0.key.hasPrefix(bundle) },
+                ]
+                try PropertyListSerialization.data(fromPropertyList: info, format: .binary, options: 0)
+                    .write(to: b.appendingPathComponent("Info.plist"))
+            }
+            return try #require(SystemEdits.KeyboardCatalog(dir))
+        }
+        // 3.1.3's shape: layout classes, two QWERTY variants of en_US.
+        func layout(_ c: String) -> [String: Any] { ["UIKeyboardLayoutClass": ["Portrait": c, "Landscape": c + "L"]] }
+        let v313 = try catalog(
+            "313",
+            [
+                "en": ["en_GB": layout("QWERTY"), "en_US-BigBear": layout("QWERTY"), "en_US-Zephyr": layout("QWERTY")],
+                "fr": ["fr_CA": layout("QWERTY"), "fr_CH": layout("QWERTY"), "fr_FR": layout("AZERTY")],
+                "ja": ["ja_JP-Kana": layout("Japanese3x3"), "ja_JP-Romaji": layout("QWERTY_ja_JP")],
+                "zh": ["zh_Hans-HWR": layout("HWR"), "zh_Hans-Pinyin": layout("Pinyin"), "zh_Hant-HWR": layout("HWR")],
+                "emoji": ["emoji": layout("Emoji")],
+            ]
+        )
+        // 7.1.2's shape: hardware and software layouts, and the language defaults.
+        func hwsw(_ sw: [String], _ hw: [String] = [], _ hardware: String? = nil) -> [String: Any] {
+            var m: [String: Any] = ["SWLayouts": sw]
+            if !hw.isEmpty { m["HWLayouts"] = hw }
+            if let hardware { m["Hardware"] = ["Layout": hardware, "USBCountry": 8] }
+            return m
+        }
+        let v712 = try catalog(
+            "712",
+            [
+                "en": [
+                    "en_US": hwsw(["QWERTY", "AZERTY"], ["US", "British", "French"], "US"),
+                    "en_GB": hwsw(["QWERTY"], ["British", "US"], "British"),
+                ],
+                "fr": [
+                    "fr_FR": hwsw(["AZERTY-French", "AZERTY"], ["French", "French - numerical", "US"], "French"),
+                    "fr_CA": hwsw(["QWERTY-Accents"], ["Canadian - CSA", "French", "US"], "Canadian - CSA"),
+                ],
+                "ja": [
+                    "ja_JP": hwsw(["Kana", "Kana-Flick"]), "ja_JP-Kana": hwsw(["Kana"], ["US", "KANA"]),
+                    "ja_JP-Romaji": hwsw(["QWERTY-Japanese"], ["US", "French"], "US"),
+                ],
+                "zh": ["zh_Hans-HWR": hwsw(["HWR"]), "zh_Hans-Pinyin": hwsw(["Pinyin"], ["US"], "US")],
+                "emoji": ["emoji": hwsw(["Emoji"])],
+            ],
+            defaults: [
+                "en": ["en_US"], "en_GB": ["en_GB"], "fr_FR": ["fr_FR"],
+                "ja": ["ja_JP-Kana", "ja_JP-Romaji", "emoji", "en_US"],
+            ]
+        )
+        typealias K = SystemEdits.MacKeyboard
+        let french = K(id: "com.apple.keylayout.French", languages: ["fr", "acf"], layout: true)
+        let swissFrench = K(id: "com.apple.keylayout.SwissFrench", languages: ["fr"], layout: true)
+        let us = K(id: "com.apple.keylayout.US", languages: ["en", "fr"], layout: true)
+        let british = K(id: "com.apple.keylayout.British", languages: ["en"], layout: true)
+        let kana = K(id: "com.apple.inputmethod.Kotoeri.KanaTyping.Japanese", languages: ["ja"], name: "Hiragana")
+        let romaji = K(id: "com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese.Katakana", languages: ["ja"])
+        let pinyin = K(id: "com.apple.inputmethod.SCIM.ITABC", languages: ["zh-Hans"], name: "Pinyin - Simplified")
+        let korean = K(id: "com.apple.inputmethod.Korean.2SetKorean", languages: ["ko"], name: "2-Set Korean")
+        let emoji = K(id: SystemEdits.emojiPalette, languages: ["en"])
+
+        #expect(
+            v313.keyboards(language: "fr", locale: "fr_FR", mac: [french, kana, us, korean, pinyin, emoji])
+                == ["fr_FR", "ja_JP-Kana", "en_US", "zh_Hans-Pinyin", "emoji"]
+        )
+        #expect(
+            v313.keyboards(language: "ja", locale: "ja_JP", mac: [romaji, us]) == [
+                "ja_JP-Kana", "ja_JP-Romaji", "en_US",
+            ]
+        )
+        #expect(
+            v313.keyboards(language: "en", locale: "en_US", mac: []) == ["en_US"],
+            "the built-in iPod: English only"
+        )
+        #expect(v313.keyboards(language: "fr", locale: "fr_CA", mac: []) == ["fr_CA"])
+        #expect(
+            v712.keyboards(language: "fr", locale: "fr_FR", mac: [french, kana, us])
+                == ["fr_FR@hw=French", "ja_JP-Kana", "en_US@hw=US"]
+        )
+        #expect(
+            v712.keyboards(language: "en", locale: "en_US", mac: [british, us, pinyin, emoji, korean])
+                == ["en_US@hw=US", "en_GB@hw=British", "zh_Hans-Pinyin", "emoji"]
+        )
+        #expect(
+            v712.keyboards(language: "ja", locale: "ja_JP", mac: [french])
+                == ["ja_JP-Kana", "ja_JP-Romaji", "emoji", "en_US", "fr_FR@hw=French"]
+        )
+        // A Mac layout the keyboard does not list as a hardware layout: the bare keyboard, its own.
+        #expect(v712.keyboards(language: "en", locale: "en_US", mac: [swissFrench]) == ["en_US", "fr_FR"])
+
+        // seedLanguage writes them beside the language, from the explicit keyboards (none here: the language's own).
+        let skeleton = root.appendingPathComponent("var")
+        let global = skeleton.appendingPathComponent(SystemEdits.globalPreferences)
+        try fm.createDirectory(at: global.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try PropertyListSerialization.data(
+            fromPropertyList: ["AppleLanguages": ["en", "fr", "ja"], "AppleLocale": "en_US"],
+            format: .binary,
+            options: 0
+        ).write(to: global)
+        let seeded = try #require(try SystemEdits.seedLanguage(skeleton, tag: "ja-JP", keyboards: [], catalog: v712))
+        let g = try #require(
+            try PropertyListSerialization.propertyList(from: Data(contentsOf: global), format: nil) as? [String: Any]
+        )
+        #expect(g["AppleKeyboards"] as? [String] == seeded.keyboards && seeded.keyboards.first == "ja_JP-Kana")
     }
 
     @Test func plistEdits() throws {

@@ -352,8 +352,8 @@ public struct Vendor {
                 "--ipsw", ipsw.path, "--out", device.appendingPathComponent("out").path, "--seed", Self.seed,
                 "--cache", device.appendingPathComponent("cache").path, "--guest-tools", guestTools.path,
                 "--helper", stage.appendingPathComponent("MacOS/LightTouchDevice").path,
-                // The firmware's own language and region, whatever the building Mac's.
-                "--language", "en-US",
+                // The firmware's own language, region and keyboard, whatever the building Mac's.
+                "--language", "en-US", "--keyboards", "",
             ],
             log: log,
             environment: clean

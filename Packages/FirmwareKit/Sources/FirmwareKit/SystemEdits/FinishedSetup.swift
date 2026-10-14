@@ -93,12 +93,20 @@ extension SystemEdits {
 
     /// Sets the device's language and region (`deviceLanguage`, from `tag`, else the Mac's) in each user's
     /// .GlobalPreferences under `skeleton` (/private/var) that lists the firmware's languages: the language moved
-    /// first, AppleLocale set. Nil where the firmware has no such list.
+    /// first, AppleLocale set; with `catalog`, the firmware's keyboards, AppleKeyboards (KeyboardCatalog.keyboards)
+    /// for the language and `keyboards`, Mac input source IDs, else the Mac's enabled ones. Nil where the firmware
+    /// has no such list.
     @discardableResult
-    static func seedLanguage(_ skeleton: URL, tag: String?) throws -> (language: String, locale: String)? {
+    static func seedLanguage(
+        _ skeleton: URL,
+        tag: String?,
+        keyboards: [String]? = nil,
+        catalog: KeyboardCatalog? = nil
+    ) throws -> (language: String, locale: String, keyboards: [String])? {
         let preferred = tag.map { [$0] } ?? Locale.preferredLanguages
         let region = tag.flatMap { Locale(identifier: $0).region?.identifier } ?? Locale.current.region?.identifier
-        var chosen: (language: String, locale: String)?
+        let mac = catalog == nil ? [] : macKeyboards(keyboards)
+        var chosen: (language: String, locale: String, keyboards: [String])?
         for path in [globalPreferences, "root/Library/Preferences/.GlobalPreferences.plist"] {
             let url = skeleton.appendingPathComponent(path)
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
@@ -108,7 +116,9 @@ extension SystemEdits {
                 list.removeAll { $0 == pick.language }
                 d["AppleLanguages"] = [pick.language] + list
                 d["AppleLocale"] = pick.locale
-                chosen = chosen ?? pick
+                let kb = catalog?.keyboards(language: pick.language, locale: pick.locale, mac: mac) ?? []
+                if !kb.isEmpty { d["AppleKeyboards"] = kb }
+                chosen = chosen ?? (pick.language, pick.locale, kb)
             }
         }
         return chosen

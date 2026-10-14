@@ -343,6 +343,10 @@ func single(_ args: SingleCheck) -> Never {
                 + "\(seen.string("locale") ?? "?") (expected \(language) \(expectedLocale))"
         )
     }
+    if let keyboards = args.keyboards {
+        let seen = events.one("language", ["device": d]).string("keyboards") ?? "?"
+        r.check(seen == keyboards, "\(d): the keyboards it was prepared with: \(seen) (expected \(keyboards))")
+    }
     if args.skipSetup {
         // Prepared past Setup: no Setup page on the first boot (a phone's lock screen slide is the only step the
         // walker may take), and Setup's answers as FirmwareKit seeded them: the Mac's region, Location Services off.
