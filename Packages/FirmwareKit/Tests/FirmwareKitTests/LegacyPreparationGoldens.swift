@@ -62,7 +62,8 @@ enum LegacyPreparationGoldens {
         "3 255 43d923800461745b644ebabdde371a25639269a1b851032a88191f8c50af64e6",
         "3 524161 5b786fda3624538a14788e8b3bf408f8d7b40a55266ba12bcabbfedad1506210",
     ]
-    static let n72NOR = "26d64e0a9d0238c1e3e243832c9a5cbad5d9ab0c54c888a2571dda47dbf24f72"
+    /// SHSH wrapped under the UID encrypt of N72NOR.kdfConst, as iBoot derives it (it was the decrypt before).
+    static let n72NOR = "35c8a2706659767f0676d438a319157de362c6e49deff9a7e57ab86147b25546"
     static let k48: [String: [String: String]] = [
         "k48ap-7B500": [
             "iBoot.bin": "414d1e6da26b62a507e5961d49768ab7b831842c474053e1bab09b8638ae72dd",

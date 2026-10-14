@@ -48,8 +48,10 @@ final class N72Board: Board {
         (501, "private/var/mobile/Media/.lt-guest-tools-v2"), (501, "private/var/mobile/Media/.lt-guest-tools-v3"),
     ]
 
-    /// The -machine options every device this recipe builds boots with (device.lock.json "machine").
-    public static let machine = ["aes-uid": "engine"]
+    /// The -machine options every device this recipe builds boots with (device.lock.json "machine"). hardware: the
+    /// AES mode register reads back, so iBoot's UID derivation encrypts, as N72NOR wraps for; devices made with
+    /// engine (a decrypt-wrapped NOR) keep booting with the engine their locks name.
+    public static let machine = ["aes-uid": "hardware"]
 
     let arch = "armv6", seedPrefix = "ipod2g"
     let bootStep = "Writing the identity, NOR and boot files", volumesStep = "Building the system volume",
