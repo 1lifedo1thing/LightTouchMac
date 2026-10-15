@@ -165,6 +165,21 @@ final class DeviceModelView: NSView {
                     if profile == .n81 && (name == "glass" || name.contains("inactive_LCD_perimeter")) {
                         finish.specular = .init(floatLiteral: 1)
                     }
+                    // Revision 7's camera cover (N81 front and rear, N88 rear) is a specular-workflow window that
+                    // RealityKit renders as a gray haze over the barrel and lens; Apple's camera reads through clear
+                    // glass. RealityKit keeps a transparent material's reflection, so it is turned down as well.
+                    if name.contains("protective_window") {
+                        finish.baseColor = .init(tint: .black)
+                        finish.metallic = .init(floatLiteral: 0)
+                        finish.roughness = .init(floatLiteral: 0.01)
+                        finish.specular = .init(floatLiteral: 0.04)
+                        finish.blending = .transparent(opacity: .init(floatLiteral: 0))
+                    }
+                    // The coated lens under it: a blue-violet coating that catches the studio's card as a glint.
+                    if name.contains("multilayer_coated_lens") {
+                        finish.baseColor = .init(tint: NSColor(srgbRed: 0.18, green: 0.25, blue: 0.5, alpha: 1))
+                        finish.roughness = .init(floatLiteral: 0.02)
+                    }
                     if name.contains("Concave") {
                         finish.specular = .init(floatLiteral: 0.5)
                         finish.roughness = .init(floatLiteral: 0.18)
