@@ -41,5 +41,7 @@
 	<true/>
 	<key>SUPublicEDKey</key>
 	<string>hfdPdGOiDT3Mj4h+5nJ8mxSLCmjDOEh5u5Pi+bCMjKw=</string>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
 </dict>
 </plist>
