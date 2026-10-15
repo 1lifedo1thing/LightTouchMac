@@ -156,6 +156,19 @@ public enum Board: String, Sendable, CaseIterable, Codable {
     }
 
     public var soc: SoC { facts.soc }
+
+    /// The emulator globals for a panel refreshing at `hz` (Settings ▸ General's experimental 120 Hz), none at the
+    /// devices' 60: the panel's frame interrupt, which the guest's compositor draws on, and the touch reports with
+    /// it (the 1G's digitizer model has no rate to raise).
+    public func refreshGlobals(_ hz: Int) -> [String] {
+        guard hz != 60 else { return [] }
+        // The long form: these type names have dots, and -global's short one splits at the first.
+        let panel = soc == .s5l8900 || soc == .s5l8720 ? "ipodtouch.lcd" : "s5l8930.display"
+        var globals = ["-global", "driver=\(panel),property=refresh-hz,value=\(hz)"]
+        if soc != .s5l8900 { globals += ["-global", "driver=ipodtouch.multitouch,property=report-hz,value=\(hz)"] }
+        return globals
+    }
+
     public var productType: String { facts.productType }
     public var marketingName: String { facts.marketingName }
     /// "iPod touch", "iPhone", "iPad".

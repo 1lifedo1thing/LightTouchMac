@@ -159,7 +159,8 @@ public struct PreparedDeviceBoot {
         restore: [String] = [],
         webProxy: WebProxyEndpoint? = nil,
         cellular: BootRecipe.Cellular = .on,
-        carrier: CarrierSettings? = nil
+        carrier: CarrierSettings? = nil,
+        refreshHz: Int = 60
     ) throws -> BootConfig {
         guard let hardware = hardware ?? board.hardware else {
             throw CocoaError(
@@ -242,6 +243,7 @@ public struct PreparedDeviceBoot {
         if hardware.hasCellular {
             config.argv += ["-global", "ios-baseband.sim-file=\(overlay.appendingPathComponent("sim").path)"]
         }
+        config.argv += board.refreshGlobals(refreshHz)
         config.webProxy = webProxy
         return config
     }

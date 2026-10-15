@@ -18,11 +18,12 @@ public nonisolated struct SidebarList: Equatable {
     }
 
     /// The saved list; the first launch after updating saves one from what the user already has (`owned`:
-    /// a prepared device or a job in flight), and a fresh install starts with `first_run`.
+    /// a prepared device or a job in flight), and a fresh install starts with `first_run`. A coming_soon entry,
+    /// which can't be added, leaves a list saved before it couldn't.
     public static func load(_ defaults: UserDefaults, catalog: FirmwareCatalog, owned: (FirmwareCatalog.Entry) -> Bool)
         -> SidebarList
     {
-        let known = Set(catalog.entries.map(\.id))
+        let known = Set(catalog.entries.filter { $0.status != .comingSoon }.map(\.id))
         if let saved = defaults.stringArray(forKey: entriesKey) {
             let names = defaults.dictionary(forKey: namesKey) as? [String: String] ?? [:]
             return SidebarList(ids: saved.filter(known.contains), names: names.filter { known.contains($0.key) })

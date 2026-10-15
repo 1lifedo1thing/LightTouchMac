@@ -122,6 +122,7 @@ struct GeneralSettingsView: View {
     /// Connect, Use Offline, or no saved answer (the device asks when it starts).
     @AppStorage(NetworkAccessPreference.key) private var internet: Bool?
     @AppStorage(VibrationSound.key) private var vibrationSound = true
+    @AppStorage(DisplayRefresh.key) private var refresh120 = false
 
     var body: some View {
         Form {
@@ -136,6 +137,9 @@ struct GeneralSettingsView: View {
             } footer: {
                 Text("Phones that scanned a Play on Phone code can no longer connect until they scan a new one.")
                     .foregroundStyle(.secondary)
+            Toggle(isOn: $refresh120) {
+                Text("120 Hz refresh (experimental)")
+                Text("Takes effect when a device next starts. Games that count frames run too fast.")
             }
         }
     }

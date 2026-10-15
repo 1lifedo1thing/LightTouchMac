@@ -67,10 +67,11 @@ final class DeviceHost: @unchecked Sendable {
 
     // MARK: - Pump
 
-    /// Frames at 60 Hz (30 under serious thermal pressure or Low Power Mode) while the app shows the screen
-    /// and the guest's display is on (or was just touched) and the machine isn't paused; otherwise 4 Hz, enough
-    /// for the status block and a hidden device's first frames. Status at 20 Hz live, every tick otherwise; the heartbeat on every tick
-    /// (also before boot). A new rate starts with a tick at once, so a screen shown again gets its frame then.
+    /// Frames at the panel's refresh (BootConfig.refreshHz: 60 Hz, 120 with the experimental setting; 30 under
+    /// serious thermal pressure or Low Power Mode) while the app shows the screen and the guest's display is on
+    /// (or was just touched) and the machine isn't paused; otherwise 4 Hz, enough for the status block and a hidden
+    /// device's first frames. Status at 20 Hz live, every tick otherwise; the heartbeat on every tick (also before
+    /// boot). A new rate starts with a tick at once, so a screen shown again gets its frame then.
     func startPump() {
         let timer = DispatchSource.makeTimerSource(queue: pumpQueue)
         timer.setEventHandler { [weak self] in self?.tick() }
@@ -118,7 +119,9 @@ final class DeviceHost: @unchecked Sendable {
     private func pace(force: Bool = false) {
         let now = DispatchTime.now().uptimeNanoseconds
         let next = screenVisible && !paused && (displayOn || now &- lastInput < 2_000_000_000)
-        let interval = next ? (constrained ? 1.0 / 30 : 1.0 / 60) : 0.25
+        // Live, a frame per panel refresh (60 Hz, or the experimental 120); 30 under pressure.
+        let hz = stateLock.withLock { bootConfig?.refreshHz } ?? 60
+        let interval = next ? (constrained ? 1.0 / 30 : 1.0 / Double(hz)) : 0.25
         holdActivity(live: next)
         guard force || interval != pumpInterval else { return }
         live = next

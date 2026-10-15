@@ -24,24 +24,24 @@ func flickCheck(_ args: FlickCheck) -> Never {
     let slide = iPad ? "dragshown 0.36 0.935 0.8 0.935" : "dragshown 0.18 0.9 0.92 0.9"
     // The swipe starts mid-screen; the window shows the screen about 576 points wide (iPad) or 400 (iPhone, iPod).
     let at = iPad ? "0.5 0.45 576" : "0.5 0.45 400"
-    let d = HelperDriver(
-        "flick",
+    var scenario = preparedScenario(
+        base,
         tools: tools,
         work: work,
-        scenario: preparedScenario(
-            base,
-            tools: tools,
-            work: work,
-            name: "flick",
-            steps: [
+        name: "flick",
+        steps: [
                 // As `sessions rotation`: the second slide is a page swipe on the Home screen, so Home after it.
                 "boot", "lit 0.03 300", "wait 5", "button 0", "wait 2", slide, "wait 4", "button 0", "wait 2", slide,
                 "wait 4", "button 0", "wait 3",
                 // The first page, then Home on it shows the page left of it.
                 "dump page", "button 0", "wait 3", "dump left", "button 0", "wait 3",
             ] + args.kinds.split(separator: ",").map { "flicks \($0) \(args.runs) \(at)" } + ["quit", "expectExit 60"]
-        )
     )
+    if args.refreshHz != 60, var prepared = scenario["prepared"] as? [String: Any] {
+        prepared["refreshHz"] = args.refreshHz
+        scenario["prepared"] = prepared
+    }
+    let d = HelperDriver("flick", tools: tools, work: work, scenario: scenario)
     r.check(d.finish(1200) == 0, "flick: scenario completed")
     let flicks = d.events.find("flick")
     for kind in args.kinds.split(separator: ",").map(String.init) {
@@ -52,6 +52,18 @@ func flickCheck(_ args: FlickCheck) -> Never {
         }.count
         let turned = runs.filter { $0.string("from") != $0.string("to") }.count
         if lost > 0 { r.check(false, "flick: \(lost) of \(runs.count) \(kind) started or ended on neither page") }
+        // The frames each gesture brought, while it moved: under the floor, frames are lost on the way to the app
+        // (published on a 30 ms timer, they reached it at 33 fps although the guest drew every vsync).
+        let motion = runs.map { MotionFrames(times: ($0["frameTimes"] as? [NSNumber] ?? []).map(\.doubleValue)) }
+        let fps = motion.map(\.fps).sorted()
+        let median = fps.isEmpty ? 0 : fps[fps.count / 2]
+        let skipped = runs.reduce(0) { $0 + Int($1.double("framesSkipped") ?? 0) }
+        print(
+            "   \(kind): motion \(format(median)) fps median (\(fps.map { format($0) }.joined(separator: ", "))), "
+                + "p95 \(format(motion.map(\.p95).max())) ms, longest \(format(motion.map(\.longest).max())) ms, "
+                + "\(skipped) frames the ring skipped"
+        )
+        r.check(median >= args.minFps, "flick: \(kind) moved at \(format(median)) fps, at least \(format(args.minFps))")
         let slow = kind.hasPrefix("slow")
         r.check(
             runs.count == args.runs && turned == (slow ? 0 : runs.count),

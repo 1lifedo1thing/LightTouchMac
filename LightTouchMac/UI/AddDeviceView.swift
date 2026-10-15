@@ -1,7 +1,7 @@
 // The Add Device sheet: the firmware catalog split by device. Devices on the left, with their artwork and how many of
 // their versions are picked; the chosen device's versions on the right, in version order, each with its support
 // status and whether its IPSW is here (else its download size), and below them the picks (AddDeviceSummary). Versions
-// already in the sidebar are checked and can't be picked again. Only stable builds show until Show experimental is on
+// already in the sidebar are checked and can't be picked again; Coming Soon versions show dimmed and can't be picked. Only stable builds show until Show experimental is on
 // (remembered). Picks survive switching devices; Add adds them all. The versions list has the keyboard focus when the
 // sheet opens, so the arrow keys move through versions; Tab and Shift-Tab go between it and the devices.
 // A sheet, not a window: it belongs to the one main window and is done before the user goes on (HIG, Sheets).
@@ -77,10 +77,11 @@ struct AddDeviceView: View {
             }
     }
 
-    /// What Add adds: the selected entries still shown and not already added, in catalog order, whichever device
-    /// they're under.
+    /// What Add adds: the selected entries still shown, not already added and not coming soon, in catalog order,
+    /// whichever device they're under.
     static func picked(_ groups: [Group], selection: Set<String>, added: Set<String>) -> [String] {
-        groups.flatMap(\.entries).map(\.id).filter { selection.contains($0) && !added.contains($0) }
+        groups.flatMap(\.entries).filter { $0.status != .comingSoon }.map(\.id)
+            .filter { selection.contains($0) && !added.contains($0) }
     }
 
     private var shownGroups: [Group] { Self.shown(groups, experimental: showsExperimental) }
@@ -152,7 +153,7 @@ struct AddDeviceView: View {
                         added: added.contains(entry.id),
                         downloaded: downloaded.contains(entry.id)
                     )
-                    .selectionDisabled(added.contains(entry.id))
+                    .selectionDisabled(added.contains(entry.id) || entry.status == .comingSoon)
                 }
                 .contextMenu(
                     forSelectionType: String.self,
@@ -218,7 +219,7 @@ struct AddDeviceRow: View {
                 .opacity(added ? 1 : 0)
                 .frame(width: 14)
             Text("iOS \(entry.version)")
-                .foregroundStyle(added ? .secondary : .primary)
+                .foregroundStyle(added || entry.status == .comingSoon ? .secondary : .primary)
             if let badge = entry.prereleaseBadge {
                 Text(badge)
                     .font(.caption)
@@ -240,7 +241,7 @@ struct AddDeviceRow: View {
             // The sidebar's convention: a build that isn't here yet shows the download glyph.
             Image(systemName: "arrow.down.circle")
                 .foregroundStyle(.tertiary)
-                .opacity(downloaded || entry.bundled != nil ? 0 : 1)
+                .opacity(downloaded || entry.bundled != nil || entry.status == .comingSoon ? 0 : 1)
                 .frame(width: 16)
         }
         .accessibilityElement(children: .combine)
