@@ -79,34 +79,24 @@ import HostRuntime
         get { Set(defaults.stringArray(forKey: "skipSetupEntries") ?? []) }
         set { defaults.set(newValue.sorted(), forKey: "skipSetupEntries") }
     }
-    /// The iOS 5 and later entries to prepare without the jailbreak (the preparation screen's checkbox, turned off).
+    /// The entries to prepare without the jailbreak (the preparation screen's checkbox; on unless turned off).
     public var keepsStock: Set<String> {
         get { Set(defaults.stringArray(forKey: "stockEntries") ?? []) }
         set { defaults.set(newValue.sorted(), forKey: "stockEntries") }
     }
-    /// The iOS 4 and earlier entries to prepare jailbroken (the preparation screen's checkbox, turned on).
-    public var choosesJailbreak: Set<String> {
-        get { Set(defaults.stringArray(forKey: "jailbreakEntries") ?? []) }
-        set { defaults.set(newValue.sorted(), forKey: "jailbreakEntries") }
-    }
-    /// Jailbroken unless turned off from iOS 5 on, where FirmwareKit's SandboxPatch lets Substrate's library into
-    /// Safari's and Mail's sandbox; before that the patch doesn't resolve and they crash at launch, so stock unless
-    /// turned on.
-    public nonisolated static func jailbreaksByDefault(_ entry: FirmwareCatalog.Entry) -> Bool {
+    /// The jailbreak can be chosen from iOS 5 on, where FirmwareKit's SandboxPatch lets Substrate's library into
+    /// Safari's and Mail's sandbox; before that the patch doesn't resolve yet and they crash at launch, so the
+    /// checkbox is off and disabled.
+    public nonisolated static func jailbreakWorks(_ entry: FirmwareCatalog.Entry) -> Bool {
         (Int(entry.version.split(separator: ".").first ?? "") ?? 0) >= 5
     }
     /// The preparation screen's Jailbreak checkbox for an entry.
     public func jailbreaks(_ id: String) -> Bool {
-        guard let entry = catalog.entry(id: id), Self.offersJailbreak(entry) else { return false }
-        return Self.jailbreaksByDefault(entry) ? !keepsStock.contains(id) : choosesJailbreak.contains(id)
+        guard let entry = catalog.entry(id: id) else { return false }
+        return Self.offersJailbreak(entry) && Self.jailbreakWorks(entry) && !keepsStock.contains(id)
     }
     public func setJailbreaks(_ id: String, _ on: Bool) {
-        guard let entry = catalog.entry(id: id) else { return }
-        if Self.jailbreaksByDefault(entry) {
-            if on { keepsStock.remove(id) } else { keepsStock.insert(id) }
-        } else {
-            if on { choosesJailbreak.insert(id) } else { choosesJailbreak.remove(id) }
-        }
+        if on { keepsStock.remove(id) } else { keepsStock.insert(id) }
     }
     /// afc2 and Cydia from iPhone OS 2.0 on (FirmwareKit refuses the option on 1.x).
     public nonisolated static func offersJailbreak(_ entry: FirmwareCatalog.Entry) -> Bool {

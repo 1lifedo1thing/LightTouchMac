@@ -300,8 +300,8 @@ import os
                     catalog: catalog,
                     preparer: try LibraryFixtures.fakePreparer(in: tmp, argv: argvURL)
                 )
-                // Skip Setup is off unless chosen; Jailbreak is on from iOS 5 unless turned off, off before unless
-                // turned on. "Not chosen" flips each one's Jailbreak checkbox.
+                // Skip Setup is off unless chosen; Jailbreak is on unless turned off, and can't be turned on before
+                // iOS 5. "Not chosen" flips each one's Jailbreak checkbox.
                 if chosen { h.jobs.skipsSetup = [id] } else { h.jobs.setJailbreaks(id, !h.jobs.jailbreaks(id)) }
                 h.jobs.downloadAndPrepare(try #require(catalog.entry(id: id)))
                 await h.settle(id)
@@ -314,7 +314,7 @@ import os
             #expect(seen["k48ap-9B206 true"]?.contains("--jailbreak") == true, "5.1.1, untouched")
             #expect(seen["k48ap-8C148 true"]?.contains("--jailbreak") == false, "4.2.1, untouched")
             #expect(seen["k48ap-9B206 false"]?.contains("--jailbreak") == false, "5.1.1, turned off")
-            #expect(seen["k48ap-8C148 false"]?.contains("--jailbreak") == true, "4.2.1, turned on")
+            #expect(seen["k48ap-8C148 false"]?.contains("--jailbreak") == false, "4.2.1, turned on")
         }
     }
 

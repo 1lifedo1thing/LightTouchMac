@@ -11,7 +11,7 @@ final class DevicePlaceholderViewController: NSViewController {
     var onDropIPSW: (([URL]) -> Void)?
     /// Each entry's Skip Setup Assistant choice (FirmwareJobs.skipsSetup); nil: no checkbox.
     var skipsSetup: (get: (String) -> Bool, set: (String, Bool) -> Void)?
-    /// Each entry's Jailbreak choice (FirmwareJobs.jailbreaks: on from iOS 5 unless turned off); nil: no checkbox.
+    /// Each entry's Jailbreak choice (FirmwareJobs.jailbreaks); nil: no checkbox.
     var jailbreaks: (get: (String) -> Bool, set: (String, Bool) -> Void)?
 
     private let art = NSImageView()
@@ -39,7 +39,7 @@ final class DevicePlaceholderViewController: NSViewController {
     private let space = NSTextField(wrappingLabelWithString: "")
     /// Before preparing an iOS 5 or later build: prepare it past Setup Assistant (FirmwareJobs.skipsSetup).
     private let skipSetup = NSButton(checkboxWithTitle: "Skip Setup Assistant", target: nil, action: nil)
-    /// Before preparing: prepare it jailbroken (FirmwareJobs.jailbreaks: on from iOS 5 unless turned off).
+    /// Before preparing: prepare it jailbroken (FirmwareJobs.jailbreaks: on unless turned off; disabled before iOS 5).
     private let jailbreak = NSButton(checkboxWithTitle: "Jailbreak", target: nil, action: nil)
     /// The build's catalog note (untested, experimental, where a beta came from), in a popover.
     private let info = NSButton(
@@ -103,7 +103,6 @@ final class DevicePlaceholderViewController: NSViewController {
         skipSetup.toolTip = "Start at the Home screen, set to this Mac’s region, with Location Services off."
         jailbreak.target = self
         jailbreak.action = #selector(jailbreakClicked(_:))
-        jailbreak.toolTip = "Files shows the whole file system."
 
         let versionLine = NSStackView(views: [version, info])
         versionLine.spacing = 4
@@ -222,6 +221,11 @@ final class DevicePlaceholderViewController: NSViewController {
             }
             if row.state != .bundled, FirmwareJobs.offersJailbreak(entry), let jailbreaks {
                 jailbreak.state = jailbreaks.get(entry.id) ? .on : .off
+                jailbreak.isEnabled = FirmwareJobs.jailbreakWorks(entry)
+                jailbreak.toolTip =
+                    jailbreak.isEnabled
+                    ? "Files shows the whole file system."
+                    : "Not available before iOS 5 yet: Safari and Mail crash on a jailbroken device."
                 jailbreak.isHidden = false
             }
             if !canDownload, let why = FirmwareJobs.shared.unavailableReason {
