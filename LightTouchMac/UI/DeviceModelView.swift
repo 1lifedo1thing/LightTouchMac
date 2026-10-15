@@ -159,9 +159,9 @@ final class DeviceModelView: NSView {
                         finish.baseColor = .init(tint: NSColor(srgbRed: 0.07, green: 0.08, blue: 0.1, alpha: 1))
                         finish.specular = .init(floatLiteral: 0.5)
                     }
-                    // N81's glass mirrors its studio (N81Studio): the black surround behind the camera as its black
-                    // (~25 of 255, Apple's hero ~28) and the card above it as the diagonal sheen across its upper
-                    // left (~134, the hero ~120-138). Specular 0 left it a flat, lifeless black.
+                    // N81's glass mirrors its studio (N81Studio): the black surround behind the camera as an even deep
+                    // black (~22 of 255, Apple's hero ~28) at rest and typical tilts, and the tent as a soft sheen only
+                    // at steep ones. Specular 0 left it a flat, lifeless black.
                     if profile == .n81 && (name == "glass" || name.contains("inactive_LCD_perimeter")) {
                         finish.specular = .init(floatLiteral: 1)
                     }
