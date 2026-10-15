@@ -24,6 +24,9 @@ final class DisplayView: NSView {
 
     /// Whatever the guest is actually sending right now — swaps on rotation.
     var framePixels: CGSize
+    /// The device rotation the shown frame was drawn for (the CLCD boards' pre-rotated surface): it lags the device's
+    /// own until the LCD's turned picture arrives (currentFrame()).
+    var frameDegrees = 0
     /// nil until the first layout, so the initial appearance never "rotates in".
     var lastRotation: Int?
 

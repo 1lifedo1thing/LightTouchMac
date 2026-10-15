@@ -123,7 +123,7 @@ extension NSPasteboard.PasteboardType { static let ltmCatalogApp = Self("test.ca
         animated: Bool,
         spring: Bool = false
     ) {}
-    func updateFrame(_ image: CGImage) {}
+    func updateFrame(_ image: CGImage, rotation: Int) {}
     func setScreenOff(_ off: Bool) {}
     var homeButtonRect: CGRect? { nil }
     func projectedPoint(_ p: CGPoint) -> CGPoint { .zero }

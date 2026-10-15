@@ -491,6 +491,9 @@ extension SharedState {
             // release screen and shell are upright together, unpitched, and the flat shell's Home button is back.
             for rotation in [0, 90, 180, 270] {
                 emulator.rotationDegrees = rotation
+                // The LCD's picture for the turn, which the content's turn follows.
+                (frameWidth, frameHeight) = rotation % 180 == 0 ? (320, 480) : (480, 320)
+                display.perform(NSSelectorFromString("step"))
                 layout()
                 for (right, down) in [(50.0, -25.0), (-75.0, 40.0), (0.0, 0.0), (100.0, 50.0)] {
                     let grab = chassis()
@@ -513,6 +516,7 @@ extension SharedState {
                 }
             }
             #expect(touchPhases().isEmpty, "\(sent)")
+            (frameWidth, frameHeight) = (320, 480)
         }
 
         /// A two-finger scroll over the panel moves the guest's finger the way a pointer drag the same way does, on every

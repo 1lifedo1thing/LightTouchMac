@@ -74,7 +74,7 @@ extension DisplayView {
         pendingModelView = model
         model.alphaValue = 0
         model.setScreenOff(powerPresentation != .awake)
-        if let image = captureFrame(includeTouches: false) { model.updateFrame(image) }
+        if let image = captureFrame(includeTouches: false) { model.updateFrame(image, rotation: frameDegrees) }
         needsLayout = true
         layoutSubtreeIfNeeded()
         return true

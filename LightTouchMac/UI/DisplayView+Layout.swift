@@ -20,16 +20,7 @@ extension DisplayView {
         if let lastRotation, lastRotation != rotation { endLiveText() }
         let orientationChanged = lastRotation.map { $0 != rotation } ?? false
         lastRotation = rotation
-        let isLandscape = rotation == 90 || rotation == 270
 
-        // The scan stands a quarter-turn from upright when the guest turned its
-        // UI into it (guestTurn). A panel fixed to the shell (the iPad's) keeps
-        // that; the iPod's pre-rotated surface also swaps with the device.
-        let turned = guestTurn != 0
-        let cutoutSize =
-            (profile.surfaceFollowsRotation ? turned != isLandscape : turned)
-            ? CGSize(width: screenCutout.height, height: screenCutout.width)
-            : screenCutout.size
         let scale = zoomScale()
         appliedScale = scale
         applyZoomFilter()
@@ -77,32 +68,7 @@ extension DisplayView {
         let animate = orientationChanged || pendingAnimatedLayout
         pendingAnimatedLayout = false
 
-        // The guest surface arrives pre-rotated (ipod_touch_lcd.c turns the
-        // picture the same way the user turned the device), so at rest the
-        // content sits at -angle inside the shell: net rotation zero, surface
-        // shown as published. These are applied WITHOUT animation — the new
-        // buffer drawn at the new pose is pixel-identical to the old frame at
-        // the old pose, so there's no jump, and during the shell's animated
-        // swing the content keeps its fixed offset and rides rigidly, rotating
-        // with the chrome instead of squishing in place. Bounds, never frame:
-        // setting .frame on a transformed layer is undefined (it was the
-        // squished-screen bug).
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        contentLayer.bounds = CGRect(origin: .zero, size: cutoutSize)
-        // A frame of the size before a resize shows unscaled on black, not stretched to the new one.
-        contentLayer.contentsGravity = holdsOldFrame ? .center : .resize
-        contentLayer.masksToBounds = holdsOldFrame
-        // Counter only the guest's quarter-turn, never the temporary tilt.
-        // A layout during a gesture must not leave the panel crooked after release.
-        if !profile.surfaceFollowsRotation {
-            // The iPad's guest turns its own UI inside a panel that turns with
-            // the shell: only the scan-to-upright quarter-turn applies.
-            contentLayer.transform = CATransform3DMakeRotation(guestTurn, 0, 0, 1)
-        } else {
-            contentLayer.transform = CATransform3DMakeRotation(guestTurn - rest, 0, 0, 1)
-        }
-        CATransaction.commit()
+        layoutContent()
 
         // Scale and rotation live in ONE transform, and the content is a child
         // of the shell — the whole device swings as a unit.
@@ -144,6 +110,44 @@ extension DisplayView {
         }
         if freeFormActive { window?.invalidateCursorRects(for: self) }
         onZoomLayout?()
+    }
+
+    /// The content layer's bounds and turn for the frame it shows. currentFrame() calls it in the transaction that
+    /// puts a frame up, as layout does, so a frame never shows in another frame's geometry.
+    ///
+    /// The CLCD boards' surface arrives pre-rotated (ipod_touch_lcd.c turns the picture the same way the user turned
+    /// the device), so at rest the content sits at -angle inside the shell: net rotation zero, surface shown as
+    /// published. The angle is the one the shown frame was drawn for (frameDegrees), not the device's: the LCD turns
+    /// its picture some frames after the app turns the shell (a quarter turn also waits for the helper's new ring),
+    /// and until then the old picture rides the shell's swing rigidly, as a turning device's screen does, instead of
+    /// being stretched into the new pose's bounds. The new frame drawn at the new pose is pixel-identical to the old
+    /// frame at the old pose, so its arrival doesn't jump. Applied WITHOUT animation. Bounds, never frame: setting
+    /// .frame on a transformed layer is undefined (it was the squished-screen bug).
+    func layoutContent() {
+        // The scan stands a quarter-turn from upright when the guest turned its
+        // UI into it (guestTurn). A panel fixed to the shell (the iPad's) keeps
+        // that; the iPod's pre-rotated surface also swaps with the device.
+        let turned = guestTurn != 0
+        let cutoutSize =
+            (profile.surfaceFollowsRotation ? turned != (frameDegrees % 180 != 0) : turned)
+            ? CGSize(width: screenCutout.height, height: screenCutout.width)
+            : screenCutout.size
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        contentLayer.bounds = CGRect(origin: .zero, size: cutoutSize)
+        // A frame of the size before a resize shows unscaled on black, not stretched to the new one.
+        contentLayer.contentsGravity = holdsOldFrame ? .center : .resize
+        contentLayer.masksToBounds = holdsOldFrame
+        // Counter only the guest's quarter-turn, never the temporary tilt.
+        // A layout during a gesture must not leave the panel crooked after release.
+        if !profile.surfaceFollowsRotation {
+            // The iPad's guest turns its own UI inside a panel that turns with
+            // the shell: only the scan-to-upright quarter-turn applies.
+            contentLayer.transform = CATransform3DMakeRotation(guestTurn, 0, 0, 1)
+        } else {
+            contentLayer.transform = CATransform3DMakeRotation(guestTurn - Self.layerAngle(frameDegrees), 0, 0, 1)
+        }
+        CATransaction.commit()
     }
 
     /// No Home button bare (⇧⌘H presses it), while the model loads, or over a tilting flat shell.

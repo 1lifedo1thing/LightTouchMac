@@ -208,7 +208,7 @@ extension SharedState {
             for rotation in [0, 90, 180, 270] {
                 let frame = pattern(profile, rotation: rotation)
                 let reference = NSBitmapImageRep(cgImage: frame)
-                model.updateFrame(frame)
+                model.updateFrame(frame, rotation: rotation)
                 for tilt in [0.0, 0.35] {
                     model.pose(scale: 0.5, rotation: rotation, roll: tilt, pitch: tilt, animated: false)
                     let snapshot = try await render(model)
@@ -294,9 +294,28 @@ extension SharedState {
                 homeLevels.max()! - homeLevels.min()! < 0.12,
                 "Home lighting changes with orientation: \(homeLevels)"
             )
+            // Turned before the LCD's turned picture arrives: the last portrait frame turns with the device, its top-left
+            // still at the device's top-left, not mapped for the new pose (it flashed stretched or turned on rotation).
+            model.updateFrame(pattern(profile, rotation: 0), rotation: 0)
+            for rotation in [90, 180, 270] {
+                model.pose(scale: 0.5, rotation: rotation, roll: 0, pitch: 0, animated: false)
+                let snapshot = try await render(model)
+                let lcd = lcdBox()
+                let rest = CGFloat(rotation == 270 ? -90 : rotation) * .pi / 180
+                let s = 0.25 * min(lcd.width, lcd.height)
+                let topLeft = CGPoint(
+                    x: lcd.midX + s * (sin(rest) - cos(rest)),
+                    y: lcd.midY + s * (cos(rest) + sin(rest))
+                )
+                let corner = color(snapshot, topLeft, in: model.bounds.size)
+                #expect(
+                    corner.redComponent > 0.6 && corner.greenComponent < 0.35 && corner.blueComponent < 0.35,
+                    "The portrait frame doesn't turn with the device at \(rotation): \(corner)"
+                )
+            }
             // Hardware controls: each named side control answers where it is drawn, and
             // the LCD and bezel are not controls.
-            model.updateFrame(pattern(profile, rotation: 0))
+            model.updateFrame(pattern(profile, rotation: 0), rotation: 0)
             model.pose(scale: 0.5, rotation: 0, roll: 0, pitch: 0, animated: false)
             let view = model.subviews[0] as! ARView
             func projected(_ entity: Entity, _ fraction: SIMD3<Float>) -> CGPoint {
@@ -462,7 +481,7 @@ extension SharedState {
                         checker.fill(CGRect(x: x, y: y, width: 1, height: 1))
                     }
                 }
-                model.updateFrame(checker.makeImage()!)
+                model.updateFrame(checker.makeImage()!, rotation: 0)
                 let shot = try await render(model)
                 var mid = 0
                 var total = 0
@@ -473,7 +492,7 @@ extension SharedState {
                     total += 1
                 }
                 #expect(mid * 100 < total * 3, "LCD upscaling is not nearest-neighbor: \(mid)/\(total) blurred samples")
-                model.updateFrame(pattern(profile, rotation: 0))
+                model.updateFrame(pattern(profile, rotation: 0), rotation: 0)
             }
             model.setScreenOff(true)
             let dark = color(

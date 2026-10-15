@@ -41,7 +41,8 @@ final class DeviceModelView: NSView {
         didSet { if oldValue != drawsNearest { updateScreenMaterial() } }
     }
     var viewportCenter: CGPoint? { didSet { updateViewport() } }
-    private var rotation = 0
+    /// The device rotation the screen's texture was drawn for (updateFrame), which its mapping follows, not the pose's.
+    private var frameDegrees = 0
     private var screenOff = false
     private var shakeStarted: CFTimeInterval?
     private var trickStarted: CFTimeInterval?
@@ -252,7 +253,6 @@ final class DeviceModelView: NSView {
         animated: Bool,
         spring: Bool = false
     ) {
-        self.rotation = rotation
         let rest = Float(rotation == 270 ? -90 : rotation) * .pi / 180
         let units = Float(scale) * screenWidth / 10000 / displayBounds.extents.x
         let pose = Transform(
@@ -273,6 +273,12 @@ final class DeviceModelView: NSView {
         homeLighting.orientation = simd_quatf(angle: -rest, axis: [0, 0, 1])
         camera.position = [0, 0, 0.3 + units * displayBounds.max.z]
         updateViewport()
+        mapSurface()
+        updateScreenMaterial()
+        advanceAnimations()
+    }
+    /// The screen texture's turn on the panel: the frame's own rotation, or the panel's fixed one.
+    private func mapSurface() {
         let surface = surfaceRotation
         let offset: SIMD2<Float>
         switch surface {
@@ -287,8 +293,6 @@ final class DeviceModelView: NSView {
                 rotation: Float(surface == 270 ? -90 : surface) * .pi / 180
             )
         }
-        updateScreenMaterial()
-        advanceAnimations()
     }
     /// Match the accelerometer's gravity vector: upright games steer by roll,
     /// while flat games tilt the LCD about its horizontal and vertical axes.
@@ -344,8 +348,15 @@ final class DeviceModelView: NSView {
             Task { @MainActor in request.finish(false) }
         }
     }
-    func updateFrame(_ image: CGImage) {
+    /// A new screen picture, drawn for the device turned `rotation` (DisplayView.frameDegrees): its mapping changes
+    /// with it, so a picture never shows in another one's turn.
+    func updateFrame(_ image: CGImage, rotation: Int) {
         noteChange()
+        if rotation != frameDegrees {
+            frameDegrees = rotation
+            mapSurface()
+            if screenTexture != nil { updateScreenMaterial() }
+        }
         do {
             // replace() updates the texture the material already holds; reassigning
             // the material every frame makes RealityKit reprocess the model.
@@ -383,7 +394,7 @@ final class DeviceModelView: NSView {
         screenOff = off
         updateScreenMaterial()
     }
-    private var surfaceRotation: Int { fixedSurfaceRotation ?? rotation }
+    private var surfaceRotation: Int { fixedSurfaceRotation ?? frameDegrees }
     private func surfacePoint(_ p: CGPoint) -> CGPoint {
         switch surfaceRotation {
         case 90: return CGPoint(x: 1 - p.y, y: p.x)
