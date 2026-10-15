@@ -202,6 +202,8 @@ extension SharedState {
                 vc.previewURLs.map(\.lastPathComponent) == ["file.bin", "note.txt"]
                     && vc.previewURLs.allSatisfy { FileManager.default.fileExists(atPath: $0.path) }
             )
+            // One folder per copy, so names that differ only in case don't replace each other on the Mac.
+            #expect(Set(vc.previewURLs.map { $0.deletingLastPathComponent() }).count == 2)
             #expect(vc.numberOfPreviewItems(in: nil) == 2)
             #expect(controller.browser === vc && browser.selectedColumn == 1)
             #expect(!window.isExcludedFromWindowsMenu && window.styleMask.contains(.resizable))
