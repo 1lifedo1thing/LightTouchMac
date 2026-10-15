@@ -23,9 +23,9 @@ final class DeviceModelView: NSView {
     /// The upright screen's width in shell pixels: pose and physical scale
     /// size the model's display to what the flat shell's cutout would be.
     private let screenWidth: Float
-    /// A panel mounted a quarter-turn in the shell (the iPad's) keeps its
-    /// surface mapping when the device turns; the iPod's pre-rotated surface
-    /// follows the device. Either way the mapping is one of the four below.
+    /// A panel whose surface doesn't follow the device (the A4's: the iPad, the
+    /// iPod touch 4) keeps its surface mapping when the device turns; the CLCD
+    /// iPods' pre-rotated surface follows it. Either way the mapping is one of the four below.
     private let fixedSurfaceRotation: Int?
     enum Control: Equatable { case sleepWake, volumeUp, volumeDown }
     /// Side controls by node name (revision 7 names, then N72's own); nil is a volume rocker (by half).
@@ -78,7 +78,7 @@ final class DeviceModelView: NSView {
         screenWidth = Float(profile.screenCutout.width)
         // The clockwise panel quarter-turn is the iPod surface's 270° mapping.
         fixedSurfaceRotation =
-            profile.panelRotation == 0
+            profile.surfaceFollowsRotation
             ? nil
             : (360 - Int((profile.panelRotation * 180 / .pi).rounded())) % 360
         // N81 (revision 7) has two volume buttons where the others have one rocker.

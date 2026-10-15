@@ -79,9 +79,11 @@ func color(_ image: CGImage, _ p: CGPoint, in size: CGSize) -> NSColor {
     )
 }
 /// Upright quadrants (red, green / blue, yellow), a center circle and TOP, then
-/// turned into the panel's own scan-out orientation (the iPad's is landscape).
+/// turned into the panel's own scan-out orientation: the iPad's is landscape (a quarter counterclockwise), the CLCD
+/// iPods' is turned clockwise with the device, the iPod touch 4's is upright whatever the device does.
 func pattern(_ profile: Board, rotation: Int) -> CGImage {
-    let turnsBack = profile.panelRotation != 0 ? 1 : rotation / 90
+    // Counterclockwise quarter-turns from upright.
+    let turnsBack = profile.surfaceFollowsRotation ? (4 - rotation / 90) % 4 : profile.panelRotation != 0 ? 1 : 0
     let upright = profile.uprightScreenPixels
     let size = turnsBack % 2 == 0 ? upright : CGSize(width: upright.height, height: upright.width)
     let w = Int(size.width)
@@ -202,7 +204,7 @@ extension SharedState {
                 CGPoint(x: 0.75, y: 0.75),
             ]
             var homeLevels: [CGFloat] = []
-            // The iPod's surface arrives pre-rotated; the iPad's panel never turns.
+            // The CLCD iPods' surface arrives pre-rotated; the A4's panel (iPad, iPod touch 4) never turns.
             for rotation in [0, 90, 180, 270] {
                 let frame = pattern(profile, rotation: rotation)
                 let reference = NSBitmapImageRep(cgImage: frame)
@@ -236,6 +238,18 @@ extension SharedState {
                         #expect(
                             offset.dx * down.dx + offset.dy * down.dy > 0.5 * max(lcd.width, lcd.height),
                             "Home is not below the LCD at \(rotation): \(rect) vs \(lcd)"
+                        )
+                        // The upright picture's top-left (red) stays at the device's top-left, however it is turned:
+                        // the screen turns with the device, not stretched upright into it.
+                        let s = 0.25 * min(lcd.width, lcd.height)
+                        let topLeft = CGPoint(
+                            x: lcd.midX + s * (sin(rest) - cos(rest)),
+                            y: lcd.midY + s * (cos(rest) + sin(rest))
+                        )
+                        let corner = color(snapshot, topLeft, in: model.bounds.size)
+                        #expect(
+                            corner.redComponent > 0.6 && corner.greenComponent < 0.35 && corner.blueComponent < 0.35,
+                            "Picture not upright on the device at \(rotation): \(corner)"
                         )
                         // The same spot on the cap in every orientation (the device's right of center).
                         let p = CGPoint(
