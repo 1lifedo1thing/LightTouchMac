@@ -706,7 +706,13 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
                 attributes: [.posixPermissions: 0o700]
             )
             for (index, file) in files.enumerated() {
-                try await services.download(file, to: folder.appendingPathComponent(file.name)) {
+                let item = Self.previewItem(in: folder, index: index, name: file.name)
+                try FileManager.default.createDirectory(
+                    at: item.deletingLastPathComponent(),
+                    withIntermediateDirectories: false,
+                    attributes: [.posixPermissions: 0o700]
+                )
+                try await services.download(file, to: item) {
                     progress((Double(index) + $0) / Double(files.count))
                 }
             }
@@ -721,9 +727,17 @@ final class DeviceFilesViewController: NSViewController, NSBrowserDelegate, NSMe
             }
             clearPreview()
             previewFolder = folder
-            previewItems = files.map { folder.appendingPathComponent($0.name) }
+            previewItems = files.enumerated().map {
+                Self.previewItem(in: folder, index: $0.offset, name: $0.element.name)
+            }
             presentPreview()
         }
+    }
+
+    /// Each Quick Look copy gets its own folder: the device's volume is case-sensitive and the Mac's usually isn't,
+    /// so a.JPG and a.jpg in one folder would land on one file here.
+    private nonisolated static func previewItem(in folder: URL, index: Int, name: String) -> URL {
+        folder.appendingPathComponent(String(index), isDirectory: true).appendingPathComponent(name)
     }
 
     private func clearPreview() {
