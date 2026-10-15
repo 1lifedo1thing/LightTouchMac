@@ -408,7 +408,8 @@ final class DeviceModelView: NSView {
         let t = (z - near.z) / direction.z
         return t >= 0 ? near + direction * t : nil
     }
-    func panelPoint(_ point: CGPoint, clamped: Bool = false) -> CGPoint? {
+    /// The point on the panel (0…1) under a view point; nil off it, unless `unbounded`, which extends the panel's plane.
+    func panelPoint(_ point: CGPoint, unbounded: Bool = false) -> CGPoint? {
         guard let local = intersection(point, entity: display, z: displayBounds.max.z) else {
             return nil
         }
@@ -418,8 +419,7 @@ final class DeviceModelView: NSView {
                 y: CGFloat((displayBounds.max.y - local.y) / displayBounds.extents.y)
             )
         )
-        if clamped { return CGPoint(x: min(max(p.x, 0), 1), y: min(max(p.y, 0), 1)) }
-        return CGRect(x: 0, y: 0, width: 1, height: 1).contains(p) ? p : nil
+        return unbounded || CGRect(x: 0, y: 0, width: 1, height: 1).contains(p) ? p : nil
     }
     func projectedPoint(_ point: CGPoint) -> CGPoint {
         let p = portraitPoint(point)

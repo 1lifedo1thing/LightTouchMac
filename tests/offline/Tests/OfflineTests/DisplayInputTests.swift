@@ -515,6 +515,88 @@ extension SharedState {
             #expect(touchPhases().isEmpty, "\(sent)")
         }
 
+        /// A two-finger scroll over the panel moves the guest's finger the way a pointer drag the same way does, on every
+        /// board, in every orientation, with the guest's UI turned or not (issue #70: on the iPods' pre-rotated surface,
+        /// landscape swipes went upright and inverted).
+        @Test(arguments: Board.allCases) func scrollFollowsPointer(board: Board) async throws {
+            for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+            defer {
+                for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] {
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
+            }
+            DisplayView.bezel = .flat
+            let display = DisplayView(frame: NSRect(x: 0, y: 0, width: 800, height: 800), profile: board)
+            let emulator = EmulatorController()
+            display.emulator = emulator  // weak: held here
+            defer { withExtendedLifetime(emulator) {} }
+            let window = Cursor(contentRect: display.frame, styleMask: [.titled], backing: .buffered, defer: false)
+            window.contentView = display
+            func all(_ l: CALayer) -> [CALayer] { [l] + (l.sublayers ?? []).flatMap(all) }
+            func moved() -> CGVector {
+                let ps = sent.compactMap { if case .touch(_, _, let x, let y) = $0 { (x, y) } else { nil } }
+                return ps.count < 2 ? .zero : CGVector(dx: ps[1].0 - ps[0].0, dy: ps[1].1 - ps[0].1)
+            }
+            // A square scan turns no guest UI on any board; the shipped one turns the iPad's.
+            for scan in [nil, CGSize(width: 400, height: 400)] {
+                display.runningScan = scan
+                for rotation in [0, 90, 180, 270] {
+                    emulator.rotationDegrees = rotation
+                    display.needsLayout = true
+                    display.layoutSubtreeIfNeeded()
+                    let lcd = all(display.layer!).first {
+                        $0.backgroundColor == NSColor.black.cgColor && $0.contentsGravity == .resize
+                    }!
+                    let c = lcd.convert(CGPoint(x: lcd.bounds.midX, y: lcd.bounds.midY), to: display.layer!)
+                    for (dx, dy) in [(30.0, 0.0), (0.0, -30.0)] {
+                        let at = display.convert(c, to: nil)
+                        let to = display.convert(CGPoint(x: c.x + dx, y: c.y + dy), to: nil)
+                        sent = []
+                        let steps: [(NSEvent.EventType, NSPoint)] = [
+                            (.leftMouseDown, at), (.leftMouseDragged, to), (.leftMouseUp, to),
+                        ]
+                        for (type, p) in steps {
+                            window.at = p
+                            let e = NSEvent.mouseEvent(
+                                with: type,
+                                location: p,
+                                modifierFlags: [],
+                                timestamp: 0,
+                                windowNumber: window.windowNumber,
+                                context: nil,
+                                eventNumber: 0,
+                                clickCount: 1,
+                                pressure: 1
+                            )!
+                            switch type {
+                            case .leftMouseDown: display.mouseDown(with: e)
+                            case .leftMouseDragged: display.mouseDragged(with: e)
+                            default: display.mouseUp(with: e)
+                            }
+                        }
+                        let pointer = moved()
+                        sent = []
+                        let event = Gesture()
+                        event.at = at
+                        event.dx = dx
+                        event.dy = dy
+                        event.eventPhase = .began
+                        display.scrollWheel(with: event)
+                        event.eventPhase = .ended
+                        display.scrollWheel(with: event)
+                        let scroll = moved()
+                        #expect(
+                            hypot(pointer.dx, pointer.dy) > 0.01
+                                && hypot(scroll.dx - pointer.dx, scroll.dy - pointer.dy) < 0.001,
+                            "\(board) at \(rotation), scan \(String(describing: scan)), (\(dx), \(dy)): scroll \(scroll), pointer \(pointer)"
+                        )
+                    }
+                }
+            }
+        }
+
         /// File drops on the screen: an accepted drag rings it until it leaves or ends; a mixed Finder drop queues the
         /// apps and media it can take; readiness is rechecked mid-drag; an IPSW goes to the library whatever the device
         /// does; an in-app IPA drag is refused, a Store row's payload taken. The kinds are DroppedFiles'.
