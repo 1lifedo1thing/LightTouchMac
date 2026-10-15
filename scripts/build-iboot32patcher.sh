@@ -16,7 +16,11 @@ ARCH_FLAGS=""
 for arch in ${LTM_ARCH:-arm64}; do ARCH_FLAGS="$ARCH_FLAGS-arch $arch "; done
 DEPS="$HERE/build-support/dependencies.json"
 i=0
-until [ "$(plutil -extract "packages.$i.name" raw -o - "$DEPS")" = iBoot32Patcher ]; do i=$((i + 1)); done
+# plutil fails past the last package (set -e doesn't reach a loop condition), which ends the search.
+while name="$(plutil -extract "packages.$i.name" raw -o - "$DEPS" 2>/dev/null)" && [ "$name" != iBoot32Patcher ]; do
+    i=$((i + 1))
+done
+[ "$name" = iBoot32Patcher ] || { echo "no iBoot32Patcher package in $DEPS" >&2; exit 1; }
 iboot() { plutil -extract "packages.$i.$1" raw -o - "$DEPS"; }
 ARCHIVE="$(iboot archive)" COMMIT="$(iboot version)" LICENSE="$(iboot license)" URL="$(iboot url)"
 [ -f "$SRC_DIR/$ARCHIVE" ] || { echo "missing $SRC_DIR/$ARCHIVE; run scripts/ltm-build sources fetch --group tools" >&2; exit 1; }
