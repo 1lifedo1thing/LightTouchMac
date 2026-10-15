@@ -172,6 +172,22 @@ extension FitCheck {
             : Fit(piece, fits: true, "not read by this kernel: no effect here")
     }
 
+    /// The jailbreak sandbox patch (SandboxPatch): sb_evaluate located in the Seatbelt kext by the "bad opcode" string
+    /// it reports, so a sandboxed app (MobileSafari, MobileMail) may read the Substrate library dyld inserts. Fits when
+    /// the patch site is found; "no effect here" on iOS before the prelinked Seatbelt kext (nothing to patch).
+    public static func sandboxPatch(_ kernel: Data?) -> Fit {
+        let piece = "sandbox patch (sb_evaluate)"
+        guard let kernel else { return Fit(piece, fits: false, "no decrypted kernelcache to check it against") }
+        do {
+            let f = try SandboxPatch.locate([UInt8](kernel))
+            return Fit(piece, fits: true, "sb_evaluate at 0x\(String(f.address, radix: 16)) (\(f.original.hexString))")
+        } catch SandboxPatch.Error.noSandboxKext, SandboxPatch.Error.noString {
+            return Fit(piece, fits: true, "no Seatbelt sandbox kext on this kernel: nothing to patch")
+        } catch {
+            return Fit(piece, fits: false, "\(error)")
+        }
+    }
+
     /// bootArgs, recorded in `log`: amfi_allow_any_signature is required; an unread cs_enforcement_disable is a warning.
     static func checkBootArgs(_ log: Log, kernel: Data?, args: String) throws {
         for f in bootArgs(kernel, args) {

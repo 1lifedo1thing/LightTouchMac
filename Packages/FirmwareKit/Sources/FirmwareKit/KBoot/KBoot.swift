@@ -507,12 +507,13 @@ public enum KBoot {
         to out: URL,
         identity: UnitIdentity,
         bootArgs: String = defaultBootArgs,
-        ramdisk: URL? = nil
+        ramdisk: URL? = nil,
+        kernelOverride: Data? = nil
     ) throws {
         let file = { (n: String) in dir.appendingPathComponent(n) }
         let exists = { (n: String) in FileManager.default.fileExists(atPath: file(n).path) }
         let img = try build(
-            kernel: Data(contentsOf: file("kernelcache.mach")),
+            kernel: kernelOverride ?? Data(contentsOf: file("kernelcache.mach")),
             deviceTree: Data(contentsOf: file("DeviceTree.bin")),
             bootArgs: bootArgs,
             identity: identity,
