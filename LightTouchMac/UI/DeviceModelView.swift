@@ -180,9 +180,19 @@ final class DeviceModelView: NSView {
                         finish.baseColor = .init(tint: NSColor(srgbRed: 0.18, green: 0.25, blue: 0.5, alpha: 1))
                         finish.roughness = .init(floatLiteral: 0.02)
                     }
+                    // The barrel around it is stepped, filleted and normal-mapped at tens of microns: at app size each
+                    // step's highlight lands on a pixel or none, a speckled rim and a dotted ring around the lens. A
+                    // camera's barrel is a matte black light trap, so it reflects nothing.
+                    if name.contains("textured_molded_barrel") {
+                        finish.normal = .init()
+                        finish.specular = .init(floatLiteral: 0)
+                        finish.roughness = .init(floatLiteral: 1)
+                    }
+                    // N72's dish faces the camera, where N72Studio's light half-disc has a hard straight edge: at 0.18
+                    // that edge drew a seam across the cap; 0.4 blurs it into the cap's sheen.
                     if name.contains("Concave") {
                         finish.specular = .init(floatLiteral: 0.5)
-                        finish.roughness = .init(floatLiteral: 0.18)
+                        finish.roughness = .init(floatLiteral: 0.4)
                     }
                     return finish
                 }
