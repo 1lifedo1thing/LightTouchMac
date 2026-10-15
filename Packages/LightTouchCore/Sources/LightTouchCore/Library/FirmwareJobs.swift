@@ -79,10 +79,10 @@ import HostRuntime
         get { Set(defaults.stringArray(forKey: "skipSetupEntries") ?? []) }
         set { defaults.set(newValue.sorted(), forKey: "skipSetupEntries") }
     }
-    /// The entries to prepare jailbroken (the preparation screen's checkbox; off unless chosen).
-    public var jailbreaks: Set<String> {
-        get { Set(defaults.stringArray(forKey: "jailbreakEntries") ?? []) }
-        set { defaults.set(newValue.sorted(), forKey: "jailbreakEntries") }
+    /// The entries to prepare without the jailbreak (the preparation screen's checkbox; on unless turned off).
+    public var keepsStock: Set<String> {
+        get { Set(defaults.stringArray(forKey: "stockEntries") ?? []) }
+        set { defaults.set(newValue.sorted(), forKey: "stockEntries") }
     }
     /// afc2 and Cydia from iPhone OS 2.0 on (FirmwareKit refuses the option on 1.x).
     public nonisolated static func offersJailbreak(_ entry: FirmwareCatalog.Entry) -> Bool {
@@ -462,7 +462,7 @@ import HostRuntime
             log: logs.appendingPathComponent("Preparing/\(entry.id).log"),
             blob: bundled ? ipsw : nil,
             skipSetup: !bundled && Self.offersSkipSetup(entry) && skipsSetup.contains(entry.id),
-            jailbreak: !bundled && Self.offersJailbreak(entry) && jailbreaks.contains(entry.id)
+            jailbreak: !bundled && Self.offersJailbreak(entry) && !keepsStock.contains(entry.id)
         )
         let id = UUID()
         let job = PreparationJob(request, id: id) { [inputs, entryID = entry.id] event in

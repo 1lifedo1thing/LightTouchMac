@@ -130,9 +130,9 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
             }
         )
         placeholder.jailbreaks = (
-            { FirmwareJobs.shared.jailbreaks.contains($0) },
+            { !FirmwareJobs.shared.keepsStock.contains($0) },
             { id, on in
-                if on { FirmwareJobs.shared.jailbreaks.insert(id) } else { FirmwareJobs.shared.jailbreaks.remove(id) }
+                if on { FirmwareJobs.shared.keepsStock.remove(id) } else { FirmwareJobs.shared.keepsStock.insert(id) }
             }
         )
         placeholder.onDropIPSW = { [weak self] urls in self?.handOffIPSWs(urls, for: self?.selectedEntry) }

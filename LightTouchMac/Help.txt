@@ -43,7 +43,7 @@ Window → Show [Device] Files opens the device’s Media folder. File → Copy 
 # Browsing the web
 The first time a device starts, choose Connect or Use Offline. Device → Network → Connect to the Internet, or Light Touch → Settings → General, changes this choice; it takes effect the next time Light Touch opens the device. Offline mode still allows app installation and screen capture.
 
-Device → Network → Proxy selects no proxy, the built-in HTTP proxy, or a dated Internet Archive replay. Archived pages depend on available captures and archive rate limits. A modern site’s scripts or layout may still exceed this old version of Safari.
+Device → Network → Proxy selects no proxy, the built-in HTTP proxy (the default), or a dated Internet Archive replay. Archived pages depend on available captures and archive rate limits. A modern site’s scripts or layout may still exceed this old version of Safari.
 
 With the HTTP proxy enabled, Weather uses Open-Meteo forecasts and city search (https://open-meteo.com/, CC BY 4.0). The free service is for noncommercial use.
 

@@ -25,14 +25,15 @@ public enum WebProxyStatus: Equatable {
 
 /// Host routing is read once per guest connection. Changes need no VM restart.
 public struct WebProxyConfiguration: Codable, Equatable {
-    public init(mode: Mode = .off, archiveDate: String = "") {
+    public init(mode: Mode = .direct, archiveDate: String = "") {
         self.mode = mode
         self.archiveDate = archiveDate
     }
     public enum Mode: String, Codable {
         case off, direct, archive
     }
-    public var mode: Mode = .off
+    /// A device that never set its proxy goes through it to the live web.
+    public var mode: Mode = .direct
     public var archiveDate = "20090909"
     public static var dateFormatter: DateFormatter {
         let formatter = DateFormatter()

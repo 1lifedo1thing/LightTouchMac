@@ -298,10 +298,8 @@ import os
                     catalog: catalog,
                     preparer: try LibraryFixtures.fakePreparer(in: tmp, argv: argvURL)
                 )
-                if chosen {
-                    h.jobs.skipsSetup = [id]
-                    h.jobs.jailbreaks = [id]
-                }
+                // Jailbreak is on unless turned off; Skip Setup is off unless chosen.
+                if chosen { h.jobs.skipsSetup = [id] } else { h.jobs.keepsStock = [id] }
                 h.jobs.downloadAndPrepare(try #require(catalog.entry(id: id)))
                 await h.settle(id)
                 #expect(h.devices(id).count == 1, "\(id) prepared: \(h.seen)")
