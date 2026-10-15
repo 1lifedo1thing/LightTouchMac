@@ -92,7 +92,19 @@ public nonisolated struct LegacyState: Sendable {
 
     @concurrent private func removeAll() async throws {
         let fm = FileManager.default
-        for directory in ipaDirectories { await IPALibrary.adopt(copies: directory) }
+        var missed: [URL] = []
+        for directory in ipaDirectories { missed += await IPALibrary.adopt(copies: directory) }
+        // The alert promised the saved apps survive: nothing goes while one isn't in the library.
+        if let first = missed.first {
+            throw CocoaError(
+                .fileReadUnknown,
+                userInfo: [
+                    NSFilePathErrorKey: first.path,
+                    NSLocalizedDescriptionKey:
+                        "\(missed.count == 1 ? "An app" : "\(missed.count) apps") you saved couldn’t be kept, so nothing was erased.",
+                ]
+            )
+        }
         for record in records {
             try DeviceStateStorage.removeDevice(record, state: state)
         }

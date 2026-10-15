@@ -228,37 +228,48 @@ public enum IPALibrary {
     public static func sweep(devices: [DeviceInstance]) {
         // An entry whose blob went (removed by hand) says nothing true any more.
         var index = index.filter { FileManager.default.fileExists(atPath: blob($0.key).path) }
-        let stored = devices.reduce(0) { $0 + store(copies: ipas($1), into: &index) }
+        let stored = devices.reduce(0) { $0 + store(copies: ipas($1), into: &index).stored }
         if stored > 0 { logEvent("library: \(stored) device copies stored") }
         if index != self.index { save(index) }
     }
 
     /// The <bundle-id>.ipa files of a device from the old layout (LegacyState).
-    /// Hashed and cloned off the main actor (hundreds of MB, seconds); the index is written here.
-    public static func adopt(copies directory: URL) async {
+    /// Hashed and cloned off the main actor (hundreds of MB, seconds); the index is written here. Returns the
+    /// copies it couldn't keep (unreadable, or the store couldn't take them).
+    @discardableResult public static func adopt(copies directory: URL) async -> [URL] {
         let before = index
-        let (after, stored) = await Task.detached {
+        let (after, (stored, missed)) = await Task.detached {
             var index = before
-            let stored = store(copies: directory, into: &index)
-            return (index, stored)
+            let result = store(copies: directory, into: &index)
+            return (index, result)
         }.value
         if stored > 0 { logEvent("library: \(stored) copies kept from \(directory.path)") }
         var index = index  // what the main actor recorded meanwhile, plus what was stored
         for (sha256, entry) in after where before[sha256] != entry { index[sha256] = entry }
         if index != self.index { save(index) }
+        return missed
     }
 
-    /// Every <bundle-id>.ipa in `directory` the index doesn't list, into the store; how many.
-    private nonisolated static func store(copies directory: URL, into index: inout [String: Entry]) -> Int {
+    /// Every <bundle-id>.ipa in `directory` the index doesn't list, into the store; how many, and the copies (or the
+    /// directory, unlistable) it couldn't keep.
+    private nonisolated static func store(
+        copies directory: URL,
+        into index: inout [String: Entry]
+    ) -> (stored: Int, missed: [URL]) {
         let fm = FileManager.default
         var stored = 0
-        for name in (try? fm.contentsOfDirectory(atPath: directory.path)) ?? []
-        where name.hasSuffix(".ipa") && !name.hasPrefix(".") {
+        var missed: [URL] = []
+        guard let names = try? fm.contentsOfDirectory(atPath: directory.path) else {
+            return (0, fm.fileExists(atPath: directory.path) ? [directory] : [])
+        }
+        for name in names where name.hasSuffix(".ipa") && !name.hasPrefix(".") {
             let copy = directory.appendingPathComponent(name)
             let bundleID = String(name.dropLast(4))
-            guard let size = size(of: copy),
-                !index.values.contains(where: { $0.bundleID == bundleID && $0.size == size })
-            else { continue }
+            guard let size = size(of: copy) else {
+                missed.append(copy)
+                continue
+            }
+            if index.values.contains(where: { $0.bundleID == bundleID && $0.size == size }) { continue }
             do {
                 let digests = try digests(of: copy)
                 if !fm.fileExists(atPath: blob(digests.sha256).path) { try clone(copy, to: blob(digests.sha256)) }
@@ -266,9 +277,10 @@ public enum IPALibrary {
                 stored += 1
             } catch {
                 logEvent("library: could not store \(name) from \(directory.path): \(error.localizedDescription)")
+                missed.append(copy)
             }
         }
-        return stored
+        return (stored, missed)
     }
 
     // MARK: - Files
