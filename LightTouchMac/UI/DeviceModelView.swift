@@ -159,6 +159,12 @@ final class DeviceModelView: NSView {
                         finish.baseColor = .init(tint: NSColor(srgbRed: 0.07, green: 0.08, blue: 0.1, alpha: 1))
                         finish.specular = .init(floatLiteral: 0.5)
                     }
+                    // N81's glass mirrors its studio (N81Studio): the black surround behind the camera as its black
+                    // (~25 of 255, Apple's hero ~28) and the card above it as the diagonal sheen across its upper
+                    // left (~134, the hero ~120-138). Specular 0 left it a flat, lifeless black.
+                    if profile == .n81 && (name == "glass" || name.contains("inactive_LCD_perimeter")) {
+                        finish.specular = .init(floatLiteral: 1)
+                    }
                     if name.contains("Concave") {
                         finish.specular = .init(floatLiteral: 0.5)
                         finish.roughness = .init(floatLiteral: 0.18)
@@ -170,7 +176,7 @@ final class DeviceModelView: NSView {
             for child in entity.children { tune(child) }
         }
         tune(loaded)
-        let lighting = try await modelEnvironment("N72Studio")
+        let lighting = try await modelEnvironment(profile == .n81 ? "N81Studio" : "N72Studio")
         renderer.environment.lighting.resource = lighting
         renderer.environment.lighting.intensityExponent = 2
         var homeLight = ImageBasedLightComponent(source: .single(lighting), intensityExponent: 2)

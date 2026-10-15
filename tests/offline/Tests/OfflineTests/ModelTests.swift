@@ -146,6 +146,7 @@ extension SharedState {
         func model(_ name: String, _ profile: Board) async throws {
             try await MainBundle.with([
                 "Models/N72Studio.png": "Models/N72Studio.png", "Models/N45Rim.png": "Models/N45Rim.png",
+                "Models/N81Studio.png": "Models/N81Studio.png",
             ]) {
                 guard #available(macOS 15, *) else { return }  // RealityKit's texture rotation and RealityRenderer
                 try await check(name, profile)
