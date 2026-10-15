@@ -25,6 +25,17 @@ struct CatalogTests {
         }
     }
 
+    /// Every iPod touch 4G and iPhone 4 row composites through the GL bridge: with ca_ogl off CoreAnimation draws in
+    /// software, which on these Retina panels scrolls at a fraction of the frame rate (6.0 beta 1 shipped that way).
+    @Test func retinaRowsCompositeThroughTheGLBridge() throws {
+        struct Catalog: Decodable { var entries: [FirmwareEntry] }
+        let entries = try JSONDecoder().decode(Catalog.self, from: Data(contentsOf: Oracle.catalog)).entries
+        let retina = entries.filter { ["n81ap", "n90ap"].contains($0.board) }
+        #expect(retina.count > 100)
+        let software = retina.filter { $0.recipe?.options["ca_ogl"] != true }.map(\.id)
+        #expect(software.isEmpty, "\(software)")
+    }
+
     @Test func sharedWireKeepsMetadataAndFutureTags() throws {
         let original = try Oracle.entry("k48ap-7B500")
         var object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as! [String: Any]
