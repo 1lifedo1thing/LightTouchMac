@@ -35,6 +35,18 @@ unzip it, and move **Light Touch.app** to Applications.
 Most builds are marked experimental: they boot and pass their checks, but haven't been through as much
 use as the stable ones. Turn on **Show experimental** in the Add Device sheet to see them.
 
+## Scope
+
+Light Touch is a Mac app for the devices in the table above, and that's all it will be. These aren't
+planned, and requests for them will be closed:
+
+- Versions for Windows, Linux, Android, iOS, iPadOS or the web, including companion or remote apps.
+- Other devices: iPod classic, nano or shuffle, Apple TV, Apple Watch, or any iPhone, iPod touch or
+  iPad newer than the ones listed.
+- iOS versions those devices never ran.
+
+Bug reports and ideas for the listed devices on the Mac are welcome.
+
 ## Building from source
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). The tests come in three tiers:
