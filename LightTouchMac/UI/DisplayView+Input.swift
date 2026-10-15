@@ -227,14 +227,13 @@ extension DisplayView {
         }
     }
 
-    /// One phase-less wheel event as a complete short drag.
+    /// One phase-less wheel event as a complete short drag, made room for as a gesture's is.
     private func wheelFlick(_ event: NSEvent) {
-        guard var p = clampedPanelPoint(event), let d = panelDelta(event, Self.scrollMovement(event)) else { return }
-        sendVisualTouch(0, TouchPhase.begin, Double(p.x), Double(p.y))
-        p.x = min(max(p.x + d.dx, 0), 1)
-        p.y = min(max(p.y + d.dy, 0), 1)
-        sendVisualTouch(0, TouchPhase.update, Double(p.x), Double(p.y))
-        sendVisualTouch(0, TouchPhase.end, Double(p.x), Double(p.y))
+        guard let p = clampedPanelPoint(event), let d = panelDelta(event, Self.scrollMovement(event)) else { return }
+        var flick = ScrollDrag()
+        sendScrollTouches(
+            flick.scroll(phase: .began, delta: d, start: p) + flick.scroll(phase: .ended, delta: .zero, start: nil)
+        )
     }
 
     /// A movement in view points from the cursor as a movement over the panel: both ends mapped as a press is, so the
