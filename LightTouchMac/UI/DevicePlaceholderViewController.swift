@@ -11,7 +11,7 @@ final class DevicePlaceholderViewController: NSViewController {
     var onDropIPSW: (([URL]) -> Void)?
     /// Each entry's Skip Setup Assistant choice (FirmwareJobs.skipsSetup); nil: no checkbox.
     var skipsSetup: (get: (String) -> Bool, set: (String, Bool) -> Void)?
-    /// Each entry's Jailbreak choice (on unless FirmwareJobs.keepsStock has it); nil: no checkbox.
+    /// Each entry's Jailbreak choice (FirmwareJobs.jailbreaks: on from iOS 5 unless turned off); nil: no checkbox.
     var jailbreaks: (get: (String) -> Bool, set: (String, Bool) -> Void)?
 
     private let art = NSImageView()
@@ -39,7 +39,7 @@ final class DevicePlaceholderViewController: NSViewController {
     private let space = NSTextField(wrappingLabelWithString: "")
     /// Before preparing an iOS 5 or later build: prepare it past Setup Assistant (FirmwareJobs.skipsSetup).
     private let skipSetup = NSButton(checkboxWithTitle: "Skip Setup Assistant", target: nil, action: nil)
-    /// Before preparing: prepare it jailbroken (on unless turned off: FirmwareJobs.keepsStock).
+    /// Before preparing: prepare it jailbroken (FirmwareJobs.jailbreaks: on from iOS 5 unless turned off).
     private let jailbreak = NSButton(checkboxWithTitle: "Jailbreak", target: nil, action: nil)
     /// The build's catalog note (untested, experimental, where a beta came from), in a popover.
     private let info = NSButton(
