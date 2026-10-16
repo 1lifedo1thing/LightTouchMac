@@ -54,7 +54,7 @@ struct Sessions: ParsableCommand {
             SingleCheck.self, PairCheck.self, ProxyTrustCheck.self, LocalNetworkCheck.self, HelperCheck.self,
             HelperBootCheck.self, PhoneCheck.self, RotationCheck.self, KeyboardCheck.self, FlickCheck.self,
             ScrollTopCheck.self,
-            TweaksCheck.self, RespringCheck.self,
+            TweaksCheck.self, RespringCheck.self, ClipboardCheck.self,
         ]
     )
 }
@@ -249,6 +249,33 @@ struct FlickCheck: ParsableCommand {
     @OptionGroup var inputs: Inputs
 
     func run() { flickCheck(self) }
+}
+
+struct ClipboardCheck: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "clipboard",
+        abstract: """
+            An iOS 3.0 or later base: a copy on the device reaches the host once, the host's text reaches the \
+            device's pasteboard, non-ASCII both ways (the guest agent's spawn of it_pbtool sets and reads it).
+            """
+    )
+    @Argument var base: String
+    @Option(
+        help: """
+            The guest's pasteboard tool (default: the pinned qemu-ios's contrib/it-pasteboard/it_pbtool, or \
+            build/ipad1-guest/it_pbtool on an armv7 board).
+            """,
+        transform: path
+    )
+    var pbtool: URL?
+    @Option(
+        help: "The guest package offered at boot (default: the guest archive's for the base's arch).",
+        transform: path
+    )
+    var itpack: URL?
+    @OptionGroup var inputs: Inputs
+
+    func run() { clipboardCheck(self) }
 }
 
 // App code in the drivers logs and keeps state under the run's own directories, never the user's library.

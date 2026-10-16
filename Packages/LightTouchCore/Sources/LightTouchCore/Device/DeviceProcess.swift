@@ -18,6 +18,10 @@ import HostRuntime
         get { process.onAudio }
         set { process.onAudio = newValue }
     }
+    public var onGuestPasteboard: ((String) -> Void)? {
+        get { process.onGuestPasteboard }
+        set { process.onGuestPasteboard = newValue }
+    }
     public var onDeath: ((String) -> Void)?
 
     public init(

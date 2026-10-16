@@ -45,6 +45,10 @@ extension EmulatorController {
             helperDied(reason)
         }
         process.onAudio = { [weak self] event in self?.audioSink?(event) }
+        process.onGuestPasteboard = { [weak self] text in
+            guard let self else { return }
+            ClipboardSharing.shared.guestCopied(text, on: self)
+        }
         startStatusPoll()
         // Low space doesn't stop a boot; it's said before writes start failing.
         warnIfLowOnSpace()

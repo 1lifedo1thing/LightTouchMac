@@ -123,6 +123,7 @@ struct GeneralSettingsView: View {
     @AppStorage(NetworkAccessPreference.key) private var internet: Bool?
     @AppStorage(VibrationSound.key) private var vibrationSound = true
     @AppStorage(DisplayRefresh.key) private var refresh120 = false
+    @AppStorage(ClipboardSync.key) private var shareClipboard = true
 
     var body: some View {
         Form {
@@ -132,6 +133,7 @@ struct GeneralSettingsView: View {
                 Text("Ask When a Device Starts").tag(Bool?.none)
             }
             Toggle("Play vibration sound", isOn: $vibrationSound)
+            Toggle("Share clipboard with devices", isOn: $shareClipboard)
             Toggle(isOn: $refresh120) {
                 Text("120 Hz refresh (experimental)")
                 Text("Takes effect when a device next starts. Games that count frames run too fast.")

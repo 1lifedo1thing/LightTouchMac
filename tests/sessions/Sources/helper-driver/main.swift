@@ -152,6 +152,8 @@ link.onEvent = { event in
         emit("audioEnded", ["generation": g, "failed": failed, "bytes": audioBytes, "loud": audioLoud])
         audioBytes = 0
         audioLoud = 0
+    case .guestPasteboard(let text):
+        emit("guestPasteboard", ["text": text])
     }
 }
 link.onInvalidated = { error in
@@ -526,6 +528,24 @@ Thread.detachNewThread {
                 output = "status \(status)\n" + String(decoding: text, as: UTF8.self)
             }
             emit("agent", ["output": output, "op": p[0]])
+        case "hostpb":  // hostpb TEXT…: the Mac's text to the guest's pasteboard (LinkCommand.paste)
+            link.send(.paste(p.dropFirst().joined(separator: " ")))
+        case "guestpb":  // guestpb TOOL get | TOOL set TEXT…: the guest's pasteboard through the agent's spawn of TOOL
+            var argv = [p[1], p[2]]
+            if p[2] == "set" { argv.append(p.dropFirst(3).joined(separator: " ")) }
+            let body = Data(argv.map { $0 + "\0" }.joined().utf8)
+            let r = request(
+                .agent(request: "\(UUID().uuidString) spawn\n\(body.base64EncodedString())", deadline: 30),
+                timeout: 35
+            )
+            var fields: [String: Any] = ["reply": "\(r)"]
+            if case .success(.agent(let wire?)) = r {
+                let parts = wire.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+                fields["status"] = parts.first.map { String($0.split(separator: " ").last ?? "") } ?? ""
+                let output = Data(base64Encoded: String(parts.last ?? "")) ?? Data()
+                fields["text"] = String(decoding: output, as: UTF8.self)
+            }
+            emit("guestpb", fields)
         case "defaults":  // defaults DOMAIN KEY bool|int|float|string|delete [VALUE…]: GuestServices.writeDefaults
             let value: GuestDefaultValue? =
                 switch p[3] {

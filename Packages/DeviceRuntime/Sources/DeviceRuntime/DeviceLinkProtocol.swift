@@ -13,7 +13,7 @@ import HostRuntime
 nonisolated public enum DeviceLinkWire {
     /// Bumped on any incompatible change to the messages below, the status block
     /// layout or the Mach hello. The helper refuses a hello with another version.
-    public static let protocolVersion = 2
+    public static let protocolVersion = 3
     /// The helper's hello refusal when another helper holds the device's lease; the app shows it as is.
     public static let leaseRefusal = "This device is in use by another copy of Light Touch."
     /// Upper bound on one framed message, either direction. An agent request is
@@ -123,6 +123,9 @@ nonisolated public enum LinkEvent: Codable, Sendable, Equatable {
     /// No more events for this generation: drained after `audioStop` (failed
     /// false), or the capture stopped or overflowed on its own (failed true).
     case audioEnded(generation: UInt64, failed: Bool)
+    /// Text copied inside the guest (qemu_ios_ui_guest_pasteboard): never the text the app pasted in, nor what the
+    /// guest held when its agent started.
+    case guestPasteboard(String)
 }
 
 nonisolated public struct HelperInfo: Codable, Sendable, Equatable {

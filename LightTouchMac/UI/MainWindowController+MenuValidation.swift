@@ -185,7 +185,8 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(saveScreenshot(_:)), #selector(saveScreenshotAs(_:)), #selector(copyScreen(_:)):
             return canTakeScreenshot
         case #selector(pasteToGuest(_:)):
-            return emulator.acceptsInput && NSPasteboard.general.string(forType: .string) != nil
+            return emulator.acceptsInput && emulator.sharesClipboard
+                && NSPasteboard.general.availableType(from: [.string]) != nil
         case #selector(zoomIn(_:)), #selector(zoomOut(_:)), #selector(zoomPhysicalSize(_:)), #selector(zoomToFit(_:)),
             #selector(zoomPixelAccurate(_:)):
             return validateZoomItem(menuItem, screen: deviceVC.screen)

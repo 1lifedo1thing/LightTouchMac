@@ -27,6 +27,7 @@ public enum DeviceProcessDeath: Equatable {
 @MainActor public final class DeviceSessionProcess {
     public let link: DeviceLink
     public var onAudio: ((LinkEvent) -> Void)?
+    public var onGuestPasteboard: ((String) -> Void)?
     public var onDeath: ((DeviceProcessDeath) -> Void)?
     public var onTermination: ((pid_t, DeviceTermination, Int32?) -> Void)?
     public private(set) var death: DeviceProcessDeath?
@@ -174,6 +175,7 @@ public enum DeviceProcessDeath: Equatable {
         switch event {
         case .qemuExited(let code): qemuExitCode = code
         case .audio, .audioEnded: onAudio?(event)
+        case .guestPasteboard(let text): onGuestPasteboard?(text)
         }
     }
 

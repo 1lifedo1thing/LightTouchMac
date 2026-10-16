@@ -257,6 +257,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         controller.showWindow(nil)
         self.host = host
         self.windowController = controller
+        ClipboardSharing.shared.emulators = { [weak self] in self?.emulators ?? [] }
+        ClipboardSharing.shared.start()
         controller.selectLaunchDevice()
         dockProgress.start()
         if !pendingOpen.isEmpty {

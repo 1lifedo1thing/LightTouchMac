@@ -129,6 +129,11 @@ final class Qemu: @unchecked Sendable {
     lazy var shake = sym("qemu_ios_ui_shake", VoidFn.self)
     lazy var attitude = sym("qemu_ios_ui_attitude", (@convention(c) (Double, Double, Int32) -> Void).self)
     lazy var paste = sym("qemu_ios_ui_paste", (@convention(c) (UnsafePointer<CChar>) -> Void).self)
+    /// API 2.3: the guest's latest copy when newer than the serial (malloc'd, free()).
+    lazy var guestPasteboard = optionalSym(
+        "qemu_ios_ui_guest_pasteboard",
+        (@convention(c) (UnsafeMutablePointer<UInt64>) -> UnsafeMutablePointer<CChar>?).self
+    )
     lazy var battery = sym("qemu_ios_ui_battery", (@convention(c) (Int32, Int32) -> Bool).self)
     lazy var usbConnection = sym("qemu_ios_ui_usb_connection", (@convention(c) (Bool) -> Bool).self)
     lazy var compass = sym("qemu_ios_ui_compass", (@convention(c) (Int32) -> Bool).self)

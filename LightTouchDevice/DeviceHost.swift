@@ -23,6 +23,7 @@ final class DeviceHost: @unchecked Sendable {
     private var pump: DispatchSourceTimer?
     private var ticks = 0
     private var frameSerial: UInt64 = 0
+    private var guestPasteboardSerial: UInt64 = 0
     private let stateLock = NSLock()
     private var bootConfig: BootConfig?
     /// The device's web proxy (WebProxy.swift), for the life of the process.
@@ -198,6 +199,11 @@ final class DeviceHost: @unchecked Sendable {
         var glSerial: Int64 = 0
         status[.glesProtocol] = UInt64(bitPattern: Int64(qemu.glesProtocol?(&glSerial) ?? 0))
         status[.glesSerial] = UInt64(bitPattern: glSerial)
+        // A copy inside the guest, at the status rate (the agent itself looks 4 times a second).
+        if let text = qemu.guestPasteboard?(&guestPasteboardSerial) {
+            onEvent?(.guestPasteboard(String(cString: text)))
+            free(text)
+        }
     }
 
     // MARK: - Boot
