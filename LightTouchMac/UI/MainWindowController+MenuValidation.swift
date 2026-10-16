@@ -9,6 +9,13 @@ import UniformTypeIdentifiers
 // MARK: - Menu validation (enablement + checkmarks)
 
 extension MainWindowController: NSMenuItemValidation {
+    private static let batchCommands: [Selector: (DeviceAction, String)] = [
+        #selector(toggleDeviceRunning(_:)): (.start, "Start"),
+        #selector(deviceForceStop(_:)): (.forceStop, "Force Stop…"),
+        #selector(jailbreakDevice(_:)): (.jailbreak, "Jailbreak…"),
+        #selector(eraseDevice(_:)): (.erase, "Erase All Content and Settings…"),
+    ]
+
     /// The selected device as the Device menu's items see it (DeviceMenuState).
     private var deviceMenu: DeviceMenuState {
         var state = DeviceMenuState()
@@ -37,6 +44,13 @@ extension MainWindowController: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(toggleFiles(_:)) {
             return true
+        }
+        // With several rows selected, these act on each that can take them and say how many; one row's title back
+        // otherwise (Start's is its own case below).
+        if let (action, title) = menuItem.action.flatMap({ Self.batchCommands[$0] }) {
+            let batch = library.commandBatch(action)
+            menuItem.title = batch?.title ?? title
+            if let batch { return batch.isEnabled }
         }
         // The selected row's commands, and the window's own, work without a device.
         switch menuItem.action {

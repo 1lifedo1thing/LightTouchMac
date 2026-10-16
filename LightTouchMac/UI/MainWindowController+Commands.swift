@@ -58,11 +58,74 @@ extension MainWindowController {
         }
     }
 
+    /// Several rows: Start starts each the way Start does one; the rest ask once for the lot, then do to each what the
+    /// one-row command does after its question.
+    func perform(_ batch: DeviceBatch<FirmwareCatalog.Entry>) {
+        guard batch.isEnabled else { return }
+        if batch.action == .start { return batch.targets.forEach { start($0, select: false) } }
+        guard let window, window.attachedSheet == nil else { return }
+        batchAlert(batch).beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            // Asked again on the answer, as each one-row command is.
+            for entry in batch.targets where canPerform(batch.action, for: entry) {
+                switch batch.action {
+                case .forceStop: host.session(for: entry).map { powerOff($0.emulator) }
+                case .jailbreak: DeviceFilesystemEdits.shared.perform(.jailbreak, entry: entry, host: host)
+                case .erase: eraseConfirmed(entry, window: window)
+                default: break
+                }
+            }
+        }
+    }
+
+    private func batchAlert(_ batch: DeviceBatch<FirmwareCatalog.Entry>) -> NSAlert {
+        let names = ListFormatter.localizedString(byJoining: batch.targets.map(name))
+        let count = batch.targets.count
+        let alert = NSAlert()
+        alert.alertStyle = batch.action == .erase ? .critical : .warning
+        var info: String
+        switch batch.action {
+        case .forceStop:
+            alert.messageText = "Force stop \(count == 1 ? name(batch.targets[0]) : "\(count) devices")?"
+            info =
+                (count == 1
+                    ? "It stops at once, as if its battery were removed."
+                    : "They stop at once, as if their batteries were removed.")
+                + " Anything an app hasn’t saved is lost."
+            alert.addButton(withTitle: "Force Stop")
+        case .jailbreak:
+            alert.messageText = "Jailbreak \(count == 1 ? name(batch.targets[0]) : "\(count) devices")?"
+            let substrate = batch.targets.contains { (3...6).contains(Int($0.version.prefix { $0 != "." }) ?? 0) }
+            info =
+                "Adds Cydia\(substrate ? ", Substrate on iOS 3 to 6," : "") and afc2, which shows the whole file system in Files, to \(names). Erase All Content and Settings removes them."
+            alert.addButton(withTitle: "Jailbreak")
+        default:
+            alert.messageText = "Erase \(count == 1 ? name(batch.targets[0]) : "\(count) devices")?"
+            let installs = batch.targets.contains {
+                host.instance(for: $0).map { AppInstaller.hasPendingWork(for: $0.id) } ?? false
+            }
+            info =
+                "This permanently removes all apps, settings, and saved state from \(names) and returns them to how they were prepared."
+                + (installs ? " Installs in progress are cancelled." : "")
+            alert.addButton(withTitle: "Erase")
+        }
+        if !batch.skipped.isEmpty {
+            info +=
+                " " + ListFormatter.localizedString(byJoining: batch.skipped.map(name))
+                + (batch.skipped.count == 1 ? " stays as it is." : " stay as they are.")
+        }
+        alert.informativeText = info
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons.first?.hasDestructiveAction = batch.action != .jailbreak
+        return alert
+    }
+
     func name(_ entry: FirmwareCatalog.Entry) -> String { library.displayName(for: entry) }
 
     /// Start: the file system view let go first (an edit open in Finder is saved or discarded, after asking).
-    func start(_ entry: FirmwareCatalog.Entry) {
-        library.select(entry)
+    /// `select`: show the device (one row's Start; several rows keep their selection).
+    func start(_ entry: FirmwareCatalog.Entry, select: Bool = true) {
+        if select { library.select(entry) }
         guard let instance = host.instance(for: entry) else { return launch(entry) }
         let edits = DeviceFilesystemEdits.shared
         func release(commit: Bool?) {
@@ -131,6 +194,7 @@ extension MainWindowController {
     }
 
     @objc func toggleDeviceRunning(_ sender: Any?) {
+        if let batch = library.commandBatch(.start) { return perform(batch) }
         guard let entry = selectedEntry else { return }
         perform([.running, .stopping].contains(host.row(for: entry).state) ? .stop : .start, for: entry)
     }
@@ -142,7 +206,10 @@ extension MainWindowController {
     }
     @objc func cancelFirmwareJob(_ sender: Any?) { selectedEntry.map { perform(.cancel, for: $0) } }
     @objc func showDeviceInFinder(_ sender: Any?) { selectedEntry.map { perform(.showInFinder, for: $0) } }
-    @objc func jailbreakDevice(_ sender: Any?) { selectedEntry.map { perform(.jailbreak, for: $0) } }
+    @objc func jailbreakDevice(_ sender: Any?) {
+        if let batch = library.commandBatch(.jailbreak) { return perform(batch) }
+        selectedEntry.map { perform(.jailbreak, for: $0) }
+    }
 
     /// Jailbreak…: asked, then the stopped device's edit, its progress in the device area (DeviceFilesystemEdits).
     private func confirmJailbreak(_ entry: FirmwareCatalog.Entry) {

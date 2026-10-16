@@ -23,6 +23,8 @@ import UniformTypeIdentifiers
         for entry: FirmwareCatalog.Entry
     ) -> Bool
     func library(_ library: DeviceLibraryViewController, perform action: DeviceAction, for entry: FirmwareCatalog.Entry)
+    /// A command on several rows: the rows it applies to, after one question for the lot where the command asks.
+    func library(_ library: DeviceLibraryViewController, perform batch: DeviceBatch<FirmwareCatalog.Entry>)
     /// Dropped IPSWs or folders of them, with the row they were dropped on.
     func library(_ library: DeviceLibraryViewController, importIPSWs urls: [URL], for entry: FirmwareCatalog.Entry?)
 }
@@ -347,6 +349,13 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         return entry(at: clicked).map { [$0] } ?? []
     }
 
+    /// A command on several rows (DeviceBatch): the targets the window can do it for; nil with one row or none.
+    func commandBatch(_ action: DeviceAction) -> DeviceBatch<FirmwareCatalog.Entry>? {
+        let targets = targetEntries
+        guard targets.count > 1 else { return nil }
+        return DeviceBatch(action, targets) { delegate?.library(self, canPerform: action, for: $0) == true }
+    }
+
     /// A single-row command's row: the one target, nil with several.
     private var targetEntry: FirmwareCatalog.Entry? {
         let targets = targetEntries
@@ -483,6 +492,17 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
         menu.removeAllItems()
         let targets = targetEntries
         if targets.count > 1 {
+            // Each command for the rows it applies to, with how many; dimmed when none does.
+            for action in [DeviceAction.start, .forceStop, nil, .jailbreak, .erase, nil] {
+                guard let action, let batch = commandBatch(action) else {
+                    menu.addItem(.separator())
+                    continue
+                }
+                let item = NSMenuItem(title: batch.title, action: #selector(batchAction(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = action
+                menu.addItem(item)
+            }
             let batch = batch(targets)
             let remove = NSMenuItem(
                 title: Self.batchTitle(batch),
@@ -529,6 +549,9 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
 
     /// Every command is listed, Cancel too (never hidden, only disabled); what doesn’t apply now is dimmed.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(batchAction(_:)), let action = item.representedObject as? DeviceAction {
+            return commandBatch(action)?.isEnabled == true
+        }
         if item.action == #selector(contextAction(_:)), let action = item.representedObject as? DeviceAction {
             return targetEntry.map { delegate?.library(self, canPerform: action, for: $0) == true } ?? false
         }
@@ -545,6 +568,13 @@ final class DeviceLibraryViewController: NSViewController, NSOutlineViewDataSour
     @objc private func contextAction(_ sender: NSMenuItem) {
         guard let action = sender.representedObject as? DeviceAction, let entry = targetEntry else { return }
         delegate?.library(self, perform: action, for: entry)
+    }
+
+    @objc private func batchAction(_ sender: NSMenuItem) {
+        guard let action = sender.representedObject as? DeviceAction, let batch = commandBatch(action),
+            batch.isEnabled
+        else { return }
+        delegate?.library(self, perform: batch)
     }
 
     // MARK: - IPSW and .ipa drops

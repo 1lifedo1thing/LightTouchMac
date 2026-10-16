@@ -53,6 +53,32 @@ struct DeviceRowTests {
         #expect(!row(iPod, instance: id, session: .running).allows(.jailbreak, canDownload: false), "running")
     }
 
+    /// Several rows: each command acts on the rows its one-row version allows and says how many; none, dimmed.
+    @Test func severalRowsActOnTheRowsEachCommandAllows() throws {
+        let m68 = try #require(catalog.entries.first { $0.board == "m68ap" })
+        // 4 selected: 2 running, 2 prepared and stopped (one of them iPhone OS 1, which takes no jailbreak).
+        let rows = [
+            row(iPod, instance: UUID(), session: .running), row(iPad, instance: UUID(), session: .running),
+            row(iPod4, instance: UUID()), row(m68, instance: UUID()),
+        ]
+        func batch(_ action: DeviceAction, _ rows: [DeviceRow] = rows) throws -> DeviceBatch<DeviceRow> {
+            try #require(DeviceBatch(action, rows) { $0.allows(action, canDownload: true) })
+        }
+        let stop = try batch(.forceStop)
+        let start = try batch(.start)
+        #expect(stop.title == "Force Stop 2 Devices…" && stop.isEnabled && stop.targets == Array(rows[..<2]))
+        #expect(start.title == "Start 2 Devices" && start.isEnabled && start.targets == Array(rows[2...]))
+        let jailbreak = try batch(.jailbreak)
+        #expect(jailbreak.title == "Jailbreak 1 Device…" && jailbreak.targets == [rows[2]])
+        #expect(jailbreak.skipped == [rows[0], rows[1], rows[3]], "running, and iPhone OS 1")
+        #expect(try batch(.erase).title == "Erase 4 Devices…")
+        // None running: Stop is there, dimmed.
+        let none = try batch(.forceStop, Array(rows[2...]))
+        #expect(none.title == "Force Stop Devices…" && !none.isEnabled && none.skipped.count == 2)
+        // One-row commands have no several-row form (Delete is the sidebar's own Batch).
+        #expect(DeviceBatch(.delete, rows) { _ in true } == nil && DeviceBatch(.stop, rows) { _ in true } == nil)
+    }
+
     /// A first launch selects a build Apple still serves, ready to Download and Prepare: no device ships in the app.
     @Test func firstRunIsADownloadFromApple() throws {
         let first = try #require(catalog.firstRunEntry)

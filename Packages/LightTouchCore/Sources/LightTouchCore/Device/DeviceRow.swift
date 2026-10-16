@@ -17,6 +17,36 @@ public nonisolated enum DeviceAction: CaseIterable, Sendable {
     case jailbreak
 }
 
+/// A command on several sidebar rows at once: the rows the one-row command allows (`targets`), the rest left as they
+/// are (`skipped`), and its title, which says how many it acts on. Several-row Delete is the sidebar's own Batch.
+public nonisolated struct DeviceBatch<Item> {
+    /// The commands several rows take, with their titles' verbs; the ones that ask first end in an ellipsis.
+    static var verbs: [DeviceAction: String] {
+        [
+            .start: "Start", .forceStop: "Force Stop", .jailbreak: "Jailbreak", .erase: "Erase",
+        ]
+    }
+    public let action: DeviceAction
+    public let targets: [Item]
+    public let skipped: [Item]
+
+    /// Nil for a command that acts on one row only.
+    public init?(_ action: DeviceAction, _ items: [Item], allows: (Item) -> Bool) {
+        guard Self.verbs[action] != nil else { return nil }
+        self.action = action
+        targets = items.filter(allows)
+        skipped = items.filter { !allows($0) }
+    }
+
+    public var isEnabled: Bool { !targets.isEmpty }
+    /// Start 3 Devices, Force Stop 1 Device…, Erase Devices… (dimmed: none qualifies).
+    public var title: String {
+        let count = targets.count
+        let noun = count == 0 ? "Devices" : count == 1 ? "1 Device" : "\(count) Devices"
+        return "\(Self.verbs[action] ?? "") \(noun)" + (action == .start ? "" : "…")
+    }
+}
+
 /// A download or preparation in flight for a catalog entry (FirmwareJobs).
 /// `remaining` is the estimated seconds left for the whole job (the download and the preparation after it), nil until
 /// there is one; `files` is how many IPSWs the one job fetches (2 for a build that boots its sibling's ramdisk),

@@ -234,7 +234,10 @@ extension MainWindowController {
     }
 
     /// Force Stop…: the hard halt, after asking.
-    @objc func deviceForceStop(_ sender: Any?) { emulator.map(confirmForceStop) }
+    @objc func deviceForceStop(_ sender: Any?) {
+        if let batch = library.commandBatch(.forceStop) { return perform(batch) }
+        emulator.map(confirmForceStop)
+    }
     func confirmForceStop(_ emulator: EmulatorController) {
         guard let window else { return }
         let alert = NSAlert()
@@ -271,7 +274,7 @@ extension MainWindowController {
         }
     }
 
-    private func powerOff(_ emulator: EmulatorController) {
+    func powerOff(_ emulator: EmulatorController) {
         let stop = emulator.powerOff()
         Task { [weak emulator] in
             let confirmed = await stop.value
@@ -289,7 +292,10 @@ extension MainWindowController {
     /// Factory-reset the device — the "nuke everything" button. Wipes the NAND
     /// overlay (all installed apps + settings), back to the base image; a
     /// running device then restarts. The base image is never touched.
-    @objc func eraseDevice(_ sender: Any?) { selectedEntry.map { perform(.erase, for: $0) } }
+    @objc func eraseDevice(_ sender: Any?) {
+        if let batch = library.commandBatch(.erase) { return perform(batch) }
+        selectedEntry.map { perform(.erase, for: $0) }
+    }
 
     /// A device with no session is erased by the host (its row says Erasing); a started one by its controller.
     func erase(_ entry: FirmwareCatalog.Entry) {
@@ -305,14 +311,18 @@ extension MainWindowController {
         alert.buttons.first?.hasDestructiveAction = true
         alert.beginSheetModal(for: window) { [weak self] response in
             // Asked again on the answer: the device may have started or stopped while the question was up.
-            guard response == .alertFirstButtonReturn, let self, canPerform(.erase, for: entry),
-                let instance = host.instance(for: entry)
-            else { return }
-            if let emulator = host.session(for: entry)?.emulator { return emulator.requestFactoryReset() }
-            let erase = host.erase(instance)
-            Task {
-                do { try await erase.value } catch { await NSAlert(error: error).beginSheetModal(for: window) }
-            }
+            guard response == .alertFirstButtonReturn, let self, canPerform(.erase, for: entry) else { return }
+            eraseConfirmed(entry, window: window)
+        }
+    }
+
+    /// Erase after its question (one device's, or several rows' one for the lot).
+    func eraseConfirmed(_ entry: FirmwareCatalog.Entry, window: NSWindow) {
+        guard let instance = host.instance(for: entry) else { return }
+        if let emulator = host.session(for: entry)?.emulator { return emulator.requestFactoryReset() }
+        let erase = host.erase(instance)
+        Task {
+            do { try await erase.value } catch { await NSAlert(error: error).beginSheetModal(for: window) }
         }
     }
 

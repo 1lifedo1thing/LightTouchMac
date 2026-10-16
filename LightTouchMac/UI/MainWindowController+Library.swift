@@ -48,6 +48,10 @@ extension MainWindowController {
         perform(action, for: entry)
     }
 
+    func library(_ library: DeviceLibraryViewController, perform batch: DeviceBatch<FirmwareCatalog.Entry>) {
+        perform(batch)
+    }
+
     func library(
         _ library: DeviceLibraryViewController,
         canPerform action: DeviceAction,

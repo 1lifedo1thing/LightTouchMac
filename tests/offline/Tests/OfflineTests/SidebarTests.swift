@@ -20,6 +20,9 @@ extension SharedState {
         final class Delegate: DeviceLibraryDelegate {
             var deletes: [String] = []
             var allowed: Set<DeviceAction> = Set(DeviceAction.allCases)
+            /// Per row, when set (else `allowed`, for every row).
+            var permits: ((DeviceAction, FirmwareCatalog.Entry) -> Bool)?
+            var batches: [(DeviceAction, [String])] = []
             var selected: [FirmwareCatalog.Entry?] = []
             func library(_ library: DeviceLibraryViewController, didSelect entry: FirmwareCatalog.Entry?) {
                 selected.append(entry)
@@ -32,7 +35,10 @@ extension SharedState {
                 canPerform action: DeviceAction,
                 for entry: FirmwareCatalog.Entry
             ) -> Bool {
-                allowed.contains(action)
+                permits?(action, entry) ?? allowed.contains(action)
+            }
+            func library(_ library: DeviceLibraryViewController, perform batch: DeviceBatch<FirmwareCatalog.Entry>) {
+                batches.append((batch.action, batch.targets.map(\.id)))
             }
             func library(
                 _ library: DeviceLibraryViewController,
@@ -434,6 +440,34 @@ extension SharedState {
                 fail("several rows selected still name one entry to the window")
             }
             if !vc.canRemoveTargets { fail("Delete dimmed over a removable selection") }
+            // Several rows' context menu: each command for the rows it applies to, saying how many, dimmed (not left
+            // out) when none does; choosing one hands the window those rows alone.
+            multiDelegate.permits = { action, entry in vc.row(for: entry).allows(action, canDownload: true) }
+            let several = NSMenu()
+            vc.menuNeedsUpdate(several)
+            let severalTitles = several.items.filter { !$0.isSeparatorItem }.map(\.title)
+            if severalTitles != [
+                "Start 1 Device", "Force Stop 1 Device…", "Jailbreak 1 Device…", "Erase 2 Devices…",
+                "Delete 3 Devices…",
+            ] || !several.items.filter({ !$0.isSeparatorItem }).allSatisfy(vc.validateMenuItem) {
+                fail("several rows' context menu: \(severalTitles)")
+            }
+            if let erase = several.items.first(where: { $0.title == "Erase 2 Devices…" }), let action = erase.action {
+                NSApp.sendAction(action, to: erase.target, from: erase)
+            }
+            if multiDelegate.batches.map(\.0) != [.erase]
+                || Set(multiDelegate.batches.first?.1 ?? []) != ["n72ap-8C148", "k48ap-7B500"]
+            {
+                fail("several rows' Erase handed the window \(multiDelegate.batches)")
+            }
+            multiDelegate.permits = { _, _ in false }
+            vc.menuNeedsUpdate(several)
+            if several.items.contains(where: { $0.title == "Force Stop Devices…" && vc.validateMenuItem($0) })
+                || !several.items.contains(where: { $0.title == "Force Stop Devices…" })
+            {
+                fail("with nothing to stop: \(several.items.map(\.title))")
+            }
+            multiDelegate.permits = nil
             // Offscreen, the selection's material draws black (as in sidebar-renamed's note): the rows' artwork shows on it.
             vc.delete(nil)  // Cancel
             if alerts.count != 1 { fail("a mixed batch asked \(alerts.count) questions") }
