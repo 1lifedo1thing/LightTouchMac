@@ -126,6 +126,17 @@ extension SystemEdits {
         }
     }
 
+    /// The locale to seed as AppleLocale, as ICU names it ("uk_UA", "sr_Latn_RS"), without keywords ("@calendar=…"):
+    /// `tag`'s, else `appleLocale`, the user's own AppleLocale preference. Not Locale.current, which in an app
+    /// localized only in English carries the app's language with the user's region (en_UA for a uk_UA user).
+    static func deviceLocale(
+        tag: String?,
+        appleLocale: String? = CFPreferencesCopyAppValue("AppleLocale" as CFString, kCFPreferencesAnyApplication)
+            as? String
+    ) -> String {
+        String(Locale.identifier(.icu, from: tag ?? appleLocale ?? Locale.current.identifier).prefix { $0 != "@" })
+    }
+
     /// Sets the device's language and region (`deviceLanguage`, from `tag`, else the Mac's) in each user's
     /// .GlobalPreferences under `skeleton` (/private/var) that lists the firmware's languages: the language moved
     /// first, AppleLocale set; with `catalog`, the firmware's keyboards, AppleKeyboards (KeyboardCatalog.keyboards)
@@ -142,8 +153,7 @@ extension SystemEdits {
     ) throws -> (language: String, locale: String, keyboards: [String])? {
         let preferred = tag.map { [$0] } ?? Locale.preferredLanguages
         let region = tag.flatMap { Locale(identifier: $0).region?.identifier } ?? Locale.current.region?.identifier
-        // as ICU names it ("uk_UA", "sr_Latn_RS"), without keywords ("@calendar=…")
-        let locale = String(Locale.identifier(.icu, from: tag ?? Locale.current.identifier).prefix { $0 != "@" })
+        let locale = deviceLocale(tag: tag)
         let mac = catalog == nil ? [] : macKeyboards(keyboards)
         var chosen: (language: String, locale: String, keyboards: [String])?
         for path in [globalPreferences, "root/Library/Preferences/.GlobalPreferences.plist"] {

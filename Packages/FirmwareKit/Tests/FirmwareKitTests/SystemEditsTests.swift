@@ -299,6 +299,12 @@ enum K48Oracle {
         #expect(pick("fr-FR", "FR", "fr_FR") == "fr fr_FR")
         #expect(SystemEdits.deviceLanguage(supported: v322, preferred: ["uk-UA"], region: "UA").locale == "en_UA")
 
+        // The Mac's locale is the user's AppleLocale preference, not Locale.current (the app's language in an app
+        // localized only in English); an explicit language wins.
+        #expect(SystemEdits.deviceLocale(tag: nil, appleLocale: "uk_UA") == "uk_UA")
+        #expect(SystemEdits.deviceLocale(tag: nil, appleLocale: "sr-Latn_RS@calendar=gregorian") == "sr_Latn_RS")
+        #expect(SystemEdits.deviceLocale(tag: "fr-CA", appleLocale: "uk_UA") == "fr_CA")
+
         // seedLanguage, from an explicit language as from the Mac's
         let skeleton = root.appendingPathComponent("var")
         let global = skeleton.appendingPathComponent(SystemEdits.globalPreferences)
