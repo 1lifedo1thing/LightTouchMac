@@ -592,6 +592,8 @@ Thread.detachNewThread {
                     "front": (try? front.get().bundleID) ?? "",
                 ]
             )
+        case "respring":  // Device ▸ Respring and Tweaks' restart (GuestServices.respring)
+            emit("respring", ["result": "\(blocking { try await guest.respring() })"])
         case "reset":  // the app's Restart (MachineOp.reset): the guest reboots in place
             link.send(.machine(.reset))
         case "waitagent":  // waitagent SECONDS: until the agent is alive

@@ -171,8 +171,16 @@ public nonisolated struct GuestServices: Sendable {
 
     // MARK: SpringBoard and launchd
 
-    /// launchd's KeepAlive brings SpringBoard straight back.
-    public func respring() async throws { try await agent.spawn([Self.launchctl, "stop", "com.apple.SpringBoard"]) }
+    /// What the era's jailbreak respring restarted: from iOS 6, where backboardd is the window server and owns HID,
+    /// backboardd (sbreload, `killall backboardd`), and SpringBoard and every app go with it; before that, SpringBoard
+    /// (and its apps). launchd's KeepAlive brings them straight back. Which one is the guest's own answer: the
+    /// firmware has a backboardd job or not.
+    public func respring() async throws {
+        let job = try await agent.get(Self.backboarddJob) != nil ? "com.apple.backboardd" : "com.apple.SpringBoard"
+        try await agent.spawn([Self.launchctl, "stop", job])
+    }
+
+    static let backboarddJob = "/System/Library/LaunchDaemons/com.apple.backboardd.plist"
 
     /// launchd owns and relaunches lockdownd.
     public func reconnectManagement() async throws {

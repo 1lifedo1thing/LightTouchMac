@@ -110,7 +110,7 @@ public nonisolated enum Tweak: String, Codable, CaseIterable, Sendable {
     /// UIAnimationDragCoefficient() returns 10.0 while com.apple.UIKit.SimulatorSlowMotionAnimationState is set).
     public static let slowAnimationFactor = 10
 
-    /// Domains whose reader is SpringBoard (or UIKit in it): a change there restarts SpringBoard.
+    /// Domains whose reader is SpringBoard (or UIKit in it): a change there resprings (GuestServices.respring).
     static let respringDomains: Set = ["com.apple.springboard", "com.apple.UIKit"]
 }
 

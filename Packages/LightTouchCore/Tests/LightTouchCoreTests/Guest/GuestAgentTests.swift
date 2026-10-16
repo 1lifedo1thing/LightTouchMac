@@ -102,7 +102,10 @@ struct GuestAgentTests {
         await #expect(throws: AppLaunchError.failed) { try await services.launch("com.example.game") }
         link.launchFails = false
         try await services.respring()
-        #expect(link.spawns.last == ["/bin/launchctl", "stop", "com.apple.SpringBoard"])
+        #expect(link.spawns.last == ["/bin/launchctl", "stop", "com.apple.SpringBoard"], "5.x and earlier")
+        link.files[GuestServices.backboarddJob] = Data("<plist/>".utf8)
+        try await services.respring()
+        #expect(link.spawns.last == ["/bin/launchctl", "stop", "com.apple.backboardd"], "6.x on: SpringBoard goes too")
         try await services.reconnectManagement()
         #expect(link.spawns.last == ["/bin/launchctl", "stop", "com.apple.mobile.lockdown"])
     }

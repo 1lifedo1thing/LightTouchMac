@@ -141,8 +141,8 @@ public protocol AppsHost: AnyObject {
         guard host.isRunning, !isInstalling else { return }
         restartingSpringBoard = true
         defer { restartingSpringBoard = false }
-        // launchd stops SpringBoard and KeepAlive brings it straight back: the
-        // cheap fix for "a freshly sideloaded app crashes until I restart", as
+        // launchd stops SpringBoard (from 6.x backboardd, which takes SpringBoard
+        // with it) and KeepAlive brings it straight back: the cheap fix for "a freshly sideloaded app crashes until I restart", as
         // SpringBoard rebuilds what it caches about installed apps in seconds
         // where a boot costs ~40. User-invoked only, never the install path's.
         _ = try services

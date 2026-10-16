@@ -53,7 +53,7 @@ struct Sessions: ParsableCommand {
         subcommands: [
             SingleCheck.self, PairCheck.self, ProxyTrustCheck.self, LocalNetworkCheck.self, HelperCheck.self,
             HelperBootCheck.self, PhoneCheck.self, RotationCheck.self, KeyboardCheck.self, FlickCheck.self,
-            TweaksCheck.self,
+            TweaksCheck.self, RespringCheck.self,
         ]
     )
 }
