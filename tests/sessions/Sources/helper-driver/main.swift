@@ -650,6 +650,18 @@ Thread.detachNewThread {
             )
         case "keyboard":  // keyboard on|off: Connect Hardware Keyboard (qemu_ios_ui_hardware_keyboard)
             emit("reply", ["reply": "\(request(.hardwareKeyboard(p[1] == "on")))", "keyboard": p[1]])
+        case "keys":  // keys WORD: lowercase letters as the Mac's keys (the app's key path: .key -> usb-kbd)
+            let codes: [Character: Int] = [
+                "a": 0, "b": 11, "c": 8, "d": 2, "e": 14, "f": 3, "g": 5, "h": 4, "i": 34, "j": 38, "k": 40, "l": 37,
+                "m": 46, "n": 45, "o": 31, "p": 35, "q": 12, "r": 15, "s": 1, "t": 17, "u": 32, "v": 9, "w": 13,
+                "x": 7, "y": 16, "z": 6,
+            ]
+            for code in p[1].compactMap({ codes[$0] }) {
+                link.send(.key(macKeyCode: code, down: true))
+                usleep(100_000)
+                link.send(.key(macKeyCode: code, down: false))
+                usleep(150_000)
+            }
         case "sample":  // sample LABEL SECONDS
             let pid = link.pid
             let h0 = link.status?.heartbeat ?? 0

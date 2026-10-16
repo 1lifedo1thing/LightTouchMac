@@ -52,7 +52,7 @@ struct Sessions: ParsableCommand {
             """,
         subcommands: [
             SingleCheck.self, PairCheck.self, ProxyTrustCheck.self, LocalNetworkCheck.self, HelperCheck.self,
-            HelperBootCheck.self, PhoneCheck.self, RotationCheck.self, FlickCheck.self,
+            HelperBootCheck.self, PhoneCheck.self, RotationCheck.self, KeyboardCheck.self, FlickCheck.self,
             TweaksCheck.self,
         ]
     )
@@ -199,6 +199,19 @@ struct RotationCheck: ParsableCommand {
     @OptionGroup var inputs: Inputs
 
     func run() { rotationCheck(self) }
+}
+
+struct KeyboardCheck: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "keyboard",
+        abstract: "An n81ap or n90ap base: the Mac's keys type into a new note (key_mac -> usb-kbd), read back."
+    )
+    @Argument var base: String
+    @Option(help: "The overlay of a boot that walked Setup (5.x-7.x without --skip-setup), cloned.", transform: path)
+    var overlay: URL?
+    @OptionGroup var inputs: Inputs
+
+    func run() { keyboardCheck(self) }
 }
 
 struct FlickCheck: ParsableCommand {

@@ -189,6 +189,13 @@ final class K48Board: Board {
         let bootArgs = Self.bootArgs(jailbreak: c.cydia != nil)
         let kernel = try Data(contentsOf: c.decFile("kernelcache.mach"), options: .alwaysMapped)
         try FitCheck.checkBootArgs(c.fit, kernel: kernel, args: bootArgs)
+        // A jailbroken device's kernel is sandbox-patched so Substrate's inserted library loads inside the built-in
+        // app profiles; recorded here, applied to the boot kernel (kboot.bin below, or the iBoot kernelcache in volumes).
+        var jailbreakKernel: Data?
+        if c.cydia != nil {
+            try c.fit.check(FitCheck.sandboxPatch(kernel), required: false)
+            jailbreakKernel = (try? SandboxPatch.apply([UInt8](kernel)).kernel).map(Data.init)
+        }
         // both chains add it
         try c.fit.check(FitCheck.deviceTreeProperty(kernel, "arm-io/usb-complex", "hsic-enabled"), required: false)
         if iboot {
@@ -232,7 +239,10 @@ final class K48Board: Board {
                 to: c.file("nor.bin")
             )
         } else {
-            try KBoot.write(decrypted: c.decrypted(), to: c.file("kboot.bin"), identity: ident, bootArgs: bootArgs)
+            try KBoot.write(
+                decrypted: c.decrypted(), to: c.file("kboot.bin"), identity: ident, bootArgs: bootArgs,
+                kernelOverride: jailbreakKernel
+            )
             if kbootNOR && !dataProtection { try Data(repeating: 0xFF, count: 1 << 20).write(to: c.file("nor.bin")) }
         }
     }
@@ -257,7 +267,22 @@ final class K48Board: Board {
             guard let kc = try BuildComponents.load(c.ipsw, board: c.e.board)["KernelCache"] else {
                 throw FirmwareError(.unsupported, "\(c.e.id): the IPSW names no KernelCache")
             }
-            kernelcacheImg3 = try c.ipsw.read(kc)
+            let raw = try c.ipsw.read(kc)
+            // A jailbroken iBoot-chain device boots a sandbox-patched kernelcache: patch the plaintext and put it back
+            // in the IMG3 iBoot loads, re-encrypted with the component's key so iBoot decrypts it as it does the stock
+            // one. Unresolved kernels keep the stock kernelcache; bootFiles' sandbox-patch fit records it.
+            if c.cydia != nil {
+                let k = try c.e.key(forPath: kc)
+                if let ivHex = k.iv, let iv = Data(hex: ivHex), let key = Data(hex: k.key),
+                    let plain = try? Data(contentsOf: c.decFile("kernelcache.mach")),
+                    let patched = try? SandboxPatch.rewrapKernelcache(
+                        original: raw, plaintextKernel: [UInt8](plain), iv: iv, key: key)
+                {
+                    c.log("[sandbox] kernelcache re-wrapped with sb_evaluate patched at 0x\(String(patched.found.address, radix: 16))")
+                    kernelcacheImg3 = patched.img3
+                }
+            }
+            kernelcacheImg3 = kernelcacheImg3 ?? raw
         }
         var options = SystemEdits.Options(recipe: recipe)
         options.cydia = c.cydia

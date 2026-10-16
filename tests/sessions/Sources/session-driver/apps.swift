@@ -1,8 +1,9 @@
-// App-compatibility survey: `LTM_APPS_LIST=FILE sessions single BASE --no-install`, FILE's lines "ipa<TAB>bundleID".
-// Each app is installed, launched through the guest agent and shot at 10 s and 30 s (app<n>-10s/-30s.png); up to three
-// of the guest's own prompts are answered by the label Vision reads on them (OK first); a tap mid-screen
-// (app<n>-tapped.png), then Home. One `app` event an app. The guest's syslog (syslog.txt) and its crash reports
-// (crash/) land in the device directory, through libimobiledevice's idevicesyslog and idevicecrashreport on PATH.
+// App-compatibility survey: `LTM_APPS_LIST=FILE sessions single BASE --no-install`, FILE's lines "ipa<TAB>bundleID"
+// ("-" for the ipa: an app the firmware has, launched without an install). Each app is installed, launched through the
+// guest agent and shot at 10 s and 30 s (app<n>-10s/-30s.png); up to three of the guest's own prompts are answered by
+// the label Vision reads on them (OK first); a tap mid-screen (app<n>-tapped.png), then Home. One `app` event an app.
+// The guest's syslog (syslog.txt) and its crash reports (crash/) land in the device directory, through libimobiledevice's
+// idevicesyslog and idevicecrashreport on PATH.
 
 import Foundation
 import LightTouchCore
@@ -26,14 +27,16 @@ import LightTouchCore
         let (ipa, id) = (URL(fileURLWithPath: parts[0]), parts[1])
         var event: [String: Any] = ["device": d.name, "bundleID": id, "ipa": ipa.lastPathComponent]
         let start = Date()
-        do {
-            let staged = try await d.services.stage(ipa) { _ in }
-            try await d.services.install(ipa, staged: staged, bundleID: id) { _, _ in }
-            event["installSeconds"] = Date().timeIntervalSince(start)
-        } catch {
-            event["installError"] = "\(error)"
-            emit("app", event)
-            continue
+        if parts[0] != "-" {
+            do {
+                let staged = try await d.services.stage(ipa) { _ in }
+                try await d.services.install(ipa, staged: staged, bundleID: id) { _, _ in }
+                event["installSeconds"] = Date().timeIntervalSince(start)
+            } catch {
+                event["installError"] = "\(error)"
+                emit("app", event)
+                continue
+            }
         }
         do { try await agent.launch(id) } catch { event["launchError"] = "\(error)" }
         var tapped: [String] = []

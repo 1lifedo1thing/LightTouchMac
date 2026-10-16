@@ -15,9 +15,8 @@ struct DeviceWebProxyTests {
     @Test func aChangeWaitsForTheRoutingThenAppliesOnce() async throws {
         try await withScratchDirectory { directory in
             let proxy = DeviceWebProxy(directory: { directory }, shortName: "iPod")
-            var direct = WebProxyConfiguration()
-            direct.mode = .direct
-            #expect(throws: DeviceToolsError.self) { try proxy.configure(direct) }
+            let off = WebProxyConfiguration(mode: .off)
+            #expect(throws: DeviceToolsError.self) { try proxy.configure(off) }
             #expect(
                 try await proxy.apply(since: nil, isCurrent: { true }) { _ in .ready } == nil,
                 "no routing yet: nothing applied"
@@ -34,19 +33,19 @@ struct DeviceWebProxyTests {
                 asked.append(enabled)
                 return .ready
             }
-            #expect(applied == 0 && asked == [false] && proxy.status == .ready, "the boot's routing, off")
+            #expect(applied == 0 && asked == [true] && proxy.status == .ready, "the boot's routing, on by default")
             applied = try await proxy.apply(since: applied, isCurrent: { true }) { _ in
                 Issue.record("applied twice")
                 return .ready
             }
 
-            #expect(observes({ _ = proxy.status }) { try? proxy.configure(direct) }, "the editor's line follows")
-            #expect(proxy.status == .waiting && WebProxyConfiguration.load(from: directory).mode == .direct)
+            #expect(observes({ _ = proxy.status }) { try? proxy.configure(off) }, "the editor's line follows")
+            #expect(proxy.status == .waiting && WebProxyConfiguration.load(from: directory).mode == .off)
             applied = try await proxy.apply(since: applied, isCurrent: { true }) { enabled in
                 asked.append(enabled)
                 return .needsTap
             }
-            #expect(applied == 1 && asked == [false, true] && proxy.status == .needsTap)
+            #expect(applied == 1 && asked == [true, false] && proxy.status == .needsTap)
         }
     }
 

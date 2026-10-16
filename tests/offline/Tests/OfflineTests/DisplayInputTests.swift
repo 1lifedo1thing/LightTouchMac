@@ -491,6 +491,9 @@ extension SharedState {
             // release screen and shell are upright together, unpitched, and the flat shell's Home button is back.
             for rotation in [0, 90, 180, 270] {
                 emulator.rotationDegrees = rotation
+                // The LCD's picture for the turn, which the content's turn follows.
+                (frameWidth, frameHeight) = rotation % 180 == 0 ? (320, 480) : (480, 320)
+                display.perform(NSSelectorFromString("step"))
                 layout()
                 for (right, down) in [(50.0, -25.0), (-75.0, 40.0), (0.0, 0.0), (100.0, 50.0)] {
                     let grab = chassis()
@@ -513,6 +516,155 @@ extension SharedState {
                 }
             }
             #expect(touchPhases().isEmpty, "\(sent)")
+            (frameWidth, frameHeight) = (320, 480)
+        }
+
+        /// A two-finger scroll over the panel moves the guest's finger the way a pointer drag the same way does, on every
+        /// board, in every orientation, with the guest's UI turned or not (issue #70: on the iPods' pre-rotated surface,
+        /// landscape swipes went upright and inverted).
+        @Test(arguments: Board.allCases) func scrollFollowsPointer(board: Board) async throws {
+            for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+            defer {
+                for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] {
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
+            }
+            DisplayView.bezel = .flat
+            let display = DisplayView(frame: NSRect(x: 0, y: 0, width: 800, height: 800), profile: board)
+            let emulator = EmulatorController()
+            display.emulator = emulator  // weak: held here
+            defer { withExtendedLifetime(emulator) {} }
+            let window = Cursor(contentRect: display.frame, styleMask: [.titled], backing: .buffered, defer: false)
+            window.contentView = display
+            func all(_ l: CALayer) -> [CALayer] { [l] + (l.sublayers ?? []).flatMap(all) }
+            func moved() -> CGVector {
+                let ps = sent.compactMap { if case .touch(_, _, let x, let y) = $0 { (x, y) } else { nil } }
+                return ps.count < 2 ? .zero : CGVector(dx: ps[1].0 - ps[0].0, dy: ps[1].1 - ps[0].1)
+            }
+            // A square scan turns no guest UI on any board; the shipped one turns the iPad's.
+            for scan in [nil, CGSize(width: 400, height: 400)] {
+                display.runningScan = scan
+                for rotation in [0, 90, 180, 270] {
+                    emulator.rotationDegrees = rotation
+                    display.needsLayout = true
+                    display.layoutSubtreeIfNeeded()
+                    let lcd = all(display.layer!).first {
+                        $0.backgroundColor == NSColor.black.cgColor && $0.contentsGravity == .resize
+                    }!
+                    let c = lcd.convert(CGPoint(x: lcd.bounds.midX, y: lcd.bounds.midY), to: display.layer!)
+                    for (dx, dy) in [(30.0, 0.0), (0.0, -30.0)] {
+                        let at = display.convert(c, to: nil)
+                        let to = display.convert(CGPoint(x: c.x + dx, y: c.y + dy), to: nil)
+                        sent = []
+                        let steps: [(NSEvent.EventType, NSPoint)] = [
+                            (.leftMouseDown, at), (.leftMouseDragged, to), (.leftMouseUp, to),
+                        ]
+                        for (type, p) in steps {
+                            window.at = p
+                            let e = NSEvent.mouseEvent(
+                                with: type,
+                                location: p,
+                                modifierFlags: [],
+                                timestamp: 0,
+                                windowNumber: window.windowNumber,
+                                context: nil,
+                                eventNumber: 0,
+                                clickCount: 1,
+                                pressure: 1
+                            )!
+                            switch type {
+                            case .leftMouseDown: display.mouseDown(with: e)
+                            case .leftMouseDragged: display.mouseDragged(with: e)
+                            default: display.mouseUp(with: e)
+                            }
+                        }
+                        let pointer = moved()
+                        sent = []
+                        let event = Gesture()
+                        event.at = at
+                        event.dx = dx
+                        event.dy = dy
+                        event.eventPhase = .began
+                        display.scrollWheel(with: event)
+                        event.eventPhase = .ended
+                        display.scrollWheel(with: event)
+                        let scroll = moved()
+                        #expect(
+                            hypot(pointer.dx, pointer.dy) > 0.01
+                                && hypot(scroll.dx - pointer.dx, scroll.dy - pointer.dy) < 0.001,
+                            "\(board) at \(rotation), scan \(String(describing: scan)), (\(dx), \(dy)): scroll \(scroll), pointer \(pointer)"
+                        )
+                    }
+                }
+            }
+        }
+
+        /// A swipe started with the cursor at the screen's edge, toward that edge, gets the same travel over the panel as
+        /// the same swipe from the center, on every board and in every orientation, as a trackpad gesture and as one
+        /// wheel event: its finger goes down far enough in to make the whole move (down at the cursor, it clamped at the
+        /// edge at once and a Home screen page didn't turn).
+        @Test(arguments: Board.allCases) func swipeFromEdge(board: Board) async throws {
+            for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+            defer {
+                for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] {
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
+            }
+            DisplayView.bezel = .flat
+            let display = DisplayView(frame: NSRect(x: 0, y: 0, width: 800, height: 800), profile: board)
+            let emulator = EmulatorController()
+            display.emulator = emulator  // weak: held here
+            defer { withExtendedLifetime(emulator) {} }
+            func all(_ l: CALayer) -> [CALayer] { [l] + (l.sublayers ?? []).flatMap(all) }
+            /// The finger's travel for a swipe of `d` view points from `p`, in three movements or as one wheel event.
+            func swipe(_ p: CGPoint, _ d: CGVector, wheel: Bool) -> CGVector {
+                sent = []
+                let event = Gesture()
+                event.at = display.convert(p, to: nil)
+                if wheel {
+                    event.eventPhase = []
+                    event.dx = d.dx
+                    event.dy = d.dy
+                    display.scrollWheel(with: event)
+                } else {
+                    event.dx = d.dx / 3
+                    event.dy = d.dy / 3
+                    for phase in [NSEvent.Phase.began, .changed, .changed, .ended] {
+                        event.eventPhase = phase
+                        display.scrollWheel(with: event)
+                    }
+                }
+                let ps = sent.compactMap { if case .touch(_, _, let x, let y) = $0 { (x, y) } else { nil } }
+                guard let a = ps.first, let b = ps.last else { return .zero }
+                return CGVector(dx: b.0 - a.0, dy: b.1 - a.1)
+            }
+            for rotation in [0, 90, 180, 270] {
+                emulator.rotationDegrees = rotation
+                display.needsLayout = true
+                display.layoutSubtreeIfNeeded()
+                let lcd = all(display.layer!).first {
+                    $0.backgroundColor == NSColor.black.cgColor && $0.contentsGravity == .resize
+                }!
+                let r = lcd.convert(lcd.bounds, to: display.layer!)
+                let c = CGPoint(x: r.midX, y: r.midY)
+                for (ux, uy) in [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)] {
+                    // 45% of the screen's extent that way, from 2 points inside its edge that way
+                    let d = CGVector(dx: ux * 0.45 * r.width, dy: uy * 0.45 * r.height)
+                    let edge = CGPoint(x: c.x + ux * (r.width / 2 - 2), y: c.y + uy * (r.height / 2 - 2))
+                    for wheel in [false, true] {
+                        let full = swipe(c, d, wheel: wheel)
+                        let got = swipe(edge, d, wheel: wheel)
+                        #expect(
+                            hypot(full.dx, full.dy) > 0.44 && hypot(got.dx - full.dx, got.dy - full.dy) < 0.001,
+                            "\(board) at \(rotation), (\(ux), \(uy)), wheel \(wheel): from the edge \(got), from the center \(full)"
+                        )
+                    }
+                }
+            }
         }
 
         /// File drops on the screen: an accepted drag rings it until it leaves or ends; a mixed Finder drop queues the

@@ -132,10 +132,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate, NSWindo
             }
         )
         placeholder.jailbreaks = (
-            { FirmwareJobs.shared.jailbreaks.contains($0) },
-            { id, on in
-                if on { FirmwareJobs.shared.jailbreaks.insert(id) } else { FirmwareJobs.shared.jailbreaks.remove(id) }
-            }
+            { FirmwareJobs.shared.jailbreaks($0) },
+            { FirmwareJobs.shared.setJailbreaks($0, $1) }
         )
         placeholder.onDropIPSW = { [weak self] urls in self?.handOffIPSWs(urls, for: self?.selectedEntry) }
         // The device keeps its screen, chassis and buttons where they reach under the collapsed console strip.

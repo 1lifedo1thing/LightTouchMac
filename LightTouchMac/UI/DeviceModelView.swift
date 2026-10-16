@@ -23,9 +23,9 @@ final class DeviceModelView: NSView {
     /// The upright screen's width in shell pixels: pose and physical scale
     /// size the model's display to what the flat shell's cutout would be.
     private let screenWidth: Float
-    /// A panel mounted a quarter-turn in the shell (the iPad's) keeps its
-    /// surface mapping when the device turns; the iPod's pre-rotated surface
-    /// follows the device. Either way the mapping is one of the four below.
+    /// A panel whose surface doesn't follow the device (the A4's: the iPad, the
+    /// iPod touch 4) keeps its surface mapping when the device turns; the CLCD
+    /// iPods' pre-rotated surface follows it. Either way the mapping is one of the four below.
     private let fixedSurfaceRotation: Int?
     enum Control: Equatable { case sleepWake, volumeUp, volumeDown }
     /// Side controls by node name (revision 7 names, then N72's own); nil is a volume rocker (by half).
@@ -41,7 +41,8 @@ final class DeviceModelView: NSView {
         didSet { if oldValue != drawsNearest { updateScreenMaterial() } }
     }
     var viewportCenter: CGPoint? { didSet { updateViewport() } }
-    private var rotation = 0
+    /// The device rotation the screen's texture was drawn for (updateFrame), which its mapping follows, not the pose's.
+    private var frameDegrees = 0
     private var screenOff = false
     private var shakeStarted: CFTimeInterval?
     private var trickStarted: CFTimeInterval?
@@ -78,7 +79,7 @@ final class DeviceModelView: NSView {
         screenWidth = Float(profile.screenCutout.width)
         // The clockwise panel quarter-turn is the iPod surface's 270° mapping.
         fixedSurfaceRotation =
-            profile.panelRotation == 0
+            profile.surfaceFollowsRotation
             ? nil
             : (360 - Int((profile.panelRotation * 180 / .pi).rounded())) % 360
         // N81 (revision 7) has two volume buttons where the others have one rocker.
@@ -158,9 +159,40 @@ final class DeviceModelView: NSView {
                         finish.baseColor = .init(tint: NSColor(srgbRed: 0.07, green: 0.08, blue: 0.1, alpha: 1))
                         finish.specular = .init(floatLiteral: 0.5)
                     }
+                    // N81's glass mirrors its studio (N81Studio): the black surround behind the camera as an even deep
+                    // black (~22 of 255, Apple's hero ~28) at rest and typical tilts, and the tent as a soft sheen only
+                    // at steep ones. Specular 0 left it a flat, lifeless black.
+                    if profile == .n81 && (name == "glass" || name.contains("inactive_LCD_perimeter")) {
+                        finish.specular = .init(floatLiteral: 1)
+                    }
+                    // Revision 7's camera cover (N81 front and rear, N88 rear) is a specular-workflow window that
+                    // RealityKit renders as a gray haze over the barrel and lens; Apple's camera reads through clear
+                    // glass. RealityKit keeps a transparent material's reflection, so it is turned down as well.
+                    if name.contains("protective_window") {
+                        finish.baseColor = .init(tint: .black)
+                        finish.metallic = .init(floatLiteral: 0)
+                        finish.roughness = .init(floatLiteral: 0.01)
+                        finish.specular = .init(floatLiteral: 0.04)
+                        finish.blending = .transparent(opacity: .init(floatLiteral: 0))
+                    }
+                    // The coated lens under it: a blue-violet coating that catches the studio's card as a glint.
+                    if name.contains("multilayer_coated_lens") {
+                        finish.baseColor = .init(tint: NSColor(srgbRed: 0.18, green: 0.25, blue: 0.5, alpha: 1))
+                        finish.roughness = .init(floatLiteral: 0.02)
+                    }
+                    // The barrel around it is stepped, filleted and normal-mapped at tens of microns: at app size each
+                    // step's highlight lands on a pixel or none, a speckled rim and a dotted ring around the lens. A
+                    // camera's barrel is a matte black light trap, so it reflects nothing.
+                    if name.contains("textured_molded_barrel") {
+                        finish.normal = .init()
+                        finish.specular = .init(floatLiteral: 0)
+                        finish.roughness = .init(floatLiteral: 1)
+                    }
+                    // N72's dish faces the camera, where N72Studio's light half-disc has a hard straight edge: at 0.18
+                    // that edge drew a seam across the cap; 0.4 blurs it into the cap's sheen.
                     if name.contains("Concave") {
                         finish.specular = .init(floatLiteral: 0.5)
-                        finish.roughness = .init(floatLiteral: 0.18)
+                        finish.roughness = .init(floatLiteral: 0.4)
                     }
                     return finish
                 }
@@ -169,7 +201,7 @@ final class DeviceModelView: NSView {
             for child in entity.children { tune(child) }
         }
         tune(loaded)
-        let lighting = try await modelEnvironment("N72Studio")
+        let lighting = try await modelEnvironment(profile == .n81 ? "N81Studio" : "N72Studio")
         renderer.environment.lighting.resource = lighting
         renderer.environment.lighting.intensityExponent = 2
         var homeLight = ImageBasedLightComponent(source: .single(lighting), intensityExponent: 2)
@@ -252,7 +284,6 @@ final class DeviceModelView: NSView {
         animated: Bool,
         spring: Bool = false
     ) {
-        self.rotation = rotation
         let rest = Float(rotation == 270 ? -90 : rotation) * .pi / 180
         let units = Float(scale) * screenWidth / 10000 / displayBounds.extents.x
         let pose = Transform(
@@ -273,6 +304,12 @@ final class DeviceModelView: NSView {
         homeLighting.orientation = simd_quatf(angle: -rest, axis: [0, 0, 1])
         camera.position = [0, 0, 0.3 + units * displayBounds.max.z]
         updateViewport()
+        mapSurface()
+        updateScreenMaterial()
+        advanceAnimations()
+    }
+    /// The screen texture's turn on the panel: the frame's own rotation, or the panel's fixed one.
+    private func mapSurface() {
         let surface = surfaceRotation
         let offset: SIMD2<Float>
         switch surface {
@@ -287,8 +324,6 @@ final class DeviceModelView: NSView {
                 rotation: Float(surface == 270 ? -90 : surface) * .pi / 180
             )
         }
-        updateScreenMaterial()
-        advanceAnimations()
     }
     /// Match the accelerometer's gravity vector: upright games steer by roll,
     /// while flat games tilt the LCD about its horizontal and vertical axes.
@@ -344,8 +379,15 @@ final class DeviceModelView: NSView {
             Task { @MainActor in request.finish(false) }
         }
     }
-    func updateFrame(_ image: CGImage) {
+    /// A new screen picture, drawn for the device turned `rotation` (DisplayView.frameDegrees): its mapping changes
+    /// with it, so a picture never shows in another one's turn.
+    func updateFrame(_ image: CGImage, rotation: Int) {
         noteChange()
+        if rotation != frameDegrees {
+            frameDegrees = rotation
+            mapSurface()
+            if screenTexture != nil { updateScreenMaterial() }
+        }
         do {
             // replace() updates the texture the material already holds; reassigning
             // the material every frame makes RealityKit reprocess the model.
@@ -383,7 +425,7 @@ final class DeviceModelView: NSView {
         screenOff = off
         updateScreenMaterial()
     }
-    private var surfaceRotation: Int { fixedSurfaceRotation ?? rotation }
+    private var surfaceRotation: Int { fixedSurfaceRotation ?? frameDegrees }
     private func surfacePoint(_ p: CGPoint) -> CGPoint {
         switch surfaceRotation {
         case 90: return CGPoint(x: 1 - p.y, y: p.x)
@@ -408,7 +450,8 @@ final class DeviceModelView: NSView {
         let t = (z - near.z) / direction.z
         return t >= 0 ? near + direction * t : nil
     }
-    func panelPoint(_ point: CGPoint, clamped: Bool = false) -> CGPoint? {
+    /// The point on the panel (0…1) under a view point; nil off it, unless `unbounded`, which extends the panel's plane.
+    func panelPoint(_ point: CGPoint, unbounded: Bool = false) -> CGPoint? {
         guard let local = intersection(point, entity: display, z: displayBounds.max.z) else {
             return nil
         }
@@ -418,8 +461,7 @@ final class DeviceModelView: NSView {
                 y: CGFloat((displayBounds.max.y - local.y) / displayBounds.extents.y)
             )
         )
-        if clamped { return CGPoint(x: min(max(p.x, 0), 1), y: min(max(p.y, 0), 1)) }
-        return CGRect(x: 0, y: 0, width: 1, height: 1).contains(p) ? p : nil
+        return unbounded || CGRect(x: 0, y: 0, width: 1, height: 1).contains(p) ? p : nil
     }
     func projectedPoint(_ point: CGPoint) -> CGPoint {
         let p = portraitPoint(point)

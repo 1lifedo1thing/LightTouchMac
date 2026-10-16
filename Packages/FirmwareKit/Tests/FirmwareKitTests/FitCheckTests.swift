@@ -17,8 +17,9 @@ enum FitFixture {
         "n72ap-7A341": Oracle.ipodCache.appendingPathComponent("0f7fc76d9b9aa826b5ab14be9821a315d3d9dc42/rootfs.dmg"),
         "n72ap-7E18": Oracle.ipodCache.appendingPathComponent("5f4f5c01eda2f811f73167e7d1f82dbeed82367b/rootfs.dmg"),
         "n72ap-8C148": Oracle.ipodCache.appendingPathComponent("b9efddc7bb4350c237a8d3846af61bbfc8a2f647/rootfs.dmg"),
+        "n90ap-10A5316k": Oracle.path("Developer/qemu-ios-files/n90/ios6b1/cache/rootfs.dmg"),
     ]
-    static func arch(_ id: String) -> String { id.hasPrefix("k48") ? "armv7" : "armv6" }
+    static func arch(_ id: String) -> String { id.hasPrefix("n72") ? "armv6" : "armv7" }
     static let springBoard = "System/Library/CoreServices/SpringBoard.app/SpringBoard"
     static let mounter = "System/Library/CoreServices/MobileStorageMounter.app/MobileStorageMounter"
     static let usbArbitrator = "System/Library/CoreServices/USBDeviceArbitrator.app/USBDeviceArbitrator"
@@ -265,6 +266,35 @@ enum FitFixture {
                 )
                 #expect(noApple.fits == (id != "k48ap-9A5220p"), "\(id): \(noApple.proof)")
             }
+        }
+    }
+
+    /// The GL front end fits iOS 6.0 beta 1 (its catalog rows prepare with ca_ogl): its OpenGLES's dispatch @encode
+    /// has no field names, as 6.x's and 7.x's, and the stock exports name the slots.
+    @Test(.enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"))
+    func glesFrontEndFitsSixBetaOne() async throws {
+        let id = "n90ap-10A5316k"
+        let bin = Oracle.guestPackages.appendingPathComponent(SystemEdits.Helpers.openGLES)
+        let table = Oracle.guestPackages.appendingPathComponent(SystemEdits.Helpers.glesNames)
+        guard Oracle.exists(bin), Oracle.exists(table) else {
+            try FixtureRequirements.missing(#"FitCheckTests.swift: Oracle.exists(bin), Oracle.exists(table)"#)
+        }
+        let files = [
+            FitCheck.openGLES, FitCheck.quartzCore, FitCheck.coreImage, FitCheck.ioSurface,
+            FitCheck.ioMobileFramebuffer, FitCheck.sgxEngine,
+            "System/Library/Frameworks/CoreFoundation.framework/CoreFoundation",
+            "System/Library/Frameworks/Foundation.framework/Foundation", "usr/lib/libobjc.A.dylib",
+        ]
+        try await Oracle.withTemp { dir in
+            guard let v = try await FitFixture.volume(id, FitFixture.stock(id) + files, in: dir) else {
+                try FixtureRequirements.missing(#"FitCheckTests.swift: FitFixture.volume("n90ap-10A5316k")"#)
+            }
+            let f = FitCheck.glesFrontEnd(
+                FitCheck.Firmware(root: v, arch: "armv7"),
+                binary: try Data(contentsOf: bin),
+                names: try String(contentsOf: table, encoding: .utf8)
+            )
+            #expect(f.fits, "\(f.proof)")
         }
     }
 

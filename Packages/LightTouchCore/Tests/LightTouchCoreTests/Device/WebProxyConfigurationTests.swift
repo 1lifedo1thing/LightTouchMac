@@ -34,8 +34,8 @@ struct WebProxyConfigurationTests {
     @Test func savedRoutingAndPreferences() throws {
         try withTemporaryDirectory { own in
             #expect(
-                WebProxyConfiguration.load(from: own) == WebProxyConfiguration(),
-                "a new device starts with the proxy off"
+                WebProxyConfiguration.load(from: own).mode == .direct,
+                "a new device starts with the proxy on"
             )
             let saved = WebProxyConfiguration(mode: .archive, archiveDate: "20100101")
             try saved.save(in: own)

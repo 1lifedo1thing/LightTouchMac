@@ -51,4 +51,20 @@ struct ArchiveTests {
             "largest IPSW \(largest.lastPathComponent): \(size(largest)) bytes, \(names.count) members; \(big) \(theirs.count) bytes"
         )
     }
+
+    /// A body that stops reading early (as a decryption that runs out of disk does) gets its own error back: the
+    /// inflating thread's next write sees EPIPE, where a SIGPIPE would kill the process with no error reported.
+    @Test func aStreamWhoseBodyStopsEarlyThrowsTheBodysError() throws {
+        struct Stopped: Error {}
+        try Oracle.withTemp { dir in
+            try Data(count: 8 << 20).write(to: dir.appendingPathComponent("member.bin"))
+            try K48Oracle.sh(["/usr/bin/zip", "-q", "fixture.zip", "member.bin"], cwd: dir)
+            #expect(throws: Stopped.self) {
+                try IPSWArchive(dir.appendingPathComponent("fixture.zip")).stream("member.bin") { handle in
+                    _ = handle.readData(ofLength: 4096)
+                    throw Stopped()
+                }
+            }
+        }
+    }
 }

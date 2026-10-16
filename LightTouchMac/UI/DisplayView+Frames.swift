@@ -49,6 +49,13 @@ extension DisplayView {
         shownSerial = frame.serial
         shownSurface = frame.surface
         let newFramePixels = CGSize(width: frame.surface.width, height: frame.surface.height)
+        let drawnFor = Self.frameDegrees(
+            of: newFramePixels,
+            device: emulator?.rotationDegrees ?? 0,
+            shown: (framePixels, frameDegrees)
+        )
+        let geometryChanged = newFramePixels != framePixels || drawnFor != frameDegrees
+        frameDegrees = drawnFor
         if newFramePixels != framePixels {
             framePixels = newFramePixels
             needsLayout = true
@@ -65,6 +72,8 @@ extension DisplayView {
         // The helper forces the alpha byte opaque (FrameRingWriter.copy): iBoot
         // and the iPod's framebuffer leave it 0, which a layer would honor.
         contentLayer.contents = frame.surface
+        // The frame and its geometry go up in one transaction (layout would put the bounds and turn up a pass later).
+        if geometryChanged { layoutContent() }
         if showsHandoff {
             // The new boot's first frame: the hand-off and its "Restarting at…" are over (state audit C-4).
             showsHandoff = false
@@ -72,10 +81,27 @@ extension DisplayView {
             needsLayout = true
         }
         if let model = modelView ?? pendingModelView, let image = Self.image(frame.surface, colorSpace: colorSpace) {
-            model.updateFrame(image)
+            model.updateFrame(image, rotation: frameDegrees)
         }
         CATransaction.commit()
         return frame.surface
+    }
+
+    /// The device rotation a new frame was drawn for. The device turns at once while the LCD (ipod_touch_lcd.c) turns
+    /// its picture some frames later, and a quarter turn swaps the picture's sides, so a frame of the shown frame's
+    /// shape that a quarter turn hasn't reshaped yet is still the old pose's. A half turn keeps the shape, so its first
+    /// new frame is taken as the new pose's.
+    /// ponytail: a frame the helper published in the moment before the LCD turned can still show for a frame at a half
+    /// turn; a rotation tag in the frame ring (qemu-ios's LCD reporting its own) would make it exact.
+    static func frameDegrees(of pixels: CGSize, device: Int, shown: (pixels: CGSize, rotation: Int)) -> Int {
+        let swapped = CGSize(width: shown.pixels.height, height: shown.pixels.width)
+        // Another panel has no old pose to keep, and a square one's shape can't tell.
+        guard pixels == shown.pixels || pixels == swapped, swapped != shown.pixels else { return device }
+        let transposed = pixels != shown.pixels
+        let quarterTurn = (device - shown.rotation + 360) % 180 != 0
+        if transposed == quarterTurn { return device }
+        // Reshaped while the device is a half turn away (auto-rotation's two quarter steps): the step between, either way.
+        return transposed ? (device + 90) % 360 : shown.rotation
     }
 
     /// A copy of a ring surface, held in use while it is read so the helper

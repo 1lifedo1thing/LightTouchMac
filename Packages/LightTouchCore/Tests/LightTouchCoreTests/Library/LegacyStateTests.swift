@@ -424,4 +424,29 @@ import Testing
             #expect(LegacyState.find(state: state, applicationSupport: nil)?.resuming == false)
         }
     }
+
+    /// An IPA the library can't take (here unreadable) stops the erase before anything goes: the alert promised
+    /// the saved apps survive.
+    @Test func anIPAThatCantBeKeptErasesNothing() async throws {
+        try #require(
+            IPALibrary.directory.path.hasPrefix(LibraryFixtures.isolatedAppState.path),
+            "the IPA library isn't this test process's isolated one; not adopting test IPAs into it"
+        )
+        try await LibraryFixtures.withScratch { root in
+            let state = root.appendingPathComponent("state")
+            let ipas = state.appendingPathComponent("IPAs")
+            try fm.createDirectory(at: ipas, withIntermediateDirectories: true)
+            try fm.createDirectory(at: state.appendingPathComponent("device"), withIntermediateDirectories: true)
+            let ipa = ipas.appendingPathComponent("com.example.\(UUID().uuidString.prefix(8)).unreadable.ipa")
+            try Data(UUID().uuidString.utf8).write(to: ipa)
+            try fm.setAttributes([.posixPermissions: 0], ofItemAtPath: ipa.path)
+            defer { try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: ipa.path) }
+            let legacy = try #require(LegacyState.find(state: state, applicationSupport: nil))
+            let error = await #expect(throws: CocoaError.self) { try await legacy.erase() }
+            #expect(error?.userInfo[NSFilePathErrorKey] as? String == ipa.path, "the alert can show the IPA")
+            #expect(fm.fileExists(atPath: ipa.path), "the IPA stays")
+            #expect(fm.fileExists(atPath: state.appendingPathComponent("device").path), "nothing else goes either")
+            #expect(LegacyState.find(state: state, applicationSupport: nil)?.resuming == false)
+        }
+    }
 }

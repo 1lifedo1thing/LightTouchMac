@@ -38,6 +38,75 @@ extension SharedState {
             }
         }
 
+        /// A CLCD board's rotation (the owner 10-15: the iPhone's Home screen flashed turned and stretched across the
+        /// landscape screen for about a second): the device turns at once, its LCD turns the picture frames later. Until
+        /// then the last frame keeps its shape and turns with the chassis; the turned frame then stands upright in the new
+        /// bounds; a half turn's old frame turns with the chassis too, until the new one arrives.
+        @Test(arguments: Board.allCases.filter(\.surfaceFollowsRotation)) func rotationBeforeTheTurnedFrame(
+            board: Board
+        ) async throws {
+            for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+            defer {
+                for key in [DisplayView.bezelKey, DisplayView.showsBezelKey] {
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
+            }
+            DisplayView.bezel = .flat
+            let portrait = (Int32(board.screenPixels.width), Int32(board.screenPixels.height))
+            (frameWidth, frameHeight) = portrait
+            let display = DisplayView(frame: NSRect(x: 0, y: 0, width: 800, height: 800), profile: board)
+            let e = EmulatorController()
+            display.emulator = e
+            let window = NSWindow(contentRect: display.frame, styleMask: [.titled], backing: .buffered, defer: false)
+            window.contentView = display
+            defer { window.contentView = nil }
+            func tick() {
+                display.perform(NSSelectorFromString("step"))
+                display.layoutSubtreeIfNeeded()
+            }
+            let lcd = display.contentLayer
+            /// The shown picture's shape against the layer's, and where its top edge sits from the LCD's center (nil: a side).
+            func shown(_ what: String, top expected: CGVector?, line: Int = #line) {
+                let frame = (lcd.contents as! IOSurface)
+                let aspect = lcd.bounds.width / lcd.bounds.height
+                #expect(
+                    abs(aspect - CGFloat(frame.width) / CGFloat(frame.height)) < 0.01,
+                    "line \(line), \(board) \(what): a \(frame.width)x\(frame.height) frame in \(lcd.bounds.size)"
+                )
+                let b = lcd.convert(lcd.bounds, to: display.layer!)
+                let top = lcd.convert(CGPoint(x: lcd.bounds.midX, y: 0), to: display.layer!)
+                let v = CGVector(dx: (top.x - b.midX) / (b.width / 2), dy: (top.y - b.midY) / (b.height / 2))
+                #expect(
+                    (expected.map { hypot(v.dx - $0.dx, v.dy - $0.dy) } ?? hypot(abs(v.dx) - 1, v.dy)) < 0.1,
+                    "line \(line), \(board) \(what): the picture's top is at \(v), not \(expected.map { "\($0)" } ?? "a side")"
+                )
+            }
+            for _ in 0..<3 { tick() }
+            let lcdTop = lcd.convert(CGPoint(x: lcd.bounds.midX, y: 0), to: display.layer!)
+            let upright = CGVector(dx: 0, dy: lcdTop.y < lcd.convert(lcd.bounds, to: display.layer!).midY ? -1 : 1)
+            shown("at rest", top: upright)
+            // Turned a quarter: the helper still publishes portrait frames (the LCD hasn't turned, the ring not resized).
+            e.rotationDegrees = 90
+            tick()
+            tick()
+            // The picture's top edge, still the device's top, turned to a side with the chassis.
+            shown("turned, before the LCD", top: nil)
+            // The LCD's turned picture: landscape, upright in the window.
+            (frameWidth, frameHeight) = (portrait.1, portrait.0)
+            tick()
+            shown("turned, the LCD's frame", top: upright)
+            // A half turn keeps the shape: the frame before the LCD's turns with the chassis, then the new one stands up.
+            frozen = true
+            e.rotationDegrees = 270
+            tick()
+            shown("half turn, before the LCD", top: CGVector(dx: -upright.dx, dy: -upright.dy))
+            frozen = false
+            tick()
+            shown("half turn, the LCD's frame", top: upright)
+        }
+
         /// View ▸ Free-Form Screen (issue #21): the sizes each board's panel= takes, the LCD at one point per guest pixel
         /// for a non-native panel and its touch mapping, dragging the LCD's edge (live stretch, snapped readout, clamps,
         /// landscape's swapped sides, the restart on release), window and sidebar resizes that change nothing, and Off.
@@ -157,6 +226,7 @@ extension SharedState {
             e.rotationDegrees = 90
             frameWidth = 480
             frameHeight = 320
+            display.perform(NSSelectorFromString("step"))
             try await settle()
             fills(true)
             for p in [CGPoint(x: 0.2, y: 0.3), CGPoint(x: 0.8, y: 0.7)] { touchLands(p) }
@@ -639,6 +709,7 @@ extension SharedState {
             e.rotationDegrees = 90
             frameWidth = 504
             frameHeight = 320
+            d.perform(NSSelectorFromString("step"))
             try await settle(d)
             check(near(box(d), 504, 320), "landscape \(box(d))")
             touchLands(d, CGPoint(x: 0.25, y: 0.75))

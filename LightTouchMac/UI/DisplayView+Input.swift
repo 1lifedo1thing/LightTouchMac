@@ -76,14 +76,19 @@ extension DisplayView {
     /// `normalized` this does not fail when the cursor is just outside — a pinch
     /// that drifts off the edge mid-gesture should keep tracking, not stop dead.
     func clampedPanelPoint(_ event: NSEvent) -> CGPoint? {
-        if let modelView {
-            return modelView.panelPoint(modelView.convert(event.locationInWindow, from: nil), clamped: true)
+        panelPoint(windowPoint: event.locationInWindow).map {
+            CGPoint(x: min(max($0.x, 0), 1), y: min(max($0.y, 0), 1))
         }
+    }
+
+    /// The panel-space point under a window point, beyond 0…1 off the panel.
+    private func panelPoint(windowPoint: NSPoint) -> CGPoint? {
+        if let modelView { return modelView.panelPoint(modelView.convert(windowPoint, from: nil), unbounded: true) }
         guard let rootLayer = layer else { return nil }
-        let cp = contentLayer.convert(convert(event.locationInWindow, from: nil), from: rootLayer)
+        let cp = contentLayer.convert(convert(windowPoint, from: nil), from: rootLayer)
         let b = contentLayer.bounds
         guard b.width > 0, b.height > 0 else { return nil }
-        return CGPoint(x: min(max(cp.x / b.width, 0), 1), y: min(max(cp.y / b.height, 0), 1))
+        return CGPoint(x: cp.x / b.width, y: cp.y / b.height)
     }
 
     /// Is the cursor over the device's screen right now?
@@ -201,12 +206,10 @@ extension DisplayView {
         // corrects a correction — which is what kept sending these gestures the
         // wrong way. That flag is for telling the user which way the hardware
         // went, not for undoing the system setting.
-        let b = contentLayer.bounds
-        guard b.width > 0, b.height > 0 else { return }
-        let d = rotatedPanelDelta(event.scrollingDeltaX, event.scrollingDeltaY)
+        guard let d = panelDelta(event, CGVector(dx: event.scrollingDeltaX, dy: event.scrollingDeltaY)) else { return }
         let touches = scrollDrag.scroll(
             phase: ScrollDrag.Phase(rawValue: event.phase.rawValue),
-            delta: CGVector(dx: d.dx / b.width, dy: d.dy / b.height),
+            delta: d,
             start: event.phase == .began ? clampedPanelPoint(event) : nil
         )
         sendScrollTouches(touches)
@@ -224,32 +227,25 @@ extension DisplayView {
         }
     }
 
-    /// One phase-less wheel event as a complete short drag.
+    /// One phase-less wheel event as a complete short drag, made room for as a gesture's is.
     private func wheelFlick(_ event: NSEvent) {
-        let b = contentLayer.bounds
-        guard b.width > 0, b.height > 0, var p = clampedPanelPoint(event) else { return }
-        let delta = Self.scrollMovement(event)
-        let dx = delta.dx
-        let dy = delta.dy
-        let d = rotatedPanelDelta(dx, dy)
-        sendVisualTouch(0, TouchPhase.begin, Double(p.x), Double(p.y))
-        p.x = min(max(p.x + d.dx / b.width, 0), 1)
-        p.y = min(max(p.y + d.dy / b.height, 0), 1)
-        sendVisualTouch(0, TouchPhase.update, Double(p.x), Double(p.y))
-        sendVisualTouch(0, TouchPhase.end, Double(p.x), Double(p.y))
+        guard let p = clampedPanelPoint(event), let d = panelDelta(event, Self.scrollMovement(event)) else { return }
+        var flick = ScrollDrag()
+        sendScrollTouches(
+            flick.scroll(phase: .began, delta: d, start: p) + flick.scroll(phase: .ended, delta: .zero, start: nil)
+        )
     }
 
-    /// A movement in view points expressed in content-layer points, un-rotated
-    /// so directions match what the user sees in any orientation. The content
-    /// layer is the cutout in shell pixels, shown at appliedScale points each,
-    /// so the content under the fingers moves with them, as macOS scrolls.
-    private func rotatedPanelDelta(_ dx: CGFloat, _ dy: CGFloat) -> CGVector {
-        // the scan stands a quarter turn from upright when the guest turned its UI
-        let a = -(Self.layerAngle(emulator?.rotationDegrees ?? 0) + tiltAngle + guestTurn)
-        let s = max(appliedScale, 0.01)
-        let ux = dx / s
-        let uy = dy / s
-        return CGVector(dx: ux * cos(a) - uy * sin(a), dy: ux * sin(a) + uy * cos(a))
+    /// A movement in view points from the cursor as a movement over the panel: both ends mapped as a press is, so the
+    /// finger goes the way the fingers did on the screen as shown, at its scale, whatever turns the device, the surface
+    /// or the guest's UI, on the flat shell or the 3D model. (A separate angle formula got the iPods' pre-rotated
+    /// surface a quarter or half turn wrong in landscape.)
+    private func panelDelta(_ event: NSEvent, _ d: CGVector) -> CGVector? {
+        let v = convert(event.locationInWindow, from: nil)
+        guard let a = panelPoint(windowPoint: event.locationInWindow),
+            let b = panelPoint(windowPoint: convert(CGPoint(x: v.x + d.dx, y: v.y + d.dy), to: nil))
+        else { return nil }
+        return CGVector(dx: b.x - a.x, dy: b.y - a.y)
     }
 
     // MARK: - Tilt by scroll (cursor off the panel)
