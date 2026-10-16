@@ -132,14 +132,15 @@ struct GeneralSettingsView: View {
                 Text("Ask When a Device Starts").tag(Bool?.none)
             }
             Toggle("Play vibration sound", isOn: $vibrationSound)
+            Toggle(isOn: $refresh120) {
+                Text("120 Hz refresh (experimental)")
+                Text("Takes effect when a device next starts. Games that count frames run too fast.")
+            }
             Section {
                 Button("Reset Phone Access") { PhoneRemoteRequest.resetToken() }
             } footer: {
                 Text("Phones that scanned a Play on Phone code can no longer connect until they scan a new one.")
                     .foregroundStyle(.secondary)
-            Toggle(isOn: $refresh120) {
-                Text("120 Hz refresh (experimental)")
-                Text("Takes effect when a device next starts. Games that count frames run too fast.")
             }
         }
     }
