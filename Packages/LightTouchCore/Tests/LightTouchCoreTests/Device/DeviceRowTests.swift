@@ -17,6 +17,7 @@ struct DeviceRowTests {
     var iPad4: FirmwareCatalog.Entry { entry("k48ap-8C148") }
     var iPod4: FirmwareCatalog.Entry { entry("n72ap-8C148") }
     var beta1: FirmwareCatalog.Entry { entry("n72ap-8C5091e") }
+    var iPad5: FirmwareCatalog.Entry { entry("k48ap-9B206") }
     /// A coming_soon entry (no catalog entry is one today).
     var soon: FirmwareCatalog.Entry {
         var e = entry("n72ap-5F138")
@@ -39,27 +40,30 @@ struct DeviceRowTests {
     func allowed(_ r: DeviceRow, canDownload: Bool = false) -> Set<String> {
         Set(DeviceAction.allCases.filter { r.allows($0, canDownload: canDownload) }.map { "\($0)" })
     }
+    /// A stopped device's commands before iOS 5, which takes no jailbreak yet.
     static let recordCommands: Set = [
         "start", "erase", "showInFinder", "delete", "openFilesystem", "commitFilesystem", "discardFilesystem",
-        "recoverFilesystem", "jailbreak",
+        "recoverFilesystem",
     ]
 
-    /// Jailbreak…: a prepared device of iPhone OS 2.0 or later while it is stopped, as the jailbreak option offers it.
-    @Test func jailbreakIsForAStoppedDeviceOf2OrLater() throws {
+    /// Jailbreak…: a prepared device of iOS 5 or later while it is stopped, as the preparation's checkbox allows it
+    /// (FirmwareJobs.jailbreakWorks; on iOS 4 and earlier Safari and Mail crash jailbroken).
+    @Test func jailbreakIsForAStoppedDeviceOf5OrLater() throws {
         let m68 = try #require(catalog.entries.first { $0.board == "m68ap" })
-        #expect(row(iPod, instance: id).allows(.jailbreak, canDownload: false))
+        #expect(row(iPad5, instance: id).allows(.jailbreak, canDownload: false))
+        #expect(!row(iPod4, instance: id).allows(.jailbreak, canDownload: false), "4.x")
+        #expect(!row(iPod, instance: id).allows(.jailbreak, canDownload: false), "3.x")
         #expect(!row(m68, instance: id).allows(.jailbreak, canDownload: false), "1.x")
-        #expect(!row(iPod).allows(.jailbreak, canDownload: true), "not prepared")
-        #expect(!row(iPod, instance: id, session: .running).allows(.jailbreak, canDownload: false), "running")
+        #expect(!row(iPad5).allows(.jailbreak, canDownload: true), "not prepared")
+        #expect(!row(iPad5, instance: id, session: .running).allows(.jailbreak, canDownload: false), "running")
     }
 
     /// Several rows: each command acts on the rows its one-row version allows and says how many; none, dimmed.
     @Test func severalRowsActOnTheRowsEachCommandAllows() throws {
-        let m68 = try #require(catalog.entries.first { $0.board == "m68ap" })
-        // 4 selected: 2 running, 2 prepared and stopped (one of them iPhone OS 1, which takes no jailbreak).
+        // 4 selected: 2 running, 2 prepared and stopped (one of them iOS 4, which takes no jailbreak yet).
         let rows = [
             row(iPod, instance: UUID(), session: .running), row(iPad, instance: UUID(), session: .running),
-            row(iPod4, instance: UUID()), row(m68, instance: UUID()),
+            row(iPad5, instance: UUID()), row(iPod4, instance: UUID()),
         ]
         func batch(_ action: DeviceAction, _ rows: [DeviceRow] = rows) throws -> DeviceBatch<DeviceRow> {
             try #require(DeviceBatch(action, rows) { $0.allows(action, canDownload: true) })
@@ -70,7 +74,7 @@ struct DeviceRowTests {
         #expect(start.title == "Start 2 Devices" && start.isEnabled && start.targets == Array(rows[2...]))
         let jailbreak = try batch(.jailbreak)
         #expect(jailbreak.title == "Jailbreak 1 Device…" && jailbreak.targets == [rows[2]])
-        #expect(jailbreak.skipped == [rows[0], rows[1], rows[3]], "running, and iPhone OS 1")
+        #expect(jailbreak.skipped == [rows[0], rows[1], rows[3]], "running, and iOS 4")
         #expect(try batch(.erase).title == "Erase 4 Devices…")
         // None running: Stop is there, dimmed.
         let none = try batch(.forceStop, Array(rows[2...]))

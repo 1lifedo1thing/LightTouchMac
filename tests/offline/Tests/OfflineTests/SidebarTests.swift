@@ -447,9 +447,13 @@ extension SharedState {
             vc.menuNeedsUpdate(several)
             let severalTitles = several.items.filter { !$0.isSeparatorItem }.map(\.title)
             if severalTitles != [
-                "Start 1 Device", "Force Stop 1 Device…", "Jailbreak 1 Device…", "Erase 2 Devices…",
+                "Start 1 Device", "Force Stop 1 Device…", "Jailbreak Devices…", "Erase 2 Devices…",
                 "Delete 3 Devices…",
-            ] || !several.items.filter({ !$0.isSeparatorItem }).allSatisfy(vc.validateMenuItem) {
+            ]
+                // Jailbreak is dimmed: the stopped device is iOS 4.2.1, which takes no jailbreak yet.
+                || several.items.filter({ !$0.isSeparatorItem }).map(vc.validateMenuItem)
+                    != [true, true, false, true, true]
+            {
                 fail("several rows' context menu: \(severalTitles)")
             }
             if let erase = several.items.first(where: { $0.title == "Erase 2 Devices…" }), let action = erase.action {

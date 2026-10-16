@@ -97,7 +97,7 @@ extension MainWindowController {
             alert.messageText = "Jailbreak \(count == 1 ? name(batch.targets[0]) : "\(count) devices")?"
             let substrate = batch.targets.contains { (3...6).contains(Int($0.version.prefix { $0 != "." }) ?? 0) }
             info =
-                "Adds Cydia\(substrate ? ", Substrate on iOS 3 to 6," : "") and afc2, which shows the whole file system in Files, to \(names). Erase All Content and Settings removes them."
+                "Adds Cydia\(substrate ? ", Substrate on iOS 5 and 6," : "") and afc2, which shows the whole file system in Files, to \(names). Erase All Content and Settings removes them."
             alert.addButton(withTitle: "Jailbreak")
         default:
             alert.messageText = "Erase \(count == 1 ? name(batch.targets[0]) : "\(count) devices")?"
