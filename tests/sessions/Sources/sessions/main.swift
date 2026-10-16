@@ -177,7 +177,7 @@ struct PhoneCheck: ParsableCommand {
         commandName: "phone",
         abstract:
             "An iPhone base: carrier (SMS tone, ringtone, vibration), emergency, location (GPS), compass, rotate, shutdown, "
-            + "keyboard, simpin."
+            + "keyboard, simpin; thermal (20 minutes) only when asked."
     )
     @Argument var base: String
     @Option(help: "The cases, comma-separated.") var only =

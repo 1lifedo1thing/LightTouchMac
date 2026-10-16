@@ -611,7 +611,66 @@ func phone(_ args: PhoneCheck) -> Never {
             "keyboard: unplugged and replugged: \(replies)"
         )
     }
+    if only.contains("thermal") {
+        thermal(base, tools: tools, work: work, r)
+    }
     finish(r, work: work)
+}
+
+/// `thermal` (iPhone 4, 7.x; not in the default set, it takes 20 minutes): ThermalMonitor (CLTM, in UserEventAgent) as
+/// the guest reads its sensors (issue 83). Its own sensor logging, turned on in OSThermalStatus.plist and sent to a file,
+/// is read back after 20 minutes: 7.0 with the PMU's thermistors at mid-scale climbed to thermal level 14 by then
+/// ("iPhone needs to cool down", then a forced sleep).
+func thermal(_ base: Base, tools: Tools, work: URL, _ r: Report) {
+    print("thermal")
+    guard base.board == "n90ap" && base.major >= 7 else {
+        return print("  (checked on the iPhone 4 on 7.x only: the sensor list and its calibration resistor are N90's)")
+    }
+    let prefs = work.appendingPathComponent("OSThermalStatus.plist")
+    let settings: [String: Any] = [
+        "OSThermalNotificationLoggingEnabled": true, "summaryLoggingEnabled": true,
+        "logFile": "/private/var/mobile/cltm.log",
+    ]
+    try? PropertyListSerialization.data(fromPropertyList: settings, format: .binary, options: 0).write(to: prefs)
+    let d = HelperDriver(
+        "thermal",
+        tools: tools,
+        work: work,
+        scenario: preparedScenario(
+            base,
+            tools: tools,
+            work: work,
+            name: "thermal",
+            steps: [
+                "boot", "lit 0.03 400", "wait 60",
+                "agentput \(prefs.path) /private/var/preferences/SystemConfiguration/OSThermalStatus.plist",
+                "spawn /bin/launchctl stop com.apple.UserEventAgent-System", "wait 1200",
+                "agentget cltm.log /private/var/mobile/cltm.log", "quit", "expectExit 60",
+            ]
+        )
+    )
+    r.check(d.finish(1800) == 0, "thermal: scenario completed")
+    let log = (try? String(contentsOf: d.dir.appendingPathComponent("cltm.log"), encoding: .utf8)) ?? ""
+    // "CLTM: setting thermal status level to N (…)": 0 is no pressure; 1 and up mitigate, then warn and sleep.
+    let levels = log.matches(of: /setting thermal status level to (\d+)/).compactMap { Int($0.1) }
+    // "CLTM: sensor N, temp T (R raw) [every sensor's temperature in 1/100 C, -32768 not reported]": the last one.
+    let temps =
+        log.matches(of: /CLTM: sensor \d+, temp -?\d+ \(-?\d+ raw\) \[([-0-9, ]+)\]/).last.map {
+            $0.1.split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+        } ?? []
+    // Sensor 1 is the PMU's calibration resistor (tcal): CLTM starts it at the value it expects (51.82 C on N90),
+    // filters toward what it reads, and adds the difference to every other sensor.
+    let tcal = log.matches(of: /CLTM: sensor 1, temp (-?\d+)/).compactMap { Int($0.1) }
+    r.check(!levels.isEmpty && levels.allSatisfy { $0 == 0 }, "thermal: the thermal level stayed 0 (\(levels))")
+    r.check(
+        tcal.count > 1 && abs(tcal.last! - tcal.first!) < 100,
+        "thermal: the calibration resistor reads what CLTM expects (\(tcal.first ?? 0) then \(tcal.last ?? 0))"
+    )
+    let others = temps.enumerated().filter { $0.offset != 1 && $0.element != -32768 }.map(\.element)
+    r.check(
+        others.count > 1 && others.allSatisfy { (0..<4000).contains($0) },
+        "thermal: every other sensor under 40 C after 20 minutes (\(temps.map { Double($0) / 100 }))"
+    )
 }
 
 /// 911 from the emergency-only dialer (issue 32): on 4.x the passcode screen's after setting passcode 1111 in Settings;
