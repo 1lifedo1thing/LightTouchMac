@@ -109,6 +109,9 @@ extension MainWindowController: NSMenuItemValidation {
         case #selector(toggleConsole(_:)):
             menuItem.title = console.split.layout.isCollapsed ? "Show Console" : "Hide Console"
             return true
+        case #selector(togglePhoneRemote(_:)):
+            menuItem.title = phoneRemote.isRunning ? "Stop Playing on Phone" : "Play on Phone…"
+            return phoneRemote.isRunning || emulator != nil
         case #selector(showDeviceLogs(_:)), #selector(exportDiagnostics(_:)),
             #selector(showSettings(_:)), #selector(focusDeviceScreen(_:)):
             return true

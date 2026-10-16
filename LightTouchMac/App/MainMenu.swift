@@ -270,6 +270,7 @@ enum MainMenuBuilder {
         menu.addItem(submenu(network, title: "Network"))
         menu.addItem(item("Carrier…", #selector(MainWindowController.showCarrier(_:))))
         menu.addItem(item("Tweaks…", #selector(MainWindowController.showTweaks(_:))))
+        menu.addItem(item("Play on Phone…", #selector(MainWindowController.togglePhoneRemote(_:))))
         let debug = NSMenu(title: "Debugging")
         debug.addItem(item("Debug Port…", #selector(AppDelegate.showDebugPort(_:))))
         debug.addItem(item("Copy lldb Command", #selector(AppDelegate.copyLLDBCommand(_:))))
