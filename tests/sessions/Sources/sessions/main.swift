@@ -53,6 +53,7 @@ struct Sessions: ParsableCommand {
         subcommands: [
             SingleCheck.self, PairCheck.self, ProxyTrustCheck.self, LocalNetworkCheck.self, HelperCheck.self,
             HelperBootCheck.self, PhoneCheck.self, RotationCheck.self, KeyboardCheck.self, FlickCheck.self,
+            ScrollTopCheck.self,
             TweaksCheck.self, RespringCheck.self,
         ]
     )
@@ -212,6 +213,24 @@ struct KeyboardCheck: ParsableCommand {
     @OptionGroup var inputs: Inputs
 
     func run() { keyboardCheck(self) }
+}
+
+struct ScrollTopCheck: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "scrolltop",
+        abstract: "A quick tap on the status bar scrolls Settings' list back to the top (frames compared)."
+    )
+    @Argument var base: String
+    @Option(help: "The overlay of a boot that walked Setup (5.x-7.x without --skip-setup), cloned.", transform: path)
+    var overlay: URL?
+    @Option(help: "Where the tap lands, as a fraction of the screen's height.") var y = 0.02
+    @Option(
+        help: "How long the tap holds, in seconds: 0 is a trackpad's tap to click, released before the guest reads."
+    )
+    var hold = 0.0
+    @OptionGroup var inputs: Inputs
+
+    func run() { scrollTopCheck(self) }
 }
 
 struct FlickCheck: ParsableCommand {

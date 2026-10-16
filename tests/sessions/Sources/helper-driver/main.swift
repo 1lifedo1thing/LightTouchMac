@@ -428,11 +428,11 @@ Thread.detachNewThread {
             let shown = URL(fileURLWithPath: "\(dumpDir)/\(p[1])-shown.png")
             let (ok, turns, degrees) = onMain { (r.writeShown(source, to: shown), r.turns, r.rotation.degrees) }
             emit("shot", ["name": p[1], "path": shown.path, "ok": ok, "turns": turns, "degrees": degrees])
-        case "tapshown":  // tapshown U V: a tap at (U, V) on the picture as the window shows it
+        case "tapshown":  // tapshown U V [S]: a tap at (U, V) on the picture as the window shows it, held S (0.08) s
             guard let r = rotationDriver else { fail("tapshown: no board") }
             let (x, y) = onMain { r.touchPoint(shown: v[0], v[1]) }
             link.send(.touch(slot: 0, phase: 0, x: x, y: y))
-            usleep(80_000)
+            usleep(UInt32((v.count > 2 ? v[2] : 0.08) * 1e6))
             link.send(.touch(slot: 0, phase: 2, x: x, y: y))
         // flicks flick|slow N U V WIDTH: N trackpad gestures between the first Home page and the page left of it, after
         // `dump page` and `dump left` of each: right from the first page, left from the other; each a "flick" event
