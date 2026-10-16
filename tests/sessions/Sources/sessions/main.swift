@@ -228,6 +228,7 @@ struct ScrollTopCheck: ParsableCommand {
         help: "How long the tap holds, in seconds: 0 is a trackpad's tap to click, released before the guest reads."
     )
     var hold = 0.0
+    @Option(help: "Drag and tap rounds.") var taps = 4
     @OptionGroup var inputs: Inputs
 
     func run() { scrollTopCheck(self) }
