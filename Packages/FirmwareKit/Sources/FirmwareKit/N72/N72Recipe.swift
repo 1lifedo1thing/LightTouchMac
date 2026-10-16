@@ -438,7 +438,8 @@ final class N72Board: Board {
             at("private/var"),
             tag: c.o.language,
             keyboards: c.o.keyboards,
-            catalog: SystemEdits.KeyboardCatalog(at("System/Library/TextInput"))
+            catalog: SystemEdits.KeyboardCatalog(at("System/Library/TextInput")),
+            formats: SystemEdits.regionFormats(m)
         ) {
             report["language"] = "\(l.language), region \(l.locale), keyboards \(l.keyboards)"
         }

@@ -80,31 +80,70 @@ extension SystemEdits {
 
     /// The device's language: the first of `preferred` (BCP 47 tags) that `supported`, the firmware's own
     /// AppleLanguages, has, matched as a bundle picks its localization ("zh-Hans-CN" to "zh-Hans", "pt-BR" to "pt",
-    /// "en-AU" to "en-GB" where the firmware has it), else English; with `region`, its AppleLocale ("fr_FR").
+    /// "en-AU" to "en-GB" where the firmware has it), else English. Its AppleLocale: `locale` ("uk_UA") where
+    /// `formats`, the firmware's region formats (regionFormats), has it, whatever the language, as Region Format sets
+    /// it; else the language's code with `region` ("fr_FR").
     static func deviceLanguage(
         supported: [String],
         preferred: [String],
-        region: String?
+        region: String?,
+        locale: String? = nil,
+        formats: Set<String>? = nil
     ) -> (language: String, locale: String) {
         let language = Bundle.preferredLocalizations(from: supported, forPreferences: preferred).first ?? "en"
+        if let locale, formats?.contains(locale) == true { return (language, locale) }
         let code = Locale(identifier: language).language.languageCode?.identifier ?? "en"
         return (language, region.map { "\(code)_\($0)" } ?? code)
+    }
+
+    /// The region formats a firmware offers (Settings ▸ International ▸ Region Format, CFLocale's available
+    /// locales): the locales in its ICU data under `root`, the table of contents of /usr/share/icu/icudt*l.dat
+    /// ("uk_UA" for icudt42l/uk_UA.res); nil where it has none.
+    static func regionFormats(_ root: URL) -> Set<String>? {
+        let icu = root.appendingPathComponent("usr/share/icu")
+        guard
+            let name = try? FileManager.default.contentsOfDirectory(atPath: icu.path)
+                .first(where: { $0.hasPrefix("icudt") && $0.hasSuffix("l.dat") }),
+            let data = try? Data(contentsOf: icu.appendingPathComponent(name), options: .alwaysMapped)
+        else { return nil }
+        return data.withUnsafeBytes { b -> Set<String>? in
+            // ICU's common data: a header (its size, magic DA 27, format "CmnD"), then the entry count and each
+            // entry's name and data offsets, both from the header's end.
+            guard b.count > 24, b[2] == 0xDA, b[3] == 0x27, Array(b[12..<16]) == Array("CmnD".utf8) else { return nil }
+            let toc = Int(b.u16le(0))
+            guard toc + 4 <= b.count else { return nil }
+            let count = Int(b.u32le(toc))
+            guard toc + 4 + count * 8 <= b.count else { return nil }
+            var out = Set<String>()
+            for i in 0..<count {
+                let at = toc + Int(b.u32le(toc + 4 + i * 8))
+                guard at < b.count, let end = b[at...].firstIndex(of: 0) else { return nil }
+                // a locale is a top-level .res ("icudt42l/uk_UA.res"); coll/ and the like are not region formats
+                let path = String(decoding: b[at..<end], as: UTF8.self).split(separator: "/")
+                if path.count == 2, path[1].hasSuffix(".res") { out.insert(String(path[1].dropLast(4))) }
+            }
+            return out
+        }
     }
 
     /// Sets the device's language and region (`deviceLanguage`, from `tag`, else the Mac's) in each user's
     /// .GlobalPreferences under `skeleton` (/private/var) that lists the firmware's languages: the language moved
     /// first, AppleLocale set; with `catalog`, the firmware's keyboards, AppleKeyboards (KeyboardCatalog.keyboards)
-    /// for the language and `keyboards`, Mac input source IDs, else the Mac's enabled ones. Nil where the firmware
-    /// has no such list.
+    /// for the language and `keyboards`, Mac input source IDs, else the Mac's enabled ones; with `formats`, the
+    /// firmware's region formats (regionFormats), AppleLocale is `tag`'s or the Mac's own locale where it has it.
+    /// Nil where the firmware has no such list.
     @discardableResult
     static func seedLanguage(
         _ skeleton: URL,
         tag: String?,
         keyboards: [String]? = nil,
-        catalog: KeyboardCatalog? = nil
+        catalog: KeyboardCatalog? = nil,
+        formats: Set<String>? = nil
     ) throws -> (language: String, locale: String, keyboards: [String])? {
         let preferred = tag.map { [$0] } ?? Locale.preferredLanguages
         let region = tag.flatMap { Locale(identifier: $0).region?.identifier } ?? Locale.current.region?.identifier
+        // as ICU names it ("uk_UA", "sr_Latn_RS"), without keywords ("@calendar=…")
+        let locale = String(Locale.identifier(.icu, from: tag ?? Locale.current.identifier).prefix { $0 != "@" })
         let mac = catalog == nil ? [] : macKeyboards(keyboards)
         var chosen: (language: String, locale: String, keyboards: [String])?
         for path in [globalPreferences, "root/Library/Preferences/.GlobalPreferences.plist"] {
@@ -112,7 +151,13 @@ extension SystemEdits {
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
             try rewritePlist(url) { d in
                 guard var list = d["AppleLanguages"] as? [String] else { return }
-                let pick = deviceLanguage(supported: list, preferred: preferred, region: region)
+                let pick = deviceLanguage(
+                    supported: list,
+                    preferred: preferred,
+                    region: region,
+                    locale: locale,
+                    formats: formats
+                )
                 list.removeAll { $0 == pick.language }
                 d["AppleLanguages"] = [pick.language] + list
                 d["AppleLocale"] = pick.locale

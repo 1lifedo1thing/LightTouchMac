@@ -27,6 +27,16 @@ enum Fixtures {
             files.appendingPathComponent("ipod-ipsw/cache/b9efddc7bb4350c237a8d3846af61bbfc8a2f647/rootfs.dmg"), false,
             "dyld_shared_cache_armv6"
         ),
+        // before shared caches: iPod touch 2G 2.2.1, and the original iPhone's 1.0 in the app's decrypt cache
+        "5H11a": (
+            files.appendingPathComponent("ipod-ipsw/cache/9af5625ea34acdd8abeb6fce71a72651d0c815d5/rootfs.dmg"), false,
+            ""
+        ),
+        "1A543a": (
+            home.appendingPathComponent(
+                "Library/Caches/gold.samhenri.LightTouchMac/Decrypted/decrypted-v2/fb8bb3ee2e9a997affbb97868599f2995c78209c/d6a7625a6d54ad917a51a2bbd4a1a3aaa43ea34e0993dcd0798cbf10b31eaf2e/rootfs.dmg"
+            ), false, ""
+        ),
         // no persistent decrypted 7B367 rootfs; point FK_7B367_ROOTFS at one (ipad1_fw.py output) to include it
         "7B367": (
             URL(fileURLWithPath: ProcessInfo.processInfo.environment["FK_7B367_ROOTFS"] ?? "/nonexistent"), false,

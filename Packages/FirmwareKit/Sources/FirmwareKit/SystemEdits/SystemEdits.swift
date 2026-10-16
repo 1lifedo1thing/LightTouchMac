@@ -238,9 +238,11 @@ public enum SystemEdits {
         var mobileOwned: [String] = []
         var productMajor = 0
         var keyboards: KeyboardCatalog?
+        var formats: Set<String>?
         try await VolumeMount.withMounted(system, at: work.appendingPathComponent("mnt-system")) { m in
             let at = { (rel: String) in m.appendingPathComponent(rel) }
             keyboards = KeyboardCatalog(at("System/Library/TextInput"))
+            formats = regionFormats(m)
             // every baked helper proven to load on this firmware (FitCheck.loads), read before any edit
             let fw = FitCheck.Firmware(root: m, arch: "armv7", kernelcache: kernel)
             // a dyld without LC_DYLD_INFO_ONLY (3.0's: none of its own executables carry one) takes the legacy builds
@@ -410,6 +412,7 @@ public enum SystemEdits {
             productMajor: productMajor,
             dataArk: result.activation?.dataArk,
             keyboards: keyboards,
+            formats: formats,
             log: log
         )
         try? fm.removeItem(at: data)
@@ -745,11 +748,18 @@ public enum SystemEdits {
         productMajor: Int,
         dataArk: [String: String]?,
         keyboards: KeyboardCatalog? = nil,
+        formats: Set<String>? = nil,
         log: (String) -> Void
     ) throws {
         let sc = skeleton.appendingPathComponent("preferences/SystemConfiguration")
         if o.webProxy { try seedPlist(sc.appendingPathComponent("preferences.plist"), wifiProxyPrefs) }
-        let language = try seedLanguage(skeleton, tag: o.language, keyboards: o.keyboards, catalog: keyboards)
+        let language = try seedLanguage(
+            skeleton,
+            tag: o.language,
+            keyboards: o.keyboards,
+            catalog: keyboards,
+            formats: formats
+        )
         if let language {
             log("language \(language.language), region \(language.locale), keyboards \(language.keyboards)")
         }

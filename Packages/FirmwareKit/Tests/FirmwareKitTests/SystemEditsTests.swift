@@ -248,6 +248,92 @@ enum K48Oracle {
         #expect(g["AppleLocale"] as? String == "de_DE")
     }
 
+    /// An ICU common data file (icudt42l.dat's shape) whose table of contents names `entries`.
+    static func icuData(_ entries: [String]) -> Data {
+        // header size 32, magic, the data info's size, little-endian ASCII, its format, the rest zero
+        var d = Data([32, 0, 0xDA, 0x27, 20, 0, 0, 0, 0, 0, 2, 0] + Array("CmnD".utf8))
+        d.append(contentsOf: [UInt8](repeating: 0, count: 16))
+        func u32(_ v: Int) { withUnsafeBytes(of: UInt32(v).littleEndian) { d.append(contentsOf: $0) } }
+        u32(entries.count)
+        var names = Data()
+        for e in entries {
+            u32(4 + entries.count * 8 + names.count)
+            u32(0)
+            names.append(contentsOf: Array(e.utf8) + [0])
+        }
+        return d + names
+    }
+
+    /// AppleLocale is the Mac's own locale (or `create --language`'s) where the firmware offers it as a region format,
+    /// whatever the device's language: 3.2's iPad has no Ukrainian, but its Region Format has Ukrainian (Ukraine).
+    @Test func deviceLocaleIsTheMacsWhereTheFirmwareHasTheRegionFormat() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("ltm-icu-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: root) }
+        let icu = root.appendingPathComponent("usr/share/icu")
+        try fm.createDirectory(at: icu, withIntermediateDirectories: true)
+        #expect(SystemEdits.regionFormats(root) == nil, "no ICU data")
+        try Self.icuData([
+            "icudt42l/res_index.res", "icudt42l/en.res", "icudt42l/en_US.res", "icudt42l/uk.res",
+            "icudt42l/uk_UA.res", "icudt42l/sr_Latn_RS.res", "icudt42l/coll/hi_IN.res", "icudt42l/cnvalias.icu",
+        ]).write(to: icu.appendingPathComponent("icudt42l.dat"))
+        let formats = try #require(SystemEdits.regionFormats(root))
+        #expect(formats.isSuperset(of: ["en", "en_US", "uk", "uk_UA", "sr_Latn_RS"]))
+        #expect(!formats.contains("hi_IN") && !formats.contains("cnvalias.icu"), "only top-level locales")
+
+        // 3.2.2's AppleLanguages
+        let v322 = ["en", "fr", "de", "ja", "nl", "it", "es", "zh-Hans", "ru"]
+        func pick(_ preferred: String, _ region: String, _ locale: String) -> String {
+            let l = SystemEdits.deviceLanguage(
+                supported: v322,
+                preferred: [preferred],
+                region: region,
+                locale: locale,
+                formats: formats
+            )
+            return "\(l.language) \(l.locale)"
+        }
+        #expect(pick("uk-UA", "UA", "uk_UA") == "en uk_UA")
+        #expect(pick("ru-UA", "UA", "ru_UA") == "ru ru_UA", "a firmware without the format: language and region")
+        #expect(pick("hi-IN", "IN", "hi_IN") == "en en_IN")
+        #expect(pick("fr-FR", "FR", "fr_FR") == "fr fr_FR")
+        #expect(SystemEdits.deviceLanguage(supported: v322, preferred: ["uk-UA"], region: "UA").locale == "en_UA")
+
+        // seedLanguage, from an explicit language as from the Mac's
+        let skeleton = root.appendingPathComponent("var")
+        let global = skeleton.appendingPathComponent(SystemEdits.globalPreferences)
+        try fm.createDirectory(at: global.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try PropertyListSerialization.data(
+            fromPropertyList: ["AppleLanguages": v322, "AppleLocale": "en_US"],
+            format: .binary,
+            options: 0
+        ).write(to: global)
+        let seeded = try #require(try SystemEdits.seedLanguage(skeleton, tag: "uk-UA", formats: formats))
+        #expect(seeded.language == "en" && seeded.locale == "uk_UA")
+        let g = try #require(
+            try PropertyListSerialization.propertyList(from: Data(contentsOf: global), format: nil) as? [String: Any]
+        )
+        #expect(g["AppleLocale"] as? String == "uk_UA" && g["AppleLanguages"] as? [String] == v322)
+    }
+
+    /// Each firmware's ICU data, read from its own rootfs: Ukrainian (Ukraine) is a region format from 1.0 on.
+    @Test(
+        .enabled(if: FixtureRequirements.corpusEnabled, "Firmware corpus test; set FK_TEST_CORPUS=1 to run"),
+        arguments: [("7B500", "icudt42l.dat"), ("5H11a", "icudt36l.dat"), ("1A543a", "icudt34l.dat")]
+    )
+    func regionFormatsOfRealFirmware(build: String, icu: String) throws {
+        guard Fixtures.hasRootfs(build) else {
+            try FixtureRequirements.missing("SystemEditsTests.swift: Fixtures.hasRootfs(\(build))")
+        }
+        let dir = try Fixtures.tempDir("icu")
+        let root = dir.appendingPathComponent("root/usr/share/icu")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let dat = try Fixtures.extract(build: build, paths: ["usr/share/icu/" + icu], to: dir)[0]
+        try FileManager.default.moveItem(at: dat, to: root.appendingPathComponent(icu))
+        let formats = try #require(SystemEdits.regionFormats(dir.appendingPathComponent("root")))
+        #expect(formats.isSuperset(of: ["uk_UA", "en_US", "fr_FR"]) && !formats.contains("en_UA"))
+    }
+
     /// AppleKeyboards: the device language's keyboard first, then the Mac's keyboards as the firmware names them (its
     /// TextInput bundles), named as its own defaults name them, and nothing it lacks.
     @Test func keyboardsAreTheLanguagesThenTheMacsTheFirmwareHas() throws {
@@ -340,6 +426,9 @@ enum K48Oracle {
             "the built-in iPod: English only"
         )
         #expect(v313.keyboards(language: "fr", locale: "fr_CA", mac: []) == ["fr_CA"])
+        // A region format in another language than the device's (3.2's English with uk_UA): the language's keyboard.
+        #expect(v313.keyboards(language: "en", locale: "uk_UA", mac: []) == ["en_US"])
+        #expect(v712.keyboards(language: "en", locale: "uk_UA", mac: [us]) == ["en_US@hw=US"])
         #expect(
             v712.keyboards(language: "fr", locale: "fr_FR", mac: [french, kana, us])
                 == ["fr_FR@hw=French", "ja_JP-Kana", "en_US@hw=US"]

@@ -351,7 +351,8 @@ final class N45Board: Board {
                 at("private/var"),
                 tag: c.o.language,
                 keyboards: c.o.keyboards,
-                catalog: SystemEdits.KeyboardCatalog(at("System/Library/TextInput"))
+                catalog: SystemEdits.KeyboardCatalog(at("System/Library/TextInput")),
+                formats: SystemEdits.regionFormats(m)
             ) {
                 derived["language"] = "\(l.language), region \(l.locale), keyboards \(l.keyboards)"
             }
